@@ -5,7 +5,7 @@ import {
 	CheckCircle2,
 	ChevronDown,
 	Ellipsis,
-	Inbox,
+	Layers3,
 	Loader,
 	ArrowRight,
 	Plus,
@@ -14,6 +14,7 @@ import {
 import { useEffect, useId, useMemo, useState } from "react";
 import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
+import { isGeneratedRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 
 const ROADMAP_TAG_CLASS: Record<string, string> = {
 	Active: "bg-emerald-100 text-emerald-700",
@@ -25,60 +26,142 @@ const ROADMAP_TAG_CLASS: Record<string, string> = {
 // the rest with a staggered slide-up.
 const INITIAL_VISIBLE_ROADMAPS = 6;
 
-const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
-	const MAX_EPICS = 5;
+const EpicOverview = ({
+	preview,
+	selected,
+}: {
+	preview: RoadmapPreview;
+	selected: boolean;
+}) => {
+	const MAX_EPICS = 4;
 
 	const allEpics = [...(preview.epics || [])].sort(
 		(a, b) => a.position - b.position,
 	);
 
-	const displayedEpics = allEpics.slice(0, MAX_EPICS);
+	// Expand the first epic by default so the nested-feature structure is visible
+	// the moment the card is selected.
+	const [expandedEpicIds, setExpandedEpicIds] = useState<Set<string>>(() =>
+		allEpics[0] ? new Set([allEpics[0].id]) : new Set(),
+	);
+	const toggleEpic = (epicId: string) =>
+		setExpandedEpicIds((current) => {
+			const next = new Set(current);
+			if (next.has(epicId)) next.delete(epicId);
+			else next.add(epicId);
+			return next;
+		});
+
+	// When selected the card becomes interactive: show every epic in a scroll
+	// area. When not, show a tidy capped preview that doesn't trap page scroll.
+	const displayedEpics = selected ? allEpics : allEpics.slice(0, MAX_EPICS);
 	const remainingCount = allEpics.length - MAX_EPICS;
 
-	if (allEpics.length === 0) {
-		return (
-			<div className="flex flex-col items-center justify-center h-full py-8 px-4">
-				<div className="mb-3 rounded-full bg-slate-100 p-3">
-					<Inbox className="h-6 w-6 text-slate-500" />
-				</div>
-				<p className="mb-1 text-sm font-medium text-slate-600">No epics yet</p>
-				<p className="text-center text-xs text-slate-500">
-					This roadmap is empty
-				</p>
-			</div>
-		);
-	}
-
 	return (
-		<div className="h-full flex flex-col">
-			<div className="flex-1 py-2">
-				{displayedEpics.map((epic, index) => {
-					const featureCount = epic.features?.length || 0;
-					const isLast = index === displayedEpics.length - 1;
-					return (
-						<div
-							key={epic.id}
-							className="flex items-start gap-3 px-3 hover:bg-[#f6f7f8] transition-colors"
-						>
-							<div className="flex flex-col items-center shrink-0 pt-1">
-								<div className="h-2 w-2 rounded-full bg-slate-800" />
-								{!isLast && <div className="mt-1 h-5 w-0.5 bg-slate-200" />}
-							</div>
-							<div className="flex items-start justify-between flex-1 min-w-0 pb-1">
-								<span className="truncate pt-0.5 text-[13px] font-medium text-slate-900 sm:text-[14px]">
-									{epic.title}
-								</span>
-								<span className="ml-2 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-									{featureCount} {featureCount === 1 ? "feature" : "features"}
-								</span>
-							</div>
-						</div>
-					);
-				})}
+		<div className="flex h-full flex-col overflow-hidden">
+			<div className="mb-2 flex items-center justify-between px-1">
+				<div className="flex min-w-0 items-center gap-2">
+					<div className="rounded-md bg-slate-900 p-1.5 text-white shadow-sm">
+						<Layers3 className="h-3.5 w-3.5" />
+					</div>
+					<span className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700">
+						Roadmap epics
+					</span>
+				</div>
+				<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+					{allEpics.length}
+				</span>
 			</div>
-			{remainingCount > 0 && (
-				<div className="border-t border-slate-200 px-3 py-2 text-center">
-					<span className="text-xs text-slate-500">
+
+			{allEpics.length === 0 ? (
+				<div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg bg-slate-50 px-4 text-center">
+					<p className="text-xs font-semibold text-slate-600">No epics yet</p>
+					<p className="mt-1 text-[11px] leading-4 text-slate-500">
+						Your roadmap is ready for its first delivery area.
+					</p>
+				</div>
+			) : (
+				<div
+					className={`flex min-h-0 flex-1 flex-col gap-1 ${
+						selected
+							? "overflow-y-auto [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:var(--color-slate-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400"
+							: "overflow-y-auto [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:transparent_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent"
+					}`}
+				>
+					{displayedEpics.map((epic, index) => {
+						const features = epic.features ?? [];
+						const featureCount = features.length;
+						const showFeatures =
+							selected && expandedEpicIds.has(epic.id) && featureCount > 0;
+						return (
+							<div key={epic.id} className="flex shrink-0 flex-col">
+								{/* Epic node — fixed height so it stays the same size
+								    whether or not the card is selected. */}
+								<button
+									type="button"
+									tabIndex={selected ? 0 : -1}
+									onClick={(event) => {
+										if (!selected) return;
+										event.stopPropagation();
+										toggleEpic(epic.id);
+									}}
+									className="flex h-14 w-full shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-slate-50"
+								>
+									<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[10px] font-bold text-slate-600">
+										{String(index + 1).padStart(2, "0")}
+									</span>
+									<div className="min-w-0 flex-1">
+										<p className="truncate text-[12px] font-semibold leading-4 text-slate-900">
+											{epic.title}
+										</p>
+										<p className="text-[10px] leading-3 text-slate-500">
+											{featureCount}{" "}
+											{featureCount === 1 ? "feature" : "features"}
+										</p>
+									</div>
+									{featureCount > 0 && (
+										<ChevronDown
+											className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+												showFeatures ? "" : "-rotate-90"
+											}`}
+										/>
+									)}
+								</button>
+
+								{/* Nested feature nodes — lightweight fade/slide entry
+								    (opacity + transform only; no layout animation). */}
+								{showFeatures && (
+									<div className="ml-3 mt-1 flex flex-col gap-1 border-l border-slate-200 pl-3 duration-200 ease-out animate-in fade-in slide-in-from-top-1 motion-reduce:animate-none">
+										{features.map((feature) => {
+											const taskCount = feature.tasks?.length ?? 0;
+											return (
+												<div
+													key={feature.id}
+													className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5"
+												>
+													<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+													<p className="min-w-0 flex-1 truncate text-[11px] font-medium leading-4 text-slate-700">
+														{feature.title}
+													</p>
+													{taskCount > 0 && (
+														<span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600">
+															{taskCount}
+														</span>
+													)}
+												</div>
+											);
+										})}
+									</div>
+								)}
+							</div>
+						);
+					})}
+				</div>
+			)}
+
+			{!selected && remainingCount > 0 && (
+				<div className="mt-2 border-t border-slate-200/80 pt-2 text-center">
+					<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
 						+{remainingCount} more {remainingCount === 1 ? "epic" : "epics"}
 					</span>
 				</div>
@@ -100,19 +183,28 @@ export function RoadmapsGrid() {
 	const [deletingRoadmapId, setDeletingRoadmapId] = useState<string | null>(
 		null,
 	);
+	const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(
+		null,
+	);
 	const [showAllRoadmaps, setShowAllRoadmaps] = useState(false);
 
 	useEffect(() => {
 		const handleOutsideClick = (event: MouseEvent) => {
 			const target = event.target;
 			if (!(target instanceof Element)) return;
-			if (target.closest("[data-roadmap-menu]")) return;
-			setOpenMenuRoadmapId(null);
+			if (!target.closest("[data-roadmap-menu]")) {
+				setOpenMenuRoadmapId(null);
+			}
+			// Deselect when clicking outside any roadmap card.
+			if (!target.closest("[data-roadmap-card]")) {
+				setSelectedRoadmapId(null);
+			}
 		};
 
 		const handleEscape = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				setOpenMenuRoadmapId(null);
+				setSelectedRoadmapId(null);
 			}
 		};
 
@@ -247,142 +339,185 @@ export function RoadmapsGrid() {
 				</div>
 			) : (
 				<>
-				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 items-stretch">
-					{visibleTemplates.map((template, index) => (
-						<div
-							key={template.id}
-							className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg sm:h-[420px] ${
-								index >= INITIAL_VISIBLE_ROADMAPS ? "app-slide-up" : ""
-							}`}
-							style={
-								index >= INITIAL_VISIBLE_ROADMAPS
-									? {
-											animationDelay: `${(index - INITIAL_VISIBLE_ROADMAPS) * 60}ms`,
-										}
-									: undefined
-							}
-						>
-							<div className="absolute top-3 right-3 z-20" data-roadmap-menu>
-								<button
-									type="button"
-									onClick={() =>
-										setOpenMenuRoadmapId((current) =>
-											current === template.id ? null : template.id,
-										)
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 items-stretch">
+						{visibleTemplates.map((template, index) => {
+							const isSelected = selectedRoadmapId === template.id;
+							// Select-only (not toggle): clicking inside a selected card —
+							// e.g. a feature node — must never deselect it. Deselect is
+							// handled by outside-click / Escape / selecting another card.
+							const selectCard = () =>
+								setSelectedRoadmapId(template.id);
+							return (
+							<div
+								key={template.id}
+								data-roadmap-card
+								role="button"
+								tabIndex={0}
+								aria-pressed={isSelected}
+								onClick={selectCard}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" || event.key === " ") {
+										event.preventDefault();
+										selectCard();
 									}
-									className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900"
-									aria-label="Open roadmap actions"
-								>
-									<Ellipsis className="h-4 w-4" />
-								</button>
+								}}
+								className={`group relative flex h-auto cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:h-[420px] ${
+									isSelected
+										? "border-slate-900 ring-2 ring-slate-900/70 shadow-lg"
+										: "border-slate-200 hover:border-slate-400"
+								} ${index >= INITIAL_VISIBLE_ROADMAPS ? "app-slide-up" : ""}`}
+								style={
+									index >= INITIAL_VISIBLE_ROADMAPS
+										? {
+												animationDelay: `${(index - INITIAL_VISIBLE_ROADMAPS) * 60}ms`,
+											}
+										: undefined
+								}
+							>
+								<div className="absolute top-3 right-3 z-20" data-roadmap-menu>
+									<button
+										type="button"
+										onClick={(event) => {
+											event.stopPropagation();
+											setOpenMenuRoadmapId((current) =>
+												current === template.id ? null : template.id,
+											);
+										}}
+										className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900"
+										aria-label="Open roadmap actions"
+									>
+										<Ellipsis className="h-4 w-4" />
+									</button>
 
-								{openMenuRoadmapId === template.id ? (
-									<div className="absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-										{template.preview.project_id ? (
-											<Link
-												to={getProjectSettingsPath(template.preview.project_id)}
-												className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
-												onClick={() => setOpenMenuRoadmapId(null)}
-											>
-												<Briefcase className="h-4 w-4" />
-												Project settings
-											</Link>
+									{openMenuRoadmapId === template.id ? (
+										<div className="absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+											{template.preview.project_id ? (
+												<Link
+									to={getProjectSettingsPath(template.preview.project_id)}
+													className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+													onClick={(event) => {
+														event.stopPropagation();
+														setOpenMenuRoadmapId(null);
+													}}
+												>
+													<Briefcase className="h-4 w-4" />
+													Project settings
+												</Link>
+											) : (
+												<button
+													type="button"
+													onClick={(event) => {
+														event.stopPropagation();
+														handleDeleteRoadmap(
+															template.id,
+															template.title,
+															template.preview.project_id,
+														);
+													}}
+													disabled={deletingRoadmapId === template.id}
+													className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+												>
+													<Trash2 className="h-4 w-4" />
+													{deletingRoadmapId === template.id
+														? "Deleting..."
+														: "Delete roadmap"}
+												</button>
+											)}
+										</div>
+									) : null}
+								</div>
+
+								<div className="flex h-full flex-col">
+									<div className="h-[330px] overflow-hidden p-4">
+										{template.preview.preview_url?.trim() &&
+										!isGeneratedRoadmapThumbnailDataUri(
+											template.preview.preview_url,
+										) ? (
+											<img
+												src={template.preview.preview_url}
+												alt={template.title}
+												className="w-full h-full object-cover rounded-lg"
+											/>
 										) : (
-											<button
-												type="button"
-												onClick={() =>
-													handleDeleteRoadmap(
-														template.id,
-														template.title,
-														template.preview.project_id,
-													)
-												}
-												disabled={deletingRoadmapId === template.id}
-												className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-											>
-												<Trash2 className="h-4 w-4" />
-												{deletingRoadmapId === template.id
-													? "Deleting..."
-													: "Delete roadmap"}
-											</button>
+											<EpicOverview
+												preview={template.preview}
+												selected={isSelected}
+											/>
 										)}
 									</div>
-								) : null}
-							</div>
-
-							<Link
-								to="/project/$projectId/roadmap/$roadmapId"
-								params={{
-									projectId: template.preview.project_id || "n",
-									roadmapId: template.id,
-								}}
-								className="flex h-full flex-col"
-							>
-								<div className="h-[200px] overflow-hidden bg-slate-50 p-4">
-									{template.preview.preview_url ? (
-										<img
-											src={template.preview.preview_url}
-											alt={template.title}
-											className="w-full h-full object-cover rounded-lg"
-										/>
-									) : (
-										<EpicOverview preview={template.preview} />
-									)}
-								</div>
-								<div className="flex-1 flex flex-col p-5">
-									<div className="flex justify-between items-start gap-3 pr-10">
-										<h3 className="text-[16px] font-semibold tracking-tight text-slate-900 leading-tight">
-											{template.title}
-										</h3>
-										<span
-											className={`shrink-0 px-2 py-0.5 text-xs font-semibold rounded-full ${ROADMAP_TAG_CLASS[template.tag] ?? "bg-slate-100 text-slate-700"}`}
-										>
-											{template.tag}
-										</span>
-									</div>
-									<p className="mt-2 line-clamp-2 text-[13px] text-slate-600 sm:text-[14px]">
-										{template.category}
-									</p>
-									{template.preview.project_id && (
-										<div className="mt-3 mb-2 flex w-fit items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600">
-											<Briefcase className="w-3 h-3" />
-											<span>Linked to Project</span>
+									<div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2.5">
+										<div className="flex items-start justify-between gap-2">
+											<h3 className="truncate text-[15px] font-semibold leading-tight tracking-tight text-slate-900">
+												{template.title}
+											</h3>
+											<span
+												className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${ROADMAP_TAG_CLASS[template.tag] ?? "bg-slate-100 text-slate-700"}`}
+											>
+												{template.tag}
+											</span>
 										</div>
-									)}
-									<div className="mt-auto border-t border-slate-100 pt-4 flex justify-end">
-										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900 sm:text-[14px]">
-											<CheckCircle2 className="h-3 w-3 shrink-0" />
-											TRACK PROGRESS
-											<ArrowRight className="h-3.5 w-3.5 shrink-0" />
-										</span>
+										<p className="mt-0.5 line-clamp-1 text-[12px] text-slate-600">
+											{template.category}
+										</p>
+										<div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+											{template.preview.project_id ? (
+												<span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+													<Briefcase className="h-3 w-3 shrink-0" />
+													Linked
+												</span>
+											) : (
+												<span />
+											)}
+											{isSelected ? (
+												<Link
+													to="/project/$projectId/roadmap/$roadmapId"
+													params={{
+														projectId:
+															template.preview.project_id || "n",
+														roadmapId: template.id,
+													}}
+													onClick={(event) => event.stopPropagation()}
+													className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-slate-700"
+												>
+													Open roadmap
+													<ArrowRight className="h-3.5 w-3.5 shrink-0" />
+												</Link>
+											) : (
+												<span className="inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold uppercase text-slate-500 transition-colors group-hover:text-slate-700">
+													<CheckCircle2 className="h-3 w-3 shrink-0" />
+													Click to open
+													<ArrowRight className="h-3.5 w-3.5 shrink-0" />
+												</span>
+											)}
+										</div>
 									</div>
 								</div>
-							</Link>
-						</div>
-					))}
-				</div>
-				{hasMoreRoadmaps ? (
-					<div className="mt-6 flex justify-center">
-						<button
-							type="button"
-							onClick={() => setShowAllRoadmaps((prev) => !prev)}
-							aria-expanded={showAllRoadmaps}
-							data-testid="roadmaps-view-more"
-							className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900 hover:shadow-md"
-						>
-							<span>
-								{showAllRoadmaps
-									? "Show less"
-									: `View more (${templates.length - INITIAL_VISIBLE_ROADMAPS})`}
-							</span>
-							<ChevronDown
-								className={`h-4 w-4 text-slate-500 transition-transform duration-300 group-hover:text-slate-700 ${
-									showAllRoadmaps ? "rotate-180" : ""
-								}`}
-							/>
-						</button>
+							</div>
+							);
+						})}
 					</div>
-				) : null}
+					{hasMoreRoadmaps ? (
+						<div className="mt-6 flex justify-center">
+							<button
+								type="button"
+								onClick={() => setShowAllRoadmaps((prev) => !prev)}
+								aria-expanded={showAllRoadmaps}
+								data-testid="roadmaps-view-more"
+								className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900 hover:shadow-md"
+							>
+								<span>
+									{showAllRoadmaps
+										? "Show less"
+										: `View more (${templates.length - INITIAL_VISIBLE_ROADMAPS})`}
+								</span>
+								<ChevronDown
+									className={`h-4 w-4 text-slate-500 transition-transform duration-300 group-hover:text-slate-700 ${
+										showAllRoadmaps ? "rotate-180" : ""
+									}`}
+								/>
+							</button>
+						</div>
+					) : null}
 				</>
 			)}
 		</div>

@@ -11,43 +11,43 @@
 
 // Gradient palette [from, to]. Kept in sync with the backfill SQL palette.
 const GRADIENTS: ReadonlyArray<readonly [string, string]> = [
-  ["#f97316", "#ec4899"], // orange -> pink (brand)
-  ["#6366f1", "#8b5cf6"], // indigo -> violet
-  ["#0ea5e9", "#06b6d4"], // sky -> cyan
-  ["#10b981", "#22c55e"], // emerald -> green
-  ["#f59e0b", "#ef4444"], // amber -> red
-  ["#8b5cf6", "#d946ef"], // violet -> fuchsia
+	["#f97316", "#ec4899"], // orange -> pink (brand)
+	["#6366f1", "#8b5cf6"], // indigo -> violet
+	["#0ea5e9", "#06b6d4"], // sky -> cyan
+	["#10b981", "#22c55e"], // emerald -> green
+	["#f59e0b", "#ef4444"], // amber -> red
+	["#8b5cf6", "#d946ef"], // violet -> fuchsia
 ];
 
 /** Stable non-negative 32-bit string hash (djb2). */
 function hashString(input: string): number {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
+	let hash = 5381;
+	for (let i = 0; i < input.length; i++) {
+		hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+	}
+	return Math.abs(hash);
 }
 
 /** Up-to-2-char uppercase initials from a name (mirrors getAvatarDisplay). */
 function initialsFromName(name: string): string {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0] ?? "")
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-  return initials || "R";
+	const initials = name
+		.trim()
+		.split(/\s+/)
+		.map((part) => part[0] ?? "")
+		.join("")
+		.toUpperCase()
+		.slice(0, 2);
+	return initials || "R";
 }
 
 /** XML-escape text before embedding it in the SVG markup. */
 function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&apos;");
 }
 
 /**
@@ -57,14 +57,52 @@ function escapeXml(value: string): string {
  * @param name  Display name used to derive the initials.
  */
 export function generateRoadmapThumbnailDataUri(
-  seed: string,
-  name: string,
+	seed: string,
+	name: string,
 ): string {
-  const [from, to] =
-    GRADIENTS[hashString(seed || name || "roadmap") % GRADIENTS.length];
-  const initials = escapeXml(initialsFromName(name || "Roadmap"));
+	const [from, to] =
+		GRADIENTS[hashString(seed || name || "roadmap") % GRADIENTS.length];
+	const initials = escapeXml(initialsFromName(name || "Roadmap"));
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="${initials}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><text x="320" y="180" fill="#ffffff" fill-opacity="0.95" font-family="Inter, system-ui, sans-serif" font-size="140" font-weight="700" text-anchor="middle" dominant-baseline="central">${initials}</text></svg>`;
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="${initials}" data-roadmap-thumbnail="generated"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><text x="320" y="180" fill="#ffffff" fill-opacity="0.95" font-family="Inter, system-ui, sans-serif" font-size="140" font-weight="700" text-anchor="middle" dominant-baseline="central">${initials}</text></svg>`;
 
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function decodeSvgDataUri(value: string): string | null {
+	const commaIndex = value.indexOf(",");
+	if (commaIndex < 0) return null;
+
+	const metadata = value.slice(0, commaIndex);
+	const payload = value.slice(commaIndex + 1);
+
+	try {
+		return /;base64/i.test(metadata)
+			? atob(payload)
+			: decodeURIComponent(payload);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Identify the generated gradient placeholder used for roadmaps without an
+ * uploaded thumbnail. The structural fallback keeps legacy, pre-marker
+ * placeholders (including the migration's base64 SVGs) working too.
+ */
+export function isGeneratedRoadmapThumbnailDataUri(
+	value: string | null | undefined,
+): boolean {
+	const dataUri = value?.trim();
+	if (!dataUri || !/^data:image\/svg\+xml/i.test(dataUri)) return false;
+
+	const svg = decodeSvgDataUri(dataUri);
+	if (!svg) return false;
+
+	return (
+		svg.includes('data-roadmap-thumbnail="generated"') ||
+		(svg.includes('<linearGradient id="g"') &&
+			svg.includes('font-family="Inter, system-ui, sans-serif"') &&
+			svg.includes('dominant-baseline="central"'))
+	);
 }
