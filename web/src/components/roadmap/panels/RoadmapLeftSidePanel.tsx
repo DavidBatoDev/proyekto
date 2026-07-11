@@ -1,6 +1,7 @@
 import { ChevronRight, ExternalLink, FolderOpen, GripVertical, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Tooltip } from "@mui/material";
+import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -196,7 +197,7 @@ function SortableFeatureRow({
 
 	return (
 		<div ref={setNodeRef} style={style} className="min-w-0">
-			<div className="group relative h-8 w-full min-w-0 flex items-center gap-1 px-2 pr-9 text-xs text-gray-700 hover:bg-white hover:shadow-sm rounded-md transition-all border border-transparent hover:border-gray-200">
+			<div className="group relative h-8 w-full min-w-0 flex items-center gap-1 px-2 pr-9 text-xs text-foreground hover:bg-accent hover:text-accent-foreground hover:shadow-sm rounded-md transition-all border border-transparent hover:border-border">
 				{!mobile && (
 					<div
 						{...(canDrag ? attributes : {})}
@@ -204,7 +205,7 @@ function SortableFeatureRow({
 						onClick={(event) => event.stopPropagation()}
 						className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
 							canDrag
-								? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+								? "cursor-grab hover:bg-muted hover:text-foreground active:cursor-grabbing"
 								: "cursor-default opacity-50"
 						}`}
 						title="Drag to reorder feature"
@@ -250,22 +251,11 @@ function SortableFeatureRow({
 				</Tooltip>
 				{(() => {
 					const derivedStatus = deriveFeatureStatus(feature.tasks);
-					const badgeColor =
-						derivedStatus === "completed"
-							? "bg-green-100 text-green-700"
-							: derivedStatus === "in_progress"
-								? "bg-blue-100 text-blue-700"
-								: derivedStatus === "in_review"
-									? "bg-purple-100 text-purple-700"
-									: derivedStatus === "blocked"
-										? "bg-red-100 text-red-700"
-										: "bg-gray-100 text-gray-600";
 					return (
-						<span
-							className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${badgeColor}`}
-						>
-							{derivedStatus.replace(/_/g, " ")}
-						</span>
+						<TaskStatusBadge
+							status={derivedStatus === "completed" ? "done" : derivedStatus}
+							className="shrink-0 text-[10px]"
+						/>
 					);
 				})()}
 				{taskCount > 0 && (
@@ -274,7 +264,7 @@ function SortableFeatureRow({
 				<button
 					type="button"
 					onClick={() => onOpenAddTaskPanel(feature.id)}
-					className={`absolute right-2 transition-opacity inline-flex items-center justify-center w-6 h-6 text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm ${
+					className={`absolute right-2 transition-opacity inline-flex items-center justify-center w-6 h-6 text-muted-foreground bg-card border border-border rounded hover:bg-accent hover:border-primary hover:text-primary shadow-sm ${
 						mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
 					}`}
 					title="Add task to feature"
@@ -318,7 +308,7 @@ export function RoadmapLeftSidePanel({
 	mobile = false,
 }: RoadmapLeftSidePanelProps) {
 	return (
-		<div className="h-full w-full flex bg-white">
+		<div className="h-full w-full flex bg-background text-foreground">
 			{/* Main Content Area - Hidden when collapsed */}
 			{!isCollapsed && (
 				<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
@@ -971,7 +961,7 @@ function ExplorerPanel({
 	const displayedEpics = workingEpics ?? sortedEpics;
 
 	return (
-		<div className="flex flex-col h-full min-w-0 overflow-hidden bg-white ">
+		<div className="flex flex-col h-full min-w-0 overflow-hidden bg-background text-foreground">
 			<RoadmapStructureHeader
 				epics={sortedEpics}
 				hasAnyExpanded={hasAnyExpanded}
@@ -1047,8 +1037,8 @@ function ExplorerPanel({
 															<div
 																className={`flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 pr-12 text-xs font-semibold rounded-lg transition-all border ${
 																	isEpicHighlighted
-																		? "text-primary bg-orange-50 border-orange-200 shadow-sm"
-																		: "text-gray-900 bg-gray-50 border-gray-200 hover:bg-white hover:shadow-sm"
+																		? "text-primary bg-primary/10 border-primary/30 shadow-sm"
+																		: "text-foreground bg-muted border-border hover:bg-accent hover:text-accent-foreground hover:shadow-sm"
 																}`}
 															>
 																{!mobile && (
@@ -1058,7 +1048,7 @@ function ExplorerPanel({
 																		onClick={(event) => event.stopPropagation()}
 																		className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
 																			canEditRoadmap
-																				? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+																						? "cursor-grab hover:bg-accent hover:text-foreground active:cursor-grabbing"
 																				: "cursor-default opacity-50"
 																		}`}
 																		title="Drag to reorder epic"
@@ -1116,7 +1106,7 @@ function ExplorerPanel({
 															<button
 																type="button"
 																onClick={() => openAddFeatureModal(epic.id)}
-																className={`absolute right-10 transition-opacity inline-flex items-center justify-center w-7 h-7 text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm ${mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+																className={`absolute right-10 transition-opacity inline-flex items-center justify-center w-7 h-7 text-muted-foreground bg-card border border-border rounded-md hover:bg-accent hover:border-primary hover:text-primary shadow-sm ${mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
 																title="Add feature to epic"
 															>
 																<Plus className="w-3.5 h-3.5" />
@@ -1124,7 +1114,7 @@ function ExplorerPanel({
 															<button
 																type="button"
 																onClick={() => onNavigateToEpicTab?.(epic.id)}
-																className={`shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-blue-700 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors ${mobile ? "hidden" : ""}`}
+																className={`shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-primary bg-card border border-border rounded-lg hover:bg-accent transition-colors ${mobile ? "hidden" : ""}`}
 																title="Navigate to epic"
 															>
 																<ExternalLink className="w-3 h-3" />
@@ -1176,7 +1166,7 @@ function ExplorerPanel({
 
 																					{/* Tasks */}
 																					{explorerConfig.showTaskRows && isFeatureExpanded && tasks.length > 0 && (
-																						<div className="ml-2 mt-1 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white">
+																						<div className="ml-2 mt-1 mb-1 overflow-hidden rounded-lg border border-border bg-card text-card-foreground">
 																							<div className="flex flex-col gap-0.5 px-2 py-1">
 																								{tasks.map((task) => (
 																									<TaskListItem
@@ -1214,7 +1204,7 @@ function ExplorerPanel({
 																								<button
 																									type="button"
 																									onClick={() => openAddTaskPanel(feature.id)}
-																									className="flex w-full items-center justify-center gap-1.5 border-t border-gray-100 px-3 py-1.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+																									className="flex w-full items-center justify-center gap-1.5 border-t border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 																								>
 																									<Plus className="h-3.5 w-3.5" />
 																									Add Task

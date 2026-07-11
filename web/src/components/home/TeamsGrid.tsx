@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
 import {
 	listMyTeamInvites,
@@ -145,13 +146,9 @@ function TeamCardSubLine({ team }: { team: Team }) {
 	const description = team.description ?? (team.is_personal ? "My team" : null);
 
 	const chip = position ? (
-		<span className="inline-flex shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-			{position}
-		</span>
+		<PositionBadge>{position}</PositionBadge>
 	) : role ? (
-		<span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-			{role}
-		</span>
+		<RoleBadge>{role}</RoleBadge>
 	) : null;
 
 	if (!chip && !description) return null;

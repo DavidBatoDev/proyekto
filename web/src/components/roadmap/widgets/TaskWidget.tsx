@@ -3,13 +3,12 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   Edit2,
   Trash2,
-  AlertTriangle,
   CheckCircle2,
-  Clock,
   User,
   Maximize2,
 } from "lucide-react";
 import type { RoadmapTask, ChecklistItem } from "@/types/roadmap";
+import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 
 export interface TaskWidgetData extends Record<string, unknown> {
@@ -24,36 +23,6 @@ export interface TaskWidgetData extends Record<string, unknown> {
 }
 
 type TaskWidgetNode = Node<TaskWidgetData>;
-
-const getStatusColor = (status: RoadmapTask["status"]) => {
-  switch (status) {
-    case "done":
-      return "bg-green-100 text-green-800 border-green-300";
-    case "in_progress":
-      return "bg-blue-100 text-blue-800 border-blue-300";
-    case "in_review":
-      return "bg-purple-100 text-purple-800 border-purple-300";
-    case "blocked":
-      return "bg-red-100 text-red-800 border-red-300";
-    case "todo":
-      return "bg-gray-100 text-gray-800 border-gray-300";
-    default:
-      return "bg-gray-100 text-gray-800 border-gray-300";
-  }
-};
-
-const getStatusIcon = (status: RoadmapTask["status"]) => {
-  switch (status) {
-    case "done":
-      return <CheckCircle2 className="w-3 h-3" />;
-    case "in_progress":
-      return <Clock className="w-3 h-3" />;
-    case "blocked":
-      return <AlertTriangle className="w-3 h-3" />;
-    default:
-      return null;
-  }
-};
 
 const getPriorityColor = (priority: RoadmapTask["priority"]) => {
   switch (priority) {
@@ -194,14 +163,7 @@ export const TaskCard = memo(
 
           {/* Status Badge */}
           <div className="mb-2">
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(
-                task.status,
-              )}`}
-            >
-              {getStatusIcon(task.status)}
-              {task.status.replace(/_/g, " ")}
-            </span>
+            <TaskStatusBadge status={task.status} />
           </div>
 
           {/* Assignee */}

@@ -121,18 +121,18 @@ export function ProjectSidebarLink({
 				params={{ projectId: project.id }}
 				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
 					active
-						? "bg-primary text-white shadow-sm"
-						: "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+						? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+						: "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 				}`}
 			>
 				<Folder
 					className={`h-5 w-5 shrink-0 ${
-						active ? "text-white" : "text-slate-400"
+						active
+							? "text-sidebar-primary-foreground"
+							: "text-sidebar-foreground/50"
 					}`}
 				/>
-				<span className="truncate">
-					{project.title || "Untitled project"}
-				</span>
+				<span className="truncate">{project.title || "Untitled project"}</span>
 			</Link>
 
 			{typeof document !== "undefined" &&
@@ -211,13 +211,13 @@ function ProjectPopupMenu({
 			animate={{ opacity: 1, x: 0, scale: 1 }}
 			exit={{ opacity: 0, x: -6, scale: 0.97 }}
 			transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-			className="fixed z-50 w-56 origin-left rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+			className="fixed z-50 w-56 origin-left rounded-xl border border-sidebar-border bg-sidebar py-1 text-sidebar-foreground shadow-lg ring-1 ring-black/5"
 		>
-			<div className="border-b border-slate-100 px-3 py-2">
-				<p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+			<div className="border-b border-sidebar-border px-3 py-2">
+				<p className="truncate text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
 					Project
 				</p>
-				<p className="truncate text-sm font-semibold text-slate-900">
+				<p className="truncate text-sm font-semibold text-sidebar-foreground">
 					{project.title || "Untitled project"}
 				</p>
 			</div>
@@ -231,13 +231,15 @@ function ProjectPopupMenu({
 								params={{ projectId: project.id }}
 								className={`flex items-center gap-3 px-3 py-2 text-sm transition-colors ${
 									active
-										? "bg-primary text-white"
-										: "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+										? "bg-sidebar-primary text-sidebar-primary-foreground"
+										: "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 								}`}
 							>
 								<item.icon
 									className={`h-4 w-4 shrink-0 ${
-										active ? "text-white" : "text-slate-400"
+										active
+											? "text-sidebar-primary-foreground"
+											: "text-sidebar-foreground/50"
 									}`}
 								/>
 								<span className="truncate">{item.label}</span>

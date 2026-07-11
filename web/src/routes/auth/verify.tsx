@@ -76,9 +76,9 @@ function VerifyEmailComponent() {
   }, [email, code, navigate, toast]);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-white">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background text-foreground">
       {/* Background Elements */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_60%,rgba(255,153,102,0.12),rgba(255,255,255,0.75)_45%,white_65%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_60%,color-mix(in_oklch,var(--primary)_12%,transparent),transparent_65%)]" />
       <img
         src={assets.ellipse28}
         alt=""
@@ -92,16 +92,16 @@ function VerifyEmailComponent() {
 
       {/* Content */}
       <div className="relative w-full max-w-md">
-        <div className="rounded-lg bg-white p-8 text-center shadow-xl">
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-card-foreground shadow-xl">
           {isVerifying ? (
             <>
               <div className="mb-6 flex justify-center">
                 <CircularProgress size={64} sx={{ color: "#ff9900" }} />
               </div>
-              <h2 className="mb-3 text-2xl font-bold text-[#1f2937]">
+              <h2 className="mb-3 text-2xl font-bold text-foreground">
                 Verifying Your Email
               </h2>
-              <p className="text-[#6b7280]">
+              <p className="text-muted-foreground">
                 Please wait while we verify your email address. This should only
                 take a moment.
               </p>
@@ -125,10 +125,10 @@ function VerifyEmailComponent() {
                   </svg>
                 </div>
               </div>
-              <h2 className="mb-3 text-2xl font-bold text-[#1f2937]">
+              <h2 className="mb-3 text-2xl font-bold text-foreground">
                 Email Verified Successfully
               </h2>
-              <p className="mb-6 text-[#6b7280]">
+              <p className="mb-6 text-muted-foreground">
                 Thank you for verifying your email. Your account is now fully
                 activated and ready to use.
               </p>

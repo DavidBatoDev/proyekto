@@ -9,6 +9,7 @@ import {
 	Plus,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
 import {
@@ -24,37 +25,31 @@ type DashboardCard =
 
 export const PROJECT_STATUS_CONFIG: Record<
 	string,
-	{ label: string; color: string; badgeClass: string }
+	{ label: string; color: string }
 > = {
 	bidding: {
 		label: "Bidding",
 		color: "#7c3aed",
-		badgeClass: "bg-violet-100 text-violet-700 border-violet-200",
 	},
 	draft: {
 		label: "Draft",
 		color: "#f59e0b",
-		badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
 	},
 	active: {
 		label: "Active",
 		color: "#22c55e",
-		badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
 	},
 	completed: {
 		label: "Completed",
 		color: "#03a9f4",
-		badgeClass: "bg-sky-100 text-sky-700 border-sky-200",
 	},
 	paused: {
 		label: "Paused",
 		color: "#64748b",
-		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
 	},
 	archived: {
 		label: "Archived",
 		color: "#6b7280",
-		badgeClass: "bg-gray-100 text-gray-700 border-gray-200",
 	},
 };
 
@@ -284,7 +279,6 @@ function ProjectsSection({
 						] ?? {
 							label: card.project.status || "Unknown",
 							color: "#9c27b0",
-							badgeClass: "bg-purple-100 text-purple-700 border-purple-200",
 						};
 
 						return (
@@ -293,8 +287,6 @@ function ProjectsSection({
 								number={index + 1}
 								projectId={card.project.id}
 								status={statusConfig.label}
-								statusColor={statusConfig.color}
-								statusBadgeClass={statusConfig.badgeClass}
 								title={card.project.title}
 								client={card.project.client?.display_name || "Assigned"}
 								progress={card.project.status === "completed" ? 100 : null}
@@ -446,8 +438,6 @@ export function ProjectCard({
 	number,
 	projectId,
 	status,
-	statusColor,
-	statusBadgeClass,
 	title,
 	client,
 	progress,
@@ -460,8 +450,6 @@ export function ProjectCard({
 	number: number;
 	projectId: string;
 	status: string;
-	statusColor: string;
-	statusBadgeClass: string;
 	title: string;
 	client: string;
 	progress: number | null;
@@ -471,17 +459,12 @@ export function ProjectCard({
 	className?: string;
 	style?: CSSProperties;
 }) {
-	const isDraft = status.toLowerCase() === "draft";
-
 	return (
 		<div
-			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg ${
+			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:shadow-lg ${
 				className ?? ""
 			}`}
-			style={{
-				backgroundImage: `linear-gradient(to bottom, white 98%, ${statusColor}20)`,
-				...style,
-			}}
+			style={style}
 		>
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
@@ -490,21 +473,7 @@ export function ProjectCard({
 							#{number}
 						</span>
 						<div className="h-[25px] w-px bg-slate-300" />
-						<div className="flex items-center gap-2">
-							{!isDraft ? (
-								<div
-									className="w-3 h-3 rounded-full flex items-center justify-center"
-									style={{ backgroundColor: statusColor }}
-								>
-									<div className="w-1.5 h-1.5 rounded-full bg-white" />
-								</div>
-							) : null}
-							<span
-								className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusBadgeClass}`}
-							>
-								{status}
-							</span>
-						</div>
+						<ProjectStatusBadge status={status} />
 					</div>
 
 					<h3 className="mb-1 text-[14px] font-semibold tracking-tight text-slate-900 sm:text-[16px]">
@@ -570,7 +539,7 @@ export function ProjectCard({
 
 function ProjectCardSkeleton() {
 	return (
-		<div className="bg-white rounded-xl shadow-sm p-4 h-[385px] flex flex-col border border-gray-100">
+		<div className="flex h-[385px] flex-col rounded-xl border border-border bg-card p-4 shadow-sm">
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2 w-full">

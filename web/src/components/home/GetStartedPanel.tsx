@@ -80,7 +80,7 @@ export function GetStartedPanel() {
 
       <div className="space-y-3">
         {checklist.map((item) => (
-          <div key={item.id} className="bg-[#f6f7f8] rounded-lg p-3 flex items-center justify-between gap-3">
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3">
             <div>
               <p className="text-sm font-semibold text-[#333438]">{item.title}</p>
               <p className="text-xs text-[#61636c]">{item.description}</p>

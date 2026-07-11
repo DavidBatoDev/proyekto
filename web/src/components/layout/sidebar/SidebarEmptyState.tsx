@@ -20,7 +20,7 @@ export function SidebarEmptyState({
 	onCtaClick?: () => void;
 }) {
 	const cta = (
-		<span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900">
+		<span className="inline-flex items-center gap-1.5 rounded-lg border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-[11px] font-semibold text-sidebar-foreground shadow-sm transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
 			<Plus className="h-3 w-3" />
 			{ctaLabel}
 		</span>
@@ -28,8 +28,8 @@ export function SidebarEmptyState({
 
 	return (
 		<div className="flex flex-col items-center px-3 py-4 text-center">
-			<div className="mb-2 text-slate-400">{icon}</div>
-			<p className="mb-3 text-[11px] text-slate-500">{label}</p>
+			<div className="mb-2 text-sidebar-foreground/50">{icon}</div>
+			<p className="mb-3 text-[11px] text-sidebar-foreground/60">{label}</p>
 			{ctaTo ? (
 				// Plain anchor so generic ctaTo strings don't have to satisfy
 				// each target route's typed search params. Full navigation is

@@ -78,9 +78,9 @@ function WorkItemsBoardPage() {
   const error = roadmapFullQuery.error;
 
   return (
-    <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
+    <div className="relative flex flex-col h-full min-h-0 bg-background text-foreground">
       {/* Header */}
-      <div className="px-3 py-2 bg-white border-b border-slate-100 shrink-0 md:px-6 md:py-2.5">
+      <div className="px-3 py-2 bg-card text-card-foreground border-b border-border shrink-0 md:px-6 md:py-2.5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-[#0f172a]/10 flex items-center justify-center shrink-0 md:w-8 md:h-8">

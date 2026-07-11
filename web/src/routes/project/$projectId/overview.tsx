@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { projectService } from "@/services/project.service";
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import {
 	OverviewLoadingSkeleton,
 	OverviewBanner,
@@ -81,35 +82,31 @@ function StatusBadgeSelector({
 				type="button"
 				disabled={!canEdit || mutation.isPending}
 				onClick={() => canEdit && setOpen((v) => !v)}
-				className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${cfg.badgeClass} ${canEdit ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+				className={`inline-flex items-center gap-1 rounded-full transition-colors ${canEdit ? "cursor-pointer hover:bg-accent" : "cursor-default"}`}
 			>
 				{mutation.isPending ? (
-					<Loader2 className="h-3 w-3 animate-spin" />
+					<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+						<Loader2 className="h-3 w-3 animate-spin" />
+						{cfg.label}
+					</span>
 				) : (
-					<span
-						className="h-2 w-2 rounded-full"
-						style={{ backgroundColor: cfg.color }}
-					/>
+					<ProjectStatusBadge status={statusKey} label={cfg.label} />
 				)}
-				{cfg.label}
 				{canEdit && <ChevronDown className="h-3 w-3 opacity-60" />}
 			</button>
 
 			{open && (
-				<div className="absolute left-0 top-full z-50 mt-1.5 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+				<div className="absolute left-0 top-full z-50 mt-1.5 w-48 rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl">
 					{Object.entries(PROJECT_STATUS_CONFIG).map(([key, c]) => (
 						<button
 							key={key}
 							type="button"
 							disabled={mutation.isPending}
 							onClick={() => mutation.mutate(key)}
-							className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+							className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
 						>
-							<span
-								className="h-2 w-2 shrink-0 rounded-full"
-								style={{ backgroundColor: c.color }}
-							/>
-							<span className="flex-1">{c.label}</span>
+							<ProjectStatusBadge status={key} label={c.label} className="border-0 bg-transparent px-0" />
+							<span className="flex-1" />
 							{statusKey === key && (
 								<Check className="h-3.5 w-3.5 text-slate-500" />
 							)}

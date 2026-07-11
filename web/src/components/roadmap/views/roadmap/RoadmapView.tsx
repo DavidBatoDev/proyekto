@@ -33,7 +33,6 @@ import {
   type FeatureWidgetData,
 } from "../../widgets/FeatureWidget";
 import type {
-  FeatureStatus,
   Roadmap,
   RoadmapEpic,
   RoadmapFeature,
@@ -167,21 +166,6 @@ type StructuralFeatureNodeData = {
 type StructuralNodeData = StructuralEpicNodeData | StructuralFeatureNodeData;
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
-
-const getEdgeColor = (status: FeatureStatus) => {
-  switch (status) {
-    case "completed":
-      return "#22c55e";
-    case "in_progress":
-      return "#3b82f6";
-    case "blocked":
-      return "#ef4444";
-    case "in_review":
-      return "#a855f7";
-    default:
-      return "#9ca3af";
-  }
-};
 
 const CANVAS_SKIP_EPIC_REORDER_KEY = "roadmap.canvas.skipEpicReorderConfirm";
 const CANVAS_SKIP_FEATURE_REORDER_KEY = "roadmap.canvas.skipFeatureReorderConfirm";
@@ -579,8 +563,8 @@ export const RoadmapView = ({
         type: "simplebezier",
         animated: edgeAnimationsEnabled && derivedStatus === "in_progress",
         style: {
-          stroke: getEdgeColor(derivedStatus),
-          strokeWidth: 2,
+					stroke: "var(--canvas-edge)",
+					strokeWidth: 1.75,
         },
       };
     });
@@ -595,11 +579,10 @@ export const RoadmapView = ({
         targetHandle: "epic-top",
         type: "simplebezier",
         animated: false,
-        style: {
-          stroke: "#9ca3af",
-          strokeWidth: 2,
-          strokeDasharray: "5,5",
-        },
+		style: {
+					stroke: "var(--canvas-edge)",
+					strokeWidth: 4,
+		},
       });
     }
 
@@ -1613,7 +1596,7 @@ export const RoadmapView = ({
 
   return (
     <div
-      className="w-full h-full bg-[#F5F5F5] relative"
+      className="w-full h-full bg-background text-foreground relative"
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
       onPointerMove={(e) => {
@@ -1678,7 +1661,13 @@ export const RoadmapView = ({
           type: "simplebezier",
         }}
       >
-        <Background variant={BackgroundVariant.Dots} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          bgColor="var(--background)"
+          color="var(--canvas-dot)"
+          gap={18}
+          size={1.4}
+        />
         <Controls position="top-right" />
         {featureFlags.realtimeCursors && (
           <CollaborationCursorsOverlay remoteCursors={remoteCursors} />

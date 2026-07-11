@@ -2,6 +2,7 @@ import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useThemeMode } from "@/theme/useThemeMode";
 import { ChatAvatar } from "./Avatar";
 import { type BubblePosition, ThreadMessageLine } from "./ThreadMessageLine";
 import type { ThreadMessageGroup as Group, ThreadUiMessage } from "./thread";
@@ -48,6 +49,7 @@ export function ThreadMessageGroup({
 	onReply?: (message: ThreadUiMessage) => void;
 	onJumpToMessage?: (messageId: string) => void;
 }) {
+	const themeMode = useThemeMode();
 	const isMine = !!currentUserId && group.senderId === currentUserId;
 	const canSelect = typeof onSelectSender === "function" && !isMine;
 	const targetMessage = group.messages[group.messages.length - 1] ?? null;
@@ -133,7 +135,7 @@ export function ThreadMessageGroup({
 								width={300}
 								height={340}
 								skinTonesDisabled
-								theme={Theme.LIGHT}
+								theme={themeMode === "dark" ? Theme.DARK : Theme.LIGHT}
 								onEmojiClick={(emojiData: EmojiClickData) => {
 									reactWith(emojiData.emoji);
 									setShowPicker(false);

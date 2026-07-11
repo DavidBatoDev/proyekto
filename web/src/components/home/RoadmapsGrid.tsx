@@ -12,15 +12,10 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { isGeneratedRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
-
-const ROADMAP_TAG_CLASS: Record<string, string> = {
-	Active: "bg-emerald-100 text-emerald-700",
-	Completed: "bg-sky-100 text-sky-700",
-	Draft: "bg-amber-100 text-amber-700",
-};
 
 // Dashboard shows this many roadmap cards before the "View more" toggle reveals
 // the rest with a staggered slide-up.
@@ -450,11 +445,10 @@ export function RoadmapsGrid() {
 											<h3 className="truncate text-[15px] font-semibold leading-tight tracking-tight text-slate-900">
 												{template.title}
 											</h3>
-											<span
-												className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${ROADMAP_TAG_CLASS[template.tag] ?? "bg-slate-100 text-slate-700"}`}
-											>
-												{template.tag}
-											</span>
+											<ProjectStatusBadge
+												status={template.tag}
+												className="shrink-0"
+											/>
 										</div>
 										<p className="mt-0.5 line-clamp-1 text-[12px] text-slate-600">
 											{template.category}

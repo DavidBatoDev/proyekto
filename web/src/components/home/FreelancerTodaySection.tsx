@@ -78,7 +78,7 @@ export function FreelancerTodaySection() {
         </span>
       </div>
 
-      <div className="bg-[#f6f7f8] rounded-lg p-4 mb-4 flex items-center justify-between gap-4">
+      <div className="mb-4 flex items-center justify-between gap-4 rounded-lg bg-muted p-4">
         <div>
           <p className="text-sm font-semibold text-[#333438] mb-1">
             {stage === "onboarding"
@@ -118,7 +118,7 @@ export function FreelancerTodaySection() {
       </div>
 
       {todayTasks.length === 0 ? (
-        <div className="bg-[#f6f7f8] rounded-lg p-4">
+        <div className="rounded-lg bg-muted p-4">
           <p className="text-sm font-semibold text-[#333438] mb-1">Your work queue is warming up</p>
           <p className="text-xs text-[#61636c]">
             {isActivated
@@ -129,7 +129,7 @@ export function FreelancerTodaySection() {
       ) : (
         <div className="space-y-2">
           {todayTasks.map((task) => (
-            <div key={task.id} className="bg-[#f6f7f8] rounded-lg p-3 flex items-center justify-between gap-2">
+            <div key={task.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted p-3">
               <p className="text-sm font-medium text-[#333438]">{task.title}</p>
               <span className="text-[11px] font-semibold text-[#61636c]">{task.priority}</span>
             </div>
@@ -147,7 +147,7 @@ export function FreelancerTodaySection() {
             <button
               key={match.id}
               type="button"
-              className="w-full text-left bg-[#f6f7f8] rounded-lg p-3 hover:bg-[#eef0f2] transition-colors"
+              className="w-full rounded-lg bg-muted p-3 text-left transition-colors hover:bg-accent"
             >
               <p className="text-sm font-semibold text-[#333438]">{match.project}</p>
               <p className="text-xs text-[#61636c]">{match.stage}</p>

@@ -810,8 +810,8 @@ export function RoadmapBuilder({
 	};
 
 	const shellClass = embedded
-		? "h-full min-h-0 overflow-y-auto bg-[#f7f7f8]"
-		: "min-h-screen overflow-y-auto bg-[#f7f7f8]";
+		? "h-full min-h-0 overflow-y-auto bg-background text-foreground"
+		: "min-h-screen overflow-y-auto bg-background text-foreground";
 
 	const isThinking = isSuggesting || isLocalThinking || isCreating;
 	const shouldShowPromptInput =

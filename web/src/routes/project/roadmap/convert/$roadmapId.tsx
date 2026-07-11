@@ -119,7 +119,7 @@ function ConvertRoadmapToProjectPage() {
 	}, [pending?.guestSessionId, roadmapId]);
 
 	return (
-		<main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dff7ec,transparent_34%),linear-gradient(135deg,#f8fafc,#eef6f1)] px-6 py-12 text-slate-950">
+		<main className="min-h-screen bg-background px-6 py-12 text-foreground">
 			<div className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center">
 				<section className="w-full overflow-hidden rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-[0_30px_100px_rgba(15,23,42,0.16)] backdrop-blur">
 					<div className="mb-8 flex items-center gap-4">

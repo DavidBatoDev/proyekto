@@ -76,7 +76,7 @@ function WelcomePage() {
 	// immediately after signup (profile arrives async via onAuthStateChange).
 	if (!profile) {
 		return (
-			<div className="flex min-h-screen items-center justify-center bg-[#fcfcfd]">
+			<div className="flex min-h-screen items-center justify-center bg-background text-foreground">
 				<div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
 			</div>
 		);
@@ -436,7 +436,7 @@ function DeckShell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="min-h-screen bg-[#fcfcfd]">
+		<div className="min-h-screen bg-background text-foreground">
 			<div className="pointer-events-none absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl" />
 			<div className="pointer-events-none absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
 

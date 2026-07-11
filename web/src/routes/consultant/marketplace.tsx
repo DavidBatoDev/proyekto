@@ -66,7 +66,7 @@ function ConsultantMarketplacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8] relative overflow-hidden pt-20">
+    <div className="relative min-h-screen overflow-hidden bg-background pt-20 text-foreground">
       
       {/* Animated Background */}
       <div className="absolute inset-0 pointer-events-none">

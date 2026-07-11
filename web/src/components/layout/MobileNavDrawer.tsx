@@ -1,8 +1,8 @@
+import { useRouterState } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useRouterState } from "@tanstack/react-router";
-import { ModalPortal } from "@/components/common/ModalPortal";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { SidebarContent } from "./sidebar/SidebarContent";
 
 /**
@@ -73,11 +73,11 @@ export function MobileNavDrawer({
 				aria-modal="true"
 				aria-label="Navigation"
 				inert={!isOpen}
-				className={`fixed inset-y-0 left-0 z-[61] flex w-[280px] max-w-[85vw] flex-col bg-white pt-safe pb-safe shadow-xl transition-transform duration-200 ease-out lg:hidden ${
+				className={`fixed inset-y-0 left-0 z-[61] flex w-[280px] max-w-[85vw] flex-col bg-sidebar text-sidebar-foreground pt-safe pb-safe shadow-xl transition-transform duration-200 ease-out lg:hidden ${
 					isOpen ? "translate-x-0" : "-translate-x-full"
 				}`}
 			>
-				<div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4">
+				<div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
 					<div className="flex items-center gap-2">
 						<BrandMark variant="mark" className="h-7" />
 						<BrandMark variant="wordmark" className="h-4 text-slate-900" />

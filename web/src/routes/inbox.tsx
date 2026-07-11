@@ -333,22 +333,22 @@ function InboxPage() {
 	return (
 		<DashboardShell>
 			<div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 lg:px-8">
-				<div className="flex h-full min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+				<div className="flex h-full min-h-0 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
 					{/* Mobile is single-pane: show the list when nothing is selected,
 					    the thread (with a back button) once a room is picked. md+ shows
 					    both panes side by side. */}
 					<aside
 						className={`${
 							search.r ? "hidden md:flex" : "flex"
-						} w-full shrink-0 flex-col border-r border-slate-200 bg-white md:w-[340px]`}
+						} w-full shrink-0 flex-col border-r border-border bg-card md:w-[340px]`}
 					>
-						<div className="border-b border-slate-200 px-4 py-3">
+						<div className="border-b border-border px-4 py-3">
 							<div className="flex items-center justify-between">
-								<h1 className="text-base font-semibold text-slate-900">
+								<h1 className="text-base font-semibold text-foreground">
 									Inbox
 								</h1>
 								{unreadCount > 0 && (
-									<span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+									<span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
 										{unreadCount} unread
 									</span>
 								)}
@@ -358,8 +358,8 @@ function InboxPage() {
 								onClick={() => setShowUnreadOnly((v) => !v)}
 								className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
 									showUnreadOnly
-										? "bg-slate-900 text-white"
-										: "bg-slate-100 text-slate-600 hover:bg-slate-200"
+										? "bg-primary text-primary-foreground"
+										: "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
 								}`}
 							>
 								{showUnreadOnly ? "Showing unread" : "Show unread only"}
@@ -401,7 +401,7 @@ function InboxPage() {
 					<section
 						className={`${
 							search.r ? "flex" : "hidden md:flex"
-						} min-w-0 flex-1 bg-white`}
+						} min-w-0 flex-1 bg-card`}
 					>
 						{selectedEntry ? (
 							<InboxThread
@@ -460,11 +460,11 @@ function InboxSection({
 	onSelect: (entry: InboxEntry) => void;
 }) {
 	return (
-		<section className="border-b border-slate-100 last:border-b-0">
+		<section className="border-b border-border last:border-b-0">
 			<button
 				type="button"
 				onClick={onToggle}
-				className="flex w-full items-center gap-2 bg-slate-50/60 px-4 py-2 text-left transition-colors hover:bg-slate-100"
+				className="flex w-full items-center gap-2 bg-muted/50 px-4 py-2 text-left transition-colors hover:bg-muted"
 			>
 				<motion.span
 					initial={false}
@@ -472,13 +472,13 @@ function InboxSection({
 					transition={{ duration: 0.18, ease: "easeOut" }}
 					className="flex"
 				>
-					<ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+					<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
 				</motion.span>
-				<span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-[0.06em] text-slate-600">
+				<span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 					{group.label}
 				</span>
 				{group.unreadCount > 0 && (
-					<span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+					<span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
 						{group.unreadCount}
 					</span>
 				)}
@@ -494,7 +494,7 @@ function InboxSection({
 						transition={{ duration: 0.2, ease: "easeOut" }}
 						className="overflow-hidden"
 					>
-						<ul className="divide-y divide-slate-100">
+						<ul className="divide-y divide-border">
 							{group.entries.map((entry) => (
 								<InboxRow
 									key={entry.room.id}
@@ -556,10 +556,10 @@ function InboxRow({
 				type="button"
 				onClick={onSelect}
 				className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
-					isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+					isSelected ? "bg-muted" : "hover:bg-muted/60"
 				}`}
 			>
-				<div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+				<div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
 					{isChannel ? (
 						entry.room.is_private ? (
 							<Lock className="h-4 w-4" />
@@ -575,20 +575,20 @@ function InboxRow({
 						<span
 							className={`truncate text-sm ${
 								entry.hasUnread
-									? "font-semibold text-slate-900"
-									: "font-medium text-slate-800"
+									? "font-semibold text-foreground"
+									: "font-medium text-foreground"
 							}`}
 						>
 							{title}
 						</span>
-						<span className="shrink-0 text-[11px] text-slate-500">
+						<span className="shrink-0 text-[11px] text-muted-foreground">
 							{formatTimestamp(last?.created_at ?? entry.room.updated_at)}
 						</span>
 					</div>
 					<div className="mt-1 flex items-center justify-between gap-2">
 						<p
 							className={`min-w-0 flex-1 truncate text-xs ${
-								entry.hasUnread ? "text-slate-700" : "text-slate-500"
+								entry.hasUnread ? "text-foreground" : "text-muted-foreground"
 							}`}
 						>
 							{draftText ? (

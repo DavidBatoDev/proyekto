@@ -25,6 +25,7 @@ const Header = () => {
 		"/freelancer",
 		"/mentors",
 		"/saved-mentors",
+		"/settings",
 		"/consultant-pool",
 		"/direct-contacts",
 	];
@@ -54,7 +55,7 @@ const Header = () => {
 
 	return (
 		<>
-			<header className="fixed top-0 left-0 right-0 z-50 flex h-app-header items-center justify-center border-b border-slate-200 bg-white pt-safe shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+			<header className="fixed top-0 left-0 right-0 z-50 flex h-app-header items-center justify-center border-b border-border bg-card text-card-foreground pt-safe shadow-[0_1px_0_var(--border)]">
 				{content}
 			</header>
 			<ProjectInvitePromptManager />

@@ -101,7 +101,7 @@ function SharedRoadmapPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#f6f7f8] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
           <p className="text-gray-600">Loading shared roadmap...</p>
@@ -113,7 +113,7 @@ function SharedRoadmapPage() {
   // Error state
   if (error || !roadmap) {
     return (
-      <div className="min-h-screen bg-[#f6f7f8] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center max-w-md">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -143,7 +143,7 @@ function SharedRoadmapPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8] relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
       {/* Shared Access Banner */}
       <div className="relative z-50 bg-linear-to-r from-blue-500/90 to-blue-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2">

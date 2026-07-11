@@ -1,13 +1,13 @@
-import { Link, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
 	CalendarDays,
 	Inbox,
 	LayoutDashboard,
 	ListChecks,
 	Plus,
-	Users,
 	UserPlus,
+	Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Project, projectService } from "@/services/project.service";
@@ -17,12 +17,9 @@ import {
 	updateWorkspaceDefaults,
 } from "@/services/teams.service";
 import { useProfile, useUser } from "@/stores/authStore";
-import {
-	SidebarNavLink,
-	SidebarSectionHeader,
-} from "./SidebarPrimitives";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
 import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
+import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
 import { TeamSidebarGroup } from "./TeamSidebarGroup";
 
 const TEAMS_OPEN_KEY = "dashboard_sidebar_open_team";
@@ -86,14 +83,21 @@ export function SidebarContent() {
 		};
 	})();
 	const preferredTeamId =
-		workspaceDefaults?.default_team_id ?? workspaceDefaults?.last_team_id ?? null;
+		workspaceDefaults?.default_team_id ??
+		workspaceDefaults?.last_team_id ??
+		null;
 	const preferredProjectId = workspaceDefaults?.default_project_id ?? null;
 
 	const orderedProjects = useMemo(() => {
 		if (!preferredProjectId) return projects;
-		const preferred = projects.find((project) => project.id === preferredProjectId);
+		const preferred = projects.find(
+			(project) => project.id === preferredProjectId,
+		);
 		if (!preferred) return projects;
-		return [preferred, ...projects.filter((project) => project.id !== preferred.id)];
+		return [
+			preferred,
+			...projects.filter((project) => project.id !== preferred.id),
+		];
 	}, [projects, preferredProjectId]);
 
 	const activeTeamId = (() => {
@@ -128,7 +132,8 @@ export function SidebarContent() {
 	useEffect(() => {
 		if (activeTeamId || openTeamId || teams.length === 0) return;
 		const preferred =
-			(preferredTeamId && teams.find((team) => team.id === preferredTeamId)?.id) ??
+			(preferredTeamId &&
+				teams.find((team) => team.id === preferredTeamId)?.id) ??
 			teams[0]?.id ??
 			null;
 		if (!preferred) return;
@@ -186,8 +191,8 @@ export function SidebarContent() {
 							to="/teams"
 							className={
 								currentPath === "/teams"
-									? "rounded bg-primary p-1 text-white"
-									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+									? "rounded bg-sidebar-primary p-1 text-sidebar-primary-foreground"
+									: "rounded p-1 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 							}
 							title="All teams"
 							aria-current={currentPath === "/teams" ? "page" : undefined}
@@ -231,8 +236,8 @@ export function SidebarContent() {
 							search={{ roadmapId: undefined }}
 							className={
 								currentPath === "/project-posting"
-									? "rounded bg-primary p-1 text-white"
-									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+									? "rounded bg-sidebar-primary p-1 text-sidebar-primary-foreground"
+									: "rounded p-1 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 							}
 							title="New project"
 							aria-label="New project"
@@ -267,12 +272,12 @@ export function SidebarContent() {
 				</div>
 			</nav>
 
-			<div className="border-t border-slate-200 p-3">
+			<div className="border-t border-sidebar-border p-3">
 				<button
 					type="button"
 					disabled
 					title="Invite flow coming soon"
-					className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+					className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					<UserPlus className="h-5 w-5" />
 					Invite people
@@ -288,7 +293,7 @@ function NavSkeleton() {
 			{[0, 1, 2].map((i) => (
 				<div
 					key={i}
-					className="h-6 w-full animate-pulse rounded bg-slate-100"
+					className="h-6 w-full animate-pulse rounded bg-sidebar-accent"
 				/>
 			))}
 		</div>

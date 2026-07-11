@@ -41,15 +41,15 @@ export function SignupLayout({ children }: SignupLayoutProps) {
         }
       `}</style>
 
-      <div className="relative min-h-screen overflow-hidden bg-[#fcfcfd]">
+      <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
         {/* Soft brand background + orbs */}
         <div
           className="pointer-events-none absolute inset-0"
           aria-hidden
-          style={{
-            background:
-              "radial-gradient(circle at 18% 20%, rgba(125, 211, 252, 0.18), transparent 42%), radial-gradient(circle at 82% 78%, rgba(165, 180, 252, 0.22), transparent 48%), linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-          }}
+		  style={{
+			background:
+			  "radial-gradient(circle at 18% 20%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 42%), radial-gradient(circle at 82% 78%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 48%), linear-gradient(135deg, var(--background) 0%, var(--app-bg-elevated) 100%)",
+		  }}
         />
         <div
           className="pointer-events-none absolute -left-24 top-32 h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl"

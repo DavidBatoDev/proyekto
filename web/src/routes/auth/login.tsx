@@ -86,10 +86,10 @@ function RouteComponent() {
     height: "52px",
     padding: "0 16px",
     borderRadius: "12px",
-    border: "1px solid #CBD5E1",
+    border: "1px solid var(--input)",
     fontSize: "0.95rem",
-    color: "#0F172A",
-    background: "white",
+    color: "var(--foreground)",
+    background: "var(--card)",
     outline: "none",
     fontFamily: "'Manrope', sans-serif",
     boxSizing: "border-box",
@@ -100,7 +100,7 @@ function RouteComponent() {
     display: "block",
     fontSize: "0.78rem",
     fontWeight: 600,
-    color: "#334155",
+    color: "var(--foreground)",
     marginBottom: "7px",
     fontFamily: "'Manrope', sans-serif",
     textTransform: "uppercase",
@@ -108,12 +108,12 @@ function RouteComponent() {
   };
 
   function focusInput(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.border = "1px solid #334155";
-    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(51,65,85,0.15)";
+    e.currentTarget.style.border = "1px solid var(--primary)";
+    e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in oklch, var(--primary) 22%, transparent)";
   }
 
   function blurInput(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.border = "1px solid #CBD5E1";
+    e.currentTarget.style.border = "1px solid var(--input)";
     e.currentTarget.style.boxShadow = "none";
   }
 
@@ -263,7 +263,7 @@ function RouteComponent() {
                 fontFamily: "'Sora', 'Manrope', sans-serif",
                 fontSize: "1.9rem",
                 fontWeight: 700,
-                color: "#0F172A",
+                color: "var(--foreground)",
                 margin: "0 0 10px",
               }}
             >
@@ -271,7 +271,7 @@ function RouteComponent() {
             </h1>
             <p
               style={{
-                color: "#6B6B6B",
+                color: "var(--muted-foreground)",
                 fontSize: "0.95rem",
                 margin: 0,
                 lineHeight: 1.6,
@@ -279,7 +279,7 @@ function RouteComponent() {
               }}
             >
               We sent a 6-digit code to{" "}
-              <strong style={{ color: "#0F172A" }}>{email}</strong>. Enter it
+              <strong style={{ color: "var(--foreground)" }}>{email}</strong>. Enter it
               below to finish signing in.
             </p>
           </div>
@@ -363,7 +363,7 @@ function RouteComponent() {
               style={{
                 textAlign: "center",
                 fontSize: "12px",
-                color: "#64748B",
+                color: "var(--muted-foreground)",
                 margin: "-6px 0 0",
                 fontFamily: "'Manrope', sans-serif",
                 fontWeight: 600,
@@ -407,7 +407,7 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#1E293B",
+                  color: "var(--foreground)",
                   fontSize: "0.9rem",
                   cursor: isResending ? "not-allowed" : "pointer",
                   fontFamily: "'Manrope', sans-serif",
@@ -427,7 +427,7 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#94A3B8",
+                  color: "var(--muted-foreground)",
                   fontSize: "0.85rem",
                   cursor: "pointer",
                   fontFamily: "'Manrope', sans-serif",
@@ -477,7 +477,7 @@ function RouteComponent() {
               fontFamily: "'Sora', 'Manrope', sans-serif",
               fontSize: "1.9rem",
               fontWeight: 700,
-              color: "#0F172A",
+              color: "var(--foreground)",
               margin: "0 0 8px",
             }}
           >
@@ -485,7 +485,7 @@ function RouteComponent() {
           </h1>
           <p
             style={{
-              color: "#475569",
+              color: "var(--muted-foreground)",
               fontSize: "0.95rem",
               margin: 0,
               fontFamily: "'Manrope', sans-serif",
@@ -513,7 +513,7 @@ function RouteComponent() {
             cursor: isLoading ? "not-allowed" : "pointer",
             fontSize: "0.95rem",
             fontWeight: 700,
-            color: "#0F172A",
+            color: "var(--foreground)",
             fontFamily: "'Manrope', sans-serif",
             transition: "box-shadow 0.2s",
             opacity: isLoading ? 0.7 : 1,
@@ -541,7 +541,7 @@ function RouteComponent() {
           <span
             style={{
               fontSize: "0.78rem",
-              color: "#94A3B8",
+              color: "var(--muted-foreground)",
               fontWeight: 600,
               fontFamily: "'Manrope', sans-serif",
               letterSpacing: "0.05em",
@@ -589,7 +589,7 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#1E293B",
+                  color: "var(--foreground)",
                   fontSize: "0.82rem",
                   cursor: "pointer",
                   fontFamily: "'Manrope', sans-serif",
@@ -622,7 +622,7 @@ function RouteComponent() {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "#94A3B8",
+                  color: "var(--muted-foreground)",
                   display: "flex",
                   alignItems: "center",
                   padding: 0,
@@ -647,7 +647,7 @@ function RouteComponent() {
               style={{
                 width: "16px",
                 height: "16px",
-                accentColor: "#1E293B",
+                accentColor: "var(--primary)",
                 cursor: "pointer",
                 flexShrink: 0,
               }}
@@ -655,7 +655,7 @@ function RouteComponent() {
             <span
               style={{
                 fontSize: "0.9rem",
-                color: "#475569",
+                color: "var(--muted-foreground)",
                 fontFamily: "'Manrope', sans-serif",
               }}
             >
@@ -698,7 +698,7 @@ function RouteComponent() {
             style={{
               textAlign: "center",
               fontSize: "12px",
-              color: "#64748B",
+              color: "var(--muted-foreground)",
               margin: "-4px 0 0",
               fontFamily: "'Manrope', sans-serif",
               fontWeight: 600,
@@ -713,7 +713,7 @@ function RouteComponent() {
           style={{
             textAlign: "center",
             fontSize: "0.9rem",
-            color: "#64748B",
+            color: "var(--muted-foreground)",
             margin: 0,
             fontFamily: "'Manrope', sans-serif",
           }}
@@ -722,7 +722,7 @@ function RouteComponent() {
           <Link
             to="/auth/signup"
             search={redirectTo ? { redirect: redirectTo } : {}}
-            style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
+            style={{ color: "var(--foreground)", fontWeight: 700, textDecoration: "none" }}
           >
             Create an account
           </Link>

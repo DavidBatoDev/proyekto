@@ -194,7 +194,7 @@ function AuthCallbackPage() {
 				display: "flex",
 				alignItems: "center",
 				justifyContent: "center",
-				background: "#fff",
+				background: "var(--background)",
 			}}
 		>
 			<div
@@ -209,7 +209,7 @@ function AuthCallbackPage() {
 				<p
 					style={{
 						margin: 0,
-						color: "#6B6B6B",
+						color: "var(--muted-foreground)",
 						fontFamily: "'Open Sans', sans-serif",
 						fontSize: "14px",
 					}}

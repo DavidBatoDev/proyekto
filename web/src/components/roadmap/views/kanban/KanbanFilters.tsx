@@ -207,7 +207,7 @@ function FilterRow({
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 						placeholder={`Search ${(tagLabel ?? "").toLowerCase()}`.trim()}
-						className="w-full pl-8 pr-7 py-1 text-xs border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300"
+						className="w-full pl-8 pr-7 py-1 text-xs border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
 					/>
 					{query && (
 						<button
@@ -502,7 +502,7 @@ export function KanbanFilters({
 	};
 
 	return (
-		<div className="border-b border-slate-200 bg-linear-to-b from-slate-50 to-white">
+		<div className="border-b border-border bg-card text-card-foreground">
 
 			{/* ── Mobile compact row: search + filter toggle ── */}
 			<div className="flex items-center gap-2 px-3 py-2 md:hidden">
@@ -512,7 +512,7 @@ export function KanbanFilters({
 						value={searchQuery}
 						onChange={(e) => onSearchChange(e.target.value)}
 						placeholder="Search features & tasks…"
-						className="w-full pl-8 pr-7 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+						className="w-full pl-8 pr-7 py-1.5 text-sm border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
 					/>
 					{searchQuery && (
 						<button
@@ -601,7 +601,7 @@ export function KanbanFilters({
 									value={searchQuery}
 									onChange={(e) => onSearchChange(e.target.value)}
 									placeholder="Search features & tasks…"
-									className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+									className="w-full pl-9 pr-8 py-2 text-sm border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
 								/>
 								{searchQuery && (
 									<button

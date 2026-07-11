@@ -207,7 +207,7 @@ export function KanbanView() {
 	};
 
 	return (
-		<div className="flex flex-col h-full bg-white">
+		<div className="flex flex-col h-full bg-background text-foreground">
 			<KanbanFilters
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}

@@ -232,7 +232,7 @@ export function TeamPage({ projectId }: { projectId: string }) {
 					<button
 						type="button"
 						onClick={() => setScheduleOpen(true)}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
 					>
 						<CalendarPlus className="h-4 w-4" />
 						Schedule meeting
@@ -250,7 +250,7 @@ export function TeamPage({ projectId }: { projectId: string }) {
 					<Link
 						to="/project/$projectId/settings/teams"
 						params={{ projectId }}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
 					>
 						<Settings className="h-4 w-4" />
 						Manage teams
@@ -522,7 +522,7 @@ function AttachedTeamCard({
 	return (
 		<div>
 			<AppSurfaceCard className="overflow-hidden">
-				<div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
+				<div className="flex items-center justify-between gap-3 border-b border-border bg-muted/50 px-5 py-3">
 					<button
 						type="button"
 						onClick={() => setExpanded((v) => !v)}
@@ -548,7 +548,7 @@ function AttachedTeamCard({
 							<button
 								type="button"
 								onClick={() => setPickerOpen(true)}
-								className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:px-2.5"
+								className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted sm:px-2.5"
 							>
 								<Plus className="h-3.5 w-3.5" />
 								<span className="hidden sm:inline">Add from team</span>

@@ -73,7 +73,7 @@ function ConsultantTemplatesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8] pt-24">
+    <div className="min-h-screen bg-background pt-24 text-foreground">
       <div className="max-w-6xl mx-auto px-6 pb-16">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">

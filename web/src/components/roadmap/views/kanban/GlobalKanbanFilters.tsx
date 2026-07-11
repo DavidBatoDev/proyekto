@@ -161,7 +161,7 @@ function FilterRow({
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 						placeholder={`Search ${tagLabel.toLowerCase()}`}
-						className="w-full pl-8 pr-7 py-1 text-xs border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300"
+						className="w-full pl-8 pr-7 py-1 text-xs border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
 					/>
 					{query && (
 						<button
@@ -443,8 +443,8 @@ export function GlobalKanbanFilters({
 		searchQuery.trim().length > 0;
 
 	return (
-		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-slate-200 bg-linear-to-b from-slate-50 to-white">
-			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-slate-200 relative">
+		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-border bg-card text-card-foreground">
+			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-border relative">
 				<div className="flex items-center min-w-0">
 					<FilterRow
 						tagLabel="Projects"
@@ -486,7 +486,7 @@ export function GlobalKanbanFilters({
 							value={searchQuery}
 							onChange={(e) => onSearchChange(e.target.value)}
 							placeholder="Search features & tasks…"
-							className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+							className="w-full pl-9 pr-8 py-2 text-sm border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
 						/>
 						{searchQuery && (
 							<button

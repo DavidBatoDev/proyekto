@@ -146,7 +146,7 @@ function ActivityFeedItem({
     <button
       type="button"
       onClick={() => console.info("Update opened:", title)}
-      className="w-full text-left bg-[#f6f7f8] rounded-xl shadow-sm p-2 flex items-center gap-4 hover:bg-[#eef0f2] transition-colors"
+      className="flex w-full items-center gap-4 rounded-xl bg-muted p-2 text-left shadow-sm transition-colors hover:bg-accent"
     >
       <span className="text-[16px] text-[#333438] min-w-[100px]">
         {project}

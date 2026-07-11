@@ -79,14 +79,14 @@ export function ProgressTracker() {
       </div>
 
       {isMinimized ? (
-        <div className="bg-[#f6f7f8] rounded-lg p-3 flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-muted p-3">
           <p className="text-xs text-[#61636c]">Current</p>
           <p className="text-sm font-semibold text-[#333438] truncate">{currentItem.title}</p>
         </div>
       ) : (
         <div className="space-y-2">
           {items.map((item) => (
-            <div key={item.id} className="bg-[#f6f7f8] rounded-lg p-3 flex items-center justify-between gap-3">
+            <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-muted p-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[#333438] flex items-center gap-2">
                   <span className="text-[#61636c]">{statusSymbol(item.status)}</span>

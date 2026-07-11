@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Layers3, ListTree } from "lucide-react";
 import { type CSSProperties, forwardRef, type HTMLAttributes } from "react";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { KanbanTaskContext } from "./types";
@@ -66,19 +66,17 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 
 				<div className="mt-2.5 flex flex-wrap gap-1.5 items-start">
 					<span
-						className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
-						style={{
-							backgroundColor: `${epic.color ?? "#64748b"}26`,
-							color: epic.color ?? "#334155",
-						}}
+						className="kanban-epic-chip inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
 						title={epic.title}
 					>
+						<Layers3 className="h-3 w-3 shrink-0" />
 						{epic.title}
 					</span>
 					<span
-						className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 truncate group-hover:bg-slate-200 transition-colors"
+						className="inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded border border-border bg-muted text-[11px] font-medium text-foreground truncate group-hover:bg-accent transition-colors"
 						title={feature.title}
 					>
+						<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
 						{feature.title}
 					</span>
 					{milestone && (

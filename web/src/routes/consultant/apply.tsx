@@ -661,14 +661,14 @@ function ConsultantApplyPage() {
   };
 
   if (profileLoading || appLoading) return (
-    <div className="min-h-screen bg-[#fcfcfd] flex items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
     </div>
   );
 
   if (existingApp && existingApp.status !== "draft") {
     return (
-      <div className="min-h-screen bg-[#fcfcfd]">
+      <div className="min-h-screen bg-background text-foreground">
         <div className="max-w-xl mx-auto px-6 py-24 text-center">
           <div className="w-14 h-14 rounded-2xl border border-amber-200 bg-amber-50 flex items-center justify-center mx-auto mb-5 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
             <UserCheck className="w-7 h-7 text-amber-600" />
@@ -695,7 +695,7 @@ function ConsultantApplyPage() {
   const desc = STEP_DESCRIPTIONS[currentStep - 1];
 
   return (
-    <div className="min-h-screen bg-[#fcfcfd] relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
 
       {/* Soft ambient blurs — matches /welcome and /consultant landing */}
       <div className="pointer-events-none absolute inset-0">

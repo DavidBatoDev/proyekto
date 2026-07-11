@@ -16,7 +16,12 @@ import {
 	Search,
 	UserPlus,
 	GripVertical,
+	Tag,
 } from "lucide-react";
+import {
+	SemanticBadge,
+	TaskStatusBadge,
+} from "@/components/common/SemanticBadge";
 import type { AssigneeProfile, RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
@@ -97,23 +102,6 @@ const STATUS_OPTIONS: TaskStatus[] = [
 	"done",
 	"blocked",
 ];
-
-const getStatusColor = (status: RoadmapTask["status"]) => {
-	switch (status) {
-		case "done":
-			return "bg-green-100 text-green-800";
-		case "in_progress":
-			return "bg-blue-100 text-blue-800";
-		case "in_review":
-			return "bg-purple-100 text-purple-800";
-		case "blocked":
-			return "bg-red-100 text-red-800";
-		case "todo":
-			return "bg-gray-100 text-gray-800";
-		default:
-			return "bg-gray-100 text-gray-800";
-	}
-};
 
 const getCheckboxStyle = (status: TaskStatus) => {
 	switch (status) {
@@ -516,7 +504,7 @@ export const TaskListItem = memo(
 					createPortal(
 						<div
 							ref={checkboxMenuRef}
-							className="fixed z-300 bg-white border border-gray-300 rounded-md shadow-lg py-1 min-w-[150px]"
+							className="fixed z-300 min-w-[170px] rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
 							style={{
 								top: checkboxMenuPosition.top,
 								left: checkboxMenuPosition.left,
@@ -531,9 +519,9 @@ export const TaskListItem = memo(
 										onUpdateStatus?.(task.id, status);
 										setIsCheckboxMenuOpen(false);
 									}}
-									className={`w-full text-left px-3 py-2 text-xs capitalize hover:bg-gray-100 ${task.status === status ? "bg-gray-50 font-semibold" : ""}`}
+									className={`flex w-full items-center px-3 py-2 text-left hover:bg-accent ${task.status === status ? "bg-muted font-semibold" : ""}`}
 								>
-									{status.replace(/_/g, " ")}
+									<TaskStatusBadge status={status} appearance="menu" />
 								</button>
 							))}
 						</div>,
@@ -557,13 +545,13 @@ export const TaskListItem = memo(
 
 				{/* Category/Assignee Badge */}
 				{categoryLabel && (
-					<span
-						className={`shrink-0 rounded font-semibold bg-gray-200 text-gray-700 ${
-							isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs"
-						}`}
+					<SemanticBadge
+						icon={Tag}
+						iconClassName="text-muted-foreground"
+						className={`shrink-0 ${isCompact ? "text-[10px]" : "text-xs"}`}
 					>
 						{categoryLabel}
-					</span>
+					</SemanticBadge>
 				)}
 
 				{/* Live "editing" indicator (a collaborator has this task open) */}
@@ -577,12 +565,15 @@ export const TaskListItem = memo(
 							e.stopPropagation();
 							setIsStatusOpen(!isStatusOpen);
 						}}
-						className={`inline-flex items-center gap-1 font-medium rounded transition-colors ${
-							isCompact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-xs"
-						} ${getStatusColor(task.status)} hover:opacity-80 cursor-pointer`}
+						className="rounded-full transition-colors hover:bg-accent cursor-pointer"
 					>
-						{task.status.replace(/_/g, " ")}
-						<ChevronDown className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+						<TaskStatusBadge
+							status={task.status}
+							className={isCompact ? "text-[10px]" : "text-xs"}
+							trailing={
+								<ChevronDown className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+							}
+						/>
 					</button>
 
 					{/* Dropdown Menu - Rendered via Portal */}
@@ -591,7 +582,7 @@ export const TaskListItem = memo(
 						createPortal(
 							<div
 								ref={dropdownMenuRef}
-								className="fixed bg-white border border-gray-300 rounded shadow-lg z-200"
+								className="fixed z-200 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
 								style={{
 									top: dropdownPosition.top,
 									left: dropdownPosition.left,
@@ -609,11 +600,11 @@ export const TaskListItem = memo(
 										}}
 										className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
 											task.status === status
-												? "bg-gray-200 text-black font-semibold"
-												: "hover:bg-gray-100"
+												? "bg-muted font-semibold"
+												: "hover:bg-accent"
 										}`}
 									>
-										{status.replace(/_/g, " ")}
+										<TaskStatusBadge status={status} appearance="menu" />
 									</button>
 								))}
 							</div>,

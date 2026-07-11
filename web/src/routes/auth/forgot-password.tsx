@@ -34,10 +34,10 @@ function ForgotPasswordRoute() {
     height: "52px",
     padding: "0 16px",
     borderRadius: "10px",
-    border: "1px solid #E5E5E5",
+    border: "1px solid var(--input)",
     fontSize: "0.95rem",
-    color: "#2E2E2E",
-    background: "white",
+    color: "var(--foreground)",
+    background: "var(--card)",
     outline: "none",
     fontFamily: "'Open Sans', sans-serif",
     boxSizing: "border-box",
@@ -48,7 +48,7 @@ function ForgotPasswordRoute() {
     display: "block",
     fontSize: "0.78rem",
     fontWeight: 600,
-    color: "#2E2E2E",
+    color: "var(--foreground)",
     marginBottom: "7px",
     fontFamily: "'Open Sans', sans-serif",
     textTransform: "uppercase",
@@ -61,7 +61,7 @@ function ForgotPasswordRoute() {
   }
 
   function blurInput(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.border = "1px solid #E5E5E5";
+    e.currentTarget.style.border = "1px solid var(--input)";
     e.currentTarget.style.boxShadow = "none";
   }
 
@@ -117,8 +117,8 @@ function ForgotPasswordRoute() {
     <SignupLayout>
       <div
         style={{
-          background: "#FFFFFF",
-          border: "1px solid #EEEEEE",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
           borderRadius: "16px",
           padding: "28px 24px",
           boxShadow: "0 6px 20px rgba(18, 18, 18, 0.06)",
@@ -136,7 +136,7 @@ function ForgotPasswordRoute() {
               fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
               fontSize: "1.9rem",
               fontWeight: 700,
-              color: "#2E2E2E",
+              color: "var(--foreground)",
               margin: "0 0 10px",
             }}
           >
@@ -144,7 +144,7 @@ function ForgotPasswordRoute() {
           </h1>
           <p
             style={{
-              color: "#6B6B6B",
+              color: "var(--muted-foreground)",
               fontSize: "0.95rem",
               margin: 0,
               lineHeight: 1.6,
@@ -184,7 +184,7 @@ function ForgotPasswordRoute() {
                 style={{
                   margin: "8px 0 0",
                   fontSize: "0.82rem",
-                  color: "#8A8A8A",
+                  color: "var(--muted-foreground)",
                   fontFamily: "'Open Sans', sans-serif",
                 }}
               >
@@ -242,7 +242,7 @@ function ForgotPasswordRoute() {
               style={{
                 textAlign: "center",
                 fontSize: "0.9rem",
-                color: "#6B6B6B",
+                color: "var(--muted-foreground)",
                 marginTop: "2px",
                 fontFamily: "'Open Sans', sans-serif",
                 textDecoration: "none",
@@ -331,7 +331,7 @@ function ForgotPasswordRoute() {
               style={{
                 background: "none",
                 border: "none",
-                color: "#6B6B6B",
+                color: "var(--muted-foreground)",
                 fontSize: "0.9rem",
                 cursor: "pointer",
                 fontFamily: "'Open Sans', sans-serif",

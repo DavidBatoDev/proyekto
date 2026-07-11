@@ -14,14 +14,13 @@ import {
   Trash2,
   CheckCircle2,
   ChevronDown,
-  Clock,
-  AlertCircle,
   List,
   Plus,
   Calendar,
   Maximize2,
 } from "lucide-react";
-import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListModal } from "../modals/TaskListModal";
 import {
@@ -62,21 +61,6 @@ export interface FeatureWidgetData extends Record<string, unknown> {
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
-
-const getTaskStatusColor = (status: RoadmapTask["status"]) => {
-  switch (status) {
-    case "done":
-      return "bg-green-100 text-green-800";
-    case "in_progress":
-      return "bg-blue-100 text-blue-800";
-    case "in_review":
-      return "bg-purple-100 text-purple-800";
-    case "blocked":
-      return "bg-red-100 text-red-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-};
 
 const CANVAS_TASK_STATUS_OPTIONS: RoadmapTask["status"][] = [
   "todo",
@@ -276,19 +260,20 @@ const CanvasTaskRow = memo(
                 event.stopPropagation();
                 setIsStatusOpen((prev) => !prev);
               }}
-              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:opacity-80 ${getTaskStatusColor(
-                task.status,
-              )}`}
+              className="rounded-full transition-colors hover:bg-accent"
             >
-              {task.status.replace(/_/g, " ")}
-              <ChevronDown className="h-2.5 w-2.5" />
+              <TaskStatusBadge
+                status={task.status}
+                className="text-[10px]"
+                trailing={<ChevronDown className="h-2.5 w-2.5" />}
+              />
             </button>
 
             {isStatusOpen &&
               createPortal(
                 <div
                   ref={statusMenuRef}
-                  className="fixed z-300 min-w-[140px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  className="fixed z-300 min-w-[160px] rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
                   style={{
                     top: statusMenuPosition.top,
                     left: statusMenuPosition.left,
@@ -303,11 +288,11 @@ const CanvasTaskRow = memo(
                         onUpdateStatus(task, status);
                         setIsStatusOpen(false);
                       }}
-                      className={`block w-full px-3 py-1.5 text-left text-xs capitalize transition-colors hover:bg-gray-100 ${
-                        task.status === status ? "bg-gray-50 font-semibold" : ""
+                      className={`flex w-full items-center px-3 py-1.5 text-left transition-colors hover:bg-accent ${
+                        task.status === status ? "bg-muted font-semibold" : ""
                       }`}
                     >
-                      {status.replace(/_/g, " ")}
+                      <TaskStatusBadge status={status} appearance="menu" />
                     </button>
                   ))}
                 </div>,
@@ -315,13 +300,7 @@ const CanvasTaskRow = memo(
               )}
           </div>
         ) : (
-          <span
-            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${getTaskStatusColor(
-              task.status,
-            )}`}
-          >
-            {task.status.replace(/_/g, " ")}
-          </span>
+          <TaskStatusBadge status={task.status} className="shrink-0 text-[10px]" />
         )}
 
         <EditingTaskAvatar editors={editors} />
@@ -406,51 +385,6 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
   const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
   const derivedStatus = deriveFeatureStatus(feature.tasks);
-
-  const getWidgetBorderColor = (status: FeatureStatus) => {
-    switch (status) {
-      case "completed":
-        return "border-green-500 hover:border-green-600";
-      case "in_progress":
-        return "border-blue-500 hover:border-blue-600";
-      case "in_review":
-        return "border-purple-500 hover:border-purple-600";
-      case "blocked":
-        return "border-red-500 hover:border-red-600";
-      default:
-        return "border-transparent hover:border-gray-200";
-    }
-  };
-
-  const getStatusColor = (status: FeatureStatus) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-100 text-green-800 border-green-300";
-      case "in_progress":
-        return "bg-blue-100 text-blue-800 border-blue-300";
-      case "in_review":
-        return "bg-purple-100 text-purple-800 border-purple-300";
-      case "blocked":
-        return "bg-red-100 text-red-800 border-red-300";
-      case "not_started":
-        return "bg-gray-100 text-gray-800 border-gray-300";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-300";
-    }
-  };
-
-  const getStatusIcon = (status: FeatureStatus) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle2 className="w-3 h-3" />;
-      case "in_progress":
-        return <Clock className="w-3 h-3" />;
-      case "blocked":
-        return <AlertCircle className="w-3 h-3" />;
-      default:
-        return null;
-    }
-  };
 
   const taskCount = feature.tasks?.length || 0;
   const isOptimisticFeature = feature.id.startsWith("temp-");
@@ -561,7 +495,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
             : isGlobalTaskDropHighlight
               ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-              : getWidgetBorderColor(derivedStatus)
+							: "border-border hover:border-primary/60"
           }`}
         style={
           editingBorderColor(editors)
@@ -721,12 +655,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Status Badge */}
           <div className="flex items-center gap-2 mb-2">
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(derivedStatus)}`}
-            >
-              {getStatusIcon(derivedStatus)}
-              {derivedStatus.replace(/_/g, " ")}
-            </span>
+            <TaskStatusBadge status={derivedStatus} />
 
             {featureAssignees.length > 0 && (
               <div className="ml-auto flex items-center">
@@ -759,7 +688,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               </div>
               <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-amber-500 transition-all duration-300"
+                  className="h-full bg-primary transition-all duration-300"
                   style={{ width: `${autoProgress}%` }}
                 />
               </div>
@@ -817,7 +746,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
       {taskCount > 0 && (
         <>
           {/* Connecting line from feature to tasks */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-[500px] w-10 h-0.5 bg-emerald-400" />
+					<div
+						className="absolute top-1/2 -translate-y-1/2 left-[500px] h-px w-10"
+						style={{ backgroundColor: "var(--canvas-edge)" }}
+					/>
 
           {/* Task List - positioned to the right */}
           {(() => {
@@ -825,7 +757,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             return (
               <div
                 role="presentation"
-                className="absolute inset-y-0 left-[540px] flex w-[460px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                className="absolute inset-y-3 left-[540px] flex w-[460px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >

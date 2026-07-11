@@ -84,7 +84,7 @@ export function ChatCenterShellSkeleton({ animated = true }: { animated?: boolea
       </div>
 
       <footer className="sticky bottom-0 border-t border-gray-200 bg-white px-3 py-3 md:px-6">
-        <div className="rounded-3xl border border-gray-300 bg-[#f6f7f8] px-3 py-2">
+        <div className="rounded-3xl border border-border bg-muted px-3 py-2">
           <div className="flex items-center justify-between gap-3">
             <PulseBlock className="h-6 w-[72%] rounded" animated={animated} />
             <div className="inline-flex items-center gap-2">

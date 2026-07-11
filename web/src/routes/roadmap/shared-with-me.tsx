@@ -34,7 +34,7 @@ function SharedWithMePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#f6f7f8] flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
           <p className="text-gray-600">Loading shared roadmaps...</p>
@@ -44,7 +44,7 @@ function SharedWithMePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8]">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">

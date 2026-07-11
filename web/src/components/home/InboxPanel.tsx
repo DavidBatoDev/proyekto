@@ -62,7 +62,7 @@ export function InboxPanel() {
             key={item.id}
             type="button"
             onClick={() => console.info("Inbox item clicked:", item.id)}
-            className="w-full text-left bg-[#f6f7f8] rounded-lg p-3 hover:bg-[#eef0f2] transition-colors"
+            className="w-full rounded-lg bg-muted p-3 text-left transition-colors hover:bg-accent"
           >
             <div className="flex items-start justify-between gap-2">
               <div>

@@ -52,7 +52,7 @@ export function HeroStepFlow() {
         {steps.map((step, index) => (
           <div
             key={step}
-            className="bg-[#f6f7f8] rounded-lg px-3 py-2 flex items-start gap-3"
+            className="flex items-start gap-3 rounded-lg bg-muted px-3 py-2"
           >
             <span className="text-sm font-semibold text-[#61636c] w-4">
               {getStatus(index) === "completed" ? "✔" : getStatus(index) === "current" ? "→" : "○"}

@@ -25,7 +25,7 @@ export const Route = createFileRoute("/consultant/")({
 
 function ConsultantLandingPage() {
   return (
-    <div className="min-h-screen bg-[#fcfcfd]">
+    <div className="min-h-screen bg-background text-foreground">
       <Header />
 
       <main className="pb-20 pt-20">

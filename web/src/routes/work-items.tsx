@@ -116,9 +116,9 @@ function WorkItemsPage() {
 
 	return (
 		<DashboardShell>
-			<div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
+			<div className="relative flex flex-col h-full min-h-0 bg-background text-foreground">
 				{/* Header */}
-				<div className="px-6 py-2.5 bg-white border-b border-slate-100 shrink-0">
+				<div className="px-6 py-2.5 bg-card text-card-foreground border-b border-border shrink-0">
 					<div className="flex items-center justify-between gap-4">
 						<div className="flex items-center gap-2.5">
 							<div className="w-8 h-8 rounded-lg bg-[#0f172a]/10 flex items-center justify-center shrink-0">

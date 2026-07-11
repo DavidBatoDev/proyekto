@@ -322,7 +322,7 @@ export function GlobalKanbanView({
 	};
 
 	return (
-		<div className="flex flex-col h-full bg-white">
+		<div className="flex flex-col h-full bg-background text-foreground">
 			<GlobalKanbanFilters
 				roadmaps={roadmaps}
 				filters={filters}

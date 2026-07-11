@@ -15,6 +15,11 @@ import {
 	X,
 } from "lucide-react";
 import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import {
+	PositionBadge,
+	ProjectStatusBadge,
+	RoleBadge,
+} from "@/components/common/SemanticBadge";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { ModalPortal } from "@/components/common/ModalPortal";
@@ -43,11 +48,7 @@ import { projectService } from "@/services/project.service";
  * Mirrors the landing-page accent palette.
  */
 function PositionChip({ children }: { children: ReactNode }) {
-	return (
-		<span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-			{children}
-		</span>
-	)
+	return <PositionBadge>{children}</PositionBadge>;
 }
 
 /**
@@ -57,11 +58,7 @@ function PositionChip({ children }: { children: ReactNode }) {
  * tier.
  */
 function RoleChip({ role }: { role: TeamRole }) {
-	return (
-		<span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-			{role}
-		</span>
-	)
+	return <RoleBadge>{role}</RoleBadge>;
 }
 
 function CardActionMenu({
@@ -221,7 +218,6 @@ function CompactProjectCard({
 	client,
 	status,
 	statusColor,
-	statusBadgeClass,
 	progress,
 	progressColor,
 	bannerUrl = null,
@@ -236,7 +232,6 @@ function CompactProjectCard({
 	client: string;
 	status: string;
 	statusColor: string;
-	statusBadgeClass: string;
 	progress: number | null;
 	progressColor: string;
 	bannerUrl?: string | null;
@@ -244,7 +239,6 @@ function CompactProjectCard({
 	canSetStatus?: boolean;
 	members?: ProjectTeamMember[];
 }) {
-	const isDraft = status.toLowerCase() === "draft";
 	const displayedMembers = members.slice(0, 9);
 	const extraCount = Math.max(0, members.length - 9);
 
@@ -346,12 +340,7 @@ function CompactProjectCard({
 					<div className="absolute bottom-2 left-3 flex items-center gap-1.5">
 						<span className="text-[11px] font-semibold text-white/80">#{number}</span>
 						<div className="h-3 w-px bg-white/40" />
-						{!isDraft && (
-							<div className="h-2 w-2 rounded-full ring-1 ring-white/30" style={{ backgroundColor: statusColor }} />
-						)}
-						<span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}>
-							{status}
-						</span>
+						<ProjectStatusBadge status={status} />
 					</div>
 				</div>
 			)}
@@ -360,12 +349,7 @@ function CompactProjectCard({
 					<div className="flex items-center gap-2">
 						<span className="text-[11px] font-semibold text-slate-500">#{number}</span>
 						<div className="h-3 w-px bg-slate-300" />
-						{!isDraft && (
-							<div className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor }} />
-						)}
-						<span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}>
-							{status}
-						</span>
+						<ProjectStatusBadge status={status} />
 					</div>
 				)}
 				<div className="min-w-0">
@@ -507,8 +491,6 @@ function TeamDetailPage() {
 								const statusConfig = PROJECT_STATUS_CONFIG[statusKey] ?? {
 									label: row.project.status || "Unknown",
 									color: "#9c27b0",
-									badgeClass:
-										"bg-purple-100 text-purple-700 border-purple-200",
 								};
 								return (
 									<CompactProjectCard
@@ -520,7 +502,6 @@ function TeamDetailPage() {
 										client={row.project.client?.display_name || "Assigned"}
 										status={statusConfig.label}
 										statusColor={statusConfig.color}
-										statusBadgeClass={statusConfig.badgeClass}
 										progress={
 											row.project.status === "completed" ? 100 : null
 										}

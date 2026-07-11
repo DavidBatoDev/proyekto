@@ -80,8 +80,8 @@ describe("FeatureWidget canvas task list", () => {
 
 		expect(screen.getByText("Design onboarding")).toBeTruthy();
 		expect(screen.getByText("Build welcome email")).toBeTruthy();
-		expect(screen.getByText("todo")).toBeTruthy();
-		expect(screen.getByText("done")).toBeTruthy();
+		expect(screen.getByText("Todo")).toBeTruthy();
+		expect(screen.getByText("Done")).toBeTruthy();
 		expect(screen.getByTitle("Ada Lovelace")).toBeTruthy();
 	});
 

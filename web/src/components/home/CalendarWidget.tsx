@@ -133,7 +133,7 @@ export function CalendarWidget() {
         <h3 className="text-[20px] font-semibold">SCHEDULE</h3>
       </div>
 
-      <div className="bg-[#f6f7f8] p-8">
+      <div className="bg-muted p-8">
         <div className="flex items-center justify-between mb-6">
           <h4 className="text-[18px] font-bold text-black">
             {formatMonth(currentMonth)}

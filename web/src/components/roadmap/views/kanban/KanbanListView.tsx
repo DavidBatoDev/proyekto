@@ -14,7 +14,7 @@ import {
 	type DragStartEvent,
 } from "@dnd-kit/core";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, ChevronDown, GripVertical } from "lucide-react";
+import { CalendarDays, ChevronDown, GripVertical, Layers3, ListTree } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useToast } from "@/hooks/useToast";
@@ -37,15 +37,13 @@ function TaskDragPreview({ row }: { row: KanbanTaskContext }) {
 			<p className="text-sm font-semibold text-slate-900 line-clamp-2">{task.title}</p>
 			<div className="mt-1.5 flex flex-wrap gap-1">
 				<span
-					className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
-					style={{
-						backgroundColor: `${epic.color ?? "#64748b"}26`,
-						color: epic.color ?? "#334155",
-					}}
+					className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
 				>
+					<Layers3 className="h-3 w-3 shrink-0" />
 					{epic.title}
 				</span>
-				<span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 truncate max-w-[130px]">
+				<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-medium text-foreground truncate max-w-[130px]">
+					<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
 					{feature.title}
 				</span>
 			</div>
@@ -97,15 +95,13 @@ function DraggableTaskRow({
 				<p className="text-sm font-medium text-slate-900 line-clamp-2">{task.title}</p>
 				<div className="mt-1.5 flex flex-wrap gap-1">
 					<span
-						className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
-						style={{
-							backgroundColor: `${epic.color ?? "#64748b"}26`,
-							color: epic.color ?? "#334155",
-						}}
+						className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
 					>
+						<Layers3 className="h-3 w-3 shrink-0" />
 						{epic.title}
 					</span>
-					<span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 truncate max-w-[130px]">
+					<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-medium text-foreground truncate max-w-[130px]">
+						<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
 						{feature.title}
 					</span>
 				</div>

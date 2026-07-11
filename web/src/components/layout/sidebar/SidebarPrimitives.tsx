@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 export function SidebarSectionHeader({ children }: { children: ReactNode }) {
 	return (
-		<div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+		<div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-foreground/60">
 			{children}
 		</div>
 	);
@@ -30,8 +30,8 @@ export function SidebarNavLink({
 			params={params}
 			className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
 				active
-					? "bg-primary text-white shadow-sm"
-					: "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+					? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+					: "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 			}`}
 		>
 			<Icon className="h-5 w-5 shrink-0" />
@@ -59,8 +59,8 @@ export function SidebarSubLink({
 			params={params}
 			className={`flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
 				active
-					? "bg-primary text-white"
-					: "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+					? "bg-sidebar-primary text-sidebar-primary-foreground"
+					: "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 			}`}
 		>
 			<Icon className="h-4 w-4 shrink-0" />
@@ -86,14 +86,16 @@ export function CollapsibleNavGroup({
 		<div>
 			<div
 				className={`group flex items-center gap-1 rounded-lg pr-1 transition-colors ${
-					headerActive && !isExpanded ? "bg-slate-100" : "hover:bg-slate-50"
+					headerActive && !isExpanded
+						? "bg-sidebar-accent"
+						: "hover:bg-sidebar-accent"
 				}`}
 			>
 				<button
 					type="button"
 					onClick={onToggle}
 					aria-label={isExpanded ? "Collapse" : "Expand"}
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 				>
 					<motion.span
 						initial={false}
@@ -125,7 +127,7 @@ export function CollapsibleNavGroup({
 							animate={{ y: 0 }}
 							exit={{ y: -4 }}
 							transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-							className="ml-8 mt-1 space-y-0.5 border-l border-slate-200 pl-2"
+							className="ml-8 mt-1 space-y-0.5 border-l border-sidebar-border pl-2"
 						>
 							{children}
 						</motion.div>
