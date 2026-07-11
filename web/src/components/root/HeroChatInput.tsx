@@ -76,7 +76,7 @@ export function HeroChatInput() {
 
 	return (
 		<div className="w-full max-w-2xl">
-			<div className="rounded-2xl border border-white/20 bg-white/10 p-2 backdrop-blur transition-colors focus-within:border-cyan-300/60">
+			<div className="rounded-2xl border border-border bg-card p-2 shadow-sm transition-colors focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10">
 				<div className="flex items-end gap-2">
 					<label htmlFor={inputId} className="sr-only">
 						Describe your project idea
@@ -90,14 +90,14 @@ export function HeroChatInput() {
 						rows={2}
 						maxLength={2000}
 						placeholder='Describe your project idea - e.g. "Build a booking app for my tutoring business"'
-						className="max-h-40 min-h-13 flex-1 resize-none bg-transparent px-3 py-2.5 text-left text-sm leading-relaxed text-white placeholder:text-white/50 focus:outline-none disabled:opacity-60 sm:text-base"
+						className="max-h-40 min-h-13 flex-1 resize-none bg-transparent px-3 py-2.5 text-left text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60 sm:text-base"
 					/>
 					<button
 						type="button"
 						onClick={() => void handleSubmit()}
 						disabled={!canSubmit}
 						aria-label="Start my roadmap"
-						className="mb-1 mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-400 text-slate-950 shadow-[0_10px_28px_rgba(34,211,238,0.35)] transition-colors hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+						className="mb-1 mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_10px_28px_rgba(94,106,210,0.28)] transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{isSubmitting ? (
 							<Loader2 className="h-5 w-5 animate-spin" />
@@ -109,12 +109,12 @@ export function HeroChatInput() {
 			</div>
 
 			{error && (
-				<p role="alert" className="mt-2.5 text-sm font-medium text-red-300">
+				<p role="alert" className="mt-2.5 text-sm font-medium text-destructive">
 					{error}
 				</p>
 			)}
 
-			<p className="mt-3 text-xs text-white/60">
+			<p className="mt-3 text-xs text-muted-foreground">
 				Free to start. No credit card required.
 			</p>
 		</div>

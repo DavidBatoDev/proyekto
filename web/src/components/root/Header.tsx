@@ -124,7 +124,7 @@ export const Header = () => {
                   <UserMenu />
                   <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
                     <Link to="/dashboard">
-                      <Button variant="contained" className="h-11 rounded-xl px-5 text-sm bg-black text-white hover:bg-neutral-800">
+                      <Button variant="contained" colorScheme="primary" className="h-11 rounded-xl px-5 text-sm">
                         Dashboard
                       </Button>
                     </Link>
@@ -136,7 +136,7 @@ export const Header = () => {
                     <Link
                       to="/consultant"
                       preload="intent"
-                      className="inline-flex items-center gap-1 rounded-full border border-current/20 bg-white/10 px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-white/20"
+                      className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-muted"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-amber-400" />
                       <span className={theme.text}>Apply as a consultant</span>
@@ -146,14 +146,14 @@ export const Header = () => {
                     <button
                       type="button"
                       onClick={() => void navigate({ to: "/auth/login" })}
-                      className={`h-11 rounded-xl border border-current/20 px-4 text-sm font-medium transition-colors hover:bg-white/10 ${theme.text}`}
+                      className={`h-11 rounded-xl border border-border px-4 text-sm font-medium transition-colors hover:bg-muted ${theme.text}`}
                     >
                       Login
                     </button>
                   </motion.div>
                   <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
                     <Link to="/auth/signup" search={{ redirect: undefined }}>
-                      <Button variant="contained" colorScheme="primary" className="h-11 rounded-xl bg-slate-900 px-5 text-white hover:bg-slate-800">
+                      <Button variant="contained" colorScheme="primary" className="h-11 rounded-xl px-5">
                         Get Started
                       </Button>
                     </Link>
@@ -163,7 +163,7 @@ export const Header = () => {
             </div>
 
             <motion.button
-              className={`rounded-lg p-2 hover:bg-white/10 md:hidden ${theme.text}`}
+              className={`rounded-lg p-2 hover:bg-muted md:hidden ${theme.text}`}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Open navigation"
               whileTap={{ scale: 0.92, rotate: -5 }}
@@ -194,7 +194,7 @@ export const Header = () => {
                     key={item.sectionIndex}
                     type="button"
                     variants={navItemVariants}
-                    className={`rounded-lg px-2 py-2 text-left text-sm font-medium hover:bg-white/10 ${theme.text}`}
+                    className={`rounded-lg px-2 py-2 text-left text-sm font-medium hover:bg-muted ${theme.text}`}
                     onClick={(e) => handleNavClick(e, item.sectionIndex)}
                     whileTap={{ scale: 0.97 }}
                     transition={{ duration: 0.1 }}
@@ -209,7 +209,8 @@ export const Header = () => {
                       <Link to="/dashboard">
                         <Button
                           variant="contained"
-                          className="w-full rounded-xl bg-black text-white hover:bg-neutral-800"
+                          colorScheme="primary"
+                          className="w-full rounded-xl"
                         >
                           Dashboard
                         </Button>
@@ -222,7 +223,7 @@ export const Header = () => {
                           <Button
                             variant="outlined"
                             colorScheme="primary"
-                            className="w-full rounded-xl border-slate-300 text-slate-700 hover:bg-slate-900 hover:text-white"
+                            className="w-full rounded-xl border-border text-foreground hover:bg-muted"
                           >
                             Login
                           </Button>
@@ -233,7 +234,7 @@ export const Header = () => {
                           <Button
                             variant="contained"
                             colorScheme="primary"
-                            className="w-full rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                            className="w-full rounded-xl"
                           >
                             Get Started
                           </Button>

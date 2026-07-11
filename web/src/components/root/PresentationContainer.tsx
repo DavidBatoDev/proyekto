@@ -97,7 +97,7 @@ export function PresentationContainer({ children }: PresentationContainerProps) 
     <PresentationContext.Provider value={ctxValue}>
       <div
         ref={scrollRef}
-        className="h-screen overflow-y-scroll overflow-x-hidden presentation-scroll-container"
+        className="h-screen overflow-y-scroll overflow-x-hidden bg-background text-foreground presentation-scroll-container"
       >
         {sections.map((child, i) =>
           React.isValidElement(child)
