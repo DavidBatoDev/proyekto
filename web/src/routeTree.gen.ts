@@ -23,6 +23,7 @@ import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TeamsTeamIdRouteImport } from './routes/teams/$teamId'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
@@ -147,6 +148,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const TeamsTeamIdRoute = TeamsTeamIdRouteImport.update({
   id: '/teams/$teamId',
   path: '/teams/$teamId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/settings/appearance',
+  path: '/settings/appearance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadmapSharedWithMeRoute = RoadmapSharedWithMeRouteImport.update({
@@ -474,6 +480,7 @@ export interface FileRoutesByFullPath {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
@@ -544,6 +551,7 @@ export interface FileRoutesByTo {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/admin': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
   '/teams': typeof TeamsIndexRoute
@@ -614,6 +622,7 @@ export interface FileRoutesById {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant/': typeof ConsultantIndexRoute
@@ -687,6 +696,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
+    | '/settings/appearance'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
@@ -757,6 +767,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
+    | '/settings/appearance'
     | '/admin'
     | '/consultant'
     | '/teams'
@@ -826,6 +837,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
+    | '/settings/appearance'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant/'
@@ -894,6 +906,7 @@ export interface RootRouteChildren {
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
@@ -1003,6 +1016,13 @@ declare module '@tanstack/react-router' {
       path: '/teams/$teamId'
       fullPath: '/teams/$teamId'
       preLoaderRoute: typeof TeamsTeamIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/settings/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roadmap/shared-with-me': {
@@ -1552,6 +1572,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,

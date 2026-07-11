@@ -115,10 +115,8 @@ body {
     "Manrope", "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(186, 230, 253, 0.22), transparent 36%),
-    radial-gradient(circle at 100% 0%, rgba(254, 240, 138, 0.2), transparent 32%),
-    #fcfcfd;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 h1,
@@ -178,6 +176,8 @@ code {
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
   --border: oklch(0.92 0.004 286.32);
+  --canvas-dot: #c3c6cc;
+  --canvas-edge: #aeb3bc;
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.871 0.006 286.286);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -214,6 +214,8 @@ code {
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
   --border: oklch(0.274 0.006 286.033);
+  --canvas-dot: #424242;
+  --canvas-edge: #494949;
   --input: oklch(0.274 0.006 286.033);
   --ring: oklch(0.442 0.017 285.786);
   --chart-1: oklch(0.488 0.243 264.376);
@@ -231,24 +233,145 @@ code {
   --sidebar-ring: oklch(0.442 0.017 285.786);
 }
 
-/*
-  Persona Themes — unified to the brand blue/slate palette (matches :root).
-  Per-persona color differentiation was intentionally retired so the whole app
-  reads with one brand identity. Selectors kept so the data-theme widgets still
-  resolve their tokens; values mirror :root.
-*/
-[data-theme="client"],
-[data-theme="freelancer"],
-[data-theme="consultant"] {
-  --primary: oklch(0.546 0.245 262.881); /* blue-600  #2563eb */
-  --primary-dark: oklch(0.488 0.243 264.376); /* blue-700  #1d4ed8 */
-  --primary-light: oklch(0.932 0.032 255.585); /* blue-100  #dbeafe */
-  --primary-foreground: oklch(0.985 0 0); /* white */
+/* Runtime presets share one semantic contract; custom themes set these inline. */
+html[data-ui-theme="light"] {
+  --background: #f9fafb;
+  --background-light: #f6f7f8;
+  --foreground: #242528;
+  --card: #ffffff;
+  --card-foreground: #242528;
+  --popover: #ffffff;
+  --popover-foreground: #242528;
+  --muted: #f1f2f4;
+  --muted-foreground: #626367;
+  --accent: #f1f2f4;
+  --accent-foreground: #242528;
+  --primary: #5e6ad2;
+  --primary-dark: #4f5bc4;
+  --primary-light: #eef0fc;
+  --primary-foreground: #ffffff;
+  --border: #eeeff1;
+  --canvas-dot: #c3c6cc;
+  --canvas-edge: #aeb3bc;
+  --input: #d8dadd;
+  --ring: #5e6ad2;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #242528;
+  --sidebar-primary: #5e6ad2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f2f4;
+  --sidebar-accent-foreground: #242528;
+  --sidebar-border: #eeeff1;
+  --sidebar-ring: #5e6ad2;
+}
 
-  --secondary: oklch(0.208 0.042 265.755); /* slate-900 #0f172a */
-  --secondary-dark: oklch(0.129 0.042 264.695); /* slate-950 #020617 */
-  --secondary-light: oklch(0.372 0.044 257.287); /* slate-700 #334155 */
-  --secondary-foreground: oklch(0.985 0 0); /* white */
+html[data-ui-theme="classic-dark"] {
+  --background: #1e1f21;
+  --foreground: #f1f1f2;
+  --card: #252629;
+  --card-foreground: #f1f1f2;
+  --popover: #303136;
+  --popover-foreground: #f1f1f2;
+  --muted: #303136;
+  --muted-foreground: #a5a6aa;
+  --accent: #303136;
+  --accent-foreground: #f1f1f2;
+  --primary: #6d78d5;
+  --primary-dark: #7b86e3;
+  --primary-light: #343747;
+  --primary-foreground: #ffffff;
+  --border: #313236;
+  --canvas-dot: #4d4e54;
+  --canvas-edge: #55575f;
+  --input: #3a3b40;
+  --ring: #6d78d5;
+  --sidebar: #202124;
+  --sidebar-foreground: #f1f1f2;
+  --sidebar-primary: #6d78d5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #303136;
+  --sidebar-accent-foreground: #f1f1f2;
+  --sidebar-border: #313236;
+  --sidebar-ring: #6d78d5;
+}
+
+html[data-ui-theme="magic-blue"] {
+  --background: #171925;
+  --foreground: #f2f2f4;
+  --card: #20212d;
+  --card-foreground: #f2f2f4;
+  --popover: #2a2b39;
+  --popover-foreground: #f2f2f4;
+  --muted: #2b2d3a;
+  --muted-foreground: #a6a7b0;
+  --accent: #2b2d3a;
+  --accent-foreground: #f2f2f4;
+  --primary: #6d78d5;
+  --primary-dark: #7d87e0;
+  --primary-light: #31344a;
+  --primary-foreground: #ffffff;
+  --border: #2d2e3b;
+  --canvas-dot: #494b5d;
+  --canvas-edge: #53566a;
+  --input: #343645;
+  --ring: #6d78d5;
+  --sidebar: #151722;
+  --sidebar-foreground: #f2f2f4;
+  --sidebar-primary: #6d78d5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2b2d3a;
+  --sidebar-accent-foreground: #f2f2f4;
+  --sidebar-border: #2d2e3b;
+  --sidebar-ring: #6d78d5;
+}
+
+html[data-ui-theme="dark"] {
+  --background: #0e0f0f;
+  --foreground: #f4f4f4;
+  --card: #171717;
+  --card-foreground: #f4f4f4;
+  --popover: #202020;
+  --popover-foreground: #f4f4f4;
+  --muted: #242424;
+  --muted-foreground: #9c9c9c;
+  --accent: #242424;
+  --accent-foreground: #f4f4f4;
+  --primary: #6d78d5;
+  --primary-dark: #7d87e0;
+  --primary-light: #292b3b;
+  --primary-foreground: #ffffff;
+  --border: #252525;
+  --canvas-dot: #424242;
+  --canvas-edge: #494949;
+  --input: #303030;
+  --ring: #6d78d5;
+  --sidebar: #111111;
+  --sidebar-foreground: #f4f4f4;
+  --sidebar-primary: #6d78d5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #242424;
+  --sidebar-accent-foreground: #f4f4f4;
+  --sidebar-border: #252525;
+  --sidebar-ring: #6d78d5;
+}
+
+html[data-ui-theme] {
+  --app-bg: var(--background);
+  --app-bg-elevated: var(--muted);
+  --app-surface: var(--card);
+  --app-surface-strong: var(--popover);
+  --app-muted-surface: var(--muted);
+  --app-border: var(--border);
+  --app-border-strong: var(--input);
+  --app-text: var(--foreground);
+  --app-text-muted: var(--muted-foreground);
+  --app-accent: var(--primary);
+  --app-accent-soft: var(--primary-light);
+  --app-cta: var(--primary);
+  --app-cta-hover: var(--primary-dark);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --info: #3b82f6;
 }
 
 @theme inline {
@@ -288,6 +411,12 @@ code {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-surface: var(--app-surface);
+  --color-surface-strong: var(--app-surface-strong);
+  --color-surface-muted: var(--app-muted-surface);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
 }
 
 @layer base {
@@ -446,17 +575,8 @@ code {
 
 .app-shell-bg {
   background:
-    radial-gradient(
-      circle at 4% 2%,
-      rgba(125, 211, 252, 0.2),
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 100% 8%,
-      rgba(251, 191, 36, 0.14),
-      transparent 32%
-    ),
-    linear-gradient(180deg, #fbfcff 0%, #f4f6fa 100%);
+    radial-gradient(circle at 4% 2%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 34%),
+    linear-gradient(180deg, var(--background) 0%, var(--app-bg-elevated) 100%);
 }
 
 /*
@@ -515,7 +635,7 @@ code {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 700;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .app-chip {
@@ -660,4 +780,173 @@ code {
   outline-offset: 2px;
   border-radius: 8px;
   transition: outline-color 120ms linear;
+}
+
+/* Legacy neutral compatibility while feature screens move to semantic tokens. */
+html.dark .bg-white,
+html.dark .bg-white\/95,
+html.dark .bg-white\/90,
+html.dark .bg-white\/85,
+html.dark .bg-white\/80,
+html.dark .bg-white\/70,
+html.dark .bg-white\/50,
+html.dark .bg-gray-50,
+html.dark .bg-gray-50\/80,
+html.dark .bg-gray-50\/70,
+html.dark .bg-gray-50\/60,
+html.dark .bg-gray-50\/50,
+html.dark .bg-gray-50\/40,
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/80,
+html.dark .bg-slate-50\/70,
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50\/50,
+html.dark .bg-slate-50\/40 {
+  background-color: var(--card) !important;
+}
+
+html.dark .bg-gray-100,
+html.dark .bg-slate-100,
+html.dark .bg-gray-100\/80,
+html.dark .bg-slate-100\/80,
+html.dark .bg-slate-100\/70,
+html.dark .bg-slate-200\/70 {
+  background-color: var(--muted) !important;
+}
+
+html.dark .bg-gray-200,
+html.dark .bg-slate-200 {
+  background-color: var(--border) !important;
+}
+
+html.dark .text-black,
+html.dark .text-gray-950,
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-gray-700,
+html.dark .text-slate-950,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700 {
+  color: var(--foreground) !important;
+}
+
+html.dark .text-gray-600,
+html.dark .text-gray-500,
+html.dark .text-gray-400,
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html.dark .text-slate-400 {
+  color: var(--muted-foreground) !important;
+}
+
+html.dark .border-gray-50,
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-slate-50,
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: var(--border) !important;
+}
+
+html.dark .divide-gray-100 > :not(:last-child),
+html.dark .divide-gray-200 > :not(:last-child),
+html.dark .divide-slate-100 > :not(:last-child),
+html.dark .divide-slate-200 > :not(:last-child) {
+  border-color: var(--border) !important;
+}
+
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-gray-50\/80:hover,
+html.dark .hover\:bg-gray-50\/70:hover,
+html.dark .hover\:bg-gray-50\/60:hover,
+html.dark .hover\:bg-gray-50\/50:hover,
+html.dark .hover\:bg-gray-100:hover,
+html.dark .hover\:bg-gray-200:hover,
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-50\/80:hover,
+html.dark .hover\:bg-slate-50\/70:hover,
+html.dark .hover\:bg-slate-50\/60:hover,
+html.dark .hover\:bg-slate-50\/50:hover,
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-slate-200:hover,
+html.dark .hover\:bg-slate-200\/80:hover,
+html.dark .hover\:bg-slate-200\/70:hover,
+html.dark .hover\:bg-white:hover,
+html.dark .hover\:bg-white\/70:hover,
+html.dark .hover\:bg-white\/80:hover,
+html.dark .focus\:bg-white:focus,
+html.dark .focus-within\:bg-white:focus-within {
+  background-color: var(--muted) !important;
+}
+
+html.dark .group:hover .group-hover\:bg-slate-50\/80,
+html.dark .group:hover .group-hover\:bg-slate-50\/70,
+html.dark .group:hover .group-hover\:bg-slate-50\/60,
+html.dark .group:hover .group-hover\:bg-slate-50\/50,
+html.dark .group:hover .group-hover\:bg-gray-50\/80,
+html.dark .group:hover .group-hover\:bg-gray-50\/60,
+html.dark .group:hover .group-hover\:bg-gray-50\/50 {
+  background-color: var(--muted) !important;
+}
+
+html.dark .hover\:text-gray-900:hover,
+html.dark .hover\:text-slate-900:hover,
+html.dark .hover\:text-black:hover {
+  color: var(--foreground) !important;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color-scheme: dark;
+}
+
+.kanban-epic-chip {
+  gap: 0.25rem;
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.kanban-epic-chip svg {
+  color: var(--muted-foreground);
+}
+
+.rdg {
+  --rdg-color: var(--foreground);
+  --rdg-border-color: var(--border);
+  --rdg-background-color: var(--card);
+  --rdg-header-background-color: var(--muted);
+  --rdg-row-hover-background-color: var(--muted);
+  --rdg-row-selected-background-color: var(--primary-light);
+  --rdg-row-selected-hover-background-color: var(--primary-light);
+}
+
+.react-flow {
+  --xy-background-color-default: var(--background);
+  --xy-node-color-default: var(--foreground);
+  --xy-node-background-color-default: var(--card);
+  --xy-node-border-default: 1px solid var(--border);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-background-color-hover-default: var(--muted);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-minimap-background-color-default: var(--card);
+}
+
+.react-flow__controls-button {
+  background-color: var(--card) !important;
+  border-bottom-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--muted) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
 }

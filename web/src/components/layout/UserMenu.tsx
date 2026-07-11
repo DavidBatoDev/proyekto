@@ -1,10 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeftRight, ChevronDown, Loader2, LogOut, ShieldCheck, User } from "lucide-react";
+import {
+	ArrowLeftRight,
+	ChevronDown,
+	Loader2,
+	LogOut,
+	Settings,
+	ShieldCheck,
+	User,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { featureFlags } from "@/config/featureFlags";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { switchPersona } from "@/lib/auth-api";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -75,9 +84,8 @@ export default function UserMenu() {
 			setProfile(data);
 			// Patch both caches immediately so useProfileQuery never
 			// overwrites Zustand with a stale active_persona.
-			qc.setQueryData(
-				["profile", user?.id ?? ""],
-				(old: any) => old ? { ...old, active_persona: data.active_persona } : old,
+			qc.setQueryData(["profile", user?.id ?? ""], (old: any) =>
+				old ? { ...old, active_persona: data.active_persona } : old,
 			);
 			setIsOpen(false);
 			navigate({ to: "/dashboard" });
@@ -149,19 +157,20 @@ export default function UserMenu() {
 							<p className="text-sm font-semibold text-slate-900 truncate">
 								{getDisplayName()}
 							</p>
-							{profile?.active_persona && profile.active_persona !== "admin" && (
-								<span
-									className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
-										profile.active_persona === "consultant"
-											? "bg-teal-50 text-teal-700 border border-teal-200"
-											: profile.active_persona === "freelancer"
-												? "bg-orange-50 text-orange-600 border border-orange-200"
-												: "bg-gray-100 text-gray-600 border border-gray-200"
-									}`}
-								>
-									{profile.active_persona}
-								</span>
-							)}
+							{profile?.active_persona &&
+								profile.active_persona !== "admin" && (
+									<span
+										className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
+											profile.active_persona === "consultant"
+												? "bg-teal-50 text-teal-700 border border-teal-200"
+												: profile.active_persona === "freelancer"
+													? "bg-orange-50 text-orange-600 border border-orange-200"
+													: "bg-gray-100 text-gray-600 border border-gray-200"
+										}`}
+									>
+										{profile.active_persona}
+									</span>
+								)}
 						</div>
 						<p className="truncate text-xs text-slate-500">{profile?.email}</p>
 					</div>
@@ -229,6 +238,17 @@ export default function UserMenu() {
 							<User size={16} />
 							Profile
 						</Link>
+
+						{featureFlags.themeSystem && (
+							<Link
+								to="/settings/appearance"
+								onClick={() => setIsOpen(false)}
+								className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+							>
+								<Settings size={16} />
+								Appearance
+							</Link>
+						)}
 
 						<button
 							type="button"

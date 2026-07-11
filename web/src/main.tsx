@@ -1,11 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-import { RouterProvider, createRouter } from "@tanstack/react-router";
-
-import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
 import { AuthInitializer } from "./components/auth/AuthInitializer";
+import { ThemeRuntime } from "./components/theme/ThemeRuntime";
+import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
 
 // Tell the OTA updater the web bundle booted OK, so it commits the new bundle
 // instead of rolling back after appReadyTimeout. Fire as early as possible.
@@ -17,9 +17,9 @@ CapacitorUpdater.notifyAppReady().catch(() => {});
 // and above the gesture nav (the Android WebView's env(safe-area-inset-*) is
 // unreliable on Capacitor 7). Android-only — never loaded on iOS/web.
 if (Capacitor.getPlatform() === "android") {
-  void import("@capawesome/capacitor-android-edge-to-edge-support")
-    .then(({ EdgeToEdge }) => EdgeToEdge.enable())
-    .catch(() => {});
+	void import("@capawesome/capacitor-android-edge-to-edge-support")
+		.then(({ EdgeToEdge }) => EdgeToEdge.enable())
+		.catch(() => {});
 }
 
 // Import the generated route tree
@@ -33,36 +33,38 @@ import reportWebVitals from "./reportWebVitals.ts";
 
 const TanStackQueryProviderContext = TanStackQueryProvider.getContext();
 const router = createRouter({
-  routeTree,
-  context: {
-    ...TanStackQueryProviderContext,
-  },
-  defaultPreload: "intent",
-  scrollRestoration: true,
-  defaultStructuralSharing: true,
-  defaultPreloadStaleTime: 0,
+	routeTree,
+	context: {
+		...TanStackQueryProviderContext,
+	},
+	defaultPreload: "intent",
+	scrollRestoration: true,
+	defaultStructuralSharing: true,
+	defaultPreloadStaleTime: 0,
 });
 
 // Register the router instance for type safety
 declare module "@tanstack/react-router" {
-  interface Register {
-    router: typeof router;
-  }
+	interface Register {
+		router: typeof router;
+	}
 }
 
 // Render the app
 const rootElement = document.getElementById("app");
 if (rootElement && !rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <StrictMode>
-      <TanStackQueryProvider.Provider {...TanStackQueryProviderContext}>
-        <AuthInitializer>
-          <RouterProvider router={router} />
-        </AuthInitializer>
-      </TanStackQueryProvider.Provider>
-    </StrictMode>
-  );
+	const root = ReactDOM.createRoot(rootElement);
+	root.render(
+		<StrictMode>
+			<TanStackQueryProvider.Provider {...TanStackQueryProviderContext}>
+				<ThemeRuntime>
+					<AuthInitializer>
+						<RouterProvider router={router} />
+					</AuthInitializer>
+				</ThemeRuntime>
+			</TanStackQueryProvider.Provider>
+		</StrictMode>,
+	);
 }
 
 // If you want to start measuring performance in your app, pass a function

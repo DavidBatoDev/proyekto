@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" href="/favicon.svg" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#F9FAFB" />
     <meta
       name="description"
       content="Web site created using create-tsrouter-app"
@@ -16,6 +16,109 @@
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://fonts.cdnfonts.com/css/glacial-indifference-2" rel="stylesheet" />
     <title>Proyekto - Work Hub</title>
+    <script>
+      (() => {
+        if ("__THEME_SYSTEM_ENABLED__" === "false") {
+          document.documentElement.dataset.uiTheme = "light";
+          document.documentElement.dataset.uiColorMode = "light";
+          document.documentElement.style.colorScheme = "light";
+          return;
+        }
+        const key = "proyekto.appearance.v1";
+        const themes = new Set(["light", "classic-dark", "magic-blue", "dark", "custom"]);
+        const presetBackgrounds = { light: "#F9FAFB", "classic-dark": "#1E1F21", "magic-blue": "#171925", dark: "#0E0F0F" };
+        const isHex = (value) => typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
+		const luminance = (hex) => {
+          const channel = (offset) => {
+            const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          };
+			return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+		};
+		const contrast = (first, second) => {
+			const a = luminance(first);
+			const b = luminance(second);
+			return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+		};
+		const mixHex = (first, second, amount) => {
+			const channel = (offset) => Math.round(Number.parseInt(first.slice(offset, offset + 2), 16) + (Number.parseInt(second.slice(offset, offset + 2), 16) - Number.parseInt(first.slice(offset, offset + 2), 16)) * amount).toString(16).padStart(2, "0");
+			return `#${channel(1)}${channel(3)}${channel(5)}`.toUpperCase();
+		};
+		const accessibleAccent = (accent, background, mode) => {
+			if (contrast(accent, background) >= 3) return accent;
+			const target = mode === "dark" ? "#FFFFFF" : "#000000";
+			for (let step = 1; step <= 20; step += 1) {
+				const candidate = mixHex(accent, target, step / 20);
+				if (contrast(candidate, background) >= 3) return candidate;
+			}
+			return target;
+		};
+        try {
+          const cached = JSON.parse(localStorage.getItem(key) || "null");
+          const preferences = cached && cached.version === 1 ? cached.preferences : null;
+			const auditTheme = sessionStorage.getItem("proyekto.theme-audit");
+			const theme = auditTheme && themes.has(auditTheme)
+				? auditTheme
+				: preferences && themes.has(preferences.theme)
+					? preferences.theme
+					: "light";
+          let mode = theme === "light" ? "light" : "dark";
+          let themeColor = presetBackgrounds[theme] || "#F9FAFB";
+          if (theme === "custom" && preferences.custom) {
+            const custom = preferences.custom;
+            if (isHex(custom.background) && isHex(custom.accent) && Number.isInteger(custom.contrast) && custom.contrast >= 0 && custom.contrast <= 100) {
+              themeColor = custom.background.toUpperCase();
+              mode = luminance(themeColor) < 0.36 ? "dark" : "light";
+              const foreground = mode === "dark" ? "#F4F4F5" : "#1F2024";
+              const factor = custom.contrast / 100;
+              const mix = (background, front, amount) => `color-mix(in oklch, ${background} ${(100 - amount).toFixed(2)}%, ${front} ${amount.toFixed(2)}%)`;
+              const surface = mix(themeColor, foreground, 1.2 + factor * 3.8);
+              const strong = mix(themeColor, foreground, 2.4 + factor * 7.2);
+              const muted = mix(themeColor, foreground, 3.2 + factor * 8.8);
+              const border = mix(themeColor, foreground, 7 + factor * 16);
+						const accent = accessibleAccent(custom.accent.toUpperCase(), themeColor, mode);
+              const accentForeground = (luminance(accent) + 0.05) / 0.05 >= 4.5 ? "#111111" : "#FFFFFF";
+              const values = {
+                "--background": themeColor, "--background-light": themeColor, "--foreground": foreground,
+                "--card": surface, "--card-foreground": foreground, "--popover": strong, "--popover-foreground": foreground,
+                "--muted": muted, "--muted-foreground": mix(themeColor, foreground, mode === "dark" ? 58 : 62),
+                "--accent": muted, "--accent-foreground": foreground, "--primary": accent, "--primary-foreground": accentForeground,
+                "--border": border, "--input": mix(themeColor, foreground, 10 + factor * 16), "--ring": accent,
+                "--sidebar": surface, "--sidebar-foreground": foreground, "--sidebar-primary": accent,
+                "--sidebar-primary-foreground": accentForeground, "--sidebar-accent": muted,
+                "--sidebar-accent-foreground": foreground, "--sidebar-border": border, "--sidebar-ring": accent,
+              };
+              const sidebar = custom.sidebar;
+              if (sidebar && sidebar.enabled && isHex(sidebar.background) && isHex(sidebar.accent) && Number.isInteger(sidebar.contrast) && sidebar.contrast >= 0 && sidebar.contrast <= 100) {
+                const sidebarBackground = sidebar.background.toUpperCase();
+                const sidebarMode = luminance(sidebarBackground) < 0.36 ? "dark" : "light";
+                const sidebarForeground = sidebarMode === "dark" ? "#F4F4F5" : "#1F2024";
+                const sidebarFactor = sidebar.contrast / 100;
+								const sidebarAccent = accessibleAccent(sidebar.accent.toUpperCase(), sidebarBackground, sidebarMode);
+                const sidebarAccentForeground = (luminance(sidebarAccent) + 0.05) / 0.05 >= 4.5 ? "#111111" : "#FFFFFF";
+                values["--sidebar"] = mix(sidebarBackground, sidebarForeground, 1.2 + sidebarFactor * 3.8);
+                values["--sidebar-foreground"] = sidebarForeground;
+                values["--sidebar-primary"] = sidebarAccent;
+                values["--sidebar-primary-foreground"] = sidebarAccentForeground;
+                values["--sidebar-accent"] = mix(sidebarBackground, sidebarForeground, 3.2 + sidebarFactor * 8.8);
+                values["--sidebar-accent-foreground"] = sidebarForeground;
+                values["--sidebar-border"] = mix(sidebarBackground, sidebarForeground, 7 + sidebarFactor * 16);
+                values["--sidebar-ring"] = sidebarAccent;
+              }
+              for (const [property, value] of Object.entries(values)) document.documentElement.style.setProperty(property, value);
+            }
+          }
+          document.documentElement.dataset.uiTheme = theme;
+          document.documentElement.dataset.uiColorMode = mode;
+          document.documentElement.classList.toggle("dark", mode === "dark");
+          document.documentElement.style.colorScheme = mode;
+          document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeColor);
+        } catch {
+          document.documentElement.dataset.uiTheme = "light";
+          document.documentElement.dataset.uiColorMode = "light";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -11,6 +11,12 @@ export type RealtimeTransport = "supabase" | "durable-objects";
 
 export const featureFlags = {
 	/**
+	 * Whole-app semantic theme runtime. Set VITE_THEME_SYSTEM_ENABLED=false in
+	 * a build to force Light and hide the appearance entry point as a rollback.
+	 */
+	themeSystem: import.meta.env.VITE_THEME_SYSTEM_ENABLED !== "false",
+
+	/**
 	 * Show live mouse cursors of other users on the roadmap canvas.
 	 * Disabled by default because cursor broadcasts are high-frequency and
 	 * add Supabase Realtime message volume. All other real-time features
