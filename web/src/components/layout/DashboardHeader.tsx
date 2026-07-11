@@ -27,14 +27,14 @@ const DashboardHeader = () => {
 						type="button"
 						onClick={() => setMobileNavOpen(true)}
 						aria-label="Open menu"
-						className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
+						className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted lg:hidden"
 					>
 						<Menu size={22} />
 					</button>
 				)}
 				<Link
 					to="/"
-					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
+					className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
 				>
 					<BrandMark variant="mark" className="h-6 text-white" />
 				</Link>
@@ -45,7 +45,7 @@ const DashboardHeader = () => {
 							key={item.label}
 							to={item.to}
 							hash={item.hash}
-							className="rounded-md px-2 py-1 text-[14px] font-semibold text-slate-800 transition-colors hover:bg-slate-100 hover:text-slate-900"
+							className="rounded-md px-2 py-1 text-[14px] font-semibold text-foreground transition-colors hover:bg-muted hover:text-foreground"
 						>
 							{item.label}
 						</Link>
@@ -56,25 +56,25 @@ const DashboardHeader = () => {
 			<div className="flex shrink-0 items-center gap-2 sm:gap-3">
 				{isLoading ? (
 					<div className="flex items-center gap-2 sm:gap-3">
-						<div className="hidden h-9 w-52 animate-pulse rounded-2xl bg-slate-200 md:block" />
-						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
-						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
-						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
+						<div className="hidden h-9 w-52 animate-pulse rounded-2xl bg-muted md:block" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
 					</div>
 				) : isAuthenticated ? (
 					<>
-						<div className="hidden min-w-[220px] items-center rounded-2xl border border-slate-200 bg-slate-100/80 px-3 py-1.5 transition-all duration-200 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-200 md:flex lg:min-w-[300px]">
-							<Search size={17} className="mr-2 shrink-0 text-slate-500" />
+						<div className="hidden min-w-[220px] items-center rounded-2xl border border-border bg-muted/80 px-3 py-1.5 transition-all duration-200 hover:bg-muted focus-within:bg-card focus-within:ring-2 focus-within:ring-border md:flex lg:min-w-[300px]">
+							<Search size={17} className="mr-2 shrink-0 text-muted-foreground" />
 							<input
 								type="text"
 								placeholder="Search..."
-								className="min-w-0 flex-1 border-none bg-transparent text-[0.85rem] text-slate-800 placeholder-slate-400 focus:outline-none"
+								className="min-w-0 flex-1 border-none bg-transparent text-[0.85rem] text-foreground placeholder:text-muted-foreground focus:outline-none"
 							/>
 						</div>
 
 						<button
 							type="button"
-							className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
+							className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted"
 							aria-label="Messages"
 						>
 							<MessageCircle size={20} />
