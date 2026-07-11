@@ -22,7 +22,25 @@ import { STATIC_ROUTES, DYNAMIC_ROUTES, NARROW_STRESS } from "./routes.mjs";
 
 const BASE = (process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const STORAGE = path.resolve(process.cwd(), "playwright", ".auth", "user.json");
-const OUT = path.resolve(process.cwd(), "pw-audit");
+const themeArgument = process.argv.find((argument) => argument.startsWith("--theme="));
+const AUDIT_THEME = process.env.PLAYWRIGHT_AUDIT_THEME || themeArgument?.slice("--theme=".length) || null;
+const DESKTOP_ONLY = process.argv.includes("--desktop-only");
+const OUT = path.resolve(process.cwd(), AUDIT_THEME ? `pw-theme-audit-${AUDIT_THEME}` : "pw-audit");
+
+const THEME_DEFAULTS = {
+  light: { background: "#FFFFFF", accent: "#6D78D5", contrast: 30 },
+  "classic-dark": { background: "#1E1F21", accent: "#6D78D5", contrast: 30 },
+  "magic-blue": { background: "#171925", accent: "#6D78D5", contrast: 30 },
+  dark: { background: "#0E0F0F", accent: "#6D78D5", contrast: 30 },
+  custom: { background: "#FFFFFF", accent: "#6D78D5", contrast: 30 },
+};
+
+async function installTheme(context) {
+  if (!AUDIT_THEME || !THEME_DEFAULTS[AUDIT_THEME]) return;
+  await context.addInitScript((theme) => {
+    sessionStorage.setItem("proyekto.theme-audit", theme);
+  }, AUDIT_THEME);
+}
 
 // Known dev-account ids (from playwright/drive.mjs) used as discovery fallbacks.
 const FALLBACK = {
@@ -33,10 +51,12 @@ const FALLBACK = {
   chatRef: "channel-general",
 };
 
-const VIEWPORTS = [
-  { name: "mobile", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-];
+const VIEWPORTS = DESKTOP_ONLY
+  ? [{ name: "desktop", width: 1440, height: 900 }]
+  : [
+      { name: "mobile", width: 390, height: 844 },
+      { name: "desktop", width: 1440, height: 900 },
+    ];
 const NARROW = { name: "narrow", width: 320, height: 844 };
 
 const slug = (p) =>
@@ -51,8 +71,10 @@ function ensureDir(d) {
 async function settle(page) {
   // The dev server still talks to a local agent/realtime that isn't running, so
   // background sockets never go idle — cap the wait and fall through.
-  await page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
-  await page.waitForTimeout(1300);
+  await page
+    .waitForLoadState("networkidle", { timeout: AUDIT_THEME ? 2500 : 7000 })
+    .catch(() => {});
+  await page.waitForTimeout(AUDIT_THEME ? 700 : 1300);
 }
 
 async function readProfileId(page) {
@@ -87,6 +109,7 @@ async function discoverIds(context) {
   await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" }).catch(() => {});
   await settle(page);
   ids.profileId = await readProfileId(page);
+  ids.userId = ids.profileId;
   const projHref = await firstHref(page, 'a[href*="/project/"]');
   const projMatch = projHref?.match(/\/project\/([^/?#]+)/);
   ids.projectId = projMatch?.[1] || FALLBACK.projectId;
@@ -111,6 +134,15 @@ async function discoverIds(context) {
   );
   const teamHref = teamHrefs.find((h) => /\/teams\/(?!me\b)[^/?#]+/.test(h));
   ids.teamId = teamHref?.match(/\/teams\/([^/?#]+)/)?.[1] || null;
+
+  if (ids.teamId) {
+    await page
+      .goto(`${BASE}/teams/${ids.teamId}/time/my-logs`, { waitUntil: "domcontentloaded" })
+      .catch(() => {});
+    await settle(page);
+    const logHref = await firstHref(page, 'a[href*="/time/log/"]');
+    ids.logId = logHref?.match(/\/time\/log\/([^/?#]+)/)?.[1] || null;
+  }
 
   // share token — first roadmap shared with me, if any.
   await page
@@ -233,6 +265,7 @@ async function main() {
 
   // Discover ids in a desktop context first.
   const discoCtx = await browser.newContext({ storageState: STORAGE, viewport: { width: 1440, height: 900 } });
+  await installTheme(discoCtx);
   const ids = await discoverIds(discoCtx);
   await discoCtx.close();
   console.log("[audit] discovered ids:", ids);
@@ -248,6 +281,7 @@ async function main() {
       isMobile: viewport.name === "mobile",
       hasTouch: viewport.name === "mobile",
     });
+    await installTheme(ctx);
     for (const route of routes) {
       if (route.status === "skipped") {
         rows.push({ ...route, viewport: viewport.name, file: null, consoleErrors: [] });
@@ -261,7 +295,7 @@ async function main() {
   }
 
   // 320px narrow-stress pass for known offenders only.
-  const narrowSet = new Set(NARROW_STRESS);
+  const narrowSet = new Set(DESKTOP_ONLY ? [] : NARROW_STRESS);
   const narrowRoutes = routes.filter((r) => narrowSet.has(r.template) && r.status === "ready");
   if (narrowRoutes.length) {
     const ctx = await browser.newContext({
@@ -271,6 +305,7 @@ async function main() {
       isMobile: true,
       hasTouch: true,
     });
+    await installTheme(ctx);
     for (const route of narrowRoutes) {
       const res = await capture(ctx, NARROW, route);
       rows.push(res);
@@ -284,6 +319,7 @@ async function main() {
   const manifest = {
     capturedAt: new Date().toISOString(),
     base: BASE,
+    theme: AUDIT_THEME,
     ids,
     viewports: [...VIEWPORTS, NARROW],
     counts: rows.reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {}),
