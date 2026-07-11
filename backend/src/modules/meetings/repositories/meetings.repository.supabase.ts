@@ -15,15 +15,15 @@ import type { ParticipantResponse } from '../dto/meeting.dto';
 const MEETING_COLUMNS =
   'id, project_id, host_id, created_by, title, description, type, ' +
   'scheduled_at, ends_at, duration_minutes, status, video_provider, ' +
-  'meeting_url, timezone, location, reminder_minutes, reminder_sent_at, ' +
-  'guest_email, guest_name, reschedule_of, series_id, recurrence_id, ' +
-  'original_start, is_exception, created_at, updated_at';
+  'meeting_url, google_event_id, timezone, location, reminder_minutes, ' +
+  'reminder_sent_at, guest_email, guest_name, reschedule_of, series_id, ' +
+  'recurrence_id, original_start, is_exception, created_at, updated_at';
 
 const SERIES_COLUMNS =
   'id, project_id, created_by, host_id, title, description, type, ' +
-  'duration_minutes, timezone, video_provider, meeting_url, location, ' +
-  'reminder_minutes, rrule, dtstart_wall, dtstart, until, count, status, ' +
-  'materialized_until, created_at, updated_at';
+  'duration_minutes, timezone, video_provider, meeting_url, google_event_id, ' +
+  'location, reminder_minutes, rrule, dtstart_wall, dtstart, until, count, ' +
+  'status, materialized_until, created_at, updated_at';
 
 // Postgres unique_violation — a materialized instance already occupies the slot.
 const UNIQUE_VIOLATION = '23505';
@@ -165,7 +165,9 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
   async getParticipants(meetingId: string): Promise<MeetingParticipant[]> {
     const { data, error } = await this.supabase
       .from('meeting_participants')
-      .select('id, meeting_id, user_id, guest_email, guest_name, role, response')
+      .select(
+        'id, meeting_id, user_id, guest_email, guest_name, role, response',
+      )
       .eq('meeting_id', meetingId);
     if (error) throw new Error(error.message);
     return (data as unknown as MeetingParticipant[]) || [];
@@ -181,7 +183,9 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
       .update({ response })
       .eq('meeting_id', meetingId)
       .eq('user_id', userId)
-      .select('id, meeting_id, user_id, guest_email, guest_name, role, response')
+      .select(
+        'id, meeting_id, user_id, guest_email, guest_name, role, response',
+      )
       .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as unknown as MeetingParticipant) || null;
@@ -229,6 +233,18 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
       if (row.id) ids.add(row.id as string);
     }
     return [...ids];
+  }
+
+  async getEmailsForUserIds(userIds: string[]): Promise<string[]> {
+    if (!userIds.length) return [];
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('email')
+      .in('id', userIds);
+    if (error) throw new Error(error.message);
+    return ((data as { email: string | null }[]) || [])
+      .map((row) => row.email)
+      .filter((email): email is string => Boolean(email));
   }
 
   // ── recurring series ──────────────────────────────────────────────────────
@@ -378,8 +394,6 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
       .from('meeting_participants')
       .select('meeting_id')
       .eq('user_id', userId);
-    return (data || [])
-      .map((row) => row.meeting_id as string)
-      .filter(Boolean);
+    return (data || []).map((row) => row.meeting_id as string).filter(Boolean);
   }
 }

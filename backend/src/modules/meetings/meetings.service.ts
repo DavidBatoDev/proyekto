@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -26,11 +28,9 @@ import type {
   NewParticipant,
   NewParticipantRow,
 } from './repositories/meetings.repository.interface';
-import {
-  expandOccurrences,
-  parseUntilCount,
-  wallFromUtc,
-} from './recurrence';
+import { expandOccurrences, parseUntilCount, wallFromUtc } from './recurrence';
+import { GoogleCalendarService } from './google/google-calendar.service';
+import type { CalendarEventInput } from './google/google-calendar.service';
 
 export const MEETINGS_REPOSITORY = Symbol('MEETINGS_REPOSITORY');
 
@@ -42,12 +42,15 @@ const REMINDER_SCAN_AHEAD_MS = 40320 * 60_000;
 
 @Injectable()
 export class MeetingsService {
+  private readonly logger = new Logger(MeetingsService.name);
+
   constructor(
     @Inject(MEETINGS_REPOSITORY)
     private readonly repo: MeetingsRepository,
     private readonly authorization: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly googleCalendar: GoogleCalendarService,
   ) {}
 
   async create(userId: string, dto: CreateMeetingDto): Promise<Meeting> {
@@ -68,30 +71,52 @@ export class MeetingsService {
     }
 
     const hostId = userId;
-    const { videoProvider, meetingUrl } = this.resolveVideo(dto);
-
     await this.assertHostFree(hostId, scheduledAt, endsAt);
-
-    const meeting = await this.repo.create({
-      project_id: dto.project_id ?? null,
-      host_id: hostId,
-      created_by: userId,
-      title: dto.title,
-      description: dto.description ?? null,
-      type: dto.type,
-      scheduled_at: scheduledAt,
-      ends_at: endsAt,
-      duration_minutes: durationMinutes,
-      status: 'scheduled',
-      video_provider: videoProvider,
-      meeting_url: meetingUrl,
-      timezone: dto.timezone ?? null,
-      location: dto.location ?? null,
-      reminder_minutes: dto.reminder_minutes ?? null,
-    });
 
     const inviteeIds = this.uniqueInvitees(dto.participant_ids, userId);
     const guestEmails = this.uniqueGuestEmails(dto.guest_emails);
+
+    // Provision the video link. For 'google_meet' this creates a real Google
+    // Calendar event (with a Meet link + attendees) on the organizer's calendar
+    // — fail-loud if they aren't connected or Google errors.
+    const { videoProvider, meetingUrl, googleEventId } =
+      await this.provisionVideo(hostId, dto, {
+        title: dto.title,
+        description: dto.description ?? null,
+        location: dto.location ?? null,
+        startIso: scheduledAt,
+        endIso: endsAt,
+        timezone: dto.timezone ?? 'UTC',
+        inviteeIds,
+        guestEmails,
+      });
+
+    let meeting: Meeting;
+    try {
+      meeting = await this.repo.create({
+        project_id: dto.project_id ?? null,
+        host_id: hostId,
+        created_by: userId,
+        title: dto.title,
+        description: dto.description ?? null,
+        type: dto.type,
+        scheduled_at: scheduledAt,
+        ends_at: endsAt,
+        duration_minutes: durationMinutes,
+        status: 'scheduled',
+        video_provider: videoProvider,
+        meeting_url: meetingUrl,
+        google_event_id: googleEventId,
+        timezone: dto.timezone ?? null,
+        location: dto.location ?? null,
+        reminder_minutes: dto.reminder_minutes ?? null,
+      });
+    } catch (err) {
+      // Don't leave an orphaned Google event behind if the DB insert failed.
+      await this.safeDeleteGoogleEvent(hostId, googleEventId);
+      throw err;
+    }
+
     const participants: NewParticipant[] = [
       { user_id: userId, role: 'host', response: 'accepted' },
       ...inviteeIds.map((id) => ({
@@ -137,34 +162,59 @@ export class MeetingsService {
     const durationMinutes = dto.duration_minutes ?? DEFAULT_DURATION_MINUTES;
     const timezone = dto.timezone ?? 'UTC';
     const dtstart = new Date(startMs).toISOString();
+    const dtstartEnd = new Date(
+      startMs + durationMinutes * 60_000,
+    ).toISOString();
     const dtstartWall = wallFromUtc(dtstart, timezone);
     const rrule = dto.recurrence as string;
-    const { videoProvider, meetingUrl } = this.resolveVideo(dto);
     const { until, count } = parseUntilCount(rrule);
-
-    const series = await this.repo.createSeries({
-      project_id: dto.project_id ?? null,
-      created_by: userId,
-      host_id: userId,
-      title: dto.title,
-      description: dto.description ?? null,
-      type: dto.type,
-      duration_minutes: durationMinutes,
-      timezone,
-      video_provider: videoProvider,
-      meeting_url: meetingUrl,
-      location: dto.location ?? null,
-      reminder_minutes: dto.reminder_minutes ?? null,
-      rrule,
-      dtstart_wall: dtstartWall,
-      dtstart,
-      until,
-      count,
-      status: 'active',
-    });
 
     const inviteeIds = this.uniqueInvitees(dto.participant_ids, userId);
     const guestEmails = this.uniqueGuestEmails(dto.guest_emails);
+
+    // A recurring series maps to ONE native Google recurring event (the RRULE is
+    // sent to Google); every materialized instance shares its google_event_id.
+    const { videoProvider, meetingUrl, googleEventId } =
+      await this.provisionVideo(userId, dto, {
+        title: dto.title,
+        description: dto.description ?? null,
+        location: dto.location ?? null,
+        startIso: dtstart,
+        endIso: dtstartEnd,
+        timezone,
+        rrule,
+        inviteeIds,
+        guestEmails,
+      });
+
+    let series: MeetingSeries;
+    try {
+      series = await this.repo.createSeries({
+        project_id: dto.project_id ?? null,
+        created_by: userId,
+        host_id: userId,
+        title: dto.title,
+        description: dto.description ?? null,
+        type: dto.type,
+        duration_minutes: durationMinutes,
+        timezone,
+        video_provider: videoProvider,
+        meeting_url: meetingUrl,
+        google_event_id: googleEventId,
+        location: dto.location ?? null,
+        reminder_minutes: dto.reminder_minutes ?? null,
+        rrule,
+        dtstart_wall: dtstartWall,
+        dtstart,
+        until,
+        count,
+        status: 'active',
+      });
+    } catch (err) {
+      await this.safeDeleteGoogleEvent(userId, googleEventId);
+      throw err;
+    }
+
     const first = await this.materializeSeries(series, {
       inviteeIds,
       guestEmails,
@@ -231,6 +281,7 @@ export class MeetingsService {
         status: 'scheduled',
         video_provider: series.video_provider,
         meeting_url: series.meeting_url,
+        google_event_id: series.google_event_id,
         timezone: series.timezone,
         location: series.location,
         reminder_minutes: series.reminder_minutes,
@@ -324,6 +375,36 @@ export class MeetingsService {
       fromWall: wallFromUtc(cutoffIso, timezone),
     });
 
+    // Best-effort: reflect the template change on the shared Google master event.
+    if (
+      updated.video_provider === 'google_meet' &&
+      updated.google_event_id &&
+      updated.host_id
+    ) {
+      const host = updated.host_id;
+      const eventId = updated.google_event_id;
+      const gpatch: Partial<CalendarEventInput> = {
+        title: updated.title,
+        description: updated.description,
+        location: updated.location,
+        startIso: updated.dtstart,
+        endIso: new Date(
+          Date.parse(updated.dtstart) + updated.duration_minutes * 60_000,
+        ).toISOString(),
+        timezone: updated.timezone,
+        rrule: updated.rrule,
+      };
+      if (dto.participant_ids !== undefined || dto.guest_emails !== undefined) {
+        gpatch.attendeeEmails = await this.resolveAttendeeEmails(
+          this.seriesInviteeIds(meeting, dto),
+          this.seriesGuestEmails(meeting, dto),
+        );
+      }
+      await this.safeGoogle(() =>
+        this.googleCalendar.patchEvent(host, eventId, gpatch),
+      );
+    }
+
     await this.notifySeriesChange(userId, meeting, updated.title);
     return first ?? (await this.repo.findById(meeting.id)) ?? meeting;
   }
@@ -334,7 +415,9 @@ export class MeetingsService {
     meeting: Meeting,
     dto: UpdateMeetingDto,
   ): Promise<Meeting> {
-    const oldSeries = await this.repo.findSeriesById(meeting.series_id as string);
+    const oldSeries = await this.repo.findSeriesById(
+      meeting.series_id as string,
+    );
     if (!oldSeries) throw new NotFoundException('Meeting series not found.');
     const splitIso = meeting.scheduled_at;
 
@@ -351,6 +434,49 @@ export class MeetingsService {
     const rrule = dto.recurrence ?? oldSeries.rrule;
     const { until, count } = parseUntilCount(rrule);
     const video = this.resolveSeriesVideo(oldSeries, dto);
+    const durationMinutes = dto.duration_minutes ?? oldSeries.duration_minutes;
+
+    // Google: a following-split is a NEW series → a new recurring event (new Meet
+    // link). Truncate the old master (best-effort) and create a fresh one.
+    let meetingUrl = video.meetingUrl;
+    let googleEventId: string | null = null;
+    if (video.videoProvider === 'google_meet' && oldSeries.host_id) {
+      if (oldSeries.google_event_id) {
+        await this.safeGoogle(() =>
+          this.googleCalendar.truncateSeriesUntil(
+            oldSeries.host_id as string,
+            oldSeries.google_event_id as string,
+            oldSeries.rrule,
+            this.justBefore(splitIso),
+          ),
+        );
+      }
+      const provisioned = await this.provisionVideo(
+        oldSeries.host_id,
+        { video_option: 'google_meet' },
+        {
+          title: dto.title ?? oldSeries.title,
+          description:
+            dto.description !== undefined
+              ? (dto.description ?? null)
+              : oldSeries.description,
+          location:
+            dto.location !== undefined
+              ? (dto.location ?? null)
+              : oldSeries.location,
+          startIso: dtstart,
+          endIso: new Date(
+            Date.parse(dtstart) + durationMinutes * 60_000,
+          ).toISOString(),
+          timezone,
+          rrule,
+          inviteeIds: this.seriesInviteeIds(meeting, dto),
+          guestEmails: this.seriesGuestEmails(meeting, dto),
+        },
+      );
+      meetingUrl = provisioned.meetingUrl;
+      googleEventId = provisioned.googleEventId;
+    }
 
     const newSeries = await this.repo.createSeries({
       project_id: oldSeries.project_id,
@@ -362,10 +488,11 @@ export class MeetingsService {
           ? (dto.description ?? null)
           : oldSeries.description,
       type: dto.type ?? oldSeries.type,
-      duration_minutes: dto.duration_minutes ?? oldSeries.duration_minutes,
+      duration_minutes: durationMinutes,
       timezone,
       video_provider: video.videoProvider,
-      meeting_url: video.meetingUrl,
+      meeting_url: meetingUrl,
+      google_event_id: googleEventId,
       location:
         dto.location !== undefined
           ? (dto.location ?? null)
@@ -408,6 +535,23 @@ export class MeetingsService {
       !!series.meeting_url;
     if (keepJitsi) {
       return { videoProvider: 'jitsi', meetingUrl: series.meeting_url };
+    }
+    const keepGoogle =
+      dto.video_option === 'google_meet' &&
+      series.video_provider === 'google_meet' &&
+      !!series.meeting_url;
+    if (keepGoogle) {
+      return { videoProvider: 'google_meet', meetingUrl: series.meeting_url };
+    }
+    // Switching a series to/from Google Meet would require recreating the master
+    // event and re-materializing — out of scope for an in-place edit.
+    if (
+      dto.video_option === 'google_meet' ||
+      series.video_provider === 'google_meet'
+    ) {
+      throw new BadRequestException(
+        'Changing the video provider to or from Google Meet on a recurring series is not supported — recreate the series.',
+      );
     }
     return this.resolveVideo({
       video_option: dto.video_option,
@@ -528,9 +672,44 @@ export class MeetingsService {
       status: 'scheduled',
       video_provider: old.video_provider,
       meeting_url: old.meeting_url,
+      // Carry the Google event only for a one-off (a series instance reschedule
+      // detaches to a standalone row — leave it unlinked so a later cancel can't
+      // delete the whole series master).
+      google_event_id: old.series_id ? null : old.google_event_id,
       timezone: dto.timezone ?? old.timezone,
       reschedule_of: old.id,
     });
+
+    // Best-effort: move the existing Google event to the new time.
+    if (
+      old.video_provider === 'google_meet' &&
+      old.google_event_id &&
+      old.host_id
+    ) {
+      const move: Partial<CalendarEventInput> = {
+        startIso: scheduledAt,
+        endIso: endsAt,
+        timezone: dto.timezone ?? old.timezone ?? 'UTC',
+      };
+      if (old.series_id && old.recurrence_id) {
+        await this.safeGoogle(() =>
+          this.googleCalendar.patchInstance(
+            old.host_id as string,
+            old.google_event_id as string,
+            old.recurrence_id as string,
+            move,
+          ),
+        );
+      } else {
+        await this.safeGoogle(() =>
+          this.googleCalendar.patchEvent(
+            old.host_id as string,
+            old.google_event_id as string,
+            move,
+          ),
+        );
+      }
+    }
 
     await this.repo.addParticipants(
       created.id,
@@ -585,7 +764,9 @@ export class MeetingsService {
     // series so it won't re-materialize past the split.
     if (meeting.series_id && scope && scope !== 'this') {
       if (scope === 'all') {
-        await this.repo.updateSeries(meeting.series_id, { status: 'cancelled' });
+        await this.repo.updateSeries(meeting.series_id, {
+          status: 'cancelled',
+        });
         await this.repo.cancelSeriesInstances(meeting.series_id);
       } else {
         await this.repo.cancelSeriesInstances(
@@ -599,6 +780,42 @@ export class MeetingsService {
       }
     } else {
       await this.repo.update(id, { status: 'cancelled' });
+    }
+
+    // Best-effort: reflect the cancellation on Google Calendar.
+    if (
+      meeting.video_provider === 'google_meet' &&
+      meeting.google_event_id &&
+      meeting.host_id
+    ) {
+      const host = meeting.host_id;
+      const eventId = meeting.google_event_id;
+      if (meeting.series_id && scope === 'all') {
+        await this.safeGoogle(() =>
+          this.googleCalendar.deleteEvent(host, eventId),
+        );
+      } else if (meeting.series_id && scope === 'following') {
+        const series = await this.repo.findSeriesById(meeting.series_id);
+        if (series) {
+          await this.safeGoogle(() =>
+            this.googleCalendar.truncateSeriesUntil(
+              host,
+              eventId,
+              series.rrule,
+              this.justBefore(meeting.scheduled_at),
+            ),
+          );
+        }
+      } else if (meeting.series_id && meeting.recurrence_id) {
+        const recurrenceId = meeting.recurrence_id;
+        await this.safeGoogle(() =>
+          this.googleCalendar.cancelInstance(host, eventId, recurrenceId),
+        );
+      } else if (!meeting.series_id) {
+        await this.safeGoogle(() =>
+          this.googleCalendar.deleteEvent(host, eventId),
+        );
+      }
     }
 
     const notifyIds = (meeting.participants ?? [])
@@ -624,7 +841,9 @@ export class MeetingsService {
       (p) => p.user_id === userId,
     );
     if (!participant) {
-      throw new ForbiddenException('You are not a participant of this meeting.');
+      throw new ForbiddenException(
+        'You are not a participant of this meeting.',
+      );
     }
 
     const updated = await this.repo.setParticipantResponse(
@@ -685,7 +904,8 @@ export class MeetingsService {
 
     const patch: Partial<Meeting> = {};
     if (dto.title !== undefined) patch.title = dto.title;
-    if (dto.description !== undefined) patch.description = dto.description ?? null;
+    if (dto.description !== undefined)
+      patch.description = dto.description ?? null;
     if (dto.type !== undefined) patch.type = dto.type;
     if (dto.timezone !== undefined) patch.timezone = dto.timezone ?? null;
     if (dto.location !== undefined) patch.location = dto.location ?? null;
@@ -723,20 +943,27 @@ export class MeetingsService {
       timeChanged = true;
     }
 
-    // Video option change. Keep an existing Jitsi room when the provider is
-    // unchanged; otherwise resolve fresh (a new Jitsi room / pasted link).
+    // Video option change. Keep an existing Jitsi room / Google Meet event when
+    // the provider is unchanged; switching to google_meet creates a fresh event,
+    // switching away best-effort deletes the old one.
     if (dto.video_option !== undefined) {
-      const keepJitsi =
-        dto.video_option === 'jitsi' &&
-        meeting.video_provider === 'jitsi' &&
-        !!meeting.meeting_url;
-      if (!keepJitsi) {
-        const { videoProvider, meetingUrl } = this.resolveVideo({
-          video_option: dto.video_option,
-          meeting_url: dto.meeting_url,
-        });
-        patch.video_provider = videoProvider;
-        patch.meeting_url = meetingUrl;
+      const effectiveStart = patch.scheduled_at ?? meeting.scheduled_at;
+      const effectiveEnd = patch.ends_at ?? meeting.ends_at ?? effectiveStart;
+      const effectiveTz =
+        dto.timezone !== undefined
+          ? (dto.timezone ?? 'UTC')
+          : (meeting.timezone ?? 'UTC');
+      const video = await this.resolveVideoForEdit(meeting, dto, {
+        startIso: effectiveStart,
+        endIso: effectiveEnd,
+        timezone: effectiveTz,
+        inviteeIds: this.seriesInviteeIds(meeting, dto),
+        guestEmails: this.seriesGuestEmails(meeting, dto),
+      });
+      if (video) {
+        patch.video_provider = video.videoProvider;
+        patch.meeting_url = video.meetingUrl;
+        patch.google_event_id = video.googleEventId;
       }
     } else if (
       dto.meeting_url !== undefined &&
@@ -761,6 +988,13 @@ export class MeetingsService {
     await this.syncParticipants(meeting, dto, userId);
 
     const updated = (await this.repo.findById(id)) ?? meeting;
+
+    // Best-effort: propagate field/time/attendee changes to an existing Google
+    // event. Skipped when the video option itself changed (resolveVideoForEdit
+    // already created/replaced the event above with the new values).
+    if (dto.video_option === undefined) {
+      await this.propagateGoogleForOccurrence(updated, dto);
+    }
 
     if (timeChanged) {
       const notifyIds = (meeting.participants ?? [])
@@ -810,6 +1044,235 @@ export class MeetingsService {
       .get<string>('JITSI_BASE_URL', 'https://meet.jit.si')
       .replace(/\/+$/, '');
     return `${base}/proyekto-${randomUUID()}`;
+  }
+
+  // ── Google Calendar integration ─────────────────────────────────────────────
+
+  /**
+   * Resolve the video fields to persist. For 'google_meet' this creates a real
+   * Google Calendar event (Meet link + attendees) on the organizer's calendar —
+   * fail-loud if Google isn't enabled, the organizer isn't connected, or the API
+   * errors. Every other option delegates to the synchronous resolver.
+   */
+  private async provisionVideo(
+    hostId: string,
+    input: { video_option?: VideoOption; meeting_url?: string },
+    event: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      startIso: string;
+      endIso: string;
+      timezone: string;
+      rrule?: string | null;
+      inviteeIds: string[];
+      guestEmails: string[];
+    },
+  ): Promise<{
+    videoProvider: VideoOption;
+    meetingUrl: string | null;
+    googleEventId: string | null;
+  }> {
+    if (input.video_option !== 'google_meet') {
+      return { ...this.resolveVideo(input), googleEventId: null };
+    }
+    if (!this.googleCalendar.isEnabled()) {
+      throw new BadRequestException('Google Meet is not available.');
+    }
+    if (!(await this.googleCalendar.isConnected(hostId))) {
+      throw new BadRequestException(
+        'Connect your Google account to create a Google Meet link.',
+      );
+    }
+    const attendeeEmails = await this.resolveAttendeeEmails(
+      event.inviteeIds,
+      event.guestEmails,
+    );
+    try {
+      const { meetingUrl, googleEventId } =
+        await this.googleCalendar.createEvent(hostId, {
+          title: event.title,
+          description: event.description ?? null,
+          location: event.location ?? null,
+          startIso: event.startIso,
+          endIso: event.endIso,
+          timezone: event.timezone,
+          attendeeEmails,
+          rrule: event.rrule ?? null,
+        });
+      return { videoProvider: 'google_meet', meetingUrl, googleEventId };
+    } catch (err) {
+      throw new BadGatewayException(
+        `Could not create the Google Meet link: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Resolve video fields when the option changes on edit. Returns null to leave
+   * the video untouched (unchanged Jitsi room / Google event). Switching to
+   * google_meet creates a fresh event; switching away best-effort deletes the
+   * previous one.
+   */
+  private async resolveVideoForEdit(
+    meeting: Meeting,
+    dto: UpdateMeetingDto,
+    event: {
+      startIso: string;
+      endIso: string;
+      timezone: string;
+      inviteeIds: string[];
+      guestEmails: string[];
+    },
+  ): Promise<{
+    videoProvider: VideoOption;
+    meetingUrl: string | null;
+    googleEventId: string | null;
+  } | null> {
+    const keepJitsi =
+      dto.video_option === 'jitsi' &&
+      meeting.video_provider === 'jitsi' &&
+      !!meeting.meeting_url;
+    if (keepJitsi) return null;
+
+    const keepGoogle =
+      dto.video_option === 'google_meet' &&
+      meeting.video_provider === 'google_meet' &&
+      !!meeting.google_event_id;
+    if (keepGoogle) return null;
+
+    if (dto.video_option === 'google_meet') {
+      return this.provisionVideo(
+        meeting.host_id ?? meeting.created_by ?? '',
+        { video_option: 'google_meet' },
+        {
+          title: dto.title ?? meeting.title,
+          description:
+            dto.description !== undefined
+              ? (dto.description ?? null)
+              : meeting.description,
+          location:
+            dto.location !== undefined
+              ? (dto.location ?? null)
+              : meeting.location,
+          startIso: event.startIso,
+          endIso: event.endIso,
+          timezone: event.timezone,
+          inviteeIds: event.inviteeIds,
+          guestEmails: event.guestEmails,
+        },
+      );
+    }
+
+    // jitsi / external_link / none — resolve synchronously; drop any old event.
+    const resolved = this.resolveVideo({
+      video_option: dto.video_option,
+      meeting_url: dto.meeting_url,
+    });
+    if (meeting.video_provider === 'google_meet' && meeting.google_event_id) {
+      await this.safeDeleteGoogleEvent(
+        meeting.host_id,
+        meeting.google_event_id,
+      );
+    }
+    return { ...resolved, googleEventId: null };
+  }
+
+  /** Resolve attendee emails (invitee profiles + guest emails) for a Google event. */
+  private async resolveAttendeeEmails(
+    inviteeIds: string[],
+    guestEmails: string[],
+  ): Promise<string[]> {
+    const userEmails = inviteeIds.length
+      ? await this.repo.getEmailsForUserIds(inviteeIds)
+      : [];
+    return [
+      ...new Set(
+        [...userEmails, ...guestEmails].map((e) => e.trim().toLowerCase()),
+      ),
+    ];
+  }
+
+  private async attendeeEmailsFromMeeting(meeting: Meeting): Promise<string[]> {
+    const parts = meeting.participants ?? [];
+    const inviteeIds = parts
+      .filter((p) => p.user_id && p.role !== 'host')
+      .map((p) => p.user_id as string);
+    const guestEmails = parts
+      .filter((p) => !p.user_id && p.guest_email)
+      .map((p) => p.guest_email as string);
+    return this.resolveAttendeeEmails(inviteeIds, guestEmails);
+  }
+
+  /** Best-effort PATCH of an existing Google event when a non-video field changed. */
+  private async propagateGoogleForOccurrence(
+    meeting: Meeting,
+    dto: UpdateMeetingDto,
+  ): Promise<void> {
+    if (
+      meeting.video_provider !== 'google_meet' ||
+      !meeting.google_event_id ||
+      !meeting.host_id
+    ) {
+      return;
+    }
+    const patch: Partial<CalendarEventInput> = {};
+    if (dto.title !== undefined) patch.title = meeting.title;
+    if (dto.description !== undefined) patch.description = meeting.description;
+    if (dto.location !== undefined) patch.location = meeting.location;
+    if (
+      dto.scheduled_at !== undefined ||
+      dto.duration_minutes !== undefined ||
+      dto.timezone !== undefined
+    ) {
+      patch.startIso = meeting.scheduled_at;
+      patch.endIso = meeting.ends_at ?? meeting.scheduled_at;
+      patch.timezone = meeting.timezone ?? 'UTC';
+    }
+    if (dto.participant_ids !== undefined || dto.guest_emails !== undefined) {
+      patch.attendeeEmails = await this.attendeeEmailsFromMeeting(meeting);
+    }
+    if (!Object.keys(patch).length) return;
+
+    const host = meeting.host_id;
+    const eventId = meeting.google_event_id;
+    if (meeting.series_id && meeting.recurrence_id) {
+      const recurrenceId = meeting.recurrence_id;
+      await this.safeGoogle(() =>
+        this.googleCalendar.patchInstance(host, eventId, recurrenceId, patch),
+      );
+    } else {
+      await this.safeGoogle(() =>
+        this.googleCalendar.patchEvent(host, eventId, patch),
+      );
+    }
+  }
+
+  private async safeDeleteGoogleEvent(
+    hostId: string | null,
+    eventId: string | null,
+  ): Promise<void> {
+    if (!hostId || !eventId) return;
+    await this.safeGoogle(() =>
+      this.googleCalendar.deleteEvent(hostId, eventId),
+    );
+  }
+
+  /** Run a best-effort Google Calendar op — never blocks the DB action. */
+  private async safeGoogle(op: () => Promise<void>): Promise<void> {
+    if (!this.googleCalendar.isEnabled()) return;
+    try {
+      await op();
+    } catch (err) {
+      this.logger.warn(
+        `Google Calendar sync failed (best-effort): ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /** One second before an ISO instant — an exclusive RRULE UNTIL boundary. */
+  private justBefore(iso: string): string {
+    return new Date(Date.parse(iso) - 1000).toISOString();
   }
 
   private async assertHostFree(
@@ -1033,7 +1496,10 @@ export class MeetingsService {
     await Promise.all(
       userIds.map(async (uid) => {
         try {
-          await this.notifications.createNotification({ ...base, user_id: uid });
+          await this.notifications.createNotification({
+            ...base,
+            user_id: uid,
+          });
         } catch {
           /* swallow — notification delivery is best-effort */
         }

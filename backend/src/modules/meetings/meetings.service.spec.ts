@@ -20,6 +20,7 @@ function makeRepo(): jest.Mocked<MeetingsRepository> {
     setParticipantResponse: jest.fn(),
     findOverlappingForHost: jest.fn().mockResolvedValue([]),
     getUserProjectIds: jest.fn().mockResolvedValue([]),
+    getEmailsForUserIds: jest.fn().mockResolvedValue([]),
     createSeries: jest.fn(),
     findSeriesById: jest.fn(),
     updateSeries: jest.fn(),
@@ -48,6 +49,22 @@ const notifications = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const config = { get: (_k: string, d: unknown) => d } as any;
 
+// Google Calendar mock. Default disabled so the existing (non-google) tests never
+// touch the Google path; the google tests flip isEnabled/isConnected per case.
+function makeGoogle() {
+  return {
+    isEnabled: jest.fn().mockReturnValue(false),
+    isConnected: jest.fn().mockResolvedValue(false),
+    createEvent: jest.fn(),
+    patchEvent: jest.fn().mockResolvedValue(undefined),
+    patchInstance: jest.fn().mockResolvedValue(undefined),
+    cancelInstance: jest.fn().mockResolvedValue(undefined),
+    truncateSeriesUntil: jest.fn().mockResolvedValue(undefined),
+    deleteEvent: jest.fn().mockResolvedValue(undefined),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
+
 function baseMeeting(overrides: Partial<Meeting> = {}): Meeting {
   return {
     id: 'm1',
@@ -63,6 +80,7 @@ function baseMeeting(overrides: Partial<Meeting> = {}): Meeting {
     status: 'scheduled',
     video_provider: 'jitsi',
     meeting_url: 'https://meet.jit.si/proyekto-x',
+    google_event_id: null,
     timezone: null,
     location: null,
     reminder_minutes: null,
@@ -83,11 +101,20 @@ function baseMeeting(overrides: Partial<Meeting> = {}): Meeting {
 describe('MeetingsService', () => {
   let repo: jest.Mocked<MeetingsRepository>;
   let service: MeetingsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let google: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     repo = makeRepo();
-    service = new MeetingsService(repo, authorization, notifications, config);
+    google = makeGoogle();
+    service = new MeetingsService(
+      repo,
+      authorization,
+      notifications,
+      config,
+      google,
+    );
   });
 
   it('auto-generates a Jitsi room when no video option or url is given', async () => {
@@ -103,24 +130,37 @@ describe('MeetingsService', () => {
 
     const createArg = repo.create.mock.calls[0][0];
     expect(createArg.video_provider).toBe('jitsi');
-    expect(createArg.meeting_url).toMatch(/^https:\/\/meet\.jit\.si\/proyekto-/);
+    expect(createArg.meeting_url).toMatch(
+      /^https:\/\/meet\.jit\.si\/proyekto-/,
+    );
     expect(createArg.ends_at).toBe('2026-07-10T10:30:00.000Z');
 
     // Host + exactly one deduped invitee (creator not re-added as attendee).
     const participants = repo.addParticipants.mock.calls[0][1];
     expect(participants).toHaveLength(2);
-    expect(participants[0]).toMatchObject({ role: 'host', response: 'accepted' });
-    expect(participants[1]).toMatchObject({ user_id: 'user-2', role: 'attendee' });
+    expect(participants[0]).toMatchObject({
+      role: 'host',
+      response: 'accepted',
+    });
+    expect(participants[1]).toMatchObject({
+      user_id: 'user-2',
+      role: 'attendee',
+    });
 
     // One invite notification (to the single invitee).
     expect(notifications.createNotification).toHaveBeenCalledTimes(1);
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_invited' }),
+      expect.objectContaining({
+        user_id: 'user-2',
+        type_name: 'meeting_invited',
+      }),
     );
   });
 
   it('stores an organizer-pasted external link', async () => {
-    repo.create.mockResolvedValue(baseMeeting({ video_provider: 'external_link' }));
+    repo.create.mockResolvedValue(
+      baseMeeting({ video_provider: 'external_link' }),
+    );
     repo.findById.mockResolvedValue(baseMeeting());
 
     await service.create('user-1', {
@@ -137,7 +177,9 @@ describe('MeetingsService', () => {
   });
 
   it('rejects a booking that collides with an existing scheduled meeting', async () => {
-    repo.findOverlappingForHost.mockResolvedValue([baseMeeting({ id: 'other' })]);
+    repo.findOverlappingForHost.mockResolvedValue([
+      baseMeeting({ id: 'other' }),
+    ]);
 
     await expect(
       service.create('user-1', {
@@ -188,7 +230,10 @@ describe('MeetingsService', () => {
     expect(copied.find((p) => p.role === 'attendee')?.response).toBe('pending');
     // Other participant notified of the reschedule.
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_rescheduled' }),
+      expect.objectContaining({
+        user_id: 'user-2',
+        type_name: 'meeting_rescheduled',
+      }),
     );
   });
 
@@ -237,7 +282,10 @@ describe('MeetingsService', () => {
       expect.objectContaining({ user_id: 'user-3', role: 'attendee' }),
     ]);
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-3', type_name: 'meeting_invited' }),
+      expect.objectContaining({
+        user_id: 'user-3',
+        type_name: 'meeting_invited',
+      }),
     );
   });
 
@@ -264,6 +312,7 @@ describe('MeetingsService', () => {
       timezone: 'UTC',
       video_provider: 'jitsi' as const,
       meeting_url: 'https://meet.jit.si/proyekto-x',
+      google_event_id: null,
       location: null,
       reminder_minutes: null,
       rrule: 'FREQ=DAILY;COUNT=3',
@@ -305,7 +354,10 @@ describe('MeetingsService', () => {
     // Exactly one invite notification (per invitee, not per instance).
     expect(notifications.createNotification).toHaveBeenCalledTimes(1);
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_invited' }),
+      expect.objectContaining({
+        user_id: 'user-2',
+        type_name: 'meeting_invited',
+      }),
     );
     expect(result.series_id).toBe('s1');
   });
@@ -315,7 +367,9 @@ describe('MeetingsService', () => {
 
     await service.cancel('user-1', 'm1', 'all');
 
-    expect(repo.updateSeries).toHaveBeenCalledWith('s1', { status: 'cancelled' });
+    expect(repo.updateSeries).toHaveBeenCalledWith('s1', {
+      status: 'cancelled',
+    });
     expect(repo.cancelSeriesInstances).toHaveBeenCalledWith('s1');
   });
 
@@ -355,7 +409,12 @@ describe('MeetingsService', () => {
       // 10 min out with a 30-min reminder → the lead time has passed.
       scheduled_at: new Date(Date.now() + 10 * 60_000).toISOString(),
       participants: [
-        participant({ id: 'p1', user_id: 'user-1', role: 'host', response: 'accepted' }),
+        participant({
+          id: 'p1',
+          user_id: 'user-1',
+          role: 'host',
+          response: 'accepted',
+        }),
         participant({ id: 'p2', user_id: 'user-2' }),
         participant({ id: 'p3', guest_email: 'guest@example.com' }), // no user_id
       ],
@@ -365,14 +424,23 @@ describe('MeetingsService', () => {
 
     const res = await service.dispatchReminders();
 
-    expect(repo.claimReminders).toHaveBeenCalledWith(['m1'], expect.any(String));
+    expect(repo.claimReminders).toHaveBeenCalledWith(
+      ['m1'],
+      expect.any(String),
+    );
     // Host + attendee-with-account notified; the email-only guest is skipped.
     expect(notifications.createNotification).toHaveBeenCalledTimes(2);
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-1', type_name: 'meeting_reminder' }),
+      expect.objectContaining({
+        user_id: 'user-1',
+        type_name: 'meeting_reminder',
+      }),
     );
     expect(notifications.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_reminder' }),
+      expect.objectContaining({
+        user_id: 'user-2',
+        type_name: 'meeting_reminder',
+      }),
     );
     expect(res).toEqual({ due: 1, notified: 2 });
   });
@@ -383,7 +451,9 @@ describe('MeetingsService', () => {
       reminder_minutes: 15,
       // 60 min out with a 15-min reminder → not due for another 45 min.
       scheduled_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-      participants: [participant({ id: 'p1', user_id: 'user-1', role: 'host' })],
+      participants: [
+        participant({ id: 'p1', user_id: 'user-1', role: 'host' }),
+      ],
     });
     repo.findReminderCandidates.mockResolvedValue([notYet]);
 
@@ -399,7 +469,9 @@ describe('MeetingsService', () => {
       id: 'm1',
       reminder_minutes: 30,
       scheduled_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-      participants: [participant({ id: 'p1', user_id: 'user-1', role: 'host' })],
+      participants: [
+        participant({ id: 'p1', user_id: 'user-1', role: 'host' }),
+      ],
     });
     repo.findReminderCandidates.mockResolvedValue([due]);
     repo.claimReminders.mockResolvedValue([]); // lost the claim race
@@ -408,5 +480,202 @@ describe('MeetingsService', () => {
 
     expect(notifications.createNotification).not.toHaveBeenCalled();
     expect(res).toEqual({ due: 0, notified: 0 });
+  });
+
+  // ── Google Meet ────────────────────────────────────────────────────────────
+
+  const googleCreateDto = {
+    title: 'Sync',
+    type: 'status_sync' as const,
+    scheduled_at: '2026-07-10T10:00:00.000Z',
+    timezone: 'Australia/Sydney',
+    video_option: 'google_meet' as const,
+    participant_ids: ['user-2'],
+    guest_emails: ['ext@example.com'],
+  };
+
+  it('rejects a google_meet booking when Google OAuth is disabled', async () => {
+    google.isEnabled.mockReturnValue(false);
+
+    await expect(
+      service.create('user-1', googleCreateDto),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a google_meet booking when the organizer is not connected', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(false);
+
+    await expect(
+      service.create('user-1', googleCreateDto),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('creates a Google Meet event and persists the link + event id', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(true);
+    google.createEvent.mockResolvedValue({
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      googleEventId: 'ev-1',
+    });
+    repo.getEmailsForUserIds.mockResolvedValue(['user2@example.com']);
+    repo.create.mockResolvedValue(
+      baseMeeting({
+        video_provider: 'google_meet',
+        meeting_url: 'https://meet.google.com/abc-defg-hij',
+        google_event_id: 'ev-1',
+      }),
+    );
+    repo.findById.mockResolvedValue(baseMeeting());
+
+    await service.create('user-1', googleCreateDto);
+
+    // Attendee emails resolved from invitees + guests (host excluded from invitees).
+    expect(repo.getEmailsForUserIds).toHaveBeenCalledWith(['user-2']);
+    expect(google.createEvent).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        title: 'Sync',
+        timezone: 'Australia/Sydney',
+        rrule: null,
+        attendeeEmails: expect.arrayContaining([
+          'user2@example.com',
+          'ext@example.com',
+        ]),
+      }),
+    );
+    const createArg = repo.create.mock.calls[0][0];
+    expect(createArg.video_provider).toBe('google_meet');
+    expect(createArg.meeting_url).toBe('https://meet.google.com/abc-defg-hij');
+    expect(createArg.google_event_id).toBe('ev-1');
+  });
+
+  it('deletes the orphaned Google event if the DB insert fails', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(true);
+    google.createEvent.mockResolvedValue({
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      googleEventId: 'ev-1',
+    });
+    repo.create.mockRejectedValue(new Error('unique_violation'));
+
+    await expect(service.create('user-1', googleCreateDto)).rejects.toThrow();
+    expect(google.deleteEvent).toHaveBeenCalledWith('user-1', 'ev-1');
+  });
+
+  it('sends a recurring RRULE to Google for a google_meet series', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(true);
+    google.createEvent.mockResolvedValue({
+      meetingUrl: 'https://meet.google.com/xyz',
+      googleEventId: 'ev-series',
+    });
+    repo.createSeries.mockResolvedValue({
+      id: 's1',
+      project_id: null,
+      created_by: 'user-1',
+      host_id: 'user-1',
+      title: 'Standup',
+      description: null,
+      type: 'status_sync',
+      duration_minutes: 30,
+      timezone: 'UTC',
+      video_provider: 'google_meet',
+      meeting_url: 'https://meet.google.com/xyz',
+      google_event_id: 'ev-series',
+      location: null,
+      reminder_minutes: null,
+      rrule: 'FREQ=DAILY;COUNT=2',
+      dtstart_wall: '2026-07-10T10:00:00',
+      dtstart: '2026-07-10T10:00:00.000Z',
+      until: null,
+      count: 2,
+      status: 'active',
+      materialized_until: null,
+      created_at: '',
+      updated_at: '',
+    });
+    repo.insertInstanceIgnoreConflict.mockImplementation((row) =>
+      Promise.resolve(baseMeeting({ id: `inst-${row.recurrence_id}` })),
+    );
+
+    await service.create('user-1', {
+      title: 'Standup',
+      type: 'status_sync',
+      scheduled_at: '2026-07-10T10:00:00.000Z',
+      timezone: 'UTC',
+      recurrence: 'FREQ=DAILY;COUNT=2',
+      video_option: 'google_meet',
+    });
+
+    expect(google.createEvent).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ rrule: 'FREQ=DAILY;COUNT=2' }),
+    );
+    // Every materialized instance carries the shared master event id.
+    const instanceArg = repo.insertInstanceIgnoreConflict.mock.calls[0][0];
+    expect(instanceArg.google_event_id).toBe('ev-series');
+  });
+
+  it('cancel of a one-off google_meet deletes the Google event', async () => {
+    google.isEnabled.mockReturnValue(true);
+    repo.findById.mockResolvedValue(
+      baseMeeting({ video_provider: 'google_meet', google_event_id: 'ev-1' }),
+    );
+
+    await service.cancel('user-1', 'm1');
+
+    expect(google.deleteEvent).toHaveBeenCalledWith('user-1', 'ev-1');
+  });
+
+  it('cancel scope=all of a google_meet series deletes the master event', async () => {
+    google.isEnabled.mockReturnValue(true);
+    repo.findById.mockResolvedValue(
+      baseMeeting({
+        series_id: 's1',
+        video_provider: 'google_meet',
+        google_event_id: 'ev-series',
+      }),
+    );
+
+    await service.cancel('user-1', 'm1', 'all');
+
+    expect(google.deleteEvent).toHaveBeenCalledWith('user-1', 'ev-series');
+  });
+
+  it('cancel scope=this of a google_meet occurrence cancels only that instance', async () => {
+    google.isEnabled.mockReturnValue(true);
+    repo.findById.mockResolvedValue(
+      baseMeeting({
+        series_id: 's1',
+        recurrence_id: '2026-07-20T10:00:00.000Z',
+        video_provider: 'google_meet',
+        google_event_id: 'ev-series',
+      }),
+    );
+
+    await service.cancel('user-1', 'm1', 'this');
+
+    expect(google.cancelInstance).toHaveBeenCalledWith(
+      'user-1',
+      'ev-series',
+      '2026-07-20T10:00:00.000Z',
+    );
+    expect(google.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  it('best-effort: a Google sync failure on cancel does not block the DB cancel', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.deleteEvent.mockRejectedValue(new Error('google down'));
+    repo.findById.mockResolvedValue(
+      baseMeeting({ video_provider: 'google_meet', google_event_id: 'ev-1' }),
+    );
+
+    await expect(service.cancel('user-1', 'm1')).resolves.toBeDefined();
+    expect(repo.update).toHaveBeenCalledWith('m1', { status: 'cancelled' });
   });
 });

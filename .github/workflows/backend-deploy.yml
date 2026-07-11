@@ -33,6 +33,7 @@ jobs:
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
       MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
+      GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
 
     steps:
       - name: Checkout
@@ -123,6 +124,21 @@ jobs:
             echo "Meeting reminder cron secret enabled for this deploy."
           else
             echo "Meeting reminders disabled (create MEETINGS_CRON_SECRET secret, then set the MEETINGS_REMINDERS_ENABLED repo var to enable)."
+          fi
+
+          # Google Calendar / Meet per-user OAuth (meeting scheduling Phase 5).
+          # Gated on the GOOGLE_OAUTH_ENABLED repo var. The redirect URI is derived
+          # from PUBLIC_API_URL (not a secret). To enable: create the
+          # GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_TOKEN_ENC_KEY
+          # secrets in Secret Manager (grant the runtime SA secretAccessor), then set
+          # the GOOGLE_OAUTH_ENABLED repo var. Until then the Google Meet option is
+          # hidden and nothing changes.
+          if [[ -n "${GOOGLE_OAUTH_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},GOOGLE_OAUTH_ENABLED=true,GOOGLE_OAUTH_REDIRECT_URI=${PUBLIC_API_URL_VALUE}/api/meetings/google/callback"
+            SECRETS="${SECRETS},GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,GOOGLE_TOKEN_ENC_KEY=GOOGLE_TOKEN_ENC_KEY:latest"
+            echo "Google Calendar/Meet OAuth enabled for this deploy."
+          else
+            echo "Google OAuth disabled (create the GOOGLE_OAUTH_* secrets, then set the GOOGLE_OAUTH_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

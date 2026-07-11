@@ -39,8 +39,16 @@ export const MEETING_STATUSES = [
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 
 // How the join link is produced. 'jitsi' auto-generates a no-auth room,
-// 'external_link' stores an organizer-pasted URL, 'none' has no video.
-export const VIDEO_OPTIONS = ['none', 'jitsi', 'external_link'] as const;
+// 'external_link' stores an organizer-pasted URL, 'none' has no video,
+// 'google_meet' provisions a real Meet link via the organizer's connected
+// Google account (runtime-gated: rejected unless GOOGLE_OAUTH is enabled AND the
+// organizer is connected — see MeetingsService.provisionVideo).
+export const VIDEO_OPTIONS = [
+  'none',
+  'jitsi',
+  'external_link',
+  'google_meet',
+] as const;
 export type VideoOption = (typeof VIDEO_OPTIONS)[number];
 
 export const PARTICIPANT_RESPONSES = [
@@ -79,16 +87,23 @@ export class CreateMeetingDto {
   @IsOptional() @IsUrl({ require_tld: false }) meeting_url?: string;
 
   // Other project members to invite (the creator is added automatically as host).
-  @IsOptional() @IsArray() @IsUUID('all', { each: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
   participant_ids?: string[];
 
   // External (non-user) guests to invite by email.
-  @IsOptional() @IsArray() @IsEmail({}, { each: true })
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
   guest_emails?: string[];
 
   @IsOptional() @IsString() @MaxLength(300) location?: string;
 
-  @IsOptional() @IsInt() @Min(0) @Max(MAX_REMINDER_MINUTES)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_REMINDER_MINUTES)
   reminder_minutes?: number;
 
   // RFC-5545 rule body (no DTSTART) — when present, a recurring series is created.
@@ -112,13 +127,20 @@ export class UpdateMeetingDto {
   @IsOptional() @IsInt() @Min(5) @Max(1440) duration_minutes?: number;
   @IsOptional() @IsString() @MaxLength(64) timezone?: string;
   @IsOptional() @IsString() @MaxLength(300) location?: string;
-  @IsOptional() @IsInt() @Min(0) @Max(MAX_REMINDER_MINUTES)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_REMINDER_MINUTES)
   reminder_minutes?: number;
   @IsOptional() @IsIn(VIDEO_OPTIONS) video_option?: VideoOption;
   @IsOptional() @IsUrl({ require_tld: false }) meeting_url?: string;
-  @IsOptional() @IsArray() @IsUUID('all', { each: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
   participant_ids?: string[];
-  @IsOptional() @IsArray() @IsEmail({}, { each: true })
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
   guest_emails?: string[];
   // New pattern when editing a series with scope 'all' / 'following'.
   @IsOptional() @IsString() @MaxLength(2000) recurrence?: string;

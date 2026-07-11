@@ -256,6 +256,35 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   MEETINGS_CRON_SECRET?: string;
+
+  // ── Google Calendar / Meet OAuth (per-user; meeting scheduling Phase 5) ─────
+  // All optional so the feature ships dark: unless GOOGLE_OAUTH_ENABLED==='true'
+  // AND the client id/secret are present, the Google Meet option is hidden and
+  // nothing changes. Distinct from the GMAIL_* / GOOGLE_* credentials the mailer
+  // uses — do NOT reuse those names here.
+  @IsOptional()
+  @IsString()
+  GOOGLE_OAUTH_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  GOOGLE_OAUTH_CLIENT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  GOOGLE_OAUTH_CLIENT_SECRET?: string;
+
+  // Must equal the redirect URI registered on the Google OAuth client, e.g.
+  // https://api.proyekto.tech/api/meetings/google/callback (note the /api prefix).
+  @IsOptional()
+  @IsString()
+  GOOGLE_OAUTH_REDIRECT_URI?: string;
+
+  // Base64-encoded 32-byte AES-256-GCM key encrypting stored refresh tokens at
+  // rest. Unset (or wrong length) = tokens stored in plaintext (dev only).
+  @IsOptional()
+  @IsString()
+  GOOGLE_TOKEN_ENC_KEY?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

@@ -29,6 +29,7 @@ export interface Meeting {
   status: MeetingStatus;
   video_provider: VideoOption | 'google_meet';
   meeting_url: string | null;
+  google_event_id: string | null;
   timezone: string | null;
   location: string | null;
   reminder_minutes: number | null;
@@ -58,6 +59,7 @@ export interface MeetingSeries {
   timezone: string;
   video_provider: VideoOption | 'google_meet';
   meeting_url: string | null;
+  google_event_id: string | null;
   location: string | null;
   reminder_minutes: number | null;
   rrule: string;
@@ -121,6 +123,8 @@ export interface MeetingsRepository {
   ): Promise<Meeting[]>;
   // Project ids the user participates in (project_access ∪ client/consultant).
   getUserProjectIds(userId: string): Promise<string[]>;
+  // Resolve profile emails for a set of user ids (Google Calendar attendees).
+  getEmailsForUserIds(userIds: string[]): Promise<string[]>;
 
   // ── recurring series ──────────────────────────────────────────────────────
   createSeries(row: Partial<MeetingSeries>): Promise<MeetingSeries>;
@@ -152,7 +156,10 @@ export interface MeetingsRepository {
   // Upcoming, not-yet-reminded scheduled meetings (with participants) whose
   // scheduled_at falls in (nowIso, maxAheadIso]; the caller narrows to those
   // actually due by reminder_minutes.
-  findReminderCandidates(nowIso: string, maxAheadIso: string): Promise<Meeting[]>;
+  findReminderCandidates(
+    nowIso: string,
+    maxAheadIso: string,
+  ): Promise<Meeting[]>;
   // Atomically claim reminders: stamp reminder_sent_at for the given ids that are
   // still unsent, returning the ids this call won (race-safe against overlapping
   // cron runs).
