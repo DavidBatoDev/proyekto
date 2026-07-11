@@ -20,7 +20,9 @@ export type MeetingType =
 
 export type VideoProvider = "none" | "external_link" | "jitsi" | "google_meet";
 
-export type VideoOption = "none" | "jitsi" | "external_link";
+// Editor-selectable options. 'google_meet' is only offered when Google OAuth is
+// enabled AND the organizer has connected their account (see googleCalendar).
+export type VideoOption = "none" | "jitsi" | "external_link" | "google_meet";
 
 export type ParticipantResponse =
 	| "pending"
@@ -51,6 +53,7 @@ export interface Meeting {
 	status: MeetingStatus;
 	video_provider: VideoProvider;
 	meeting_url: string | null;
+	google_event_id: string | null;
 	timezone: string | null;
 	location: string | null;
 	reminder_minutes: number | null;
@@ -254,6 +257,49 @@ export const meetingsService = {
 			return res.data.data;
 		} catch (e) {
 			throw extractError(e, "Failed to respond to meeting");
+		}
+	},
+};
+
+// ── Google Calendar / Meet connection ───────────────────────────────────────
+
+export interface GoogleCalendarStatus {
+	// False when the feature isn't enabled in this environment — the editor then
+	// hides the Google Meet option entirely.
+	enabled: boolean;
+	connected: boolean;
+	googleEmail?: string | null;
+}
+
+export const googleCalendarService = {
+	async status(): Promise<GoogleCalendarStatus> {
+		try {
+			const res = await apiClient.get<ApiResponse<GoogleCalendarStatus>>(
+				"/api/meetings/google/status",
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to load Google Calendar status");
+		}
+	},
+
+	// Returns the Google consent URL — the caller redirects the browser to it.
+	async connectUrl(): Promise<string> {
+		try {
+			const res = await apiClient.get<ApiResponse<{ url: string }>>(
+				"/api/meetings/google/connect",
+			);
+			return res.data.data.url;
+		} catch (e) {
+			throw extractError(e, "Failed to start Google connection");
+		}
+	},
+
+	async disconnect(): Promise<void> {
+		try {
+			await apiClient.delete("/api/meetings/google/connection");
+		} catch (e) {
+			throw extractError(e, "Failed to disconnect Google Calendar");
 		}
 	},
 };

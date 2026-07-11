@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
-import { useBookMeeting, useUpdateMeeting } from "@/hooks/useMeetings";
+import {
+	useBookMeeting,
+	useGoogleCalendarStatus,
+	useUpdateMeeting,
+} from "@/hooks/useMeetings";
 import {
 	diffMinutes,
 	localTimeZone,
@@ -31,6 +35,7 @@ import {
 } from "@/lib/datetime";
 import {
 	type CreateMeetingPayload,
+	googleCalendarService,
 	MEETING_TYPE_LABELS,
 	type Meeting,
 	type MeetingEditScope,
@@ -132,7 +137,9 @@ function initialState(
 					? "none"
 					: meeting.video_provider === "jitsi"
 						? "jitsi"
-						: "external_link",
+						: meeting.video_provider === "google_meet"
+							? "google_meet"
+							: "external_link",
 			meetingUrl: meeting.meeting_url ?? "",
 			selectedMembers: (meeting.participants ?? [])
 				.filter((p) => p.user_id && p.role !== "host")
@@ -187,6 +194,10 @@ export function MeetingEditorModal({
 	const bookMutation = useBookMeeting();
 	const updateMutation = useUpdateMeeting();
 	const isSaving = bookMutation.isPending || updateMutation.isPending;
+
+	// Only query Google status while the editor is open; drives the Meet option.
+	const { data: googleStatus } = useGoogleCalendarStatus(open);
+	const [connectingGoogle, setConnectingGoogle] = useState(false);
 
 	// Re-seed the form whenever the modal opens (or its target changes).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on open/target only.
@@ -254,6 +265,23 @@ export function MeetingEditorModal({
 		}
 	};
 
+	// Launch Google consent (full-page redirect). The backend callback returns to
+	// /meetings?google=connected, which the route surfaces as a toast.
+	const connectGoogle = async () => {
+		setConnectingGoogle(true);
+		setErrorMessage(null);
+		try {
+			window.location.href = await googleCalendarService.connectUrl();
+		} catch (err) {
+			setConnectingGoogle(false);
+			setErrorMessage(
+				err instanceof Error
+					? err.message
+					: "Couldn't start Google connection.",
+			);
+		}
+	};
+
 	const submit = () => {
 		setErrorMessage(null);
 		if (!form.title.trim()) {
@@ -269,6 +297,10 @@ export function MeetingEditorModal({
 		}
 		if (form.videoOption === "external_link" && !form.meetingUrl.trim()) {
 			setErrorMessage("Paste the meeting link, or pick another video option.");
+			return;
+		}
+		if (form.videoOption === "google_meet" && !googleStatus?.connected) {
+			setErrorMessage("Connect your Google account to use Google Meet.");
 			return;
 		}
 
@@ -435,6 +467,9 @@ export function MeetingEditorModal({
 								meetingUrl={form.meetingUrl}
 								onOptionChange={(o) => set("videoOption", o)}
 								onUrlChange={(u) => set("meetingUrl", u)}
+								googleStatus={googleStatus}
+								googleConnecting={connectingGoogle}
+								onConnectGoogle={connectGoogle}
 							/>
 						</Row>
 

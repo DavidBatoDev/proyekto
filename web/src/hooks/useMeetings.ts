@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { meetingKeys } from "@/queries/meetings";
 import {
 	type CreateMeetingPayload,
+	googleCalendarService,
 	type ListMeetingsParams,
 	type MeetingEditScope,
 	meetingsService,
@@ -91,5 +92,24 @@ export function useRespondMeeting() {
 			response: Exclude<ParticipantResponse, "pending">;
 		}) => meetingsService.respond(args.id, args.response),
 		onSuccess: invalidate,
+	});
+}
+
+/** The current user's Google Calendar connection status (drives the Meet option). */
+export function useGoogleCalendarStatus(enabled = true) {
+	return useQuery({
+		queryKey: meetingKeys.googleStatus(),
+		queryFn: () => googleCalendarService.status(),
+		enabled,
+		staleTime: 1000 * 60,
+	});
+}
+
+export function useDisconnectGoogleCalendar() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => googleCalendarService.disconnect(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: meetingKeys.googleStatus() }),
 	});
 }

@@ -4,7 +4,10 @@
  * and shown with its logo), or no video. Stores a VideoOption + meeting_url;
  * the brand is display-only (see providers.ts).
  */
-import type { VideoOption } from "@/services/meetings.service";
+import type {
+	GoogleCalendarStatus,
+	VideoOption,
+} from "@/services/meetings.service";
 import {
 	GoogleMeetLogo,
 	JitsiLogo,
@@ -20,6 +23,11 @@ interface VideoProviderPickerProps {
 	meetingUrl: string;
 	onOptionChange: (option: VideoOption) => void;
 	onUrlChange: (url: string) => void;
+	// Google Meet is offered only when OAuth is enabled; when it's selected but the
+	// organizer isn't connected, an inline Connect button launches consent.
+	googleStatus?: GoogleCalendarStatus;
+	googleConnecting?: boolean;
+	onConnectGoogle?: () => void;
 }
 
 export function VideoProviderPicker({
@@ -27,6 +35,9 @@ export function VideoProviderPicker({
 	meetingUrl,
 	onOptionChange,
 	onUrlChange,
+	googleStatus,
+	googleConnecting,
+	onConnectGoogle,
 }: VideoProviderPickerProps) {
 	const detected = detectProvider(meetingUrl);
 
@@ -39,6 +50,43 @@ export function VideoProviderPicker({
 				label="Generate a video room"
 				hint="A private Jitsi link is created automatically — no account needed."
 			/>
+
+			{googleStatus?.enabled && (
+				<OptionCard
+					selected={option === "google_meet"}
+					onSelect={() => onOptionChange("google_meet")}
+					icon={<GoogleMeetLogo className="h-6 w-6" />}
+					label="Google Meet"
+					hint={
+						googleStatus.connected
+							? "A Meet link + calendar invite is created on your Google Calendar."
+							: "Connect your Google account to generate a Meet link."
+					}
+				>
+					{option === "google_meet" && (
+						<div className="mt-2">
+							{googleStatus.connected ? (
+								<p className="text-xs text-gray-500">
+									Connected as{" "}
+									<span className="font-medium text-gray-700">
+										{googleStatus.googleEmail ?? "your Google account"}
+									</span>
+									. Guests receive a Google Calendar invite.
+								</p>
+							) : (
+								<button
+									type="button"
+									onClick={onConnectGoogle}
+									disabled={googleConnecting}
+									className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-60"
+								>
+									{googleConnecting ? "Connecting…" : "Connect Google Calendar"}
+								</button>
+							)}
+						</div>
+					)}
+				</OptionCard>
+			)}
 
 			<OptionCard
 				selected={option === "external_link"}
