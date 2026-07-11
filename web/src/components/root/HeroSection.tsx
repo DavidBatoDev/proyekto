@@ -50,7 +50,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
       {/* Legibility overlay so the white copy always reads over the footage */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-linear-to-b from-background/35 via-background/20 to-background/65"
+        className="absolute inset-0 bg-background/60"
       />
 
       <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-24 text-center">
