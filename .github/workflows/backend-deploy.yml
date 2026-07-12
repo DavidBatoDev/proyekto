@@ -34,6 +34,7 @@ jobs:
       OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
       MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
+      KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
 
     steps:
       - name: Checkout
@@ -124,6 +125,19 @@ jobs:
             echo "Meeting reminder cron secret enabled for this deploy."
           else
             echo "Meeting reminders disabled (create MEETINGS_CRON_SECRET secret, then set the MEETINGS_REMINDERS_ENABLED repo var to enable)."
+          fi
+
+          # Knowledge pipeline (roadmap AI RAG). Gated on the
+          # KNOWLEDGE_INGEST_ENABLED repo var. Enables the write-path outbox
+          # hooks + the Cloud Scheduler-driven /api/knowledge/cron/ingest
+          # endpoint. To enable: create the KNOWLEDGE_INGEST_SECRET secret in
+          # Secret Manager, then set the KNOWLEDGE_INGEST_ENABLED repo var.
+          if [[ -n "${KNOWLEDGE_INGEST_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},KNOWLEDGE_INGEST_ENABLED=true"
+            SECRETS="${SECRETS},KNOWLEDGE_INGEST_SECRET=KNOWLEDGE_INGEST_SECRET:latest"
+            echo "Knowledge ingest enabled for this deploy."
+          else
+            echo "Knowledge ingest disabled (create KNOWLEDGE_INGEST_SECRET secret, then set the KNOWLEDGE_INGEST_ENABLED repo var to enable)."
           fi
 
           # Google Calendar / Meet per-user OAuth (meeting scheduling Phase 5).
