@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -31,6 +32,13 @@ import {
 import { RoadmapAiService } from '../services/roadmap-ai.service';
 import { RoadmapAiMemoriesService } from '../services/roadmap-ai-memories.service';
 import { CreateRoadmapAiMemoryDto } from '../dto/roadmap-ai-memories.dto';
+import {
+  RoadmapAiKnowledgeSearchQueryDto,
+  RoadmapAiRelevantMemoriesQueryDto,
+} from '../dto/roadmap-ai-knowledge.dto';
+import { RoadmapAiKnowledgeService } from '../services/roadmap-ai-knowledge.service';
+import { RoadmapAiProjectMeetingsQueryDto } from '../dto/roadmap-ai-project-context.dto';
+import { RoadmapAiProjectContextService } from '../services/roadmap-ai-project-context.service';
 
 @Controller('roadmaps/:id/ai')
 @UseGuards(SupabaseAuthGuard)
@@ -38,6 +46,8 @@ export class RoadmapAiController {
   constructor(
     private readonly roadmapAiService: RoadmapAiService,
     private readonly memoriesService: RoadmapAiMemoriesService,
+    private readonly projectContextService: RoadmapAiProjectContextService,
+    private readonly knowledgeService: RoadmapAiKnowledgeService,
   ) {}
 
   @Post('preview')
@@ -89,12 +99,110 @@ export class RoadmapAiController {
     return this.roadmapAiService.getContextActor(roadmapId, user.id, traceId);
   }
 
+  @Get('context/project')
+  getProjectContext(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.projectContextService.getProjectContext(
+      roadmapId,
+      user.id,
+      traceId,
+    );
+  }
+
+  @Get('context/project/brief')
+  getProjectBrief(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.projectContextService.getProjectBrief(
+      roadmapId,
+      user.id,
+      traceId,
+    );
+  }
+
+  @Get('context/project/resources')
+  getProjectResources(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.projectContextService.getProjectResources(
+      roadmapId,
+      user.id,
+      traceId,
+    );
+  }
+
+  @Get('context/project/meetings')
+  getProjectMeetings(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiProjectMeetingsQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.projectContextService.getProjectMeetings(
+      roadmapId,
+      user.id,
+      query,
+      traceId,
+    );
+  }
+
+  @Get('context/project/members/:memberId')
+  getProjectMemberDetails(
+    @Param('id') roadmapId: string,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.projectContextService.getMemberDetails(
+      roadmapId,
+      memberId,
+      user.id,
+      traceId,
+    );
+  }
+
   @Get('memories')
   async listMemories(
     @Param('id') roadmapId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return { memories: await this.memoriesService.list(roadmapId, user.id) };
+  }
+
+  @Get('memories/relevant')
+  relevantMemories(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiRelevantMemoriesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.memoriesService.relevant(
+      roadmapId,
+      user.id,
+      query.query,
+      query.limit ?? 8,
+    );
+  }
+
+  @Get('context/knowledge-search')
+  searchKnowledge(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiKnowledgeSearchQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.knowledgeService.searchKnowledge(
+      roadmapId,
+      user,
+      query,
+      traceId,
+    );
   }
 
   @Post('memories')

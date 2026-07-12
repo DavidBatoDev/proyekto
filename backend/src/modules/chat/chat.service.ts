@@ -30,6 +30,7 @@ import {
   RealtimePublisher,
 } from '../realtime/realtime-publisher.service';
 import { AuditService } from '../audit/audit.service';
+import { KnowledgeOutboxService } from '../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
@@ -77,6 +78,7 @@ export class ChatService {
     private readonly audit: AuditService,
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
     private readonly notifications: NotificationsService,
+    private readonly knowledgeOutbox: KnowledgeOutboxService,
   ) {}
 
   /**
@@ -668,6 +670,12 @@ export class ChatService {
 
     this.fanoutChat(room.id, projectId, 'message');
     this.fireMentionNotifications(room, message, senderId, mentions);
+    this.knowledgeOutbox.enqueue({
+      sourceType: 'chat_message',
+      sourceId: message.id,
+      projectId,
+      op: 'upsert',
+    });
 
     return {
       room,
@@ -831,6 +839,14 @@ export class ChatService {
     });
 
     this.fanoutChat(message.room_id, message.project_id, 'message');
+    if (message.project_id) {
+      this.knowledgeOutbox.enqueue({
+        sourceType: 'chat_message',
+        sourceId: messageId,
+        projectId: message.project_id,
+        op: 'delete',
+      });
+    }
 
     return { ok: true };
   }
@@ -877,6 +893,14 @@ export class ChatService {
     });
 
     this.fanoutChat(message.room_id, message.project_id, 'message');
+    if (message.project_id) {
+      this.knowledgeOutbox.enqueue({
+        sourceType: 'chat_message',
+        sourceId: messageId,
+        projectId: message.project_id,
+        op: 'upsert',
+      });
+    }
 
     const reactionsByMessage = await this.chatRepo.listReactionsForMessages({
       messageIds: [messageId],

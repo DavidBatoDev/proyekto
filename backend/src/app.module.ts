@@ -34,6 +34,7 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -81,6 +82,7 @@ import { AppController } from './app.controller';
     RealtimePublisherModule,
     RealtimeModule,
     AuditModule,
+    KnowledgeModule,
   ],
 })
 export class AppModule {}

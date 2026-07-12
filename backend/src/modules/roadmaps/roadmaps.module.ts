@@ -39,7 +39,9 @@ import {
 import { RoadmapAiService } from './services/roadmap-ai.service';
 import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-store.service';
 import { RoadmapAiSessionsService } from './services/roadmap-ai-sessions.service';
+import { RoadmapAiKnowledgeService } from './services/roadmap-ai-knowledge.service';
 import { RoadmapAiMemoriesService } from './services/roadmap-ai-memories.service';
+import { RoadmapAiProjectContextService } from './services/roadmap-ai-project-context.service';
 import { RoadmapAiTitleGeneratorService } from './services/roadmap-ai-title-generator.service';
 import { RoadmapMetadataGeneratorService } from './services/roadmap-metadata-generator.service';
 
@@ -73,7 +75,9 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapAiService,
     RoadmapAiPreviewStoreService,
     RoadmapAiSessionsService,
+    RoadmapAiKnowledgeService,
     RoadmapAiMemoriesService,
+    RoadmapAiProjectContextService,
     RoadmapAiTitleGeneratorService,
     RoadmapMetadataGeneratorService,
     RoadmapPatchService,

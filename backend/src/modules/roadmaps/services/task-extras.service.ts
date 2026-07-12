@@ -6,6 +6,7 @@ import {
   AddAttachmentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
 
@@ -18,6 +19,7 @@ export class TaskExtrasService {
     private readonly repo: ITaskExtrasRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly notificationsService: NotificationsService,
+    private readonly knowledgeOutbox: KnowledgeOutboxService,
   ) {}
 
   async findComments(taskId: string) {
@@ -33,6 +35,13 @@ export class TaskExtrasService {
     void this.fireMentionNotifications(taskId, dto.content, userId, commentId).catch(
       () => {},
     );
+    if (commentId) {
+      this.knowledgeOutbox.enqueue({
+        sourceType: 'task_comment',
+        sourceId: commentId,
+        op: 'upsert',
+      });
+    }
 
     return comment;
   }
@@ -79,11 +88,23 @@ export class TaskExtrasService {
     dto: UpdateCommentDto,
     userId: string,
   ) {
-    return this.repo.updateComment(commentId, dto, userId);
+    const updated = await this.repo.updateComment(commentId, dto, userId);
+    this.knowledgeOutbox.enqueue({
+      sourceType: 'task_comment',
+      sourceId: commentId,
+      op: 'upsert',
+    });
+    return updated;
   }
 
   async deleteComment(commentId: string, userId: string) {
-    return this.repo.deleteComment(commentId, userId);
+    const deleted = await this.repo.deleteComment(commentId, userId);
+    this.knowledgeOutbox.enqueue({
+      sourceType: 'task_comment',
+      sourceId: commentId,
+      op: 'delete',
+    });
+    return deleted;
   }
 
   async findAttachments(taskId: string) {

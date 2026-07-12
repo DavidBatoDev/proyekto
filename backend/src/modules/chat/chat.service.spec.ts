@@ -133,6 +133,12 @@ describe('ChatService', () => {
       ...overrides,
     }) as unknown as import('../notifications/notifications.service').NotificationsService;
 
+  const buildKnowledgeOutbox = () =>
+    ({
+      enqueue: jest.fn(),
+      isEnabled: jest.fn().mockReturnValue(false),
+    }) as unknown as import('../knowledge/knowledge-outbox.service').KnowledgeOutboxService;
+
   const makeService = (
     repo: ChatRepository,
     authOverrides = {},
@@ -145,6 +151,7 @@ describe('ChatService', () => {
       buildAudit(),
       r2Config,
       notifications,
+      buildKnowledgeOutbox(),
     );
 
   // ── Channels: arbitrary channel fixtures for visibility tests ──────────────

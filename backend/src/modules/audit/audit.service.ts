@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { KnowledgeOutboxService } from '../knowledge/knowledge-outbox.service';
 
 export interface AuditEntry {
   projectId: string;
@@ -27,12 +28,15 @@ export class AuditService {
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    // Optional: AuditModule loads before KnowledgeModule in app.module; both
+    // are @Global(), but keep audit functional even if knowledge is absent.
+    @Optional() private readonly knowledgeOutbox?: KnowledgeOutboxService,
   ) {}
 
   log(entry: AuditEntry): void {
     void (async () => {
       try {
-        const { error } = await this.supabase
+        const { data, error } = await this.supabase
           .from('project_activity_log')
           .insert({
             project_id: entry.projectId,
@@ -41,11 +45,23 @@ export class AuditService {
             entity_type: entry.entityType,
             entity_id: entry.entityId ?? null,
             metadata: entry.metadata ?? {},
-          });
+          })
+          .select('id')
+          .single();
         if (error) {
           this.logger.warn(
             `audit_log failed action=${entry.action}: ${error.message}`,
           );
+          return;
+        }
+        const rowId = (data as { id?: string } | null)?.id;
+        if (rowId) {
+          this.knowledgeOutbox?.enqueue({
+            sourceType: 'activity_log',
+            sourceId: rowId,
+            projectId: entry.projectId,
+            op: 'upsert',
+          });
         }
       } catch (err) {
         this.logger.warn(

@@ -257,6 +257,20 @@ class EnvironmentVariables {
   @IsString()
   MEETINGS_CRON_SECRET?: string;
 
+  // ── Knowledge pipeline (roadmap AI RAG) — ships dark ────────────────────────
+  // Gates the write-path outbox hooks and the ingest run itself. Unset/false =
+  // zero footprint: no outbox rows are written and runIngest() short-circuits.
+  @IsOptional()
+  @IsString()
+  KNOWLEDGE_INGEST_ENABLED?: string;
+
+  // Shared secret guarding the scheduler-triggered knowledge ingest endpoint
+  // (POST /api/knowledge/cron/ingest, sent as the `x-cron-secret` header).
+  // Unset = the endpoint denies all callers.
+  @IsOptional()
+  @IsString()
+  KNOWLEDGE_INGEST_SECRET?: string;
+
   // ── Google Calendar / Meet OAuth (per-user; meeting scheduling Phase 5) ─────
   // All optional so the feature ships dark: unless GOOGLE_OAUTH_ENABLED==='true'
   // AND the client id/secret are present, the Google Meet option is hidden and
