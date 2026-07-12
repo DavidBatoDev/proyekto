@@ -1,11 +1,12 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	ArrowRight,
 	ArrowLeft,
 	BookOpen,
+	Check,
 	CheckCircle2,
 	Clock,
 	Crown,
@@ -19,6 +20,7 @@ import {
 	X,
 } from "lucide-react";
 import { Button } from "@/ui/button";
+import { featureFlags } from "@/config/featureFlags";
 import { useAuthStore } from "@/stores/authStore";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { supabase } from "@/lib/supabase";
@@ -27,6 +29,9 @@ import { completeOnboarding, type OnboardingLane } from "@/lib/auth-api";
 import { clearAuthContinuation } from "@/lib/authContinuation";
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
 import { useToast } from "@/hooks/useToast";
+import { useAppearanceStore } from "@/stores/appearanceStore";
+import { PRESET_THEMES, THEME_OPTIONS } from "@/theme/presets";
+import type { ThemeId } from "@/theme/types";
 
 export const Route = createFileRoute("/welcome")({
 	beforeLoad: () => {
@@ -96,7 +101,12 @@ function WelcomePage() {
 	return <ClientFreelancerWelcomeDeck firstName={firstName} />;
 }
 
-// ─── Client/Freelancer 4-slide deck ─────────────────────────────────────────
+// ─── Client/Freelancer deck ─────────────────────────────────────────────────
+
+// Ordered step keys. The "theme" step is inserted only when the theme system is
+// enabled, so navigation and the stepper total are driven off this array rather
+// than a fixed number.
+type CFStep = "welcome" | "capabilities" | "workspace" | "theme" | "invite";
 
 type InviteRole = "editor" | "viewer";
 
@@ -161,19 +171,26 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 		};
 	}, [user?.id]);
 
-	// ── Slide state ──────────────────────────────────────────────────────────
-	const [slide, setSlide] = useState<1 | 2 | 3 | 4>(1);
+	// ── Slide state (ordered; theme step is flag-gated) ──────────────────────
+	const steps = useMemo<CFStep[]>(() => {
+		const list: CFStep[] = ["welcome", "capabilities", "workspace"];
+		if (featureFlags.themeSystem) list.push("theme");
+		list.push("invite");
+		return list;
+	}, []);
+	const [index, setIndex] = useState(0);
 	const [direction, setDirection] = useState<1 | -1>(1);
+	const current = steps[index];
 	const goNext = () => {
-		if (slide < 4) {
+		if (index < steps.length - 1) {
 			setDirection(1);
-			setSlide(((slide as number) + 1) as 1 | 2 | 3 | 4);
+			setIndex(index + 1);
 		}
 	};
 	const goBack = () => {
-		if (slide > 1) {
+		if (index > 0) {
 			setDirection(-1);
-			setSlide(((slide as number) - 1) as 1 | 2 | 3 | 4);
+			setIndex(index - 1);
 		}
 	};
 
@@ -252,16 +269,22 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 
 	const skipInvitesAndFinish = () => navigateAfterWelcome(navigate);
 
-	// ── Slide 1: close confirmation ──────────────────────────────────────────
+	// ── Close confirmation (only offered from the first slide) ───────────────
 	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 	const handleClose = () => {
-		if (slide === 1) setShowCloseConfirm(true);
+		if (index === 0) setShowCloseConfirm(true);
 		else goBack();
 	};
 
 	return (
 		<DeckShell
-			stepper={<Stepper current={slide} total={4} onClose={handleClose} />}
+			stepper={
+				<Stepper
+					current={index + 1}
+					total={steps.length}
+					onClose={handleClose}
+				/>
+			}
 			footer={
 				<>
 					Considering becoming a consultant?{" "}
@@ -275,7 +298,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 			}
 		>
 			<AnimatePresence mode="wait" initial={false} custom={direction}>
-				{slide === 1 && (
+				{current === "welcome" && (
 					<SlideOneCF
 						key="cf-1"
 						firstName={firstName}
@@ -283,7 +306,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 						direction={direction}
 					/>
 				)}
-				{slide === 2 && (
+				{current === "capabilities" && (
 					<SlideTwoCF
 						key="cf-2"
 						onBack={goBack}
@@ -291,7 +314,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 						direction={direction}
 					/>
 				)}
-				{slide === 3 && (
+				{current === "workspace" && (
 					<SlideThreeCF
 						key="cf-3"
 						draftTitle={draftTitle}
@@ -309,7 +332,15 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 						direction={direction}
 					/>
 				)}
-				{slide === 4 && (
+				{current === "theme" && (
+					<SlideTheme
+						key="cf-theme"
+						onBack={goBack}
+						onNext={goNext}
+						direction={direction}
+					/>
+				)}
+				{current === "invite" && (
 					<SlideFourCF
 						key="cf-4"
 						invites={invites}
@@ -337,23 +368,33 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 	);
 }
 
-// ─── Consultant 3-slide deck ────────────────────────────────────────────────
+// ─── Consultant deck ────────────────────────────────────────────────────────
+
+// Ordered step keys; the "theme" step is flag-gated (see CFStep above).
+type ConsultantStep = "welcome" | "benefits" | "theme" | "expect";
 
 function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
 	const navigate = useNavigate();
 
-	const [slide, setSlide] = useState<1 | 2 | 3>(1);
+	const steps = useMemo<ConsultantStep[]>(() => {
+		const list: ConsultantStep[] = ["welcome", "benefits"];
+		if (featureFlags.themeSystem) list.push("theme");
+		list.push("expect");
+		return list;
+	}, []);
+	const [index, setIndex] = useState(0);
 	const [direction, setDirection] = useState<1 | -1>(1);
+	const current = steps[index];
 	const goNext = () => {
-		if (slide < 3) {
+		if (index < steps.length - 1) {
 			setDirection(1);
-			setSlide(((slide as number) + 1) as 1 | 2 | 3);
+			setIndex(index + 1);
 		}
 	};
 	const goBack = () => {
-		if (slide > 1) {
+		if (index > 0) {
 			setDirection(-1);
-			setSlide(((slide as number) - 1) as 1 | 2 | 3);
+			setIndex(index - 1);
 		}
 	};
 
@@ -364,13 +405,19 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
 
 	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 	const handleClose = () => {
-		if (slide === 1) setShowCloseConfirm(true);
+		if (index === 0) setShowCloseConfirm(true);
 		else goBack();
 	};
 
 	return (
 		<DeckShell
-			stepper={<Stepper current={slide} total={3} onClose={handleClose} />}
+			stepper={
+				<Stepper
+					current={index + 1}
+					total={steps.length}
+					onClose={handleClose}
+				/>
+			}
 			footer={
 				<>
 					Want to use Proyekto as a client first?{" "}
@@ -385,7 +432,7 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
 			}
 		>
 			<AnimatePresence mode="wait" initial={false} custom={direction}>
-				{slide === 1 && (
+				{current === "welcome" && (
 					<SlideOneConsultant
 						key="c-1"
 						firstName={firstName}
@@ -393,7 +440,7 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
 						direction={direction}
 					/>
 				)}
-				{slide === 2 && (
+				{current === "benefits" && (
 					<SlideTwoConsultant
 						key="c-2"
 						onBack={goBack}
@@ -401,7 +448,15 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
 						direction={direction}
 					/>
 				)}
-				{slide === 3 && (
+				{current === "theme" && (
+					<SlideTheme
+						key="c-theme"
+						onBack={goBack}
+						onNext={goNext}
+						direction={direction}
+					/>
+				)}
+				{current === "expect" && (
 					<SlideThreeConsultant
 						key="c-3"
 						onBack={goBack}
@@ -996,6 +1051,127 @@ function SlideThreeConsultant({
 			</div>
 
 			<NavRow onBack={onBack} onNext={onStart} nextLabel="Start application" />
+		</motion.div>
+	);
+}
+
+// ─── Theme picker slide ─────────────────────────────────────────────────────
+
+// Presets shown during onboarding — the four built-ins (Custom is excluded; it
+// lives in Settings → Appearance). Ordering + labels come from THEME_OPTIONS,
+// colors from PRESET_THEMES.
+const WELCOME_THEME_PRESETS = THEME_OPTIONS.filter(
+	(option): option is { id: Exclude<ThemeId, "custom">; label: string } =>
+		option.id !== "custom",
+);
+
+function SlideTheme({
+	onBack,
+	onNext,
+	direction,
+}: {
+	onBack: () => void;
+	onNext: () => void;
+	direction: 1 | -1;
+}) {
+	const theme = useAppearanceStore((s) => s.preferences.theme);
+	const setTheme = useAppearanceStore((s) => s.setTheme);
+
+	return (
+		<motion.div
+			custom={direction}
+			variants={slideVariants}
+			initial="enter"
+			animate="center"
+			exit="exit"
+			transition={slideTransition}
+		>
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+				Make it yours
+			</h1>
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+				Pick a look for your workspace — you can change it anytime.
+			</p>
+
+			<div className="mx-auto mt-8 grid max-w-xl grid-cols-2 gap-3 sm:gap-4">
+				{WELCOME_THEME_PRESETS.map((option) => {
+					const t = PRESET_THEMES[option.id].tokens;
+					const selected = theme === option.id;
+					return (
+						<button
+							key={option.id}
+							type="button"
+							onClick={() => setTheme(option.id)}
+							aria-pressed={selected}
+							aria-label={`Use ${option.label} theme`}
+							style={{
+								background: t.background,
+								borderColor: selected ? t.primary : t.border,
+								boxShadow: selected ? `0 0 0 2px ${t.primary}` : undefined,
+							}}
+							className="rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20"
+						>
+							{/* Mini window mock, painted in the preset's own colors. */}
+							<div
+								style={{ background: t.card, borderColor: t.border }}
+								className="rounded-xl border p-3"
+							>
+								<div className="flex items-center gap-2">
+									<span
+										style={{ background: t.primary, color: t.primaryForeground }}
+										className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold"
+									>
+										Aa
+									</span>
+									<span className="flex flex-1 flex-col gap-1.5">
+										<span
+											style={{ background: t.foreground, opacity: 0.85 }}
+											className="h-1.5 w-3/4 rounded-full"
+										/>
+										<span
+											style={{ background: t.mutedForeground }}
+											className="h-1.5 w-1/2 rounded-full"
+										/>
+									</span>
+								</div>
+								<div className="mt-3 space-y-1.5">
+									<span
+										style={{ background: t.mutedForeground, opacity: 0.45 }}
+										className="block h-1.5 w-full rounded-full"
+									/>
+									<span
+										style={{ background: t.mutedForeground, opacity: 0.45 }}
+										className="block h-1.5 w-5/6 rounded-full"
+									/>
+								</div>
+							</div>
+
+							<div className="mt-3 flex items-center justify-between px-0.5">
+								<span
+									style={{ color: t.foreground }}
+									className="text-sm font-semibold"
+								>
+									{option.label}
+								</span>
+								{selected && (
+									<span
+										style={{ background: t.primary, color: t.primaryForeground }}
+										className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+									>
+										<Check className="h-3 w-3" />
+									</span>
+								)}
+							</div>
+						</button>
+					);
+				})}
+			</div>
+
+			<p className="mx-auto mt-5 max-w-lg text-center text-xs text-slate-500">
+				You can fine-tune colors later in Settings → Appearance.
+			</p>
+
+			<NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
 		</motion.div>
 	);
 }

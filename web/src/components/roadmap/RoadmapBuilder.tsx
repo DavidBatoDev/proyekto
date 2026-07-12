@@ -340,9 +340,9 @@ function TypingIndicator() {
 			<div className="inline-flex items-center gap-3 text-lg font-medium text-slate-800">
 				<span>Thinking</span>
 				<span className="flex items-center gap-1.5">
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-blue-500" />
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-blue-500 [animation-delay:120ms]" />
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-blue-500 [animation-delay:240ms]" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)]" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)] [animation-delay:120ms]" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)] [animation-delay:240ms]" />
 				</span>
 			</div>
 		</div>
@@ -862,14 +862,14 @@ export function RoadmapBuilder({
 							style={{ animationDelay: `${Math.min(index, 4) * 45}ms` }}
 						>
 							{message.role === "user" ? (
-								<div className="w-full max-w-4xl whitespace-pre-line rounded-[1.45rem] bg-gradient-to-br from-blue-600 to-indigo-700 px-6 py-5 text-white shadow-[0_18px_40px_rgba(37,99,235,0.22)]">
-									<div className="mb-3 flex items-center justify-between gap-4 text-sm">
+								<div className="relative max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] rounded-br-md bg-[rgb(109,120,213)] px-5 py-4 text-white shadow-[0_18px_44px_rgba(109,120,213,0.24)] before:absolute before:-right-1 before:bottom-0 before:h-4 before:w-4 before:rounded-bl-2xl before:bg-[rgb(109,120,213)]">
+									<div className="mb-2 flex items-center justify-between gap-4 text-sm">
 										<span className="font-semibold text-white/95">You</span>
-										<span className="text-white/70">
+										<span className="text-white/75">
 											{formatMessageTime(message.createdAt)}
 										</span>
 									</div>
-									<p className="text-lg font-medium leading-8">
+									<p className="text-base font-medium leading-7 sm:text-lg">
 										{message.content}
 									</p>
 								</div>
