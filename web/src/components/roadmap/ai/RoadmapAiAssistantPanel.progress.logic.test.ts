@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chooseNextPollDelayMs,
   collectUnseenDeltaEvents,
   ensureTimelineCompleted,
   getDefaultTimelineExpanded,
@@ -584,5 +585,24 @@ describe("streaming delta dedupe across poll and push", () => {
     );
     expect(fresh).toEqual([]);
     expect(seen.size).toBe(0);
+  });
+});
+
+describe("chooseNextPollDelayMs", () => {
+  it("backs polling off to the reconciliation heartbeat while push is fresh", () => {
+    // Push arrived 1s ago (within the 4s freshness window): backoff wins even
+    // while deltas are streaming, since push is already painting them.
+    expect(chooseNextPollDelayMs(10_000, 9_000, 0)).toBe(2_500);
+    expect(chooseNextPollDelayMs(10_000, 9_000, 5)).toBe(2_500);
+  });
+
+  it("returns to fast cadence when push has gone quiet", () => {
+    expect(chooseNextPollDelayMs(10_000, 5_000, 0)).toBe(500);
+    expect(chooseNextPollDelayMs(10_000, 5_000, 2)).toBe(300);
+  });
+
+  it("uses fast cadence when no push has ever arrived", () => {
+    expect(chooseNextPollDelayMs(1_000, 0, 0)).toBe(500);
+    expect(chooseNextPollDelayMs(1_000, 0, 3)).toBe(300);
   });
 });

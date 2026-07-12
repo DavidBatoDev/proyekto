@@ -199,6 +199,13 @@ const TRACE_POLL_INTERVAL_MS = 1000;
 // in-memory read on the agent.
 const TRACE_POLL_ACTIVE_INTERVAL_MS = 500;
 const TRACE_POLL_STREAMING_INTERVAL_MS = 300;
+// While realtime push is actively delivering this trace's events, polling
+// backs off to a slow reconciliation heartbeat: push paints the UI, the poll
+// only advances the authoritative cursor (afterSeq / done / auto-commit
+// refresh) and catches dropped publishes. If push goes quiet for the
+// freshness window, polling returns to the fast cadence above.
+const TRACE_POLL_PUSH_BACKOFF_INTERVAL_MS = 2500;
+const TRACE_PUSH_FRESH_WINDOW_MS = 4000;
 const TRACE_POLL_LIMIT = 25;
 const TRACE_POLL_TIMEOUT_MS = 90_000;
 const TRACE_NOT_READY_GRACE_MS = 10_000;
@@ -234,6 +241,15 @@ interface PollLoopState {
 	// polling and realtime push feed the preview; this prevents the same
 	// chunk from being appended twice when their windows overlap.
 	processedDeltaSeqs: Set<number>;
+	// Epoch ms of the last realtime-pushed batch for this trace (0 = none).
+	// A fresh push backs polling off to the reconciliation heartbeat.
+	lastPushAtMs: number;
+	// A poll fetch is currently awaiting its response. Guards the pushed-done
+	// fast path from starting a second concurrent poll loop.
+	inFlight: boolean;
+	// Push reported done while a fetch was in flight: that fetch reconciles
+	// immediately on completion instead of waiting out the backoff timer.
+	reconcileAsap: boolean;
 }
 
 const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
@@ -1038,6 +1054,21 @@ export const collectUnseenDeltaEvents = (
 	return fresh;
 };
 
+// Next poll delay: realtime push freshness wins (slow reconciliation
+// heartbeat), otherwise cadence follows whether deltas are streaming.
+export const chooseNextPollDelayMs = (
+	nowMs: number,
+	lastPushAtMs: number,
+	freshDeltaCount: number,
+): number => {
+	if (lastPushAtMs > 0 && nowMs - lastPushAtMs < TRACE_PUSH_FRESH_WINDOW_MS) {
+		return TRACE_POLL_PUSH_BACKOFF_INTERVAL_MS;
+	}
+	return freshDeltaCount > 0
+		? TRACE_POLL_STREAMING_INTERVAL_MS
+		: TRACE_POLL_ACTIVE_INTERVAL_MS;
+};
+
 export const normalizeTimelineForDisplay = (
 	timeline?: RoadmapAiActivityTimeline | null,
 	presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
@@ -1538,6 +1569,7 @@ export function RoadmapAiAssistantPanel({
 			return;
 		}
 
+		loop.inFlight = true;
 		try {
 			const response = await roadmapAgentService.getTraceEvents(
 				loop.sessionId,
@@ -1564,14 +1596,13 @@ export function RoadmapAiAssistantPanel({
 			if (response.done) {
 				return;
 			}
-			loop.timerId = window.setTimeout(
-				() => {
-					void pollTraceEvents(loop);
-				},
-				freshDeltaCount > 0
-					? TRACE_POLL_STREAMING_INTERVAL_MS
-					: TRACE_POLL_ACTIVE_INTERVAL_MS,
-			);
+			const nextDelayMs = loop.reconcileAsap
+				? 0
+				: chooseNextPollDelayMs(Date.now(), loop.lastPushAtMs, freshDeltaCount);
+			loop.reconcileAsap = false;
+			loop.timerId = window.setTimeout(() => {
+				void pollTraceEvents(loop);
+			}, nextDelayMs);
 		} catch (error) {
 			if (loop.cancelled) return;
 			const elapsedSinceStartMs = Date.now() - loop.startedAtMs;
@@ -1591,6 +1622,8 @@ export function RoadmapAiAssistantPanel({
 				trace_id: loop.traceId,
 				error: error instanceof Error ? error.message : String(error),
 			});
+		} finally {
+			loop.inFlight = false;
 		}
 	};
 
@@ -1606,6 +1639,9 @@ export function RoadmapAiAssistantPanel({
 			timerId: null,
 			pollingFailed: false,
 			processedDeltaSeqs: new Set<number>(),
+			lastPushAtMs: 0,
+			inFlight: false,
+			reconcileAsap: false,
 		};
 		pollLoopRef.current = loop;
 		setTracePollingFailed(false);
@@ -1624,10 +1660,12 @@ export function RoadmapAiAssistantPanel({
 
 	// Realtime-pushed trace events (agent → DO worker → `user:{id}` room):
 	// merged through the same seq-deduped path as polling, so push and poll
-	// coexist idempotently. Push is purely a latency reduction — it never
-	// advances loop.afterSeq, never finalizes on `done`, and never triggers
-	// the auto-commit roadmap refresh; polling stays the authoritative
-	// cursor, so a dropped publish costs latency, not events.
+	// coexist idempotently. Push is the primary transport while it's flowing —
+	// each pushed batch backs polling off to the reconciliation heartbeat, and
+	// a pushed `done` triggers an immediate authoritative poll. Push still
+	// never advances loop.afterSeq, never finalizes on `done`, and never
+	// triggers the auto-commit roadmap refresh itself; polling remains the
+	// authoritative cursor, so a dropped publish costs latency, not events.
 	const applyPushedTraceEvents = (payload: unknown) => {
 		const loop = pollLoopRef.current;
 		if (!loop || loop.cancelled) return;
@@ -1638,6 +1676,7 @@ export function RoadmapAiAssistantPanel({
 			? (record.events as AgentTraceEvent[])
 			: [];
 		if (events.length === 0) return;
+		loop.lastPushAtMs = Date.now();
 		const startedAt = toStringValue(record.started_at);
 		setLiveActivity((prev) =>
 			toTimelineFromTraceResponse(
@@ -1655,6 +1694,21 @@ export function RoadmapAiAssistantPanel({
 			),
 		);
 		applyStreamingDeltaEvents(loop, events);
+		// The agent just reported the trace finished: reconcile through the
+		// authoritative poll now (it advances afterSeq, finalizes the timeline,
+		// and drives the auto-commit roadmap refresh) instead of waiting out
+		// the backoff heartbeat.
+		if (record.done === true && !loop.pollingFailed) {
+			if (loop.inFlight) {
+				loop.reconcileAsap = true;
+			} else {
+				if (loop.timerId != null) {
+					window.clearTimeout(loop.timerId);
+					loop.timerId = null;
+				}
+				void pollTraceEvents(loop);
+			}
+		}
 	};
 	const applyPushedTraceEventsRef = useRef(applyPushedTraceEvents);
 	applyPushedTraceEventsRef.current = applyPushedTraceEvents;
