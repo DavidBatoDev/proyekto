@@ -35,6 +35,68 @@ logger = logging.getLogger('app.core.v2')
 # without downgrading a higher configured base.
 _EFFORT_ORDER = {'minimal': 0, 'low': 1, 'medium': 2, 'high': 3}
 
+# The user message drives relevant-memory retrieval; cap what we embed.
+_SEMANTIC_MEMORY_QUERY_MAX_CHARS = 500
+_SEMANTIC_MEMORY_TOP_K = 8
+
+
+def _apply_semantic_memory_retrieval(
+    *,
+    service: Any,
+    session: AgentSession,
+    session_context: dict[str, Any],
+    user_message: str,
+    auth_header: str | None,
+    trace_id: str | None,
+) -> None:
+    """Above the note-count threshold, swap inject-all memory notes for a
+    per-turn top-k fetch keyed on the incoming message. Any failure falls
+    back silently to inject-all — memories are an enhancement, never a
+    turn-blocker. Renders as a prompt-TAIL block (see compact_state) so the
+    cached prefix stays byte-stable."""
+    settings = service._settings
+    notes = session_context.get('memory_notes')
+    if not isinstance(notes, list):
+        return
+    threshold = settings.agent_memory_semantic_threshold
+    if len(notes) <= threshold:
+        return
+    if not auth_header or not session.roadmap_id:
+        return
+    query = (user_message or '').strip()[:_SEMANTIC_MEMORY_QUERY_MAX_CHARS]
+    if not query:
+        return
+    try:
+        payload = service._run_async_call(
+            service._nest_client.ai_memories_relevant(
+                roadmap_id=session.roadmap_id,
+                query=query,
+                limit=_SEMANTIC_MEMORY_TOP_K,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+        )
+    except Exception:  # noqa: BLE001 — fall back to inject-all
+        return
+    memories = payload.get('memories') if isinstance(payload, dict) else None
+    if not isinstance(memories, list) or not memories:
+        return
+    session_context['memory_notes_semantic'] = True
+    session_context['relevant_memory_notes'] = [
+        item for item in memories if isinstance(item, dict) and item.get('content')
+    ]
+    log_event(
+        logger,
+        'relevant_memories_loaded',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        brain='v2',
+        note_count=len(notes),
+        matched=len(session_context['relevant_memory_notes']),
+    )
+
 
 def _message_references_ambiguous_title(
     message: str, handle_map: dict[str, Any]
@@ -154,7 +216,20 @@ def run_v2_message(
         auth_header=auth_header,
         trace_id=trace_id,
     )
+    service._ensure_project_context(
+        session=session,
+        auth_header=auth_header,
+        trace_id=trace_id,
+    )
     session_context = service._build_session_context(session, auth_header, trace_id)
+    _apply_semantic_memory_retrieval(
+        service=service,
+        session=session,
+        session_context=session_context,
+        user_message=user_message,
+        auth_header=auth_header,
+        trace_id=trace_id,
+    )
 
     folded_message = parse_and_fold(session, user_message)
     handle_map = dict(session.metadata.roadmap_handle_map)
@@ -165,7 +240,10 @@ def run_v2_message(
 
     pending_plan = session.metadata.pending_plan
     pending_plan_titles = _pending_plan_titles(pending_plan)
-    tools = build_tools(has_pending_plan=pending_plan is not None)
+    tools = build_tools(
+        has_pending_plan=pending_plan is not None,
+        include_knowledge_search=settings.agent_knowledge_search_enabled,
+    )
     # Only override the client's configured effort when this turn escalates it;
     # otherwise pass None so the client uses its default and the common path
     # stays byte-identical to the pre-escalation call.

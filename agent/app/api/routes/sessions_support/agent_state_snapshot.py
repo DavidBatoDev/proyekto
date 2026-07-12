@@ -8,7 +8,8 @@ state, the snapshot is pushed fire-and-forget to the backend
 (roadmap_ai_sessions.metadata.agent_state) and replayed into
 CreateSessionRequest.metadata when the web rehydrates.
 
-Caches (roadmap overview, handle map, actor context, memory notes) are
+Caches (roadmap overview, handle map, actor context, memory notes, project
+context) are
 deliberately excluded — they are refetched naturally on the next turn.
 """
 

@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 from time import perf_counter
 import logging
 
@@ -202,6 +202,76 @@ class NestRoadmapClient:
     ) -> dict[str, Any]:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/members",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_project(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/project",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_project_brief(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/project/brief",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_project_resources(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/project/resources",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_project_meetings(
+        self,
+        roadmap_id: str,
+        window: str | None,
+        limit: int | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query_parts: list[str] = []
+        if window:
+            query_parts.append(f"window={quote_plus(window)}")
+        if limit is not None:
+            query_parts.append(f"limit={limit}")
+        query_string = f"?{'&'.join(query_parts)}" if query_parts else ''
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/project/meetings{query_string}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_project_member_details(
+        self,
+        roadmap_id: str,
+        member_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        encoded_member_id = quote(member_id, safe='')
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/project/members/{encoded_member_id}",
             auth_header,
             trace_id=trace_id,
         )
@@ -568,6 +638,41 @@ class NestRoadmapClient:
     ) -> dict[str, Any]:
         return await self._delete(
             f"/roadmaps/{roadmap_id}/ai/memories/{memory_id}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_memories_relevant(
+        self,
+        roadmap_id: str,
+        query: str,
+        limit: int,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query_string = f"?query={quote_plus(query)}&limit={limit}"
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/memories/relevant{query_string}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def context_knowledge_search(
+        self,
+        roadmap_id: str,
+        query: str,
+        sources: list[str] | None,
+        limit: int | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query_parts = [f"query={quote_plus(query)}"]
+        if sources:
+            query_parts.append(f"sources={quote_plus(','.join(sources))}")
+        if limit is not None:
+            query_parts.append(f"limit={limit}")
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/knowledge-search?{'&'.join(query_parts)}",
             auth_header,
             trace_id=trace_id,
         )

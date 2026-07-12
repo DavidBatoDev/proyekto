@@ -11,6 +11,33 @@ from app.core.orchestration.edits.edit_resolver import resolve_candidates
 
 from .base import RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE, ToolHandlerBase
 
+# Per-excerpt cap for search_knowledge results: 12 excerpts x 900 chars stays
+# comfortably under the loop's 8000-char tool-result truncation, so the JSON
+# is never cut mid-structure.
+_KNOWLEDGE_RESULT_MAX_ITEMS = 12
+_KNOWLEDGE_RESULT_CONTENT_CHARS = 900
+
+
+def _shape_knowledge_search_result(result: dict[str, Any]) -> dict[str, Any]:
+    results = result.get('results') if isinstance(result, dict) else None
+    if not isinstance(results, list):
+        return result
+    shaped: list[Any] = []
+    for entry in results[:_KNOWLEDGE_RESULT_MAX_ITEMS]:
+        if not isinstance(entry, dict):
+            continue
+        content = entry.get('content')
+        if (
+            isinstance(content, str)
+            and len(content) > _KNOWLEDGE_RESULT_CONTENT_CHARS
+        ):
+            entry = {
+                **entry,
+                'content': content[:_KNOWLEDGE_RESULT_CONTENT_CHARS] + '…',
+            }
+        shaped.append(entry)
+    return {**result, 'results': shaped}
+
 
 class ContextQueryHandler(ToolHandlerBase):
     async def execute(
@@ -37,6 +64,161 @@ class ContextQueryHandler(ToolHandlerBase):
                     trace_id=trace_id,
                 ),
             )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
+        if tool_name == 'get_project_brief':
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_project_brief(
+                    roadmap_id=roadmap_id,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
+        if tool_name == 'list_project_resources':
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_project_resources(
+                    roadmap_id=roadmap_id,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
+        if tool_name == 'list_project_meetings':
+            window = args.get('window')
+            if window not in {'upcoming', 'recent', 'all'}:
+                window = None
+            limit_raw = args.get('limit')
+            limit = (
+                limit_raw
+                if isinstance(limit_raw, int) and not isinstance(limit_raw, bool)
+                else None
+            )
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_project_meetings(
+                    roadmap_id=roadmap_id,
+                    window=window,
+                    limit=limit,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
+        if tool_name == 'get_member_details':
+            member_id = str(args.get('member_id') or '').strip()
+            if not member_id:
+                return self._invalid_argument_result(
+                    arg_name='member_id',
+                    arg_value=args.get('member_id'),
+                    message='member_id is required.',
+                )
+            if not self._is_uuid(member_id):
+                return self._invalid_argument_result(
+                    arg_name='member_id',
+                    arg_value=member_id,
+                    message='member_id must be a valid UUID.',
+                    error_code='INVALID_UUID',
+                )
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_project_member_details(
+                    roadmap_id=roadmap_id,
+                    member_id=member_id,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
+        if tool_name == 'search_knowledge':
+            query = str(args.get('query', '')).strip()
+            if not query:
+                result = {
+                    'error': {
+                        'code': 'MISSING_QUERY',
+                        'message': 'query is required for search_knowledge.',
+                    }
+                }
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    level=logging.WARNING,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+            raw_sources = args.get('sources')
+            sources = [
+                entry
+                for entry in (raw_sources if isinstance(raw_sources, list) else [])
+                if entry in {'chat_message', 'task_comment', 'activity_log', 'brief'}
+            ] or None
+            limit_raw = args.get('limit')
+            limit = (
+                min(max(limit_raw, 1), 12)
+                if isinstance(limit_raw, int) and not isinstance(limit_raw, bool)
+                else 8
+            )
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_knowledge_search(
+                    roadmap_id=roadmap_id,
+                    query=query[:400],
+                    sources=sources,
+                    limit=limit,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            result = _shape_knowledge_search_result(result)
             log_event(
                 self._logger,
                 'tool_call_result',

@@ -136,6 +136,42 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['error']['code'], 'INVALID_MEMORY_CONTENT')
         self.assertEqual(nest.created, [])
 
+    async def test_save_memory_defaults_scope_and_category(self) -> None:
+        nest = _FakeNestClient()
+        result = await _handler(nest).execute(
+            'save_memory',
+            {'content': 'Quarterly epic names', 'scope': 'bogus', 'category': 42},
+            {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'},
+        )
+        payload = nest.created[0][1]
+        self.assertEqual(payload['scope'], 'roadmap')
+        self.assertEqual(payload['category'], 'preference')
+        self.assertEqual(result['memory']['scope'], 'roadmap')
+
+    async def test_save_memory_passes_project_scope_and_category(self) -> None:
+        nest = _FakeNestClient()
+        result = await _handler(nest).execute(
+            'save_memory',
+            {
+                'content': 'Client prefers weekly demos',
+                'scope': 'project',
+                'category': 'decision',
+            },
+            {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'},
+        )
+        payload = nest.created[0][1]
+        self.assertEqual(payload['scope'], 'project')
+        self.assertEqual(payload['category'], 'decision')
+        self.assertEqual(result['memory']['category'], 'decision')
+
+    def test_save_memory_schema_exposes_scope_and_category(self) -> None:
+        spec = tools_spec.save_memory_tool()
+        properties = spec['function']['parameters']['properties']
+        self.assertEqual(properties['scope']['enum'], ['roadmap', 'project'])
+        self.assertEqual(
+            properties['category']['enum'], ['preference', 'fact', 'decision']
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

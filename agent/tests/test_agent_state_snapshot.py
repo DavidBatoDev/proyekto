@@ -40,6 +40,10 @@ def _session_with_memory() -> AgentSession:
     session.metadata.roadmap_overview_summary = 'Roadmap: 2 epics ...'
     session.metadata.roadmap_handle_map = {'E1': {'id': 'x', 'type': 'epic', 'title': 'T'}}
     session.metadata.memory_notes = [{'id': 'm1', 'content': 'note', 'source': 'user_request'}]
+    session.metadata.project_context = {
+        'project': {'id': 'project-1', 'title': 'Secret Project'}
+    }
+    session.metadata.project_context_fetched_at = session.created_at
     return session
 
 
@@ -55,6 +59,8 @@ class SnapshotBuildTests(unittest.TestCase):
         self.assertNotIn('roadmap_overview_summary', snapshot)
         self.assertNotIn('roadmap_handle_map', snapshot)
         self.assertNotIn('memory_notes', snapshot)
+        self.assertNotIn('project_context', snapshot)
+        self.assertNotIn('project_context_fetched_at', snapshot)
         self.assertNotIn('actor_context', snapshot)
 
     def test_empty_session_returns_none(self) -> None:

@@ -466,6 +466,11 @@ class SessionMetadata(BaseModel):
     # refetched on TTL like the overview; EXCLUDED from the durable snapshot.
     memory_notes: list[dict[str, Any]] | None = None
     memory_notes_fetched_at: datetime | None = None
+    # Compact context for the project linked to this roadmap. This is a
+    # short-lived Redis-session cache only; the durable snapshot deliberately
+    # excludes it so access and project data are revalidated after rehydrate.
+    project_context: dict[str, Any] | None = None
+    project_context_fetched_at: datetime | None = None
 
 
 class AgentSession(BaseModel):

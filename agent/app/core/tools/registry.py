@@ -157,6 +157,14 @@ EPIC_PRIORITY_FILTER_VALUES = ['critical', 'nice_to_have', 'low', 'medium', 'hig
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
 CONTEXT_TOOL_NAMES = {
     'list_members',
+    'get_project_brief',
+    'list_project_resources',
+    'list_project_meetings',
+    'get_member_details',
+    # Exposed to the model only when AGENT_KNOWLEDGE_SEARCH_ENABLED (gated in
+    # tools_spec.build_tools); listed here so dispatch/parallel-read wiring is
+    # permanent and a call is handled even mid-rollout.
+    'search_knowledge',
     'get_roadmap_summary',
     'get_roadmap_overview',
     'resolve_node_reference',
@@ -428,6 +436,58 @@ def get_context_tools() -> list[dict[str, Any]]:
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='get_project_brief',
+            description=(
+                'Fetch the full narrative brief and custom fields for the project '
+                'linked to this roadmap. Use when the compact project excerpt is '
+                'not enough to answer or plan accurately.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='list_project_resources',
+            description=(
+                'List the folders and resource links attached to the project '
+                'linked to this roadmap.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='list_project_meetings',
+            description=(
+                'List upcoming, recent, or all meetings for the project linked '
+                'to this roadmap, including participant RSVP information.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'window': {
+                    'type': 'string',
+                    'enum': ['upcoming', 'recent', 'all'],
+                    'default': 'upcoming',
+                },
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+            },
+        ),
+        _function_tool(
+            name='get_member_details',
+            description=(
+                'Get a linked-project member profile, project role, capabilities, '
+                'skills, and teams. Use a member id from the project context block.'
+            ),
+            required=['roadmap_id', 'member_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'member_id': {'type': 'string'},
             },
         ),
         _function_tool(

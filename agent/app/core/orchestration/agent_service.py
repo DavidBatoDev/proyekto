@@ -4,6 +4,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
+
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
@@ -320,6 +322,8 @@ class AgentService:
                 'id': str(item.get('id') or ''),
                 'content': str(item.get('content') or ''),
                 'source': str(item.get('source') or 'user_request'),
+                'scope': str(item.get('scope') or 'roadmap'),
+                'category': str(item.get('category') or 'preference'),
             }
             for item in memories
             if isinstance(item, dict) and item.get('content')
@@ -338,6 +342,66 @@ class AgentService:
     def invalidate_memory_notes(self, session: AgentSession) -> None:
         session.metadata.memory_notes = None
         session.metadata.memory_notes_fetched_at = None
+
+    def _ensure_project_context(
+        self,
+        *,
+        session: AgentSession,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> None:
+        """Load the compact linked-project context into the Redis session.
+
+        A fresh timestamp is sufficient to satisfy the cache, even when the
+        value is ``None``. That negative-caches denied/projectless lookups and
+        avoids retrying the same optional read on every turn.
+        """
+        if not self._settings.agent_project_context_enabled:
+            # This must be a real kill switch for sessions created before the
+            # flag changed, whose Redis payload may already contain a cache.
+            session.metadata.project_context = None
+            session.metadata.project_context_fetched_at = None
+            return
+        if not auth_header or not session.roadmap_id:
+            return
+        fetched_at = session.metadata.project_context_fetched_at
+        if fetched_at is not None:
+            age_seconds = (_utcnow() - fetched_at).total_seconds()
+            if age_seconds < self._settings.agent_cache_ttl_seconds:
+                return
+        try:
+            payload = self._run_async_call(
+                self._nest_client.context_project(
+                    roadmap_id=session.roadmap_id,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                )
+            )
+        except HTTPException as exc:
+            if exc.status_code in {403, 404}:
+                session.metadata.project_context = None
+                session.metadata.project_context_fetched_at = _utcnow()
+            return
+        except Exception:  # noqa: BLE001 - project context is an enhancement
+            return
+        if not isinstance(payload, dict):
+            return
+        project = payload.get('project')
+        if project is not None and not isinstance(project, dict):
+            return
+        # Keep {project: None}: it is the backend's projectless-roadmap
+        # sentinel and lets the normal TTL guard negative-cache the result.
+        session.metadata.project_context = payload
+        session.metadata.project_context_fetched_at = _utcnow()
+        log_event(
+            self._logger,
+            'project_context_loaded',
+            settings=self._settings,
+            trace_id=trace_id,
+            roadmap_id=session.roadmap_id,
+            session_id=session.session_id,
+            project_linked=isinstance(project, dict),
+        )
 
     def _run_async_call(self, coro: Any) -> dict[str, Any]:
         return run_async_call(

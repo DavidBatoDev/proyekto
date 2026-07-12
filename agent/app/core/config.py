@@ -74,6 +74,23 @@ class Settings(BaseSettings):
         alias='AGENT_PROGRESS_EVENTS_ALLOW_VERBOSE',
     )
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
+    agent_project_context_enabled: bool = Field(
+        default=True,
+        alias='AGENT_PROJECT_CONTEXT_ENABLED',
+    )
+    # Ships dark: exposes the search_knowledge tool only once the backend
+    # knowledge pipeline (KNOWLEDGE_INGEST_ENABLED + scheduler) is live.
+    agent_knowledge_search_enabled: bool = Field(
+        default=False,
+        alias='AGENT_KNOWLEDGE_SEARCH_ENABLED',
+    )
+    # Above this many cached memory notes the inject-all "# Memory notes"
+    # block switches to per-turn top-k semantic retrieval rendered as a tail
+    # block (keeps the cached prompt prefix stable). Clamped to [0, 100].
+    agent_memory_semantic_threshold: int = Field(
+        default=15,
+        alias='AGENT_MEMORY_SEMANTIC_THRESHOLD',
+    )
     # In-turn resolve-lookup cache lifetime. The ToolDispatcher (and its cache)
     # is rebuilt every message turn, so this TTL only bounds staleness WITHIN a
     # single turn — it never leaks across turns or sessions. A long multi-tool
@@ -158,6 +175,15 @@ class Settings(BaseSettings):
         default=4000,
         alias='AGENT_SUMMARY_MAX_CHARS',
     )
+
+    @field_validator('agent_memory_semantic_threshold')
+    @classmethod
+    def normalize_agent_memory_semantic_threshold(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        if value > 100:
+            return 100
+        return value
 
     @field_validator('agent_v2_max_turns')
     @classmethod

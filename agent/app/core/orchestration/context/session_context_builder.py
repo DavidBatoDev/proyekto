@@ -50,6 +50,13 @@ def build_session_context(
         'recent_resolved_targets': recent_resolved_targets,
         'conversation_summary': session.metadata.conversation_summary,
         'memory_notes': session.metadata.memory_notes or [],
+        # Gate at render time too: Redis sessions can outlive a deploy-time
+        # flag change and may still carry a previously fetched context pack.
+        'project_context': (
+            session.metadata.project_context
+            if settings.agent_project_context_enabled
+            else None
+        ),
         'auth_header': auth_header,
         'trace_id': trace_id,
         'actor_context': (

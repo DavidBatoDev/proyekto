@@ -64,21 +64,77 @@ def is_terminal_tool(name: str) -> bool:
     return name in TERMINAL_TOOL_NAMES
 
 
-def build_tools(*, has_pending_plan: bool = False) -> list[dict[str, Any]]:
+def build_tools(
+    *,
+    has_pending_plan: bool = False,
+    include_knowledge_search: bool = False,
+) -> list[dict[str, Any]]:
     """The full tool list exposed to the model each turn.
 
     ``has_pending_plan`` gates the plan-revision affordance on the edit tool —
-    see ``_planning_tool``.
+    see ``_planning_tool``. ``include_knowledge_search`` exposes the RAG
+    search tool only when the knowledge pipeline is enabled (dispatch wiring
+    stays permanent via CONTEXT_TOOL_NAMES; only the model-facing exposure is
+    gated).
     """
-    return [
-        *get_context_tools(),
-        _planning_tool(has_pending_plan),
-        propose_plan_tool(),
-        ask_user_tool(),
-        save_memory_tool(),
-        forget_memory_tool(),
-        revert_changes_tool(),
-    ]
+    tools: list[dict[str, Any]] = [*get_context_tools()]
+    if include_knowledge_search:
+        tools.append(search_knowledge_tool())
+    tools.extend(
+        [
+            _planning_tool(has_pending_plan),
+            propose_plan_tool(),
+            ask_user_tool(),
+            save_memory_tool(),
+            forget_memory_tool(),
+            revert_changes_tool(),
+        ]
+    )
+    return tools
+
+
+def search_knowledge_tool() -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': 'search_knowledge',
+            'description': (
+                "Semantic + keyword search over this project's history: chat "
+                'messages (only rooms the current user can see), task '
+                'comments, the project brief, and the activity log. Use for '
+                '"what did we discuss/decide about X", "did anyone mention '
+                'Y", or context that is not on the roadmap outline. Returns '
+                'ranked excerpts with source metadata — cite the source type '
+                'and author/date in your answer.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'required': ['query'],
+                'properties': {
+                    'query': {
+                        'type': 'string',
+                        'minLength': 2,
+                        'maxLength': 400,
+                    },
+                    'sources': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'enum': [
+                                'chat_message',
+                                'task_comment',
+                                'activity_log',
+                                'brief',
+                            ],
+                        },
+                        'minItems': 1,
+                        'maxItems': 4,
+                    },
+                    'limit': {'type': 'integer', 'minimum': 1, 'maximum': 12},
+                },
+            },
+        },
+    }
 
 
 def save_memory_tool() -> dict[str, Any]:
@@ -108,6 +164,22 @@ def save_memory_tool() -> dict[str, Any]:
                     'source': {
                         'type': 'string',
                         'enum': ['user_request', 'inferred'],
+                    },
+                    'scope': {
+                        'type': 'string',
+                        'enum': ['roadmap', 'project'],
+                        'description': (
+                            "'project' = applies to every roadmap in this "
+                            "project; default 'roadmap' = this roadmap only."
+                        ),
+                    },
+                    'category': {
+                        'type': 'string',
+                        'enum': ['preference', 'fact', 'decision'],
+                        'description': (
+                            'preference = how to work; fact = durable truth '
+                            'about the project; decision = an agreed choice.'
+                        ),
                     },
                 },
             },

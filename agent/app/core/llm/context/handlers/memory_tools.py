@@ -41,11 +41,22 @@ class MemoryToolHandler(ToolHandlerBase):
             source = args.get('source')
             if source not in {'user_request', 'inferred'}:
                 source = 'user_request'
+            scope = args.get('scope')
+            if scope not in {'roadmap', 'project'}:
+                scope = 'roadmap'
+            category = args.get('category')
+            if category not in {'preference', 'fact', 'decision'}:
+                category = 'preference'
             created = await self._run_context_call(
                 session_context,
                 self._nest_client.ai_memories_create(
                     roadmap_id=roadmap_id,
-                    payload={'content': content[:500], 'source': source},
+                    payload={
+                        'content': content[:500],
+                        'source': source,
+                        'scope': scope,
+                        'category': category,
+                    },
                     auth_header=auth_value,
                     trace_id=trace_id,
                 ),
@@ -57,6 +68,8 @@ class MemoryToolHandler(ToolHandlerBase):
                     'id': created.get('id'),
                     'content': created.get('content'),
                     'source': created.get('source'),
+                    'scope': created.get('scope', scope),
+                    'category': created.get('category', category),
                 },
             }
             log_event(
