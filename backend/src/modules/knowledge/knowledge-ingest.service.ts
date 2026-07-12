@@ -7,9 +7,11 @@ import { KnowledgeEmbeddingsService } from './knowledge-embeddings.service';
 import { KnowledgeOutboxService } from './knowledge-outbox.service';
 
 const CLAIM_BATCH_SIZE = 25;
-// Cloud Scheduler calls with attempt-deadline 60s; stop claiming new batches
-// well before that so an in-flight batch can finish.
-const RUN_SOFT_DEADLINE_MS = 25_000;
+// Stay comfortably under the global REQUEST_TIMEOUT_MS (25s) so the handler
+// returns a 2xx summary instead of being cut off with a 408. The row loop
+// also honours this deadline so a claimed batch of slow embed calls can't
+// overrun it (Cloud Scheduler's own attempt-deadline is 60s).
+const RUN_SOFT_DEADLINE_MS = 20_000;
 const ACTIVITY_METADATA_MAX_CHARS = 600;
 const BRIEF_MAX_CHARS = 60_000;
 
@@ -73,6 +75,9 @@ export class KnowledgeIngestService {
       totals.claimed += rows.length;
 
       for (const row of rows) {
+        // Stop mid-batch once the soft deadline passes; any rows left in this
+        // claimed batch stay unprocessed and are re-claimed on the next run.
+        if (Date.now() >= deadline) break;
         try {
           await this.processRow(row);
           await this.markProcessed(row.id);
