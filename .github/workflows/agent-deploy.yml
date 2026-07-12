@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
 
           # ^##^ delimiter because AGENT_CORS_ORIGINS contains commas.
-          ENV_VARS="APP_ENV=production##AGENT_LOG_JSON=true##NEST_API_BASE_URL=https://api.proyekto.tech/api##AGENT_CORS_ORIGINS=https://proyekto.tech,https://www.proyekto.tech,http://localhost:3000,http://localhost:5173##AGENT_V2_MAX_TOOL_CALLS=24##AGENT_RESOLVE_CACHE_TTL_SECONDS=300##AGENT_PROJECT_CONTEXT_ENABLED=true##OPENAI_V2_STREAMING_ENABLED=true##OPENAI_V2_REASONING_SUMMARY_ENABLED=true"
+          ENV_VARS="APP_ENV=production##AGENT_LOG_JSON=true##NEST_API_BASE_URL=https://api.proyekto.tech/api##AGENT_CORS_ORIGINS=https://proyekto.tech,https://www.proyekto.tech,http://localhost:3000,http://localhost:5173##AGENT_V2_MAX_TOOL_CALLS=24##AGENT_RESOLVE_CACHE_TTL_SECONDS=300##AGENT_PROJECT_CONTEXT_ENABLED=true##AGENT_KNOWLEDGE_SEARCH_ENABLED=true##OPENAI_V2_STREAMING_ENABLED=true##OPENAI_V2_REASONING_SUMMARY_ENABLED=true"
           SECRETS="OPENAI_API_KEY=OPENAI_API_KEY:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest"
 
           # Realtime trace push (assistant activity → DO worker user rooms).
