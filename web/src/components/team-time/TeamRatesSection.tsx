@@ -12,24 +12,24 @@ function memberDisplayName(m: TeamMember): string {
 
 function RateCardSkeleton() {
 	return (
-		<div className="w-full sm:w-[240px] rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden animate-pulse min-h-[280px] flex flex-col">
-			<div className="h-14 bg-gray-100" />
+		<div className="flex min-h-[280px] w-full animate-pulse flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm sm:w-[240px]">
+			<div className="h-14 bg-muted" />
 			<div className="px-3 pb-3 -mt-7 flex-1 flex flex-col">
-				<div className="mx-auto h-14 w-14 rounded-full border-4 border-white bg-gray-200 shadow-sm" />
+				<div className="mx-auto h-14 w-14 rounded-full border-4 border-card bg-muted shadow-sm" />
 				
 				<div className="mt-2.5 space-y-2 text-center">
-					<div className="mx-auto h-4 w-32 rounded bg-gray-200" />
-					<div className="mx-auto h-3 w-40 rounded bg-gray-100" />
+					<div className="mx-auto h-4 w-32 rounded bg-muted" />
+					<div className="mx-auto h-3 w-40 rounded bg-muted" />
 				</div>
 
-				<div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-2">
-					<div className="mx-auto h-4 w-24 rounded bg-gray-200" />
-					<div className="mx-auto h-3 w-16 rounded bg-gray-100 mt-1.5" />
+				<div className="mt-3 rounded-lg border border-border bg-muted/60 p-2">
+					<div className="mx-auto h-4 w-24 rounded bg-muted-foreground/20" />
+					<div className="mx-auto mt-1.5 h-3 w-16 rounded bg-muted-foreground/15" />
 				</div>
 
-				<div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-center gap-1.5">
-					<div className="h-6 w-16 rounded bg-gray-200" />
-					<div className="h-6 w-16 rounded bg-gray-200" />
+				<div className="mt-auto flex items-center justify-center gap-1.5 border-t border-border pt-3">
+					<div className="h-6 w-16 rounded bg-muted" />
+					<div className="h-6 w-16 rounded bg-muted" />
 				</div>
 			</div>
 		</div>
@@ -107,10 +107,10 @@ export function TeamRatesSection({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h2 className="text-base font-semibold text-gray-900">
+					<h2 className="text-base font-semibold text-foreground">
 						Team Member Time Rates
 					</h2>
-					<p className="text-xs text-gray-500 mt-0.5">
+					<p className="mt-0.5 text-xs text-muted-foreground">
 						Members need at least one active project rate before they can use
 						the My Logs tab.
 					</p>
@@ -119,7 +119,7 @@ export function TeamRatesSection({
 					<button
 						type="button"
 						onClick={onOpenAddRate}
-						className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+						className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
 					>
 						<Plus className="w-3.5 h-3.5" />
 						Add Rate
@@ -135,8 +135,8 @@ export function TeamRatesSection({
 						<RateCardSkeleton />
 					</div>
 				) : ratedMembers.length === 0 ? (
-					<div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-						<p className="text-sm text-gray-500">No time rates set yet.</p>
+					<div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
+						<p className="text-sm text-muted-foreground">No time rates set yet.</p>
 					</div>
 				) : (
 					<div className="flex flex-wrap gap-4">
@@ -159,13 +159,13 @@ export function TeamRatesSection({
 							return (
 								<div
 									key={member.id}
-									className={`w-full sm:w-[240px] rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden min-h-[280px] flex flex-col ${
-										isPending ? "ring-1 ring-amber-300/60 bg-amber-50/20" : ""
+									className={`flex min-h-[280px] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm sm:w-[240px] ${
+										isPending ? "ring-1 ring-warning/50" : ""
 									}`}
 								>
-									<div className="h-14 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-50" />
+									<div className="h-14 bg-linear-to-r from-muted via-muted/70 to-card" />
 									<div className="px-3 pb-3 -mt-7 flex-1 flex flex-col">
-										<div className="mx-auto h-14 w-14 rounded-full border-4 border-white bg-white shadow-sm overflow-hidden flex items-center justify-center">
+										<div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-4 border-card bg-muted shadow-sm">
 											{avatarUrl ? (
 												<img
 													src={avatarUrl}
@@ -173,7 +173,7 @@ export function TeamRatesSection({
 													className="h-full w-full object-cover"
 												/>
 											) : (
-												<span className="text-xs font-semibold text-gray-700">
+												<span className="text-xs font-semibold text-muted-foreground">
 													{initialsFromName(memberName)}
 												</span>
 											)}
@@ -181,43 +181,43 @@ export function TeamRatesSection({
 
 										<div className="mt-2.5 text-center">
 											<div className="flex items-center justify-center gap-1.5">
-												<p className="text-sm font-semibold text-gray-900 leading-tight">
+												<p className="text-sm font-semibold leading-tight text-card-foreground">
 													{memberName}
 												</p>
 												{isPending && (
 													<Loader2
-														className="h-3.5 w-3.5 animate-spin text-slate-700"
+														className="h-3.5 w-3.5 animate-spin text-muted-foreground"
 														aria-label="Rate pending"
 													/>
 												)}
 											</div>
-											<p className="text-[11px] text-gray-500 mt-1">
+											<p className="mt-1 text-[11px] text-muted-foreground">
 												{roleLabel} | {positionLabel}
 											</p>
 										</div>
 
-										<div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-2">
+										<div className="mt-3 rounded-lg border border-border bg-muted/50 p-2">
 											<div className="text-center">
-												<p className="text-sm font-semibold text-slate-800">
+												<p className="text-sm font-semibold text-card-foreground">
 													{headline}
 												</p>
 												{sub && (
-													<p className="text-[11px] text-slate-500 mt-0.5">
+													<p className="mt-0.5 text-[11px] text-muted-foreground">
 														{sub}
 													</p>
 												)}
 											</div>
 											{rates.length > 1 && (
-												<div className="mt-2 space-y-0.5 border-t border-gray-100 pt-2">
+												<div className="mt-2 space-y-0.5 border-t border-border pt-2">
 							{preview.map((r) => (
 								<div
 									key={r.id}
 									className="flex items-center justify-between gap-2 text-[10.5px]"
 								>
-									<span className="truncate text-slate-500">
+									<span className="truncate text-muted-foreground">
 										{projectTitleById[r.project_id] ?? "Project"}
 									</span>
-									<span className="font-medium text-slate-700 tabular-nums">
+									<span className="font-medium text-card-foreground tabular-nums">
 										Work {Number(r.hourly_rate).toFixed(2)} / Training{" "}
 										{Number(r.training_hourly_rate).toFixed(2)}{" "}
 										{r.currency || "USD"}
@@ -225,7 +225,7 @@ export function TeamRatesSection({
 								</div>
 							))}
 													{remaining > 0 && (
-														<p className="text-[10.5px] text-slate-400 text-center">
+														<p className="text-center text-[10.5px] text-muted-foreground">
 															+{remaining} more
 														</p>
 													)}
@@ -233,13 +233,13 @@ export function TeamRatesSection({
 											)}
 										</div>
 
-										<div className="mt-auto pt-3 border-t border-gray-100">
+										<div className="mt-auto border-t border-border pt-3">
 											<div className="flex flex-wrap items-center justify-center gap-1.5">
 												<button
 													type="button"
 													onClick={() => onViewLogs(member)}
 													disabled={isPending}
-													className="px-2.5 py-1 text-xs font-semibold rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+													className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
 												>
 													View Logs
 												</button>
@@ -248,7 +248,7 @@ export function TeamRatesSection({
 														type="button"
 														onClick={() => onManageMember(member)}
 														disabled={isPending}
-														className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed"
+														className="inline-flex items-center gap-1 rounded-md border border-primary/35 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
 													>
 														<Settings2 className="h-3.5 w-3.5" />
 														Manage

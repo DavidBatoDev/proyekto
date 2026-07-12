@@ -323,48 +323,48 @@ export function DashboardWidgets({
 							<button
 								type="button"
 								onClick={scrollToProjects}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md sm:p-6"
 							>
 								<span
-									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
 								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
-								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
+								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
 									{"->"}
 								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-									<FolderOpen className="w-4 h-4 text-slate-400" />
+								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+									<FolderOpen className="w-4 h-4 text-muted-foreground" />
 									ACTIVE PROJECTS
 								</p>
-								<p className="relative z-10 text-2xl font-semibold text-slate-900 sm:text-4xl">
+								<p className="relative z-10 text-2xl font-semibold text-card-foreground sm:text-4xl">
 									{isProjectsLoading ? "..." : primaryMetricValue}
 								</p>
 							</button>
 							<button
 								type="button"
 								onClick={scrollToAttention}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md sm:p-6"
 							>
 								<span
-									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
 								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
-								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
+								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
 									{"->"}
 								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-									<ShieldCheck className="w-4 h-4 text-slate-400" />
+								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+									<ShieldCheck className="w-4 h-4 text-muted-foreground" />
 									PENDING PROJECTS
 								</p>
-								<p className="relative z-10 text-2xl font-semibold text-slate-900 sm:text-4xl">
+								<p className="relative z-10 text-2xl font-semibold text-card-foreground sm:text-4xl">
 									{secondaryMetricLoading ? "..." : secondaryMetricValue}
 								</p>
 							</button>
@@ -372,31 +372,31 @@ export function DashboardWidgets({
 								type="button"
 								onClick={openFirstProjectInvoices}
 								disabled={!invoiceTargetProject}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 sm:p-6"
 							>
 								<span
-									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
 								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#2563eb" }}
+									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
+									aria-hidden="true"
 								/>
-								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
+								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
 									{"->"}
 								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-									<ShieldCheck className="w-4 h-4 text-slate-400" />
+								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+									<ShieldCheck className="w-4 h-4 text-muted-foreground" />
 									INVOICES
 								</p>
-								<p className="relative z-10 text-xl font-semibold text-slate-900 sm:text-3xl">
+								<p className="relative z-10 text-xl font-semibold text-card-foreground sm:text-3xl">
 									{invoiceMetricLoading
 										? "..."
 										: invoiceMetricValue.toLocaleString(undefined, {
 												maximumFractionDigits: 2,
 											})}
 								</p>
-								<p className="relative z-10 mt-1 text-xs text-slate-600">
+								<p className="relative z-10 mt-1 text-xs text-muted-foreground">
 									{invoiceMetricLoading
 										? "Loading..."
 										: `${invoiceMetricCount} invoice${invoiceMetricCount === 1 ? "" : "s"}`}

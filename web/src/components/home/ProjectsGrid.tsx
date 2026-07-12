@@ -199,7 +199,7 @@ export function ProjectsGrid() {
 		>
 			<div className="mb-4">
 				<div className="flex items-center gap-2">
-					<div className="h-3 w-3 rounded-full bg-slate-900 sm:h-[18px] sm:w-[18px]" />
+					<div className="h-3 w-3 rounded-full bg-primary sm:h-[18px] sm:w-[18px]" />
 					<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 						PROJECTS
 					</h2>

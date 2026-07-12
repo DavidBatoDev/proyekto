@@ -58,7 +58,7 @@ export function TeamsGrid() {
 			<div className="mb-4 flex items-end justify-between gap-3">
 				<div>
 					<div className="flex items-center gap-2">
-						<div className="h-3 w-3 rounded-full bg-slate-900 sm:h-[18px] sm:w-[18px]" />
+						<div className="h-3 w-3 rounded-full bg-primary sm:h-[18px] sm:w-[18px]" />
 						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							TEAMS
 						</h2>
@@ -111,12 +111,12 @@ function TeamCard({ team }: { team: Team }) {
 		<Link
 			to="/teams/$teamId"
 			params={{ teamId: team.id }}
-			className="group flex h-40 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+			className="group flex h-40 flex-col rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-lg"
 		>
 			<div className="flex items-start gap-2.5">
 				<TeamAvatar team={team} />
 				<div className="min-w-0 flex-1">
-					<h3 className="truncate text-[13px] font-semibold leading-tight text-slate-900 sm:text-[14px]">
+					<h3 className="truncate text-[13px] font-semibold leading-tight text-card-foreground sm:text-[14px]">
 						{team.name || "Untitled team"}
 					</h3>
 					<TeamCardSubLine team={team} />
@@ -124,14 +124,14 @@ function TeamCard({ team }: { team: Team }) {
 			</div>
 
 			<div className="mt-auto flex items-center justify-between gap-2 pt-3">
-				<p className="shrink-0 whitespace-nowrap text-[10px] text-slate-500 sm:text-[11px]">
+				<p className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
 					{totalMembers === 1 ? "1 member" : `${totalMembers} members`}
 				</p>
 				<div className="flex min-w-0 items-center justify-end">
 					<AvatarStack members={visible} overflow={overflow} />
 					{/* Decorative chevron — hidden on phones to keep the row from
 					    overflowing the half-width card (the whole card is a link). */}
-					<span className="ml-1.5 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:translate-x-0.5 sm:inline-flex">
+					<span className="ml-1.5 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground shadow-sm transition-transform duration-200 group-hover:translate-x-0.5 sm:inline-flex">
 						<ArrowRight className="h-3 w-3" />
 					</span>
 				</div>
@@ -173,14 +173,14 @@ function AvatarStack({
 	overflow: number;
 }) {
 	if (members.length === 0 && overflow === 0) {
-		return <span className="text-[11px] text-slate-400">No members</span>;
+		return <span className="text-[11px] text-muted-foreground">No members</span>;
 	}
 	// Phones (2-up cards) are too narrow for the full stack, so cap the
 	// visible avatars there and roll the rest into the "+N" chip; sm+ shows all.
 	const MOBILE_SHOWN = 3;
 	const mobileOverflow = Math.max(members.length - MOBILE_SHOWN, 0) + overflow;
 	const chipClass =
-		"flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[9px] font-semibold text-slate-600 ring-1 ring-slate-200 sm:h-6 sm:w-6";
+		"flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-semibold text-muted-foreground ring-1 ring-border sm:h-6 sm:w-6";
 	return (
 		<div className="flex -space-x-1.5">
 			{members.map((m, i) => (
@@ -219,14 +219,14 @@ function MemberAvatar({
 				src={profile.avatar_url}
 				alt={name}
 				title={name}
-				className={`h-5 w-5 shrink-0 rounded-full border-2 border-white object-cover ring-1 ring-slate-200 sm:h-6 sm:w-6 ${className ?? ""}`}
+				className={`h-5 w-5 shrink-0 rounded-full border-2 border-card object-cover ring-1 ring-border sm:h-6 sm:w-6 ${className ?? ""}`}
 			/>
 		);
 	}
 	return (
 		<div
 			title={name}
-			className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-700 ring-1 ring-slate-200 sm:h-6 sm:w-6 ${className ?? ""}`}
+			className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-semibold text-muted-foreground ring-1 ring-border sm:h-6 sm:w-6 ${className ?? ""}`}
 		>
 			{initial || <User className="h-2.5 w-2.5" />}
 		</div>

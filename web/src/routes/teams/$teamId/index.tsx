@@ -117,20 +117,20 @@ function CardActionMenu({
 					setOpen((v) => !v);
 					setStatusOpen(false);
 				}}
-				className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-white/80 hover:text-slate-700 transition-colors"
+				className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 			>
 				<MoreHorizontal className="h-4 w-4" />
 			</button>
 
 			{open && (
 				<div
-					className="absolute right-0 top-8 z-50 w-44 overflow-visible rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+					className="absolute right-0 top-8 z-50 w-44 overflow-visible rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl"
 					onClick={(e) => e.stopPropagation()}
 				>
 					{/* Go to Project */}
 					<button
 						type="button"
-						className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+						className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
 						onClick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
@@ -145,7 +145,7 @@ function CardActionMenu({
 						<div className="relative">
 							<button
 								type="button"
-								className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+								className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
 								onClick={(e) => {
 									e.preventDefault();
 									e.stopPropagation();
@@ -157,13 +157,13 @@ function CardActionMenu({
 							</button>
 
 							{statusOpen && (
-								<div className="absolute left-full top-0 ml-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+								<div className="absolute left-full top-0 ml-1 w-40 rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl">
 									{statuses.map(([key, cfg]) => (
 										<button
 											key={key}
 											type="button"
 											disabled={statusMutation.isPending}
-											className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+											className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted disabled:opacity-50"
 											onClick={(e) => {
 												e.preventDefault();
 												e.stopPropagation();
@@ -176,7 +176,7 @@ function CardActionMenu({
 											/>
 											<span className="flex-1">{cfg.label}</span>
 											{currentStatus?.toLowerCase() === key && (
-												<Check className="h-3.5 w-3.5 text-slate-500" />
+												<Check className="h-3.5 w-3.5 text-muted-foreground" />
 											)}
 										</button>
 									))}
@@ -244,18 +244,18 @@ function CompactProjectCard({
 
 	const avatarStrip = displayedMembers.length > 0 ? (
 		<div className="flex items-center justify-end">
-			<div className="group/avatars relative">
-				<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-slate-200 bg-white py-2 shadow-xl group-hover/avatars:block">
-					<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+				<div className="group/avatars relative">
+				<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-border bg-popover py-2 text-popover-foreground shadow-xl group-hover/avatars:block">
+					<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 						Team members ({members.length})
 					</p>
 					<ul className="max-h-52 overflow-y-auto">
 						{members.map((m) => (
 							<li key={m.user_id} className="flex items-center gap-2 px-3 py-1">
-								<div className="shrink-0 overflow-hidden rounded-full border border-slate-200">
+								<div className="shrink-0 overflow-hidden rounded-full border border-border">
 									<MemberAvatar member={m} size={5} />
 								</div>
-								<span className="truncate text-[11px] text-slate-700">
+								<span className="truncate text-[11px] text-popover-foreground">
 									{m.user?.display_name ||
 										[m.user?.first_name, m.user?.last_name]
 											.filter(Boolean)
@@ -270,7 +270,7 @@ function CompactProjectCard({
 					{displayedMembers.map((m, i) => (
 						<div
 							key={m.user_id}
-							className="shrink-0 overflow-hidden rounded-full border-2 border-white"
+							className="shrink-0 overflow-hidden rounded-full border-2 border-card"
 							style={{ marginLeft: i === 0 ? 0 : -6, zIndex: displayedMembers.length - i }}
 						>
 							<MemberAvatar member={m} size={6} />
@@ -278,7 +278,7 @@ function CompactProjectCard({
 					))}
 					{extraCount > 0 && (
 						<div
-							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-200 px-1 text-[9px] font-bold text-slate-600"
+							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-card bg-muted px-1 text-[9px] font-bold text-muted-foreground"
 							style={{ marginLeft: -6, zIndex: 0 }}
 						>
 							+{extraCount}
@@ -291,7 +291,7 @@ function CompactProjectCard({
 
 	if (isLocked) {
 		return (
-			<div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm opacity-60 grayscale cursor-not-allowed select-none">
+			<div className="flex h-full cursor-not-allowed select-none flex-col rounded-xl border border-border bg-card text-card-foreground opacity-60 shadow-sm grayscale">
 				{bannerUrl && (
 					<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
 						<img src={bannerUrl} alt="" className="h-full w-full object-cover" />
@@ -300,17 +300,17 @@ function CompactProjectCard({
 				)}
 				<div className="flex flex-1 flex-col gap-2 p-3">
 					<div className="flex items-center gap-2">
-						<span className="text-[11px] font-semibold text-slate-500">#{number}</span>
-						<div className="h-3 w-px bg-slate-300" />
-						<span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+						<span className="text-[11px] font-semibold text-muted-foreground">#{number}</span>
+						<div className="h-3 w-px bg-border" />
+						<span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
 							<Lock className="h-2.5 w-2.5" />
 							No access
 						</span>
 					</div>
 					<div className="min-w-0">
-						<h4 className="truncate text-sm font-semibold text-slate-900">{title}</h4>
-						<p className="truncate text-[11px] text-slate-500">
-							<span className="font-medium text-slate-600">Client:</span> {client}
+						<h4 className="truncate text-sm font-semibold text-card-foreground">{title}</h4>
+						<p className="truncate text-[11px] text-muted-foreground">
+							<span className="font-medium text-card-foreground/80">Client:</span> {client}
 						</p>
 					</div>
 				</div>
@@ -322,9 +322,9 @@ function CompactProjectCard({
 		<Link
 			to="/project/$projectId/roadmap"
 			params={{ projectId }}
-			className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+			className="group relative flex h-full flex-col rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
 			style={bannerUrl ? undefined : {
-				backgroundImage: `linear-gradient(to bottom, white 92%, ${statusColor}14)`,
+				backgroundImage: `linear-gradient(to bottom, var(--card) 88%, color-mix(in srgb, ${statusColor} 9%, var(--card)))`,
 			}}
 		>
 			<CardActionMenu
@@ -336,7 +336,7 @@ function CompactProjectCard({
 			{bannerUrl && (
 				<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
 					<img src={bannerUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-					<div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
+					<div className="absolute inset-0 bg-linear-to-t from-black/65 via-black/30 to-black/10" />
 					<div className="absolute bottom-2 left-3 flex items-center gap-1.5">
 						<span className="text-[11px] font-semibold text-white/80">#{number}</span>
 						<div className="h-3 w-px bg-white/40" />
@@ -347,24 +347,24 @@ function CompactProjectCard({
 			<div className="flex flex-1 flex-col gap-2 p-3">
 				{!bannerUrl && (
 					<div className="flex items-center gap-2">
-						<span className="text-[11px] font-semibold text-slate-500">#{number}</span>
-						<div className="h-3 w-px bg-slate-300" />
+						<span className="text-[11px] font-semibold text-muted-foreground">#{number}</span>
+						<div className="h-3 w-px bg-border" />
 						<ProjectStatusBadge status={status} />
 					</div>
 				)}
 				<div className="min-w-0">
-					<h4 className="truncate text-sm font-semibold text-slate-900">{title}</h4>
-					<p className="truncate text-[11px] text-slate-500">
-						<span className="font-medium text-slate-600">Client:</span> {client}
+					<h4 className="truncate text-sm font-semibold text-card-foreground">{title}</h4>
+					<p className="truncate text-[11px] text-muted-foreground">
+						<span className="font-medium text-card-foreground/80">Client:</span> {client}
 					</p>
 				</div>
 				<div className="mt-auto flex flex-col gap-2 pt-1">
 					<div>
-						<div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+						<div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
 							<span>Progress</span>
 							<span>{progress === null ? "Not tracked" : `${progress}%`}</span>
 						</div>
-						<div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+						<div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
 							<div
 								className="h-full rounded-full transition-all"
 								style={{ width: `${progress ?? 0}%`, backgroundColor: progressColor }}

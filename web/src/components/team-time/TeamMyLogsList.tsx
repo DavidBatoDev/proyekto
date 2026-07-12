@@ -167,11 +167,11 @@ export function TeamMyLogsList({
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<h3 className="text-sm font-semibold text-slate-700">Activity</h3>
+				<h3 className="text-sm font-semibold text-foreground">Activity</h3>
 				<button
 					type="button"
 					onClick={onOpenAddLog}
-					className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+					className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
 				>
 					<Play className="h-3.5 w-3.5" />
 					Start a timer
@@ -179,27 +179,27 @@ export function TeamMyLogsList({
 			</div>
 
 			{unusualLogs.length > 0 && (
-				<section className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
+				<section className="overflow-hidden rounded-2xl border border-warning/45 bg-card">
 					<button
 						type="button"
 						onClick={() => setUnusualOpen((v) => !v)}
-						className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+						className="flex w-full items-center gap-2 bg-warning/10 px-3 py-2.5 text-left hover:bg-warning/15"
 					>
 						{unusualOpen ? (
-							<ChevronDown className="h-4 w-4 text-amber-600" />
+							<ChevronDown className="h-4 w-4 text-warning" />
 						) : (
-							<ChevronRight className="h-4 w-4 text-amber-600" />
+							<ChevronRight className="h-4 w-4 text-warning" />
 						)}
-						<AlertTriangle className="h-4 w-4 text-amber-500" />
-						<span className="text-xs font-semibold text-amber-800">
+						<AlertTriangle className="h-4 w-4 text-warning" />
+						<span className="text-xs font-semibold text-foreground">
 							Needs review — unusually long ({unusualLogs.length})
 						</span>
-						<span className="ml-auto text-[11px] text-amber-700">
+						<span className="ml-auto text-[11px] text-muted-foreground">
 							A timer may have been left running
 						</span>
 					</button>
 					{unusualOpen && (
-						<div className="divide-y divide-amber-100 border-t border-amber-100 bg-white">
+						<div className="divide-y divide-border border-t border-border bg-card">
 							{unusualLogs.map(renderRow)}
 						</div>
 					)}
@@ -210,15 +210,15 @@ export function TeamMyLogsList({
 				<button
 					type="button"
 					onClick={onOpenAddLog}
-					className="flex w-full flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center hover:border-sky-300 hover:bg-sky-50/40"
+					className="flex w-full flex-col items-center rounded-2xl border border-dashed border-border bg-card px-6 py-14 text-center hover:border-primary/45 hover:bg-muted"
 				>
-					<div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
-						<Timer className="h-6 w-6 text-slate-500" />
+					<div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+						<Timer className="h-6 w-6 text-muted-foreground" />
 					</div>
-					<h3 className="text-base font-semibold text-slate-900">
+					<h3 className="text-base font-semibold text-foreground">
 						No time logged yet
 					</h3>
-					<p className="mt-2 max-w-sm text-sm text-slate-500">
+					<p className="mt-2 max-w-sm text-sm text-muted-foreground">
 						Start a timer to log time on a task. Each log freezes your current
 						rate.
 					</p>
@@ -227,12 +227,12 @@ export function TeamMyLogsList({
 				days.map((day) => (
 					<section key={day.key}>
 						<div className="mb-1.5 flex items-center justify-between px-1">
-							<span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+							<span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 								{day.label}
 							</span>
 							<DayTotal logs={day.logs} active={day.hasRunning} />
 						</div>
-						<div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+						<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
 							{day.logs.map(renderRow)}
 						</div>
 					</section>
@@ -261,7 +261,7 @@ const DayTotal = memo(function DayTotal({
 			className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
 				isOver
 					? "border-rose-200 bg-rose-50 text-rose-700"
-					: "border-slate-200 bg-slate-50 text-slate-600"
+					: "border-border bg-muted text-muted-foreground"
 			}`}
 			title={isOver ? "Over 8 hours logged this day" : "Day total"}
 		>
@@ -386,13 +386,13 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	return (
 		<div
 			className={`flex items-center gap-3 px-3 py-2.5 ${
-				isRowPending ? "bg-amber-50/50" : isRunning ? "bg-sky-50/40" : ""
+				isRowPending ? "bg-warning/10" : isRunning ? "bg-primary/10" : ""
 			}`}
 		>
 			{/* Icon */}
 			<div
 				className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-					isRunning ? "bg-sky-100 text-sky-600" : "bg-slate-100 text-slate-500"
+					isRunning ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
 				}`}
 			>
 				{isRunning ? (
@@ -410,23 +410,23 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-1.5">
 					<span
-						className={`truncate text-sm font-medium ${log.task_id ? "text-slate-800" : "italic text-slate-400"}`}
+						className={`truncate text-sm font-medium ${log.task_id ? "text-foreground" : "italic text-muted-foreground"}`}
 						title={taskTitle}
 					>
 						{taskTitle}
 					</span>
 					{taskSyncing && (
-						<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+						<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground" />
 					)}
 				</div>
-				<div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+				<div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
 					<span className="truncate" title={projectTitle}>
 						{projectTitle}
 					</span>
 					<span>·</span>
 					<span className="tabular-nums">
 						{startedLabel} –{" "}
-						{isRunning ? <span className="text-sky-600">now</span> : endedLabel}
+						{isRunning ? <span className="text-primary">now</span> : endedLabel}
 					</span>
 				</div>
 			</div>
@@ -441,7 +441,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 						currency={currency}
 					/>
 				</div>
-				<div className="flex items-center justify-end gap-1 text-[11px] tabular-nums text-slate-400">
+				<div className="flex items-center justify-end gap-1 text-[11px] tabular-nums text-muted-foreground">
 					{isUnusuallyLongLog(log) && (
 						<span
 							title="Unusually long — a timer may have been left running."
@@ -461,7 +461,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 						type="button"
 						onClick={() => void onStopLog(log.id)}
 						disabled={isRowPending}
-						className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+						className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 					>
 						<Square className="h-3 w-3" />
 						Stop
@@ -495,19 +495,19 @@ function MyLogsListSkeleton() {
 		<div className="space-y-4">
 			{Array.from({ length: 2 }).map((_, dayIdx) => (
 				<div key={dayIdx} className="space-y-1.5">
-					<div className="h-3 w-32 rounded bg-slate-100" />
-					<div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
+					<div className="h-3 w-32 rounded bg-muted" />
+					<div className="divide-y divide-border rounded-2xl border border-border bg-card">
 						{Array.from({ length: 3 }).map((__, rowIdx) => (
 							<div
 								key={rowIdx}
 								className="flex animate-pulse items-center gap-3 px-3 py-3"
 							>
-								<div className="h-9 w-9 rounded-full bg-slate-100" />
+								<div className="h-9 w-9 rounded-full bg-muted" />
 								<div className="flex-1 space-y-2">
-									<div className="h-3 w-40 rounded bg-slate-100" />
-									<div className="h-2.5 w-24 rounded bg-slate-100" />
+									<div className="h-3 w-40 rounded bg-muted" />
+									<div className="h-2.5 w-24 rounded bg-muted" />
 								</div>
-								<div className="h-3 w-16 rounded bg-slate-100" />
+								<div className="h-3 w-16 rounded bg-muted" />
 							</div>
 						))}
 					</div>

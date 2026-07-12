@@ -291,7 +291,7 @@ export function RoadmapsGrid() {
 			<div className="mb-6">
 				<div className="flex items-center justify-between mb-1">
 					<div className="flex items-center gap-2">
-						<div className="h-3 w-3 rounded-full bg-slate-900 sm:h-[18px] sm:w-[18px]" />
+						<div className="h-3 w-3 rounded-full bg-primary sm:h-[18px] sm:w-[18px]" />
 						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							MY ROADMAPS
 						</h2>
@@ -358,7 +358,7 @@ export function RoadmapsGrid() {
 								}}
 								className={`group relative flex h-auto cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:h-[420px] ${
 									isSelected
-										? "border-slate-900 ring-2 ring-slate-900/70 shadow-lg"
+										? "border-primary ring-2 ring-primary/45 shadow-lg dark:ring-primary/80"
 										: "border-slate-200 hover:border-slate-400"
 								} ${index >= INITIAL_VISIBLE_ROADMAPS ? "app-slide-up" : ""}`}
 								style={
