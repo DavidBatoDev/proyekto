@@ -170,6 +170,36 @@ def tool_requested(settings: Any, trace_id: str | None, tool_name: str, tool_arg
     )
 
 
+def tool_rejected(
+    settings: Any,
+    trace_id: str | None,
+    tool_name: str,
+    *,
+    reason: str,
+    operations_count: int,
+    revision_operations_count: int,
+    clarifier_options_count: int,
+    assistant_message_present: bool,
+) -> None:
+    """Record a terminal tool rejection without exposing generated content."""
+    log_event(
+        logger,
+        'tool_call_result',
+        settings=settings,
+        trace_id=trace_id,
+        brain='v2',
+        tool_name=tool_name,
+        tool_error_code='INVALID_OPERATIONS',
+        result_summary={
+            'reason': reason,
+            'operations_count': operations_count,
+            'revision_operations_count': revision_operations_count,
+            'clarifier_options_count': clarifier_options_count,
+            'assistant_message_present': assistant_message_present,
+        },
+    )
+
+
 def route_selected(
     settings: Any,
     trace_id: str | None,

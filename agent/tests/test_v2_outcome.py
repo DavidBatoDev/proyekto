@@ -198,10 +198,16 @@ class V2SchemaParityTests(unittest.TestCase):
         self.assertNotIn('revision_operations', props)
         self.assertIn('operations', props)
         self.assertNotIn('DUAL-TARGET CONTRACT', v2_plan['function']['description'])
-        # operations schema itself is untouched vs the registry.
+        self.assertNotIn('CLARIFIER CONTRACT', v2_plan['function']['description'])
+        self.assertEqual(props['operations']['minItems'], 1)
+        self.assertEqual(props['assistant_message']['minLength'], 1)
+        registry_operations = dict(
+            get_planning_tool()['function']['parameters']['properties']['operations']
+        )
+        self.assertNotIn('minItems', registry_operations)
         self.assertEqual(
-            props['operations'],
-            get_planning_tool()['function']['parameters']['properties']['operations'],
+            {key: value for key, value in props['operations'].items() if key != 'minItems'},
+            registry_operations,
         )
 
 

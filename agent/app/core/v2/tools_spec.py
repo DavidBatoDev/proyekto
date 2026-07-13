@@ -262,9 +262,13 @@ def _planning_tool(has_pending_plan: bool) -> dict[str, Any]:
     params = dict(fn.get('parameters') or {})
     props = dict(params.get('properties') or {})
     props.pop('revision_operations', None)
+    operations = dict(props.get('operations') or {})
+    operations['minItems'] = 1
+    props['operations'] = operations
     params['properties'] = props
     fn['parameters'] = params
-    fn['description'] = _strip_dual_target_contract(fn.get('description', ''))
+    description = _strip_dual_target_contract(fn.get('description', ''))
+    fn['description'] = _strip_clarifier_contract(description)
     return {**tool, 'function': fn}
 
 
@@ -280,6 +284,14 @@ def _strip_dual_target_contract(description: str) -> str:
     if end == -1:
         return description[:start].rstrip() + ' '
     return description[:start] + description[end:]
+
+
+def _strip_clarifier_contract(description: str) -> str:
+    """The v2 loop has a dedicated ``ask_user`` tool for clarifications."""
+    start = description.find('CLARIFIER CONTRACT')
+    if start == -1:
+        return description
+    return description[:start].rstrip()
 
 
 def propose_plan_tool() -> dict[str, Any]:

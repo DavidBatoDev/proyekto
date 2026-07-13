@@ -355,12 +355,25 @@ def _handle_terminal(
                 terminal_tool=tc.name,
                 termination_reason='clarifier',
             )
-        return LoopResult(
-            kind='chat',
-            assistant_message=parsed.assistant_message,
-            terminal_tool=tc.name,
-            termination_reason='edit_tool_chat',
+        progress.tool_rejected(
+            settings,
+            trace_id,
+            tc.name,
+            reason='empty_action_payload',
+            operations_count=len(parsed.operations),
+            revision_operations_count=len(parsed.revision_operations),
+            clarifier_options_count=len(parsed.clarifier_options),
+            assistant_message_present=bool(parsed.assistant_message),
         )
+        return {
+            'error': {
+                'code': 'INVALID_OPERATIONS',
+                'message': (
+                    'The roadmap action was empty. Include at least one concrete '
+                    'operation, or use ask_user when a decision is required.'
+                ),
+            }
+        }
 
     if tc.name == PROPOSE_PLAN_TOOL_NAME:
         summary = str(tc.arguments.get('summary') or '').strip()

@@ -7,6 +7,7 @@ lane), and budget exhaustion.
 
 import json
 import unittest
+from unittest.mock import patch
 
 from app.core.config import get_settings
 from app.core.v2.loop import _is_announcement_without_action, run_loop
@@ -123,6 +124,60 @@ class V2LoopTests(unittest.TestCase):
         # The error was handed back as a function_call_output before the retry.
         outputs = [m for m in client.last_messages if m.get('type') == 'function_call_output']
         self.assertTrue(any('INVALID_OPERATIONS' in (m.get('output') or '') for m in outputs))
+
+    def test_empty_plan_tool_payload_is_fed_back_then_self_corrects(self):
+        for malformed_args in ({}, {'assistant_message': '', 'operations': []}):
+            with self.subTest(malformed_args=malformed_args):
+                client = _ScriptedClient([
+                    _tool_resp('plan_roadmap_operations', malformed_args),
+                    _tool_resp('plan_roadmap_operations', _VALID_EDIT_ARGS),
+                ])
+                with patch('app.core.v2.loop.progress.tool_rejected') as rejected:
+                    result = _run(client)
+
+                self.assertEqual(result.kind, 'edit')
+                self.assertEqual(client.call_count, 2)
+                self.assertNotEqual(result.assistant_message, 'Prepared roadmap operations.')
+                outputs = [
+                    message
+                    for message in client.last_messages
+                    if message.get('type') == 'function_call_output'
+                ]
+                self.assertTrue(
+                    any('INVALID_OPERATIONS' in (message.get('output') or '') for message in outputs)
+                )
+                rejected.assert_called_once()
+                self.assertEqual(rejected.call_args.kwargs['reason'], 'empty_action_payload')
+                self.assertEqual(rejected.call_args.kwargs['operations_count'], 0)
+
+    def test_plan_tool_operations_without_message_remain_edit(self):
+        result = _run(
+            _ScriptedClient([
+                _tool_resp(
+                    'plan_roadmap_operations',
+                    {'operations': [{'op': 'add_epic', 'data': {'title': 'Growth'}}]},
+                )
+            ])
+        )
+        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(result.assistant_message, '')
+        self.assertEqual(len(result.operations), 1)
+
+    def test_empty_plan_tool_question_remains_clarifier(self):
+        result = _run(
+            _ScriptedClient([
+                _tool_resp(
+                    'plan_roadmap_operations',
+                    {
+                        'assistant_message': 'Which epic should I update?',
+                        'operations': [],
+                        'clarifier_options': ['Growth', 'Retention'],
+                    },
+                )
+            ])
+        )
+        self.assertEqual(result.kind, 'clarifier')
+        self.assertEqual(result.clarifier['options'], ['Growth', 'Retention'])
 
     def test_propose_plan_terminal(self):
         args = {
