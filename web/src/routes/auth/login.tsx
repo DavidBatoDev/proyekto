@@ -504,8 +504,8 @@ function RouteComponent() {
             width: "100%",
             height: "52px",
             borderRadius: "12px",
-            border: "1px solid #CBD5E1",
-            background: "white",
+            border: "1px solid rgba(148, 163, 184, 0.28)",
+            background: "#1f2130",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -513,17 +513,21 @@ function RouteComponent() {
             cursor: isLoading ? "not-allowed" : "pointer",
             fontSize: "0.95rem",
             fontWeight: 700,
-            color: "var(--foreground)",
+            color: "#f8fafc",
             fontFamily: "'Manrope', sans-serif",
-            transition: "box-shadow 0.2s",
+            transition: "background-color 0.2s, box-shadow 0.2s, border-color 0.2s",
             opacity: isLoading ? 0.7 : 1,
           }}
           onMouseEnter={(e) => {
             if (!isLoading) {
-              e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.10)";
+              e.currentTarget.style.background = "#282b3d";
+              e.currentTarget.style.borderColor = "rgba(203, 213, 225, 0.42)";
+              e.currentTarget.style.boxShadow = "0 10px 24px rgba(0, 0, 0, 0.24)";
             }
           }}
           onMouseLeave={(e) => {
+            e.currentTarget.style.background = "#1f2130";
+            e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.28)";
             e.currentTarget.style.boxShadow = "none";
           }}
         >

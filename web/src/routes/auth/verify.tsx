@@ -111,6 +111,7 @@ function VerifyEmailComponent() {
               <div className="mb-6 flex justify-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
                   <svg
+                    aria-hidden="true"
                     className="h-8 w-8 text-green-600"
                     fill="none"
                     stroke="currentColor"
@@ -138,7 +139,7 @@ function VerifyEmailComponent() {
                 variant="contained"
                 sx={{
                   backgroundColor: "#ff9900",
-                  color: "white",
+                  color: "#111827",
                   textTransform: "none",
                   fontSize: "16px",
                   fontWeight: 600,
@@ -157,6 +158,7 @@ function VerifyEmailComponent() {
               <div className="mb-6 flex justify-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
                   <svg
+                    aria-hidden="true"
                     className="h-8 w-8 text-red-600"
                     fill="none"
                     stroke="currentColor"
@@ -184,7 +186,7 @@ function VerifyEmailComponent() {
                 variant="contained"
                 sx={{
                   backgroundColor: "#ff9900",
-                  color: "white",
+                  color: "#111827",
                   textTransform: "none",
                   fontSize: "16px",
                   fontWeight: 600,

@@ -13,7 +13,8 @@ function notificationTitle(typeName?: string) {
 	if (typeName === "project_invite_responded") return "Invite response";
 	if (typeName === "marketplace_profile_live") return "Profile is live";
 	if (typeName === "task_assigned") return "Task assigned";
-	if (typeName === "time_log_approval_requested") return "Time approval requested";
+	if (typeName === "time_log_approval_requested")
+		return "Time approval requested";
 	if (typeName === "time_log_approved") return "Time log approved";
 	if (typeName === "time_log_rejected") return "Time log rejected";
 	if (typeName === "time_log_pending") return "Time log reset to pending";
@@ -28,16 +29,20 @@ function notificationTitle(typeName?: string) {
 
 function notificationBody(content: Record<string, unknown> | null | undefined) {
 	const messageValue = content?.message;
-	if (typeof messageValue === "string" && messageValue.trim()) return messageValue;
+	if (typeof messageValue === "string" && messageValue.trim())
+		return messageValue;
 	const reasonValue = content?.reason;
-	if (typeof reasonValue === "string" && reasonValue.trim()) return `Reason: ${reasonValue}`;
+	if (typeof reasonValue === "string" && reasonValue.trim())
+		return `Reason: ${reasonValue}`;
 	const dayValue = content?.day;
-	if (typeof dayValue === "string" && dayValue.trim()) return `Day: ${dayValue}`;
+	if (typeof dayValue === "string" && dayValue.trim())
+		return `Day: ${dayValue}`;
 	const statusValue = content?.status;
 	if (typeof statusValue === "string") {
 		if (statusValue === "approved") return "Your logged time was approved.";
 		if (statusValue === "rejected") return "Your logged time was rejected.";
-		if (statusValue === "pending") return "A time log was moved back to pending.";
+		if (statusValue === "pending")
+			return "A time log was moved back to pending.";
 		return `Invite was ${statusValue}.`;
 	}
 	return "You have a new update.";
@@ -126,7 +131,7 @@ export function NotificationBell() {
 		<>
 			<button
 				type="button"
-				className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
+				className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted"
 				aria-label="Notifications"
 				onClick={openNotifications}
 			>
@@ -149,13 +154,16 @@ export function NotificationBell() {
 						maxWidth: "90vw",
 						borderRadius: "12px",
 						mt: 1,
-						border: "1px solid #e2e8f0",
-						boxShadow: "0 18px 40px rgba(15, 23, 42, 0.12)",
+						color: "var(--popover-foreground)",
+						backgroundColor: "var(--popover)",
+						border: "1px solid var(--border)",
+						boxShadow: "var(--app-shadow-lg)",
+						overflow: "hidden",
 					},
 				}}
 			>
 				<div className="flex items-center justify-between px-4 py-3">
-					<p className="text-[0.95rem] font-bold text-slate-900">
+					<p className="text-[0.95rem] font-bold text-popover-foreground">
 						Notifications
 					</p>
 					<button
@@ -167,10 +175,10 @@ export function NotificationBell() {
 						Mark all read
 					</button>
 				</div>
-				<Divider />
+				<Divider sx={{ borderColor: "var(--border)" }} />
 
 				{recentNotifications.length === 0 ? (
-					<div className="px-4 py-8 text-center text-sm text-slate-500">
+					<div className="px-4 py-8 text-center text-sm text-muted-foreground">
 						No notifications yet.
 					</div>
 				) : (
@@ -188,9 +196,7 @@ export function NotificationBell() {
 										notification.id,
 										notification.link_url,
 										typeName,
-										typeof inviteIdValue === "string"
-											? inviteIdValue
-											: null,
+										typeof inviteIdValue === "string" ? inviteIdValue : null,
 									)
 								}
 								sx={{
@@ -199,18 +205,23 @@ export function NotificationBell() {
 									whiteSpace: "normal",
 									backgroundColor: notification.is_read
 										? "transparent"
-										: "#fff8f3",
-									borderBottom: "1px solid #f8fafc",
+										: "color-mix(in oklch, var(--primary) 10%, var(--popover))",
+									borderBottom: "1px solid var(--border)",
+									color: "var(--popover-foreground)",
 									py: 1.5,
 									px: 2,
+									"&:hover": {
+										backgroundColor:
+											"color-mix(in oklch, var(--primary) 14%, var(--popover))",
+									},
 								}}
 							>
 								<div className="flex-1 pr-2">
 									<p
 										className={`text-[0.85rem] ${
 											notification.is_read
-												? "font-medium text-slate-600"
-												: "font-bold text-slate-900"
+												? "font-medium text-muted-foreground"
+												: "font-bold text-popover-foreground"
 										}`}
 									>
 										{title}
@@ -218,13 +229,13 @@ export function NotificationBell() {
 									<p
 										className={`mt-0.5 text-[0.8rem] ${
 											notification.is_read
-												? "font-normal text-slate-500"
-												: "font-medium text-slate-700"
+												? "font-normal text-muted-foreground"
+												: "font-medium text-popover-foreground"
 										}`}
 									>
 										{message}
 									</p>
-									<p className="mt-1 text-[0.75rem] text-slate-400">
+									<p className="mt-1 text-[0.75rem] text-muted-foreground">
 										{new Date(notification.created_at).toLocaleString()}
 									</p>
 								</div>
@@ -236,7 +247,7 @@ export function NotificationBell() {
 					})
 				)}
 
-				<Divider />
+				<Divider sx={{ borderColor: "var(--border)" }} />
 				<div className="px-4 py-2">
 					<Link
 						to="/notifications"
