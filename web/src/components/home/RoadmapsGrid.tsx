@@ -15,7 +15,6 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
-import { isGeneratedRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 
 // Dashboard shows this many roadmap cards before the "View more" toggle reveals
 // the rest with a staggered slide-up.
@@ -424,21 +423,10 @@ export function RoadmapsGrid() {
 
 								<div className="flex h-full flex-col">
 									<div className="h-[330px] overflow-hidden p-4">
-										{template.preview.preview_url?.trim() &&
-										!isGeneratedRoadmapThumbnailDataUri(
-											template.preview.preview_url,
-										) ? (
-											<img
-												src={template.preview.preview_url}
-												alt={template.title}
-												className="w-full h-full object-cover rounded-lg"
-											/>
-										) : (
-											<EpicOverview
-												preview={template.preview}
-												selected={isSelected}
-											/>
-										)}
+										<EpicOverview
+											preview={template.preview}
+											selected={isSelected}
+										/>
 									</div>
 									<div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2.5">
 										<div className="flex items-start justify-between gap-2">
