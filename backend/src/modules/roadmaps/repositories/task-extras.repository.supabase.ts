@@ -156,6 +156,22 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
     return data;
   }
 
+  async findDependencyById(
+    dependencyId: string,
+  ): Promise<{ id: string; blocked_task_id: string; blocking_task_id: string } | null> {
+    const { data, error } = await this.db
+      .from('task_dependencies')
+      .select('id, blocked_task_id, blocking_task_id')
+      .eq('id', dependencyId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as {
+      id: string;
+      blocked_task_id: string;
+      blocking_task_id: string;
+    } | null) ?? null;
+  }
+
   async removeDependency(dependencyId: string): Promise<void> {
     const { error } = await this.db
       .from('task_dependencies')

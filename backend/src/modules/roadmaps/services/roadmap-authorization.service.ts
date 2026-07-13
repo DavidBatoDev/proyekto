@@ -137,6 +137,36 @@ export class RoadmapAuthorizationService {
     return !!data;
   }
 
+  /**
+   * Assert VIEW-level access to a roadmap. 404 on denial so we never leak the
+   * existence of a roadmap the caller cannot see. Use for read endpoints.
+   */
+  async assertCanViewRoadmap(roadmapId: string, userId: string): Promise<void> {
+    const ok = await this.canViewRoadmap(roadmapId, userId);
+    if (!ok) throw new NotFoundException('Roadmap not found');
+  }
+
+  /**
+   * View-level authorization resolved from whichever child id is available
+   * (task/feature/epic/milestone/roadmap) — mirrors the write-side assert*
+   * walkers but only requires that the caller can VIEW the owning roadmap.
+   * 404 on an unresolvable ref or a roadmap the caller cannot see.
+   */
+  async assertViewPermission(
+    ref: {
+      roadmapId?: string | null;
+      milestoneId?: string | null;
+      epicId?: string | null;
+      featureId?: string | null;
+      taskId?: string | null;
+    },
+    userId: string,
+  ): Promise<void> {
+    const roadmapId = await this.resolveRoadmapId(ref);
+    if (!roadmapId) throw new NotFoundException('Not found');
+    await this.assertCanViewRoadmap(roadmapId, userId);
+  }
+
   async assertRoadmapPermission(
     roadmapId: string,
     userId: string,

@@ -28,13 +28,16 @@ export class EpicsController {
   constructor(private readonly epicsService: EpicsService) {}
 
   @Get('roadmap/:roadmapId')
-  getByRoadmap(@Param('roadmapId') roadmapId: string) {
-    return this.epicsService.findByRoadmap(roadmapId);
+  getByRoadmap(
+    @Param('roadmapId') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.epicsService.findByRoadmap(roadmapId, user.id);
   }
 
   @Get(':id')
-  getOne(@Param('id') id: string) {
-    return this.epicsService.findById(id);
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.epicsService.findById(id, user.id);
   }
 
   @Post()
@@ -61,8 +64,8 @@ export class EpicsController {
   }
 
   @Get(':id/comments')
-  getComments(@Param('id') id: string) {
-    return this.epicsService.findComments(id);
+  getComments(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.epicsService.findComments(id, user.id);
   }
 
   @Post(':id/comments')

@@ -59,8 +59,11 @@ export class RoadmapsController {
   }
 
   @Get('user/:userId')
-  getByUser(@Param('userId') userId: string) {
-    return this.roadmapsService.findByUser(userId);
+  getByUser(
+    @Param('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapsService.findByUser(userId, user.id);
   }
 
   @Post('migrate')

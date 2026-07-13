@@ -27,8 +27,11 @@ export class TaskExtrasController {
   constructor(private readonly taskExtrasService: TaskExtrasService) {}
 
   @Get(':taskId/comments')
-  getComments(@Param('taskId') taskId: string) {
-    return this.taskExtrasService.findComments(taskId);
+  getComments(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.findComments(taskId, user.id);
   }
 
   @Post(':taskId/comments')
@@ -59,8 +62,11 @@ export class TaskExtrasController {
   }
 
   @Get(':taskId/attachments')
-  getAttachments(@Param('taskId') taskId: string) {
-    return this.taskExtrasService.findAttachments(taskId);
+  getAttachments(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.findAttachments(taskId, user.id);
   }
 
   @Post(':taskId/attachments')
@@ -82,8 +88,11 @@ export class TaskExtrasController {
   }
 
   @Get(':taskId/dependencies')
-  getDependencies(@Param('taskId') taskId: string) {
-    return this.taskExtrasService.getDependencies(taskId);
+  getDependencies(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.getDependencies(taskId, user.id);
   }
 
   @Post(':taskId/dependencies')
@@ -97,7 +106,11 @@ export class TaskExtrasController {
 
   @Delete(':taskId/dependencies/:dependencyId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeDependency(@Param('dependencyId') dependencyId: string) {
-    return this.taskExtrasService.removeDependency(dependencyId);
+  removeDependency(
+    @Param('taskId') taskId: string,
+    @Param('dependencyId') dependencyId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.removeDependency(taskId, dependencyId, user.id);
   }
 }

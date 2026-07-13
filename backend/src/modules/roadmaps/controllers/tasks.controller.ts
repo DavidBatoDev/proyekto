@@ -28,23 +28,29 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Get('feature/:featureId')
-  getByFeature(@Param('featureId') featureId: string) {
-    return this.tasksService.findByFeature(featureId);
+  getByFeature(
+    @Param('featureId') featureId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tasksService.findByFeature(featureId, user.id);
   }
 
   @Get('roadmap/:roadmapId')
-  getByRoadmap(@Param('roadmapId') roadmapId: string) {
-    return this.tasksService.findByRoadmap(roadmapId);
+  getByRoadmap(
+    @Param('roadmapId') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tasksService.findByRoadmap(roadmapId, user.id);
   }
 
   @Get(':id')
-  getOne(@Param('id') id: string) {
-    return this.tasksService.findById(id);
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.tasksService.findById(id, user.id);
   }
 
   @Get(':id/history')
-  getHistory(@Param('id') id: string) {
-    return this.tasksService.getHistory(id);
+  getHistory(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.tasksService.getHistory(id, user.id);
   }
 
   @Post()

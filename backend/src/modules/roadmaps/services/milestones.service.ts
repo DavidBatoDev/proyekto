@@ -24,11 +24,13 @@ export class MilestonesService {
     if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
   }
 
-  async findByRoadmap(roadmapId: string) {
+  async findByRoadmap(roadmapId: string, userId: string) {
+    await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
     return this.repo.findByRoadmap(roadmapId);
   }
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ milestoneId: id }, userId);
     const milestone = await this.repo.findById(id);
     if (!milestone) throw new NotFoundException('Milestone not found');
     return milestone;

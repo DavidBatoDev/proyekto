@@ -30,15 +30,18 @@ export class TasksService {
     if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
   }
 
-  async findByFeature(featureId: string) {
+  async findByFeature(featureId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ featureId }, userId);
     return this.repo.findByFeature(featureId);
   }
 
-  async findByRoadmap(roadmapId: string) {
+  async findByRoadmap(roadmapId: string, userId: string) {
+    await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
     return this.repo.findByRoadmap(roadmapId);
   }
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ taskId: id }, userId);
     const task = await this.repo.findById(id);
     if (!task) throw new NotFoundException('Task not found');
     return task;
@@ -110,7 +113,8 @@ export class TasksService {
     return task;
   }
 
-  async getHistory(id: string) {
+  async getHistory(id: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ taskId: id }, userId);
     return this.repo.getHistory(id);
   }
 

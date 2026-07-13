@@ -31,18 +31,24 @@ export class FeaturesController {
   constructor(private readonly featuresService: FeaturesService) {}
 
   @Get('epic/:epicId')
-  getByEpic(@Param('epicId') epicId: string) {
-    return this.featuresService.findByEpic(epicId);
+  getByEpic(
+    @Param('epicId') epicId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.featuresService.findByEpic(epicId, user.id);
   }
 
   @Get('roadmap/:roadmapId')
-  getByRoadmap(@Param('roadmapId') roadmapId: string) {
-    return this.featuresService.findByRoadmap(roadmapId);
+  getByRoadmap(
+    @Param('roadmapId') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.featuresService.findByRoadmap(roadmapId, user.id);
   }
 
   @Get(':id')
-  getOne(@Param('id') id: string) {
-    return this.featuresService.findById(id);
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.featuresService.findById(id, user.id);
   }
 
   @Post()
@@ -89,8 +95,8 @@ export class FeaturesController {
   }
 
   @Get(':id/comments')
-  getComments(@Param('id') id: string) {
-    return this.featuresService.findComments(id);
+  getComments(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.featuresService.findComments(id, user.id);
   }
 
   @Post(':id/comments')
