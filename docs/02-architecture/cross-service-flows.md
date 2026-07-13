@@ -12,8 +12,10 @@ backend — the AI edit path does not flow web → backend → agent.
 
 The canvas AI panel sends a message straight to the Python agent. The agent runs a
 tool-calling loop, reading roadmap context back through the NestJS backend, then
-auto-commits the resulting operations through the backend, which is the only writer
-to Supabase. A lean diff comes back so the UI can refresh without a full payload.
+auto-commits the resulting operations through the backend, which mediates all
+roadmap writes. (The backend is *not* the only writer to Supabase — the web app
+writes a few tables, e.g. `project_briefs` and `profiles`, directly under RLS.)
+A lean diff comes back so the UI can refresh without a full payload.
 
 ```
  web (AI panel)                agent (FastAPI)              backend (NestJS)        Supabase

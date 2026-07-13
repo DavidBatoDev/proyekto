@@ -997,7 +997,7 @@ export class RoadmapAiService {
         title: locator.milestone.title ?? 'Untitled milestone',
         description: locator.milestone.description,
         status: locator.milestone.status,
-        due_date: locator.milestone.target_date,
+        target_date: locator.milestone.target_date,
         parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
     }
@@ -1435,7 +1435,7 @@ export class RoadmapAiService {
         title: locator.milestone.title ?? 'Untitled milestone',
         description: locator.milestone.description,
         status: locator.milestone.status,
-        due_date: locator.milestone.target_date,
+        target_date: locator.milestone.target_date,
         parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
       this.logRoadmapAiHandlerTiming({

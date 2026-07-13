@@ -8,7 +8,7 @@ Note: `SETUP.md` references an `api/` directory — the backend is actually `bac
 ## Repository layout
 
 - web/ — React 19 + Vite + TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow/dagre. Dev port 3000. Path alias @/* → web/src/*.
-- backend/ — NestJS 11. Supabase (data/auth) + Upstash Redis. Feature modules under backend/src/modules/. Deployed to Vercel.
+- backend/ — NestJS 11. Supabase (data/auth) + Upstash Redis. Feature modules under backend/src/modules/. Deployed to Cloud Run (Docker image; container entry backend/src/server.ts). backend/src/lambda.ts is an orphaned Vercel/serverless adapter, deployed by nothing.
 - agent/ — Python 3 FastAPI AI agent (LangChain/LangGraph + OpenAI). Entry: agent/run.py. State via Upstash Redis.
 - supabase/migrations/ — source of truth for DB schema.
 - schemas/roadmap-ai-operations.json — shared contract between backend and agent.
