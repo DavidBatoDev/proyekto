@@ -8,6 +8,21 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectsService } from '../../projects/projects.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 
+/**
+ * Roadmap-scoped capabilities the authorization walkers accept. A subset of the
+ * project `PermissionPath` catalog. `roadmap.assign` is distinct from
+ * `roadmap.edit` so a per-user override can grant task editing while withholding
+ * the ability to (un)assign members.
+ */
+export type RoadmapPermission =
+  | 'roadmap.edit'
+  | 'roadmap.assign'
+  | 'roadmap.create_tasks'
+  | 'roadmap.edit_tasks'
+  | 'roadmap.view_internal'
+  | 'roadmap.comment'
+  | 'roadmap.promote';
+
 @Injectable()
 export class RoadmapAuthorizationService {
   constructor(
@@ -170,13 +185,7 @@ export class RoadmapAuthorizationService {
   async assertRoadmapPermission(
     roadmapId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     const roadmap = await this.getRoadmapMeta(roadmapId);
 
@@ -205,13 +214,7 @@ export class RoadmapAuthorizationService {
   async assertProjectRoadmapPermission(
     projectId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     await this.projectsService.assertProjectPermission(
       projectId,
@@ -223,13 +226,7 @@ export class RoadmapAuthorizationService {
   async assertMilestonePermission(
     milestoneId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     const roadmapId = await this.getRoadmapIdByMilestoneId(milestoneId);
     if (!roadmapId) throw new NotFoundException('Milestone not found');
@@ -239,13 +236,7 @@ export class RoadmapAuthorizationService {
   async assertEpicPermission(
     epicId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     const roadmapId = await this.getRoadmapIdByEpicId(epicId);
     if (!roadmapId) throw new NotFoundException('Epic not found');
@@ -255,13 +246,7 @@ export class RoadmapAuthorizationService {
   async assertFeaturePermission(
     featureId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     const roadmapId = await this.getRoadmapIdByFeatureId(featureId);
     if (!roadmapId) throw new NotFoundException('Feature not found');
@@ -271,13 +256,7 @@ export class RoadmapAuthorizationService {
   async assertTaskPermission(
     taskId: string,
     userId: string,
-    permission:
-      | 'roadmap.edit'
-      | 'roadmap.create_tasks'
-      | 'roadmap.edit_tasks'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote',
+    permission: RoadmapPermission,
   ): Promise<void> {
     const featureId = await this.getFeatureIdByTaskId(taskId);
     if (!featureId) throw new NotFoundException('Task not found');

@@ -96,6 +96,12 @@ export class TasksService {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
     await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
+    // (Un)assigning members is a distinct capability: a per-user override can
+    // grant task editing while withholding roadmap.assign. Only enforce it when
+    // the update actually touches an assignee field.
+    if (dto.assignee_ids !== undefined || dto.assignee_id !== undefined) {
+      await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.assign');
+    }
     const task = await this.repo.update(id, dto, userId);
     // Notify only assignees that are newly added by this update.
     const previousAssignees = new Set(this.assigneeIdsOf(existing));
