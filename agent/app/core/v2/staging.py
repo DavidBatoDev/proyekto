@@ -29,7 +29,7 @@ def stage_operations(
     utcnow: Callable[[], datetime],
 ) -> ApplyPlannedOperationsResult:
     planning = PlanningResult(
-        assistant_message=assistant_message or 'Prepared roadmap operations.',
+        assistant_message=assistant_message or 'Staged your changes.',
         operations=operations,
         parse_mode='edit_plan',
         intent_type='roadmap_edit',

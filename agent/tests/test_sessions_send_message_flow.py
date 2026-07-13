@@ -218,8 +218,10 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
         session = AgentSession(roadmap_id='roadmap-sync-ok')
         fake_service = _FakeAgentService(self._edit_outcome(session))
         events: list[tuple[str, dict]] = []
+        commit_calls: list[dict] = []
 
-        async def _execute_auto_commit(**_kwargs):
+        async def _execute_auto_commit(**kwargs):
+            commit_calls.append(kwargs)
             return AutoCommitExecutionResult(
                 auto_commit_ms=42,
                 staged_operations_version=2,
@@ -255,6 +257,8 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(response.commit_summary.impacted_items), 1)
         self.assertEqual(response.commit_summary.impacted_items[0].title, 'Launch')
         self.assertEqual(response.staged_operations_count, 0)
+        self.assertEqual(len(commit_calls), 1)
+        self.assertIs(commit_calls[0]['session'], session)
 
     async def test_failed_sync_commit_discards_staged_ops_and_reports(self) -> None:
         session = AgentSession(roadmap_id='roadmap-sync-fail')

@@ -1076,7 +1076,7 @@ def get_planning_tool() -> dict[str, Any]:
                 'type': 'object',
                 'required': ['assistant_message', 'operations'],
                 'properties': {
-                    'assistant_message': {'type': 'string'},
+                    'assistant_message': {'type': 'string', 'minLength': 1},
                     'clarifier_options': {
                         'type': 'array',
                         'description': (
@@ -1240,7 +1240,12 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
             )
         operations.append(operation)
         _register_created_temp_ref_type(operation, temp_ref_node_types)
-    assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
+    raw_assistant_message = args.get('assistant_message')
+    assistant_message = (
+        str(raw_assistant_message).strip()
+        if raw_assistant_message is not None
+        else ''
+    )
     return assistant_message, operations
 
 

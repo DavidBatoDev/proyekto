@@ -5,6 +5,7 @@ import unittest
 from types import SimpleNamespace
 
 from app.core import logging_utils
+from app.core.v2 import progress
 
 
 class _TTYStringIO(io.StringIO):
@@ -482,6 +483,54 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         assert isinstance(details, dict)
         self.assertEqual(details.get('impacted_item_count'), 2)
         self.assertIsInstance(details.get('impacted_items'), list)
+
+    def test_rejected_terminal_tool_exposes_safe_counts_and_reason(self) -> None:
+        trace_id = 'trace-progress-empty-action'
+        session_id = 'session-progress-empty-action'
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-empty-action',
+            message='Create the roadmap',
+        )
+
+        progress.tool_rejected(
+            self.settings,
+            trace_id,
+            'plan_roadmap_operations',
+            reason='empty_action_payload',
+            operations_count=0,
+            revision_operations_count=0,
+            clarifier_options_count=0,
+            assistant_message_present=False,
+        )
+
+        response = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(response)
+        assert response is not None
+        rejected = response['events'][-1]
+        self.assertEqual(rejected['event'], 'tool_call_result')
+        self.assertEqual(rejected['status'], 'error')
+        details = rejected['details']
+        self.assertEqual(details['tool_error_code'], 'INVALID_OPERATIONS')
+        self.assertEqual(
+            details['result_summary'],
+            {
+                'assistant_message_present': False,
+                'clarifier_options_count': 0,
+                'operations_count': 0,
+                'reason': 'empty_action_payload',
+                'revision_operations_count': 0,
+            },
+        )
 
     def test_progress_trace_ttl_eviction(self) -> None:
         trace_id = 'trace-progress-ttl'

@@ -74,6 +74,23 @@ class V2BrainEndToEndTests(unittest.TestCase):
         self.assertEqual(len(outcome.operations), 1)
         self.assertEqual(outcome.staged_operations_count, 1)
 
+    def test_missing_assistant_message_uses_staged_fallback(self):
+        _FakeClient.script = [
+            _tool_resp(
+                'plan_roadmap_operations',
+                {'operations': [{'op': 'add_epic', 'data': {'title': 'Growth'}}]},
+            )
+        ]
+        service = AgentService(_MemoryStore())
+        outcome = service.plan_message(
+            _v2_session(),
+            'add an epic called Growth',
+            False,
+        )
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.assistant_message, 'Staged your changes.')
+        self.assertEqual(outcome.staged_operations_count, 1)
+
     def test_chat_end_to_end_via_plan_message(self):
         _FakeClient.script = [LLMResponse(content='Your roadmap has one epic.')]
         service = AgentService(_MemoryStore())
