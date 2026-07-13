@@ -840,6 +840,51 @@ html.dark .text-slate-400 {
   color: var(--muted-foreground) !important;
 }
 
+html.dark .text-\[\#333438\],
+html.dark .text-\[\#242528\],
+html.dark .text-\[\#1f2024\],
+html.dark .text-\[\#1f2937\],
+html.dark .text-\[\#2f302f\],
+html.dark .text-\[\#0f172a\] {
+  color: var(--foreground) !important;
+}
+
+html.dark .text-\[\#61636c\],
+html.dark .text-\[\#92969f\],
+html.dark .text-\[\#626367\],
+html.dark .text-\[\#6b7280\],
+html.dark .text-\[\#5c5e66\] {
+  color: var(--muted-foreground) !important;
+}
+
+html.dark .bg-\[\#f8fafc\],
+html.dark .bg-\[\#f1f3f5\] {
+  background-color: var(--card) !important;
+}
+
+html.dark .bg-\[\#fff5eb\] {
+  background-color: color-mix(in oklch, var(--primary) 14%, var(--card)) !important;
+}
+
+html.dark .bg-\[\#e9eaec\],
+html.dark .hover\:bg-\[\#e9edf3\]:hover {
+  background-color: var(--muted) !important;
+}
+
+html.dark .bg-\[\#0f172a\]\/10 {
+  background-color: var(--muted) !important;
+}
+
+html.dark .bg-\[\#92969f\]\/30 {
+  background-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) !important;
+}
+
+html.dark .border-\[\#e3e5e8\],
+html.dark .border-\[\#e9eaec\],
+html.dark .border-\[\#e3e5e8\]\/30 {
+  border-color: var(--border) !important;
+}
+
 html.dark .border-gray-50,
 html.dark .border-gray-100,
 html.dark .border-gray-200,
