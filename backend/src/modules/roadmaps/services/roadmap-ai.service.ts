@@ -26,6 +26,7 @@ import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repo
 import { ROADMAP_PATCH_REPOSITORY } from './roadmap-patch.service';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { AuditService } from '../../audit/audit.service';
 import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
@@ -268,6 +269,7 @@ export class RoadmapAiService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly previewStore: RoadmapAiPreviewStoreService,
     private readonly realtime: RealtimePublisher,
+    private readonly audit: AuditService,
   ) {}
 
   async preview(
@@ -1921,6 +1923,26 @@ export class RoadmapAiService {
       );
     }
 
+    // Durable audit trail for project-linked roadmaps (personal roadmaps have
+    // no project to log against). Fire-and-forget — never blocks the response.
+    if (current.project_id) {
+      this.audit.log({
+        projectId: current.project_id as string,
+        actorId: userId,
+        action: 'roadmap.committed',
+        entityType: 'roadmap',
+        entityId: roadmapId,
+        metadata: {
+          change_id: changeId,
+          operation_count: operations.length,
+          operations_hash: operationsHash,
+          revision_token_before: currentRevisionToken,
+          revision_token_after: revisionTokenAfter,
+          semantic_change_count: semanticDiffSummary.total_changes ?? 0,
+        },
+      });
+    }
+
     return response;
   }
 
@@ -2072,6 +2094,21 @@ export class RoadmapAiService {
     const revisionToken = this.requireRevisionToken(
       persistedMeta?.updated_at ?? reappliedAt,
     );
+
+    if (current.project_id) {
+      this.audit.log({
+        projectId: current.project_id as string,
+        actorId: userId,
+        action: 'roadmap.rolled_back',
+        entityType: 'roadmap',
+        entityId: roadmapId,
+        metadata: {
+          change_id: dto.change_id,
+          reapplied_change_count: affectedEntries.length,
+          revision_token_after: revisionToken,
+        },
+      });
+    }
 
     return {
       change_id: dto.change_id,
