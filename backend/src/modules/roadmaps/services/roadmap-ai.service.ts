@@ -1619,27 +1619,10 @@ export class RoadmapAiService {
       });
     }
 
-    // Replay guard: a retried commit (same idempotency key) returns the first
-    // attempt's result instead of re-applying the operations — the original
-    // request may have succeeded even though the client saw a timeout/5xx.
     const idempotencyKey = dto.idempotency_key?.trim();
-    if (idempotencyKey) {
-      const replay =
-        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
-          roadmapId,
-          idempotencyKey,
-        );
-      if (replay) {
-        this.logger.log(
-          [
-            'event=roadmap_ai_commit_idempotent_replay',
-            `roadmap_id=${roadmapId}`,
-            `change_id=${replay.change_id ?? 'unknown'}`,
-          ].join(' '),
-        );
-        return replay;
-      }
-    }
+    const operationsHash = createHash('sha256')
+      .update(JSON.stringify(operations))
+      .digest('hex');
 
     this.logger.log(
       [
@@ -1655,6 +1638,45 @@ export class RoadmapAiService {
     const authzStartedAt = Date.now();
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
+
+    // Replay guard runs *after* authorization so the idempotency store can
+    // never be probed for a cached commit response (which embeds the roadmap
+    // snapshot) by a caller lacking edit access. The record is scoped to this
+    // user + operations hash: a retry with the same key and same operations
+    // returns the first attempt's result; the same key with *different*
+    // operations is a client bug and is rejected rather than silently replayed.
+    if (idempotencyKey) {
+      const replay =
+        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
+          roadmapId,
+          userId,
+          idempotencyKey,
+        );
+      if (replay) {
+        if (replay.operations_hash !== operationsHash) {
+          this.logger.warn(
+            [
+              'event=roadmap_ai_commit_idempotency_key_reused',
+              `roadmap_id=${roadmapId}`,
+              `user_id=${userId}`,
+            ].join(' '),
+          );
+          throw new ConflictException({
+            message:
+              'Idempotency key was already used for a different set of operations',
+            code: 'IDEMPOTENCY_KEY_REUSED',
+          });
+        }
+        this.logger.log(
+          [
+            'event=roadmap_ai_commit_idempotent_replay',
+            `roadmap_id=${roadmapId}`,
+            `change_id=${replay.response.change_id ?? 'unknown'}`,
+          ].join(' '),
+        );
+        return replay.response;
+      }
+    }
     const currentRevisionToken = this.requireRevisionToken(current.updated_at);
     if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
       this.logger.warn(
@@ -1892,7 +1914,9 @@ export class RoadmapAiService {
     if (idempotencyKey) {
       await this.previewStore.writeCommitIdempotency(
         roadmapId,
+        userId,
         idempotencyKey,
+        operationsHash,
         response,
       );
     }
