@@ -1,5 +1,5 @@
 [mcp_servers.supabase]
-url = "https://mcp.supabase.com/mcp"
+url = "https://mcp.supabase.com/mcp?project_ref=byvbnkpiselvvulsvxgo"
 
 [mcp_servers.cloudflare_api]
 url = "https://mcp.cloudflare.com/mcp"
