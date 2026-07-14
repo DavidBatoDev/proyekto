@@ -1,5 +1,6 @@
 // Centralized API exports
-export { default as apiClient, API_BASE_URL } from "./axios";
+export { API_BASE_URL, default as apiClient } from "./axios";
 
 // Roadmap API exports
 export * from "./endpoints/roadmap";
+export * from "./endpoints/roadmap-template";

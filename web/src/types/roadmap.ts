@@ -48,8 +48,6 @@ export interface Roadmap {
   description?: string;
   category?: string;
   owner_id: string;
-  is_public?: boolean;
-  is_templatable?: boolean;
   status: RoadmapStatus;
   start_date?: string;
   end_date?: string;

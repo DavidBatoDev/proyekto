@@ -1,18 +1,5 @@
 import { RoadmapsService } from './roadmaps.service';
-import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
-
-describe('RoadmapsService cache consistency', () => {
-  const cache = {
-    getPublicTtlSeconds: jest.fn().mockReturnValue(120),
-    rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
-      loader(),
-    ),
-  };
-  const cacheInvalidation = {
-    invalidatePublicRoadmapTemplatesCache: jest
-      .fn()
-      .mockResolvedValue(undefined),
-  };
+describe('RoadmapsService', () => {
   const roadmapAuthz = {
     assertProjectRoadmapPermission: jest.fn(),
   };
@@ -21,41 +8,41 @@ describe('RoadmapsService cache consistency', () => {
   };
   const repo = {
     create: jest.fn(),
-    findPublicTemplatePreviews: jest.fn(),
   };
 
   const service = new RoadmapsService(
     repo as any,
     supabase as any,
     roadmapAuthz as any,
-    cache as any,
-    cacheInvalidation as any,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('invalidates public template cache after create mutation', async () => {
+  it('creates a standalone roadmap without template-marketplace side effects', async () => {
     repo.create.mockResolvedValueOnce({ id: 'roadmap-1' });
 
-    await service.create({ name: 'New roadmap' } as any, 'user-1');
+    await expect(
+      service.create({ name: 'New roadmap' } as any, 'user-1'),
+    ).resolves.toEqual({ id: 'roadmap-1' });
 
-    expect(
-      cacheInvalidation.invalidatePublicRoadmapTemplatesCache,
-    ).toHaveBeenCalledTimes(1);
+    expect(repo.create).toHaveBeenCalledWith({ name: 'New roadmap' }, 'user-1');
+    expect(roadmapAuthz.assertProjectRoadmapPermission).not.toHaveBeenCalled();
   });
 
-  it('uses cached path for public template listing', async () => {
-    repo.findPublicTemplatePreviews.mockResolvedValueOnce([]);
+  it('checks project roadmap permissions before creating a linked roadmap', async () => {
+    repo.create.mockResolvedValueOnce({ id: 'roadmap-2' });
 
-    await service.findPublicTemplates();
+    await service.create(
+      { name: 'Linked', project_id: 'project-1' } as any,
+      'user-1',
+    );
 
-    expect(cache.rememberJson).toHaveBeenCalledWith(
-      REDIS_CACHE_KEYS.publicRoadmapTemplates,
-      120,
-      expect.any(Function),
-      expect.objectContaining({ onStatus: undefined }),
+    expect(roadmapAuthz.assertProjectRoadmapPermission).toHaveBeenCalledWith(
+      'project-1',
+      'user-1',
+      'roadmap.edit',
     );
   });
 });

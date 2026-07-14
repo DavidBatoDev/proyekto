@@ -1,5 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { Injectable, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import {
@@ -887,113 +886,6 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     }));
   }
 
-  async findConsultantProjectless(userId: string): Promise<any[]> {
-    const { data, error } = await this.db
-      .from('roadmaps')
-      .select('*, project:projects(id, title)')
-      .eq('owner_id', userId)
-      .is('project_id', null)
-      .order('updated_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  }
-
-  async findPublicTemplatePreviews(): Promise<any[]> {
-    const { data: roadmaps, error: roadmapsError } = await this.db
-      .from('roadmaps')
-      .select(
-        'id, name, description, status, project_id, preview_url, is_public, is_templatable, created_at, updated_at, owner:profiles(id, display_name, avatar_url, headline)',
-      )
-      .is('project_id', null)
-      .eq('is_public', true)
-      .eq('is_templatable', true)
-      .order('updated_at', { ascending: false });
-
-    if (roadmapsError) throw new Error(roadmapsError.message);
-    if (!roadmaps || roadmaps.length === 0) return [];
-
-    const roadmapIds = roadmaps.map((r) => r.id);
-
-    const { data: epics, error: epicsError } = await this.db
-      .from('roadmap_epics')
-      .select('id, roadmap_id, title, position, status')
-      .in('roadmap_id', roadmapIds)
-      .order('position', { ascending: true });
-    if (epicsError) throw new Error(epicsError.message);
-
-    const { data: features, error: featuresError } = await this.db
-      .from('roadmap_features')
-      .select('id, roadmap_id, epic_id, title, position')
-      .in('roadmap_id', roadmapIds)
-      .order('position', { ascending: true });
-    if (featuresError) throw new Error(featuresError.message);
-
-    const featureIds = (features ?? []).map((f) => f.id);
-    let tasks: any[] = [];
-    if (featureIds.length > 0) {
-      const { data: taskData, error: tasksError } = await this.db
-        .from('roadmap_tasks')
-        .select('id, feature_id, position, status, work_type')
-        .in('feature_id', featureIds)
-        .order('position', { ascending: true });
-      if (tasksError) throw new Error(tasksError.message);
-      tasks = taskData ?? [];
-    }
-
-    const tasksByFeature = tasks.reduce<Record<string, any[]>>((acc, task) => {
-      (acc[task.feature_id] ??= []).push(task);
-      return acc;
-    }, {});
-
-    const featuresByEpic = (features ?? []).reduce<Record<string, any[]>>(
-      (acc, feature) => {
-        (acc[feature.epic_id] ??= []).push({
-          ...feature,
-          tasks: tasksByFeature[feature.id] ?? [],
-        });
-        return acc;
-      },
-      {},
-    );
-
-    const epicsByRoadmap = (epics ?? []).reduce<Record<string, any[]>>(
-      (acc, epic) => {
-        (acc[epic.roadmap_id] ??= []).push({
-          ...epic,
-          features: featuresByEpic[epic.id] ?? [],
-        });
-        return acc;
-      },
-      {},
-    );
-
-    return roadmaps.map((roadmap) => ({
-      ...roadmap,
-      epics: epicsByRoadmap[roadmap.id] ?? [],
-    }));
-  }
-
-  async findPublicTemplateById(id: string): Promise<any | null> {
-    const { data, error } = await this.db
-      .from('roadmaps')
-      .select(
-        `
-        *,
-        project:projects(id, title),
-        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*)))
-      `,
-      )
-      .eq('id', id)
-      .is('project_id', null)
-      .eq('is_public', true)
-      .eq('is_templatable', true)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    return data ?? null;
-  }
-
   async create(dto: CreateRoadmapDto, userId: string): Promise<any> {
     const payload = { ...dto, owner_id: userId };
     const { data, error } = await this.db
@@ -1042,61 +934,6 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
 
     if (error) throw new Error(error.message);
     return data;
-  }
-
-  async cloneFromTemplate(templateId: string, userId: string): Promise<any> {
-    const template = await this.findPublicTemplateById(templateId);
-    if (!template) {
-      throw new NotFoundException('Template roadmap not found');
-    }
-
-    const clonedRoadmapId = randomUUID();
-
-    const fullState = {
-      id: clonedRoadmapId,
-      name: `${template.name} (Copy)`,
-      description: template.description,
-      status: 'draft',
-      settings: template.settings ?? {},
-      roadmap_epics: (template.epics ?? []).map((epic: any) => ({
-        title: epic.title,
-        description: epic.description,
-        status: epic.status,
-        priority: epic.priority,
-        position: epic.position,
-        color: epic.color,
-        start_date: epic.start_date,
-        end_date: epic.end_date,
-        tags: epic.tags ?? [],
-        roadmap_features: (epic.features ?? []).map((feature: any) => ({
-          title: feature.title,
-          description: feature.description,
-          position: feature.position,
-          is_deliverable: feature.is_deliverable,
-          start_date: feature.start_date,
-          end_date: feature.end_date,
-          roadmap_tasks: (feature.tasks ?? []).map((task: any) => ({
-            title: task.title,
-            status: task.status,
-            priority: task.priority,
-            work_type: task.work_type,
-            position: task.position,
-            due_date: task.due_date,
-          })),
-        })),
-      })),
-    };
-
-    const { error } = await this.db.rpc('upsert_full_roadmap', {
-      p_roadmap_id: clonedRoadmapId,
-      p_owner_id: userId,
-      p_full_state: fullState,
-      p_create_if_missing: true,
-    });
-
-    if (error) throw new Error(error.message);
-
-    return this.findById(clonedRoadmapId, userId);
   }
 
   async remove(id: string): Promise<void> {

@@ -6,7 +6,6 @@ import {
   ReorderDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 
 export const MILESTONES_REPOSITORY = Symbol('MILESTONES_REPOSITORY');
@@ -16,7 +15,6 @@ export class MilestonesService {
   constructor(
     @Inject(MILESTONES_REPOSITORY) private readonly repo: IMilestonesRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly realtime: RealtimePublisher,
   ) {}
 
@@ -41,7 +39,6 @@ export class MilestonesService {
       'roadmap.edit',
     );
     const milestone = await this.repo.create(roadmapId, dto, userId);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(roadmapId, userId);
     return milestone;
   }
@@ -55,7 +52,6 @@ export class MilestonesService {
       'roadmap.edit',
     );
     const milestone = await this.repo.update(id, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ milestoneId: id }),
       userId,
@@ -72,7 +68,6 @@ export class MilestonesService {
       'roadmap.edit',
     );
     const milestone = await this.repo.reorder(id, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ milestoneId: id }),
       userId,
@@ -93,7 +88,6 @@ export class MilestonesService {
       milestoneId: id,
     });
     await this.repo.remove(id);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(roadmapId, userId);
   }
 }

@@ -2,8 +2,13 @@ import { createHash } from 'crypto';
 
 export const REDIS_CACHE_KEYS = {
   consultantsList: 'cache:v1:consultants:list',
-  consultantsProfile: (userId: string) => `cache:v1:consultants:profile:${userId}`,
-  publicRoadmapTemplates: 'cache:v1:roadmaps:templates:public',
+  consultantsProfile: (userId: string) =>
+    `cache:v1:consultants:profile:${userId}`,
+  roadmapTemplatesByHash: (queryHash: string) =>
+    `cache:v2:roadmap-templates:catalog:${queryHash}`,
+  roadmapTemplateDetail: (slug: string) =>
+    `cache:v2:roadmap-templates:detail:${slug.toLowerCase()}`,
+  roadmapTemplatesIndex: 'cache:v2:index:roadmap-templates',
   projectsDashboardByUser: (userId: string) =>
     `cache:v1:projects:dashboard:user:${userId}`,
   projectsDashboardIndex: 'cache:v1:index:projects:dashboard',
@@ -83,4 +88,3 @@ export function buildMarketplaceFreelancersCacheKey(
   const hash = hashNormalizedQuery(normalizedQuery);
   return REDIS_CACHE_KEYS.marketplaceFreelancersByHash(hash);
 }
-

@@ -60,7 +60,7 @@ describe('CloudflareCachePurgeService', () => {
     await service.purgePaths([
       '/api/consultants',
       '/api/consultants',
-      '/api/roadmaps/templates/public',
+      '/api/roadmap-templates',
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe('CloudflareCachePurgeService', () => {
       JSON.stringify({
         files: [
           'https://api.proyekto.tech/api/consultants',
-          'https://api.proyekto.tech/api/roadmaps/templates/public',
+          'https://api.proyekto.tech/api/roadmap-templates',
         ],
       }),
     );

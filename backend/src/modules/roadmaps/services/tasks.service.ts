@@ -10,7 +10,6 @@ import {
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
@@ -20,7 +19,6 @@ export class TasksService {
   constructor(
     @Inject(TASKS_REPOSITORY) private readonly repo: ITasksRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly cacheInvalidation: RedisCacheInvalidationService,
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimePublisher,
@@ -52,7 +50,6 @@ export class TasksService {
     );
     const task = await this.repo.create(dto, userId);
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId: dto.feature_id }),
       userId,
@@ -81,7 +78,6 @@ export class TasksService {
       userId,
     );
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId }),
       userId,
@@ -102,7 +98,6 @@ export class TasksService {
     if (newlyAssigned.length) {
       await this.notifyTaskAssignees(task, newlyAssigned, userId);
     }
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ taskId: id }),
       userId,
@@ -121,7 +116,6 @@ export class TasksService {
       'roadmap.edit_tasks',
     );
     const reordered = await this.repo.bulkReorder(featureId, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId }),
       userId,
@@ -141,7 +135,6 @@ export class TasksService {
     const featureId =
       typeof existing.feature_id === 'string' ? existing.feature_id : null;
     await this.repo.remove(id);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId }),
       userId,

@@ -10,7 +10,6 @@ import {
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
@@ -22,7 +21,6 @@ export class FeaturesService {
   constructor(
     @Inject(FEATURES_REPOSITORY) private readonly repo: IFeaturesRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly realtime: RealtimePublisher,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -52,7 +50,6 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const feature = await this.repo.create(dto, userId);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(await this.roadmapAuthz.resolveRoadmapId({ epicId: dto.epic_id }), userId);
     return feature;
   }
@@ -65,7 +62,6 @@ export class FeaturesService {
       await this.roadmapAuthz.assertEpicPermission(dto.epic_id, userId, 'roadmap.edit');
     }
     const feature = await this.repo.update(id, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(await this.roadmapAuthz.resolveRoadmapId({ featureId: id }), userId);
     return feature;
   }
@@ -77,7 +73,6 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const reordered = await this.repo.bulkReorder(epicId, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(await this.roadmapAuthz.resolveRoadmapId({ epicId }), userId);
     return reordered;
   }
@@ -154,7 +149,6 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const linked = await this.repo.linkMilestone(dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId: dto.feature_id }),
       userId,
@@ -169,7 +163,6 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const unlinked = await this.repo.unlinkMilestone(dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId: dto.feature_id }),
       userId,
@@ -184,7 +177,6 @@ export class FeaturesService {
     // Resolve before deletion — the row is gone once removed.
     const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ featureId: id });
     await this.repo.remove(id);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(roadmapId, userId);
   }
 }

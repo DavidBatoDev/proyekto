@@ -1,4 +1,4 @@
-﻿-- Row Level Security (RLS) Policies for Proyekto Work Hub
+-- Row Level Security (RLS) Policies for Proyekto Work Hub
 
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;

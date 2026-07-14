@@ -10,6 +10,16 @@ WHERE default_role = 'editor';
 
 -- Add CHECK constraint to prevent default_role from being 'editor'
 -- Public links should only allow 'viewer' or 'commenter' access for security
-ALTER TABLE roadmap_shares 
-ADD CONSTRAINT check_default_role_not_editor 
-CHECK (default_role IN ('viewer', 'commenter'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'check_default_role_not_editor'
+      AND conrelid = 'public.roadmap_shares'::regclass
+  ) THEN
+    ALTER TABLE roadmap_shares
+      ADD CONSTRAINT check_default_role_not_editor
+      CHECK (default_role IN ('viewer', 'commenter'));
+  END IF;
+END;
+$$;

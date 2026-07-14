@@ -19,6 +19,7 @@
     "start:prod": "node dist/server",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "check:roadmap-ai-schema": "node ../scripts/check_roadmap_ai_schema.mjs",
+    "check:roadmap-templates": "node ../scripts/validate_roadmap_templates.mjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

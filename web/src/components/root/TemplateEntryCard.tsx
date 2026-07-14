@@ -1,28 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Star } from "lucide-react";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import type { RoadmapTemplateSummary } from "@/types/roadmap-template";
 
-export type TemplateEntry = {
-	id: string;
-	name: string;
-	category: "SaaS" | "AI" | "Web Apps" | "E-commerce";
-	description: string;
-	milestones: string[];
-};
+export type TemplateEntry = RoadmapTemplateSummary;
 
-type Props = {
+export function TemplateEntryCard({
+	template,
+	index,
+}: {
 	template: TemplateEntry;
 	index: number;
-};
-
-export function TemplateEntryCard({ template, index }: Props) {
-	const epics = template.milestones.map((milestone, milestoneIndex) => ({
-		id: `${template.id}-${milestoneIndex}`,
-		title: milestone,
-		position: milestoneIndex,
-	}));
-
+}) {
 	return (
 		<motion.div
 			initial={{ opacity: 0, y: 18 }}
@@ -32,23 +22,28 @@ export function TemplateEntryCard({ template, index }: Props) {
 		>
 			<RoadmapPreviewCard
 				variant="template"
-				title={template.name}
-				description={template.description}
-				epics={epics}
+				title={template.title}
+				description={template.summary}
+				epics={template.preview.epics}
 				status={
 					<span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-						Template
+						Free
 					</span>
 				}
 				footerLeading={
-					<span className="text-[11px] text-slate-500">
-						{template.category} template
+					<span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+						{template.rating_count > 0 ? (
+							<Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+						) : null}
+						{template.rating_count > 0
+							? template.rating_average.toFixed(1)
+							: template.category.name}
 					</span>
 				}
 				footerAction={
 					<Link
-						to="/auth/signup"
-						search={{ redirect: window.location.pathname }}
+						to="/roadmap-templates/$slug"
+						params={{ slug: template.slug }}
 						className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-slate-700"
 					>
 						Use template

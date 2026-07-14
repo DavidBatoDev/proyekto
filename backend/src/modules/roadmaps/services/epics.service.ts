@@ -8,7 +8,6 @@ import {
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
@@ -21,7 +20,6 @@ export class EpicsService {
   constructor(
     @Inject(EPICS_REPOSITORY) private readonly repo: IEpicsRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly realtime: RealtimePublisher,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -47,7 +45,6 @@ export class EpicsService {
       'roadmap.edit',
     );
     const epic = await this.repo.create(dto, userId);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(dto.roadmap_id, userId);
     return epic;
   }
@@ -57,7 +54,6 @@ export class EpicsService {
     if (!existing) throw new NotFoundException('Epic not found');
     await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
     const epic = await this.repo.update(id, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(await this.roadmapAuthz.resolveRoadmapId({ epicId: id }), userId);
     return epic;
   }
@@ -69,7 +65,6 @@ export class EpicsService {
       'roadmap.edit',
     );
     const reordered = await this.repo.bulkReorder(roadmapId, dto);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(roadmapId, userId);
     return reordered;
   }
@@ -152,7 +147,6 @@ export class EpicsService {
     // Resolve before deletion — the row is gone once removed.
     const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ epicId: id });
     await this.repo.remove(id);
-    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(roadmapId, userId);
   }
 }

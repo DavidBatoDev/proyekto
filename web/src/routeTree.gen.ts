@@ -20,11 +20,13 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
+import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-templates/index'
 import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TeamsTeamIdRouteImport } from './routes/teams/$teamId'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
+import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
 import { Route as FreelancerInvitesRouteImport } from './routes/freelancer/invites'
@@ -135,6 +137,11 @@ const TeamsIndexRoute = TeamsIndexRouteImport.update({
   path: '/teams/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoadmapTemplatesIndexRoute = RoadmapTemplatesIndexRouteImport.update({
+  id: '/roadmap-templates/',
+  path: '/roadmap-templates/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsultantIndexRoute = ConsultantIndexRouteImport.update({
   id: '/consultant/',
   path: '/consultant/',
@@ -158,6 +165,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
 const RoadmapSharedWithMeRoute = RoadmapSharedWithMeRouteImport.update({
   id: '/roadmap/shared-with-me',
   path: '/roadmap/shared-with-me',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoadmapTemplatesSlugRoute = RoadmapTemplatesSlugRouteImport.update({
+  id: '/roadmap-templates/$slug',
+  path: '/roadmap-templates/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
@@ -479,11 +491,13 @@ export interface FileRoutesByFullPath {
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
+  '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
+  '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
@@ -550,10 +564,12 @@ export interface FileRoutesByTo {
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
+  '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/admin': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
+  '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
@@ -621,11 +637,13 @@ export interface FileRoutesById {
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
+  '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant/': typeof ConsultantIndexRoute
+  '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
@@ -695,11 +713,13 @@ export interface FileRouteTypes {
     | '/freelancer/invites'
     | '/profile/$profileId'
     | '/project/$projectId'
+    | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
+    | '/roadmap-templates'
     | '/teams'
     | '/teams/$teamId/time'
     | '/auth/admin/login'
@@ -766,10 +786,12 @@ export interface FileRouteTypes {
     | '/freelancer/invites'
     | '/profile/$profileId'
     | '/project/$projectId'
+    | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/admin'
     | '/consultant'
+    | '/roadmap-templates'
     | '/teams'
     | '/auth/admin/login'
     | '/auth/admin/signin'
@@ -836,11 +858,13 @@ export interface FileRouteTypes {
     | '/freelancer/invites'
     | '/profile/$profileId'
     | '/project/$projectId'
+    | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant/'
+    | '/roadmap-templates/'
     | '/teams/'
     | '/teams/$teamId/time'
     | '/auth/admin/login'
@@ -905,10 +929,12 @@ export interface RootRouteChildren {
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
+  RoadmapTemplatesSlugRoute: typeof RoadmapTemplatesSlugRoute
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
+  RoadmapTemplatesIndexRoute: typeof RoadmapTemplatesIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
@@ -997,6 +1023,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/roadmap-templates/': {
+      id: '/roadmap-templates/'
+      path: '/roadmap-templates'
+      fullPath: '/roadmap-templates'
+      preLoaderRoute: typeof RoadmapTemplatesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/consultant/': {
       id: '/consultant/'
       path: '/consultant'
@@ -1030,6 +1063,13 @@ declare module '@tanstack/react-router' {
       path: '/roadmap/shared-with-me'
       fullPath: '/roadmap/shared-with-me'
       preLoaderRoute: typeof RoadmapSharedWithMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roadmap-templates/$slug': {
+      id: '/roadmap-templates/$slug'
+      path: '/roadmap-templates/$slug'
+      fullPath: '/roadmap-templates/$slug'
+      preLoaderRoute: typeof RoadmapTemplatesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/$projectId': {
@@ -1571,10 +1611,12 @@ const rootRouteChildren: RootRouteChildren = {
   FreelancerInvitesRoute: FreelancerInvitesRoute,
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
+  RoadmapTemplatesSlugRoute: RoadmapTemplatesSlugRoute,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
+  RoadmapTemplatesIndexRoute: RoadmapTemplatesIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,

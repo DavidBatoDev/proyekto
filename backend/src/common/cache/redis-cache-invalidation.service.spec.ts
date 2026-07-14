@@ -56,18 +56,18 @@ describe('RedisCacheInvalidationService', () => {
     );
   });
 
-  it('invalidates public template cache and purges edge URL', async () => {
+  it('invalidates indexed roadmap template responses and purges the catalog', async () => {
     const service = new RedisCacheInvalidationService(
       cache as any,
       cloudflarePurge as any,
     );
-    await service.invalidatePublicRoadmapTemplatesCache();
+    await service.invalidateRoadmapTemplatesCache();
 
-    expect(cache.del).toHaveBeenCalledWith(
-      REDIS_CACHE_KEYS.publicRoadmapTemplates,
+    expect(cache.clearIndex).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.roadmapTemplatesIndex,
     );
     expect(cloudflarePurge.purgePaths).toHaveBeenCalledWith([
-      '/api/roadmaps/templates/public',
+      '/api/roadmap-templates',
     ]);
   });
 

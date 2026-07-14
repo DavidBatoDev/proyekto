@@ -21,6 +21,7 @@ import { ApplicationsModule } from './modules/applications/applications.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { GuestsModule } from './modules/guests/guests.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
+import { RoadmapTemplatesModule } from './modules/roadmap-templates/roadmap-templates.module';
 import { RoadmapSharesModule } from './modules/roadmap-shares/roadmap-shares.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -69,6 +70,7 @@ import { AppController } from './app.controller';
     UploadsModule,
     GuestsModule,
     RoadmapsModule,
+    RoadmapTemplatesModule,
     RoadmapSharesModule,
     MarketplaceModule,
     NotificationsModule,

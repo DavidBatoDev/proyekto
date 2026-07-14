@@ -1,4 +1,4 @@
-﻿-- Initial schema for Proyekto Work Hub
+-- Initial schema for Proyekto Work Hub
 -- Create custom types
 CREATE TYPE persona_type AS ENUM ('client', 'freelancer', 'consultant', 'admin');
 CREATE TYPE project_status AS ENUM ('draft', 'active', 'paused', 'completed', 'archived');

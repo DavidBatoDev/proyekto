@@ -1,4 +1,4 @@
-﻿-- Fix create_guest_user function to work with handle_new_user trigger
+-- Fix create_guest_user function to work with handle_new_user trigger
 -- Migration: 20260210000003_fix_create_guest_user.sql
 -- Date: February 10, 2026
 -- Description: Updates create_guest_user to let the trigger create the profile first

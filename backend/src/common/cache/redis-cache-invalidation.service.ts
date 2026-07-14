@@ -49,16 +49,16 @@ export class RedisCacheInvalidationService {
     ]);
   }
 
-  async invalidatePublicRoadmapTemplatesCache(): Promise<void> {
-    this.logger.log(
-      'cache_invalidate scope=public_roadmap_templates key_count=1 path_count=1',
-    );
+  async invalidateRoadmapTemplatesCache(slug?: string): Promise<void> {
+    this.logger.log('cache_invalidate scope=roadmap_templates index_count=1');
+    const paths = ['/api/roadmap-templates'];
+    if (slug) paths.push(`/api/roadmap-templates/${encodeURIComponent(slug)}`);
     await Promise.all([
-      this.runBestEffort('redis_del_public_templates', () =>
-        this.cache.del(REDIS_CACHE_KEYS.publicRoadmapTemplates),
+      this.runBestEffort('redis_clear_roadmap_templates', () =>
+        this.cache.clearIndex(REDIS_CACHE_KEYS.roadmapTemplatesIndex),
       ),
       this.runBestEffort('edge_purge_public_templates', () =>
-        this.cloudflarePurge.purgePaths(['/api/roadmaps/templates/public']),
+        this.cloudflarePurge.purgePaths(paths),
       ),
     ]);
   }

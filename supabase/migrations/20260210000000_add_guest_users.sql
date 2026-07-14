@@ -1,4 +1,4 @@
-﻿-- Add Guest Users Support
+-- Add Guest Users Support
 -- Migration: 20260210000000_add_guest_users.sql
 -- Date: February 10, 2026
 -- Description: Adds support for anonymous guest users who can create roadmaps before signing up
