@@ -80,18 +80,18 @@ export const TemplatesSection = ({
 					transition={{ duration: 0.5 }}
 				>
 					<div className="pr-0 sm:pr-80">
-						<p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+						<p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
 							Roadmap Templates
 						</p>
-						<h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+						<h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 							Start your project with just a few clicks
 						</h2>
-						<p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
+						<p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
 							Choose a versioned template and create an independent roadmap with
 							dates that start when you do.
 						</p>
 					</div>
-					<div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm sm:absolute sm:right-0 sm:top-0 sm:mt-0">
+					<div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-(--app-shadow-sm) sm:absolute sm:right-0 sm:top-0 sm:mt-0">
 						<Sparkles className="h-4 w-4 text-cyan-600" />
 						20 free execution-ready plans
 					</div>
@@ -108,7 +108,7 @@ export const TemplatesSection = ({
 								key={category.slug}
 								type="button"
 								onClick={() => setActiveCategory(category.slug)}
-								className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${category.slug === activeCategory ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-900"}`}
+								className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${category.slug === activeCategory ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:border-input hover:text-foreground"}`}
 							>
 								{category.name}
 							</button>
@@ -116,19 +116,19 @@ export const TemplatesSection = ({
 					</motion.div>
 				) : null}
 
-				<div className="relative z-10 rounded-3xl bg-white/55 p-1 backdrop-blur-[1px]">
+				<div className="relative z-10 rounded-3xl bg-card/55 p-1 backdrop-blur-[1px]">
 					{templatesQuery.isPending ? (
 						<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 							<span className="sr-only">Loading templates</span>
 							{TEMPLATE_SKELETON_IDS.map((skeletonId) => (
 								<div
 									key={skeletonId}
-									className="h-[420px] animate-pulse rounded-2xl border border-slate-200 bg-white/80"
+									className="h-[420px] animate-pulse rounded-2xl border border-border bg-card/80"
 								/>
 							))}
 						</div>
 					) : templatesQuery.isError ? (
-						<div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">
+						<div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
 							The template library is temporarily unavailable. Please try again
 							shortly.
 						</div>

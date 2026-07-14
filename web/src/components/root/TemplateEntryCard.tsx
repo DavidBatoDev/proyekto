@@ -26,12 +26,12 @@ export function TemplateEntryCard({
 				description={template.summary}
 				epics={template.preview.epics}
 				status={
-					<span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+					<span className="shrink-0 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
 						Free
 					</span>
 				}
 				footerLeading={
-					<span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+					<span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
 						{template.rating_count > 0 ? (
 							<Star className="h-3 w-3 fill-amber-400 text-amber-400" />
 						) : null}
@@ -44,7 +44,7 @@ export function TemplateEntryCard({
 					<Link
 						to="/roadmap-templates/$slug"
 						params={{ slug: template.slug }}
-						className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-slate-700"
+						className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-background shadow-(--app-shadow-sm) transition-opacity hover:opacity-85"
 					>
 						Use template
 						<ArrowUpRight className="h-3.5 w-3.5 shrink-0" />

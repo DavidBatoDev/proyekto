@@ -117,14 +117,14 @@ function RoadmapTemplateDetailPage() {
 
 	if (templateQuery.isPending)
 		return (
-			<main className="min-h-screen bg-slate-50 pt-32 text-center text-slate-500">
+			<main className="min-h-screen bg-background pt-32 text-center text-muted-foreground">
 				Loading template…
 			</main>
 		);
 	if (templateQuery.isError || !templateQuery.data)
 		return (
-			<main className="min-h-screen bg-slate-50 pt-32 text-center">
-				<p className="text-red-600">Template not found.</p>
+			<main className="min-h-screen bg-background pt-32 text-center text-foreground">
+				<p className="text-destructive">Template not found.</p>
 				<Link
 					to="/roadmap-templates"
 					className="mt-4 inline-block text-primary"
@@ -136,7 +136,7 @@ function RoadmapTemplateDetailPage() {
 	const template = templateQuery.data;
 
 	return (
-		<main className="min-h-screen bg-slate-50 pt-24 text-slate-950">
+		<main className="min-h-screen bg-background pt-24 text-foreground">
 			<div className="mx-auto grid max-w-7xl gap-8 px-4 pb-20 lg:grid-cols-[1fr_360px]">
 				<div>
 					<Link
@@ -145,8 +145,8 @@ function RoadmapTemplateDetailPage() {
 					>
 						← Template marketplace
 					</Link>
-					<div className="mt-6 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-						<span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
+					<div className="mt-6 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+						<span className="rounded-full bg-primary/10 px-3 py-1 text-primary">
 							{template.category.name}
 						</span>
 						<span>{template.difficulty}</span>
@@ -156,10 +156,10 @@ function RoadmapTemplateDetailPage() {
 					<h1 className="mt-3 text-4xl font-bold tracking-tight">
 						{template.title}
 					</h1>
-					<p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+					<p className="mt-4 max-w-3xl text-lg leading-8 text-muted-foreground">
 						{template.summary}
 					</p>
-					<div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-600">
+					<div className="mt-5 flex flex-wrap gap-5 text-sm text-muted-foreground">
 						<span className="inline-flex items-center gap-1">
 							<Star className="h-4 w-4 fill-amber-400 text-amber-400" />
 							{template.rating_count
@@ -191,7 +191,7 @@ function RoadmapTemplateDetailPage() {
 							{template.tags.map((tag) => (
 								<span
 									key={tag.slug}
-									className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"
+									className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground"
 								>
 									#{tag.name}
 								</span>
@@ -226,13 +226,13 @@ function RoadmapTemplateDetailPage() {
 				</div>
 
 				<aside className="lg:pt-20">
-					<div className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
+					<div className="sticky top-24 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-lg)">
 						<h2 className="text-lg font-bold">Use this template</h2>
-						<p className="mt-1 text-sm text-slate-500">
+						<p className="mt-1 text-sm text-muted-foreground">
 							Creates an independent copy pinned to version{" "}
 							{template.version_number}.
 						</p>
-						<label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+						<label className="mt-5 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
 							Start date
 							<input
 								type="date"
@@ -241,10 +241,10 @@ function RoadmapTemplateDetailPage() {
 									setStartDate(event.target.value);
 									idempotencyKeyRef.current = crypto.randomUUID();
 								}}
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal text-slate-900"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal text-foreground"
 							/>
 						</label>
-						<label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
+						<label className="mt-4 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
 							Attach to project (optional)
 							<select
 								value={projectId}
@@ -253,7 +253,7 @@ function RoadmapTemplateDetailPage() {
 									idempotencyKeyRef.current = crypto.randomUUID();
 								}}
 								disabled={!isAuthenticated || projectsQuery.isPending}
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal text-slate-900"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal text-foreground disabled:opacity-60"
 							>
 								<option value="">Standalone roadmap</option>
 								{(projectsQuery.data ?? []).map((project) => (
@@ -264,7 +264,7 @@ function RoadmapTemplateDetailPage() {
 							</select>
 						</label>
 						{error ? (
-							<p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+							<p className="mt-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
 								{error}
 							</p>
 						) : null}
@@ -272,7 +272,7 @@ function RoadmapTemplateDetailPage() {
 							type="button"
 							onClick={handleUse}
 							disabled={instantiateMutation.isPending || !startDate}
-							className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 font-bold text-white disabled:opacity-50"
+							className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground font-bold text-background transition-opacity hover:opacity-90 disabled:opacity-50"
 						>
 							<Calendar className="h-4 w-4" />
 							{instantiateMutation.isPending
@@ -283,8 +283,8 @@ function RoadmapTemplateDetailPage() {
 						</button>
 
 						{isAuthenticated ? (
-							<div className="mt-6 border-t border-slate-100 pt-5">
-								<p className="text-xs font-bold uppercase text-slate-500">
+							<div className="mt-6 border-t border-border pt-5">
+								<p className="text-xs font-bold uppercase text-muted-foreground">
 									Rate after using
 								</p>
 								<div className="mt-2 flex gap-1">
@@ -296,7 +296,7 @@ function RoadmapTemplateDetailPage() {
 											aria-label={`Rate ${value} stars`}
 										>
 											<Star
-												className={`h-5 w-5 ${value <= rating ? "fill-amber-400 text-amber-400" : "text-slate-300"}`}
+												className={`h-5 w-5 ${value <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40"}`}
 											/>
 										</button>
 									))}
@@ -329,7 +329,7 @@ function RoadmapTemplateDetailPage() {
 								<button
 									type="button"
 									onClick={() => setReportOpen((open) => !open)}
-									className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-slate-500"
+									className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
 								>
 									<Flag className="h-3 w-3" />
 									Report template
@@ -340,7 +340,7 @@ function RoadmapTemplateDetailPage() {
 											value={reportDetails}
 											onChange={(event) => setReportDetails(event.target.value)}
 											placeholder="Tell moderators what is wrong"
-											className="min-h-24 w-full rounded-lg border border-slate-200 p-3 text-sm"
+											className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground"
 										/>
 										<button
 											type="button"
@@ -363,7 +363,7 @@ function RoadmapTemplateDetailPage() {
 														),
 													);
 											}}
-											className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold disabled:opacity-50"
+											className="mt-2 rounded-lg bg-muted px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
 										>
 											Submit report
 										</button>

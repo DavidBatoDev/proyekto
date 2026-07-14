@@ -136,7 +136,7 @@ export function TemplateRoadmapFlow({
 	return (
 		<section
 			aria-label="Interactive roadmap template preview"
-			className="h-[680px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:h-[760px] lg:h-[820px]"
+			className="h-[680px] w-full overflow-hidden rounded-2xl border border-border bg-card shadow-(--app-shadow-sm) sm:h-[760px] lg:h-[820px]"
 			data-testid="template-roadmap-flow"
 		>
 			<RoadmapView

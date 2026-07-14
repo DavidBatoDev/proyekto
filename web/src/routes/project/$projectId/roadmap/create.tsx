@@ -23,19 +23,19 @@ function ProjectRoadmapCreatePage() {
 	});
 
 	return (
-		<div className="min-h-screen bg-background pt-20">
+		<div className="min-h-screen bg-background pt-20 text-foreground">
 			<div className="mx-auto flex max-w-6xl gap-2 px-4 pt-4">
 				<button
 					type="button"
 					onClick={() => setMode("builder")}
-					className={`rounded-full px-4 py-2 text-sm font-semibold ${mode === "builder" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-600"}`}
+					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "builder" ? "bg-foreground text-background" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
 				>
 					Blank or AI-assisted
 				</button>
 				<button
 					type="button"
 					onClick={() => setMode("template")}
-					className={`rounded-full px-4 py-2 text-sm font-semibold ${mode === "template" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-600"}`}
+					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "template" ? "bg-foreground text-background" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
 				>
 					Start from a template
 				</button>
@@ -45,7 +45,7 @@ function ProjectRoadmapCreatePage() {
 			) : (
 				<div className="mx-auto max-w-6xl px-4 py-8">
 					<h1 className="text-3xl font-bold">Choose a roadmap template</h1>
-					<p className="mt-2 text-slate-600">
+					<p className="mt-2 text-muted-foreground">
 						The selected plan will{" "}
 						{projectId === "n"
 							? "start as a standalone roadmap"
@@ -53,7 +53,7 @@ function ProjectRoadmapCreatePage() {
 						.
 					</p>
 					{templatesQuery.isPending ? (
-						<p className="py-16 text-center text-slate-500">
+						<p className="py-16 text-center text-muted-foreground">
 							Loading templates…
 						</p>
 					) : (
@@ -67,7 +67,7 @@ function ProjectRoadmapCreatePage() {
 									epics={template.preview.epics}
 									status={null}
 									footerLeading={
-										<span className="text-xs text-slate-500">
+										<span className="text-xs text-muted-foreground">
 											{template.category.name}
 										</span>
 									}
@@ -85,7 +85,7 @@ function ProjectRoadmapCreatePage() {
 													}),
 												)
 											}
-											className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white"
+											className="rounded-full bg-foreground px-3 py-1 text-xs font-bold text-background transition-opacity hover:opacity-85"
 										>
 											Choose
 										</Link>

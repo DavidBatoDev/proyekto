@@ -114,7 +114,10 @@ describe("TemplateRoadmapFlow", () => {
 			/>,
 		);
 
-		expect(screen.getByTestId("template-roadmap-flow")).toBeTruthy();
+		const flow = screen.getByTestId("template-roadmap-flow");
+		expect(flow).toBeTruthy();
+		expect(flow.className).toContain("border-border");
+		expect(flow.className).toContain("bg-card");
 		expect(screen.getByTestId("roadmap-view")).toBeTruthy();
 		expect(roadmapViewProps).toMatchObject({
 			readOnly: true,

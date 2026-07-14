@@ -113,12 +113,12 @@ function ConsultantTemplatesPage() {
 	});
 
 	return (
-		<main className="min-h-screen bg-slate-50 pt-24 text-slate-950">
+		<main className="min-h-screen bg-background pt-24 text-foreground">
 			<div className="mx-auto max-w-6xl px-6 pb-16">
 				<div className="flex flex-wrap items-start justify-between gap-4">
 					<div>
 						<h1 className="text-3xl font-bold">Published templates</h1>
-						<p className="mt-2 text-slate-600">
+						<p className="mt-2 text-muted-foreground">
 							Turn a roadmap you own into an immutable, attributed marketplace
 							template.
 						</p>
@@ -126,7 +126,7 @@ function ConsultantTemplatesPage() {
 					<button
 						type="button"
 						onClick={() => setShowCreate((open) => !open)}
-						className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white"
+						className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-bold text-background transition-opacity hover:opacity-85"
 					>
 						<Plus className="h-4 w-4" />
 						Create from roadmap
@@ -140,7 +140,7 @@ function ConsultantTemplatesPage() {
 							setError(null);
 							createMutation.mutate();
 						}}
-						className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-2"
+						className="mt-6 grid gap-4 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-(--app-shadow-sm) sm:grid-cols-2"
 					>
 						<label className="text-sm font-semibold">
 							Source roadmap
@@ -161,7 +161,7 @@ function ConsultantTemplatesPage() {
 										);
 									}
 								}}
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 font-normal text-foreground"
 							>
 								<option value="">Choose roadmap</option>
 								{(roadmapsQuery.data ?? []).map((roadmap) => (
@@ -178,7 +178,7 @@ function ConsultantTemplatesPage() {
 								required
 								value={category}
 								onChange={(event) => setCategory(event.target.value)}
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 font-normal text-foreground"
 							>
 								<option value="">Choose category</option>
 								{(categoriesQuery.data ?? []).map((item) => (
@@ -195,7 +195,7 @@ function ConsultantTemplatesPage() {
 								minLength={3}
 								value={title}
 								onChange={(event) => setTitle(event.target.value)}
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 font-normal text-foreground"
 							/>
 						</label>
 						<label className="text-sm font-semibold">
@@ -204,7 +204,7 @@ function ConsultantTemplatesPage() {
 								value={tags}
 								onChange={(event) => setTags(event.target.value)}
 								placeholder="discovery, launch, growth"
-								className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal"
+								className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 font-normal text-foreground placeholder:text-muted-foreground"
 							/>
 						</label>
 						<label className="text-sm font-semibold sm:col-span-2">
@@ -214,10 +214,10 @@ function ConsultantTemplatesPage() {
 								minLength={20}
 								value={summary}
 								onChange={(event) => setSummary(event.target.value)}
-								className="mt-2 min-h-24 w-full rounded-lg border border-slate-200 p-3 font-normal"
+								className="mt-2 min-h-24 w-full rounded-lg border border-input bg-background p-3 font-normal text-foreground"
 							/>
 						</label>
-						<label className="flex items-start gap-3 text-sm text-slate-600 sm:col-span-2">
+						<label className="flex items-start gap-3 text-sm text-muted-foreground sm:col-span-2">
 							<input
 								type="checkbox"
 								checked={attested}
@@ -234,7 +234,7 @@ function ConsultantTemplatesPage() {
 							<button
 								type="submit"
 								disabled={!attested || createMutation.isPending}
-								className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+								className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"
 							>
 								{createMutation.isPending
 									? "Validating and publishing…"
@@ -244,7 +244,7 @@ function ConsultantTemplatesPage() {
 					</form>
 				) : null}
 				{error ? (
-					<div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+					<div className="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
 						{error}
 					</div>
 				) : null}
@@ -258,22 +258,22 @@ function ConsultantTemplatesPage() {
 						{templatesQuery.data.map((template) => (
 							<div
 								key={template.id}
-								className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+								className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm)"
 							>
 								<div className="flex flex-wrap items-start justify-between gap-4">
 									<div>
 										<div className="flex items-center gap-2">
 											<h2 className="text-lg font-bold">{template.title}</h2>
 											<span
-												className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${template.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}
+												className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${template.status === "published" ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}
 											>
 												{template.status}
 											</span>
 										</div>
-										<p className="mt-1 max-w-2xl text-sm text-slate-600">
+										<p className="mt-1 max-w-2xl text-sm text-muted-foreground">
 											{template.summary}
 										</p>
-										<p className="mt-2 text-xs text-slate-500">
+										<p className="mt-2 text-xs text-muted-foreground">
 											Version{" "}
 											{template.current_version?.version_number ?? "draft"} ·{" "}
 											{template.view_count} views · {template.duplicate_count}{" "}
@@ -285,7 +285,7 @@ function ConsultantTemplatesPage() {
 											<Link
 												to="/roadmap-templates/$slug"
 												params={{ slug: template.slug }}
-												className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold"
+												className="rounded-lg border border-border px-3 py-2 text-xs font-bold transition-colors hover:bg-muted"
 											>
 												View
 											</Link>
@@ -298,7 +298,7 @@ function ConsultantTemplatesPage() {
 													action: "revise",
 												})
 											}
-											className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold"
+											className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold transition-colors hover:bg-muted"
 										>
 											<RefreshCw className="h-3 w-3" />
 											New revision
@@ -312,7 +312,7 @@ function ConsultantTemplatesPage() {
 														action: "unlist",
 													})
 												}
-												className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold"
+												className="rounded-lg border border-border px-3 py-2 text-xs font-bold transition-colors hover:bg-muted"
 											>
 												Unlist
 											</button>
@@ -325,7 +325,7 @@ function ConsultantTemplatesPage() {
 													action: "archive",
 												})
 											}
-											className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-red-600"
+											className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
 										>
 											<Archive className="h-3 w-3" />
 											Archive
@@ -337,7 +337,7 @@ function ConsultantTemplatesPage() {
 													analyticsId === template.id ? null : template.id,
 												)
 											}
-											className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold"
+											className="inline-flex items-center gap-1 rounded-lg bg-muted px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-accent"
 										>
 											<BarChart3 className="h-3 w-3" />
 											Analytics
@@ -345,7 +345,7 @@ function ConsultantTemplatesPage() {
 									</div>
 								</div>
 								{analyticsId === template.id ? (
-									<div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-5">
+									<div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-muted p-4 text-sm text-muted-foreground sm:grid-cols-5">
 										{analyticsQuery.isPending ? (
 											<span>Loading…</span>
 										) : analyticsQuery.data ? (
@@ -383,9 +383,9 @@ function ConsultantTemplatesPage() {
 						))}
 					</div>
 				) : (
-					<div className="mt-8 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-12 text-center">
+					<div className="mt-8 rounded-2xl border-2 border-dashed border-border bg-card p-12 text-center text-card-foreground">
 						<p className="font-semibold">No templates published yet.</p>
-						<p className="mt-2 text-sm text-slate-500">
+						<p className="mt-2 text-sm text-muted-foreground">
 							Choose any roadmap you own to create your first marketplace
 							template.
 						</p>
