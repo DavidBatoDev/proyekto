@@ -11,6 +11,8 @@ import type { RoadmapPerformanceMode } from "./models/types";
 type ReactFlowMockProps = {
 	children?: ReactNode;
 	edges?: Array<{ animated?: boolean }>;
+	nodes?: Array<{ type?: string; data?: Record<string, unknown> }>;
+	nodesDraggable?: boolean;
 } & Record<string, unknown>;
 
 let reactFlowProps: ReactFlowMockProps | null = null;
@@ -97,7 +99,10 @@ const epics: RoadmapEpic[] = [
 	},
 ];
 
-function renderRoadmapView(performanceMode: RoadmapPerformanceMode = "normal") {
+function renderRoadmapView(
+	performanceMode: RoadmapPerformanceMode = "normal",
+	readOnly = false,
+) {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
@@ -108,6 +113,7 @@ function renderRoadmapView(performanceMode: RoadmapPerformanceMode = "normal") {
 				roadmap={roadmap}
 				epics={epics}
 				performanceMode={performanceMode}
+				readOnly={readOnly}
 				onUpdateEpic={vi.fn()}
 				onDeleteEpic={vi.fn()}
 				onUpdateFeature={vi.fn()}
@@ -134,5 +140,24 @@ describe("RoadmapView performance mode", () => {
 		renderRoadmapView("reducedMotion");
 
 		expect(reactFlowProps?.edges?.some((edge) => edge.animated)).toBe(false);
+	});
+
+	it("removes editing controls and node dragging in read-only mode", () => {
+		renderRoadmapView("normal", true);
+
+		const epicNode = reactFlowProps?.nodes?.find(
+			(node) => node.type === "epicWidget",
+		);
+		const featureNode = reactFlowProps?.nodes?.find(
+			(node) => node.type === "featureWidget",
+		);
+
+		expect(reactFlowProps?.nodesDraggable).toBe(false);
+		expect(epicNode?.data?.onEdit).toBeUndefined();
+		expect(epicNode?.data?.onDelete).toBeUndefined();
+		expect(featureNode?.data?.onEdit).toBeUndefined();
+		expect(featureNode?.data?.onDelete).toBeUndefined();
+		expect(featureNode?.data?.onUpdateTask).toBeUndefined();
+		expect(screen.queryByText("Drag To Add")).toBeNull();
 	});
 });

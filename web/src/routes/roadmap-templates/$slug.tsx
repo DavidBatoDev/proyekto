@@ -10,6 +10,7 @@ import {
 	reportRoadmapTemplate,
 } from "@/api";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import { TemplateRoadmapFlow } from "@/components/roadmap/templates/TemplateRoadmapFlow";
 import { projectService } from "@/services/project.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -214,33 +215,12 @@ function RoadmapTemplateDetailPage() {
 							<Layers3 className="h-5 w-5" />
 							Roadmap outline
 						</h2>
-						<div className="mt-5 space-y-4">
-							{template.content.epics.map((epic) => (
-								<details
-									key={epic.key}
-									className="rounded-xl border border-slate-200 bg-white p-4"
-									open
-								>
-									<summary className="cursor-pointer font-bold">
-										{epic.time_label} {epic.title}
-									</summary>
-									<div className="mt-3 grid gap-2 sm:grid-cols-2">
-										{epic.features.map((feature) => (
-											<div
-												key={feature.key}
-												className="rounded-lg bg-slate-50 p-3"
-											>
-												<p className="text-sm font-semibold">
-													{feature.time_label} {feature.title}
-												</p>
-												<p className="mt-1 text-xs text-slate-500">
-													{feature.tasks.length} tasks
-												</p>
-											</div>
-										))}
-									</div>
-								</details>
-							))}
+						<div className="mt-5">
+							<TemplateRoadmapFlow
+								templateId={template.id}
+								content={template.content}
+								startDate={startDate}
+							/>
 						</div>
 					</section>
 				</div>

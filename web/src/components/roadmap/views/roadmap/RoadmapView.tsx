@@ -111,6 +111,8 @@ interface RoadmapViewProps {
   roadmap: Roadmap;
   epics: RoadmapEpic[];
   minZoom?: number;
+  readOnly?: boolean;
+  fitView?: boolean;
   remoteCursors?: RemoteCursor[];
   /** Collaborators present in the room; those with `editingNodeId` set render
    * an "editing" badge on the matching epic/feature/task. */
@@ -331,6 +333,8 @@ export const RoadmapView = ({
   roadmap,
   epics,
   minZoom = 0.4,
+  readOnly = false,
+  fitView = false,
   remoteCursors = [],
   editors,
   onTrackCursor,
@@ -397,9 +401,10 @@ export const RoadmapView = ({
     useState<ToolbarItemType | null>(null);
 
   const canEditRoadmap =
-    !roadmap.currentUserRole ||
-    roadmap.currentUserRole === "owner" ||
-    roadmap.currentUserRole === "editor";
+    !readOnly &&
+    (!roadmap.currentUserRole ||
+      roadmap.currentUserRole === "owner" ||
+      roadmap.currentUserRole === "editor");
 
   const { reorderEpicsInRoadmap, reorderFeaturesInEpic, moveFeatureBetweenEpics } =
     useRoadmapStore(
@@ -649,12 +654,13 @@ export const RoadmapView = ({
             ...node,
             data: {
               epic,
-              onEdit: onSelectEpic
-                ? () => onSelectEpic(epic.id)
-                : (updatedEpic) => onUpdateEpic(updatedEpic),
-              onDelete: onDeleteEpic,
-              onAddEpicBelow,
-              onAddFeature,
+              onClick: onSelectEpic ? () => onSelectEpic(epic.id) : undefined,
+              onEdit: canEditRoadmap
+                ? (updatedEpic) => onUpdateEpic(updatedEpic)
+                : undefined,
+              onDelete: canEditRoadmap ? onDeleteEpic : undefined,
+              onAddEpicBelow: canEditRoadmap ? onAddEpicBelow : undefined,
+              onAddFeature: canEditRoadmap ? onAddFeature : undefined,
               onNavigateToTab: onNavigateToEpic,
               pulseToken:
                 pulseNodeFocus?.nodeId === epic.id
@@ -676,12 +682,15 @@ export const RoadmapView = ({
           data: {
             feature,
             showTaskCount: true,
-            onEdit: () => onEditFeature?.(feature.epic_id, feature.id),
-            onDelete: onDeleteFeature,
+            onEdit:
+              canEditRoadmap && onEditFeature
+                ? () => onEditFeature(feature.epic_id, feature.id)
+                : undefined,
+            onDelete: canEditRoadmap ? onDeleteFeature : undefined,
             onClick: onSelectFeature,
-            onAddTask,
+            onAddTask: canEditRoadmap ? onAddTask : undefined,
             onSelectTask,
-            onUpdateTask,
+            onUpdateTask: canEditRoadmap ? onUpdateTask : undefined,
             runningTaskId,
             pulseTaskId:
               pulseTaskFocus?.featureId === feature.id
@@ -1650,6 +1659,8 @@ export const RoadmapView = ({
         }}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
+        fitView={fitView}
+        fitViewOptions={{ padding: 0.12, maxZoom: DEFAULT_ZOOM }}
         translateExtent={translateExtent}
         panOnDrag={[0, 1, 2]}
         panOnScroll
@@ -1721,6 +1732,7 @@ export const RoadmapView = ({
       <div className="absolute bottom-16 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%
       </div>
+      {canEditRoadmap && (
       <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur select-none">
         <div className="flex items-center gap-2">
           <div className="mr-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
@@ -1785,6 +1797,7 @@ export const RoadmapView = ({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };
