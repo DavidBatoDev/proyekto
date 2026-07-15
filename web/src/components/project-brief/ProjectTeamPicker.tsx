@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
 import { Check, Plus, Users } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import { listMyTeams, type Team } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
@@ -51,10 +51,10 @@ export function ProjectTeamPicker({
 
 	return (
 		<div>
-			<label className="block text-sm font-semibold text-[#333438] mb-2">
+			<p className="mb-2 block text-sm font-semibold text-foreground">
 				Primary team
-			</label>
-			<p className="mb-3 text-xs text-[#5c5e66]">
+			</p>
+			<p className="mb-3 text-xs text-muted-foreground">
 				The team whose members can be curated onto this project. Rates and
 				billing settings come from the team. You can change this later from
 				project settings.
@@ -62,7 +62,7 @@ export function ProjectTeamPicker({
 
 			<div className="space-y-2">
 				{teamsQuery.isPending ? (
-					<div className="rounded-lg border border-[#e3e5e8] bg-white px-4 py-3 text-sm text-[#5c5e66]">
+					<div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
 						Loading your teams…
 					</div>
 				) : (
@@ -86,7 +86,7 @@ export function ProjectTeamPicker({
 			<div className="mt-3 text-right">
 				<Link
 					to="/teams"
-					className="inline-flex items-center gap-1 text-xs font-semibold text-[#ff6b35] hover:text-[#e91e63]"
+					className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80"
 				>
 					<Plus className="h-3.5 w-3.5" />
 					Manage teams
@@ -111,29 +111,29 @@ function TeamOption({
 			onClick={onSelect}
 			className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
 				selected
-					? "border-[#ff6b35] bg-[#fff5eb] shadow-sm"
-					: "border-[#e3e5e8] bg-white hover:border-[#ff993380]"
+					? "border-primary bg-primary/10 shadow-sm"
+					: "border-border bg-card hover:border-primary/50 hover:bg-muted/60"
 			}`}
 		>
 			<TeamAvatar team={team} />
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
-					<span className="truncate text-sm font-semibold text-[#2f302f]">
+					<span className="truncate text-sm font-semibold text-foreground">
 						{team.name}
 					</span>
 					{team.is_personal && (
-						<span className="inline-flex items-center rounded-full border border-[#ff993340] bg-[#fff5eb] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#b3530b]">
+						<span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
 							Personal
 						</span>
 					)}
 				</div>
 				{team.description && (
-					<p className="mt-0.5 truncate text-xs text-[#5c5e66]">
+					<p className="mt-0.5 truncate text-xs text-muted-foreground">
 						{team.description}
 					</p>
 				)}
 			</div>
-			{selected && <Check className="h-5 w-5 shrink-0 text-[#ff6b35]" />}
+			{selected && <Check className="h-5 w-5 shrink-0 text-primary" />}
 		</button>
 	);
 }
@@ -151,23 +151,23 @@ function NoTeamOption({
 			onClick={onSelect}
 			className={`flex w-full items-center gap-3 rounded-lg border border-dashed px-4 py-3 text-left transition ${
 				selected
-					? "border-[#ff6b35] bg-[#fff5eb] shadow-sm"
-					: "border-[#cbd5e1] bg-white hover:border-[#94a3b8]"
+					? "border-primary bg-primary/10 shadow-sm"
+					: "border-border bg-card hover:border-primary/50 hover:bg-muted/60"
 			}`}
 		>
-			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f1f5f9] text-[#64748b]">
+			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
 				<Users className="h-4 w-4" />
 			</div>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-semibold text-[#2f302f]">
+				<p className="text-sm font-semibold text-foreground">
 					No team — attach later
 				</p>
-				<p className="mt-0.5 text-xs text-[#5c5e66]">
-					Create the project unattached. Add a team from project settings
-					when you're ready.
+				<p className="mt-0.5 text-xs text-muted-foreground">
+					Create the project unattached. Add a team from project settings when
+					you're ready.
 				</p>
 			</div>
-			{selected && <Check className="h-5 w-5 shrink-0 text-[#ff6b35]" />}
+			{selected && <Check className="h-5 w-5 shrink-0 text-primary" />}
 		</button>
 	);
 }
@@ -184,7 +184,7 @@ function TeamAvatar({ team }: { team: Team }) {
 	}
 	const initial = (team.name?.trim()[0] || "T").toUpperCase();
 	return (
-		<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+		<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
 			<span className="text-sm font-semibold">{initial}</span>
 		</div>
 	);

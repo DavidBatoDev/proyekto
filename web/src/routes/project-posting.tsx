@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	ArrowLeft,
 	Briefcase,
@@ -13,6 +12,7 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	type FormData as BaseFormData,
 	Step1 as SharedStep1,
@@ -287,27 +287,27 @@ function ProjectPostingPage() {
 	};
 
 	return (
-		<div className="app-shell-bg min-h-screen">
+		<div className="app-shell-bg min-h-screen text-foreground">
 			{/* Minimal top bar — back-out + intent toggle, no global header */}
-			<div className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur">
+			<div className="sticky top-0 z-30 border-b border-border bg-card/85 text-card-foreground backdrop-blur">
 				<div className="mx-auto flex max-w-[1240px] items-center justify-between px-5 py-3 md:px-10">
 					<Link
 						to="/dashboard"
-						className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
 					>
 						<ArrowLeft className="h-4 w-4" />
 						Back to dashboard
 					</Link>
-					<p className="hidden text-sm font-semibold text-slate-900 sm:block">
+					<p className="hidden text-sm font-semibold text-foreground sm:block">
 						New project
 					</p>
 					{isVerifiedConsultant ? (
 						<button
 							type="button"
 							onClick={() => setShowIntentModal(true)}
-							className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+							className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-card-foreground shadow-sm transition hover:border-primary/40 hover:bg-muted"
 						>
-							<Briefcase className="h-3.5 w-3.5 text-slate-500" />
+							<Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
 							{effectiveIntent === "client"
 								? "Creating as client"
 								: "Creating as consultant"}
@@ -357,11 +357,11 @@ function ProjectPostingPage() {
 										exit={{ opacity: 0, x: -20 }}
 										transition={{ duration: 0.4, ease: "easeOut" }}
 									>
-										<h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
+										<h1 className="mb-4 text-4xl font-bold tracking-tight text-foreground">
 											Step 1: Vision &<br />
 											Scope
 										</h1>
-										<p className="text-base text-slate-600">
+										<p className="text-base text-muted-foreground">
 											Tell us what you want to build. You can either answer a
 											few questions or upload an existing RFP/Brief.
 										</p>
@@ -375,11 +375,11 @@ function ProjectPostingPage() {
 										exit={{ opacity: 0, x: -20 }}
 										transition={{ duration: 0.4, ease: "easeOut" }}
 									>
-										<h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
+										<h1 className="mb-4 text-4xl font-bold tracking-tight text-foreground">
 											Step 2: Skills &<br />
 											Deliverables
 										</h1>
-										<p className="text-base text-slate-600">
+										<p className="text-base text-muted-foreground">
 											Define the expertise you need and the results you expect.
 										</p>
 									</motion.div>
@@ -392,11 +392,11 @@ function ProjectPostingPage() {
 										exit={{ opacity: 0, x: -20 }}
 										transition={{ duration: 0.4, ease: "easeOut" }}
 									>
-										<h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
+										<h1 className="mb-4 text-4xl font-bold tracking-tight text-foreground">
 											Step 3: Budget &<br />
 											Timeline
 										</h1>
-										<p className="text-base text-slate-600">
+										<p className="text-base text-muted-foreground">
 											{effectiveIntent === "consultant"
 												? "Set budget and timing for the project you're leading. You can adjust these later when you transfer it to a client."
 												: "Help us match you with consultants who fit your financial and schedule goals."}
@@ -454,7 +454,7 @@ function ProjectPostingPage() {
 										formError={submitError}
 									/>
 									{effectiveIntent === "consultant" && (
-										<div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+										<div className="mt-8 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm">
 											<ProjectTeamPicker
 												value={primaryTeamId}
 												onChange={setPrimaryTeamId}
@@ -468,13 +468,13 @@ function ProjectPostingPage() {
 				</div>
 
 				{/* Navigation Buttons */}
-				<div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 bg-linear-to-t from-white via-white/80 to-transparent pb-8 pt-6">
+				<div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 bg-linear-to-t from-background via-background/85 to-transparent pb-8 pt-6">
 					<div className="mx-auto flex max-w-[1240px] justify-between px-5 md:px-10">
 						<button
 							type="button"
 							onClick={prevStep}
 							disabled={currentStep === 1}
-							className="pointer-events-auto cursor-pointer rounded-lg border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+							className="pointer-events-auto cursor-pointer rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-semibold text-card-foreground shadow-sm transition hover:border-primary/40 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
 						>
 							Back
 						</button>
@@ -482,7 +482,7 @@ function ProjectPostingPage() {
 							<button
 								type="button"
 								onClick={nextStep}
-								className="pointer-events-auto cursor-pointer rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+								className="pointer-events-auto cursor-pointer rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
 							>
 								Next
 							</button>
@@ -491,7 +491,7 @@ function ProjectPostingPage() {
 								type="button"
 								onClick={handleSubmit}
 								disabled={isCreatingProject}
-								className="pointer-events-auto inline-flex cursor-pointer items-center gap-2 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+								className="pointer-events-auto inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{isCreatingProject ? (
 									<>
@@ -512,139 +512,140 @@ function ProjectPostingPage() {
 
 			{/* Intent Modal */}
 			<ModalPortal>
-			<AnimatePresence>
-				{isVerifiedConsultant && showIntentModal && (
-					<motion.div
-						className="fixed inset-0 z-9998 flex items-center justify-center p-4"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-					>
+				<AnimatePresence>
+					{isVerifiedConsultant && showIntentModal && (
 						<motion.div
-							className="absolute inset-0 bg-[#201913]/55 backdrop-blur-md"
+							className="fixed inset-0 z-9998 flex items-center justify-center p-4"
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1 }}
 							exit={{ opacity: 0 }}
-							onClick={() => window.history.back()}
-						/>
-						<motion.div
-							className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-							initial={{ opacity: 0, y: 24, scale: 0.96 }}
-							animate={{ opacity: 1, y: 0, scale: 1 }}
-							exit={{ opacity: 0, y: 16, scale: 0.96 }}
-							transition={{ duration: 0.25, ease: "easeOut" }}
 						>
-							<div className="relative p-6 md:p-8">
-								<div className="mb-6 flex items-start justify-between gap-4">
-									<div>
-										<h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
-											How are you creating this project?
-										</h2>
-										<p className="mt-2 max-w-2xl text-sm text-slate-600 md:text-base">
-											Pick whether you're creating it as the client (you want to
-											hire a consultant to deliver) or as a consultant (you'll
-											lead the work yourself, optionally for a client later).
-											This controls visibility, ownership, and who gets matched.
-										</p>
+							<motion.div
+								className="absolute inset-0 bg-black/65 backdrop-blur-md"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								onClick={() => window.history.back()}
+							/>
+							<motion.div
+								className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl"
+								initial={{ opacity: 0, y: 24, scale: 0.96 }}
+								animate={{ opacity: 1, y: 0, scale: 1 }}
+								exit={{ opacity: 0, y: 16, scale: 0.96 }}
+								transition={{ duration: 0.25, ease: "easeOut" }}
+							>
+								<div className="relative p-6 md:p-8">
+									<div className="mb-6 flex items-start justify-between gap-4">
+										<div>
+											<h2 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+												How are you creating this project?
+											</h2>
+											<p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
+												Pick whether you're creating it as the client (you want
+												to hire a consultant to deliver) or as a consultant
+												(you'll lead the work yourself, optionally for a client
+												later). This controls visibility, ownership, and who
+												gets matched.
+											</p>
+										</div>
+										<button
+											type="button"
+											onClick={() => window.history.back()}
+											className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+											aria-label="Close intent modal"
+										>
+											<X className="h-5 w-5" />
+										</button>
 									</div>
-									<button
-										type="button"
-										onClick={() => window.history.back()}
-										className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-										aria-label="Close intent modal"
-									>
-										<X className="h-5 w-5" />
-									</button>
-								</div>
 
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<IntentOptionCard
-										icon={Briefcase}
-										title="Creating as a client"
-										description="You want to hire a verified consultant to lead delivery."
-										bullets={[
-											"Posted publicly so consultants can apply",
-											"We match you with vetted professionals",
-											"You stay the project owner; the consultant runs execution",
-										]}
-										selected={pendingIntent === "client"}
-										onSelect={() => setPendingIntent("client")}
-									/>
-									<IntentOptionCard
-										icon={UserCheck}
-										title="Creating as a consultant"
-										description="You'll lead the work yourself — alone or with your team — and optionally hand it off to a client later."
-										bullets={[
-											"Starts as a private draft owned by you",
-											"You can attach your team as the primary delivery team",
-											"Transfer ownership to a client whenever you're ready",
-										]}
-										selected={pendingIntent === "consultant"}
-										onSelect={() => setPendingIntent("consultant")}
-									/>
-								</div>
+									<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+										<IntentOptionCard
+											icon={Briefcase}
+											title="Creating as a client"
+											description="You want to hire a verified consultant to lead delivery."
+											bullets={[
+												"Posted publicly so consultants can apply",
+												"We match you with vetted professionals",
+												"You stay the project owner; the consultant runs execution",
+											]}
+											selected={pendingIntent === "client"}
+											onSelect={() => setPendingIntent("client")}
+										/>
+										<IntentOptionCard
+											icon={UserCheck}
+											title="Creating as a consultant"
+											description="You'll lead the work yourself — alone or with your team — and optionally hand it off to a client later."
+											bullets={[
+												"Starts as a private draft owned by you",
+												"You can attach your team as the primary delivery team",
+												"Transfer ownership to a client whenever you're ready",
+											]}
+											selected={pendingIntent === "consultant"}
+											onSelect={() => setPendingIntent("consultant")}
+										/>
+									</div>
 
-								<div className="mt-6 flex items-center justify-between gap-3">
-									<p className="text-xs text-slate-500">
-										You can reopen this anytime from the "Creating as…" button
-										at the top of the page.
-									</p>
-									<button
-										type="button"
-										onClick={() => {
-											setCreationIntent(pendingIntent);
-											setShowIntentModal(false);
-										}}
-										className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-									>
-										Continue
-									</button>
+									<div className="mt-6 flex items-center justify-between gap-3">
+										<p className="text-xs text-muted-foreground">
+											You can reopen this anytime from the "Creating as…" button
+											at the top of the page.
+										</p>
+										<button
+											type="button"
+											onClick={() => {
+												setCreationIntent(pendingIntent);
+												setShowIntentModal(false);
+											}}
+											className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+										>
+											Continue
+										</button>
+									</div>
 								</div>
-							</div>
+							</motion.div>
 						</motion.div>
-					</motion.div>
-				)}
-			</AnimatePresence>
+					)}
+				</AnimatePresence>
 			</ModalPortal>
 
 			{/* Loading Modal for Pre-populating */}
 			<ModalPortal>
-			<AnimatePresence>
-				{isLoadingRoadmap && (
-					<motion.div
-						className="fixed inset-0 z-9999 flex items-center justify-center p-4"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-					>
+				<AnimatePresence>
+					{isLoadingRoadmap && (
 						<motion.div
-							className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+							className="fixed inset-0 z-9999 flex items-center justify-center p-4"
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1 }}
 							exit={{ opacity: 0 }}
-						/>
-						<motion.div
-							className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8"
-							initial={{ opacity: 0, scale: 0.9, y: 20 }}
-							animate={{ opacity: 1, scale: 1, y: 0 }}
-							exit={{ opacity: 0, scale: 0.9, y: 20 }}
-							transition={{ duration: 0.3, ease: "easeOut" }}
 						>
-							<div className="text-center">
-								<div className="w-16 h-16 bg-linear-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center mx-auto mb-6">
-									<Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
+							<motion.div
+								className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+							/>
+							<motion.div
+								className="relative w-full max-w-md rounded-2xl border border-border bg-card p-8 text-card-foreground shadow-2xl"
+								initial={{ opacity: 0, scale: 0.9, y: 20 }}
+								animate={{ opacity: 1, scale: 1, y: 0 }}
+								exit={{ opacity: 0, scale: 0.9, y: 20 }}
+								transition={{ duration: 0.3, ease: "easeOut" }}
+							>
+								<div className="text-center">
+									<div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+										<Loader2 className="h-8 w-8 animate-spin text-primary" />
+									</div>
+									<h2 className="mb-3 text-2xl font-bold text-foreground">
+										Loading Roadmap Data
+									</h2>
+									<p className="text-muted-foreground">
+										Pre-populating Steps 1 and 2 from your roadmap...
+									</p>
 								</div>
-								<h2 className="text-2xl font-bold text-gray-900 mb-3">
-									Loading Roadmap Data
-								</h2>
-								<p className="text-gray-600">
-									Pre-populating Steps 1 and 2 from your roadmap...
-								</p>
-							</div>
+							</motion.div>
 						</motion.div>
-					</motion.div>
-				)}
-			</AnimatePresence>
+					)}
+				</AnimatePresence>
 			</ModalPortal>
 		</div>
 	);
@@ -671,27 +672,29 @@ function IntentOptionCard({
 			onClick={onSelect}
 			className={`rounded-xl border p-5 text-left transition-all ${
 				selected
-					? "border-slate-900 bg-slate-50 shadow-sm"
-					: "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+					? "border-primary bg-primary/10 shadow-sm"
+					: "border-border bg-card hover:border-primary/40 hover:bg-muted/60"
 			}`}
 		>
 			<div className="mb-3 flex items-center gap-3">
 				<div
 					className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-						selected ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+						selected
+							? "bg-primary text-primary-foreground"
+							: "bg-muted text-muted-foreground"
 					}`}
 				>
 					<Icon className="h-5 w-5" />
 				</div>
-				<h3 className="text-base font-semibold text-slate-900">{title}</h3>
+				<h3 className="text-base font-semibold text-foreground">{title}</h3>
 				{selected && (
-					<span className="ml-auto rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+					<span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
 						Selected
 					</span>
 				)}
 			</div>
-			<p className="mb-3 text-sm text-slate-600">{description}</p>
-			<ul className="space-y-1 text-xs text-slate-500">
+			<p className="mb-3 text-sm text-muted-foreground">{description}</p>
+			<ul className="space-y-1 text-xs text-muted-foreground">
 				{bullets.map((b) => (
 					<li key={b}>• {b}</li>
 				))}
@@ -706,9 +709,9 @@ function IntentOptionCard({
  */
 function StepperBar({ filled }: { filled: boolean }) {
 	return (
-		<div className="-mt-6 mx-1 h-1 w-10 overflow-hidden rounded-full bg-slate-200 sm:mx-2 sm:w-20 lg:w-32">
+		<div className="-mt-6 mx-1 h-1 w-10 overflow-hidden rounded-full bg-muted sm:mx-2 sm:w-20 lg:w-32">
 			<motion.div
-				className="h-full bg-slate-900"
+				className="h-full bg-primary"
 				initial={{ width: "0%" }}
 				animate={{ width: filled ? "100%" : "0%" }}
 				transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -733,13 +736,13 @@ function Step3({
 	return (
 		<div className="space-y-6">
 			{formError && (
-				<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+				<div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
 					{formError}
 				</div>
 			)}
 			{/* Budget Range (repeated from Step 2) */}
 			<div>
-				<p className="block text-sm font-semibold text-[#333438] mb-4">
+				<p className="mb-4 block text-sm font-semibold text-foreground">
 					Estimated Budget Range*
 				</p>
 				<div className="grid grid-cols-2 gap-4">
@@ -771,13 +774,13 @@ function Step3({
 						checked={formData.budgetRange === "$50k+"}
 						onChange={() => updateFormData({ budgetRange: "$50k+" })}
 					/>
-					<div className="flex items-center px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-[#ff9933] transition-colors col-span-2">
+					<div className="col-span-2 flex items-center rounded-xl border border-border bg-card px-4 py-3 text-card-foreground shadow-sm transition-colors hover:border-primary/50">
 						<input
 							type="radio"
 							name="budgetRange"
 							checked={formData.budgetRange === "custom"}
 							onChange={() => updateFormData({ budgetRange: "custom" })}
-							className="w-5 h-5 text-[#ff9933] focus:ring-[#ff9933]"
+							className="h-5 w-5 accent-primary focus:ring-primary"
 						/>
 						<input
 							type="text"
@@ -789,28 +792,28 @@ function Step3({
 									customBudgetRange: e.target.value,
 								})
 							}
-							className="ml-3 flex-1 px-3 py-2 border-b border-gray-200 focus:outline-none focus:border-[#ff9933]"
+							className="ml-3 flex-1 border-b border-border bg-transparent px-3 py-2 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
 						/>
 					</div>
 				</div>
 				{errors.budgetRange && (
-					<p className="mt-2 text-sm text-red-600">{errors.budgetRange}</p>
+					<p className="mt-2 text-sm text-destructive">{errors.budgetRange}</p>
 				)}
 				{errors.customBudgetRange && (
-					<p className="mt-1 text-sm text-red-600">
+					<p className="mt-1 text-sm text-destructive">
 						{errors.customBudgetRange}
 					</p>
 				)}
 			</div>
 			{/* Funding Status */}
 			<div>
-				<p className="block text-sm font-semibold text-[#333438] mb-2">
+				<p className="mb-2 block text-sm font-semibold text-foreground">
 					Funding Status
 				</p>
 				<select
 					value={formData.fundingStatus}
 					onChange={(e) => updateFormData({ fundingStatus: e.target.value })}
-					className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent shadow-sm"
+					className="w-full rounded-lg border border-input bg-card px-3 py-2 text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
 				>
 					<option value="">Select...</option>
 					<option value="self-funded">Self-funded</option>
@@ -822,7 +825,7 @@ function Step3({
 			</div>
 			{/* Start Date */}
 			<div>
-				<p className="block text-sm font-semibold text-[#333438] mb-4">
+				<p className="mb-4 block text-sm font-semibold text-foreground">
 					When do you want to start?*
 				</p>
 				<div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -840,13 +843,13 @@ function Step3({
 						checked={formData.startDate === "within-month"}
 						onChange={() => updateFormData({ startDate: "within-month" })}
 					/>
-					<div className="flex items-center px-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-[#ff9933] transition-colors">
+					<div className="flex items-center rounded-xl border border-border bg-card px-4 py-2 text-card-foreground shadow-sm transition-colors hover:border-primary/50">
 						<input
 							type="radio"
 							name="startDate"
 							checked={formData.startDate === "custom"}
 							onChange={() => updateFormData({ startDate: "custom" })}
-							className="w-5 h-5 text-[#ff9933] focus:ring-[#ff9933]"
+							className="h-5 w-5 accent-primary focus:ring-primary"
 						/>
 						<input
 							type="date"
@@ -857,35 +860,37 @@ function Step3({
 									customStartDate: e.target.value,
 								});
 							}}
-							className="ml-3 flex-1 px-2 py-1 border-b border-gray-200 focus:outline-none focus:border-[#ff9933] text-sm"
+							className="ml-3 flex-1 border-b border-border bg-transparent px-2 py-1 text-sm text-foreground outline-none focus:border-primary [color-scheme:light] dark:[color-scheme:dark]"
 							placeholder="DD/MM/YY"
 						/>
 					</div>
 				</div>
 				{errors.startDate && (
-					<p className="mt-2 text-sm text-red-600">{errors.startDate}</p>
+					<p className="mt-2 text-sm text-destructive">{errors.startDate}</p>
 				)}
 				{errors.customStartDate && (
-					<p className="mt-1 text-sm text-red-600">{errors.customStartDate}</p>
+					<p className="mt-1 text-sm text-destructive">
+						{errors.customStartDate}
+					</p>
 				)}
 			</div>
 			{/* Roadmap Upload or Reference */}
 			<div>
-				<p className="block text-sm font-semibold text-[#333438] mb-2">
+				<p className="mb-2 block text-sm font-semibold text-foreground">
 					Do you have an existing Roadmap or Timeline? (Optional)
 				</p>
 				{referencedRoadmap ? (
 					// Show roadmap reference when coming from roadmap
-					<div className="border-2 border-orange-300 bg-orange-50 rounded-lg p-6">
+					<div className="rounded-lg border-2 border-primary/30 bg-primary/10 p-6">
 						<div className="flex items-start gap-4">
-							<div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center shrink-0">
-								<MapIcon className="w-6 h-6 text-white" />
+							<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary">
+								<MapIcon className="h-6 w-6 text-primary-foreground" />
 							</div>
 							<div className="flex-1">
-								<h4 className="font-semibold text-gray-900 mb-1">
+								<h4 className="mb-1 font-semibold text-foreground">
 									Linked Roadmap
 								</h4>
-								<p className="text-sm text-gray-600 mb-3">
+								<p className="mb-3 text-sm text-muted-foreground">
 									This project is based on your roadmap:{" "}
 									<span className="font-semibold">
 										"{referencedRoadmap.name}"
@@ -895,7 +900,7 @@ function Step3({
 									href={`/project/n/roadmap/${referencedRoadmap.id}`}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="inline-flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium"
+									className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80"
 								>
 									View Roadmap
 									<ExternalLink className="w-4 h-4" />
@@ -905,18 +910,18 @@ function Step3({
 					</div>
 				) : (
 					// Show file upload when not coming from roadmap
-					<div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-						<Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-						<p className="text-[#61636c] mb-1">
-							<span className="text-[#ff9933] font-semibold cursor-pointer hover:underline">
+					<div className="rounded-lg border-2 border-dashed border-border bg-card/60 p-8 text-center">
+						<Upload className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+						<p className="mb-1 text-muted-foreground">
+							<span className="cursor-pointer font-semibold text-primary hover:underline">
 								Link
 							</span>{" "}
 							or drag and drop
 						</p>
-						<p className="text-xs text-[#92969f]">
+						<p className="text-xs text-muted-foreground">
 							SVG, PNG, JPG or GIF (max. 3MB)
 						</p>
-						<p className="text-xs text-[#92969f] mt-2 italic">
+						<p className="mt-2 text-xs italic text-muted-foreground">
 							Attach Project Schedule or Gantt Chart (PDF, Excel)
 						</p>
 					</div>
@@ -945,8 +950,8 @@ function TileOption({
 		<label
 			className={`relative flex items-start p-4 rounded-xl border-2 transition-all cursor-pointer ${
 				checked
-					? "bg-[#fff5eb] border-[#ff9933] shadow-md"
-					: "bg-white border-gray-200 hover:border-gray-300 shadow-sm"
+					? "border-primary bg-primary/10 shadow-md"
+					: "border-border bg-card shadow-sm hover:border-primary/50 hover:bg-muted/60"
 			}`}
 		>
 			<div className="flex items-center h-5">
@@ -956,17 +961,17 @@ function TileOption({
 					value={value}
 					checked={checked}
 					onChange={onChange}
-					className="w-5 h-5 text-[#ff9933] focus:ring-[#ff9933]"
+					className="h-5 w-5 accent-primary focus:ring-primary"
 				/>
 			</div>
 			<div className="ml-3 text-sm">
 				<span
-					className={`font-semibold block ${checked ? "text-[#333438]" : "text-[#61636c]"}`}
+					className={`block font-semibold ${checked ? "text-foreground" : "text-muted-foreground"}`}
 				>
 					{label}
 				</span>
 				{description && (
-					<span className="text-xs text-[#92969f] mt-1 block">
+					<span className="mt-1 block text-xs text-muted-foreground">
 						{description}
 					</span>
 				)}
