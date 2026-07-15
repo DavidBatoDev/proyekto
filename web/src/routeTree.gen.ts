@@ -18,6 +18,7 @@ import { Route as MeetingsRouteImport } from './routes/meetings'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-templates/index'
@@ -127,6 +128,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoadmapTemplatesRouteRoute = RoadmapTemplatesRouteRouteImport.update({
+  id: '/roadmap-templates',
+  path: '/roadmap-templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -138,9 +144,9 @@ const TeamsIndexRoute = TeamsIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadmapTemplatesIndexRoute = RoadmapTemplatesIndexRouteImport.update({
-  id: '/roadmap-templates/',
-  path: '/roadmap-templates/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => RoadmapTemplatesRouteRoute,
 } as any)
 const ConsultantIndexRoute = ConsultantIndexRouteImport.update({
   id: '/consultant/',
@@ -168,9 +174,9 @@ const RoadmapSharedWithMeRoute = RoadmapSharedWithMeRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadmapTemplatesSlugRoute = RoadmapTemplatesSlugRouteImport.update({
-  id: '/roadmap-templates/$slug',
-  path: '/roadmap-templates/$slug',
-  getParentRoute: () => rootRouteImport,
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => RoadmapTemplatesRouteRoute,
 } as any)
 const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
   id: '/project/$projectId',
@@ -464,6 +470,7 @@ const TeamsTeamIdTimeLogLogIdRoute = TeamsTeamIdTimeLogLogIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
@@ -497,7 +504,7 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
-  '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
+  '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
@@ -610,6 +617,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
@@ -686,6 +694,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/roadmap-templates'
     | '/admin'
     | '/dashboard'
     | '/inbox'
@@ -719,7 +728,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
-    | '/roadmap-templates'
+    | '/roadmap-templates/'
     | '/teams'
     | '/teams/$teamId/time'
     | '/auth/admin/login'
@@ -831,6 +840,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/roadmap-templates'
     | '/admin'
     | '/dashboard'
     | '/inbox'
@@ -906,6 +916,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   InboxRoute: typeof InboxRoute
@@ -929,12 +940,10 @@ export interface RootRouteChildren {
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
-  RoadmapTemplatesSlugRoute: typeof RoadmapTemplatesSlugRoute
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
-  RoadmapTemplatesIndexRoute: typeof RoadmapTemplatesIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
@@ -1009,6 +1018,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/roadmap-templates': {
+      id: '/roadmap-templates'
+      path: '/roadmap-templates'
+      fullPath: '/roadmap-templates'
+      preLoaderRoute: typeof RoadmapTemplatesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -1025,10 +1041,10 @@ declare module '@tanstack/react-router' {
     }
     '/roadmap-templates/': {
       id: '/roadmap-templates/'
-      path: '/roadmap-templates'
-      fullPath: '/roadmap-templates'
+      path: '/'
+      fullPath: '/roadmap-templates/'
       preLoaderRoute: typeof RoadmapTemplatesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof RoadmapTemplatesRouteRoute
     }
     '/consultant/': {
       id: '/consultant/'
@@ -1067,10 +1083,10 @@ declare module '@tanstack/react-router' {
     }
     '/roadmap-templates/$slug': {
       id: '/roadmap-templates/$slug'
-      path: '/roadmap-templates/$slug'
+      path: '/$slug'
       fullPath: '/roadmap-templates/$slug'
       preLoaderRoute: typeof RoadmapTemplatesSlugRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof RoadmapTemplatesRouteRoute
     }
     '/project/$projectId': {
       id: '/project/$projectId'
@@ -1453,6 +1469,21 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface RoadmapTemplatesRouteRouteChildren {
+  RoadmapTemplatesSlugRoute: typeof RoadmapTemplatesSlugRoute
+  RoadmapTemplatesIndexRoute: typeof RoadmapTemplatesIndexRoute
+}
+
+const RoadmapTemplatesRouteRouteChildren: RoadmapTemplatesRouteRouteChildren = {
+  RoadmapTemplatesSlugRoute: RoadmapTemplatesSlugRoute,
+  RoadmapTemplatesIndexRoute: RoadmapTemplatesIndexRoute,
+}
+
+const RoadmapTemplatesRouteRouteWithChildren =
+  RoadmapTemplatesRouteRoute._addFileChildren(
+    RoadmapTemplatesRouteRouteChildren,
+  )
+
 interface AdminRouteChildren {
   AdminApplicationsRoute: typeof AdminApplicationsRoute
   AdminApproveAdminRoute: typeof AdminApproveAdminRoute
@@ -1588,6 +1619,7 @@ const TeamsTeamIdRouteWithChildren = TeamsTeamIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
   DashboardRoute: DashboardRoute,
   InboxRoute: InboxRoute,
@@ -1611,12 +1643,10 @@ const rootRouteChildren: RootRouteChildren = {
   FreelancerInvitesRoute: FreelancerInvitesRoute,
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
-  RoadmapTemplatesSlugRoute: RoadmapTemplatesSlugRoute,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
-  RoadmapTemplatesIndexRoute: RoadmapTemplatesIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,
