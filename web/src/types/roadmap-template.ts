@@ -88,7 +88,6 @@ export type RoadmapTemplateSummary = {
 			features: Array<{
 				id: string;
 				title: string;
-				tasks: RoadmapTemplateTask[];
 			}>;
 		}>;
 		milestone_count: number;

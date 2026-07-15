@@ -5,10 +5,11 @@ export const REDIS_CACHE_KEYS = {
   consultantsProfile: (userId: string) =>
     `cache:v1:consultants:profile:${userId}`,
   roadmapTemplatesByHash: (queryHash: string) =>
-    `cache:v2:roadmap-templates:catalog:${queryHash}`,
+    `cache:v3:roadmap-templates:catalog:${queryHash}`,
+  roadmapTemplatesFeatured: 'cache:v3:roadmap-templates:featured',
   roadmapTemplateDetail: (slug: string) =>
-    `cache:v2:roadmap-templates:detail:${slug.toLowerCase()}`,
-  roadmapTemplatesIndex: 'cache:v2:index:roadmap-templates',
+    `cache:v3:roadmap-templates:detail:${slug.toLowerCase()}`,
+  roadmapTemplatesIndex: 'cache:v3:index:roadmap-templates',
   projectsDashboardByUser: (userId: string) =>
     `cache:v1:projects:dashboard:user:${userId}`,
   projectsDashboardIndex: 'cache:v1:index:projects:dashboard',

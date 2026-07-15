@@ -51,7 +51,7 @@ export class RedisCacheInvalidationService {
 
   async invalidateRoadmapTemplatesCache(slug?: string): Promise<void> {
     this.logger.log('cache_invalidate scope=roadmap_templates index_count=1');
-    const paths = ['/api/roadmap-templates'];
+    const paths = ['/api/roadmap-templates', '/api/roadmap-templates/featured'];
     if (slug) paths.push(`/api/roadmap-templates/${encodeURIComponent(slug)}`);
     await Promise.all([
       this.runBestEffort('redis_clear_roadmap_templates', () =>

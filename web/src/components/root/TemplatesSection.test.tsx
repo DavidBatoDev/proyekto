@@ -6,10 +6,11 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TemplatesSection } from "./TemplatesSection";
 
-const { getRoadmapTemplates } = vi.hoisted(() => ({
-	getRoadmapTemplates: vi.fn(),
+const { getFeaturedRoadmapTemplates, inViewState } = vi.hoisted(() => ({
+	getFeaturedRoadmapTemplates: vi.fn(),
+	inViewState: { current: true },
 }));
-vi.mock("@/api", () => ({ getRoadmapTemplates }));
+vi.mock("@/api", () => ({ getFeaturedRoadmapTemplates }));
 
 vi.mock("framer-motion", () => ({
 	motion: {
@@ -21,7 +22,7 @@ vi.mock("framer-motion", () => ({
 			className?: string;
 		}) => <div className={className}>{children}</div>,
 	},
-	useInView: () => true,
+	useInView: () => inViewState.current,
 }));
 
 vi.mock("./TemplateEntryCard", () => ({
@@ -37,6 +38,7 @@ vi.mock("./TemplateEntryCard", () => ({
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	inViewState.current = true;
 });
 
 const template = (id: string, title: string, category: string) => ({
@@ -50,7 +52,7 @@ const template = (id: string, title: string, category: string) => ({
 
 describe("TemplatesSection", () => {
 	it("loads six featured templates and keeps API category filtering", async () => {
-		getRoadmapTemplates.mockResolvedValue({
+		getFeaturedRoadmapTemplates.mockResolvedValue({
 			items: [
 				template("1", "SaaS MVP Launch", "SaaS"),
 				template("2", "Production AI Product", "AI & Machine Learning"),
@@ -78,9 +80,22 @@ describe("TemplatesSection", () => {
 		expect(screen.getAllByTestId(/^template-/)).toHaveLength(2);
 		expect(screen.getByText("Production AI Product")).toBeTruthy();
 		expect(screen.queryByText("SaaS MVP Launch")).toBeNull();
-		expect(getRoadmapTemplates).toHaveBeenCalledWith({
-			sort: "featured",
-			limit: 6,
+		expect(getFeaturedRoadmapTemplates).toHaveBeenCalledTimes(1);
+	});
+
+	it("waits to fetch until the templates section is near the viewport", () => {
+		inViewState.current = false;
+		getFeaturedRoadmapTemplates.mockResolvedValue({ items: [] });
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
 		});
+
+		render(
+			<QueryClientProvider client={client}>
+				<TemplatesSection />
+			</QueryClientProvider>,
+		);
+
+		expect(getFeaturedRoadmapTemplates).not.toHaveBeenCalled();
 	});
 });

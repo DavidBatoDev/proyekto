@@ -134,6 +134,83 @@ describe('RoadmapTemplatesService', () => {
     expect(() => validateSnapshot(validContent())).not.toThrow();
   });
 
+  it('uses compact generated previews for catalog reads and full content only for details', () => {
+    const selectors = service as unknown as {
+      publicSummarySelect(): string;
+      publicDetailSelect(): string;
+    };
+
+    expect(selectors.publicSummarySelect()).toContain(
+      'current_version:roadmap_template_versions',
+    );
+    expect(selectors.publicSummarySelect()).toContain('version_number,preview');
+    expect(selectors.publicSummarySelect()).not.toContain('preview,content');
+    expect(selectors.publicDetailSelect()).toContain('preview,content');
+  });
+
+  it('maps the stored preview without exposing task snapshot payloads', () => {
+    const compactPreview = {
+      epics: [
+        {
+          id: 'epic-1',
+          title: '(Month 1) Product foundation',
+          position: 0,
+          features: [
+            { id: 'feature-1', title: '(Week 1) Validate the problem' },
+          ],
+        },
+      ],
+      milestone_count: 4,
+    };
+    const mapper = service as unknown as {
+      toSummary(row: Record<string, unknown>): { preview: unknown };
+    };
+    const row = {
+      id: 'template-1',
+      slug: 'saas-mvp-launch',
+      title: 'SaaS MVP Launch',
+      summary: 'Launch a focused SaaS product.',
+      preview_url: '',
+      category: { slug: 'saas', name: 'SaaS' },
+      template_tags: [],
+      difficulty: 'intermediate',
+      schedule_kind: 'long_term',
+      estimated_duration_days: 120,
+      attribution_name: 'Proyekto',
+      attribution_url: null,
+      is_featured: true,
+      published_at: '2026-07-15T00:00:00.000Z',
+      view_count: 0,
+      use_count: 0,
+      duplicate_count: 0,
+      rating_count: 0,
+      rating_average: 0,
+    };
+    const summary = mapper.toSummary({
+      ...row,
+      current_version: {
+        id: 'version-1',
+        version_number: 1,
+        preview: compactPreview,
+      },
+    });
+
+    expect(summary.preview).toEqual(compactPreview);
+    expect(JSON.stringify(summary.preview)).not.toContain('tasks');
+    expect(JSON.stringify(summary.preview)).not.toContain('checklist');
+
+    const legacySummary = mapper.toSummary({
+      ...row,
+      current_version: {
+        id: 'version-1',
+        version_number: 1,
+        content: validContent(),
+      },
+    });
+    expect(JSON.stringify(legacySummary.preview)).not.toContain('tasks');
+    expect(JSON.stringify(legacySummary.preview)).not.toContain('checklist');
+  });
+
   it('rejects personal/runtime fields and unsafe markup', () => {
     const personal = structuredClone(validContent()) as unknown as {
       epics: Array<{

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, useInView } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { getRoadmapTemplates } from "@/api";
+import { getFeaturedRoadmapTemplates } from "@/api";
 import { TemplateEntryCard } from "./TemplateEntryCard";
 
 const TEMPLATE_SKELETON_IDS = [
@@ -21,11 +21,14 @@ export const TemplatesSection = ({
 } = {}) => {
 	const [activeCategory, setActiveCategory] = useState("all");
 	const ref = useRef<HTMLDivElement>(null);
-	const inView = useInView(ref, { once: true, margin: "-80px" });
+	const inView = useInView(ref, { once: true, margin: "400px" });
 	const templatesQuery = useQuery({
 		queryKey: ["roadmap-templates", "landing-featured"],
-		queryFn: () => getRoadmapTemplates({ sort: "featured", limit: 6 }),
-		staleTime: 2 * 60 * 1000,
+		queryFn: getFeaturedRoadmapTemplates,
+		enabled: inView,
+		staleTime: 10 * 60 * 1000,
+		gcTime: 30 * 60 * 1000,
+		refetchOnWindowFocus: false,
 	});
 	const templates = templatesQuery.data?.items ?? [];
 	const categories = useMemo(
@@ -93,7 +96,7 @@ export const TemplatesSection = ({
 					</div>
 					<div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-(--app-shadow-sm) sm:absolute sm:right-0 sm:top-0 sm:mt-0">
 						<Sparkles className="h-4 w-4 text-cyan-600" />
-						20 free execution-ready plans
+						Free execution-ready plans
 					</div>
 				</motion.div>
 
@@ -123,7 +126,7 @@ export const TemplatesSection = ({
 							{TEMPLATE_SKELETON_IDS.map((skeletonId) => (
 								<div
 									key={skeletonId}
-									className="h-[420px] animate-pulse rounded-2xl border border-border bg-card/80"
+									className="h-[440px] animate-pulse rounded-2xl border border-border bg-card/80"
 								/>
 							))}
 						</div>

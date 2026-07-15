@@ -75,6 +75,28 @@ export class RoadmapTemplatesService {
     );
   }
 
+  async featured(options?: CacheOptions): Promise<{
+    items: RoadmapTemplateSummary[];
+  }> {
+    return this.cache.rememberJson(
+      REDIS_CACHE_KEYS.roadmapTemplatesFeatured,
+      this.cache.getPublicTtlSeconds(),
+      async () => {
+        let result = await this.queryFeatured(this.publicSummarySelect());
+        if (this.isMissingPreviewColumn(result.error)) {
+          result = await this.queryFeatured(this.publicLegacySelect());
+        }
+        const { data, error } = result;
+        if (error) throw new BadRequestException(error.message);
+        return { items: (data ?? []).map((row) => this.toSummary(row)) };
+      },
+      {
+        onStatus: options?.onCacheStatus,
+        indexKey: REDIS_CACHE_KEYS.roadmapTemplatesIndex,
+      },
+    );
+  }
+
   async listCategories() {
     const { data, error } = await this.db
       .from('roadmap_template_categories')
@@ -509,9 +531,56 @@ export class RoadmapTemplatesService {
         return { items: [], next_cursor: null };
     }
 
+    let result = await this.queryCatalog(
+      query,
+      allowedTemplateIds,
+      this.publicSummarySelect(),
+      offset,
+      limit,
+    );
+    if (this.isMissingPreviewColumn(result.error)) {
+      result = await this.queryCatalog(
+        query,
+        allowedTemplateIds,
+        this.publicLegacySelect(),
+        offset,
+        limit,
+      );
+    }
+    const { data, error, count } = result;
+    if (error) throw new BadRequestException(error.message);
+    const items = (data ?? []).map((row: any) => this.toSummary(row));
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      next_cursor:
+        count !== null && nextOffset < count
+          ? Buffer.from(String(nextOffset)).toString('base64url')
+          : null,
+    };
+  }
+
+  private queryFeatured(select: string) {
+    return this.db
+      .from('roadmap_public_templates')
+      .select(select)
+      .eq('status', 'published')
+      .order('is_featured', { ascending: false })
+      .order('published_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(6);
+  }
+
+  private queryCatalog(
+    query: RoadmapTemplateCatalogQueryDto,
+    allowedTemplateIds: string[] | null,
+    select: string,
+    offset: number,
+    limit: number,
+  ) {
     let request = this.db
       .from('roadmap_public_templates')
-      .select(this.publicSelect(), { count: 'exact' })
+      .select(select, { count: 'exact' })
       .eq('status', 'published');
     if (query.search?.trim()) {
       request = request.textSearch('search_vector', query.search.trim(), {
@@ -540,32 +609,46 @@ export class RoadmapTemplatesService {
           .order('is_featured', { ascending: false })
           .order('published_at', { ascending: false });
     }
-    const { data, error, count } = await request
+    return request
       .order('id', { ascending: false })
       .range(offset, offset + limit - 1);
-    if (error) throw new BadRequestException(error.message);
-    const items = (data ?? []).map((row: any) => this.toSummary(row));
-    const nextOffset = offset + items.length;
-    return {
-      items,
-      next_cursor:
-        count !== null && nextOffset < count
-          ? Buffer.from(String(nextOffset)).toString('base64url')
-          : null,
-    };
   }
 
-  private publicSelect() {
+  private publicSummarySelect() {
+    return 'id,slug,title,summary,preview_url,difficulty,schedule_kind,estimated_duration_days,attribution_name,attribution_url,is_featured,published_at,view_count,use_count,duplicate_count,rating_count,rating_average,category:roadmap_template_categories!inner(slug,name),template_tags:roadmap_public_template_tags(tag:roadmap_template_tags(slug,name)),current_version:roadmap_template_versions!roadmap_public_templates_current_version_fkey(id,version_number,preview)';
+  }
+
+  private publicDetailSelect() {
+    return 'id,slug,title,summary,preview_url,difficulty,schedule_kind,estimated_duration_days,attribution_name,attribution_url,is_featured,published_at,view_count,use_count,duplicate_count,rating_count,rating_average,category:roadmap_template_categories!inner(slug,name),template_tags:roadmap_public_template_tags(tag:roadmap_template_tags(slug,name)),current_version:roadmap_template_versions!roadmap_public_templates_current_version_fkey(id,version_number,preview,content)';
+  }
+
+  private publicLegacySelect() {
     return 'id,slug,title,summary,preview_url,difficulty,schedule_kind,estimated_duration_days,attribution_name,attribution_url,is_featured,published_at,view_count,use_count,duplicate_count,rating_count,rating_average,category:roadmap_template_categories!inner(slug,name),template_tags:roadmap_public_template_tags(tag:roadmap_template_tags(slug,name)),current_version:roadmap_template_versions!roadmap_public_templates_current_version_fkey(id,version_number,content)';
   }
 
+  private isMissingPreviewColumn(
+    error: { code?: string; message?: string } | null,
+  ) {
+    return (
+      error?.code === '42703' &&
+      error.message?.includes('roadmap_template_versions') &&
+      error.message.includes('preview')
+    );
+  }
+
   private async findPublicBySlug(slug: string): Promise<TemplateRow> {
-    const { data, error } = await this.db
-      .from('roadmap_public_templates')
-      .select(this.publicSelect())
-      .eq('slug', slug)
-      .eq('status', 'published')
-      .maybeSingle();
+    const selectBySlug = (select: string) =>
+      this.db
+        .from('roadmap_public_templates')
+        .select(select)
+        .eq('slug', slug)
+        .eq('status', 'published')
+        .maybeSingle();
+    let result = await selectBySlug(this.publicDetailSelect());
+    if (this.isMissingPreviewColumn(result.error)) {
+      result = await selectBySlug(this.publicLegacySelect());
+    }
+    const { data, error } = result;
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Roadmap template not found');
     return data;
@@ -573,10 +656,25 @@ export class RoadmapTemplatesService {
 
   private toSummary(row: TemplateRow): RoadmapTemplateSummary {
     const version = this.one(row.current_version);
-    const content = (version?.content ?? {
-      epics: [],
-      milestones: [],
-    }) as RoadmapTemplateVersionContent;
+    const content = version?.content as
+      | RoadmapTemplateVersionContent
+      | undefined;
+    const preview =
+      version?.preview ??
+      (content
+        ? {
+            epics: (content.epics ?? []).slice(0, 6).map((epic, epicIndex) => ({
+              id: epic.key,
+              title: `${epic.time_label} ${epic.title}`,
+              position: epicIndex,
+              features: (epic.features ?? []).map((feature) => ({
+                id: feature.key,
+                title: `${feature.time_label} ${feature.title}`,
+              })),
+            })),
+            milestone_count: content.milestones?.length ?? 0,
+          }
+        : { epics: [], milestone_count: 0 });
     return {
       id: row.id,
       slug: row.slug,
@@ -598,19 +696,7 @@ export class RoadmapTemplatesService {
       duplicate_count: Number(row.duplicate_count),
       rating_count: Number(row.rating_count),
       rating_average: Number(row.rating_average),
-      preview: {
-        epics: (content.epics ?? []).slice(0, 6).map((epic, epicIndex) => ({
-          id: epic.key,
-          title: `${epic.time_label} ${epic.title}`,
-          position: epicIndex,
-          features: (epic.features ?? []).map((feature) => ({
-            id: feature.key,
-            title: `${feature.time_label} ${feature.title}`,
-            tasks: feature.tasks ?? [],
-          })),
-        })),
-        milestone_count: content.milestones?.length ?? 0,
-      },
+      preview,
     };
   }
 

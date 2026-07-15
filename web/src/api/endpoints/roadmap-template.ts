@@ -31,6 +31,13 @@ export async function getRoadmapTemplates(
 	return response.data.data;
 }
 
+export async function getFeaturedRoadmapTemplates() {
+	const response = await apiClient.get<
+		ApiResponse<{ items: RoadmapTemplateSummary[] }>
+	>("/api/roadmap-templates/featured");
+	return response.data.data;
+}
+
 export async function getRoadmapTemplate(slug: string) {
 	const response = await apiClient.get<ApiResponse<RoadmapTemplateDetail>>(
 		`/api/roadmap-templates/${slug}`,

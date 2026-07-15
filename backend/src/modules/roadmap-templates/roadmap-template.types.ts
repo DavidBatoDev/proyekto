@@ -70,7 +70,15 @@ export type RoadmapTemplateSummary = {
   duplicate_count: number;
   rating_count: number;
   rating_average: number;
-  preview: { epics: unknown[]; milestone_count: number };
+  preview: {
+    epics: Array<{
+      id: string;
+      title: string;
+      position: number;
+      features: Array<{ id: string; title: string }>;
+    }>;
+    milestone_count: number;
+  };
 };
 
 export type RoadmapTemplateDetail = RoadmapTemplateSummary & {

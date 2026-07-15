@@ -72,6 +72,15 @@ export class RoadmapTemplatesController {
     return this.templates.listCategories();
   }
 
+  @Get('featured')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
+  featured(@Res({ passthrough: true }) response: Response) {
+    return this.templates.featured({
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
+  }
+
   @Get('mine')
   @UseGuards(ConsultantOnlyGuard)
   mine(@CurrentUser() user: AuthenticatedUser) {
