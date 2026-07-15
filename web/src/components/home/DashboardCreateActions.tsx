@@ -1,7 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
+import { useId } from "react";
 
 export function DashboardCreateActions() {
+	const roadmapNoticeId = useId();
+
 	return (
 		<div className="flex w-fit shrink-0 flex-col items-start">
 			<Link
@@ -13,7 +16,7 @@ export function DashboardCreateActions() {
 				<Plus className="h-3.5 w-3.5" />
 				Create project
 			</Link>
-			<div className="relative ml-12 mt-3">
+			<div className="relative ml-12 mt-3 flex items-center gap-2">
 				<span
 					aria-hidden="true"
 					className="absolute -left-6 -top-3 h-[calc(50%+0.75rem)] w-6 rounded-bl-2xl border-b-2 border-l-2 border-primary/30"
@@ -27,6 +30,23 @@ export function DashboardCreateActions() {
 					<Plus className="h-3.5 w-3.5" />
 					Create roadmap
 				</Link>
+				<span className="group/notice relative inline-flex">
+					<button
+						type="button"
+						aria-label="About roadmap integration"
+						aria-describedby={roadmapNoticeId}
+						className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+					>
+						<Info className="h-4 w-4" />
+					</button>
+					<span
+						id={roadmapNoticeId}
+						role="tooltip"
+						className="pointer-events-none invisible absolute right-0 top-full z-30 mt-2 w-56 rounded-lg border border-border bg-popover px-3 py-2 text-xs font-medium leading-5 text-popover-foreground opacity-0 shadow-lg transition-opacity group-hover/notice:visible group-hover/notice:opacity-100 group-focus-within/notice:visible group-focus-within/notice:opacity-100"
+					>
+						A roadmap can be integrated to a project
+					</span>
+				</span>
 			</div>
 		</div>
 	);

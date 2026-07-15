@@ -42,5 +42,14 @@ describe("DashboardCreateActions", () => {
 		expect(projectLink.getAttribute("data-hierarchy-level")).toBe("project");
 		expect(roadmapLink.getAttribute("href")).toBe("/project/n/roadmap/create");
 		expect(roadmapLink.getAttribute("data-hierarchy-level")).toBe("roadmap");
+
+		const notice = screen.getByRole("button", {
+			name: /about roadmap integration/i,
+		});
+		const tooltip = screen.getByRole("tooltip");
+		expect(tooltip.textContent).toContain(
+			"A roadmap can be integrated to a project",
+		);
+		expect(notice.getAttribute("aria-describedby")).toBe(tooltip.id);
 	});
 });
