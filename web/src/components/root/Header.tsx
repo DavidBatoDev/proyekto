@@ -3,21 +3,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Menu, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
-import {
-	SECTION_IDS,
-	usePresentationContext,
-} from "@/contexts/PresentationContext";
+import { usePresentationContext } from "@/contexts/PresentationContext";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 import UserMenu from "../auth/UserMenu";
-
-const NAV_ITEMS = [
-	{ label: "Use It Your Way", sectionIndex: 1 },
-	{ label: "How It Works", sectionIndex: 2 },
-	{ label: "Why Proyekto", sectionIndex: 4 },
-	{ label: "Templates", sectionIndex: 5 },
-	{ label: "Features", sectionIndex: 6 },
-] as const;
+import {
+	HEADER_NAV_ITEMS,
+	type HeaderNavItem,
+	resolveHeaderNavAction,
+} from "./headerNavigation";
 
 const HEADER_THEME = {
 	bg: "bg-background/90 backdrop-blur-xl",
@@ -50,17 +44,11 @@ export const Header = () => {
 	const theme = HEADER_THEME;
 	const isLandingPage = location.pathname === "/";
 
-	const openLandingSection = (sectionIndex: number) => {
-		if (isLandingPage) {
-			goToSection(sectionIndex);
-			return;
-		}
-		void navigate({ to: "/", hash: SECTION_IDS[sectionIndex] });
-	};
-
-	const handleNavClick = (e: React.MouseEvent, sectionIndex: number) => {
+	const handleNavClick = (e: React.MouseEvent, item: HeaderNavItem) => {
 		e.preventDefault();
-		openLandingSection(sectionIndex);
+		const action = resolveHeaderNavAction(item, isLandingPage);
+		if (action.kind === "section") goToSection(action.sectionIndex);
+		else void navigate({ to: action.to, hash: action.hash });
 		setMobileMenuOpen(false);
 	};
 
@@ -99,12 +87,12 @@ export const Header = () => {
 							initial="hidden"
 							animate="show"
 						>
-							{NAV_ITEMS.map((item) => (
+							{HEADER_NAV_ITEMS.map((item) => (
 								<motion.button
-									key={item.sectionIndex}
+									key={item.label}
 									type="button"
 									variants={navItemVariants}
-									onClick={(e) => handleNavClick(e, item.sectionIndex)}
+									onClick={(e) => handleNavClick(e, item)}
 									onHoverStart={() => setHoveredItem(item.sectionIndex)}
 									onHoverEnd={() => setHoveredItem(null)}
 									whileTap={{ scale: 0.95 }}
@@ -123,7 +111,11 @@ export const Header = () => {
 										/>
 									)}
 									<span className="relative z-10">{item.label}</span>
-									{activeSection === item.sectionIndex ? (
+									{(
+										"to" in item
+											? location.pathname.startsWith(item.to)
+											: isLandingPage && activeSection === item.sectionIndex
+									) ? (
 										<motion.span
 											layoutId="header-nav-active"
 											className="absolute inset-x-2 -bottom-0.5 h-0.5 rounded-full bg-current"
@@ -232,13 +224,13 @@ export const Header = () => {
 								initial="hidden"
 								animate="show"
 							>
-								{NAV_ITEMS.map((item) => (
+								{HEADER_NAV_ITEMS.map((item) => (
 									<motion.button
-										key={item.sectionIndex}
+										key={item.label}
 										type="button"
 										variants={navItemVariants}
 										className={`rounded-lg px-2 py-2 text-left text-sm font-medium hover:bg-muted ${theme.text}`}
-										onClick={(e) => handleNavClick(e, item.sectionIndex)}
+										onClick={(e) => handleNavClick(e, item)}
 										whileTap={{ scale: 0.97 }}
 										transition={{ duration: 0.1 }}
 									>
