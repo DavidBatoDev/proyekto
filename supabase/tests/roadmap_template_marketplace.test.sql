@@ -3,26 +3,39 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(29);
+SELECT plan(33);
 
 SELECT is(
   (SELECT count(*)::integer FROM public.roadmap_public_templates WHERE origin = 'builtin'),
-  20,
-  'exactly 20 built-in templates are installed'
+  300,
+  'exactly 300 built-in templates are installed'
 );
 SELECT is(
   (SELECT count(DISTINCT category_id)::integer FROM public.roadmap_public_templates WHERE origin = 'builtin'),
   20,
-  'every built-in occupies its own requested category'
+  'all 20 requested categories are represented'
+);
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1
+    FROM public.roadmap_public_templates
+    WHERE origin = 'builtin'
+    GROUP BY category_id
+    HAVING count(*) <> 15
+  ),
+  'every category has exactly 15 curated built-in templates'
 );
 SELECT ok(
   (public.validate_builtin_roadmap_templates() ->> 'valid')::boolean,
   'canonical hierarchy and schedule validation passes'
 );
 SELECT is(public.seed_builtin_roadmap_templates(), 20, 'the canonical seed is idempotent');
+SELECT is(public.seed_additional_builtin_roadmap_templates(), 20, 'the expanded seed is idempotent');
+SELECT is(public.seed_third_builtin_roadmap_templates(), 20, 'the third seed is idempotent');
+SELECT is(public.seed_curated_roadmap_template_batches(), 240, 'all 12 curated batches are idempotent');
 SELECT is(
   (SELECT count(*)::integer FROM public.roadmap_template_versions v JOIN public.roadmap_public_templates t ON t.id = v.template_id WHERE t.origin = 'builtin'),
-  20,
+  300,
   'idempotent seeding does not duplicate versions'
 );
 
@@ -36,7 +49,14 @@ SELECT ok(
 );
 SELECT ok(
   NOT has_function_privilege('anon', 'public.seed_builtin_roadmap_templates()', 'EXECUTE')
-  AND NOT has_function_privilege('authenticated', 'public.seed_builtin_roadmap_templates()', 'EXECUTE'),
+  AND NOT has_function_privilege('authenticated', 'public.seed_builtin_roadmap_templates()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.seed_additional_builtin_roadmap_templates()', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.seed_additional_builtin_roadmap_templates()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.seed_third_builtin_roadmap_templates()', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.seed_third_builtin_roadmap_templates()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.seed_curated_roadmap_template_batches()', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.seed_curated_roadmap_template_batches()', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.seed_curated_roadmap_template_batches()', 'EXECUTE'),
   'seed execution is restricted from public roles'
 );
 SELECT ok(
@@ -249,7 +269,7 @@ WHERE id = '93000000-0000-4000-8000-000000000001';
 SET LOCAL ROLE anon;
 SELECT is(
   (SELECT count(*)::integer FROM public.roadmap_public_templates WHERE status = 'published'),
-  20,
+  300,
   'anonymous users can read the published catalog through RLS'
 );
 RESET ROLE;

@@ -51,4 +51,4 @@ if (!result?.valid) {
   process.exit(1);
 }
 
-console.log("Roadmap template validation passed: 20 categories and 20 built-ins with valid schedules and hierarchy.");
+console.log("Roadmap template validation passed: 20 categories and 300 built-ins with valid schedules and hierarchy.");

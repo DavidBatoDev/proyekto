@@ -222,7 +222,7 @@ export function RoadmapPreviewCard({
 			aria-pressed={onSelect ? selected : undefined}
 			onClick={onSelect}
 			onKeyDown={handleKeyDown}
-			className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:h-[420px] ${
+			className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${variant === "template" ? "sm:h-[440px]" : "sm:h-[420px]"} ${
 				selected
 					? "border-primary ring-2 ring-primary/45 shadow-lg dark:ring-primary/80"
 					: "border-border hover:border-input"
@@ -241,10 +241,10 @@ export function RoadmapPreviewCard({
 						</h3>
 						{status}
 					</div>
-					<p className="mt-0.5 line-clamp-1 text-[12px] text-muted-foreground">
+					<p className="mt-0.5 min-h-4 shrink-0 line-clamp-1 text-[12px] leading-4 text-muted-foreground">
 						{description}
 					</p>
-					<div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-2">
+					<div className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border pt-2">
 						{footerLeading ?? <span />}
 						{footerAction}
 					</div>
