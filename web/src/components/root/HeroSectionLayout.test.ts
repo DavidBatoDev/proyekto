@@ -18,6 +18,8 @@ describe("homepage hero layout", () => {
 		expect(source).toContain('to="/roadmap-templates"');
 		expect(source).toContain("<Home");
 		expect(source).toContain("<LayoutTemplate");
+		expect(source).toContain("bg-primary px-3 py-1.5");
+		expect(source).toContain("text-primary-foreground");
 		expect(source).not.toContain("Simple. Flexible. Powerful.");
 	});
 });

@@ -56,7 +56,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
 
       <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-10 pt-10 text-center sm:px-6 sm:pb-12 sm:pt-12 lg:px-8">
         <div className="flex justify-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-(--app-shadow-md) ring-1 ring-white/20">
             <Home className="h-3.5 w-3.5" />
             Home
           </span>
