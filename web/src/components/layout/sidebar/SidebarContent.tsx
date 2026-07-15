@@ -19,10 +19,21 @@ import {
 import { useProfile, useUser } from "@/stores/authStore";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
 import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
+import {
+	DASHBOARD_PRIMARY_NAV_ITEMS,
+	isDashboardPrimaryNavItemActive,
+} from "./dashboardNavigation";
 import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
 import { TeamSidebarGroup } from "./TeamSidebarGroup";
 
 const TEAMS_OPEN_KEY = "dashboard_sidebar_open_team";
+
+const PRIMARY_NAV_ICONS = {
+	dashboard: LayoutDashboard,
+	inbox: Inbox,
+	"command-center": ListChecks,
+	meetings: CalendarDays,
+} as const;
 
 function loadOpenTeam(): string | null {
 	if (typeof window === "undefined") return null;
@@ -158,30 +169,15 @@ export function SidebarContent() {
 		<>
 			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
 				<div className="space-y-0.5">
-					<SidebarNavLink
-						to="/dashboard"
-						icon={LayoutDashboard}
-						label="Dashboard"
-						active={currentPath === "/dashboard"}
-					/>
-					<SidebarNavLink
-						to="/inbox"
-						icon={Inbox}
-						label="Inbox"
-						active={currentPath.startsWith("/inbox")}
-					/>
-					<SidebarNavLink
-						to="/work-items"
-						icon={ListChecks}
-						label="Work Items"
-						active={currentPath === "/work-items"}
-					/>
-					<SidebarNavLink
-						to="/meetings"
-						icon={CalendarDays}
-						label="Meetings"
-						active={currentPath.startsWith("/meetings")}
-					/>
+					{DASHBOARD_PRIMARY_NAV_ITEMS.map((item) => (
+						<SidebarNavLink
+							key={item.key}
+							to={item.to}
+							icon={PRIMARY_NAV_ICONS[item.key]}
+							label={item.label}
+							active={isDashboardPrimaryNavItemActive(item, currentPath)}
+						/>
+					))}
 				</div>
 
 				<div className="mt-6">

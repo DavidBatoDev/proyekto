@@ -10,9 +10,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
 	confirmStopLongTimer,
 	liveDurationSecondsFromLog,
@@ -22,7 +22,7 @@ import {
 const TIMER_VISIBLE_PATH_PREFIXES = [
 	"/dashboard",
 	"/inbox",
-	"/work-items",
+	"/command-center",
 	"/teams",
 	"/project",
 	"/projects",
@@ -122,9 +122,7 @@ export function FloatingActiveTimer() {
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		const storedAnchor = window.localStorage.getItem(
-			TIMER_ANCHOR_STORAGE_KEY,
-		);
+		const storedAnchor = window.localStorage.getItem(TIMER_ANCHOR_STORAGE_KEY);
 		if (storedAnchor && TIMER_ANCHORS.includes(storedAnchor as TimerAnchor)) {
 			setAnchor(storedAnchor as TimerAnchor);
 		}
@@ -249,7 +247,8 @@ export function FloatingActiveTimer() {
 									} as never
 								}
 								onClick={() => {
-									if (log.task_id) useRoadmapStore.getState().openTaskDetail(log.task_id);
+									if (log.task_id)
+										useRoadmapStore.getState().openTaskDetail(log.task_id);
 								}}
 								className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
 							>

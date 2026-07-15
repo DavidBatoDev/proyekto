@@ -17,6 +17,7 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MeetingsRouteImport } from './routes/meetings'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CommandCenterRouteImport } from './routes/command-center'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -121,6 +122,11 @@ const InboxRoute = InboxRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommandCenterRoute = CommandCenterRouteImport.update({
+  id: '/command-center',
+  path: '/command-center',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -472,6 +478,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
   '/meetings': typeof MeetingsRoute
@@ -545,6 +552,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
   '/meetings': typeof MeetingsRoute
@@ -619,6 +627,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
   '/meetings': typeof MeetingsRoute
@@ -696,6 +705,7 @@ export interface FileRouteTypes {
     | '/'
     | '/roadmap-templates'
     | '/admin'
+    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/meetings'
@@ -769,6 +779,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/meetings'
@@ -842,6 +853,7 @@ export interface FileRouteTypes {
     | '/'
     | '/roadmap-templates'
     | '/admin'
+    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/meetings'
@@ -918,6 +930,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  CommandCenterRoute: typeof CommandCenterRoute
   DashboardRoute: typeof DashboardRoute
   InboxRoute: typeof InboxRoute
   MeetingsRoute: typeof MeetingsRoute
@@ -1009,6 +1022,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/command-center': {
+      id: '/command-center'
+      path: '/command-center'
+      fullPath: '/command-center'
+      preLoaderRoute: typeof CommandCenterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -1621,6 +1641,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  CommandCenterRoute: CommandCenterRoute,
   DashboardRoute: DashboardRoute,
   InboxRoute: InboxRoute,
   MeetingsRoute: MeetingsRoute,
