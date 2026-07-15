@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { FolderOpen, Plus, ShieldCheck } from "lucide-react";
+import { FolderOpen, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { getRoadmapsPreview, type RoadmapPreview } from "@/api/endpoints/roadmap";
+import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -309,14 +310,7 @@ export function DashboardWidgets({
 									Here is a quick view of your project portfolio and delivery milestones.
 								</p>
 							</div>
-							<button
-								type="button"
-								onClick={() => navigate({ to: "/project-posting", search: { roadmapId: undefined } })}
-								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm"
-							>
-								<Plus className="h-3.5 w-3.5" />
-								Create project
-							</button>
+							<DashboardCreateActions />
 						</div>
 
 						<div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
