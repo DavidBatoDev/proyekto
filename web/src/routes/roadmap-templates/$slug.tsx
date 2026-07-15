@@ -1,13 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Calendar, Copy, Flag, Layers3, Star } from "lucide-react";
+import { Calendar, Copy, Layers3, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	getRoadmapTemplate,
 	instantiateRoadmapTemplate,
-	rateRoadmapTemplate,
 	recordRoadmapTemplateView,
-	reportRoadmapTemplate,
 } from "@/api";
 import { TemplateRoadmapFlow } from "@/components/roadmap/templates/TemplateRoadmapFlow";
 import { projectService } from "@/services/project.service";
@@ -27,14 +25,10 @@ function today() {
 function RoadmapTemplateDetailPage() {
 	const { slug } = Route.useParams();
 	const navigate = useNavigate();
-	const queryClient = useQueryClient();
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 	const [projectId, setProjectId] = useState("");
 	const [startDate, setStartDate] = useState(today());
 	const [error, setError] = useState<string | null>(null);
-	const [rating, setRating] = useState(5);
-	const [reportOpen, setReportOpen] = useState(false);
-	const [reportDetails, setReportDetails] = useState("");
 	const idempotencyKeyRef = useRef(crypto.randomUUID());
 	const templateQuery = useQuery({
 		queryKey: ["roadmap-template", slug],
@@ -275,98 +269,6 @@ function RoadmapTemplateDetailPage() {
 										? "Create roadmap"
 										: "Sign in to use"}
 							</button>
-
-							{isAuthenticated ? (
-								<div className="mt-6 border-t border-border pt-5">
-									<p className="text-xs font-bold uppercase text-muted-foreground">
-										Rate after using
-									</p>
-									<div className="mt-2 flex gap-1">
-										{[1, 2, 3, 4, 5].map((value) => (
-											<button
-												key={value}
-												type="button"
-												onClick={() => setRating(value)}
-												aria-label={`Rate ${value} stars`}
-											>
-												<Star
-													className={`h-5 w-5 ${value <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40"}`}
-												/>
-											</button>
-										))}
-									</div>
-									<button
-										type="button"
-										onClick={() => {
-											void rateRoadmapTemplate(template.id, rating)
-												.then(() =>
-													queryClient.invalidateQueries({
-														queryKey: ["roadmap-template", slug],
-													}),
-												)
-												.catch((cause) =>
-													setError(
-														cause instanceof Error
-															? cause.message
-															: "Could not rate",
-													),
-												);
-										}}
-										className="mt-2 text-xs font-bold text-primary"
-									>
-										Save rating
-									</button>
-								</div>
-							) : null}
-							{isAuthenticated ? (
-								<>
-									<button
-										type="button"
-										onClick={() => setReportOpen((open) => !open)}
-										className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
-									>
-										<Flag className="h-3 w-3" />
-										Report template
-									</button>
-									{reportOpen ? (
-										<div className="mt-3">
-											<textarea
-												value={reportDetails}
-												onChange={(event) =>
-													setReportDetails(event.target.value)
-												}
-												placeholder="Tell moderators what is wrong"
-												className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground"
-											/>
-											<button
-												type="button"
-												disabled={reportDetails.trim().length < 10}
-												onClick={() => {
-													void reportRoadmapTemplate(
-														template.id,
-														"other",
-														reportDetails,
-													)
-														.then(() => {
-															setReportOpen(false);
-															setReportDetails("");
-														})
-														.catch((cause) =>
-															setError(
-																cause instanceof Error
-																	? cause.message
-																	: "Could not report",
-															),
-														);
-												}}
-												className="mt-2 rounded-lg bg-muted px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-											>
-												Submit report
-											</button>
-										</div>
-									) : null}
-								</>
-							) : null}
 						</div>
 					</aside>
 				</div>

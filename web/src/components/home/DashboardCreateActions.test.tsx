@@ -40,7 +40,7 @@ describe("DashboardCreateActions", () => {
 
 		expect(projectLink.getAttribute("href")).toBe("/project-posting");
 		expect(projectLink.getAttribute("data-hierarchy-level")).toBe("project");
-		expect(roadmapLink.getAttribute("href")).toBe("/project/n/roadmap/create");
+		expect(roadmapLink.getAttribute("href")).toBe("/roadmap-templates");
 		expect(roadmapLink.getAttribute("data-hierarchy-level")).toBe("roadmap");
 
 		const notice = screen.getByRole("button", {

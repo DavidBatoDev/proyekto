@@ -74,7 +74,7 @@ describe("RoadmapsGrid", () => {
 		expect(await screen.findByText("Existing roadmap")).toBeTruthy();
 		expect(
 			screen.getByRole("link", { name: /new roadmap/i }).getAttribute("href"),
-		).toBe("/project/n/roadmap/create");
+		).toBe("/roadmap-templates");
 	});
 
 	it("retains the empty-state creation action", async () => {
@@ -89,9 +89,9 @@ describe("RoadmapsGrid", () => {
 			screen
 				.getByRole("link", { name: /^create roadmap$/i })
 				.getAttribute("href"),
-		).toBe("/project/n/roadmap/create");
+		).toBe("/roadmap-templates");
 		expect(
 			screen.getByRole("link", { name: /new roadmap/i }).getAttribute("href"),
-		).toBe("/project/n/roadmap/create");
+		).toBe("/roadmap-templates");
 	});
 });

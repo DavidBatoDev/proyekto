@@ -35,6 +35,7 @@ import {
 import { useRef, useState } from "react";
 import { getRoadmapTemplateCategories, getRoadmapTemplates } from "@/api";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import { MarketplaceRoadmapPrompt } from "@/components/roadmap/templates/MarketplaceRoadmapPrompt";
 
 const TEMPLATE_SKELETON_IDS = [
 	"template-skeleton-1",
@@ -91,7 +92,7 @@ export const Route = createFileRoute("/roadmap-templates/")({
 	component: RoadmapTemplateCatalogPage,
 });
 
-function RoadmapTemplateCatalogPage() {
+export function RoadmapTemplateCatalogPage() {
 	const [search, setSearch] = useState("");
 	const [category, setCategory] = useState("");
 	const [tags, setTags] = useState("");
@@ -186,32 +187,12 @@ function RoadmapTemplateCatalogPage() {
 							What will you build next?
 						</h1>
 						<p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
-							Start faster with free, versioned roadmaps from Proyekto and
-							verified consultants.
+							Describe your idea for an AI-assisted roadmap, or start from a
+							free, curated template.
 						</p>
 					</div>
 
-					<label className="relative mx-auto mt-7 block max-w-4xl">
-						<span className="sr-only">Search roadmap templates</span>
-						<Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-						<input
-							type="search"
-							value={search}
-							onChange={(event) => setSearch(event.target.value)}
-							placeholder="Search templates, outcomes, or industries"
-							className="h-16 w-full rounded-2xl border-2 border-primary/30 bg-background/95 pl-14 pr-14 text-base text-foreground shadow-(--app-shadow-lg) outline-none backdrop-blur placeholder:text-muted-foreground focus:border-primary [&::-webkit-search-cancel-button]:appearance-none"
-						/>
-						{search ? (
-							<button
-								type="button"
-								onClick={() => setSearch("")}
-								aria-label="Clear search"
-								className="absolute right-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-foreground"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						) : null}
-					</label>
+					<MarketplaceRoadmapPrompt />
 
 					<div className="relative mt-8">
 						<button
@@ -306,7 +287,18 @@ function RoadmapTemplateCatalogPage() {
 						<SlidersHorizontal className="h-4 w-4 text-primary" />
 						Filters
 					</div>
-					<div className="grid flex-1 gap-2 sm:grid-cols-3 xl:flex">
+					<div className="grid flex-1 gap-2 sm:grid-cols-2 xl:flex">
+						<label className="relative">
+							<span className="sr-only">Search roadmap templates</span>
+							<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<input
+								type="search"
+								value={search}
+								onChange={(event) => setSearch(event.target.value)}
+								placeholder="Search templates"
+								className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary [&::-webkit-search-cancel-button]:appearance-none xl:w-52"
+							/>
+						</label>
 						<input
 							value={tags}
 							onChange={(event) => setTags(event.target.value)}

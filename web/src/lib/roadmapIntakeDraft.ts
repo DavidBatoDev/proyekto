@@ -1,4 +1,8 @@
-export type RoadmapIntakeSource = "hero" | "dashboard" | "project";
+export type RoadmapIntakeSource =
+	| "hero"
+	| "dashboard"
+	| "marketplace"
+	| "project";
 
 export interface RoadmapIntakeDraft {
 	prompt: string;

@@ -11,6 +11,7 @@ const TEMPLATE_SURFACES = [
 	"components/root/TemplateEntryCard.tsx",
 	"components/home/RoadmapPreviewCard.tsx",
 	"components/roadmap/templates/TemplateRoadmapFlow.tsx",
+	"components/roadmap/templates/MarketplaceRoadmapPrompt.tsx",
 ];
 
 const FIXED_LIGHT_NEUTRAL =
@@ -28,4 +29,29 @@ describe("roadmap template theme surfaces", () => {
 			expect(source.match(FIXED_LIGHT_NEUTRAL) ?? []).toEqual([]);
 		},
 	);
+
+	it("opens the standalone creation route directly in the roadmap builder", () => {
+		const source = readFileSync(
+			resolve(
+				process.cwd(),
+				"src/routes/project/$projectId/roadmap/create.tsx",
+			),
+			"utf8",
+		);
+
+		expect(source).toContain("<RoadmapBuilder");
+		expect(source).not.toContain("Blank or AI-assisted");
+		expect(source).not.toContain("Start from a template");
+	});
+
+	it("keeps the template usage card compact", () => {
+		const source = readFileSync(
+			resolve(process.cwd(), "src/routes/roadmap-templates/$slug.tsx"),
+			"utf8",
+		);
+
+		expect(source).not.toContain("Rate after using");
+		expect(source).not.toContain("Save rating");
+		expect(source).not.toContain("Report template");
+	});
 });
