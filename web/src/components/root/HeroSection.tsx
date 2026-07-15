@@ -54,7 +54,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
         className="absolute inset-0 bg-linear-to-b from-slate-950/70 via-slate-950/55 to-slate-950/90"
       />
 
-      <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-8 pt-8 text-center sm:px-6 sm:pb-10 sm:pt-10 lg:px-8">
+      <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-10 pt-10 text-center sm:px-6 sm:pb-12 sm:pt-12 lg:px-8">
         <div className="flex justify-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary backdrop-blur">
             <Home className="h-3.5 w-3.5" />

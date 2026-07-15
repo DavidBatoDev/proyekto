@@ -10,7 +10,7 @@ describe("homepage hero layout", () => {
 		);
 
 		expect(source).toContain(
-			"mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-8 pt-8 text-center sm:px-6 sm:pb-10 sm:pt-10 lg:px-8",
+			"mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-10 pt-10 text-center sm:px-6 sm:pb-12 sm:pt-12 lg:px-8",
 		);
 		expect(source).not.toContain("min-h-screen");
 		expect(source).not.toContain("-mt-20");
