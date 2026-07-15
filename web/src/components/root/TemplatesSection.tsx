@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { motion, useInView } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { getFeaturedRoadmapTemplates } from "@/api";
 import { TemplateEntryCard } from "./TemplateEntryCard";
@@ -82,7 +83,7 @@ export const TemplatesSection = ({
 					animate={inView ? { opacity: 1, y: 0 } : {}}
 					transition={{ duration: 0.5 }}
 				>
-					<div className="pr-0 sm:pr-80">
+					<div className="pr-0 lg:pr-[470px]">
 						<p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
 							Roadmap Templates
 						</p>
@@ -94,9 +95,18 @@ export const TemplatesSection = ({
 							dates that start when you do.
 						</p>
 					</div>
-					<div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-(--app-shadow-sm) sm:absolute sm:right-0 sm:top-0 sm:mt-0">
-						<Sparkles className="h-4 w-4 text-cyan-600" />
-						Free execution-ready plans
+					<div className="mt-4 flex flex-wrap items-center gap-2 lg:absolute lg:right-0 lg:top-0 lg:mt-0">
+						<div className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground shadow-(--app-shadow-sm)">
+							<Sparkles className="h-4 w-4 text-cyan-600" />
+							Free execution-ready plans
+						</div>
+						<Link
+							to="/roadmap-templates"
+							className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-(--app-shadow-sm) transition-opacity hover:opacity-85"
+						>
+							View all templates
+							<ArrowRight className="h-4 w-4" />
+						</Link>
 					</div>
 				</motion.div>
 

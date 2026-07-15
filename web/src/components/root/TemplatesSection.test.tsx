@@ -12,6 +12,22 @@ const { getFeaturedRoadmapTemplates, inViewState } = vi.hoisted(() => ({
 }));
 vi.mock("@/api", () => ({ getFeaturedRoadmapTemplates }));
 
+vi.mock("@tanstack/react-router", () => ({
+	Link: ({
+		children,
+		to,
+		className,
+	}: {
+		children?: ReactNode;
+		to: string;
+		className?: string;
+	}) => (
+		<a href={to} className={className}>
+			{children}
+		</a>
+	),
+}));
+
 vi.mock("framer-motion", () => ({
 	motion: {
 		div: ({
@@ -73,6 +89,11 @@ describe("TemplatesSection", () => {
 		);
 
 		expect(await screen.findAllByTestId(/^template-/)).toHaveLength(6);
+		expect(
+			screen
+				.getByRole("link", { name: /view all templates/i })
+				.getAttribute("href"),
+		).toBe("/roadmap-templates");
 		fireEvent.click(
 			screen.getByRole("button", { name: "AI & Machine Learning" }),
 		);
