@@ -15,5 +15,9 @@ describe("homepage hero layout", () => {
 		expect(source).not.toContain("min-h-screen");
 		expect(source).not.toContain("-mt-20");
 		expect(source).not.toContain("pt-24");
+		expect(source).toContain('to="/roadmap-templates"');
+		expect(source).toContain("<Home");
+		expect(source).toContain("<LayoutTemplate");
+		expect(source).not.toContain("Simple. Flexible. Powerful.");
 	});
 });

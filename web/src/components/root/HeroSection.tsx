@@ -1,5 +1,6 @@
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Home, LayoutTemplate } from "lucide-react";
 import { usePresentationContext } from "@/contexts/PresentationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { HeroChatInput } from "./HeroChatInput";
@@ -54,16 +55,19 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
       />
 
       <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-8 pt-8 text-center sm:px-6 sm:pb-10 sm:pt-10 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-          className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-[0.08em] text-white/90 backdrop-blur"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
-          Simple. Flexible. Powerful.
-        </motion.div>
-
+        <div className="flex justify-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary backdrop-blur">
+            <Home className="h-3.5 w-3.5" />
+            Home
+          </span>
+          <Link
+            to="/roadmap-templates"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/80 px-3 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+          >
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            Templates
+          </Link>
+        </div>
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
