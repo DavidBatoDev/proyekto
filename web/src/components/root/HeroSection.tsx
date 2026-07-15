@@ -26,7 +26,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
   const videoSrc = isMobile ? HERO_VIDEO_SRC_MOBILE : HERO_VIDEO_SRC;
 
   return (
-    <section className="relative -mt-20 flex min-h-screen items-center justify-center overflow-hidden bg-slate-950">
+    <section className="relative isolate overflow-hidden bg-slate-950">
       {/* Background video — hidden for users who prefer reduced motion */}
       <video
         key={videoSrc}
@@ -53,7 +53,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
         className="absolute inset-0 bg-linear-to-b from-slate-950/70 via-slate-950/55 to-slate-950/90"
       />
 
-      <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-24 text-center">
+      <div className="relative z-10 mx-auto flex max-w-[1600px] flex-col items-center px-4 pb-8 pt-8 text-center sm:px-6 sm:pb-10 sm:pt-10 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
