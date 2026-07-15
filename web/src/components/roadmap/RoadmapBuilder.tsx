@@ -333,16 +333,16 @@ function TypingIndicator() {
 
 	return (
 		<div className="roadmap-chat-message space-y-3">
-			<div className="flex items-center justify-between text-sm text-slate-500">
+			<div className="flex items-center justify-between text-sm text-muted-foreground">
 				<span>Assistant</span>
 				<span>{nowLabel}</span>
 			</div>
-			<div className="inline-flex items-center gap-3 text-lg font-medium text-slate-800">
+			<div className="inline-flex items-center gap-3 text-lg font-medium text-foreground">
 				<span>Thinking</span>
 				<span className="flex items-center gap-1.5">
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)]" />
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)] [animation-delay:120ms]" />
-					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-[rgb(109,120,213)] [animation-delay:240ms]" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-primary" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-primary [animation-delay:120ms]" />
+					<span className="roadmap-typing-dot h-2 w-2 rounded-full bg-primary [animation-delay:240ms]" />
 				</span>
 			</div>
 		</div>
@@ -840,14 +840,14 @@ export function RoadmapBuilder({
 				<button
 					type="button"
 					onClick={() => history.back()}
-					className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:text-slate-950"
+					className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground"
 				>
 					<ArrowLeft className="h-4 w-4" />
 					Back
 				</button>
 
 				<div className="mx-auto w-full max-w-4xl space-y-6">
-					<p className="text-center text-sm font-medium text-slate-500">
+					<p className="text-center text-sm font-medium text-muted-foreground">
 						{timestampLabel}
 					</p>
 
@@ -862,10 +862,10 @@ export function RoadmapBuilder({
 							style={{ animationDelay: `${Math.min(index, 4) * 45}ms` }}
 						>
 							{message.role === "user" ? (
-								<div className="relative max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] rounded-br-md bg-[rgb(109,120,213)] px-5 py-4 text-white shadow-[0_18px_44px_rgba(109,120,213,0.24)] before:absolute before:-right-1 before:bottom-0 before:h-4 before:w-4 before:rounded-bl-2xl before:bg-[rgb(109,120,213)]">
+								<div className="relative max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] rounded-br-md bg-primary px-5 py-4 text-primary-foreground shadow-lg before:absolute before:-right-1 before:bottom-0 before:h-4 before:w-4 before:rounded-bl-2xl before:bg-primary">
 									<div className="mb-2 flex items-center justify-between gap-4 text-sm">
-										<span className="font-semibold text-white/95">You</span>
-										<span className="text-white/75">
+										<span className="font-semibold text-primary-foreground/95">You</span>
+										<span className="text-primary-foreground/75">
 											{formatMessageTime(message.createdAt)}
 										</span>
 									</div>
@@ -875,11 +875,11 @@ export function RoadmapBuilder({
 								</div>
 							) : (
 								<div className="space-y-3">
-									<div className="flex items-center justify-between text-sm text-slate-500">
+									<div className="flex items-center justify-between text-sm text-muted-foreground">
 										<span>Assistant</span>
 										<span>{formatMessageTime(message.createdAt)}</span>
 									</div>
-									<p className="max-w-4xl whitespace-pre-line text-lg font-medium leading-8 text-slate-900">
+									<p className="max-w-4xl whitespace-pre-line text-lg font-medium leading-8 text-foreground">
 										{message.content}
 									</p>
 								</div>
@@ -893,16 +893,16 @@ export function RoadmapBuilder({
 						step !== "prompt" &&
 						step !== "clarification" &&
 						step !== "canceled" && (
-							<div className="roadmap-chat-message rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+							<div className="roadmap-chat-message rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
 								Objective locked. {objectiveContextLabel}
 							</div>
 						)}
 
 					{shouldShowPromptInput && (
-						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-card-foreground shadow-sm">
 							<label
 								htmlFor="roadmap-initial-prompt"
-								className="block text-sm font-bold text-slate-900"
+								className="block text-sm font-bold text-foreground"
 							>
 								What should this roadmap help you build?
 							</label>
@@ -913,14 +913,14 @@ export function RoadmapBuilder({
 								rows={4}
 								onChange={(event) => setPrompt(event.target.value)}
 								placeholder='Example: "Create a 3D heavy website for farmers"'
-								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-100"
+								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/15"
 							/>
 							<div className="mt-4 flex justify-end">
 								<button
 									type="button"
 									onClick={handlePromptSubmit}
 									disabled={!canSubmitPrompt}
-									className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+									className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<Send className="h-4 w-4" />
 									Send to AI
@@ -930,14 +930,14 @@ export function RoadmapBuilder({
 					)}
 
 					{step === "clarification" && !isThinking && (
-						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-card-foreground shadow-sm">
 							<label
 								htmlFor="roadmap-objective-clarification"
-								className="block text-sm font-bold text-slate-900"
+								className="block text-sm font-bold text-foreground"
 							>
 								Add the missing project details
 							</label>
-							<p className="mt-1 text-sm leading-6 text-slate-500">
+							<p className="mt-1 text-sm leading-6 text-muted-foreground">
 								Tell me what you are building, who it is for, and what the first
 								version should include.
 							</p>
@@ -948,7 +948,7 @@ export function RoadmapBuilder({
 								rows={4}
 								onChange={(event) => setClarificationAnswer(event.target.value)}
 								placeholder='Example: "A fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders."'
-								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-100"
+								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/15"
 							/>
 							<div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 								<button
@@ -958,7 +958,7 @@ export function RoadmapBuilder({
 											"No problem, I will cancel this roadmap setup for now.",
 										)
 									}
-									className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:text-slate-950"
+									className="inline-flex items-center justify-center rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
 								>
 									Cancel and go home
 								</button>
@@ -966,7 +966,7 @@ export function RoadmapBuilder({
 									type="button"
 									onClick={handleClarificationSubmit}
 									disabled={!canSubmitClarification}
-									className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+									className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<Send className="h-4 w-4" />
 									Continue
@@ -976,7 +976,7 @@ export function RoadmapBuilder({
 					)}
 
 					{step === "canceled" && (
-						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm leading-6 text-slate-600 shadow-sm">
+						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-sm leading-6 text-muted-foreground shadow-sm">
 							Taking you back to the landing page.
 						</section>
 					)}
@@ -991,25 +991,25 @@ export function RoadmapBuilder({
 										onClick={() =>
 											handleTitleAnswer(option.value, option.key)
 										}
-										className="roadmap-chat-option group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md"
+										className="roadmap-chat-option group flex items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:bg-muted/40 hover:shadow-md"
 										style={{ animationDelay: `${index * 80}ms` }}
 									>
-										<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-black text-cyan-700 group-hover:bg-cyan-100">
+										<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-black text-primary group-hover:bg-primary/15">
 											{option.key}
 										</span>
-										<span className="text-base font-bold text-slate-900">
+										<span className="text-base font-bold text-foreground">
 											{option.value}
 										</span>
 									</button>
 								))}
 							</div>
 							<div
-								className="roadmap-chat-option rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+								className="roadmap-chat-option rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm"
 								style={{ animationDelay: `${titleOptions.length * 80}ms` }}
 							>
 								<label
 									htmlFor="custom-roadmap-title"
-									className="block text-sm font-bold text-slate-900"
+									className="block text-sm font-bold text-foreground"
 								>
 									Or name it yourself
 								</label>
@@ -1021,13 +1021,13 @@ export function RoadmapBuilder({
 										maxLength={TITLE_LIMIT}
 										onChange={(event) => setCustomTitle(event.target.value)}
 										placeholder="Type a custom roadmap name"
-										className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+										className="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-4 focus:ring-primary/15"
 									/>
 									<button
 										type="button"
 										onClick={() => handleTitleAnswer(customTitle)}
 										disabled={!canSubmitTitle}
-										className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+										className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										Use this name
 									</button>
@@ -1044,17 +1044,17 @@ export function RoadmapBuilder({
 										key={option.key}
 										type="button"
 										onClick={() => handleDescriptionCardSelect(option)}
-										className={`roadmap-chat-option group flex items-start gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md ${
+										className={`roadmap-chat-option group flex items-start gap-4 rounded-2xl border bg-card p-4 text-left text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:bg-muted/40 hover:shadow-md ${
 											selectedDescriptionKey === option.key
-												? "border-cyan-300 ring-4 ring-cyan-100"
-												: "border-slate-200"
+												? "border-primary ring-4 ring-primary/15"
+												: "border-border"
 										}`}
 										style={{ animationDelay: `${index * 80}ms` }}
 									>
-										<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-black text-cyan-700 group-hover:bg-cyan-100">
+										<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-black text-primary group-hover:bg-primary/15">
 											{option.key}
 										</span>
-										<span className="text-base font-medium leading-7 text-slate-900">
+										<span className="text-base font-medium leading-7 text-foreground">
 											{option.value}
 										</span>
 									</button>
@@ -1062,14 +1062,14 @@ export function RoadmapBuilder({
 							</div>
 
 							<div
-								className="roadmap-chat-option rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+								className="roadmap-chat-option rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm"
 								style={{
 									animationDelay: `${descriptionOptions.length * 80}ms`,
 								}}
 							>
 								<label
 									htmlFor="custom-roadmap-description"
-									className="block text-sm font-bold text-slate-900"
+									className="block text-sm font-bold text-foreground"
 								>
 									Goal / description
 								</label>
@@ -1083,26 +1083,26 @@ export function RoadmapBuilder({
 										setCustomDescription(event.target.value);
 									}}
 									placeholder="Type a custom roadmap goal"
-									className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+									className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-4 focus:ring-primary/15"
 								/>
 
 								<label
 									htmlFor="roadmap-category"
-									className="mt-4 block text-sm font-bold text-slate-900"
+									className="mt-4 block text-sm font-bold text-foreground"
 								>
 									Categories
 								</label>
-								<div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+								<div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-border bg-background px-3 py-3">
 									{categories.map((selectedCategory) => (
 										<span
 											key={selectedCategory}
-											className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white"
+											className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground"
 										>
 											{selectedCategory}
 											<button
 												type="button"
 												onClick={() => removeCategory(selectedCategory)}
-												className="rounded-full text-white/70 transition hover:text-white"
+												className="rounded-full text-primary-foreground/70 transition hover:text-primary-foreground"
 												aria-label={`Remove ${selectedCategory}`}
 											>
 												x
@@ -1126,18 +1126,18 @@ export function RoadmapBuilder({
 												? "Add another category"
 												: "e.g. Web Development"
 										}
-										className="min-w-44 flex-1 border-0 bg-transparent px-1 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+										className="min-w-44 flex-1 border-0 bg-transparent px-1 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
 									/>
 									<button
 										type="button"
 										onClick={addCustomCategory}
 										disabled={!categoryInput.trim()}
-										className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+										className="rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-40"
 									>
 										Add
 									</button>
 								</div>
-								<p className="mt-2 text-xs font-medium text-slate-500">
+								<p className="mt-2 text-xs font-medium text-muted-foreground">
 									Choose up to {MAX_SELECTED_CATEGORIES} tags so the roadmap has
 									more context than a single category.
 								</p>
@@ -1153,8 +1153,8 @@ export function RoadmapBuilder({
 														category.toLowerCase() ===
 														suggestion.toLowerCase(),
 												)
-													? "border-orange-400 bg-orange-500 text-white"
-													: "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+											? "border-primary bg-primary text-primary-foreground"
+											: "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
 											}`}
 										>
 											{suggestion}
@@ -1167,7 +1167,7 @@ export function RoadmapBuilder({
 										type="button"
 										onClick={() => void handleDescriptionContinue()}
 										disabled={!canContinueDescription}
-										className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+									className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										Continue
 									</button>
@@ -1177,18 +1177,18 @@ export function RoadmapBuilder({
 					)}
 
 					{step === "thumbnail" && !isSuggesting && (
-						<section className="roadmap-chat-message grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+						<section className="roadmap-chat-message grid gap-5 rounded-[2rem] border border-border bg-card p-5 text-card-foreground shadow-xl sm:p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
 							<div>
-								<p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+								<p className="text-sm font-bold uppercase tracking-[0.18em] text-muted-foreground">
 									Final metadata
 								</p>
-								<h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">
+								<h1 className="mt-3 text-3xl font-black tracking-tight text-foreground">
 									{title}
 								</h1>
-								<p className="mt-3 text-base leading-7 text-slate-600">
+								<p className="mt-3 text-base leading-7 text-muted-foreground">
 									{description}
 								</p>
-								<p className="mt-4 inline-flex rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm font-bold text-orange-700">
+								<p className="mt-4 inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary">
 									{selectedCategoryLabel || DEFAULT_ROADMAP_CATEGORY}
 								</p>
 
@@ -1197,7 +1197,7 @@ export function RoadmapBuilder({
 										type="button"
 										onClick={() => fileInputRef.current?.click()}
 										disabled={isUploadingThumbnail || isCreating}
-										className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-cyan-300 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+										className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-foreground transition hover:border-primary/50 hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{isUploadingThumbnail ? (
 											<Loader2 className="h-4 w-4 animate-spin" />
@@ -1214,7 +1214,7 @@ export function RoadmapBuilder({
 											)
 										}
 										disabled={!canCreate}
-										className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+										className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-black text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
 										{thumbnailUrl
@@ -1235,24 +1235,24 @@ export function RoadmapBuilder({
 								/>
 
 								{error && (
-									<p role="alert" className="mt-4 text-sm font-bold text-red-600">
+									<p role="alert" className="mt-4 text-sm font-bold text-red-600 dark:text-red-400">
 										{error}
 									</p>
 								)}
 							</div>
 
 							<aside>
-								<p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+								<p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
 									Thumbnail preview
 								</p>
-								<div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+								<div className="overflow-hidden rounded-3xl border border-border bg-background shadow-sm">
 									<img
 										src={previewUrl}
 										alt="Generated roadmap thumbnail preview"
 										className="h-44 w-full object-cover"
 									/>
 									<div className="p-4">
-										<div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+										<div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">
 											<CheckCircle2 className="h-4 w-4" />
 											{thumbnailUrl ? "Uploaded thumbnail" : "Generated thumbnail"}
 										</div>

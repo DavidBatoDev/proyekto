@@ -28,14 +28,14 @@ function ProjectRoadmapCreatePage() {
 				<button
 					type="button"
 					onClick={() => setMode("builder")}
-					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "builder" ? "bg-foreground text-background" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
+					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "builder" ? "bg-primary text-primary-foreground shadow-sm" : "border border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted hover:text-foreground"}`}
 				>
 					Blank or AI-assisted
 				</button>
 				<button
 					type="button"
 					onClick={() => setMode("template")}
-					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "template" ? "bg-foreground text-background" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
+					className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mode === "template" ? "bg-primary text-primary-foreground shadow-sm" : "border border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted hover:text-foreground"}`}
 				>
 					Start from a template
 				</button>
@@ -85,7 +85,7 @@ function ProjectRoadmapCreatePage() {
 													}),
 												)
 											}
-											className="rounded-full bg-foreground px-3 py-1 text-xs font-bold text-background transition-opacity hover:opacity-85"
+											className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
 										>
 											Choose
 										</Link>

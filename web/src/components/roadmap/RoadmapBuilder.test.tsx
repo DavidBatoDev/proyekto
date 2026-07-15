@@ -62,6 +62,25 @@ function renderBuilder() {
 }
 
 describe("RoadmapBuilder objective intake", () => {
+	it("uses semantic theme colors for the initial roadmap prompt", () => {
+		readRoadmapIntakeDraftMock.mockReturnValue(null);
+
+		renderBuilder();
+
+		const prompt = screen.getByLabelText(
+			"What should this roadmap help you build?",
+		);
+		const promptCard = prompt.closest("section");
+		const submitButton = screen.getByRole("button", { name: "Send to AI" });
+
+		expect(prompt.className).toContain("bg-muted/40");
+		expect(prompt.className).toContain("text-foreground");
+		expect(promptCard?.className).toContain("bg-card");
+		expect(promptCard?.className).toContain("border-border");
+		expect(submitButton.className).toContain("bg-primary");
+		expect(promptCard?.className).not.toContain("bg-white");
+	});
+
 	it("hides the prompt input while the first objective check is thinking", async () => {
 		suggestIntakeStepMock.mockReturnValue(new Promise(() => undefined));
 
