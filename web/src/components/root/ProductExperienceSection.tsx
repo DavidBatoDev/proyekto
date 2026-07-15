@@ -33,21 +33,21 @@ const coreFeatures = [
     copy:
       "Convert a raw concept into milestones, dependencies, and execution lanes your whole team can align around.",
     chips: ["Milestone sequencing", "Risk flags", "Owner mapping"],
-    tone: "from-blue-50 to-cyan-50",
+    tone: "from-primary/20 to-cyan-500/10",
   },
   {
     title: "Task Flow",
     copy:
       "Every milestone creates actionable workstreams, handoffs, and progress tracking across consultants and freelancers.",
     chips: ["Task readiness", "Delivery health", "Automated updates"],
-    tone: "from-indigo-50 to-blue-50",
+    tone: "from-indigo-500/15 to-primary/10",
   },
   {
     title: "Expert Matching",
     copy:
       "Get consultant recommendations first, then staff the execution layer with freelancers tailored to project phase and domain.",
     chips: ["Skill scoring", "Budget-aware", "Execution-fit ranking"],
-    tone: "from-sky-50 to-indigo-50",
+    tone: "from-sky-500/15 to-indigo-500/10",
   },
 ];
 
@@ -122,10 +122,10 @@ function SmallFeatureTile({
 }) {
   return (
     <div
-      className={`bg-white/80 px-3 py-6 text-center shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] transition-all duration-200 hover:bg-white hover:shadow-[inset_0_0_0_1.5px_rgba(59,130,246,0.72)] ${className ?? ""}`}
+      className={`bg-card/80 px-3 py-6 text-center text-card-foreground ring-1 ring-inset ring-border transition-all duration-200 hover:bg-card hover:ring-primary/70 ${className ?? ""}`}
     >
-      <Icon className="mx-auto h-5 w-5 text-slate-500" />
-      <p className="mt-2 text-sm font-medium text-slate-700">{label}</p>
+      <Icon className="mx-auto h-5 w-5 text-muted-foreground" />
+      <p className="mt-2 text-sm font-medium text-foreground">{label}</p>
     </div>
   );
 }
@@ -143,11 +143,11 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5 }}
         >
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Proyekto Features</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Proyekto Features</p>
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             Everything you need in one place
           </h2>
-          <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
+          <p className="mx-auto mt-3 max-w-3xl text-sm text-muted-foreground sm:text-base">
             Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
           </p>
         </motion.div>
@@ -162,15 +162,15 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
             {coreFeatures.map((feature) => (
               <div
                 key={feature.title}
-                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm"
               >
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{feature.copy}</p>
+                <h3 className="text-xl font-semibold tracking-tight text-foreground">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{feature.copy}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {feature.chips.map((chip) => (
                     <span
                       key={chip}
-                      className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-slate-700"
+                      className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
                     >
                       {chip}
                     </span>
@@ -182,10 +182,10 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
 
           {/* Desktop layout — full tile grid */}
           <div className="relative mt-10 hidden overflow-hidden md:block">
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-size-[100%_92px]" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-size-[100%_92px]" />
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-44 bg-linear-to-l from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-size-[100%_92px] opacity-50" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-size-[100%_92px] opacity-50" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-background via-background/85 to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-44 bg-linear-to-l from-background via-background/85 to-transparent" />
 
             <div className="relative grid md:grid-cols-12">
               {topRowTiles.map((tile) => (
@@ -208,17 +208,17 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
               {coreFeatures.map((feature) => (
                 <div
                   key={feature.title}
-                  className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] md:col-span-2 md:min-h-[416px]`}
+                  className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 text-card-foreground ring-1 ring-inset ring-border md:col-span-2 md:min-h-[416px]`}
                 >
-                  <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
+                  <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                     {feature.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{feature.copy}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{feature.copy}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {feature.chips.map((chip) => (
                       <span
                         key={chip}
-                        className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700"
+                        className="rounded-full border border-primary/30 bg-background/70 px-2.5 py-1 text-xs font-medium text-foreground"
                       >
                         {chip}
                       </span>
