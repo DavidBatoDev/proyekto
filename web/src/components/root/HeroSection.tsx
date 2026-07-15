@@ -72,7 +72,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.06 }}
-          className="mt-6 text-balance text-5xl font-bold leading-[1.03] tracking-tight text-white sm:text-6xl lg:text-7xl font-['Space_Grotesk']"
+          className="mt-6 text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl font-['Space_Grotesk']"
         >
           Turn ideas into action
         </motion.h1>
@@ -81,7 +81,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.12 }}
-          className="mt-5 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg"
+          className="mt-5 max-w-2xl text-sm leading-relaxed text-white/80 sm:text-base"
         >
           Plan your project step-by-step, invite your team, and let expert
           consultants and AI-architected roadmaps turn your vision into shipped

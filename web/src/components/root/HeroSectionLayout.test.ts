@@ -20,6 +20,11 @@ describe("homepage hero layout", () => {
 		expect(source).toContain("<LayoutTemplate");
 		expect(source).toContain("bg-primary px-3 py-1.5");
 		expect(source).toContain("text-primary-foreground");
+		expect(source).toContain("text-balance text-4xl font-bold");
+		expect(source).toContain("text-white sm:text-5xl");
+		expect(source).toContain("max-w-2xl text-sm leading-relaxed");
+		expect(source).toContain("text-white/80 sm:text-base");
+		expect(source).not.toContain("lg:text-7xl");
 		expect(source).not.toContain("Simple. Flexible. Powerful.");
 	});
 });
