@@ -144,13 +144,21 @@ export function RoadmapsGrid() {
 			className="app-slide-up"
 		>
 			<div className="mb-6">
-				<div className="flex items-center justify-between mb-1">
+				<div className="mb-1 flex items-center justify-between gap-3">
 					<div className="flex items-center gap-2">
 						<div className="h-3 w-3 rounded-full bg-primary sm:h-[18px] sm:w-[18px]" />
 						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							MY ROADMAPS
 						</h2>
 					</div>
+					<Link
+						to="/project/$projectId/roadmap/create"
+						params={{ projectId: "n" }}
+						className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-3 py-2 text-xs font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:opacity-85 hover:shadow-md sm:px-4 sm:text-sm"
+					>
+						<Plus className="h-4 w-4" />
+						New roadmap
+					</Link>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
 					Each matched project unlocks a consultant-led roadmap for structured
