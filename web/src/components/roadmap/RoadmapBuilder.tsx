@@ -947,6 +947,16 @@ export function RoadmapBuilder({
 								maxLength={MAX_PROMPT_LENGTH}
 								rows={4}
 								onChange={(event) => setClarificationAnswer(event.target.value)}
+								onKeyDown={(event) => {
+									if (
+										event.key === "Enter" &&
+										!event.shiftKey &&
+										!event.nativeEvent.isComposing
+									) {
+										event.preventDefault();
+										handleClarificationSubmit();
+									}
+								}}
 								placeholder='Example: "A fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders."'
 								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/15"
 							/>

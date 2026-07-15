@@ -224,7 +224,9 @@ describe("RoadmapBuilder objective intake", () => {
 		fireEvent.change(clarificationInput, {
 			target: { value: "still testing" },
 		});
-		fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+		fireEvent.keyDown(clarificationInput, { key: "Enter", shiftKey: true });
+		expect(suggestIntakeStepMock).toHaveBeenCalledTimes(1);
+		fireEvent.keyDown(clarificationInput, { key: "Enter" });
 
 		await waitFor(
 			() => {
