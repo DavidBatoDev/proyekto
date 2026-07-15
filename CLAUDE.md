@@ -49,6 +49,12 @@ Proyekto is a monorepo with six deployable units. Note: SETUP.md refers to an ap
 
 Scripts auto-load .env in order: cwd â†’ scripts/.env â†’ repo root .env â†’ backend/.env (or agent/.env for the agent runner). First value wins.
 
+## Build and Push Policy
+
+- Only run full build commands (for example, `npm run build`) when the current task includes pushing commits to a remote repository.
+- For local edits and commit-only work, use focused tests, type checks, schema checks, and lint/format checks as appropriate, but do not run a full build.
+- When a push is requested, run the relevant full builds after the changes are ready and before pushing.
+
 ## Architecture Notes
 
 ### Roadmap AI flow (cross-service)
