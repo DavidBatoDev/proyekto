@@ -400,6 +400,7 @@ function RoadmapTemplateCatalogPage() {
 								<RoadmapPreviewCard
 									key={template.id}
 									variant="template"
+									interactive
 									title={template.title}
 									description={template.summary}
 									epics={template.preview.epics}
@@ -421,6 +422,7 @@ function RoadmapTemplateCatalogPage() {
 										<Link
 											to="/roadmap-templates/$slug"
 											params={{ slug: template.slug }}
+											onClick={(event) => event.stopPropagation()}
 											className="inline-flex shrink-0 items-center gap-1 rounded-full bg-foreground px-3 py-1 text-xs font-bold text-background transition-opacity hover:opacity-85"
 										>
 											Open

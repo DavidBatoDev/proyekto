@@ -22,6 +22,7 @@ export function TemplateEntryCard({
 		>
 			<RoadmapPreviewCard
 				variant="template"
+				interactive
 				title={template.title}
 				description={template.summary}
 				epics={template.preview.epics}
@@ -44,6 +45,7 @@ export function TemplateEntryCard({
 					<Link
 						to="/roadmap-templates/$slug"
 						params={{ slug: template.slug }}
+						onClick={(event) => event.stopPropagation()}
 						className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-foreground px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-background shadow-(--app-shadow-sm) transition-opacity hover:opacity-85"
 					>
 						Use template

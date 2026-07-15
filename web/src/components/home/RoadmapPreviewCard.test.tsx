@@ -79,4 +79,49 @@ describe("RoadmapPreviewCard", () => {
 		expect(screen.queryByText("Interview customers")).toBeNull();
 		expect(onSelect).not.toHaveBeenCalled();
 	});
+
+	it("lets template cards select and toggle their feature previews", () => {
+		const interactiveTemplateEpics: RoadmapCardEpic[] = [
+			{
+				id: "epic-1",
+				title: "Product discovery",
+				position: 0,
+				features: [
+					{ id: "feature-1", title: "Interview customers" },
+					{ id: "feature-2", title: "Validate demand" },
+				],
+			},
+		];
+
+		render(
+			<RoadmapPreviewCard
+				variant="template"
+				interactive
+				title="SaaS MVP Launch"
+				description="SaaS template"
+				epics={interactiveTemplateEpics}
+				status={<span>Free</span>}
+				footerAction={<button type="button">Use template</button>}
+			/>,
+		);
+
+		const card = screen.getByRole("button", { name: /saas mvp launch/i });
+		expect(card.getAttribute("aria-pressed")).toBe("false");
+		expect(screen.queryByText("Interview customers")).toBeNull();
+
+		fireEvent.click(card);
+		expect(card.getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("Interview customers")).toBeTruthy();
+		expect(screen.getByText("Validate demand")).toBeTruthy();
+
+		const epicButton = screen
+			.getAllByRole("button", { name: /product discovery/i })
+			.find((element) => element.tagName === "BUTTON");
+		expect(epicButton).toBeTruthy();
+		fireEvent.click(epicButton as HTMLButtonElement);
+		expect(screen.queryByText("Interview customers")).toBeNull();
+
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(card.getAttribute("aria-pressed")).toBe("false");
+	});
 });

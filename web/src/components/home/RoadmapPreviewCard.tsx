@@ -3,6 +3,8 @@ import {
 	type CSSProperties,
 	type KeyboardEvent,
 	type ReactNode,
+	useEffect,
+	useRef,
 	useState,
 } from "react";
 
@@ -27,6 +29,7 @@ export type RoadmapPreviewCardProps = {
 	epics: RoadmapCardEpic[];
 	selected?: boolean;
 	onSelect?: () => void;
+	interactive?: boolean;
 	menu?: ReactNode;
 	status: ReactNode;
 	footerLeading?: ReactNode;
@@ -117,7 +120,13 @@ export function EpicOverview({
 										</p>
 									) : null}
 								</div>
-								{variant === "template" ? (
+								{selected && featureCount > 0 ? (
+									<ChevronDown
+										className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+											showFeatures ? "" : "-rotate-90"
+										}`}
+									/>
+								) : variant === "template" ? (
 									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 								) : featureCount > 0 ? (
 									<ChevronDown
@@ -131,12 +140,11 @@ export function EpicOverview({
 
 						return (
 							<div key={epic.id} className="flex shrink-0 flex-col">
-								{variant === "roadmap" ? (
+								{selected && featureCount > 0 ? (
 									<button
 										type="button"
-										tabIndex={selected ? 0 : -1}
+										aria-expanded={showFeatures}
 										onClick={(event) => {
-											if (!selected) return;
 											event.stopPropagation();
 											toggleEpic(epic.id);
 										}}
@@ -197,6 +205,7 @@ export function RoadmapPreviewCard({
 	epics,
 	selected = false,
 	onSelect,
+	interactive = false,
 	menu,
 	status,
 	footerLeading,
@@ -204,10 +213,43 @@ export function RoadmapPreviewCard({
 	className = "",
 	style,
 }: RoadmapPreviewCardProps) {
+	const cardRef = useRef<HTMLDivElement>(null);
+	const [internalSelected, setInternalSelected] = useState(false);
+	const canSelect = Boolean(onSelect) || interactive;
+	const isSelected = onSelect
+		? selected
+		: interactive
+			? internalSelected
+			: selected;
+
+	useEffect(() => {
+		if (!interactive || onSelect || !internalSelected) return;
+
+		const handleOutsideClick = (event: MouseEvent) => {
+			if (!(event.target instanceof Node)) return;
+			if (!cardRef.current?.contains(event.target)) setInternalSelected(false);
+		};
+		const handleEscape = (event: globalThis.KeyboardEvent) => {
+			if (event.key === "Escape") setInternalSelected(false);
+		};
+
+		document.addEventListener("mousedown", handleOutsideClick);
+		document.addEventListener("keydown", handleEscape);
+		return () => {
+			document.removeEventListener("mousedown", handleOutsideClick);
+			document.removeEventListener("keydown", handleEscape);
+		};
+	}, [interactive, onSelect, internalSelected]);
+
+	const selectCard = () => {
+		if (onSelect) onSelect();
+		else if (interactive) setInternalSelected(true);
+	};
+
 	const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+		if (!canSelect || (event.key !== "Enter" && event.key !== " ")) return;
 		event.preventDefault();
-		onSelect();
+		selectCard();
 	};
 
 	return (
@@ -215,24 +257,25 @@ export function RoadmapPreviewCard({
 		// biome-ignore lint/a11y/noStaticElementInteractions: semantics are selected through the optional role below
 		// biome-ignore lint/a11y/useAriaPropsSupportedByRole: aria-pressed is only populated with the button role
 		<div
-			data-roadmap-card={variant === "roadmap" ? "" : undefined}
+			ref={cardRef}
+			data-roadmap-card=""
 			data-roadmap-card-variant={variant}
-			role={onSelect ? "button" : undefined}
-			tabIndex={onSelect ? 0 : undefined}
-			aria-pressed={onSelect ? selected : undefined}
-			onClick={onSelect}
+			role={canSelect ? "button" : undefined}
+			tabIndex={canSelect ? 0 : undefined}
+			aria-pressed={canSelect ? isSelected : undefined}
+			onClick={canSelect ? selectCard : undefined}
 			onKeyDown={handleKeyDown}
 			className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${variant === "template" ? "sm:h-[440px]" : "sm:h-[420px]"} ${
-				selected
+				isSelected
 					? "border-primary ring-2 ring-primary/45 shadow-lg dark:ring-primary/80"
 					: "border-border hover:border-input"
-			} ${onSelect ? "cursor-pointer" : ""} ${className}`}
+			} ${canSelect ? "cursor-pointer" : ""} ${className}`}
 			style={style}
 		>
 			{menu}
 			<div className="flex h-full flex-col">
 				<div className="h-[330px] overflow-hidden p-4">
-					<EpicOverview epics={epics} selected={selected} variant={variant} />
+					<EpicOverview epics={epics} selected={isSelected} variant={variant} />
 				</div>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2.5">
 					<div className="flex items-start justify-between gap-2">
