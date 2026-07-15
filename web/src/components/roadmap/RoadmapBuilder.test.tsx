@@ -89,6 +89,9 @@ describe("RoadmapBuilder objective intake", () => {
 		await waitFor(() => {
 			expect(screen.getByText("Thinking")).toBeTruthy();
 		});
+		const userBubble = screen.getByText("hi").parentElement;
+		expect(userBubble?.className).not.toContain("before:");
+		expect(userBubble?.className).not.toContain("rounded-br-md");
 		expect(
 			screen.queryByText("What should this roadmap help you build?"),
 		).toBeNull();

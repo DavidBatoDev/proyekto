@@ -862,7 +862,7 @@ export function RoadmapBuilder({
 							style={{ animationDelay: `${Math.min(index, 4) * 45}ms` }}
 						>
 							{message.role === "user" ? (
-								<div className="relative max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] rounded-br-md bg-primary px-5 py-4 text-primary-foreground shadow-lg before:absolute before:-right-1 before:bottom-0 before:h-4 before:w-4 before:rounded-bl-2xl before:bg-primary">
+								<div className="max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] bg-primary px-5 py-4 text-primary-foreground shadow-lg">
 									<div className="mb-2 flex items-center justify-between gap-4 text-sm">
 										<span className="font-semibold text-primary-foreground/95">You</span>
 										<span className="text-primary-foreground/75">
