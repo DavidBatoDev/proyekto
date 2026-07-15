@@ -33,6 +33,7 @@ import {
 	type ProjectTeam,
 } from "@/services/teams.service";
 import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectModal";
+import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
 import ProjectUserMenu from "./ProjectUserMenu";
 
 // Compute the destination path when switching projects, preserving the current view.
@@ -215,7 +216,11 @@ export function ProjectHeader() {
 	const totalProjectMembers = allMemberIds?.size ?? null;
 
 	const title = project?.title ?? (isRoadmapOnly ? "Roadmap" : "Project");
-	const showMakeProject = isRoadmapOnly && !!user;
+	const showMakeProject = shouldShowStandaloneRoadmapProjectActions({
+		projectId,
+		pathname: location.pathname,
+		isAuthenticated: Boolean(user),
+	});
 	const showGuestSignupCta = isRoadmapOnly && !user;
 	const viewingAs = isRoadmapOnly
 		? undefined
