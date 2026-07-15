@@ -154,9 +154,9 @@ export function RoadmapsGrid() {
 					<Link
 						to="/project/$projectId/roadmap/create"
 						params={{ projectId: "n" }}
-						className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-3 py-2 text-xs font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:opacity-85 hover:shadow-md sm:px-4 sm:text-sm"
+						className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm"
 					>
-						<Plus className="h-4 w-4" />
+						<Plus className="h-3.5 w-3.5" />
 						New roadmap
 					</Link>
 				</div>
