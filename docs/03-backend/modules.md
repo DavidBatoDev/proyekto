@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-19 · **Status:** current
 
 The backend is **24 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -82,8 +82,13 @@ JSON-patch application). 9 controllers, ~15 services. Tables: `roadmap_epics`,
 `milestone_features`, `epic_comments`/`feature_comments`/`task_comments`,
 `task_attachments`, `task_dependencies`, `task_activity_log`, `roadmap_ai_sessions`,
 `roadmap_ai_messages`, `roadmap_ai_memories`. The patch repository persists the
-whole graph atomically via the RPC `upsert_full_roadmap` (no `.from()`). See
-[Agent & Roadmap AI](../05-agent-ai/README.md).
+whole graph atomically via the RPC `upsert_full_roadmap` (no `.from()`).
+`RoadmapAuthorizationService` gates every access in the service layer, walking
+child → roadmap → project: reads need **view** (owner or any `project_access` row,
+404 on denial), writes need **edit**, and (un)assignment needs the distinct
+`roadmap.assign` capability. See
+[auth-and-guards.md](./auth-and-guards.md#roadmap-resource-authorization)
+and [Agent & Roadmap AI](../05-agent-ai/README.md).
 
 **`roadmap-shares`** — tokenized public share links (`roadmap_shares`,
 `roadmap_share_access`) and commenting on shared epics/features.
@@ -133,7 +138,9 @@ authorization), and the `@Global` `RealtimePublisher` that POSTs events to the
 Worker's `/publish`. See [Realtime](../06-realtime/README.md).
 
 **`audit`** — a `@Global` `AuditService` writing `project_activity_log`, injected
-across modules.
+across modules. Callers pass their own dotted action; e.g. roadmap AI commit and
+rollback of a project-linked roadmap log `roadmap.committed` / `roadmap.rolled_back`
+(fire-and-forget, personal roadmaps skipped).
 
 ## Platform
 

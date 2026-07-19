@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-19 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears ~71
 times across 31 migrations — essentially every domain table), but it is **not the
@@ -52,7 +52,10 @@ The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 Some tables are written **only** by the backend (service role); their RLS SELECT
 policies are defense-in-depth allows, and there is no client write path:
 
-- `project_activity_log` — the audit trail (service-role writes only).
+- `project_activity_log` — the audit trail (service-role writes only), fed via the
+  `@Global` `AuditService`. Domains append their own dotted actions; e.g. roadmap AI
+  commit/rollback of a project-linked roadmap writes `roadmap.committed` /
+  `roadmap.rolled_back` here.
 - `user_stats` — updated on project completion, never by the user.
 - `payouts` / payout mutations — go through `create_payout_and_mark_paid` /
   `void_payout_and_revert`.

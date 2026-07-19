@@ -1,6 +1,6 @@
 # Cross-Service Flows
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-19 · **Status:** current
 
 Three request lifecycles that cross service boundaries: **roadmap AI editing**
 (the most load-bearing), **meetings scheduling**, and **realtime / chat**. Each is
@@ -73,12 +73,15 @@ A lean diff comes back so the UI can refresh without a full payload.
    inline or in the background when `AGENT_ASYNC_AUTO_COMMIT_ENABLED` is set.
 7. **backend applies to Supabase.** `RoadmapAiService.commit()`
    ([`roadmap-ai.service.ts`](../../backend/src/modules/roadmaps/services/roadmap-ai.service.ts)):
-   409 `STALE_REVISION` on token mismatch; idempotency replay guard;
-   `applyOperations` in memory → `validateState` → `computeSemanticDiff` →
+   `assertCanEditRoadmap` first, then the idempotency replay guard (runs *after*
+   authz, scoped by `userId` + `sha256(operations)` — a key reused with different
+   operations returns 409 `IDEMPOTENCY_KEY_REUSED`); 409 `STALE_REVISION` on token
+   mismatch; `applyOperations` in memory → `validateState` → `computeSemanticDiff` →
    `patchRepo.upsertFullRoadmap(...)`. With `include_roadmap=false` it skips
    reloading the full roadmap and returns a fresh `revision_token` from a ~1ms
    `findUpdatedAt` — a deliberate latency optimization (benchmark-covered by
-   `scripts/benchmark_roadmap_ai_commit.mjs`).
+   `scripts/benchmark_roadmap_ai_commit.mjs`). For a project-linked roadmap it also
+   fire-and-forget logs a `roadmap.committed` row to `project_activity_log`.
 8. **backend → realtime.** `publishRoadmapChange(roadmapId, userId)` emits a
    `data_changed` event (see [Flow 3](#flow-3--realtime--chat)).
 9. **response → web.** The agent's `MessageResponse` carries `operations`,

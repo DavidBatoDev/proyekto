@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-19 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix. Unless a row says otherwise, the route requires a Supabase JWT
@@ -74,6 +74,8 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 **`roadmaps`** — list/preview/by-user/by-project/templates; `POST /migrate` (blocks
 guests); `GET /:id`, `GET /:id/full`; `POST /`; `PATCH /:id`; template settings +
 clone; `DELETE /:id`; AI-suggest metadata/intake. `GET /templates/public` is `Public`.
+`GET /user/:userId` returns only the caller's own roadmaps — the sole cross-user case
+is reading a **guest** profile's roadmaps during migration preview.
 
 **`roadmap-patch`** (base `roadmaps`) — `POST /roadmaps/full` (create tree),
 `PATCH /roadmaps/:id/json-patch`.
@@ -93,6 +95,13 @@ comments CRUD. `POST /features/:id/assign` and `DELETE /:id/unassign` are **410*
 update/delete; `:id/assign` + `:id/unassign` are **410**. `task-extras`: comments,
 attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 
+> **Authorization:** reads of roadmap children (epics/features/tasks/milestones and
+> their comments/attachments, task dependencies, task history) require **view** access
+> to the owning roadmap and return **404** on denial; writes require **edit** — with
+> `PATCH /tasks/:id` additionally requiring `roadmap.assign` when it touches
+> `assignee_id`/`assignee_ids`. See
+> [auth-and-guards.md](./auth-and-guards.md#roadmap-resource-authorization).
+
 ### roadmaps AI · `roadmaps/:id/ai` and `roadmaps/:id/ai-sessions`
 
 | Method | Path | Auth | Purpose |
@@ -106,6 +115,16 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 | GET·PATCH·DELETE | /api/roadmaps/:id/ai-sessions/:sessionId | Supabase | Get / update / delete session |
 | PUT | /api/roadmaps/:id/ai-sessions/:sessionId/agent-state | Supabase | Persist agent state snapshot |
 | GET·POST | /api/roadmaps/:id/ai-sessions/:sessionId/messages | Supabase | List / append messages |
+
+> **Authorization & contract:** context reads require **view** access
+> (`assertCanViewRoadmap`); preview / commit / discard / rollback require **edit**
+> (`assertCanEditRoadmap`). Commit is idempotent per `idempotency_key`, scoped to the
+> caller and the `sha256` of its operations: an exact retry replays the first result,
+> but reusing a key with different operations returns **409 `IDEMPOTENCY_KEY_REUSED`**
+> (a stale `revision_token` still returns **409 `STALE_REVISION`**). Commit and
+> rollback of a **project-linked** roadmap append a `roadmap.committed` /
+> `roadmap.rolled_back` row to `project_activity_log` (personal roadmaps are skipped).
+> A context node reports a milestone's date as `target_date` and a task's as `due_date`.
 
 ## roadmap-shares · `roadmap-shares`
 
