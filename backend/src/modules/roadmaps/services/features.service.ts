@@ -29,15 +29,18 @@ export class FeaturesService {
     if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
   }
 
-  async findByEpic(epicId: string) {
+  async findByEpic(epicId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ epicId }, userId);
     return this.repo.findByEpic(epicId);
   }
 
-  async findByRoadmap(roadmapId: string) {
+  async findByRoadmap(roadmapId: string, userId: string) {
+    await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
     return this.repo.findByRoadmap(roadmapId);
   }
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ featureId: id }, userId);
     const feature = await this.repo.findById(id);
     if (!feature) throw new NotFoundException('Feature not found');
     return feature;
@@ -77,7 +80,8 @@ export class FeaturesService {
     return reordered;
   }
 
-  async findComments(featureId: string) {
+  async findComments(featureId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ featureId }, userId);
     return this.repo.findComments(featureId);
   }
 

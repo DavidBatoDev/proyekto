@@ -662,6 +662,14 @@ export class RoadmapAiContextNodeResponseDto {
   @IsString()
   due_date?: string;
 
+  // Milestone target date. Named consistently with
+  // RoadmapAiContextSummaryMilestoneDto.target_date so a milestone's date has
+  // one field name across the summary and node-detail endpoints (tasks use
+  // due_date; milestones use target_date).
+  @IsOptional()
+  @IsString()
+  target_date?: string;
+
   @IsOptional()
   @IsUUID()
   parent_id?: string;

@@ -8,10 +8,10 @@ static SPA on Vercel**, **realtime is a Cloudflare Worker**, and **Supabase**
 (Singapore) is the managed database. Each service deploys independently from its
 own GitHub Actions workflow, triggered by pushes to its folder.
 
-> **⚠️ Correction:** `CLAUDE.md` still says the backend deploys to Vercel via
-> `backend/vercel.json` + `backend/src/lambda.ts`. That is **stale** — there is no
-> `backend/vercel.json`, the backend ships to **Cloud Run**, and `lambda.ts` is
-> orphaned (present but built/deployed by nothing).
+> **Note:** the backend ships to **Cloud Run** (Docker image, container entry
+> `backend/src/server.ts`), not Vercel. There is no `backend/vercel.json`, and
+> `backend/src/lambda.ts` is an orphaned serverless adapter — present but
+> built/deployed by nothing. (`CLAUDE.md` and `AGENTS.md` have both been corrected.)
 
 ## Hosting map
 

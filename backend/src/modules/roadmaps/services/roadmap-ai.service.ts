@@ -26,6 +26,7 @@ import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repo
 import { ROADMAP_PATCH_REPOSITORY } from './roadmap-patch.service';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { AuditService } from '../../audit/audit.service';
 import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
@@ -268,6 +269,7 @@ export class RoadmapAiService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly previewStore: RoadmapAiPreviewStoreService,
     private readonly realtime: RealtimePublisher,
+    private readonly audit: AuditService,
   ) {}
 
   async preview(
@@ -376,7 +378,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiPreviewResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
 
     const previewStoreGetStartedAt = Date.now();
@@ -426,7 +428,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextSummaryResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const contextState = await this.resolveContextStateSelection(
       roadmapId,
@@ -527,7 +529,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextActorResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    const existing = await this.assertCanEditRoadmap(roadmapId, userId);
+    const existing = await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const displayName = await this.readActorDisplayName(userId);
 
@@ -564,7 +566,7 @@ export class RoadmapAiService {
     members: Array<{ id: string; display_name: string | null; email: string | null }>;
   }> {
     const handlerStartedAt = Date.now();
-    const existing = await this.assertCanEditRoadmap(roadmapId, userId);
+    const existing = await this.assertCanViewRoadmap(roadmapId, userId);
 
     const memberIds = new Set<string>();
     if (typeof existing.owner_id === 'string' && existing.owner_id) {
@@ -626,7 +628,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextSearchResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const query = this.normalizeSearchText(queryDto.query ?? '');
     if (!query) {
@@ -800,7 +802,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextChildrenResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     if (!this.isUuid(resolutionId)) {
       throw this.contextBadRequest(
@@ -995,7 +997,7 @@ export class RoadmapAiService {
         title: locator.milestone.title ?? 'Untitled milestone',
         description: locator.milestone.description,
         status: locator.milestone.status,
-        due_date: locator.milestone.target_date,
+        target_date: locator.milestone.target_date,
         parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
     }
@@ -1082,7 +1084,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextChildrenResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full)
@@ -1140,7 +1142,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextTasksAssignedResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const contextState = await this.resolveContextStateSelection(
       roadmapId,
@@ -1199,7 +1201,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextTasksFilteredResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const contextState = await this.resolveContextStateSelection(
       roadmapId,
@@ -1336,7 +1338,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextNodeResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     if (!this.isUuid(nodeId)) {
       throw this.contextBadRequest(
@@ -1433,7 +1435,7 @@ export class RoadmapAiService {
         title: locator.milestone.title ?? 'Untitled milestone',
         description: locator.milestone.description,
         status: locator.milestone.status,
-        due_date: locator.milestone.target_date,
+        target_date: locator.milestone.target_date,
         parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
       this.logRoadmapAiHandlerTiming({
@@ -1479,7 +1481,7 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiContextChildrenResponseDto> {
     const handlerStartedAt = Date.now();
     const authzStartedAt = Date.now();
-    await this.assertCanEditRoadmap(roadmapId, userId);
+    await this.assertCanViewRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     if (!this.isUuid(nodeId)) {
       throw this.contextBadRequest(
@@ -1619,27 +1621,10 @@ export class RoadmapAiService {
       });
     }
 
-    // Replay guard: a retried commit (same idempotency key) returns the first
-    // attempt's result instead of re-applying the operations — the original
-    // request may have succeeded even though the client saw a timeout/5xx.
     const idempotencyKey = dto.idempotency_key?.trim();
-    if (idempotencyKey) {
-      const replay =
-        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
-          roadmapId,
-          idempotencyKey,
-        );
-      if (replay) {
-        this.logger.log(
-          [
-            'event=roadmap_ai_commit_idempotent_replay',
-            `roadmap_id=${roadmapId}`,
-            `change_id=${replay.change_id ?? 'unknown'}`,
-          ].join(' '),
-        );
-        return replay;
-      }
-    }
+    const operationsHash = createHash('sha256')
+      .update(JSON.stringify(operations))
+      .digest('hex');
 
     this.logger.log(
       [
@@ -1655,6 +1640,45 @@ export class RoadmapAiService {
     const authzStartedAt = Date.now();
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
+
+    // Replay guard runs *after* authorization so the idempotency store can
+    // never be probed for a cached commit response (which embeds the roadmap
+    // snapshot) by a caller lacking edit access. The record is scoped to this
+    // user + operations hash: a retry with the same key and same operations
+    // returns the first attempt's result; the same key with *different*
+    // operations is a client bug and is rejected rather than silently replayed.
+    if (idempotencyKey) {
+      const replay =
+        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
+          roadmapId,
+          userId,
+          idempotencyKey,
+        );
+      if (replay) {
+        if (replay.operations_hash !== operationsHash) {
+          this.logger.warn(
+            [
+              'event=roadmap_ai_commit_idempotency_key_reused',
+              `roadmap_id=${roadmapId}`,
+              `user_id=${userId}`,
+            ].join(' '),
+          );
+          throw new ConflictException({
+            message:
+              'Idempotency key was already used for a different set of operations',
+            code: 'IDEMPOTENCY_KEY_REUSED',
+          });
+        }
+        this.logger.log(
+          [
+            'event=roadmap_ai_commit_idempotent_replay',
+            `roadmap_id=${roadmapId}`,
+            `change_id=${replay.response.change_id ?? 'unknown'}`,
+          ].join(' '),
+        );
+        return replay.response;
+      }
+    }
     const currentRevisionToken = this.requireRevisionToken(current.updated_at);
     if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
       this.logger.warn(
@@ -1892,9 +1916,31 @@ export class RoadmapAiService {
     if (idempotencyKey) {
       await this.previewStore.writeCommitIdempotency(
         roadmapId,
+        userId,
         idempotencyKey,
+        operationsHash,
         response,
       );
+    }
+
+    // Durable audit trail for project-linked roadmaps (personal roadmaps have
+    // no project to log against). Fire-and-forget — never blocks the response.
+    if (current.project_id) {
+      this.audit.log({
+        projectId: current.project_id as string,
+        actorId: userId,
+        action: 'roadmap.committed',
+        entityType: 'roadmap',
+        entityId: roadmapId,
+        metadata: {
+          change_id: changeId,
+          operation_count: operations.length,
+          operations_hash: operationsHash,
+          revision_token_before: currentRevisionToken,
+          revision_token_after: revisionTokenAfter,
+          semantic_change_count: semanticDiffSummary.total_changes ?? 0,
+        },
+      });
     }
 
     return response;
@@ -2049,6 +2095,21 @@ export class RoadmapAiService {
       persistedMeta?.updated_at ?? reappliedAt,
     );
 
+    if (current.project_id) {
+      this.audit.log({
+        projectId: current.project_id as string,
+        actorId: userId,
+        action: 'roadmap.rolled_back',
+        entityType: 'roadmap',
+        entityId: roadmapId,
+        metadata: {
+          change_id: dto.change_id,
+          reapplied_change_count: affectedEntries.length,
+          revision_token_after: revisionToken,
+        },
+      });
+    }
+
     return {
       change_id: dto.change_id,
       reapplied_at: reappliedAt,
@@ -2161,8 +2222,49 @@ export class RoadmapAiService {
     };
   }
 
+  /**
+   * View-level access for the read-only context endpoints: any project member
+   * (regardless of role) or the owner of a personal roadmap. Cached under a
+   * distinct key from the edit decision so a view grant can NEVER satisfy an
+   * edit check. Returns the roadmap row (callers reuse it); 403 on denial.
+   */
+  private async assertCanViewRoadmap(roadmapId: string, userId: string) {
+    const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId, 'view');
+    const cached = this.readAuthzDecisionCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const existing = await this.roadmapsRepo.findById(roadmapId);
+    if (!existing) throw new NotFoundException('Roadmap not found');
+
+    if (existing.project_id) {
+      const canView = await this.roadmapAuthz.canViewRoadmap(roadmapId, userId);
+      if (!canView) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: 'Insufficient permissions for roadmap context access.',
+        });
+      }
+      this.writeAuthzDecisionCache(
+        cacheKey,
+        existing as Record<string, unknown>,
+      );
+      return existing;
+    }
+
+    if (existing.owner_id !== userId) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'Not the owner',
+      });
+    }
+    this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
+    return existing;
+  }
+
   private async assertCanEditRoadmap(roadmapId: string, userId: string) {
-    const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId);
+    const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId, 'edit');
     const cached = this.readAuthzDecisionCache(cacheKey);
     if (cached) {
       return cached;
@@ -2248,8 +2350,9 @@ export class RoadmapAiService {
   private buildAuthzDecisionCacheKey(
     roadmapId: string,
     userId: string,
+    level: 'view' | 'edit',
   ): string {
-    return `${AUTHZ_DECISION_CACHE_VERSION}:${roadmapId}:${userId}:roadmap.edit`;
+    return `${AUTHZ_DECISION_CACHE_VERSION}:${roadmapId}:${userId}:${level}`;
   }
 
   private readAuthzDecisionCache(

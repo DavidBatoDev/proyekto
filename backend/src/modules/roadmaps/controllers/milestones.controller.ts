@@ -26,8 +26,11 @@ export class MilestonesController {
   constructor(private readonly milestonesService: MilestonesService) {}
 
   @Get(':roadmapId/milestones')
-  getByRoadmap(@Param('roadmapId') roadmapId: string) {
-    return this.milestonesService.findByRoadmap(roadmapId);
+  getByRoadmap(
+    @Param('roadmapId') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.milestonesService.findByRoadmap(roadmapId, user.id);
   }
 
   @Post(':roadmapId/milestones')
@@ -40,8 +43,8 @@ export class MilestonesController {
   }
 
   @Get('milestones/:id')
-  getOne(@Param('id') id: string) {
-    return this.milestonesService.findById(id);
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.milestonesService.findById(id, user.id);
   }
 
   @Patch('milestones/:id')

@@ -9,9 +9,12 @@ do HTTP, services own business logic and **authorization**, and repositories are
 only code that touches Supabase. It runs as the Supabase **service role**, so
 row-level security is defense-in-depth — the real gate is the service layer.
 
-> The backend is the single writer to Postgres and the hub of the system: the web
-> app calls it for all CRUD, the AI agent calls back into it for roadmap context
-> and commits, and it fans realtime events out to the Cloudflare Worker.
+> The backend is the primary writer to Postgres and the hub of the system: the web
+> app calls it for most CRUD, the AI agent calls back into it for roadmap context
+> and commits, and it fans realtime events out to the Cloudflare Worker. It is not
+> the *only* writer, though — the web app writes a few tables (e.g. `project_briefs`,
+> `profiles`) directly under RLS, so the backend cannot be assumed to mediate every
+> mutation.
 
 ## Layers
 

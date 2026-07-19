@@ -39,17 +39,25 @@ export class RoadmapAiPreviewStoreService {
   }
 
   /** Best-effort idempotency record for AI commits: a retried commit with the
-   * same key returns the stored first result instead of re-applying ops.
+   * same key returns the stored first result instead of re-applying ops. The
+   * record is scoped to the acting user (a different user's identical key can
+   * never read back this response) and carries the operations hash so a key
+   * reused with different operations is rejected rather than silently replayed.
    * Both methods swallow Redis unavailability — idempotency is a safety net,
    * not a hard dependency. */
   async readCommitIdempotency<T extends object>(
     roadmapId: string,
+    userId: string,
     key: string,
-  ): Promise<T | null> {
+  ): Promise<{ operations_hash: string; response: T } | null> {
     if (!this.redis) return null;
     try {
-      const value = await this.redis.get(this.commitIdempotencyKey(roadmapId, key));
-      return this.decodeStoredValue<T>(value);
+      const value = await this.redis.get(
+        this.commitIdempotencyKey(roadmapId, userId, key),
+      );
+      return this.decodeStoredValue<{ operations_hash: string; response: T }>(
+        value,
+      );
     } catch {
       return null;
     }
@@ -57,15 +65,17 @@ export class RoadmapAiPreviewStoreService {
 
   async writeCommitIdempotency<T extends object>(
     roadmapId: string,
+    userId: string,
     key: string,
-    payload: T,
+    operationsHash: string,
+    response: T,
     ttlSeconds = 600,
   ): Promise<void> {
     if (!this.redis) return;
     try {
       await this.redis.set(
-        this.commitIdempotencyKey(roadmapId, key),
-        JSON.stringify(payload),
+        this.commitIdempotencyKey(roadmapId, userId, key),
+        JSON.stringify({ operations_hash: operationsHash, response }),
         { ex: ttlSeconds },
       );
     } catch {
@@ -73,8 +83,12 @@ export class RoadmapAiPreviewStoreService {
     }
   }
 
-  private commitIdempotencyKey(roadmapId: string, key: string): string {
-    return `roadmap_ai:commit:idem:${roadmapId}:${key}`;
+  private commitIdempotencyKey(
+    roadmapId: string,
+    userId: string,
+    key: string,
+  ): string {
+    return `roadmap_ai:commit:idem:${roadmapId}:${userId}:${key}`;
   }
 
   async setResolution<T extends Record<string, unknown>>(

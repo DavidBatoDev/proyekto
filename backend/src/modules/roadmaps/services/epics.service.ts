@@ -28,11 +28,13 @@ export class EpicsService {
     if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
   }
 
-  async findByRoadmap(roadmapId: string) {
+  async findByRoadmap(roadmapId: string, userId: string) {
+    await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
     return this.repo.findByRoadmap(roadmapId);
   }
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ epicId: id }, userId);
     const epic = await this.repo.findById(id);
     if (!epic) throw new NotFoundException('Epic not found');
     return epic;
@@ -69,7 +71,8 @@ export class EpicsService {
     return reordered;
   }
 
-  async findComments(epicId: string) {
+  async findComments(epicId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ epicId }, userId);
     return this.repo.findComments(epicId);
   }
 

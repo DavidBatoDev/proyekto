@@ -21,6 +21,9 @@ export interface ITaskExtrasRepository {
   ): Promise<any>;
   deleteAttachment(attachmentId: string, userId: string): Promise<void>;
   getDependencies(taskId: string): Promise<{ blocking: any[]; blocked_by: any[] }>;
+  findDependencyById(
+    dependencyId: string,
+  ): Promise<{ id: string; blocked_task_id: string; blocking_task_id: string } | null>;
   addDependency(blockedTaskId: string, blockingTaskId: string, userId: string): Promise<any>;
   removeDependency(dependencyId: string): Promise<void>;
 }

@@ -123,7 +123,21 @@ export class RoadmapsService {
     return this.repo.findPreviews(userId);
   }
 
-  async findByUser(userId: string) {
+  async findByUser(userId: string, callerId: string) {
+    // Prevent enumerating another registered user's roadmaps by UUID. The one
+    // legitimate cross-user case is the guest→account migration preview, where
+    // the caller lists a *guest* profile's roadmaps before claiming them
+    // (the claim itself is session-validated in migrateGuestRoadmaps).
+    if (userId !== callerId) {
+      const { data } = await this.supabase
+        .from('profiles')
+        .select('is_guest')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!data?.is_guest) {
+        throw new ForbiddenException('You can only list your own roadmaps.');
+      }
+    }
     return this.repo.findByUser(userId);
   }
 

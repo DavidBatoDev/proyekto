@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import type { ITaskExtrasRepository } from '../repositories/task-extras.repository.interface';
 import {
   AddCommentDto,
@@ -22,7 +22,8 @@ export class TaskExtrasService {
     private readonly knowledgeOutbox: KnowledgeOutboxService,
   ) {}
 
-  async findComments(taskId: string) {
+  async findComments(taskId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ taskId }, userId);
     return this.repo.findComments(taskId);
   }
 
@@ -107,7 +108,8 @@ export class TaskExtrasService {
     return deleted;
   }
 
-  async findAttachments(taskId: string) {
+  async findAttachments(taskId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ taskId }, userId);
     return this.repo.findAttachments(taskId);
   }
 
@@ -124,7 +126,8 @@ export class TaskExtrasService {
     return this.repo.deleteAttachment(attachmentId, userId);
   }
 
-  async getDependencies(taskId: string) {
+  async getDependencies(taskId: string, userId: string) {
+    await this.roadmapAuthz.assertViewPermission({ taskId }, userId);
     return this.repo.getDependencies(taskId);
   }
 
@@ -141,7 +144,19 @@ export class TaskExtrasService {
     return this.repo.addDependency(taskId, blockingTaskId, userId);
   }
 
-  async removeDependency(dependencyId: string) {
+  async removeDependency(taskId: string, dependencyId: string, userId: string) {
+    // Resolve the dependency and confirm it actually belongs to the task in
+    // the URL (either endpoint of the edge), then require edit rights on that
+    // task's roadmap. 404 (not 403) so we never leak a dependency's existence.
+    const dependency = await this.repo.findDependencyById(dependencyId);
+    if (
+      !dependency ||
+      (dependency.blocked_task_id !== taskId &&
+        dependency.blocking_task_id !== taskId)
+    ) {
+      throw new NotFoundException('Dependency not found');
+    }
+    await this.roadmapAuthz.assertTaskPermission(taskId, userId, 'roadmap.edit');
     return this.repo.removeDependency(dependencyId);
   }
 }
