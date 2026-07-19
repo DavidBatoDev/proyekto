@@ -9,7 +9,14 @@ agent/app/__pycache__/
 __pycache__/
 *.pyc
 *.env
+# Claude Code: track shareable config, ignore local/runtime state
 .claude/*
+!.claude/settings.json
+!.claude/agents/
+!.claude/skills/
+!.claude/commands/
+!.claude/hooks/
+.claude/settings.local.json
 keys
 
 # Local MCP config holds a Supabase access token — never commit

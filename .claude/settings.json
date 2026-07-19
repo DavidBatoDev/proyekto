@@ -1,0 +1,100 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git blame:*)",
+      "Bash(cd:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run pw:auth:*)",
+      "Bash(npm run pw:test:*)",
+      "Bash(npm run pw:audit:routes:*)",
+      "Bash(npm run pw:audit:dark:*)",
+      "Bash(npm run pw:audit:hovers:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx tsc --noEmit:*)",
+      "Bash(npx biome check:*)",
+      "Bash(npx biome format:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prettier --check:*)",
+      "Bash(node scripts/test_agent_unit.mjs:*)",
+      "Bash(node scripts/check_roadmap_ai_schema.mjs:*)",
+      "Bash(node scripts/validate_roadmap_templates.mjs:*)",
+      "Bash(node scripts/validate_agent_canary_matrix.mjs:*)",
+      "Bash(node scripts/benchmark_resolve_lookup.mjs:*)",
+      "Bash(node scripts/benchmark_roadmap_ai_commit.mjs:*)",
+      "Bash(node scripts/benchmark_reasoning_summary.mjs:*)",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_extensions",
+      "mcp__supabase__list_edge_functions",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__get_logs",
+      "mcp__supabase__get_project",
+      "mcp__supabase__get_project_url"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(node scripts/flush_agent_session.mjs:*)",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__deploy_edge_function"
+    ],
+    "deny": [
+      "Bash(npx supabase db push:*)",
+      "Bash(supabase db push:*)",
+      "Bash(npx supabase db reset:*)",
+      "Bash(supabase db reset:*)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(wrangler deploy:*)",
+      "Bash(npx wrangler deploy:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(gcloud run deploy:*)",
+      "Bash(gcloud builds submit:*)",
+      "Bash(gcloud app deploy:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/protect-files.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format-on-edit.mjs"],
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
