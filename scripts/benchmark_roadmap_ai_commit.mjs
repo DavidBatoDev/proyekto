@@ -302,6 +302,15 @@ async function runCommitOnce({
 }
 
 async function fetchRoadmap() {
+  // The node tree is served by /full; the bare roadmap endpoint returns
+  // metadata only. Fall back to the bare endpoint for older APIs.
+  const fullResponse = await fetchWithTimeout(`${roadmapEndpoint}/full`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  if (fullResponse.ok) {
+    return parseResponseBody(fullResponse);
+  }
   const response = await fetchWithTimeout(roadmapEndpoint, {
     method: "GET",
     headers: authHeaders(),
