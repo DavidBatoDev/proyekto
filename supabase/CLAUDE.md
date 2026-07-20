@@ -12,7 +12,7 @@ Local context for the database unit. Cross-cutting rules live in the root CLAUDE
 ## Applying migrations
 
 - Local/dev: `cd backend && npx supabase db push` (CLI runs from backend/ even though migrations live here).
-- PROD (Singapore, ref byvbnkpiselvvulsvxgo): `db push` FAILS with a SASL error - the local password on disk is the old Mumbai project's. Apply via the Supabase MCP `apply_migration` tool instead (ask-gated), then confirm with `list_migrations` and check `get_advisors` for new lints.
+- PROD (Singapore, ref byvbnkpiselvvulsvxgo): `db push` FAILS with a SASL error - the local password on disk is the old Mumbai project's. Apply via the Supabase MCP `apply_migration` tool instead (auto-allowed - it hits prod directly with no confirmation step, so review the SQL before calling), then confirm with `list_migrations` and check `get_advisors` for new lints.
 - `supabase db reset` is permission-denied entirely - if truly needed for a local db, the user runs it themselves.
 
 ## Storage caveat
