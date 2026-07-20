@@ -15,6 +15,7 @@ import type {
 } from './dto/chat.dto';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { getPermission } from '../projects/permissions/project-permissions';
 import { R2_CONFIG, type R2Config } from '../../config/r2.module';
 import type {
   ChatAttachment,
@@ -87,9 +88,7 @@ export class ChatService {
    * never on the send hot path — a bogus span at worst renders a chip and is
    * dropped before any ping.
    */
-  private buildMentions(
-    mentions: ChatMentionDto[] | undefined,
-  ): ChatMention[] {
+  private buildMentions(mentions: ChatMentionDto[] | undefined): ChatMention[] {
     if (!mentions || mentions.length === 0) return [];
     return mentions.map((mention) => ({
       user_id: mention.user_id,
@@ -244,7 +243,10 @@ export class ChatService {
     return [userA, userB].sort((a, b) => a.localeCompare(b)).join('_');
   }
 
-  private async assertProjectAccess(projectId: string, userId: string): Promise<void> {
+  private async assertProjectAccess(
+    projectId: string,
+    userId: string,
+  ): Promise<void> {
     const isMember = await this.chatRepo.isProjectMember(projectId, userId);
     if (!isMember) {
       throw new MissingPermissionException({
@@ -252,6 +254,35 @@ export class ChatService {
         message: 'You are not a member of this project.',
       });
     }
+  }
+
+  /**
+   * Posting to a channel requires the `chat.send_messages` capability
+   * (commenter and above); a viewer is a project member but may not post.
+   * The capability is resolved from `project_access`, but we must preserve the
+   * chat layer's consultant/client fallback: a consultant/client can be present
+   * on a project only via `projects.consultant_id`/`client_id` with no
+   * `project_access` row (the invariant is app-maintained, not DB-enforced),
+   * and `resolvePermissions` — which reads only `project_access` — can't see
+   * them. Never regress those trusted roles to a 403.
+   */
+  private async assertCanSendChannelMessage(
+    projectId: string,
+    senderId: string,
+  ): Promise<void> {
+    const perms = await this.authorization.resolvePermissions(
+      senderId,
+      projectId,
+    );
+    if (perms && getPermission(perms, 'chat.send_messages')) return;
+
+    const role = await this.chatRepo.resolveProjectRole(projectId, senderId);
+    if (role === 'consultant' || role === 'client') return;
+
+    throw new MissingPermissionException({
+      path: 'chat.send_messages',
+      message: 'You do not have permission to post in this channel.',
+    });
   }
 
   /**
@@ -298,7 +329,10 @@ export class ChatService {
     if (await this.chatRepo.isRoomParticipant(room.id, userId)) return;
     if (!(await this.chatRepo.isProjectMember(room.project_id, userId))) return;
 
-    const isConsultant = await this.isProjectConsultant(room.project_id, userId);
+    const isConsultant = await this.isProjectConsultant(
+      room.project_id,
+      userId,
+    );
     if (this.canViewChannel(room, isConsultant, false)) {
       await this.chatRepo.upsertParticipants(room.id, [userId]);
     }
@@ -433,7 +467,10 @@ export class ChatService {
     return this.listMembers(projectId, userId);
   }
 
-  private async assertRoomAccess(roomId: string, userId: string): Promise<ChatRoom> {
+  private async assertRoomAccess(
+    roomId: string,
+    userId: string,
+  ): Promise<ChatRoom> {
     const room = await this.chatRepo.findRoomById(roomId);
     if (!room) {
       throw new NotFoundException('Chat room not found.');
@@ -447,7 +484,10 @@ export class ChatService {
       await this.ensureChannelAccess(room, userId);
     }
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(room.id, userId);
+    const isParticipant = await this.chatRepo.isRoomParticipant(
+      room.id,
+      userId,
+    );
     if (!isParticipant) {
       throw new MissingPermissionException({
         path: 'chat.view_channels',
@@ -495,7 +535,10 @@ export class ChatService {
             messageIds,
             viewerUserId: userId,
           })
-        : new Map<string, { emoji: string; count: number; reacted_by_me: boolean }[]>();
+        : new Map<
+            string,
+            { emoji: string; count: number; reacted_by_me: boolean }[]
+          >();
 
     // Hydrate a lean preview of any quoted (reply target) messages so the thread
     // can render the quote without a second round-trip per reply.
@@ -515,7 +558,7 @@ export class ChatService {
 
     const enrichedMessages = chronologicalMessages.map((message) => {
       const target = message.reply_to_id
-        ? replyById.get(message.reply_to_id) ?? null
+        ? (replyById.get(message.reply_to_id) ?? null)
         : null;
       const reply_to = target ? this.toReplyPreview(target) : null;
       // Soft-deleted: never ship the original content/attachments/mentions to
@@ -538,7 +581,9 @@ export class ChatService {
     });
 
     const nextBefore =
-      messages.length === safeLimit ? messages[messages.length - 1]?.created_at : null;
+      messages.length === safeLimit
+        ? messages[messages.length - 1]?.created_at
+        : null;
 
     return {
       room_id: roomId,
@@ -596,6 +641,7 @@ export class ChatService {
     dto: SendChannelMessageDto,
   ) {
     await this.assertProjectAccess(projectId, senderId);
+    await this.assertCanSendChannelMessage(projectId, senderId);
 
     const content = dto.content?.trim() ?? '';
     const attachments = this.buildAttachments(dto.attachments, senderId);
@@ -649,7 +695,9 @@ export class ChatService {
       await this.provisionDefaultChannels(projectId, senderId);
       const slug = (dto.slug || '').trim().toLowerCase();
       const resolved =
-        (slug ? await this.chatRepo.findChannelBySlug(projectId, slug) : null) ??
+        (slug
+          ? await this.chatRepo.findChannelBySlug(projectId, slug)
+          : null) ??
         (await this.chatRepo.findChannelBySlug(projectId, 'general'));
       if (!resolved) {
         throw new NotFoundException('Chat room not found.');
@@ -712,13 +760,18 @@ export class ChatService {
       room = existing;
     } else {
       if (!dto.recipient_id) {
-        throw new BadRequestException('recipient_id is required for DM messages.');
+        throw new BadRequestException(
+          'recipient_id is required for DM messages.',
+        );
       }
       if (dto.recipient_id === senderId) {
         throw new BadRequestException('Cannot DM yourself.');
       }
 
-      const canDm = await this.chatRepo.usersShareAnyProject(senderId, dto.recipient_id);
+      const canDm = await this.chatRepo.usersShareAnyProject(
+        senderId,
+        dto.recipient_id,
+      );
       if (!canDm) {
         throw new MissingPermissionException({
           path: 'chat.send_dm',
@@ -765,7 +818,10 @@ export class ChatService {
       throw new BadRequestException('A valid recipient_id is required.');
     }
 
-    const canDm = await this.chatRepo.usersShareAnyProject(senderId, recipientId);
+    const canDm = await this.chatRepo.usersShareAnyProject(
+      senderId,
+      recipientId,
+    );
     if (!canDm) {
       throw new MissingPermissionException({
         path: 'chat.send_dm',
@@ -1056,7 +1112,11 @@ export class ChatService {
       action: dto.is_archived === true ? 'channel.archived' : 'channel.updated',
       entityType: 'chat_channel',
       entityId: roomId,
-      metadata: { name, is_archived: dto.is_archived, is_private: dto.is_private },
+      metadata: {
+        name,
+        is_archived: dto.is_archived,
+        is_private: dto.is_private,
+      },
     });
     this.notifyProjectRoomsChanged(projectId, roomId);
 

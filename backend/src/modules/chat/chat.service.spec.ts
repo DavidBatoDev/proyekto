@@ -21,6 +21,11 @@ describe('ChatService', () => {
     ({
       getUserProjectRole: jest.fn().mockResolvedValue('editor'),
       assertPermission: jest.fn().mockResolvedValue(undefined),
+      // G9: sendChannelMessage now asserts chat.send_messages; default the mock
+      // to a member who has it so existing happy-path send tests still pass.
+      resolvePermissions: jest
+        .fn()
+        .mockResolvedValue({ chat: { send_messages: true } }),
       ...overrides,
     }) as unknown as ProjectAuthorizationService;
 
@@ -56,20 +61,18 @@ describe('ChatService', () => {
       findRoomForParticipant: jest.fn().mockResolvedValue(null),
       findChannelBySlug: jest.fn().mockResolvedValue(null),
       findDmBySlug: jest.fn().mockResolvedValue(null),
-      upsertChannel: jest
-        .fn()
-        .mockImplementation((p) =>
-          Promise.resolve(
-            buildRoom({
-              id: `room-${p.slug}`,
-              project_id: p.projectId,
-              type: 'channel',
-              slug: p.slug,
-              name: p.name ?? null,
-              is_private: p.isPrivate ?? false,
-            }),
-          ),
+      upsertChannel: jest.fn().mockImplementation((p) =>
+        Promise.resolve(
+          buildRoom({
+            id: `room-${p.slug}`,
+            project_id: p.projectId,
+            type: 'channel',
+            slug: p.slug,
+            name: p.name ?? null,
+            is_private: p.isPrivate ?? false,
+          }),
         ),
+      ),
       updateRoom: jest.fn().mockResolvedValue(buildRoom()),
       getProjectIsPersonal: jest.fn().mockResolvedValue(false),
       listProjectChannels: jest.fn().mockResolvedValue([]),
@@ -204,7 +207,12 @@ describe('ChatService', () => {
   it('consultant sees every channel including private ones', async () => {
     const slugs = await visibleSlugs('consultant', personaRooms());
     expect(slugs).toEqual(
-      ['client-room', 'consultant-client', 'consultant-pm', 'internal-team'].sort(),
+      [
+        'client-room',
+        'consultant-client',
+        'consultant-pm',
+        'internal-team',
+      ].sort(),
     );
   });
 
@@ -262,7 +270,10 @@ describe('ChatService', () => {
       'project-1',
       'viewer-1',
     );
-    expect(shownResult.map((r) => r.id).sort()).toEqual(['room-priv', 'room-pub']);
+    expect(shownResult.map((r) => r.id).sort()).toEqual([
+      'room-priv',
+      'room-pub',
+    ]);
   });
 
   it('provisionDefaultChannels seeds the creator into the single #general room', async () => {
@@ -312,7 +323,11 @@ describe('ChatService', () => {
       hydrateRoomsByIds: jest
         .fn()
         .mockResolvedValue([
-          { ...buildRoom({ id: 'room-new' }), last_message: null, participants: [] },
+          {
+            ...buildRoom({ id: 'room-new' }),
+            last_message: null,
+            participants: [],
+          },
         ]),
     });
     const service = makeService(repo, { assertPermission });
@@ -335,7 +350,9 @@ describe('ChatService', () => {
       .fn()
       .mockResolvedValue(channel('design-review', true));
     const repo = buildRepo({
-      findRoomById: jest.fn().mockResolvedValue(channel('design-review', false)),
+      findRoomById: jest
+        .fn()
+        .mockResolvedValue(channel('design-review', false)),
       updateRoom,
     });
     const service = makeService(repo, { assertPermission });
@@ -389,13 +406,23 @@ describe('ChatService', () => {
         user_id: 'p2',
         role: 'member',
         position: null,
-        user: { id: 'p2', display_name: 'P Two', avatar_url: null, email: null },
+        user: {
+          id: 'p2',
+          display_name: 'P Two',
+          avatar_url: null,
+          email: null,
+        },
       },
       {
         user_id: 'viewer-1',
         role: 'client',
         position: 'Client',
-        user: { id: 'viewer-1', display_name: 'Me', avatar_url: null, email: null },
+        user: {
+          id: 'viewer-1',
+          display_name: 'Me',
+          avatar_url: null,
+          email: null,
+        },
       },
     ]);
     const repo = buildRepo({
@@ -426,7 +453,12 @@ describe('ChatService', () => {
         user_id: 'p1',
         joined_at: 't',
         last_read_at: null,
-        user: { id: 'p1', display_name: 'P One', avatar_url: null, email: null },
+        user: {
+          id: 'p1',
+          display_name: 'P One',
+          avatar_url: null,
+          email: null,
+        },
       },
     ];
     const listProjectMemberCandidates = jest.fn();
@@ -447,9 +479,9 @@ describe('ChatService', () => {
 
   // ── DMs (unchanged behavior) ──────────────────────────────────────────────
   it('creates and reuses DM rooms by deterministic slug, no project_id', async () => {
-    const upsertDm = jest.fn().mockResolvedValue(
-      buildRoom({ slug: 'actor-1_rec-1' }),
-    );
+    const upsertDm = jest
+      .fn()
+      .mockResolvedValue(buildRoom({ slug: 'actor-1_rec-1' }));
     const repo = buildRepo({ upsertDm });
     const service = makeService(repo);
 
@@ -586,15 +618,20 @@ describe('ChatService', () => {
       room_id: 'room-chan',
       content: '',
       attachments: [
-        { url, name: '1.png', content_type: 'image/png', size: 100, width: 10, height: 20 },
+        {
+          url,
+          name: '1.png',
+          content_type: 'image/png',
+          size: 100,
+          width: 10,
+          height: 20,
+        },
       ],
     });
 
     expect(createMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        attachments: [
-          expect.objectContaining({ url, width: 10, height: 20 }),
-        ],
+        attachments: [expect.objectContaining({ url, width: 10, height: 20 })],
       }),
     );
   });
@@ -632,15 +669,15 @@ describe('ChatService', () => {
     });
     const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
 
-    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
-      'project-1',
-      'actor-1',
-      {
-        room_id: 'room-chan',
-        content: 'hi @M Two',
-        mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
-      },
-    );
+    await makeService(
+      repo,
+      {},
+      buildNotifications({ createNotification }),
+    ).sendChannelMessage('project-1', 'actor-1', {
+      room_id: 'room-chan',
+      content: 'hi @M Two',
+      mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
+    });
 
     expect(createMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -664,18 +701,22 @@ describe('ChatService', () => {
     });
     const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
 
-    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
-      'project-1',
-      'actor-1',
-      {
-        room_id: 'room-chan',
-        content: 'heads up @everyone',
-        mentions: [{ user_id: 'everyone', name: 'everyone', offset: 9, length: 9 }],
-      },
-    );
+    await makeService(
+      repo,
+      {},
+      buildNotifications({ createNotification }),
+    ).sendChannelMessage('project-1', 'actor-1', {
+      room_id: 'room-chan',
+      content: 'heads up @everyone',
+      mentions: [
+        { user_id: 'everyone', name: 'everyone', offset: 9, length: 9 },
+      ],
+    });
 
     await flush();
-    const notified = createNotification.mock.calls.map((c) => c[0].user_id).sort();
+    const notified = createNotification.mock.calls
+      .map((c) => c[0].user_id)
+      .sort();
     expect(notified).toEqual(['m2', 'm3']);
   });
 
@@ -688,15 +729,17 @@ describe('ChatService', () => {
     });
     const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
 
-    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
-      'project-1',
-      'actor-1',
-      {
-        room_id: 'room-chan',
-        content: 'hi @Outsider',
-        mentions: [{ user_id: 'stranger', name: 'Outsider', offset: 3, length: 9 }],
-      },
-    );
+    await makeService(
+      repo,
+      {},
+      buildNotifications({ createNotification }),
+    ).sendChannelMessage('project-1', 'actor-1', {
+      room_id: 'room-chan',
+      content: 'hi @Outsider',
+      mentions: [
+        { user_id: 'stranger', name: 'Outsider', offset: 3, length: 9 },
+      ],
+    });
 
     await flush();
     expect(createNotification).not.toHaveBeenCalled();
@@ -713,20 +756,37 @@ describe('ChatService', () => {
   it('getRoomLibrary splits attachments into media vs files and asserts access', async () => {
     const listRoomAttachments = jest.fn().mockResolvedValue([
       {
-        message_id: 'm1', sender_id: 'u1', created_at: 't',
-        url: 'cdn/a.png', name: 'a.png', content_type: 'image/png',
-        size: 1, width: 2, height: 3,
+        message_id: 'm1',
+        sender_id: 'u1',
+        created_at: 't',
+        url: 'cdn/a.png',
+        name: 'a.png',
+        content_type: 'image/png',
+        size: 1,
+        width: 2,
+        height: 3,
       },
       {
-        message_id: 'm2', sender_id: 'u1', created_at: 't',
-        url: 'cdn/b.pdf', name: 'b.pdf', content_type: 'application/pdf',
-        size: 4, width: null, height: null,
+        message_id: 'm2',
+        sender_id: 'u1',
+        created_at: 't',
+        url: 'cdn/b.pdf',
+        name: 'b.pdf',
+        content_type: 'application/pdf',
+        size: 4,
+        width: null,
+        height: null,
       },
     ]);
     const listRoomLinks = jest
       .fn()
       .mockResolvedValue([
-        { message_id: 'm3', sender_id: 'u1', created_at: 't', url: 'https://x.dev' },
+        {
+          message_id: 'm3',
+          sender_id: 'u1',
+          created_at: 't',
+          url: 'https://x.dev',
+        },
       ]);
     const repo = accessibleDmRepo({ listRoomAttachments, listRoomLinks });
 
@@ -780,16 +840,19 @@ describe('ChatService', () => {
   });
 
   it('resolveDmRoom creates and seeds participants for a fresh pair', async () => {
-    const upsertDm = jest.fn().mockResolvedValue(
-      buildRoom({ slug: 'actor-1_rec-1' }),
-    );
+    const upsertDm = jest
+      .fn()
+      .mockResolvedValue(buildRoom({ slug: 'actor-1_rec-1' }));
     const upsertParticipants = jest.fn().mockResolvedValue(undefined);
     const repo = buildRepo({ upsertDm, upsertParticipants });
     const service = makeService(repo);
 
     const room = await service.resolveDmRoom('actor-1', 'rec-1');
     expect(room.slug).toBe('actor-1_rec-1');
-    expect(upsertParticipants).toHaveBeenCalledWith(room.id, ['actor-1', 'rec-1']);
+    expect(upsertParticipants).toHaveBeenCalledWith(room.id, [
+      'actor-1',
+      'rec-1',
+    ]);
   });
 
   // ── Edit + soft-delete ──────────────────────────────────────────────────
@@ -856,7 +919,9 @@ describe('ChatService', () => {
   it('editMessage rejects editing a deleted message', async () => {
     const updateMessageContent = jest.fn();
     const repo = editableRepo({
-      findMessageById: jest.fn().mockResolvedValue(ownMessage({ deleted_at: 't' })),
+      findMessageById: jest
+        .fn()
+        .mockResolvedValue(ownMessage({ deleted_at: 't' })),
       updateMessageContent,
     });
 
@@ -906,7 +971,10 @@ describe('ChatService', () => {
       ]),
     });
 
-    const result = await makeService(repo).listRoomMessages('room-1', 'viewer-1');
+    const result = await makeService(repo).listRoomMessages(
+      'room-1',
+      'viewer-1',
+    );
 
     const del = result.messages.find((m) => m.id === 'm-del')!;
     expect(del.content).toBe('');
