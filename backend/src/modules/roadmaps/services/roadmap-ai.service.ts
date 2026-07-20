@@ -444,9 +444,7 @@ export class RoadmapAiService {
     // 409 STALE_REVISION on the next commit when anything (timeline
     // append, cache invalidation, another client) bumped `updated_at`
     // after our previous commit returned.
-    const persistedUpdatedAt = await this.roadmapsRepo.findUpdatedAt(
-      roadmapId,
-    );
+    const persistedUpdatedAt = await this.roadmapsRepo.findUpdatedAt(roadmapId);
 
     const epicCount = state.roadmap_epics?.length ?? 0;
     const featureCount = (state.roadmap_epics ?? []).reduce(
@@ -469,7 +467,9 @@ export class RoadmapAiService {
       title: state.name,
       description: state.description,
       status: state.status,
-      revision_token: this.requireRevisionToken(persistedUpdatedAt ?? undefined),
+      revision_token: this.requireRevisionToken(
+        persistedUpdatedAt ?? undefined,
+      ),
       epic_count: epicCount,
       feature_count: featureCount,
       task_count: taskCount,
@@ -563,7 +563,11 @@ export class RoadmapAiService {
     userId: string,
     traceId?: string,
   ): Promise<{
-    members: Array<{ id: string; display_name: string | null; email: string | null }>;
+    members: Array<{
+      id: string;
+      display_name: string | null;
+      email: string | null;
+    }>;
   }> {
     const handlerStartedAt = Date.now();
     const existing = await this.assertCanViewRoadmap(roadmapId, userId);
@@ -601,7 +605,8 @@ export class RoadmapAiService {
         members = (profiles ?? []).map((profile: any) => ({
           id: String(profile.id),
           display_name:
-            typeof profile.display_name === 'string' && profile.display_name.trim()
+            typeof profile.display_name === 'string' &&
+            profile.display_name.trim()
               ? profile.display_name.trim()
               : null,
           email: typeof profile.email === 'string' ? profile.email : null,
@@ -914,7 +919,10 @@ export class RoadmapAiService {
         fullState as Record<string, unknown>,
       );
       if (includeParent && top.parent_id) {
-        parentResult = this.buildContextNodeDetailsFromState(state, top.parent_id);
+        parentResult = this.buildContextNodeDetailsFromState(
+          state,
+          top.parent_id,
+        );
       }
       if (includeChildren) {
         childrenResult = {
@@ -1762,6 +1770,12 @@ export class RoadmapAiService {
       ownerId: current.owner_id,
       fullState: candidate,
       createIfMissing: false,
+      // Opt-in atomic concurrency guard: when the caller supplied a
+      // revision_token (already matched against currentRevisionToken above),
+      // pass that authz-time baseline so the RPC rejects the commit with 409
+      // STALE_REVISION if a concurrent writer bumped updated_at in the window
+      // between the authorization read and this write (closes the TOCTOU).
+      expectedUpdatedAt: dto.revision_token ? currentRevisionToken : undefined,
     });
     const upsertMs = Date.now() - upsertStartedAt;
     // Server-originated edit — notify collaborators (no acting canvas client).
@@ -4055,9 +4069,7 @@ export class RoadmapAiService {
     this.nodeIndexCache.delete(state);
   }
 
-  private buildNodeIndex(
-    state: FullRoadmapState,
-  ): Map<string, NodeLocator> {
+  private buildNodeIndex(state: FullRoadmapState): Map<string, NodeLocator> {
     const index = new Map<string, NodeLocator>();
     if (state.id) {
       index.set(state.id, { type: 'roadmap', roadmap: state });

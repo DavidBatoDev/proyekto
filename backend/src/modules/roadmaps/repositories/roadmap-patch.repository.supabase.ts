@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -21,14 +22,22 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
     ownerId: string;
     fullState: FullRoadmapState;
     createIfMissing?: boolean;
+    expectedUpdatedAt?: string;
   }): Promise<Date | null> {
-    const { roadmapId, ownerId, fullState, createIfMissing = false } = params;
+    const {
+      roadmapId,
+      ownerId,
+      fullState,
+      createIfMissing = false,
+      expectedUpdatedAt,
+    } = params;
 
     const { data, error } = await this.db.rpc('upsert_full_roadmap', {
       p_roadmap_id: roadmapId,
       p_owner_id: ownerId,
       p_full_state: fullState,
       p_create_if_missing: createIfMissing,
+      p_expected_updated_at: expectedUpdatedAt ?? null,
     });
 
     if (!error) return data ? new Date(data as string) : null;
@@ -44,7 +53,17 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
       ].join(' '),
     );
 
+    // The RPC raises every business error as SQLSTATE P0001; the atomic
+    // concurrency guard is distinguished by its message so it maps to a 409
+    // (matching the JS-level STALE_REVISION check) rather than a 400.
     if (error.code === 'P0001') {
+      if ((error.message ?? '').includes('STALE_REVISION')) {
+        throw new ConflictException({
+          message:
+            'Roadmap changed since it was read; retry with a fresh copy.',
+          code: 'STALE_REVISION',
+        });
+      }
       throw new BadRequestException(error.message);
     }
 
