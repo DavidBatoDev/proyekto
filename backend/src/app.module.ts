@@ -36,6 +36,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { McpModule } from './modules/mcp/mcp.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -85,6 +86,7 @@ import { AppController } from './app.controller';
     RealtimeModule,
     AuditModule,
     KnowledgeModule,
+    McpModule,
   ],
 })
 export class AppModule {}

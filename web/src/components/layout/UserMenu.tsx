@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowLeftRight,
 	ChevronDown,
+	KeyRound,
 	Loader2,
 	LogOut,
 	Settings,
@@ -249,6 +250,15 @@ export default function UserMenu() {
 								Appearance
 							</Link>
 						)}
+
+						<Link
+							to="/settings/mcp-tokens"
+							onClick={() => setIsOpen(false)}
+							className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+						>
+							<KeyRound size={16} />
+							MCP Tokens
+						</Link>
 
 						<button
 							type="button"

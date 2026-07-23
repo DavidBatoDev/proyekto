@@ -42,12 +42,12 @@
       "mcp__supabase__get_logs",
       "mcp__supabase__get_project",
       "mcp__supabase__get_project_url",
-      "mcp__supabase__execute_sql"
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__apply_migration"
     ],
     "ask": [
       "Bash(git push:*)",
       "Bash(node scripts/flush_agent_session.mjs:*)",
-      "mcp__supabase__apply_migration",
       "mcp__supabase__deploy_edge_function"
     ],
     "deny": [

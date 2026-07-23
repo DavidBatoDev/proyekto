@@ -1,9 +1,11 @@
 # API Reference
 
-> **Last updated:** 2026-07-19 · **Status:** current
+> **Last updated:** 2026-07-23 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
-`/api` prefix. Unless a row says otherwise, the route requires a Supabase JWT
+`/api` prefix — the sole exception is `POST /mcp` (see [mcp](#mcp--mcp--apimcptokens)),
+served off the `/api` tree for MCP hosts. Unless a row says otherwise, the route
+requires a Supabase JWT
 (`SupabaseAuthGuard`) and returns the `{ data }` envelope
 ([architecture.md](./architecture.md#response-envelope)).
 
@@ -244,3 +246,20 @@ contract). `POST /mobile-updates/bundles/presign` + `/bundles` are **+OtaPublish
 ## audit
 
 No HTTP routes — `AuditService` is consumed internally (e.g. by chat/activity).
+
+## mcp · `/mcp` · `/api/mcp/tokens`
+
+The first-party MCP server (read + write since Phase 2). `POST /mcp` is served
+**outside** the `/api` prefix and gated by `McpAuthGuard` (a Proyekto PAT or a
+Supabase session JWT); the whole surface is **503** unless
+`MCP_ENABLED === 'true'`. Writes require an opt-in `*:write` scope on the PAT plus
+the live Proyekto permission. PAT-management routes use `SupabaseAuthGuard` and
+are owner-scoped. Full page: [MCP Server](./mcp.md).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| POST | /mcp | McpAuth (PAT or JWT) | Stateless Streamable-HTTP JSON-RPC (tools/resources/prompts) |
+| GET | /mcp | McpAuth | **405** — stateless mode has no SSE channel |
+| POST | /api/mcp/tokens | Supabase | Issue a PAT — returns the raw `pk_` token once |
+| GET | /api/mcp/tokens | Supabase | List own token metadata (never the hash) |
+| DELETE | /api/mcp/tokens/:id | Supabase | Revoke a PAT (204) |

@@ -35,6 +35,7 @@ jobs:
       MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
+      MCP_ENABLED: ${{ vars.MCP_ENABLED }}
 
     steps:
       - name: Checkout
@@ -153,6 +154,18 @@ jobs:
             echo "Google Calendar/Meet OAuth enabled for this deploy."
           else
             echo "Google OAuth disabled (create the GOOGLE_OAUTH_* secrets, then set the GOOGLE_OAUTH_ENABLED repo var to enable)."
+          fi
+
+          # First-party MCP server (read-only Phase 1). Gated on the MCP_ENABLED
+          # repo var. No dedicated secret — PATs live in the DB and the module
+          # reuses the existing SUPABASE_* / SUPABASE_JWT_SECRET credentials.
+          # Until the repo var is set, /mcp returns 503 and PAT endpoints deny,
+          # so the module ships dark. To enable: set the MCP_ENABLED repo var.
+          if [[ -n "${MCP_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},MCP_ENABLED=true"
+            echo "MCP server enabled for this deploy."
+          else
+            echo "MCP server disabled (set the MCP_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

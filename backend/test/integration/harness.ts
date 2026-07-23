@@ -21,7 +21,7 @@ import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 
 import { AppModule } from '../../src/app.module';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
@@ -96,7 +96,10 @@ export class Harness {
     // Mirror the production request pipeline (src/main.ts) so route prefixes,
     // validation, the {data} envelope, and error shapes match prod exactly.
     app.setGlobalPrefix('api', {
-      exclude: [{ path: '/', method: RequestMethod.GET }],
+      exclude: [
+        { path: '/', method: RequestMethod.GET },
+        { path: 'mcp', method: RequestMethod.ALL },
+      ],
     });
     app.useGlobalPipes(
       new ValidationPipe({
@@ -294,6 +297,33 @@ export class Harness {
       .insert({ task_id: taskId, assignee_id: assigneeId });
     if (error) throw new Error(`addTaskAssignee failed: ${error.message}`);
     // No id column (PK is task_id+assignee_id) — cleaned via task-delete cascade.
+  }
+
+  /** Mint an MCP Personal Access Token row directly (service-role) and return
+   * the raw `pk_` value the McpAuthGuard will resolve by sha256 hash. */
+  async createMcpToken(
+    userId: string,
+    scopes: string[],
+  ): Promise<{ raw: string; id: string }> {
+    const raw = 'pk_' + randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(raw).digest('hex');
+    const { data, error } = await this.admin
+      .from('mcp_personal_access_tokens')
+      .insert({
+        user_id: userId,
+        name: `itest ${this.runId}`,
+        token_hash: tokenHash,
+        token_prefix: raw.slice(0, 11),
+        scopes,
+      })
+      .select('id')
+      .single();
+    if (error || !data)
+      throw new Error(`createMcpToken failed: ${error?.message}`);
+    return {
+      raw,
+      id: this.track('mcp_personal_access_tokens', data.id as string),
+    };
   }
 
   /** Read the roadmap's current updated_at (the revision token). */
