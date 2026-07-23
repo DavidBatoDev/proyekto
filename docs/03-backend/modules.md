@@ -40,7 +40,7 @@ R2**, not Supabase Storage.
 | `realtime` | Room-join authorize + event publisher | *(none — HTTP to the Worker)* |
 | `audit` | Central project activity/audit log | `project_activity_log` |
 | `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
-| `mcp` | First-party read-only MCP server + Personal Access Tokens | `mcp_personal_access_tokens` |
+| `mcp` | First-party read + write MCP server + Personal Access Tokens | `mcp_personal_access_tokens` |
 
 ## Identity & accounts
 
@@ -175,11 +175,12 @@ outbox writes gate on `KNOWLEDGE_INGEST_ENABLED` and the cron endpoint denies al
 callers until `KNOWLEDGE_INGEST_SECRET` is set. Consumed by roadmap AI and the `mcp`
 module. See [Agent & Roadmap AI](../05-agent-ai/README.md).
 
-**`mcp`** — the first-party **read-only** Proyekto MCP server (`POST /mcp`) plus
-Personal Access Token management (`/api/mcp/tokens`, table
-`mcp_personal_access_tokens`). Reuses the projects/roadmaps/chat/knowledge services
-in-process so every tool re-checks live authorization; ships dark behind
-`MCP_ENABLED`. Full page: [MCP Server](./mcp.md).
+**`mcp`** — the first-party **read + write** Proyekto MCP server (`POST /mcp`)
+plus Personal Access Token management (`/api/mcp/tokens`, table
+`mcp_personal_access_tokens`). Reuses the projects/roadmaps/chat/knowledge/task
+services in-process so every tool re-checks live authorization; writes are gated
+by opt-in `*:write` PAT scopes (Phase 2). Ships dark behind `MCP_ENABLED`. Full
+page: [MCP Server](./mcp.md).
 
 ## Structural notes
 

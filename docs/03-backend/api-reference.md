@@ -249,10 +249,12 @@ No HTTP routes — `AuditService` is consumed internally (e.g. by chat/activity)
 
 ## mcp · `/mcp` · `/api/mcp/tokens`
 
-The first-party read-only MCP server. `POST /mcp` is served **outside** the `/api`
-prefix and gated by `McpAuthGuard` (a Proyekto PAT or a Supabase session JWT); the
-whole surface is **503** unless `MCP_ENABLED === 'true'`. PAT-management routes use
-`SupabaseAuthGuard` and are owner-scoped. Full page: [MCP Server](./mcp.md).
+The first-party MCP server (read + write since Phase 2). `POST /mcp` is served
+**outside** the `/api` prefix and gated by `McpAuthGuard` (a Proyekto PAT or a
+Supabase session JWT); the whole surface is **503** unless
+`MCP_ENABLED === 'true'`. Writes require an opt-in `*:write` scope on the PAT plus
+the live Proyekto permission. PAT-management routes use `SupabaseAuthGuard` and
+are owner-scoped. Full page: [MCP Server](./mcp.md).
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |

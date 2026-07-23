@@ -21,7 +21,7 @@ Supabase service role with authorization enforced in the service layer.
 | [patterns.md](./patterns.md) | Repository pattern, Symbol DI tokens, `import type`, DTOs, status codes |
 | [modules.md](./modules.md) | The 27 feature modules — purpose, tables, dependencies |
 | [api-reference.md](./api-reference.md) | Every HTTP route, grouped by module |
-| [mcp.md](./mcp.md) | First-party read-only MCP server — endpoint, auth, scopes, tool catalog, PATs |
+| [mcp.md](./mcp.md) | First-party read + write MCP server — endpoint, auth, scopes, tool catalog, PATs |
 
 ## Glossary
 
