@@ -26,6 +26,7 @@ import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-temp
 import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TeamsTeamIdRouteImport } from './routes/teams/$teamId'
+import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
@@ -167,6 +168,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const TeamsTeamIdRoute = TeamsTeamIdRouteImport.update({
   id: '/teams/$teamId',
   path: '/teams/$teamId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
+  id: '/settings/mcp-tokens',
+  path: '/settings/mcp-tokens',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
@@ -508,6 +514,7 @@ export interface FileRoutesByFullPath {
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
@@ -582,6 +589,7 @@ export interface FileRoutesByTo {
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/admin': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
@@ -657,6 +665,7 @@ export interface FileRoutesById {
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant/': typeof ConsultantIndexRoute
@@ -735,6 +744,7 @@ export interface FileRouteTypes {
     | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
+    | '/settings/mcp-tokens'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
@@ -809,6 +819,7 @@ export interface FileRouteTypes {
     | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
+    | '/settings/mcp-tokens'
     | '/admin'
     | '/consultant'
     | '/roadmap-templates'
@@ -883,6 +894,7 @@ export interface FileRouteTypes {
     | '/roadmap-templates/$slug'
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
+    | '/settings/mcp-tokens'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant/'
@@ -955,6 +967,7 @@ export interface RootRouteChildren {
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
@@ -1085,6 +1098,13 @@ declare module '@tanstack/react-router' {
       path: '/teams/$teamId'
       fullPath: '/teams/$teamId'
       preLoaderRoute: typeof TeamsTeamIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/mcp-tokens': {
+      id: '/settings/mcp-tokens'
+      path: '/settings/mcp-tokens'
+      fullPath: '/settings/mcp-tokens'
+      preLoaderRoute: typeof SettingsMcpTokensRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/appearance': {
@@ -1666,6 +1686,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsMcpTokensRoute: SettingsMcpTokensRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
