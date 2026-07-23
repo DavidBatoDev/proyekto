@@ -299,6 +299,20 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   GOOGLE_TOKEN_ENC_KEY?: string;
+
+  // ── Model Context Protocol (MCP) server — ships dark ────────────────────────
+  // Master kill switch for the first-party Proyekto MCP server. Unless set to
+  // 'true', the /mcp endpoint returns 503 and the PAT issuance endpoints deny
+  // all callers, so the module lands cold and is activated in a later step.
+  @IsOptional()
+  @IsString()
+  MCP_ENABLED?: string;
+
+  // Upper bound on rows returned by a single paginated MCP read tool. Optional;
+  // the module falls back to a conservative built-in default when unset.
+  @IsOptional()
+  @IsNumber()
+  MCP_MAX_PAGE_SIZE?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

@@ -19,6 +19,14 @@ export class RequestTimeoutInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request>();
 
+    // The MCP endpoint streams its own response via the SDK transport and can
+    // hold the connection open longer than a normal REST call; a mid-stream
+    // timeout here would try to send after headers are already flushed. It has
+    // its own guard, so it opts out of the global request timeout.
+    if (request.path === '/mcp') {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       timeout(this.timeoutMs),
       catchError((error: unknown) => {

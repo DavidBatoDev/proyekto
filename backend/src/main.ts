@@ -16,7 +16,14 @@ async function bootstrap() {
 
   // Security & performance middleware
   app.use(helmet());
-  app.use(compression());
+  // Compression is skipped for /mcp: the MCP Streamable-HTTP transport writes
+  // its own (possibly streamed) JSON-RPC response, which must not be buffered
+  // or transformed by the compression middleware.
+  app.use(
+    compression({
+      filter: (req, res) => req.path !== '/mcp' && compression.filter(req, res),
+    }),
+  );
 
   // CORS
   const rawOrigins = config.get<string>(
@@ -36,9 +43,14 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global prefix
+  // Global prefix. `/mcp` is served off the /api tree so MCP hosts and (later)
+  // OAuth discovery point at a clean root path; the PAT management routes stay
+  // under /api/mcp/tokens.
   app.setGlobalPrefix('api', {
-    exclude: [{ path: '/', method: RequestMethod.GET }],
+    exclude: [
+      { path: '/', method: RequestMethod.GET },
+      { path: 'mcp', method: RequestMethod.ALL },
+    ],
   });
 
   // Global validation pipe

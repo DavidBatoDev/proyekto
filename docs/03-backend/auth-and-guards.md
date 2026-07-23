@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-07-19 · **Status:** current
+> **Last updated:** 2026-07-23 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -17,6 +17,7 @@ fallback to a Supabase call, and also accepts a guest-session header.
 | `ConsultantOnlyGuard` | `consultant-only.guard.ts` | `profiles.is_consultant_verified` (a capability flag, **not** active persona) |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
 | `PersonaGuard` | `persona.guard.ts` | `profiles.active_persona` ∈ `@Personas(...)` — **defined but not used by any controller today** |
+| `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`) **or** a Supabase session JWT — gates the `/mcp` endpoint |
 
 > **⚠️ Note:** the older docs claimed `PersonaGuard` gated many routes. It exists and
 > works, but **no controller currently applies it**; persona-scoped behavior is
@@ -63,6 +64,27 @@ AND is_active = true`, selecting `access_level`, and **attaches `request.adminPr
 for the handler. Applied per-route on the admin console (e.g. application approval,
 role grants, matchmaking). `GET /api/admin/me` deliberately runs *without* it so any
 user can check whether they're an admin.
+
+## McpAuthGuard & PAT auth
+
+The [MCP server](./mcp.md) has its own guard,
+[`McpAuthGuard`](../../backend/src/modules/mcp/mcp-auth.guard.ts), because it
+authenticates MCP hosts (Claude Code, Codex) rather than the web/mobile app. It
+runs three checks in order and attaches both `request.user` and `request.mcpScopes`:
+
+1. **Kill switch** — unless `MCP_ENABLED === 'true'`, the whole `/mcp` surface is
+   **503**.
+2. **Proyekto PAT** (primary) — a `Bearer pk_…` token resolved by sha256 hash to
+   its owner + stored scopes. Identity is derived here, **never** from tool inputs.
+3. **Supabase session JWT** (fallback) — a live HS256 access token verified
+   locally, mirroring `SupabaseAuthGuard`. Convenient for dev / the MCP Inspector;
+   it is granted **all** read scopes so a logged-in developer isn't blocked, while
+   PATs stay the least-privilege path for real hosts.
+
+Scopes on the token are **necessary but not sufficient**: every MCP tool
+additionally re-checks the live Proyekto project/roadmap permission through the
+same service-layer authorization described below. The PAT-management routes
+(`/api/mcp/tokens`) use the ordinary `SupabaseAuthGuard`, not this guard.
 
 ## Decorators
 

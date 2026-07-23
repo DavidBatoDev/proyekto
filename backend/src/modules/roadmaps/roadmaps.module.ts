@@ -98,6 +98,14 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     TaskExtrasService,
     { provide: TASK_EXTRAS_REPOSITORY, useClass: TaskExtrasRepositorySupabase },
   ],
-  exports: [RoadmapAuthorizationService],
+  exports: [
+    RoadmapAuthorizationService,
+    // Read-surface services reused in-process by the MCP module. All carry
+    // their own view-level authorization.
+    RoadmapsService,
+    RoadmapAiService,
+    RoadmapAiProjectContextService,
+    RoadmapAiKnowledgeService,
+  ],
 })
 export class RoadmapsModule {}

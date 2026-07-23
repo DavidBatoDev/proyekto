@@ -1,8 +1,8 @@
 # Modules
 
-> **Last updated:** 2026-07-19 · **Status:** current
+> **Last updated:** 2026-07-23 · **Status:** current
 
-The backend is **24 feature modules** under
+The backend is **27 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
@@ -20,6 +20,7 @@ R2**, not Supabase Storage.
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
 | `roadmaps` | Roadmap graph engine **+** roadmap AI | `roadmap_*`, `roadmap_ai_*`, comments/attachments |
 | `roadmap-shares` | Public/tokenized share links + shared commenting | `roadmap_shares`, `roadmap_share_access` |
+| `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
 | `consultants` | Public consultant directory | `profiles` |
@@ -38,6 +39,8 @@ R2**, not Supabase Storage.
 | `uploads` | File uploads → Cloudflare R2 (public/private) | *(none — R2 + reads `profiles`/`projects`)* |
 | `realtime` | Room-join authorize + event publisher | *(none — HTTP to the Worker)* |
 | `audit` | Central project activity/audit log | `project_activity_log` |
+| `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
+| `mcp` | First-party read-only MCP server + Personal Access Tokens | `mcp_personal_access_tokens` |
 
 ## Identity & accounts
 
@@ -92,6 +95,13 @@ and [Agent & Roadmap AI](../05-agent-ai/README.md).
 
 **`roadmap-shares`** — tokenized public share links (`roadmap_shares`,
 `roadmap_share_access`) and commenting on shared epics/features.
+
+**`roadmap-templates`** — the public roadmap-template gallery: published templates
+(`roadmap_public_templates`) with versions, categories, tags, ratings, reports,
+usage and view tracking (`roadmap_template_versions`, `roadmap_template_categories`,
+`roadmap_template_tags`, `roadmap_public_template_tags`, `roadmap_template_ratings`,
+`roadmap_template_reports`, `roadmap_template_usages`, `roadmap_template_views`).
+Clones a template into a new `roadmaps` graph.
 
 ## Teams, time & money
 
@@ -158,13 +168,26 @@ hiring flow (`project_invites`). Consultant-only routes use `ConsultantOnlyGuard
 update checks; CI registration guarded by `OtaPublishGuard`. See
 [Mobile → OTA updates](../09-mobile/README.md).
 
+**`knowledge`** — a `@Global` project-knowledge RAG pipeline: an outbox
+(`ai_knowledge_outbox`) ingests chat/comments/activity/briefs into
+`ai_knowledge_chunks` and serves hybrid (semantic + keyword) retrieval. Ships dark —
+outbox writes gate on `KNOWLEDGE_INGEST_ENABLED` and the cron endpoint denies all
+callers until `KNOWLEDGE_INGEST_SECRET` is set. Consumed by roadmap AI and the `mcp`
+module. See [Agent & Roadmap AI](../05-agent-ai/README.md).
+
+**`mcp`** — the first-party **read-only** Proyekto MCP server (`POST /mcp`) plus
+Personal Access Token management (`/api/mcp/tokens`, table
+`mcp_personal_access_tokens`). Reuses the projects/roadmaps/chat/knowledge services
+in-process so every tool re-checks live authorization; ships dark behind
+`MCP_ENABLED`. Full page: [MCP Server](./mcp.md).
+
 ## Structural notes
 
 - **Co-located services** (no separate `*.service.ts`): `uploads`, `applications`, `guests`.
-- **No repository** (service queries Supabase directly): `consultants`, `marketplace`, `notifications`.
+- **No repository** (service queries Supabase directly): `consultants`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
 - **Global modules**: `SupabaseModule`, `RedisModule`, `R2Module`,
-  `RealtimePublisherModule`, `AuditModule`.
+  `RealtimePublisherModule`, `AuditModule`, `KnowledgeModule`.
 
 For the HTTP routes each module exposes, see [api-reference.md](./api-reference.md).

@@ -31,6 +31,7 @@
     "@aws-sdk/client-s3": "^3.1073.0",
     "@aws-sdk/s3-request-presigner": "^3.1073.0",
     "@google-cloud/opentelemetry-cloud-trace-exporter": "^3.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
@@ -52,7 +53,8 @@
     "jsonwebtoken": "^9.0.3",
     "reflect-metadata": "^0.2.2",
     "rrule": "^2.8.1",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
