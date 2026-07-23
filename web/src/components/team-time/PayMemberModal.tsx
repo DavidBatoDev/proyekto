@@ -16,8 +16,10 @@ import {
 	type PayoutMethod,
 	payoutsService,
 } from "@/services/payouts.service";
+import type { PayPeriodConfig } from "@/services/teams.service";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { uploadService } from "@/services/upload.service";
+import { payPeriodForDate, payPeriodLabel } from "./log-period";
 import { formatMoney, logFee } from "./time-utils";
 
 interface PayMemberModalProps {
@@ -27,6 +29,8 @@ interface PayMemberModalProps {
 	memberLabel: string;
 	currency: string;
 	logs: TaskTimeLog[];
+	/** Team cut-off schedule, used to break a multi-period payout down. */
+	payPeriodConfig?: PayPeriodConfig | null;
 	onClose: () => void;
 	onSuccess: (payout: Payout) => void;
 }
@@ -57,6 +61,7 @@ export function PayMemberModal({
 	memberLabel,
 	currency,
 	logs,
+	payPeriodConfig,
 	onClose,
 	onSuccess,
 }: PayMemberModalProps) {
@@ -107,6 +112,37 @@ export function PayMemberModal({
 		() => logs.reduce((sum, log) => sum + (log.duration_seconds ?? 0), 0),
 		[logs],
 	);
+
+	// Break the payout down by cut-off period so a multi-period payment is clear.
+	const breakdown = useMemo(() => {
+		const map = new Map<
+			string,
+			{ key: string; label: string; logs: number; seconds: number; amount: number; sortKey: number }
+		>();
+		for (const log of logs) {
+			const { month, period } = payPeriodForDate(
+				payPeriodConfig,
+				new Date(log.started_at),
+			);
+			const key = `${month}:${period.id}`;
+			let b = map.get(key);
+			if (!b) {
+				b = {
+					key,
+					label: payPeriodLabel(period),
+					logs: 0,
+					seconds: 0,
+					amount: 0,
+					sortKey: period.from.getTime(),
+				};
+				map.set(key, b);
+			}
+			b.logs += 1;
+			b.seconds += log.duration_seconds ?? 0;
+			b.amount += logFee(log);
+		}
+		return Array.from(map.values()).sort((a, b) => a.sortKey - b.sortKey);
+	}, [logs, payPeriodConfig]);
 
 	if (!isOpen) return null;
 
@@ -201,6 +237,34 @@ export function PayMemberModal({
 							</div>
 						</div>
 					</div>
+
+					{/* Cut-off breakdown (only when the payment spans multiple cut-offs) */}
+					{breakdown.length > 1 && (
+						<div className="rounded-xl border border-slate-200 p-3">
+							<div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+								Across {breakdown.length} cut-offs
+							</div>
+							<ul className="space-y-1">
+								{breakdown.map((b) => (
+									<li
+										key={b.key}
+										className="flex items-center justify-between gap-3 text-xs"
+									>
+										<span className="text-slate-600">
+											{b.label}{" "}
+											<span className="text-slate-400">
+												· {b.logs} log{b.logs === 1 ? "" : "s"} ·{" "}
+												{(b.seconds / 3600).toFixed(2)}h
+											</span>
+										</span>
+										<span className="font-semibold tabular-nums text-slate-700">
+											{formatMoney(b.amount, currency)}
+										</span>
+									</li>
+								))}
+							</ul>
+						</div>
+					)}
 
 					{/* Method */}
 					<div className="space-y-1.5">

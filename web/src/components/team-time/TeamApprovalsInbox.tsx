@@ -9,7 +9,7 @@ import {
 	Wallet,
 	X,
 } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import type { TaskTimeLog, TimeLogStatus } from "@/services/team-time.service";
 import { BillableAmount } from "./BillableAmount";
@@ -152,6 +152,13 @@ export function TeamApprovalsInbox({
 }: TeamApprovalsInboxProps) {
 	const groups = useMemo(() => buildGroups(logs), [logs]);
 	const [expanded, setExpanded] = useState<Set<string>>(new Set());
+	// When the list narrows to a single member (e.g. arriving from Payouts →
+	// Review, or Manage Rates → View logs), open that member's drilldown so the
+	// logs are visible without an extra click. Re-runs only when the groups set
+	// changes, so a manual collapse still sticks.
+	useEffect(() => {
+		if (groups.length === 1) setExpanded(new Set([groups[0].memberId]));
+	}, [groups]);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 

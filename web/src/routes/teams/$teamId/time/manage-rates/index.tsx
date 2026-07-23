@@ -327,9 +327,12 @@ function ManageRatesTab() {
 				canManageRates
 				pendingMemberById={pendingMemberById}
 				onViewLogs={(m) => {
+					// Team Logs, pre-filtered to this member (replaces the old
+					// per-member sub-page).
 					void navigate({
-						to: "/teams/$teamId/time/manage-rates/$userId",
-						params: { teamId, userId: m.user_id },
+						to: "/teams/$teamId/time/team-logs",
+						params: { teamId },
+						search: { member: m.user_id },
 					});
 				}}
 				onOpenAddRate={() => setAddOpen(true)}

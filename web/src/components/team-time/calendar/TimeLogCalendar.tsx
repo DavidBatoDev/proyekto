@@ -11,12 +11,19 @@ import {
 	startOfMonth,
 	startOfWeek,
 } from "date-fns";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+	CalendarDays,
+	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
+	Loader2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { teamTimeService } from "@/services/team-time.service";
 import type { ReviewOnlyDecision } from "../TeamApprovalsInbox";
 import { initialsFromName, statusBadgeClass } from "../time-utils";
+import { TaskDetailPeek } from "../TaskDetailPeek";
 import { DayLogsModal } from "./DayLogsModal";
 
 type CalendarView = "month" | "week";
@@ -43,6 +50,16 @@ interface TimeLogCalendarProps {
 	onPayMember?: (memberId: string, logIds: string[], currency: string) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	// ─── My mode only — member row actions in the day modal ──────────────────
+	onStopLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onEditLog?: (log: TaskTimeLog) => void;
+	onDeleteLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onChangeTask?: (log: TaskTimeLog) => void;
+	onStartTimer?: () => void;
+	/** My mode — add a manual log for a specific day (forgot to log). */
+	onAddLogForDay?: (date: Date) => void;
+	hasActiveLog?: boolean;
+	loadingTasks?: boolean;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -72,16 +89,30 @@ export function TimeLogCalendar({
 	onPayMember,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
+	onStopLog,
+	onEditLog,
+	onDeleteLog,
+	onChangeTask,
+	onStartTimer,
+	onAddLogForDay,
+	hasActiveLog,
+	loadingTasks,
 }: TimeLogCalendarProps) {
 	const [view, setView] = useState<CalendarView>("month");
 	// Anchor is any date within the focused month/week.
 	const [anchor, setAnchor] = useState<Date>(() => new Date());
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const [detailLog, setDetailLog] = useState<TaskTimeLog | null>(null);
 	const [dayModal, setDayModal] = useState<{
 		date: Date;
 		highlightLogId: string;
 	} | null>(null);
 	const openDayModal = (log: TaskTimeLog) =>
 		setDayModal({ date: new Date(log.started_at), highlightLogId: log.id });
+	// Open the day detail for a whole day (empty days included) — lets members
+	// review a day or add a log for a day they forgot, without needing a chip.
+	const openDayForDate = (date: Date) =>
+		setDayModal({ date, highlightLogId: "" });
 
 	// Visible range: the full weeks covering the month, or the single week.
 	const range = useMemo(() => {
@@ -195,9 +226,28 @@ export function TimeLogCalendar({
 						<ChevronRight className="h-4 w-4" />
 					</button>
 				</div>
-				<div className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-					<CalendarDays className="h-4 w-4 text-slate-400" />
-					{rangeLabel}
+				<div className="relative">
+					<button
+						type="button"
+						onClick={() => setPickerOpen((v) => !v)}
+						className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+						aria-expanded={pickerOpen}
+						title="Jump to month / year"
+					>
+						<CalendarDays className="h-4 w-4 text-slate-400" />
+						{rangeLabel}
+						<ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+					</button>
+					{pickerOpen && (
+						<MonthYearPicker
+							anchor={anchor}
+							onPick={(date) => {
+								setAnchor(date);
+								setPickerOpen(false);
+							}}
+							onClose={() => setPickerOpen(false)}
+						/>
+					)}
 				</div>
 				{logsQuery.isFetching && (
 					<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
@@ -232,6 +282,7 @@ export function TimeLogCalendar({
 					logsByDay={logsByDay}
 					mode={mode}
 					onSelectLog={openDayModal}
+					onSelectDay={openDayForDate}
 				/>
 			) : (
 				<WeekView
@@ -239,11 +290,13 @@ export function TimeLogCalendar({
 					logsByDay={logsByDay}
 					mode={mode}
 					onSelectLog={openDayModal}
+					onSelectDay={openDayForDate}
 				/>
 			)}
 
 			<DayLogsModal
 				isOpen={dayModal !== null}
+				date={dayModal?.date ?? null}
 				dateLabel={
 					dayModal ? DAY_MODAL_DATE_FORMATTER.format(dayModal.date) : ""
 				}
@@ -259,8 +312,26 @@ export function TimeLogCalendar({
 				onClose={() => setDayModal(null)}
 				onReviewLogs={mode === "team" ? onReviewLogs : undefined}
 				onPayMember={mode === "team" ? onPayMember : undefined}
+				onStopLog={mode === "my" ? onStopLog : undefined}
+				onEditLog={mode === "my" ? onEditLog : undefined}
+				onDeleteLog={mode === "my" ? onDeleteLog : undefined}
+				onChangeTask={mode === "my" ? onChangeTask : undefined}
+				onStartTimer={mode === "my" ? onStartTimer : undefined}
+				onAddLogForDay={mode === "my" ? onAddLogForDay : undefined}
+				hasActiveLog={hasActiveLog}
+				loadingTasks={loadingTasks}
+				onViewTaskDetails={(log) => setDetailLog(log)}
 				onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 				canOpenTaskInRoadmap={canOpenTaskInRoadmap}
+			/>
+
+			<TaskDetailPeek
+				log={detailLog}
+				onClose={() => setDetailLog(null)}
+				onOpenInRoadmap={(log) => {
+					setDetailLog(null);
+					onOpenTaskInRoadmap(log);
+				}}
 			/>
 		</div>
 	);
@@ -280,7 +351,14 @@ function EventChip({
 	return (
 		<button
 			type="button"
-			onClick={onSelectLog ? () => onSelectLog(log) : undefined}
+			onClick={
+				onSelectLog
+					? (e) => {
+							e.stopPropagation();
+							onSelectLog(log);
+						}
+					: undefined
+			}
 			className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium ${statusBadgeClass(
 				tone,
 			)} ${onSelectLog ? "hover:brightness-95" : "cursor-default"}`}
@@ -313,16 +391,110 @@ function MemberDot({ name, url }: { name: string; url: string | null }) {
 	);
 }
 
+const MONTH_ABBR = [
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+];
+
+/**
+ * Popover to jump the calendar to any month/year. Year is steppable with
+ * arrows (so the user can jump years), months are a 3×4 grid. Selecting a
+ * month anchors the calendar to that month's 1st.
+ */
+function MonthYearPicker({
+	anchor,
+	onPick,
+	onClose,
+}: {
+	anchor: Date;
+	onPick: (date: Date) => void;
+	onClose: () => void;
+}) {
+	const [year, setYear] = useState(anchor.getFullYear());
+	const selMonth = anchor.getMonth();
+	const selYear = anchor.getFullYear();
+	const now = new Date();
+	return (
+		<>
+			{/* click-away backdrop */}
+			<button
+				type="button"
+				aria-label="Close"
+				onClick={onClose}
+				className="fixed inset-0 z-40 cursor-default"
+			/>
+			<div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+				<div className="mb-1.5 flex items-center justify-between">
+					<button
+						type="button"
+						onClick={() => setYear((y) => y - 1)}
+						className="rounded p-1 text-slate-400 hover:bg-slate-100"
+						aria-label="Previous year"
+					>
+						<ChevronLeft className="h-4 w-4" />
+					</button>
+					<span className="text-sm font-semibold tabular-nums text-slate-800">
+						{year}
+					</span>
+					<button
+						type="button"
+						onClick={() => setYear((y) => y + 1)}
+						className="rounded p-1 text-slate-400 hover:bg-slate-100"
+						aria-label="Next year"
+					>
+						<ChevronRight className="h-4 w-4" />
+					</button>
+				</div>
+				<div className="grid grid-cols-3 gap-1">
+					{MONTH_ABBR.map((m, i) => {
+						const active = i === selMonth && year === selYear;
+						const isThisMonth =
+							i === now.getMonth() && year === now.getFullYear();
+						return (
+							<button
+								key={m}
+								type="button"
+								onClick={() => onPick(new Date(year, i, 1))}
+								className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+									active
+										? "bg-sky-600 text-white"
+										: isThisMonth
+											? "text-sky-700 ring-1 ring-inset ring-sky-300 hover:bg-sky-50"
+											: "text-slate-600 hover:bg-slate-100"
+								}`}
+							>
+								{m}
+							</button>
+						);
+					})}
+				</div>
+			</div>
+		</>
+	);
+}
+
 function MonthView({
 	anchor,
 	logsByDay,
 	mode,
 	onSelectLog,
+	onSelectDay,
 }: {
 	anchor: Date;
 	logsByDay: Map<string, TaskTimeLog[]>;
 	mode: "my" | "team";
 	onSelectLog?: (log: TaskTimeLog) => void;
+	onSelectDay?: (date: Date) => void;
 }) {
 	const days = useMemo(
 		() =>
@@ -355,7 +527,17 @@ function MonthView({
 					return (
 						<div
 							key={day.toISOString()}
-							className={`min-h-24 border-b border-r border-slate-100 p-1.5 ${
+							onClick={() => onSelectDay?.(day)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									onSelectDay?.(day);
+								}
+							}}
+							role={onSelectDay ? "button" : undefined}
+							tabIndex={onSelectDay ? 0 : undefined}
+							title={onSelectDay ? `Open ${format(day, "MMM d")}` : undefined}
+							className={`min-h-24 cursor-pointer border-b border-r border-slate-100 p-1.5 transition-colors hover:bg-sky-50/40 ${
 								inMonth ? "bg-white" : "bg-slate-50/50"
 							}`}
 						>
@@ -376,17 +558,13 @@ function MonthView({
 										key={log.id}
 										log={log}
 										mode={mode}
-										onSelectLog={onSelectLog}
+										onSelectLog={(l) => onSelectLog?.(l)}
 									/>
 								))}
 								{dayLogs.length > MAX_CHIPS && (
-									<button
-										type="button"
-										onClick={() => onSelectLog?.(dayLogs[0])}
-										className="px-1.5 text-[10px] font-medium text-slate-400 hover:text-slate-600 hover:underline"
-									>
+									<div className="px-1.5 text-[10px] font-medium text-slate-400">
 										+{dayLogs.length - MAX_CHIPS} more
-									</button>
+									</div>
 								)}
 							</div>
 						</div>
@@ -402,11 +580,13 @@ function WeekView({
 	logsByDay,
 	mode,
 	onSelectLog,
+	onSelectDay,
 }: {
 	weekStart: Date;
 	logsByDay: Map<string, TaskTimeLog[]>;
 	mode: "my" | "team";
 	onSelectLog?: (log: TaskTimeLog) => void;
+	onSelectDay?: (date: Date) => void;
 }) {
 	const days = useMemo(
 		() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
@@ -437,7 +617,8 @@ function WeekView({
 
 	const posFor = (log: TaskTimeLog) => {
 		const s = new Date(log.started_at);
-		const e = log.ended_at ? new Date(log.ended_at) : s;
+		// Running logs have no end — draw them up to "now" so they're visible.
+		const e = log.ended_at ? new Date(log.ended_at) : new Date();
 		const startMins = (s.getHours() - startHour) * 60 + s.getMinutes();
 		const endMins = (e.getHours() - startHour) * 60 + e.getMinutes();
 		const top = (startMins / 60) * ROW_H;
@@ -497,7 +678,17 @@ function WeekView({
 					return (
 						<div
 							key={day.toISOString()}
-							className="relative border-r border-slate-100"
+							onClick={() => onSelectDay?.(day)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									onSelectDay?.(day);
+								}
+							}}
+							role={onSelectDay ? "button" : undefined}
+							tabIndex={onSelectDay ? 0 : undefined}
+							title={onSelectDay ? `Open ${format(day, "MMM d")}` : undefined}
+							className="relative cursor-pointer border-r border-slate-100 transition-colors hover:bg-sky-50/30"
 							style={{ height: gridHeight }}
 						>
 							{/* Hour gridlines */}
@@ -510,35 +701,41 @@ function WeekView({
 									/>
 								),
 							)}
-							{/* Events */}
-							{dayLogs
-								.filter((l) => l.ended_at)
-								.map((log) => {
-									const { top, height } = posFor(log);
-									return (
-										<button
-											key={log.id}
-											type="button"
-											onClick={onSelectLog ? () => onSelectLog(log) : undefined}
-											className={`absolute inset-x-1 overflow-hidden rounded px-1 py-0.5 text-left text-[10px] font-medium ${statusBadgeClass(
-												log.status,
-											)} ${onSelectLog ? "hover:brightness-95" : "cursor-default"}`}
-											style={{ top, height }}
-										>
-											<span className="flex items-center gap-1 truncate">
-												{mode === "team" && log.member && (
-													<MemberDot
-														name={
-															log.member.display_name || log.member.email || "?"
-														}
-														url={log.member.avatar_url}
-													/>
-												)}
-												<span className="truncate">{eventLabel(log)}</span>
-											</span>
-										</button>
-									);
-								})}
+							{/* Events (running logs draw up to now) */}
+							{dayLogs.map((log) => {
+								const { top, height } = posFor(log);
+								const tone = log.ended_at ? log.status : "running";
+								return (
+									<button
+										key={log.id}
+										type="button"
+										onClick={
+											onSelectLog
+												? (e) => {
+														e.stopPropagation();
+														onSelectLog(log);
+													}
+												: undefined
+										}
+										className={`absolute inset-x-1 overflow-hidden rounded px-1 py-0.5 text-left text-[10px] font-medium ${statusBadgeClass(
+											tone,
+										)} ${onSelectLog ? "hover:brightness-95" : "cursor-default"}`}
+										style={{ top, height }}
+									>
+										<span className="flex items-center gap-1 truncate">
+											{mode === "team" && log.member && (
+												<MemberDot
+													name={
+														log.member.display_name || log.member.email || "?"
+													}
+													url={log.member.avatar_url}
+												/>
+											)}
+											<span className="truncate">{eventLabel(log)}</span>
+										</span>
+									</button>
+								);
+							})}
 						</div>
 					);
 				})}

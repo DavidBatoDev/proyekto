@@ -14,6 +14,22 @@ function maybeRewriteRateSchemaError(message: string): string {
 export type TeamRole = "owner" | "admin" | "member";
 export type ProjectTeamDefaultRole = "admin" | "editor" | "commenter" | "viewer";
 
+/** A payout cut-off period. `end_day` is a day-of-month or "EOM" (end of month). */
+export type PayPeriodEndDay = number | "EOM";
+export interface PayPeriodDef {
+	id: string;
+	label: string;
+	start_day: number;
+	end_day: PayPeriodEndDay;
+	pay_day: number;
+	/** 0 = pay in the same month as the period, 1 = next month, etc. */
+	pay_month_offset: number;
+}
+export interface PayPeriodConfig {
+	cadence: "monthly";
+	periods: PayPeriodDef[];
+}
+
 export interface Team {
 	id: string;
 	owner_id: string;
@@ -24,6 +40,7 @@ export interface Team {
 	time_tracking_enabled: boolean;
 	retroactive_log_days?: number | null;
 	default_currency?: string | null;
+	pay_period_config?: PayPeriodConfig | null;
 	created_at: string;
 	updated_at: string;
 	// Populated by listMyTeams. Other endpoints that return a single
@@ -195,6 +212,7 @@ export async function updateTeam(
 		time_tracking_enabled?: boolean;
 		retroactive_log_days?: number;
 		default_currency?: "USD" | "CAD" | "PHP";
+		pay_period_config?: PayPeriodConfig | null;
 	},
 ): Promise<Team> {
 	try {
@@ -289,8 +307,8 @@ export interface UpdateTeamMemberRatePayload {
 	custom_id?: string;
 	start_date?: string;
 	end_date?: string | null;
-	weekly_limit_hours?: number;
-	monthly_limit_hours?: number;
+	weekly_limit_hours?: number | null;
+	monthly_limit_hours?: number | null;
 	overtime_requires_approval?: boolean;
 }
 

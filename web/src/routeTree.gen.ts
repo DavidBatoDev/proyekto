@@ -73,6 +73,7 @@ import { Route as TeamsTeamIdSettingsLogsRouteImport } from './routes/teams/$tea
 import { Route as TeamsTeamIdSettingsGeneralRouteImport } from './routes/teams/$teamId/settings/general'
 import { Route as ProjectRoadmapConvertRoadmapIdRouteImport } from './routes/project/roadmap/convert/$roadmapId'
 import { Route as ProjectProjectIdWorkItemsRoadmapIdRouteImport } from './routes/project/$projectId/work-items/$roadmapId'
+import { Route as ProjectProjectIdSettingsTimeRouteImport } from './routes/project/$projectId/settings/time'
 import { Route as ProjectProjectIdSettingsTeamsRouteImport } from './routes/project/$projectId/settings/teams'
 import { Route as ProjectProjectIdSettingsTeamRouteImport } from './routes/project/$projectId/settings/team'
 import { Route as ProjectProjectIdSettingsPermissionsRouteImport } from './routes/project/$projectId/settings/permissions'
@@ -414,6 +415,12 @@ const ProjectProjectIdWorkItemsRoadmapIdRoute =
     path: '/$roadmapId',
     getParentRoute: () => ProjectProjectIdWorkItemsRoute,
   } as any)
+const ProjectProjectIdSettingsTimeRoute =
+  ProjectProjectIdSettingsTimeRouteImport.update({
+    id: '/settings/time',
+    path: '/settings/time',
+    getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
 const ProjectProjectIdSettingsTeamsRoute =
   ProjectProjectIdSettingsTeamsRouteImport.update({
     id: '/settings/teams',
@@ -534,6 +541,7 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
+  '/project/$projectId/settings/time': typeof ProjectProjectIdSettingsTimeRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
   '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
@@ -606,6 +614,7 @@ export interface FileRoutesByTo {
   '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
+  '/project/$projectId/settings/time': typeof ProjectProjectIdSettingsTimeRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
   '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
@@ -683,6 +692,7 @@ export interface FileRoutesById {
   '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
+  '/project/$projectId/settings/time': typeof ProjectProjectIdSettingsTimeRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
   '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
@@ -761,6 +771,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
+    | '/project/$projectId/settings/time'
     | '/project/$projectId/work-items/$roadmapId'
     | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
@@ -833,6 +844,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
+    | '/project/$projectId/settings/time'
     | '/project/$projectId/work-items/$roadmapId'
     | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
@@ -909,6 +921,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
+    | '/project/$projectId/settings/time'
     | '/project/$projectId/work-items/$roadmapId'
     | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
@@ -1416,6 +1429,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdWorkItemsRoadmapIdRouteImport
       parentRoute: typeof ProjectProjectIdWorkItemsRoute
     }
+    '/project/$projectId/settings/time': {
+      id: '/project/$projectId/settings/time'
+      path: '/settings/time'
+      fullPath: '/project/$projectId/settings/time'
+      preLoaderRoute: typeof ProjectProjectIdSettingsTimeRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/project/$projectId/settings/teams': {
       id: '/project/$projectId/settings/teams'
       path: '/settings/teams'
@@ -1567,6 +1587,7 @@ interface ProjectProjectIdRouteChildren {
   ProjectProjectIdSettingsPermissionsRoute: typeof ProjectProjectIdSettingsPermissionsRoute
   ProjectProjectIdSettingsTeamRoute: typeof ProjectProjectIdSettingsTeamRoute
   ProjectProjectIdSettingsTeamsRoute: typeof ProjectProjectIdSettingsTeamsRoute
+  ProjectProjectIdSettingsTimeRoute: typeof ProjectProjectIdSettingsTimeRoute
   ProjectProjectIdSettingsIndexRoute: typeof ProjectProjectIdSettingsIndexRoute
 }
 
@@ -1584,6 +1605,7 @@ const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
     ProjectProjectIdSettingsPermissionsRoute,
   ProjectProjectIdSettingsTeamRoute: ProjectProjectIdSettingsTeamRoute,
   ProjectProjectIdSettingsTeamsRoute: ProjectProjectIdSettingsTeamsRoute,
+  ProjectProjectIdSettingsTimeRoute: ProjectProjectIdSettingsTimeRoute,
   ProjectProjectIdSettingsIndexRoute: ProjectProjectIdSettingsIndexRoute,
 }
 

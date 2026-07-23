@@ -168,8 +168,9 @@ function TeamTimeLogDetailRoute() {
 					rightSlot={
 						isApprover ? (
 							<Link
-								to="/teams/$teamId/time/manage-rates/$userId"
-								params={{ teamId, userId: log.member_user_id }}
+								to="/teams/$teamId/time/team-logs"
+								params={{ teamId }}
+								search={{ member: log.member_user_id }}
 								className="text-sm text-sky-600 hover:underline"
 							>
 								Back to {log.member?.display_name ?? "member"}'s logs

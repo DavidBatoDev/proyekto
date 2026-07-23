@@ -1,9 +1,9 @@
-import { AlertTriangle, Check, RotateCcw, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Play, Plus, RotateCcw, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { BillableAmount } from "../BillableAmount";
-import { buildLogRowActions } from "../logRowActions";
+import { buildLogRowActions, buildMemberLogRowActions } from "../logRowActions";
 import { RowActionsMenu } from "../RowActionsMenu";
 import type { ReviewOnlyDecision } from "../TeamApprovalsInbox";
 import {
@@ -19,6 +19,8 @@ import {
 
 export interface DayLogsModalProps {
 	isOpen: boolean;
+	/** The day this modal represents (for "add a log for this day"). */
+	date?: Date | null;
 	dateLabel: string;
 	logs: TaskTimeLog[];
 	/** The log the user actually clicked — visually highlighted on open. */
@@ -35,6 +37,21 @@ export interface DayLogsModalProps {
 	onPayMember?: (memberId: string, logIds: string[], currency: string) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	/** Peek at the logged task's details (status/description/comments/etc.). */
+	onViewTaskDetails?: (log: TaskTimeLog) => void;
+	// ─── My mode: member row actions (mirror the list view's row menu) ───────
+	onStopLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onEditLog?: (log: TaskTimeLog) => void;
+	onDeleteLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onChangeTask?: (log: TaskTimeLog) => void;
+	/** Opens the start-timer flow (My mode only). */
+	onStartTimer?: () => void;
+	/** Opens the manual add-log flow for this day (My mode only). */
+	onAddLogForDay?: (date: Date) => void;
+	/** True when another timer is already running (blocks Edit, per the list). */
+	hasActiveLog?: boolean;
+	/** True while the row's project tasks are loading (blocks Change task). */
+	loadingTasks?: boolean;
 }
 
 /**
@@ -43,9 +60,14 @@ export interface DayLogsModalProps {
  * drilldown table, plus checkbox-driven bulk actions (approve/reject/reset/
  * pay) when review handlers are supplied — mirrors TeamApprovalsInbox's
  * floating bulk bar, just inline in the modal footer instead of floating.
+ *
+ * In "my" mode the row menu instead mirrors TeamMyLogsList's member actions
+ * (stop/change-task/edit/delete/open-in-roadmap) when the member callbacks
+ * are supplied, so the calendar reaches full parity with the list view.
  */
 export function DayLogsModal({
 	isOpen,
+	date,
 	dateLabel,
 	logs,
 	highlightLogId,
@@ -57,6 +79,15 @@ export function DayLogsModal({
 	onPayMember,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
+	onViewTaskDetails,
+	onStopLog,
+	onEditLog,
+	onDeleteLog,
+	onChangeTask,
+	onStartTimer,
+	onAddLogForDay,
+	hasActiveLog = false,
+	loadingTasks = false,
 }: DayLogsModalProps) {
 	const toast = useToast();
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -67,6 +98,11 @@ export function DayLogsModal({
 	}, [isOpen]);
 
 	const canBulkAct = mode === "team" && Boolean(onReviewLogs);
+	// In "my" mode, render the member row menu (stop/edit/delete/change-task)
+	// when the owning route supplies its handlers.
+	const canMemberAct =
+		mode === "my" &&
+		Boolean(onStopLog || onEditLog || onDeleteLog || onChangeTask);
 
 	const isEligible = (log: TaskTimeLog) =>
 		canBulkAct && Boolean(log.ended_at) && log.member_user_id !== currentUserId;
@@ -195,10 +231,18 @@ export function DayLogsModal({
 									onToggleSelect={toggleSelect}
 									onWarnClick={(message) => toast.warning(message)}
 									canBulkAct={canBulkAct}
+									canMemberAct={canMemberAct}
+									hasActiveLog={hasActiveLog}
+									loadingTasks={loadingTasks}
 									onReviewLogs={onReviewLogs}
 									onPayMember={onPayMember}
+									onStopLog={onStopLog}
+									onEditLog={onEditLog}
+									onDeleteLog={onDeleteLog}
+									onChangeTask={onChangeTask}
 									onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 									canOpenTaskInRoadmap={canOpenTaskInRoadmap}
+									onViewTaskDetails={onViewTaskDetails}
 								/>
 							))}
 						</tbody>
@@ -206,6 +250,36 @@ export function DayLogsModal({
 				</div>
 
 				<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+					{canMemberAct && (onAddLogForDay || onStartTimer) && (
+						<div className="mr-auto flex items-center gap-1.5">
+							{onAddLogForDay && date && (
+								<button
+									type="button"
+									onClick={() => {
+										onAddLogForDay(date);
+										onClose();
+									}}
+									className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+								>
+									<Plus className="h-3.5 w-3.5" />
+									Add log
+								</button>
+							)}
+							{onStartTimer && (
+								<button
+									type="button"
+									onClick={() => {
+										onStartTimer();
+										onClose();
+									}}
+									className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+								>
+									<Play className="h-3.5 w-3.5" />
+									Start a timer
+								</button>
+							)}
+						</div>
+					)}
 					{canBulkAct && selectionInfo.count > 0 && (
 						<>
 							<span className="mr-auto px-1 text-xs font-semibold text-slate-600">
@@ -315,10 +389,18 @@ function DayLogRow({
 	onToggleSelect,
 	onWarnClick,
 	canBulkAct,
+	canMemberAct,
+	hasActiveLog,
+	loadingTasks,
 	onReviewLogs,
 	onPayMember,
+	onStopLog,
+	onEditLog,
+	onDeleteLog,
+	onChangeTask,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
+	onViewTaskDetails,
 }: {
 	log: TaskTimeLog;
 	mode: "my" | "team";
@@ -332,13 +414,21 @@ function DayLogRow({
 	onToggleSelect: (logId: string, checked: boolean) => void;
 	onWarnClick: (message: string) => void;
 	canBulkAct: boolean;
+	canMemberAct: boolean;
+	hasActiveLog: boolean;
+	loadingTasks: boolean;
 	onReviewLogs?: (
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
 	onPayMember?: (memberId: string, logIds: string[], currency: string) => void;
+	onStopLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onEditLog?: (log: TaskTimeLog) => void;
+	onDeleteLog?: (log: TaskTimeLog) => void | Promise<void>;
+	onChangeTask?: (log: TaskTimeLog) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	onViewTaskDetails?: (log: TaskTimeLog) => void;
 }) {
 	const isRunning = !log.ended_at;
 	const currency = log.currency_snapshot || "USD";
@@ -346,17 +436,32 @@ function DayLogRow({
 	const started = new Date(log.started_at);
 	const ended = log.ended_at ? new Date(log.ended_at) : null;
 
-	const menuItems = buildLogRowActions({
-		log,
-		eligible,
-		isSelf,
-		memberId: log.member_user_id,
-		currency,
-		onReviewLogs: canBulkAct ? onReviewLogs : undefined,
-		onPayMember: canBulkAct ? onPayMember : undefined,
-		onOpenTaskInRoadmap,
-		canOpenTaskInRoadmap,
-	});
+	const menuItems = canMemberAct
+		? buildMemberLogRowActions({
+				log,
+				isRowPending: busy,
+				loadingTasks,
+				hasActiveLog,
+				onStopLog: onStopLog ?? (() => {}),
+				onChangeTask: onChangeTask ?? (() => {}),
+				onEditLog: onEditLog ?? (() => {}),
+				onDeleteLog: onDeleteLog ?? (() => {}),
+				onOpenTaskInRoadmap,
+				canOpenTaskInRoadmap,
+				onViewTaskDetails,
+			})
+		: buildLogRowActions({
+				log,
+				eligible,
+				isSelf,
+				memberId: log.member_user_id,
+				currency,
+				onReviewLogs: canBulkAct ? onReviewLogs : undefined,
+				onPayMember: canBulkAct ? onPayMember : undefined,
+				onOpenTaskInRoadmap,
+				canOpenTaskInRoadmap,
+				onViewTaskDetails,
+			});
 
 	return (
 		<tr

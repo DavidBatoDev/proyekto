@@ -132,10 +132,19 @@ export interface LogsSummaryBucket {
  * Accurate log aggregates over the full filtered set — not capped by the 200-row
  * list limit. Structurally compatible with the web `LogStats` used by the stats card.
  */
+/** Log counts per status over the full filtered set (drives the Team Logs tabs). */
+export interface LogStatusCounts {
+	pending: number;
+	approved: number;
+	paid: number;
+	rejected: number;
+}
+
 export interface LogsSummary {
 	buckets: Record<string, LogsSummaryBucket>;
 	currencies: string[];
 	totalHours: number;
+	statusCounts?: LogStatusCounts;
 }
 
 type ApiResponse<T> = { data: T };
@@ -436,6 +445,7 @@ export const teamTimeService = {
 		teamId: string,
 		memberId: string,
 		currency: string,
+		range?: { from?: string; to?: string },
 	): Promise<TaskTimeLog[]> {
 		const PAGE = 200;
 		const out: TaskTimeLog[] = [];
@@ -443,6 +453,8 @@ export const teamTimeService = {
 			const res = await this.listTeamLogs(teamId, {
 				member_user_id: memberId,
 				status: "approved",
+				from: range?.from,
+				to: range?.to,
 				page,
 				limit: PAGE,
 			});
@@ -450,6 +462,29 @@ export const teamTimeService = {
 			if (res.items.length < PAGE) break;
 		}
 		return out.filter((log) => (log.currency_snapshot || "USD") === currency);
+	},
+
+	/**
+	 * Every team log of a given status, paginated past the 200-row cap. Used by
+	 * Payouts to group outstanding (approved) balances by cut-off and to flag
+	 * cut-offs that still have pending logs awaiting review.
+	 */
+	async listAllTeamLogsByStatus(
+		teamId: string,
+		status: TimeLogStatus,
+	): Promise<TaskTimeLog[]> {
+		const PAGE = 200;
+		const out: TaskTimeLog[] = [];
+		for (let page = 1; ; page++) {
+			const res = await this.listTeamLogs(teamId, {
+				status,
+				page,
+				limit: PAGE,
+			});
+			out.push(...res.items);
+			if (res.items.length < PAGE) break;
+		}
+		return out;
 	},
 
 	async listTeamLogProjects(

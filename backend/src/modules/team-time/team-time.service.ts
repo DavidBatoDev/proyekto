@@ -43,11 +43,20 @@ export interface SummaryBucket {
   totalFees: number;
 }
 
+/** Log counts per status over a full filtered set (drives the Team Logs tabs). */
+export interface LogStatusCounts {
+  pending: number;
+  approved: number;
+  paid: number;
+  rejected: number;
+}
+
 /** Accurate log aggregates over a full filtered set (mirrors the web LogStats). */
 export interface LogsSummary {
   buckets: Record<string, SummaryBucket>;
   currencies: string[];
   totalHours: number;
+  statusCounts: LogStatusCounts;
 }
 
 const TIME_LOG_COMMENT_SELECT = `
@@ -359,6 +368,17 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     await this.assertWithinRetroactiveWindow(rate?.team_id ?? null, dto.started_at);
+    // Hard-block manual logs that would push the member past an hour cap when
+    // their rate requires approval for overtime. (Timers only warn — you can't
+    // un-stop a running timer — so this guard lives on the manual path.)
+    await this.assertHourCapAllows(
+      rate?.team_id ?? null,
+      dto.project_id,
+      callerId,
+      dto.started_at,
+      Math.floor((end - start) / 1000),
+      rate,
+    );
     const resolvedRate = this.pickRateForWorkType(rate, workType);
 
     const { data, error } = await this.supabase
@@ -1133,6 +1153,69 @@ export class TeamTimeService {
     }
   }
 
+  /**
+   * Block a new log when it would push the member past a weekly/monthly hour
+   * cap AND their rate requires approval for overtime. No-op when there is no
+   * cap, no overtime-approval flag, or no team. Sums non-rejected logs already
+   * in the window (same team+project+member) and adds the new duration.
+   */
+  private async assertHourCapAllows(
+    teamId: string | null,
+    projectId: string,
+    memberId: string,
+    startedAtIso: string,
+    newDurationSeconds: number,
+    rate: ResolvedTeamRate | null,
+  ): Promise<void> {
+    if (!teamId || !rate || !rate.overtime_requires_approval) return;
+    const newHours = Math.max(0, newDurationSeconds) / 3600;
+    const logShape = {
+      team_id: teamId,
+      project_id: projectId,
+      member_user_id: memberId,
+    } as TimeLogRow;
+    const windows: Array<{
+      key: 'week' | 'month';
+      limit: number;
+      start: string;
+      end: string;
+    }> = [];
+    if (rate.weekly_limit_hours != null) {
+      const w = this.getWeekWindowUtc(startedAtIso);
+      if (w) {
+        windows.push({
+          key: 'week',
+          limit: Number(rate.weekly_limit_hours),
+          start: w.start,
+          end: w.end,
+        });
+      }
+    }
+    if (rate.monthly_limit_hours != null) {
+      const m = this.getMonthWindowUtc(startedAtIso);
+      if (m) {
+        windows.push({
+          key: 'month',
+          limit: Number(rate.monthly_limit_hours),
+          start: m.start,
+          end: m.end,
+        });
+      }
+    }
+    for (const win of windows) {
+      const existing = await this.sumLoggedHoursInWindow(
+        logShape,
+        win.start,
+        win.end,
+      );
+      if (existing + newHours > win.limit + 1e-6) {
+        throw new BadRequestException(
+          `This log would exceed the ${win.key === 'week' ? 'weekly' : 'monthly'} limit of ${win.limit}h (already ${existing.toFixed(2)}h logged this ${win.key}). This member's rate requires approval for overtime — ask an admin to raise the limit.`,
+        );
+      }
+    }
+  }
+
   private async notifyApprovalRequested(
     log: TimeLogRow,
     actorId: string,
@@ -1312,6 +1395,12 @@ export class TeamTimeService {
   }): Promise<LogsSummary> {
     const PAGE = 1000;
     const buckets: Record<string, SummaryBucket> = {};
+    const statusCounts: LogStatusCounts = {
+      pending: 0,
+      approved: 0,
+      paid: 0,
+      rejected: 0,
+    };
     let totalSeconds = 0;
     const ensureBucket = (cur: string): SummaryBucket => {
       if (!buckets[cur]) {
@@ -1349,6 +1438,13 @@ export class TeamTimeService {
         rate_snapshot: number | string | null;
       }>;
       for (const row of rows) {
+        // Count every row per status (drives the tab badges), regardless of
+        // whether it has billable fees — running/zero-duration logs count too.
+        if (row.status === 'pending') statusCounts.pending += 1;
+        else if (row.status === 'approved') statusCounts.approved += 1;
+        else if (row.status === 'paid') statusCounts.paid += 1;
+        else if (row.status === 'rejected') statusCounts.rejected += 1;
+
         const seconds = row.duration_seconds ?? 0;
         if (seconds > 0) totalSeconds += seconds;
         const rate = Number(row.rate_snapshot ?? 0);
@@ -1368,6 +1464,7 @@ export class TeamTimeService {
       buckets,
       currencies: Object.keys(buckets).sort(),
       totalHours: totalSeconds / 3600,
+      statusCounts,
     };
   }
 

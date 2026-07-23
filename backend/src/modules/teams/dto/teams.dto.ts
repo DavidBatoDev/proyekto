@@ -7,14 +7,36 @@ import {
   IsEmail,
   IsIn,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
   Length,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+
+/**
+ * A single payout cut-off period. Kept as a plain interface (not a validated
+ * nested DTO) because `end_day` is a `number | 'EOM'` union that class-validator
+ * models awkwardly; the whole config is validated field-by-field in
+ * TeamsService.validatePayPeriodConfig instead.
+ */
+export interface PayPeriodInput {
+  id: string;
+  label: string;
+  start_day: number;
+  end_day: number | 'EOM';
+  pay_day: number;
+  pay_month_offset: number;
+}
+
+export interface PayPeriodConfigInput {
+  cadence: 'monthly';
+  periods: PayPeriodInput[];
+}
 
 export class CreateTeamDto {
   @IsString()
@@ -58,6 +80,12 @@ export class UpdateTeamDto {
   @IsOptional()
   @IsIn(['USD', 'CAD', 'PHP'])
   default_currency?: 'USD' | 'CAD' | 'PHP';
+
+  // Payout cut-off schedule. `null` resets to the client default. The shape is
+  // validated in TeamsService.validatePayPeriodConfig (see PayPeriodConfigInput).
+  @IsOptional()
+  @IsObject()
+  pay_period_config?: PayPeriodConfigInput | null;
 }
 
 export const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
@@ -198,15 +226,19 @@ export class UpdateTeamMemberRateDto {
   @IsDateString()
   end_date?: string;
 
+  // `null` clears the cap; a number sets it. ValidateIf lets null through the
+  // @IsNumber check (the service maps `?? null`).
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsNumber()
   @Min(0)
-  weekly_limit_hours?: number;
+  weekly_limit_hours?: number | null;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsNumber()
   @Min(0)
-  monthly_limit_hours?: number;
+  monthly_limit_hours?: number | null;
 
   @IsOptional()
   @IsBoolean()

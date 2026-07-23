@@ -16,25 +16,34 @@ import {
 } from "date-fns";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PayPeriodConfig } from "@/services/teams.service";
 import {
-	type CutoffHalf,
 	cutoffLabel,
 	type LogPeriodPreset,
+	payDateLabel,
 	periodRangeLabel,
+	resolvePayPeriods,
 	type TeamLogResolvedPeriod,
 } from "./log-period";
 
 interface TeamLogsPeriodFilterProps {
 	period: TeamLogResolvedPeriod;
+	/** The team's cut-off schedule; falls back to the default when null. */
+	payPeriodConfig?: PayPeriodConfig | null;
 	onPresetChange: (preset: LogPeriodPreset) => void;
 	onCutoffMonthChange: (month: string) => void;
-	onCutoffHalfChange: (half: CutoffHalf) => void;
+	onCutoffPeriodChange: (periodId: string) => void;
 	onApplyCustomRange: (fromDate: string, toDate: string) => void;
 	/**
 	 * Set of `yyyy-MM-dd` (local) day keys the viewer logged time on. Days in
 	 * this set show a small dot in the calendar so you can see when you worked.
 	 */
 	workedDays?: Set<string>;
+	/**
+	 * Which edge to anchor the popover to. Use "right" when the trigger sits
+	 * near the right of the page so the wide popover opens leftward on-screen.
+	 */
+	align?: "left" | "right";
 }
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -49,11 +58,13 @@ type PopoverMode = "range" | "cutoff";
 
 export function TeamLogsPeriodFilter({
 	period,
+	payPeriodConfig,
 	onPresetChange,
 	onCutoffMonthChange,
-	onCutoffHalfChange,
+	onCutoffPeriodChange,
 	onApplyCustomRange,
 	workedDays,
+	align = "left",
 }: TeamLogsPeriodFilterProps) {
 	const [open, setOpen] = useState(false);
 	const [mode, setMode] = useState<PopoverMode>("range");
@@ -177,8 +188,14 @@ export function TeamLogsPeriodFilter({
 			onSelect: () => applyPreset("this_year"),
 		},
 		{
+			key: "current_cutoff",
+			label: "Current cut-off",
+			active: period.preset === "current_cutoff",
+			onSelect: () => applyPreset("current_cutoff"),
+		},
+		{
 			key: "cutoff",
-			label: "Cutoff (PH)",
+			label: "Cut-off…",
 			active: period.preset === "cutoff",
 			onSelect: () => setMode("cutoff"),
 		},
@@ -211,7 +228,11 @@ export function TeamLogsPeriodFilter({
 			</div>
 
 			{open && (
-				<div className="absolute left-4 top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+				<div
+					className={`absolute top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ${
+						align === "right" ? "right-0" : "left-0"
+					}`}
+				>
 					<div className="flex flex-col sm:flex-row">
 						{/* Preset rail */}
 						<div className="shrink-0 border-b border-slate-100 p-2 sm:w-44 sm:border-b-0 sm:border-r">
@@ -238,8 +259,9 @@ export function TeamLogsPeriodFilter({
 							{mode === "cutoff" ? (
 								<CutoffControls
 									period={period}
+									payPeriodConfig={payPeriodConfig}
 									onCutoffMonthChange={onCutoffMonthChange}
-									onCutoffHalfChange={onCutoffHalfChange}
+									onCutoffPeriodChange={onCutoffPeriodChange}
 									onDone={() => setOpen(false)}
 									onBackToRange={() => setMode("range")}
 								/>
@@ -529,22 +551,32 @@ function CutoffMonthPicker({
 
 function CutoffControls({
 	period,
+	payPeriodConfig,
 	onCutoffMonthChange,
-	onCutoffHalfChange,
+	onCutoffPeriodChange,
 	onDone,
 	onBackToRange,
 }: {
 	period: TeamLogResolvedPeriod;
+	payPeriodConfig?: PayPeriodConfig | null;
 	onCutoffMonthChange: (month: string) => void;
-	onCutoffHalfChange: (half: CutoffHalf) => void;
+	onCutoffPeriodChange: (periodId: string) => void;
 	onDone: () => void;
 	onBackToRange: () => void;
 }) {
+	const periods = useMemo(
+		() => resolvePayPeriods(payPeriodConfig, period.cutoffMonth),
+		[payPeriodConfig, period.cutoffMonth],
+	);
+	const selected =
+		periods.find((p) => p.id === period.cutoffPeriodId) ?? periods[0];
+	const payLabel = payDateLabel(selected?.payDate.toISOString());
+
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
 				<span className="text-xs font-semibold text-slate-700">
-					Payroll cutoff
+					Payroll cut-off
 				</span>
 				<button
 					type="button"
@@ -563,27 +595,35 @@ function CutoffControls({
 					onChange={onCutoffMonthChange}
 				/>
 			</div>
-			<div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
-				{(["1", "2"] as const).map((half) => {
-					const active = period.cutoffHalf === half;
+			<div className="flex flex-wrap items-center gap-1.5">
+				{periods.map((p) => {
+					const active = selected?.id === p.id;
 					return (
 						<button
-							key={half}
+							key={p.id}
 							type="button"
-							onClick={() => onCutoffHalfChange(half)}
+							onClick={() => onCutoffPeriodChange(p.id)}
+							title={`${p.label} · ${p.dayRangeLabel}`}
 							className={
 								active
-									? "rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm"
-									: "rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800"
+									? "rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200"
+									: "rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800"
 							}
 						>
-							{half === "1" ? "1–15" : "16–EOM"}
+							{p.dayRangeLabel}
 						</button>
 					);
 				})}
 			</div>
-			<div className="text-xs text-slate-400">
-				{cutoffLabel(period.cutoffMonth, period.cutoffHalf)}
+			<div className="space-y-0.5">
+				<div className="text-xs text-slate-500">
+					{cutoffLabel(payPeriodConfig, period.cutoffMonth, period.cutoffPeriodId)}
+				</div>
+				{payLabel && (
+					<div className="text-[11px] font-medium text-emerald-600">
+						{payLabel}
+					</div>
+				)}
 			</div>
 			<div className="flex justify-end border-t border-slate-100 pt-3">
 				<button

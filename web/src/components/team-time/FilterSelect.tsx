@@ -11,6 +11,25 @@ import { createPortal } from "react-dom";
 export interface FilterSelectOption {
 	value: string;
 	label: string;
+	/** Optional avatar shown before the label (e.g. member photo). */
+	avatarUrl?: string | null;
+}
+
+function OptionAvatar({ url, label }: { url?: string | null; label: string }) {
+	if (url) {
+		return (
+			<img
+				src={url}
+				alt=""
+				className="h-4 w-4 shrink-0 rounded-full object-cover"
+			/>
+		);
+	}
+	return (
+		<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[8px] font-semibold uppercase text-slate-500">
+			{label.trim().charAt(0) || "?"}
+		</span>
+	);
 }
 
 interface FilterSelectProps {
@@ -103,7 +122,11 @@ export function FilterSelect({
 						: "border-slate-200"
 				}`}
 			>
-				{icon && <span className="text-slate-400">{icon}</span>}
+				{selected?.avatarUrl !== undefined ? (
+					<OptionAvatar url={selected.avatarUrl} label={selected.label} />
+				) : (
+					icon && <span className="text-slate-400">{icon}</span>
+				)}
 				<span className="max-w-40 truncate">{label}</span>
 				<ChevronDown
 					className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
@@ -150,6 +173,9 @@ export function FilterSelect({
 											active ? "text-sky-600" : "text-transparent"
 										}`}
 									/>
+									{opt.avatarUrl !== undefined && (
+										<OptionAvatar url={opt.avatarUrl} label={opt.label} />
+									)}
 									<span className="truncate">{opt.label}</span>
 								</button>
 							);

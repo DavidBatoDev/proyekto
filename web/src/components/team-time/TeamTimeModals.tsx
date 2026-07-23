@@ -21,6 +21,191 @@ const MODAL_PANEL_MOTION = {
 	transition: { duration: 0.22, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] },
 };
 
+// ───────────────────────── Manual Log (dated) ─────────────────────────
+
+interface ManualLogModalProps {
+	isOpen: boolean;
+	dateLabel: string;
+	projects: TeamLogProject[];
+	tasks: ProjectTaskOption[];
+	loadingTasks: boolean;
+	selectedProjectId: string;
+	selectedTaskId: string;
+	startedAt: string;
+	endedAt: string;
+	saving: boolean;
+	onClose: () => void;
+	onSave: () => void;
+	onChangeProjectId: (value: string) => void;
+	onChangeTaskId: (value: string) => void;
+	onChangeStartedAt: (value: string) => void;
+	onChangeEndedAt: (value: string) => void;
+}
+
+/**
+ * Add a manual, dated time log (e.g. a day you forgot to run the timer). Unlike
+ * the timer flow this takes explicit start/end datetimes. The server enforces
+ * the team's retroactive-logging window, so old dates are rejected there.
+ */
+export function ManualLogModal({
+	isOpen,
+	dateLabel,
+	projects,
+	tasks,
+	loadingTasks,
+	selectedProjectId,
+	selectedTaskId,
+	startedAt,
+	endedAt,
+	saving,
+	onClose,
+	onSave,
+	onChangeProjectId,
+	onChangeTaskId,
+	onChangeStartedAt,
+	onChangeEndedAt,
+}: ManualLogModalProps) {
+	const validTimes =
+		Boolean(startedAt) &&
+		Boolean(endedAt) &&
+		new Date(endedAt).getTime() > new Date(startedAt).getTime();
+	const canSave = !saving && Boolean(selectedProjectId) && validTimes;
+	return (
+		<AnimatePresence>
+			{isOpen && (
+				<motion.div
+					key="manual-log-modal"
+					className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[2px]"
+					onClick={onClose}
+					{...MODAL_BACKDROP_MOTION}
+				>
+					<motion.div
+						className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+						onClick={(e) => e.stopPropagation()}
+						{...MODAL_PANEL_MOTION}
+					>
+						<div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+							<div>
+								<h3 className="text-base font-semibold text-slate-900">
+									Add a log
+								</h3>
+								<p className="mt-0.5 text-xs text-slate-500">{dateLabel}</p>
+							</div>
+							<button
+								type="button"
+								onClick={onClose}
+								className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+								aria-label="Close"
+							>
+								<X className="h-4 w-4" />
+							</button>
+						</div>
+
+						<div className="space-y-3 px-5 py-4">
+							<div className="space-y-1.5">
+								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+									Project <span className="text-rose-500">*</span>
+								</label>
+								<select
+									value={selectedProjectId}
+									onChange={(e) => onChangeProjectId(e.target.value)}
+									disabled={saving}
+									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+								>
+									<option value="">Select a project…</option>
+									{projects.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.title || "Untitled project"}
+										</option>
+									))}
+								</select>
+							</div>
+
+							<div className="space-y-1.5">
+								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+									Task (optional)
+								</label>
+								<select
+									value={selectedTaskId}
+									onChange={(e) => onChangeTaskId(e.target.value)}
+									disabled={saving || !selectedProjectId || loadingTasks}
+									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+								>
+									<option value="">
+										{loadingTasks ? "Loading tasks…" : "No task (general time)"}
+									</option>
+									{tasks.map((t) => (
+										<option key={t.id} value={t.id}>
+											{t.title || "Untitled task"}
+										</option>
+									))}
+								</select>
+							</div>
+
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<div className="space-y-1.5">
+									<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+										Start <span className="text-rose-500">*</span>
+									</label>
+									<input
+										type="datetime-local"
+										value={startedAt}
+										onChange={(e) => onChangeStartedAt(e.target.value)}
+										disabled={saving}
+										className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+										End <span className="text-rose-500">*</span>
+									</label>
+									<input
+										type="datetime-local"
+										value={endedAt}
+										onChange={(e) => onChangeEndedAt(e.target.value)}
+										disabled={saving}
+										className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+									/>
+								</div>
+							</div>
+							{!validTimes && startedAt && endedAt && (
+								<p className="text-xs text-rose-500">
+									End time must be after start time.
+								</p>
+							)}
+						</div>
+
+						<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+							<button
+								type="button"
+								onClick={onClose}
+								disabled={saving}
+								className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+							>
+								<XCircle className="h-3.5 w-3.5" />
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={onSave}
+								disabled={!canSave}
+								className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+							>
+								{saving ? (
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								) : (
+									<Save className="h-3.5 w-3.5" />
+								)}
+								Add log
+							</button>
+						</div>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
+	);
+}
+
 // ───────────────────────── Edit Log ─────────────────────────
 
 interface EditLogModalProps {
@@ -464,7 +649,8 @@ export function AddRateModal({
 					</div>
 
 					<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-						Members with no rate row cannot start timers or add new logs.
+						Members with no rate row cannot start timers or add new logs. Hour
+						limits are set per project in the project's Time settings.
 					</div>
 				</div>
 
