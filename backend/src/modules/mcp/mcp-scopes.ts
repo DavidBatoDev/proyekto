@@ -15,10 +15,19 @@ export const MCP_READ_SCOPES = [
   'chat:read',
 ] as const;
 
-// Phase 2/3 will add: 'roadmaps:write', 'tasks:write', 'tasks:assign',
-// 'memories:write', 'chat:write'. Kept out of the known set until implemented so
-// a token can't be minted with a scope no tool honors.
-export const MCP_ALL_SCOPES = [...MCP_READ_SCOPES] as const;
+// Phase 2 write scopes. Opt-in per token: a read-only PAT carries none of these,
+// so it can never mutate even where MCP is enabled. Each write tool requires its
+// scope AND the live Proyekto permission. (Phase 3 will add 'chat:write'.)
+export const MCP_WRITE_SCOPES = [
+  'roadmaps:write',
+  'tasks:write',
+  'tasks:assign',
+] as const;
+
+export const MCP_ALL_SCOPES = [
+  ...MCP_READ_SCOPES,
+  ...MCP_WRITE_SCOPES,
+] as const;
 
 export type McpScope = (typeof MCP_ALL_SCOPES)[number];
 

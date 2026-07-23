@@ -1,8 +1,9 @@
 import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
-/** Coarse read scopes a Personal Access Token can carry (mirrors the backend
- * mcp-scopes module). Write scopes arrive in a later MCP phase. */
+/** Coarse scopes a Personal Access Token can carry (mirrors the backend
+ * mcp-scopes module). Read scopes are safe defaults; write scopes let a host
+ * modify data and are opt-in. */
 export const MCP_READ_SCOPES = [
 	"projects:read",
 	"roadmaps:read",
@@ -10,13 +11,24 @@ export const MCP_READ_SCOPES = [
 	"chat:read",
 ] as const;
 
-export type McpScope = (typeof MCP_READ_SCOPES)[number];
+export const MCP_WRITE_SCOPES = [
+	"roadmaps:write",
+	"tasks:write",
+	"tasks:assign",
+] as const;
+
+export type McpReadScope = (typeof MCP_READ_SCOPES)[number];
+export type McpWriteScope = (typeof MCP_WRITE_SCOPES)[number];
+export type McpScope = McpReadScope | McpWriteScope;
 
 export const MCP_SCOPE_LABELS: Record<McpScope, string> = {
 	"projects:read": "Read projects",
 	"roadmaps:read": "Read roadmaps & tasks",
 	"knowledge:read": "Search project knowledge",
 	"chat:read": "Read chat channels",
+	"roadmaps:write": "Edit roadmaps",
+	"tasks:write": "Create & edit tasks",
+	"tasks:assign": "Assign tasks",
 };
 
 /** Non-secret token metadata returned by the list endpoint. */

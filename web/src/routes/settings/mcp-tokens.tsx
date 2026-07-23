@@ -7,14 +7,17 @@ import {
 	Copy,
 	FolderKanban,
 	KeyRound,
+	ListTodo,
 	Loader2,
 	type LucideIcon,
 	Map as MapIcon,
 	MessagesSquare,
+	Pencil,
 	Plus,
 	ShieldCheck,
 	Terminal,
 	Trash2,
+	UserPlus,
 	X,
 } from "lucide-react";
 import { useId, useState } from "react";
@@ -25,6 +28,7 @@ import {
 	createMcpToken,
 	listMcpTokens,
 	MCP_READ_SCOPES,
+	MCP_WRITE_SCOPES,
 	type McpScope,
 	type McpTokenIssued,
 	type McpTokenSummary,
@@ -68,6 +72,21 @@ const SCOPE_META: Record<
 		hint: "Channels you belong to",
 		Icon: MessagesSquare,
 	},
+	"roadmaps:write": {
+		label: "Edit roadmaps",
+		hint: "Preview & commit structural changes",
+		Icon: Pencil,
+	},
+	"tasks:write": {
+		label: "Create & edit tasks",
+		hint: "Add tasks, update, comment",
+		Icon: ListTodo,
+	},
+	"tasks:assign": {
+		label: "Assign tasks",
+		hint: "Set assignees (notifies members)",
+		Icon: UserPlus,
+	},
 };
 
 function formatDate(value: string | null): string {
@@ -108,6 +127,58 @@ function StatusPill({ status }: { status: TokenStatus }) {
 			<span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
 			{config.label}
 		</span>
+	);
+}
+
+function ScopeCard({
+	scope,
+	checked,
+	onToggle,
+}: {
+	scope: McpScope;
+	checked: boolean;
+	onToggle: (scope: McpScope) => void;
+}) {
+	const { label, hint, Icon } = SCOPE_META[scope];
+	return (
+		<button
+			type="button"
+			aria-pressed={checked}
+			onClick={() => onToggle(scope)}
+			className={`group relative flex items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-all ${
+				checked
+					? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+					: "border-border bg-background hover:border-primary/40 hover:bg-muted"
+			}`}
+		>
+			<span
+				className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+					checked
+						? "bg-primary/15 text-primary"
+						: "bg-muted text-muted-foreground group-hover:text-foreground"
+				}`}
+			>
+				<Icon className="h-5 w-5" />
+			</span>
+			<span className="min-w-0 flex-1">
+				<span className="block text-sm font-medium text-foreground">
+					{label}
+				</span>
+				<span className="block text-xs text-muted-foreground">{hint}</span>
+				<span className="mt-1 block font-mono text-[11px] text-muted-foreground/80">
+					{scope}
+				</span>
+			</span>
+			<span
+				className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+					checked
+						? "border-primary bg-primary text-primary-foreground"
+						: "border-border bg-background"
+				}`}
+			>
+				{checked && <Check className="h-3.5 w-3.5" />}
+			</span>
+		</button>
 	);
 }
 
@@ -322,60 +393,42 @@ function McpTokensPage() {
 							</div>
 
 							<fieldset>
-								<legend className="mb-1 text-sm font-medium text-foreground">
+								<legend className="text-sm font-medium text-foreground">
 									Scopes
 								</legend>
-								<p className="mb-3 text-xs text-muted-foreground">
-									All scopes are read-only. A token can only see what you can.
+
+								<p className="mt-2 mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									Read
 								</p>
 								<div className="grid gap-2.5 sm:grid-cols-2">
-									{MCP_READ_SCOPES.map((scope) => {
-										const checked = scopes.includes(scope);
-										const { label, hint, Icon } = SCOPE_META[scope];
-										return (
-											<button
-												type="button"
-												key={scope}
-												aria-pressed={checked}
-												onClick={() => toggleScope(scope)}
-												className={`group relative flex items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-all ${
-													checked
-														? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
-														: "border-border bg-background hover:border-primary/40 hover:bg-muted"
-												}`}
-											>
-												<span
-													className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-														checked
-															? "bg-primary/15 text-primary"
-															: "bg-muted text-muted-foreground group-hover:text-foreground"
-													}`}
-												>
-													<Icon className="h-5 w-5" />
-												</span>
-												<span className="min-w-0 flex-1">
-													<span className="block text-sm font-medium text-foreground">
-														{label}
-													</span>
-													<span className="block text-xs text-muted-foreground">
-														{hint}
-													</span>
-													<span className="mt-1 block font-mono text-[11px] text-muted-foreground/80">
-														{scope}
-													</span>
-												</span>
-												<span
-													className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
-														checked
-															? "border-primary bg-primary text-primary-foreground"
-															: "border-border bg-background"
-													}`}
-												>
-													{checked && <Check className="h-3.5 w-3.5" />}
-												</span>
-											</button>
-										);
-									})}
+									{MCP_READ_SCOPES.map((scope) => (
+										<ScopeCard
+											key={scope}
+											scope={scope}
+											checked={scopes.includes(scope)}
+											onToggle={toggleScope}
+										/>
+									))}
+								</div>
+
+								<div className="mt-4 mb-2 flex items-center gap-1.5">
+									<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+										Write
+									</p>
+									<span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+										<AlertTriangle className="h-3 w-3" />
+										lets a host modify your data
+									</span>
+								</div>
+								<div className="grid gap-2.5 sm:grid-cols-2">
+									{MCP_WRITE_SCOPES.map((scope) => (
+										<ScopeCard
+											key={scope}
+											scope={scope}
+											checked={scopes.includes(scope)}
+											onToggle={toggleScope}
+										/>
+									))}
 								</div>
 							</fieldset>
 

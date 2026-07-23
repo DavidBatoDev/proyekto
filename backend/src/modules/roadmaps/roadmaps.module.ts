@@ -100,12 +100,15 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
   ],
   exports: [
     RoadmapAuthorizationService,
-    // Read-surface services reused in-process by the MCP module. All carry
-    // their own view-level authorization.
+    // Read + write surface services reused in-process by the MCP module. All
+    // carry their own authorization (view for reads, edit/assign/comment for
+    // writes).
     RoadmapsService,
     RoadmapAiService,
     RoadmapAiProjectContextService,
     RoadmapAiKnowledgeService,
+    TasksService,
+    TaskExtrasService,
   ],
 })
 export class RoadmapsModule {}

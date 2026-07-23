@@ -9,7 +9,10 @@ import type { RoadmapAuthorizationService } from '../../roadmaps/services/roadma
 import type { RoadmapAiService } from '../../roadmaps/services/roadmap-ai.service';
 import type { RoadmapAiProjectContextService } from '../../roadmaps/services/roadmap-ai-project-context.service';
 import type { RoadmapAiKnowledgeService } from '../../roadmaps/services/roadmap-ai-knowledge.service';
+import type { TasksService } from '../../roadmaps/services/tasks.service';
+import type { TaskExtrasService } from '../../roadmaps/services/task-extras.service';
 import type { ChatService } from '../../chat/chat.service';
+import type { AuditService } from '../../audit/audit.service';
 import type { McpScope } from '../mcp-scopes';
 import { hasScope } from '../mcp-scopes';
 
@@ -28,7 +31,10 @@ export interface McpServices {
   roadmapAi: RoadmapAiService;
   projectContext: RoadmapAiProjectContextService;
   knowledge: RoadmapAiKnowledgeService;
+  tasks: TasksService;
+  taskExtras: TaskExtrasService;
   chat: ChatService;
+  audit: AuditService;
   db: SupabaseClient;
   maxPageSize: number;
 }
@@ -45,6 +51,8 @@ export type McpErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'VALIDATION_FAILED'
+  | 'STALE_REVISION'
+  | 'CONFLICT'
   | 'RATE_LIMITED'
   | 'NO_PROJECT'
   | 'INTERNAL';
@@ -121,6 +129,18 @@ function normalizeError(err: unknown): { code: McpErrorCode; message: string } {
     if (status === 404) return { code: 'NOT_FOUND', message };
     if (status === 400 || status === 422)
       return { code: 'VALIDATION_FAILED', message };
+    if (status === 409) {
+      // The write lifecycle raises 409 with a structured `code` (e.g.
+      // STALE_REVISION on a concurrent edit, IDEMPOTENCY_KEY_REUSED on a
+      // mismatched retry). Surface that code so the host can react precisely.
+      const body = err.getResponse();
+      const raw =
+        body && typeof body === 'object' && 'code' in body
+          ? String((body as { code: unknown }).code)
+          : '';
+      if (raw === 'STALE_REVISION') return { code: 'STALE_REVISION', message };
+      return { code: 'CONFLICT', message };
+    }
     if (status === 429) return { code: 'RATE_LIMITED', message };
     return { code: 'INTERNAL', message };
   }

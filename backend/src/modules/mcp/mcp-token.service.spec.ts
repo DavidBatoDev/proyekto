@@ -90,7 +90,7 @@ describe('McpTokenService', () => {
     const db = makeDb([]);
     const svc = new McpTokenService(db);
     await expect(
-      svc.issueToken('user-1', 'bad', ['roadmaps:write']),
+      svc.issueToken('user-1', 'bad', ['not-a-real-scope']),
     ).rejects.toThrow(/Unknown MCP scope/);
   });
 
