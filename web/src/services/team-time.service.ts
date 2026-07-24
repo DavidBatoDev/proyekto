@@ -22,6 +22,7 @@ export interface TaskTimeLog {
 	started_at: string;
 	ended_at: string | null;
 	duration_seconds: number | null;
+	break_minutes?: number;
 	status: TimeLogStatus;
 	reviewed_by: string | null;
 	reviewed_at: string | null;
@@ -201,11 +202,14 @@ export const teamTimeService = {
 		}
 	},
 
-	async stopLog(logId: string, endedAt?: string): Promise<TaskTimeLog> {
+	async stopLog(logId: string, endedAt?: string, breakMinutes?: number): Promise<TaskTimeLog> {
 		try {
+			const body: { ended_at?: string; break_minutes?: number } = {};
+			if (endedAt) body.ended_at = endedAt;
+			if (typeof breakMinutes === "number") body.break_minutes = breakMinutes;
 			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
 				`/api/team-time/logs/${logId}/stop`,
-				endedAt ? { ended_at: endedAt } : {},
+				body,
 			);
 			return res.data.data;
 		} catch (e) {
@@ -219,6 +223,7 @@ export const teamTimeService = {
 			task_id?: string | null;
 			started_at?: string;
 			ended_at?: string;
+			break_minutes?: number;
 		},
 	): Promise<TaskTimeLog> {
 		try {
@@ -252,6 +257,7 @@ export const teamTimeService = {
 		task_id?: string | null;
 		started_at: string;
 		ended_at: string;
+		break_minutes?: number;
 	}): Promise<TaskTimeLog> {
 		try {
 			const normalizedPayload = {

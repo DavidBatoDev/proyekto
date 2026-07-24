@@ -278,8 +278,19 @@ const LiveHoursCell = memo(function LiveHoursCell({
 	const isRunning = !log.ended_at;
 	const nowMs = useLiveNowMs(isRunning);
 	const hours = (liveDurationSecondsFromLog(log, nowMs) / 3600).toFixed(2);
+	const breakMins = log.break_minutes ?? 0;
 	return (
-		<span className="text-xs font-semibold text-gray-700">{hours}</span>
+		<div className="flex flex-col">
+			<span className="text-xs font-semibold text-gray-700">{hours}h</span>
+			{breakMins > 0 && (
+				<span
+					className="text-[10px] text-amber-700 font-medium"
+					title={`${breakMins} minute(s) break deducted`}
+				>
+					-{breakMins}m break
+				</span>
+			)}
+		</div>
 	);
 });
 

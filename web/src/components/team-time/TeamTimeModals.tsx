@@ -33,6 +33,7 @@ interface ManualLogModalProps {
 	selectedTaskId: string;
 	startedAt: string;
 	endedAt: string;
+	breakMinutes?: number;
 	saving: boolean;
 	onClose: () => void;
 	onSave: () => void;
@@ -40,6 +41,7 @@ interface ManualLogModalProps {
 	onChangeTaskId: (value: string) => void;
 	onChangeStartedAt: (value: string) => void;
 	onChangeEndedAt: (value: string) => void;
+	onChangeBreakMinutes?: (value: number) => void;
 }
 
 /**
@@ -57,6 +59,7 @@ export function ManualLogModal({
 	selectedTaskId,
 	startedAt,
 	endedAt,
+	breakMinutes = 0,
 	saving,
 	onClose,
 	onSave,
@@ -64,6 +67,7 @@ export function ManualLogModal({
 	onChangeTaskId,
 	onChangeStartedAt,
 	onChangeEndedAt,
+	onChangeBreakMinutes,
 }: ManualLogModalProps) {
 	const validTimes =
 		Boolean(startedAt) &&
@@ -168,6 +172,25 @@ export function ManualLogModal({
 									/>
 								</div>
 							</div>
+
+							<div className="space-y-1.5">
+								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+									Break Time (minutes)
+								</label>
+								<input
+									type="number"
+									min={0}
+									step={1}
+									value={breakMinutes}
+									onChange={(e) =>
+										onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
+									}
+									disabled={saving}
+									placeholder="0"
+									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+								/>
+							</div>
+
 							{!validTimes && startedAt && endedAt && (
 								<p className="text-xs text-rose-500">
 									End time must be after start time.
@@ -212,22 +235,26 @@ interface EditLogModalProps {
 	isOpen: boolean;
 	startedAt: string;
 	endedAt: string;
+	breakMinutes?: number;
 	saving: boolean;
 	onClose: () => void;
 	onSave: () => void | Promise<void>;
 	onChangeStartedAt: (value: string) => void;
 	onChangeEndedAt: (value: string) => void;
+	onChangeBreakMinutes?: (value: number) => void;
 }
 
 export function EditLogModal({
 	isOpen,
 	startedAt,
 	endedAt,
+	breakMinutes = 0,
 	saving,
 	onClose,
 	onSave,
 	onChangeStartedAt,
 	onChangeEndedAt,
+	onChangeBreakMinutes,
 }: EditLogModalProps) {
 	if (!isOpen) return null;
 
@@ -244,7 +271,7 @@ export function EditLogModal({
 					<div>
 						<h3 className="text-base font-semibold text-gray-900">Edit Log</h3>
 						<p className="text-xs text-gray-500 mt-1">
-							Update time-in and time-out.
+							Update time-in, time-out, and break minutes.
 						</p>
 					</div>
 					<button
@@ -276,6 +303,22 @@ export function EditLogModal({
 							type="datetime-local"
 							value={endedAt}
 							onChange={(e) => onChangeEndedAt(e.target.value)}
+							className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+						/>
+					</div>
+					<div className="space-y-1.5 md:col-span-2">
+						<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+							Break Time (minutes)
+						</label>
+						<input
+							type="number"
+							min={0}
+							step={1}
+							value={breakMinutes}
+							onChange={(e) =>
+								onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
+							}
+							placeholder="0"
 							className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
 						/>
 					</div>

@@ -56,6 +56,12 @@ export class StopTimeLogDto {
   @IsOptional()
   @IsDateString()
   ended_at?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  break_minutes?: number;
 }
 
 export class UpdateTimeLogDto {
@@ -72,6 +78,12 @@ export class UpdateTimeLogDto {
   @IsOptional()
   @IsDateString()
   ended_at?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  break_minutes?: number;
 }
 
 export class CreateManualTimeLogDto {
@@ -89,6 +101,12 @@ export class CreateManualTimeLogDto {
 
   @IsDateString()
   ended_at!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  break_minutes?: number;
 }
 
 export class ReviewTimeLogDto {

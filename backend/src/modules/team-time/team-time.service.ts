@@ -75,6 +75,7 @@ export interface TimeLogRow {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  break_minutes: number;
   status: 'pending' | 'approved' | 'paid' | 'rejected';
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -216,26 +217,40 @@ export class TeamTimeService {
       throw new BadRequestException('This log is already stopped.');
     }
     const endedAt = dto.ended_at ?? new Date().toISOString();
-    const duration = Math.max(
+    const breakMins = Math.max(0, dto.break_minutes ?? 0);
+    const grossDuration = Math.max(
       0,
       Math.floor(
         (new Date(endedAt).getTime() - new Date(log.started_at).getTime()) /
           1000,
       ),
     );
-    const { data, error } = await this.supabase
+    const netDuration = Math.max(0, grossDuration - breakMins * 60);
+    const updatePayload: Record<string, unknown> = {
+      ended_at: endedAt,
+      duration_seconds: netDuration,
+      updated_at: new Date().toISOString(),
+    };
+    if (breakMins > 0) {
+      updatePayload.break_minutes = breakMins;
+    }
+    let res = await this.supabase
       .from('task_time_logs')
-      .update({
-        ended_at: endedAt,
-        duration_seconds: duration,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', logId)
       .select(TIME_LOG_SELECT);
-    if (error) {
-      throw new Error(error?.message ?? 'Failed to stop timer');
+    if (res.error && res.error.message.includes('break_minutes')) {
+      delete updatePayload.break_minutes;
+      res = await this.supabase
+        .from('task_time_logs')
+        .update(updatePayload)
+        .eq('id', logId)
+        .select(TIME_LOG_SELECT);
     }
-    const row = ((data ?? []) as unknown as TimeLogRow[])[0] ?? null;
+    if (res.error) {
+      throw new Error(res.error?.message ?? 'Failed to stop timer');
+    }
+    const row = ((res.data ?? []) as unknown as TimeLogRow[])[0] ?? null;
     if (!row) {
       throw new Error('Failed to stop timer');
     }
@@ -307,6 +322,12 @@ export class TeamTimeService {
     if (dto.started_at !== undefined) patch.started_at = dto.started_at;
     if (dto.ended_at !== undefined) patch.ended_at = dto.ended_at;
 
+    const breakMins =
+      dto.break_minutes !== undefined ? Math.max(0, dto.break_minutes) : (log.break_minutes ?? 0);
+    if (dto.break_minutes !== undefined) {
+      patch.break_minutes = breakMins;
+    }
+
     if (endedAt) {
       const start = new Date(startedAt).getTime();
       const end = new Date(endedAt).getTime();
@@ -315,21 +336,31 @@ export class TeamTimeService {
           'ended_at must be a valid timestamp at or after started_at.',
         );
       }
-      patch.duration_seconds = Math.floor((end - start) / 1000);
+      const grossSeconds = Math.floor((end - start) / 1000);
+      patch.duration_seconds = Math.max(0, grossSeconds - breakMins * 60);
     } else if (dto.ended_at === null) {
       patch.duration_seconds = null;
     }
 
-    const { data, error } = await this.supabase
+    let res = await this.supabase
       .from('task_time_logs')
       .update(patch)
       .eq('id', logId)
       .select(TIME_LOG_SELECT)
       .single();
-    if (error || !data) {
-      throw new Error(error?.message ?? 'Failed to update log');
+    if (res.error && res.error.message.includes('break_minutes')) {
+      delete patch.break_minutes;
+      res = await this.supabase
+        .from('task_time_logs')
+        .update(patch)
+        .eq('id', logId)
+        .select(TIME_LOG_SELECT)
+        .single();
     }
-    return this.attachLimitContext(data as unknown as TimeLogRow);
+    if (res.error || !res.data) {
+      throw new Error(res.error?.message ?? 'Failed to update log');
+    }
+    return this.attachLimitContext(res.data as unknown as TimeLogRow);
   }
 
   async deleteLog(callerId: string, logId: string): Promise<void> {
@@ -368,6 +399,11 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     await this.assertWithinRetroactiveWindow(rate?.team_id ?? null, dto.started_at);
+
+    const breakMins = Math.max(0, dto.break_minutes ?? 0);
+    const grossSeconds = Math.floor((end - start) / 1000);
+    const netSeconds = Math.max(0, grossSeconds - breakMins * 60);
+
     // Hard-block manual logs that would push the member past an hour cap when
     // their rate requires approval for overtime. (Timers only warn — you can't
     // un-stop a running timer — so this guard lives on the manual path.)
@@ -376,33 +412,46 @@ export class TeamTimeService {
       dto.project_id,
       callerId,
       dto.started_at,
-      Math.floor((end - start) / 1000),
+      netSeconds,
       rate,
     );
     const resolvedRate = this.pickRateForWorkType(rate, workType);
 
-    const { data, error } = await this.supabase
+    const insertPayload: Record<string, unknown> = {
+      project_id: dto.project_id,
+      task_id: taskId,
+      member_user_id: callerId,
+      team_id: rate?.team_id ?? null,
+      started_at: dto.started_at,
+      ended_at: dto.ended_at,
+      duration_seconds: netSeconds,
+      status: 'pending',
+      source: 'manual',
+      rate_snapshot: resolvedRate,
+      currency_snapshot: rate?.currency ?? 'USD',
+      work_type_snapshot: workType,
+    };
+    if (breakMins > 0) {
+      insertPayload.break_minutes = breakMins;
+    }
+
+    let res = await this.supabase
       .from('task_time_logs')
-      .insert({
-        project_id: dto.project_id,
-        task_id: taskId,
-        member_user_id: callerId,
-        team_id: rate?.team_id ?? null,
-        started_at: dto.started_at,
-        ended_at: dto.ended_at,
-        duration_seconds: Math.floor((end - start) / 1000),
-        status: 'pending',
-        source: 'manual',
-        rate_snapshot: resolvedRate,
-        currency_snapshot: rate?.currency ?? 'USD',
-        work_type_snapshot: workType,
-      })
+      .insert(insertPayload)
       .select(TIME_LOG_SELECT)
       .single();
-    if (error || !data) {
-      throw new Error(error?.message ?? 'Failed to create log');
+    if (res.error && res.error.message.includes('break_minutes')) {
+      delete insertPayload.break_minutes;
+      res = await this.supabase
+        .from('task_time_logs')
+        .insert(insertPayload)
+        .select(TIME_LOG_SELECT)
+        .single();
     }
-    const row = await this.attachLimitContext(data as unknown as TimeLogRow);
+    if (res.error || !res.data) {
+      throw new Error(res.error?.message ?? 'Failed to create log');
+    }
+    const row = await this.attachLimitContext(res.data as unknown as TimeLogRow);
     await this.notifyApprovalRequested(row, callerId);
     return row;
   }
@@ -846,6 +895,7 @@ export class TeamTimeService {
     const limitContext = await this.resolveLimitContextForLog(log);
     return {
       ...log,
+      break_minutes: Number((log as unknown as Record<string, unknown>).break_minutes ?? 0),
       limit_context: limitContext,
       day_review_summary: log.day_review_summary
         ? { ...log.day_review_summary, limit_context: limitContext }

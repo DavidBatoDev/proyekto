@@ -168,6 +168,7 @@ function MyLogsTab() {
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
+	const [editBreakMinutes, setEditBreakMinutes] = useState(0);
 	const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 	const [deletingLogLabel, setDeletingLogLabel] = useState<
 		string | undefined
@@ -182,6 +183,7 @@ function MyLogsTab() {
 	const [manualTaskId, setManualTaskId] = useState("");
 	const [manualStart, setManualStart] = useState("");
 	const [manualEnd, setManualEnd] = useState("");
+	const [manualBreakMinutes, setManualBreakMinutes] = useState(0);
 
 	// ─── Data ───────────────────────────────────────────────────────────────
 
@@ -355,10 +357,12 @@ function MyLogsTab() {
 			id: string;
 			started_at?: string;
 			ended_at?: string;
+			break_minutes?: number;
 		}) =>
 			teamTimeService.updateLog(input.id, {
 				started_at: input.started_at,
 				ended_at: input.ended_at,
+				break_minutes: input.break_minutes,
 			}),
 		onSuccess: () => {
 			toast.success("Log updated");
@@ -385,6 +389,7 @@ function MyLogsTab() {
 			task_id: string | null;
 			started_at: string;
 			ended_at: string;
+			break_minutes?: number;
 		}) => teamTimeService.createManualLog(input),
 		onSuccess: () => {
 			toast.success("Log added");
@@ -569,6 +574,7 @@ function MyLogsTab() {
 		setEditingLog(log);
 		setEditStartedAt(toLocalDateTimeInput(log.started_at));
 		setEditEndedAt(toLocalDateTimeInput(log.ended_at));
+		setEditBreakMinutes(log.break_minutes ?? 0);
 	}, []);
 	const handleOpenTaskModal = useCallback((log: TaskTimeLog) => {
 		setTaskModalLog(log);
@@ -588,6 +594,7 @@ function MyLogsTab() {
 			);
 			setManualStart(`${ymd}T09:00`);
 			setManualEnd(`${ymd}T10:00`);
+			setManualBreakMinutes(0);
 			// Default the project to the most recently used one.
 			const recent = [...allLogs].sort(
 				(a, b) =>
@@ -859,6 +866,7 @@ function MyLogsTab() {
 				isOpen={Boolean(editingLog)}
 				startedAt={editStartedAt}
 				endedAt={editEndedAt}
+				breakMinutes={editBreakMinutes}
 				saving={editMutation.isPending}
 				onClose={() => {
 					if (editMutation.isPending) return;
@@ -870,10 +878,12 @@ function MyLogsTab() {
 						id: editingLog.id,
 						started_at: fromLocalDateTimeInput(editStartedAt),
 						ended_at: fromLocalDateTimeInput(editEndedAt),
+						break_minutes: editBreakMinutes,
 					});
 				}}
 				onChangeStartedAt={setEditStartedAt}
 				onChangeEndedAt={setEditEndedAt}
+				onChangeBreakMinutes={setEditBreakMinutes}
 			/>
 
 			{/* Delete modal */}
@@ -936,6 +946,7 @@ function MyLogsTab() {
 				selectedTaskId={manualTaskId}
 				startedAt={manualStart}
 				endedAt={manualEnd}
+				breakMinutes={manualBreakMinutes}
 				saving={manualLogMutation.isPending}
 				onClose={() => {
 					if (manualLogMutation.isPending) return;
@@ -950,6 +961,7 @@ function MyLogsTab() {
 						task_id: manualTaskId || null,
 						started_at: started,
 						ended_at: ended,
+						break_minutes: manualBreakMinutes,
 					});
 				}}
 				onChangeProjectId={(v) => {
@@ -959,6 +971,7 @@ function MyLogsTab() {
 				onChangeTaskId={setManualTaskId}
 				onChangeStartedAt={setManualStart}
 				onChangeEndedAt={setManualEnd}
+				onChangeBreakMinutes={setManualBreakMinutes}
 			/>
 
 			<ScrollNavButtons />
