@@ -1,10 +1,11 @@
 import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
+	BadRequestException,
+	ForbiddenException,
+	Inject,
+	Injectable,
+	Logger,
+	NotFoundException,
+	OnModuleInit,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
@@ -145,7 +146,7 @@ export interface TimeLogLimitContext {
 }
 
 @Injectable()
-export class TeamTimeService {
+export class TeamTimeService implements OnModuleInit {
   private readonly logger = new Logger(TeamTimeService.name);
 
   constructor(
@@ -153,6 +154,29 @@ export class TeamTimeService {
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const { data: nullLogs } = await this.supabase
+        .from('task_time_logs')
+        .select('id, project_id, member_user_id')
+        .is('team_id', null);
+      if (nullLogs && nullLogs.length > 0) {
+        for (const log of nullLogs) {
+          const rate = await this.resolveTeamRate(log.project_id, log.member_user_id);
+          if (rate?.team_id) {
+            await this.supabase
+              .from('task_time_logs')
+              .update({ team_id: rate.team_id })
+              .eq('id', log.id);
+            this.logger.log(`Self-healed log ${log.id} with team_id ${rate.team_id}`);
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Failed self-healing orphaned logs: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   // ─── log mutations ───────────────────────────────────────────────────
 
@@ -287,7 +311,7 @@ export class TeamTimeService {
       updated_at: new Date().toISOString(),
     };
 
-    const hasTaskIdPatch = Object.prototype.hasOwnProperty.call(dto, 'task_id');
+    const hasTaskIdPatch = dto.task_id !== undefined;
     if (hasTaskIdPatch) {
       const requestedTaskId = dto.task_id?.trim() || null;
       if (requestedTaskId !== log.task_id) {
@@ -1753,23 +1777,45 @@ export class TeamTimeService {
       team_id: string;
       project_team: { is_primary: boolean; attached_at: string } | null;
     }>;
-    if (rows.length === 0) return null;
-    rows.sort((a, b) => {
-      const ap = a.project_team?.is_primary ? 1 : 0;
-      const bp = b.project_team?.is_primary ? 1 : 0;
-      if (ap !== bp) return bp - ap;
-      const aAt = a.project_team?.attached_at ?? '';
-      const bAt = b.project_team?.attached_at ?? '';
-      return aAt.localeCompare(bAt);
-    });
-    const chosen = rows[0];
+    let chosenTeamId: string | null = null;
+    if (rows.length > 0) {
+      rows.sort((a, b) => {
+        const ap = a.project_team?.is_primary ? 1 : 0;
+        const bp = b.project_team?.is_primary ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        const aAt = a.project_team?.attached_at ?? '';
+        const bAt = b.project_team?.attached_at ?? '';
+        return aAt.localeCompare(bAt);
+      });
+      chosenTeamId = rows[0].team_id;
+    } else {
+      const { data: ptData } = await this.supabase
+        .from('project_teams')
+        .select('team_id')
+        .eq('project_id', projectId);
+      const ptRows = (ptData ?? []) as Array<{ team_id: string }>;
+      if (ptRows.length > 0) {
+        const candidateTeamIds = ptRows.map((r) => r.team_id);
+        const { data: tmData } = await this.supabase
+          .from('team_members')
+          .select('team_id')
+          .in('team_id', candidateTeamIds)
+          .eq('user_id', userId);
+        const tmRows = (tmData ?? []) as Array<{ team_id: string }>;
+        if (tmRows.length > 0) {
+          chosenTeamId = tmRows[0].team_id;
+        }
+      }
+    }
+
+    if (!chosenTeamId) return null;
 
     const { data: rateRow, error: rateErr } = await this.supabase
       .from('team_member_rates')
       .select(
         'hourly_rate, training_hourly_rate, currency, weekly_limit_hours, monthly_limit_hours, overtime_requires_approval',
       )
-      .eq('team_id', chosen.team_id)
+      .eq('team_id', chosenTeamId)
       .eq('user_id', userId)
       .eq('project_id', projectId)
       .is('end_date', null)
@@ -1777,7 +1823,7 @@ export class TeamTimeService {
     if (rateErr) throw new Error(rateErr.message);
 
     return {
-      team_id: chosen.team_id,
+      team_id: chosenTeamId,
       hourly_rate: Number(rateRow?.hourly_rate ?? 0),
       training_hourly_rate: Number(rateRow?.training_hourly_rate ?? 0),
       currency: rateRow?.currency ?? 'USD',

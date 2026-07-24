@@ -258,6 +258,15 @@ export function EditLogModal({
 }: EditLogModalProps) {
 	if (!isOpen) return null;
 
+	const isStartValid = Boolean(startedAt && !Number.isNaN(new Date(startedAt).getTime()));
+	const isEndValid = !endedAt || !Number.isNaN(new Date(endedAt).getTime());
+	const isTimeOrderValid =
+		!startedAt ||
+		!endedAt ||
+		new Date(endedAt).getTime() >= new Date(startedAt).getTime();
+
+	const canSave = !saving && isStartValid && isEndValid && isTimeOrderValid;
+
 	return (
 		<div
 			className="fixed inset-0 z-[165] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
@@ -283,44 +292,51 @@ export function EditLogModal({
 					</button>
 				</div>
 
-				<div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-					<div className="space-y-1.5">
-						<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-							Time-in
-						</label>
-						<input
-							type="datetime-local"
-							value={startedAt}
-							onChange={(e) => onChangeStartedAt(e.target.value)}
-							className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-							Time-Out
-						</label>
-						<input
-							type="datetime-local"
-							value={endedAt}
-							onChange={(e) => onChangeEndedAt(e.target.value)}
-							className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-						/>
-					</div>
-					<div className="space-y-1.5 md:col-span-2">
-						<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-							Break Time (minutes)
-						</label>
-						<input
-							type="number"
-							min={0}
-							step={1}
-							value={breakMinutes}
-							onChange={(e) =>
-								onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
-							}
-							placeholder="0"
-							className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-						/>
+				<div className="p-5 space-y-3">
+					{!isTimeOrderValid && (
+						<div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-semibold text-rose-700">
+							Time-out cannot be earlier than Time-in.
+						</div>
+					)}
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+						<div className="space-y-1.5">
+							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+								Time-in
+							</label>
+							<input
+								type="datetime-local"
+								value={startedAt}
+								onChange={(e) => onChangeStartedAt(e.target.value)}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+							/>
+						</div>
+						<div className="space-y-1.5">
+							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+								Time-Out
+							</label>
+							<input
+								type="datetime-local"
+								value={endedAt}
+								onChange={(e) => onChangeEndedAt(e.target.value)}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+							/>
+						</div>
+						<div className="space-y-1.5 md:col-span-2">
+							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+								Break Time (minutes)
+							</label>
+							<input
+								type="number"
+								min={0}
+								step={1}
+								value={breakMinutes}
+								onChange={(e) =>
+									onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
+								}
+								placeholder="0"
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -329,18 +345,17 @@ export function EditLogModal({
 						type="button"
 						onClick={onClose}
 						disabled={saving}
-						className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+						className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
 					>
-						<XCircle className="w-3.5 h-3.5" />
 						Cancel
 					</button>
 					<button
 						type="button"
-						onClick={() => void onSave()}
-						disabled={saving}
-						className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+						onClick={onSave}
+						disabled={!canSave}
+						className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						<Save className="w-3.5 h-3.5" />
+						{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
 						Save Changes
 					</button>
 				</div>
