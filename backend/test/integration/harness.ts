@@ -99,6 +99,8 @@ export class Harness {
       exclude: [
         { path: '/', method: RequestMethod.GET },
         { path: 'mcp', method: RequestMethod.ALL },
+        { path: '.well-known/*splat', method: RequestMethod.ALL },
+        { path: 'oauth/*splat', method: RequestMethod.ALL },
       ],
     });
     app.useGlobalPipes(

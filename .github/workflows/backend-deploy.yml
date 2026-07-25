@@ -36,6 +36,7 @@ jobs:
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
+      MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
 
     steps:
       - name: Checkout
@@ -156,16 +157,35 @@ jobs:
             echo "Google OAuth disabled (create the GOOGLE_OAUTH_* secrets, then set the GOOGLE_OAUTH_ENABLED repo var to enable)."
           fi
 
-          # First-party MCP server (read-only Phase 1). Gated on the MCP_ENABLED
-          # repo var. No dedicated secret — PATs live in the DB and the module
-          # reuses the existing SUPABASE_* / SUPABASE_JWT_SECRET credentials.
-          # Until the repo var is set, /mcp returns 503 and PAT endpoints deny,
-          # so the module ships dark. To enable: set the MCP_ENABLED repo var.
+          # First-party MCP server (read + write tools, PAT auth). Gated on the
+          # MCP_ENABLED repo var. No dedicated secret — PATs live in the DB and
+          # the module reuses the existing SUPABASE_* / SUPABASE_JWT_SECRET
+          # credentials. Until the repo var is set, /mcp returns 503 and PAT
+          # endpoints deny, so the module ships dark.
           if [[ -n "${MCP_ENABLED:-}" ]]; then
             ENV_VARS="${ENV_VARS},MCP_ENABLED=true"
             echo "MCP server enabled for this deploy."
           else
             echo "MCP server disabled (set the MCP_ENABLED repo var to enable)."
+          fi
+
+          # MCP OAuth 2.1 authorization server (Phase 3) — what lets the hosted
+          # Claude surfaces (claude.ai, Desktop, mobile, Cowork) connect, since
+          # they have no field for a PAT. A SECOND gate on top of MCP_ENABLED so
+          # OAuth can land dark while MCP itself is already live: until the
+          # MCP_OAUTH_ENABLED repo var is set, the discovery documents 404,
+          # /oauth/* denies, and /mcp emits no WWW-Authenticate challenge.
+          #
+          # The issuer and resource are derived from PUBLIC_API_URL (not secret).
+          # The resource MUST byte-match the URL users type into their MCP host.
+          # To enable: create the MCP_OAUTH_JWT_SECRET secret in Secret Manager
+          # (grant the runtime SA secretAccessor), then set the repo var.
+          if [[ -n "${MCP_OAUTH_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},MCP_OAUTH_ENABLED=true,MCP_OAUTH_ISSUER=${PUBLIC_API_URL_VALUE},MCP_OAUTH_RESOURCE=${PUBLIC_API_URL_VALUE}/mcp"
+            SECRETS="${SECRETS},MCP_OAUTH_JWT_SECRET=MCP_OAUTH_JWT_SECRET:latest"
+            echo "MCP OAuth authorization server enabled for this deploy."
+          else
+            echo "MCP OAuth disabled (create MCP_OAUTH_JWT_SECRET, then set the MCP_OAUTH_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

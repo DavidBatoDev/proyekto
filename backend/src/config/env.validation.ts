@@ -313,6 +313,43 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   MCP_MAX_PAGE_SIZE?: number;
+
+  // ── MCP OAuth 2.1 authorization server (Phase 3) — ships dark ──────────────
+  // Second gate on top of MCP_ENABLED. Unless this is 'true' the discovery
+  // documents 404, /oauth/* denies, and /mcp emits no WWW-Authenticate
+  // challenge — so PAT hosts are unaffected and no OAuth client can discover
+  // the flow. Flip it as its own step, after the module has landed.
+  @IsOptional()
+  @IsString()
+  MCP_OAUTH_ENABLED?: string;
+
+  // HS256 signing secret for MCP access tokens. Deliberately NOT
+  // SUPABASE_JWT_SECRET: distinct secrets are what stop an MCP token from
+  // verifying as a Supabase session and vice versa. Minimum 32 chars; the
+  // module fails closed (503) when it is absent, so dev/CI boots are unaffected.
+  @IsOptional()
+  @IsString()
+  MCP_OAUTH_JWT_SECRET?: string;
+
+  // The authorization-server issuer, e.g. https://api.proyekto.tech. Defaults to
+  // PUBLIC_API_URL.
+  @IsOptional()
+  @IsString()
+  MCP_OAUTH_ISSUER?: string;
+
+  // The protected resource identifier. MUST byte-match the URL a user types into
+  // their MCP host (https://api.proyekto.tech/mcp) — RFC 9728 requires the
+  // metadata `resource` to equal it, and it becomes the access token audience.
+  @IsOptional()
+  @IsString()
+  MCP_OAUTH_RESOURCE?: string;
+
+  // Access-token lifetime in seconds (default 3600). Short by design: tokens are
+  // stateless, so revoking a connection kills the refresh token immediately and
+  // the access token dies at expiry.
+  @IsOptional()
+  @IsNumber()
+  MCP_OAUTH_ACCESS_TTL_SECONDS?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

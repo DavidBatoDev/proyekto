@@ -1,8 +1,10 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
+import type { CorsOptionsDelegate } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
+import type { Request } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { CachePolicyInterceptor } from './common/interceptors/cache-policy.interceptor';
@@ -34,22 +36,49 @@ async function bootstrap() {
     .split(',')
     .map((o) => o.trim().replace(/\/$/, ''));
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin ${origin} not allowed`));
-    },
-    credentials: true,
-  });
+  // A per-request delegate rather than a static policy, because the OAuth
+  // discovery / token / registration endpoints need a DIFFERENT policy from the
+  // rest of the API: they are fetched cross-origin by arbitrary MCP clients and
+  // carry no cookies, so they get `origin: '*'` — which is incompatible with
+  // `credentials: true` and therefore cannot be expressed in one policy.
+  const corsDelegate: CorsOptionsDelegate<Request> = (req, callback) => {
+    const path = req.url ?? '';
+    if (path.startsWith('/oauth') || path.startsWith('/.well-known')) {
+      callback(null, {
+        origin: '*',
+        credentials: false,
+        exposedHeaders: ['WWW-Authenticate'],
+      });
+      return;
+    }
 
-  // Global prefix. `/mcp` is served off the /api tree so MCP hosts and (later)
-  // OAuth discovery point at a clean root path; the PAT management routes stay
-  // under /api/mcp/tokens.
+    const origin = req.headers.origin;
+    // Reject by omitting the CORS headers, NOT by passing an Error: an Error
+    // here escapes to Express's default handler and becomes a bare 500 with no
+    // envelope, which is both wrong and confusing to debug.
+    const allowed = !origin || allowedOrigins.includes(origin);
+    callback(null, {
+      origin: allowed ? (origin ?? true) : false,
+      credentials: true,
+      // MCP clients must be able to read the RFC 9728 challenge to discover the
+      // authorization server, and the protocol version during handshake.
+      exposedHeaders: ['WWW-Authenticate', 'MCP-Protocol-Version'],
+    });
+  };
+  app.enableCors(corsDelegate);
+
+  // Global prefix. `/mcp` and the OAuth surface are served off the /api tree
+  // because MCP hosts and OAuth clients look for them at clean root paths.
+  //
+  // NOTE: the `mcp` entry is EXACT-match on purpose. Widening it to a wildcard
+  // would silently move the PAT management routes from /api/mcp/tokens to
+  // /mcp/tokens and break the web settings page.
   app.setGlobalPrefix('api', {
     exclude: [
       { path: '/', method: RequestMethod.GET },
       { path: 'mcp', method: RequestMethod.ALL },
+      { path: '.well-known/*splat', method: RequestMethod.ALL },
+      { path: 'oauth/*splat', method: RequestMethod.ALL },
     ],
   });
 

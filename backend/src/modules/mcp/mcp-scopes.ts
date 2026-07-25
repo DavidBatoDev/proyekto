@@ -17,7 +17,7 @@ export const MCP_READ_SCOPES = [
 
 // Phase 2 write scopes. Opt-in per token: a read-only PAT carries none of these,
 // so it can never mutate even where MCP is enabled. Each write tool requires its
-// scope AND the live Proyekto permission. (Phase 3 will add 'chat:write'.)
+// scope AND the live Proyekto permission. (Phase 4 will add 'chat:write'.)
 export const MCP_WRITE_SCOPES = [
   'roadmaps:write',
   'tasks:write',

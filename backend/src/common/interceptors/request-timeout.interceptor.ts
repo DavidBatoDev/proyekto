@@ -9,6 +9,7 @@ import {
 import { Observable, TimeoutError, throwError } from 'rxjs';
 import { catchError, timeout } from 'rxjs/operators';
 import type { Request } from 'express';
+import { redactUrl } from './request-logging.interceptor';
 
 @Injectable()
 export class RequestTimeoutInterceptor implements NestInterceptor {
@@ -32,7 +33,7 @@ export class RequestTimeoutInterceptor implements NestInterceptor {
       catchError((error: unknown) => {
         if (error instanceof TimeoutError) {
           this.logger.error(
-            `Request timed out after ${this.timeoutMs}ms: ${request.method} ${request.originalUrl ?? request.url}`,
+            `Request timed out after ${this.timeoutMs}ms: ${request.method} ${redactUrl(request.originalUrl ?? request.url)}`,
           );
           return throwError(
             () =>
