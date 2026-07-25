@@ -32,6 +32,7 @@ import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth/authorize'
 import { Route as FreelancerInvitesRouteImport } from './routes/freelancer/invites'
 import { Route as FreelancerGoLiveRouteImport } from './routes/freelancer/go-live'
 import { Route as ConsultantTemplatesRouteImport } from './routes/consultant/templates'
@@ -198,6 +199,11 @@ const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
 const ProfileProfileIdRoute = ProfileProfileIdRouteImport.update({
   id: '/profile/$profileId',
   path: '/profile/$profileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FreelancerInvitesRoute = FreelancerInvitesRouteImport.update({
@@ -509,6 +515,7 @@ export interface FileRoutesByFullPath {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -584,6 +591,7 @@ export interface FileRoutesByTo {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -660,6 +668,7 @@ export interface FileRoutesById {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -739,6 +748,7 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/oauth/authorize'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap-templates/$slug'
@@ -814,6 +824,7 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/oauth/authorize'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap-templates/$slug'
@@ -889,6 +900,7 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/oauth/authorize'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap-templates/$slug'
@@ -963,6 +975,7 @@ export interface RootRouteChildren {
   ConsultantTemplatesRoute: typeof ConsultantTemplatesRoute
   FreelancerGoLiveRoute: typeof FreelancerGoLiveRoute
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
@@ -1140,6 +1153,13 @@ declare module '@tanstack/react-router' {
       path: '/profile/$profileId'
       fullPath: '/profile/$profileId'
       preLoaderRoute: typeof ProfileProfileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/freelancer/invites': {
@@ -1682,6 +1702,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsultantTemplatesRoute: ConsultantTemplatesRoute,
   FreelancerGoLiveRoute: FreelancerGoLiveRoute,
   FreelancerInvitesRoute: FreelancerInvitesRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,

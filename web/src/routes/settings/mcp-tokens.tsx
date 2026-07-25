@@ -13,6 +13,7 @@ import {
 	Map as MapIcon,
 	MessagesSquare,
 	Pencil,
+	PlugZap,
 	Plus,
 	ShieldCheck,
 	Terminal,
@@ -24,6 +25,10 @@ import { useId, useState } from "react";
 import { API_BASE_URL } from "@/api/axios";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
+import {
+	listMcpConnections,
+	revokeMcpConnection,
+} from "@/services/mcp-oauth.service";
 import {
 	createMcpToken,
 	listMcpTokens,
@@ -46,6 +51,7 @@ export const Route = createFileRoute("/settings/mcp-tokens")({
 });
 
 const mcpTokenKeys = { all: ["mcp-tokens"] as const };
+const mcpConnectionKeys = { all: ["mcp-connections"] as const };
 const MCP_ENDPOINT = `${API_BASE_URL.replace(/\/$/, "")}/mcp`;
 
 const SCOPE_META: Record<
@@ -182,6 +188,93 @@ function ScopeCard({
 	);
 }
 
+/**
+ * Apps the user connected over OAuth (Claude on the web, desktop, or mobile).
+ * Distinct from PATs: the user never sees a credential, so revoking here is the
+ * only way to cut one off. Renders nothing at all until at least one exists, so
+ * the page is unchanged for people who only use tokens.
+ */
+function ConnectedApps() {
+	const toast = useToast();
+	const qc = useQueryClient();
+
+	const connectionsQuery = useQuery({
+		queryKey: mcpConnectionKeys.all,
+		queryFn: listMcpConnections,
+		staleTime: 30 * 1000,
+		retry: false,
+	});
+
+	const revokeMutation = useMutation({
+		mutationFn: revokeMcpConnection,
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: mcpConnectionKeys.all });
+			toast.success("App disconnected");
+		},
+		onError: (err: Error) => toast.error(err.message),
+	});
+
+	const connections = connectionsQuery.data ?? [];
+	if (connections.length === 0) return null;
+
+	return (
+		<section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
+			<div className="flex items-center justify-between border-b border-border px-5 py-5 sm:px-7">
+				<div>
+					<h2 className="text-base font-semibold">Connected apps</h2>
+					<p className="mt-1 text-sm text-muted-foreground">
+						Apps you signed in to. Disconnecting takes effect immediately.
+					</p>
+				</div>
+				<span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+					{connections.length} connected
+				</span>
+			</div>
+
+			<ul className="divide-y divide-border">
+				{connections.map((connection) => (
+					<li
+						key={connection.id}
+						className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7"
+					>
+						<div className="min-w-0">
+							<div className="flex items-center gap-2">
+								<PlugZap className="h-4 w-4 shrink-0 text-muted-foreground" />
+								<span className="truncate text-sm font-medium text-foreground">
+									{connection.client_name ?? connection.client_id}
+								</span>
+							</div>
+							<p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+								<span>Connected {formatDate(connection.created_at)}</span>
+								<span>Last used {formatDate(connection.last_used_at)}</span>
+							</p>
+							<div className="mt-2 flex flex-wrap gap-1.5">
+								{connection.scopes.map((scope) => (
+									<span
+										key={scope}
+										className="rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+									>
+										{scope}
+									</span>
+								))}
+							</div>
+						</div>
+						<button
+							type="button"
+							onClick={() => revokeMutation.mutate(connection.id)}
+							disabled={revokeMutation.isPending}
+							className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:opacity-60 sm:self-auto"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+							Disconnect
+						</button>
+					</li>
+				))}
+			</ul>
+		</section>
+	);
+}
+
 function McpTokensPage() {
 	const toast = useToast();
 	const qc = useQueryClient();
@@ -262,12 +355,14 @@ function McpTokensPage() {
 							Account settings
 						</p>
 						<h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
-							MCP Access Tokens
+							MCP Access
 						</h1>
 						<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-							Personal Access Tokens let MCP hosts like Claude Code and Codex
-							read your Proyekto data on your behalf. Every token is read-only,
-							scoped to what you choose, and revocable at any time.
+							Let MCP hosts work with your Proyekto data on your behalf. Apps
+							like Claude connect through a sign-in prompt; command-line hosts
+							such as Claude Code and Codex use a Personal Access Token. Either
+							way, access is scoped to exactly what you approve, re-checked
+							against your permissions on every call, and revocable at any time.
 						</p>
 					</div>
 				</div>
@@ -452,6 +547,9 @@ function McpTokensPage() {
 						</div>
 					</form>
 				</section>
+
+				{/* Apps connected over OAuth (Claude and friends) */}
+				<ConnectedApps />
 
 				{/* Existing tokens */}
 				<section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
