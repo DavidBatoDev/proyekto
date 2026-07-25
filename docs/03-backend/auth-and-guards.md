@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-07-23 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -17,13 +17,14 @@ fallback to a Supabase call, and also accepts a guest-session header.
 | `ConsultantOnlyGuard` | `consultant-only.guard.ts` | `profiles.is_consultant_verified` (a capability flag, **not** active persona) |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
 | `PersonaGuard` | `persona.guard.ts` | `profiles.active_persona` ∈ `@Personas(...)` — **defined but not used by any controller today** |
-| `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`) **or** a Supabase session JWT — gates the `/mcp` endpoint |
+| `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`), an OAuth 2.1 access token, **or** a Supabase session JWT — gates the `/mcp` endpoint |
 
 > **⚠️ Note:** the older docs claimed `PersonaGuard` gated many routes. It exists and
 > works, but **no controller currently applies it**; persona-scoped behavior is
 > enforced inside services. `ConsultantOnlyGuard` is what actually gates the
 > consultant-only marketplace routes. Two more guards come from outside `common/`:
-> `ThrottlerGuard` (`@nestjs/throttler`, on guest endpoints) and `OtaPublishGuard`
+> `ThrottlerGuard` (`@nestjs/throttler`, on guest endpoints and on the MCP OAuth
+> `/oauth/token` · `/register` · `/revoke` endpoints) and `OtaPublishGuard`
 > (`mobile-updates/`, gates CI bundle registration).
 
 ## SupabaseAuthGuard flow
@@ -65,26 +66,42 @@ for the handler. Applied per-route on the admin console (e.g. application approv
 role grants, matchmaking). `GET /api/admin/me` deliberately runs *without* it so any
 user can check whether they're an admin.
 
-## McpAuthGuard & PAT auth
+## McpAuthGuard & PAT / OAuth auth
 
 The [MCP server](./mcp.md) has its own guard,
 [`McpAuthGuard`](../../backend/src/modules/mcp/mcp-auth.guard.ts), because it
-authenticates MCP hosts (Claude Code, Codex) rather than the web/mobile app. It
-runs three checks in order and attaches both `request.user` and `request.mcpScopes`:
+authenticates MCP hosts (Claude Code, Codex, the hosted Claude surfaces) rather
+than the web/mobile app. It runs a kill switch plus three credential checks in
+order, attaching both `request.user` and `request.mcpScopes`:
 
 1. **Kill switch** — unless `MCP_ENABLED === 'true'`, the whole `/mcp` surface is
    **503**.
-2. **Proyekto PAT** (primary) — a `Bearer pk_…` token resolved by sha256 hash to
-   its owner + stored scopes. Identity is derived here, **never** from tool inputs.
-3. **Supabase session JWT** (fallback) — a live HS256 access token verified
+2. **Proyekto PAT** — a `Bearer pk_…` token resolved by sha256 hash to its owner
+   + stored scopes. The `pk_` prefix short-circuits here. Identity is derived in
+   the guard, **never** from tool inputs.
+3. **OAuth 2.1 access token** — a stateless HS256 JWT this server minted,
+   verified in-process against `MCP_OAUTH_JWT_SECRET` and **audience-bound** to
+   the MCP resource (RFC 8707), so it can't be replayed elsewhere and a Supabase
+   session can never verify here. Only attempted while `MCP_OAUTH_ENABLED` is on.
+   Scopes come from the token's `scope` claim.
+4. **Supabase session JWT** (fallback) — a live HS256 access token verified
    locally, mirroring `SupabaseAuthGuard`. Convenient for dev / the MCP Inspector;
    it is granted **all** read scopes so a logged-in developer isn't blocked, while
-   PATs stay the least-privilege path for real hosts.
+   PATs and OAuth tokens stay the least-privilege path for real hosts.
 
-Scopes on the token are **necessary but not sufficient**: every MCP tool
+Scopes on the credential are **necessary but not sufficient**: every MCP tool
 additionally re-checks the live Proyekto project/roadmap permission through the
-same service-layer authorization described below. The PAT-management routes
-(`/api/mcp/tokens`) use the ordinary `SupabaseAuthGuard`, not this guard.
+same service-layer authorization described below.
+
+Once OAuth is enabled, every 401 from this guard also carries the RFC 9728
+`WWW-Authenticate: Bearer resource_metadata="…", scope="…"` challenge — the only
+way an OAuth client discovers the authorization server. While
+`MCP_OAUTH_ENABLED` is unset no challenge is emitted at all.
+
+The PAT-management routes (`/api/mcp/tokens`) and the OAuth consent/grants routes
+(`/api/mcp/oauth/*`) use the ordinary `SupabaseAuthGuard`, not this guard. The
+OAuth **protocol** endpoints (`/oauth/*`, `/.well-known/*`) are unauthenticated
+by design — a public client is authenticated by PKCE.
 
 ## Decorators
 

@@ -1,6 +1,6 @@
 # GCP & Cloud Run
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The backend and agent run as Docker containers on **Google Cloud Run** in
 `asia-southeast1` (Singapore). Deploys are keyless — GitHub Actions authenticates via
@@ -51,7 +51,8 @@ Both set `--cpu-boost --execution-environment=gen2 --allow-unauthenticated --tim
 Sensitive config is injected with `--set-secrets` from **Secret Manager** (never
 committed): `SUPABASE_*`, `UPSTASH_REDIS_*`, `OPENAI_API_KEY`, `GMAIL_*`, `R2_*`, plus
 the gated ones (`CLOUDFLARE_PURGE_API_TOKEN`, `REALTIME_PUBLISH_TOKEN`,
-`MEETINGS_CRON_SECRET`, `OTA_PUBLISH_TOKEN`).
+`MEETINGS_CRON_SECRET`, `OTA_PUBLISH_TOKEN`, and `MCP_OAUTH_JWT_SECRET` when the
+`MCP_OAUTH_ENABLED` repo var is set — see [Backend → MCP](../03-backend/mcp.md#config--deploy)).
 
 > **Deploy gotcha:** a Cloud Run deploy **full-replaces** the secret set from Secret
 > Manager. When you add a new secret, add it unconditionally to the workflow's

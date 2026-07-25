@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-07-23 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The backend is **27 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -40,7 +40,7 @@ R2**, not Supabase Storage.
 | `realtime` | Room-join authorize + event publisher | *(none — HTTP to the Worker)* |
 | `audit` | Central project activity/audit log | `project_activity_log` |
 | `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
-| `mcp` | First-party read + write MCP server + Personal Access Tokens | `mcp_personal_access_tokens` |
+| `mcp` | First-party read + write MCP server, Personal Access Tokens, OAuth 2.1 authorization server | `mcp_personal_access_tokens`, `mcp_oauth_clients`, `mcp_oauth_grants` |
 
 ## Identity & accounts
 
@@ -179,8 +179,13 @@ module. See [Agent & Roadmap AI](../05-agent-ai/README.md).
 plus Personal Access Token management (`/api/mcp/tokens`, table
 `mcp_personal_access_tokens`). Reuses the projects/roadmaps/chat/knowledge/task
 services in-process so every tool re-checks live authorization; writes are gated
-by opt-in `*:write` PAT scopes (Phase 2). Ships dark behind `MCP_ENABLED`. Full
-page: [MCP Server](./mcp.md).
+by opt-in `*:write` scopes (Phase 2). Ships dark behind `MCP_ENABLED`. The
+`oauth/` sub-tree (Phase 3) is a full **OAuth 2.1 authorization server** —
+discovery documents at the domain root, CIMD + RFC 7591 client identity
+(`mcp_oauth_clients`), a PKCE authorization-code flow with a first-party consent
+screen, and rotating refresh tokens on durable per-connection grants
+(`mcp_oauth_grants`) — behind the second flag `MCP_OAUTH_ENABLED`. Full page:
+[MCP Server](./mcp.md).
 
 ## Structural notes
 

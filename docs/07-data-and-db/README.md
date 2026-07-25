@@ -1,6 +1,6 @@
 # Data & Database
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The Supabase Postgres 15 database — its current schema (generated from the live
 migrations, not stale dumps), how migrations are authored and applied, the identity
@@ -30,6 +30,6 @@ model, and the RLS/security posture. The schema is **migration-driven**:
 
 ## Code locations
 
-- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (165 files)
+- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (196 files)
 - **Edge functions:** [`supabase/functions/`](../../supabase/functions/) (Deno — signup/reset email)
 - **Repositories** (the only code that reads/writes tables): `backend/src/modules/**/repositories/`

@@ -1,9 +1,9 @@
 # RLS & Security
 
-> **Last updated:** 2026-07-19 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
-Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears ~71
-times across 31 migrations — essentially every domain table), but it is **not the
+Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
+times across 40 migrations — essentially every domain table), but it is **not the
 primary authorization gate**. The backend connects as the Supabase **service role**,
 which bypasses RLS, and enforces access in the TypeScript service layer. RLS is
 defense-in-depth for any direct/anon reads.
@@ -59,6 +59,12 @@ policies are defense-in-depth allows, and there is no client write path:
 - `user_stats` — updated on project completion, never by the user.
 - `payouts` / payout mutations — go through `create_payout_and_mark_paid` /
   `void_payout_and_revert`.
+- `mcp_personal_access_tokens`, `mcp_oauth_grants` — owners get **SELECT** +
+  **DELETE** only; issuance, refresh-token rotation, and `last_used_at`
+  bookkeeping all go through the service-role backend. `mcp_oauth_clients` has
+  **only** a `service_role` policy — it belongs to no user (written by an
+  unauthenticated RFC 7591 registration call), so RLS denies `authenticated`
+  outright. See [Backend → MCP](../03-backend/mcp.md#storage).
 
 ## Secrets & keys
 

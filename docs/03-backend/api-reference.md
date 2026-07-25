@@ -1,11 +1,12 @@
 # API Reference
 
-> **Last updated:** 2026-07-23 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
-`/api` prefix — the sole exception is `POST /mcp` (see [mcp](#mcp--mcp--apimcptokens)),
-served off the `/api` tree for MCP hosts. Unless a row says otherwise, the route
-requires a Supabase JWT
+`/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
+`/.well-known/*`), served off the `/api` tree because MCP hosts and OAuth clients
+look for them at clean root paths (see [mcp](#mcp--mcp--oauth--apimcp)). Unless a
+row says otherwise, the route requires a Supabase JWT
 (`SupabaseAuthGuard`) and returns the `{ data }` envelope
 ([architecture.md](./architecture.md#response-envelope)).
 
@@ -247,19 +248,50 @@ contract). `POST /mobile-updates/bundles/presign` + `/bundles` are **+OtaPublish
 
 No HTTP routes — `AuditService` is consumed internally (e.g. by chat/activity).
 
-## mcp · `/mcp` · `/api/mcp/tokens`
+## mcp · `/mcp` · `/oauth` · `/api/mcp`
 
 The first-party MCP server (read + write since Phase 2). `POST /mcp` is served
-**outside** the `/api` prefix and gated by `McpAuthGuard` (a Proyekto PAT or a
-Supabase session JWT); the whole surface is **503** unless
-`MCP_ENABLED === 'true'`. Writes require an opt-in `*:write` scope on the PAT plus
-the live Proyekto permission. PAT-management routes use `SupabaseAuthGuard` and
-are owner-scoped. Full page: [MCP Server](./mcp.md).
+**outside** the `/api` prefix and gated by `McpAuthGuard` (a Proyekto PAT, an
+OAuth access token, or a Supabase session JWT); the whole surface is **503**
+unless `MCP_ENABLED === 'true'`. Writes require an opt-in `*:write` scope on the
+credential plus the live Proyekto permission. PAT-management and consent routes
+use `SupabaseAuthGuard` and are owner-scoped. Full page:
+[MCP Server](./mcp.md).
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| POST | /mcp | McpAuth (PAT or JWT) | Stateless Streamable-HTTP JSON-RPC (tools/resources/prompts) |
+| POST | /mcp | McpAuth (PAT, OAuth, or JWT) | Stateless Streamable-HTTP JSON-RPC (tools/resources/prompts) |
 | GET | /mcp | McpAuth | **405** — stateless mode has no SSE channel |
 | POST | /api/mcp/tokens | Supabase | Issue a PAT — returns the raw `pk_` token once |
 | GET | /api/mcp/tokens | Supabase | List own token metadata (never the hash) |
 | DELETE | /api/mcp/tokens/:id | Supabase | Revoke a PAT (204) |
+
+### OAuth 2.1 authorization server (Phase 3)
+
+Served off the `/api` prefix, unauthenticated (public clients authenticated by
+PKCE), and **404 / 503 unless `MCP_OAUTH_ENABLED === 'true'`** on top of
+`MCP_ENABLED`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /.well-known/oauth-protected-resource | Public | RFC 9728 metadata (**404** while dark) |
+| GET | /.well-known/oauth-protected-resource/mcp | Public | Same document, resource-qualified path |
+| GET | /.well-known/oauth-authorization-server | Public | RFC 8414 metadata (**404** while dark) |
+| GET | /.well-known/oauth-authorization-server/mcp | Public | Same document, resource-qualified path |
+| GET | /oauth/authorize | Public | Validate + park the request, **302** to the web consent screen |
+| POST | /oauth/token | Public +Throttler (30/min) | `authorization_code` + `refresh_token` grants (form-encoded) |
+| POST | /oauth/register | Public +Throttler (10/min) | RFC 7591 Dynamic Client Registration — **201** |
+| POST | /oauth/revoke | Public +Throttler (30/min) | RFC 7009 — always **200** |
+
+Errors on these routes are **flat RFC 6749 bodies**
+(`{ error, error_description }`), not the `{ data }` / `{ error: {…} }` envelope.
+
+The first-party half keeps the `/api` prefix:
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/mcp/oauth/consent?request_id= | Supabase | What the consent screen renders |
+| POST | /api/mcp/oauth/consent | Supabase | Approve → `{ redirect_to }` with the authorization code |
+| POST | /api/mcp/oauth/consent/deny | Supabase | Decline → `{ redirect_to }` with `error=access_denied` |
+| GET | /api/mcp/oauth/grants | Supabase | "Connected apps" — the caller's live grants |
+| DELETE | /api/mcp/oauth/grants/:id | Supabase | Disconnect an app (204) |

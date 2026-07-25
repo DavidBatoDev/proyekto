@@ -1,9 +1,9 @@
 # Backend Architecture
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The backend is a **NestJS 11** application organized as one root `AppModule` that
-imports ~24 self-contained feature modules plus four global infra modules. Every
+imports **27** self-contained feature modules plus four global infra modules. Every
 feature follows the same **controller → service → repository** split: controllers
 do HTTP, services own business logic and **authorization**, and repositories are the
 only code that touches Supabase. It runs as the Supabase **service role**, so
@@ -31,7 +31,7 @@ See [patterns.md](./patterns.md) for the repository/DI conventions and
 
 ```
   HTTP request
-     │  helmet · compression · CORS (from CORS_ORIGINS)         [main.ts middleware]
+     │  helmet · compression · CORS (per-request delegate)      [main.ts middleware]
      ▼
   Guard   SupabaseAuthGuard / AdminGuard / … (per-controller @UseGuards)
      │    attaches request.user  (401/403 on failure)           [common/guards]
@@ -51,7 +51,7 @@ logging → cache-policy → response**:
 | Interceptor | Does |
 | --- | --- |
 | `RequestTimeoutInterceptor` | Aborts after `REQUEST_TIMEOUT_MS` (default 25 s) → 408 |
-| `RequestLoggingInterceptor` | Logs `METHOD url -> status (Nms)`; warns past `SLOW_REQUEST_THRESHOLD_MS` (1.5 s) |
+| `RequestLoggingInterceptor` | Logs `METHOD url -> status (Nms)`; warns past `SLOW_REQUEST_THRESHOLD_MS` (1.5 s). Exports `redactUrl()`, which strips the query string on `/oauth` paths (also used by the timeout interceptor) so OAuth `code` / `state` / `code_challenge` never reach Cloud Logging |
 | `CachePolicyInterceptor` | Applies `@SetCachePolicy` `Cache-Control` + weak ETags; 304 on `If-None-Match` |
 | `ResponseInterceptor` | Wraps every result as `{ data }` (opt out with `@RawResponse`) |
 
@@ -104,6 +104,22 @@ return a raw shape (the Capgo OTA endpoints) opt out with `@RawResponse()`.
 | [`backend/src/main.ts`](../../backend/src/main.ts) | Nest bootstrap — middleware, prefix, pipe, filter, interceptors, listen |
 | [`backend/src/app.module.ts`](../../backend/src/app.module.ts) | Root module — imports infra + feature modules, Throttler config |
 | `backend/src/lambda.ts` | Orphaned Vercel/serverless adapter — **not deployed** |
+
+### Global prefix & CORS
+
+Everything is served under `/api` except four exclusions in `setGlobalPrefix`:
+`/` (GET), `mcp` (**exact-match** — a wildcard would move `/api/mcp/tokens` and
+break the web settings page), `.well-known/*splat`, and `oauth/*splat`. The last
+two are the MCP OAuth surface, which clients expect at the domain root.
+
+CORS is a **per-request delegate**, not one static policy: `/oauth` and
+`/.well-known` get `origin: '*'` with `credentials: false` (fetched cross-origin
+by arbitrary MCP clients, no cookies), while everything else keeps the
+`CORS_ORIGINS` allow-list with `credentials: true`. Both expose
+`WWW-Authenticate`; the API policy also exposes `MCP-Protocol-Version`. An
+unknown origin is rejected by omitting the CORS headers, **not** by passing an
+`Error` — an `Error` there escapes to Express and becomes a bare 500 with no
+envelope. See [mcp.md](./mcp.md#errors-cors-and-logging).
 
 ## See also
 

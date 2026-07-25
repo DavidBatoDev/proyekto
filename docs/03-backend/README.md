@@ -1,6 +1,6 @@
 # Backend (NestJS API)
 
-> **Last updated:** 2026-07-23 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The NestJS 11 API — the system's single writer to Postgres and the hub every other
 service talks to. It's organized as one root module importing 27 self-contained
@@ -21,7 +21,7 @@ Supabase service role with authorization enforced in the service layer.
 | [patterns.md](./patterns.md) | Repository pattern, Symbol DI tokens, `import type`, DTOs, status codes |
 | [modules.md](./modules.md) | The 27 feature modules — purpose, tables, dependencies |
 | [api-reference.md](./api-reference.md) | Every HTTP route, grouped by module |
-| [mcp.md](./mcp.md) | First-party read + write MCP server — endpoint, auth, scopes, tool catalog, PATs |
+| [mcp.md](./mcp.md) | First-party read + write MCP server — endpoint, auth, scopes, tool catalog, PATs, the OAuth 2.1 authorization server |
 
 ## Glossary
 

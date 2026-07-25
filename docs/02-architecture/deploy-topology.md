@@ -1,6 +1,6 @@
 # Deploy Topology
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 Where every unit runs, how it ships, and what it needs at runtime. The short
 version: **backend and agent are Docker images on Google Cloud Run**, **web is a
@@ -53,7 +53,8 @@ own GitHub Actions workflow, triggered by pushes to its folder.
 
 Two-stage `node:22-alpine` Docker build (`backend/Dockerfile`); container starts
 `node dist/server` → tracing → `NestFactory` listening on `PORT` (8080 in-container),
-global prefix `/api`. Deployed by `.github/workflows/backend-deploy.yml` with
+global prefix `/api` (excluding `/`, `/mcp`, `/oauth/*`, and `/.well-known/*`).
+Deployed by `.github/workflows/backend-deploy.yml` with
 `gcloud run deploy`, authenticated via **Workload Identity Federation** (no keys).
 
 - **GCP coordinates** (CI reads these from repo variables — `GCP_PROJECT_ID`,
@@ -67,7 +68,10 @@ global prefix `/api`. Deployed by `.github/workflows/backend-deploy.yml` with
   `--set-secrets` from **Secret Manager** (`SUPABASE_*`, `UPSTASH_REDIS_*`,
   `OPENAI_API_KEY`, `GMAIL_*`, `R2_*`, etc.). Several integrations are added to the
   deploy only when a gate repo-variable is set — Cloudflare purge, the realtime
-  Worker, FCM push, OTA publishing, and the meetings reminder cron.
+  Worker, FCM push, OTA publishing, the meetings reminder cron, the MCP server
+  (`MCP_ENABLED`), and the MCP OAuth authorization server (`MCP_OAUTH_ENABLED`,
+  which also pulls in the `MCP_OAUTH_JWT_SECRET` secret). See
+  [Backend → MCP](../03-backend/mcp.md#config--deploy).
 
 ### Agent — Cloud Run
 

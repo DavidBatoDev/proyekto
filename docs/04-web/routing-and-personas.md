@@ -1,6 +1,6 @@
 # Routing & Personas
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -20,13 +20,23 @@ each route's `beforeLoad`.
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
 | `project/` | `$projectId` layout + tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
+| `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
+| `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps) |
+| `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
 Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,
-`notifications`, `meetings`, `work-items`, `project-posting`.
+`notifications`, `meetings`, `work-items`, `project-posting`, `command-center`.
 
 > **No `client/` route subtree.** "Client" is a persona (`profile.active_persona`),
-> but client-facing surfaces live under `project/` and `dashboard` — there's no
-> dedicated `client/` directory.
+> but client-facing surfaces live under `project/` and `dashboard` — the
+> `web/src/routes/client/` directory is empty and generates no routes.
+
+> **⚠️ `oauth/authorize` is deliberately absent from `Header.tsx`'s `validPaths`.**
+> An unrecognized path renders no header, which is exactly what this chrome-free
+> consent screen wants — do not "fix" it by adding `/oauth` to the list. Its
+> `beforeLoad` redirects an anonymous visitor to `/auth/login` carrying the whole
+> query string, because losing `request_id` kills the host's authorization
+> request. See [Backend → MCP](../03-backend/mcp.md#consent).
 
 ## The project subtree
 

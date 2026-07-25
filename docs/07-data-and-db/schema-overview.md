@@ -1,10 +1,10 @@
 # Schema Overview
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **165 migrations** spanning
-2025-12-11 → 2026-07-08. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **196 migrations** spanning
+2025-12-11 → 2026-07-25. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -90,6 +90,9 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | Table | Purpose |
 | --- | --- |
 | `mobile_app_bundles` | OTA bundle registry (`mobile_bundle_platform`, `mobile_bundle_status`) |
+| `mcp_personal_access_tokens` | MCP PATs — sha256 hash + display prefix, scopes, `revoked_at` |
+| `mcp_oauth_clients` | OAuth clients registered via RFC 7591 DCR (CIMD clients have no row) |
+| `mcp_oauth_grants` | One row per (user, client) MCP connection — scopes, hashed rotating refresh token, `revoked_at` |
 | Guests | No table — guests are `profiles` rows (`is_guest`), managed by RPCs |
 
 ## Enum vocabulary

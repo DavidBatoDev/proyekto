@@ -1,6 +1,6 @@
 # Configuration
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-25 · **Status:** current
 
 All environment variables are **validated at boot** by `validateEnv`
 ([`config/env.validation.ts`](../../backend/src/config/env.validation.ts)) using
@@ -75,6 +75,21 @@ Publishing is a no-op unless both URL and token are set. See
 `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`,
 `FIREBASE_USE_ADC` (keyless via Application Default Credentials on Cloud Run),
 `PUSH_SEND_TIMEOUT_MS`. See [Mobile → push](../09-mobile/README.md).
+
+### MCP server + OAuth (optional, ship-dark)
+
+| Var | Notes |
+| --- | --- |
+| `MCP_ENABLED` | Kill switch for the whole MCP surface; anything but `'true'` ⇒ `/mcp` is **503** and the PAT routes deny |
+| `MCP_MAX_PAGE_SIZE` | Page-size ceiling for MCP read tools (default 100) |
+| `MCP_OAUTH_ENABLED` | **Second** gate over the OAuth 2.1 authorization server; while unset the discovery documents 404 and no `WWW-Authenticate` challenge is emitted |
+| `MCP_OAUTH_JWT_SECRET` | HS256 signing secret for MCP access tokens — deliberately **not** `SUPABASE_JWT_SECRET`; shorter than 32 chars ⇒ 503 |
+| `MCP_OAUTH_ISSUER` | Authorization-server issuer (falls back to `PUBLIC_API_URL`) |
+| `MCP_OAUTH_RESOURCE` | Protected-resource id; must byte-match the URL users type into their MCP host (defaults to `<issuer>/mcp`) |
+| `MCP_OAUTH_ACCESS_TTL_SECONDS` | Access-token lifetime (default 3600) |
+
+All optional, so dev and CI boots are unaffected. The consent screen URL is
+derived from `CLIENT_URL`. See [MCP Server](./mcp.md).
 
 ### Email, AI, and misc
 
