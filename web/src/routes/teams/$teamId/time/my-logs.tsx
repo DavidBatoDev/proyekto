@@ -1,8 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ListChecks } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
+import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
+import {
+	loadTimeView,
+	storeTimeView,
+	type TimeViewMode,
+	TimeViewToggle,
+} from "@/components/team-time/calendar/TimeViewToggle";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
+import { HourCapBanner } from "@/components/team-time/HourCapBanner";
 import {
 	buildCustomPeriodFromDateInputs,
 	buildTeamLogPeriodSearch,
@@ -12,14 +22,6 @@ import {
 	resolveTeamLogPeriod,
 	storePeriodSearch,
 } from "@/components/team-time/log-period";
-import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
-import {
-	loadTimeView,
-	storeTimeView,
-	type TimeViewMode,
-	TimeViewToggle,
-} from "@/components/team-time/calendar/TimeViewToggle";
-import { HourCapBanner } from "@/components/team-time/HourCapBanner";
 import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
 	EMPTY_LOG_STATS,
@@ -33,6 +35,7 @@ import {
 	EditLogModal,
 	ManualLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	confirmStopLongTimer,
 	fromLocalDateTimeInput,
@@ -88,6 +91,7 @@ function MyLogsTab() {
 	const [viewMode, setViewMode] = useState<TimeViewMode>(() =>
 		loadTimeView(teamId, "my"),
 	);
+	const [taskStatusFilter, setTaskStatusFilter] = useState("");
 	const changeViewMode = (mode: TimeViewMode) => {
 		setViewMode(mode);
 		storeTimeView(teamId, "my", mode);
@@ -199,12 +203,13 @@ function MyLogsTab() {
 			teamId,
 			"my-logs",
 			user?.id,
-			{ from: period.fromIso, to: period.toIso },
+			{ from: period.fromIso, to: period.toIso, taskStatusFilter },
 		],
 		queryFn: () =>
 			teamTimeService.listMyTeamLogs(teamId, {
 				from: period.fromIso,
 				to: period.toIso,
+				task_status: taskStatusFilter || undefined,
 				limit: 200,
 			}),
 		enabled: Boolean(user?.id),
@@ -244,7 +249,8 @@ function MyLogsTab() {
 
 	const tasksForManualQuery = useQuery({
 		queryKey: ["team-time", teamId, "project-tasks", manualProjectId],
-		queryFn: () => teamTimeService.listTeamProjectTasks(teamId, manualProjectId),
+		queryFn: () =>
+			teamTimeService.listTeamProjectTasks(teamId, manualProjectId),
 		enabled: Boolean(manualProjectId),
 	});
 
@@ -700,7 +706,14 @@ function MyLogsTab() {
 
 	return (
 		<>
-			<div className="mb-3 flex justify-end">
+			<div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+				<FilterSelect
+					value={taskStatusFilter}
+					onChange={setTaskStatusFilter}
+					icon={<ListChecks className="h-3.5 w-3.5" />}
+					placeholder="All task statuses"
+					options={TASK_STATUS_FILTER_OPTIONS}
+				/>
 				<TimeViewToggle value={viewMode} onChange={changeViewMode} />
 			</div>
 

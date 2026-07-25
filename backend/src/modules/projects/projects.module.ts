@@ -9,6 +9,7 @@ import { AuthorizationModule } from './authorization/authorization.module';
 import { ProjectAccessSyncModule } from './access-sync/access-sync.module';
 import { TeamsModule } from '../teams/teams.module';
 import { ChatModule } from '../chat/chat.module';
+import { ContractsModule } from '../contracts/contracts.module';
 
 @Module({
   imports: [
@@ -17,6 +18,9 @@ import { ChatModule } from '../chat/chat.module';
     AuthorizationModule,
     forwardRef(() => TeamsModule),
     ChatModule,
+    // ContractsModule depends only on AuthorizationModule, so this direction is
+    // acyclic — the activation gate can live here without a forwardRef.
+    ContractsModule,
   ],
   controllers: [ProjectsController],
   providers: [

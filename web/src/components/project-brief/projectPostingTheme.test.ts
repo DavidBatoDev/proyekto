@@ -9,6 +9,7 @@ const THEMED_PROJECT_POSTING_FILES = [
 	new URL("./TileOption.tsx", import.meta.url),
 	new URL("./StepIndicator.tsx", import.meta.url),
 	new URL("./ProjectTeamPicker.tsx", import.meta.url),
+	new URL("./CommercialTermsCard.tsx", import.meta.url),
 ];
 
 const LIGHT_ONLY_CLASS =

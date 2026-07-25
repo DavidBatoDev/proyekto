@@ -26,7 +26,7 @@ const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,
   duration_seconds, status, reviewed_by, reviewed_at, review_note, source,
   rate_snapshot, currency_snapshot, work_type_snapshot, created_at, updated_at,
-  task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type),
+  task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type, status),
   member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email),
   reviewer:profiles!task_time_logs_reviewed_by_fkey(id, display_name, avatar_url),
   project:projects!task_time_logs_project_id_fkey(id, title)
@@ -126,6 +126,7 @@ export interface ReviewLogsBulkResult {
 
 export interface ResolvedTeamRate {
   team_id: string;
+  rate_type: 'hourly' | 'fixed';
   hourly_rate: number;
   training_hourly_rate: number;
   currency: string;
@@ -196,6 +197,7 @@ export class TeamTimeService {
         status: 'pending',
         source: 'timer',
         rate_snapshot: resolvedRate,
+        rate_type_snapshot: rate?.rate_type ?? 'hourly',
         currency_snapshot: rate?.currency ?? 'USD',
         work_type_snapshot: workType,
       })
@@ -259,7 +261,9 @@ export class TeamTimeService {
     } catch (notifyError) {
       this.logger.warn(
         `Failed to send time-log approval notification after stop for log ${row.id}: ${
-          notifyError instanceof Error ? notifyError.message : String(notifyError)
+          notifyError instanceof Error
+            ? notifyError.message
+            : String(notifyError)
         }`,
       );
     }
@@ -293,16 +297,23 @@ export class TeamTimeService {
       if (requestedTaskId !== log.task_id) {
         patch.task_id = requestedTaskId;
         if (requestedTaskId) {
-          const taskContext = await this.fetchTaskContextOrThrow(requestedTaskId);
+          const taskContext =
+            await this.fetchTaskContextOrThrow(requestedTaskId);
           await this.projectAuth.assertRole(
             callerId,
             taskContext.project_id,
             'viewer',
           );
-          const rate = await this.resolveTeamRate(taskContext.project_id, callerId);
+          const rate = await this.resolveTeamRate(
+            taskContext.project_id,
+            callerId,
+          );
           patch.project_id = taskContext.project_id;
           patch.team_id = rate?.team_id ?? null;
-          patch.rate_snapshot = this.pickRateForWorkType(rate, taskContext.work_type);
+          patch.rate_snapshot = this.pickRateForWorkType(
+            rate,
+            taskContext.work_type,
+          );
           patch.currency_snapshot = rate?.currency ?? 'USD';
           patch.work_type_snapshot = taskContext.work_type;
         } else {
@@ -318,12 +329,14 @@ export class TeamTimeService {
 
     const startedAt = dto.started_at ?? log.started_at;
     const endedAt =
-      dto.ended_at !== undefined ? dto.ended_at : log.ended_at ?? null;
+      dto.ended_at !== undefined ? dto.ended_at : (log.ended_at ?? null);
     if (dto.started_at !== undefined) patch.started_at = dto.started_at;
     if (dto.ended_at !== undefined) patch.ended_at = dto.ended_at;
 
     const breakMins =
-      dto.break_minutes !== undefined ? Math.max(0, dto.break_minutes) : (log.break_minutes ?? 0);
+      dto.break_minutes !== undefined
+        ? Math.max(0, dto.break_minutes)
+        : (log.break_minutes ?? 0);
     if (dto.break_minutes !== undefined) {
       patch.break_minutes = breakMins;
     }
@@ -398,7 +411,10 @@ export class TeamTimeService {
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
-    await this.assertWithinRetroactiveWindow(rate?.team_id ?? null, dto.started_at);
+    await this.assertWithinRetroactiveWindow(
+      rate?.team_id ?? null,
+      dto.started_at,
+    );
 
     const breakMins = Math.max(0, dto.break_minutes ?? 0);
     const grossSeconds = Math.floor((end - start) / 1000);
@@ -428,6 +444,7 @@ export class TeamTimeService {
       status: 'pending',
       source: 'manual',
       rate_snapshot: resolvedRate,
+      rate_type_snapshot: rate?.rate_type ?? 'hourly',
       currency_snapshot: rate?.currency ?? 'USD',
       work_type_snapshot: workType,
     };
@@ -451,7 +468,9 @@ export class TeamTimeService {
     if (res.error || !res.data) {
       throw new Error(res.error?.message ?? 'Failed to create log');
     }
-    const row = await this.attachLimitContext(res.data as unknown as TimeLogRow);
+    const row = await this.attachLimitContext(
+      res.data as unknown as TimeLogRow,
+    );
     await this.notifyApprovalRequested(row, callerId);
     return row;
   }
@@ -642,14 +661,16 @@ export class TeamTimeService {
       )
       .eq('team_id', teamId);
     if (error) throw new Error(error.message);
-    return ((data ?? []) as unknown as Array<{
-      user: {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-      } | null;
-    }>)
+    return (
+      (data ?? []) as unknown as Array<{
+        user: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          email: string | null;
+        } | null;
+      }>
+    )
       .map((r) => r.user)
       .filter((u): u is NonNullable<typeof u> => u !== null);
   }
@@ -672,7 +693,12 @@ export class TeamTimeService {
       throw new ForbiddenException('You cannot review your own time logs.');
     }
     this.assertNotPaidDecision(dto.decision);
-    const rows = await this.applyReview([logId], callerId, dto.decision, dto.reason);
+    const rows = await this.applyReview(
+      [logId],
+      callerId,
+      dto.decision,
+      dto.reason,
+    );
     const reviewed = rows[0];
     if (!reviewed) throw new NotFoundException('Time log not found');
     await this.notifyReviewOutcome(rows, callerId, dto.decision, dto.reason);
@@ -754,10 +780,8 @@ export class TeamTimeService {
     await this.assertTeamMember(callerId, teamId);
     await this.assertTeamAttachedToProject(teamId, projectId);
     await this.projectAuth.assertRole(callerId, projectId, 'viewer');
-    const { data, error } = await this.supabase
-      .from('roadmap_tasks')
-      .select(
-        `id, title, work_type, feature_id,
+    const { data, error } = await this.supabase.from('roadmap_tasks').select(
+      `id, title, work_type, feature_id,
          feature:roadmap_features!roadmap_tasks_feature_id_fkey(
            id, title, epic_id,
            epic:roadmap_epics!roadmap_features_epic_id_fkey(
@@ -765,7 +789,7 @@ export class TeamTimeService {
              roadmap:roadmaps!roadmap_epics_roadmap_id_fkey(project_id)
            )
          )`,
-      );
+    );
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as unknown as Array<{
       id: string;
@@ -812,8 +836,9 @@ export class TeamTimeService {
     return {
       ...log,
       limit_context: limitContext,
-      day_review_summary:
-        daySummary ? { ...daySummary, limit_context: limitContext } : undefined,
+      day_review_summary: daySummary
+        ? { ...daySummary, limit_context: limitContext }
+        : undefined,
       review_comments: comments,
     };
   }
@@ -895,7 +920,9 @@ export class TeamTimeService {
     const limitContext = await this.resolveLimitContextForLog(log);
     return {
       ...log,
-      break_minutes: Number((log as unknown as Record<string, unknown>).break_minutes ?? 0),
+      break_minutes: Number(
+        (log as unknown as Record<string, unknown>).break_minutes ?? 0,
+      ),
       limit_context: limitContext,
       day_review_summary: log.day_review_summary
         ? { ...log.day_review_summary, limit_context: limitContext }
@@ -903,7 +930,9 @@ export class TeamTimeService {
     };
   }
 
-  private async attachLimitContextBatch(logs: TimeLogRow[]): Promise<TimeLogRow[]> {
+  private async attachLimitContextBatch(
+    logs: TimeLogRow[],
+  ): Promise<TimeLogRow[]> {
     // Pre-fetch all unique (project, member) rates in parallel to eliminate N+1 on resolveTeamRate.
     const rateCache = new Map<string, ResolvedTeamRate | null>();
     const uniquePairs = [
@@ -962,7 +991,9 @@ export class TeamTimeService {
     };
   }
 
-  private getMonthWindowUtc(iso: string): { start: string; end: string } | null {
+  private getMonthWindowUtc(
+    iso: string,
+  ): { start: string; end: string } | null {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
     const start = new Date(
@@ -1069,7 +1100,10 @@ export class TeamTimeService {
       end: string;
     }> = [];
 
-    if (rate.weekly_limit_hours !== null && rate.weekly_limit_hours !== undefined) {
+    if (
+      rate.weekly_limit_hours !== null &&
+      rate.weekly_limit_hours !== undefined
+    ) {
       const week = this.getWeekWindowUtc(log.started_at);
       if (week) {
         windows.push({
@@ -1081,7 +1115,10 @@ export class TeamTimeService {
       }
     }
 
-    if (rate.monthly_limit_hours !== null && rate.monthly_limit_hours !== undefined) {
+    if (
+      rate.monthly_limit_hours !== null &&
+      rate.monthly_limit_hours !== undefined
+    ) {
       const month = this.getMonthWindowUtc(log.started_at);
       if (month) {
         windows.push({
@@ -1105,19 +1142,22 @@ export class TeamTimeService {
       };
     }
 
-    let selected:
-      | {
-          key: 'weekly' | 'monthly';
-          limit: number;
-          start: string;
-          end: string;
-          hours: number;
-          over: boolean;
-        }
-      | null = null;
+    let selected: {
+      key: 'weekly' | 'monthly';
+      limit: number;
+      start: string;
+      end: string;
+      hours: number;
+      over: boolean;
+    } | null = null;
 
     for (const window of windows) {
-      const cacheKey = this.buildLimitCacheKey(log, window.key, window.start, window.end);
+      const cacheKey = this.buildLimitCacheKey(
+        log,
+        window.key,
+        window.start,
+        window.end,
+      );
       // Use the promise cache so parallel calls for the same window share one DB round-trip.
       if (windowSumPromises && !windowSumPromises.has(cacheKey)) {
         windowSumPromises.set(
@@ -1411,7 +1451,9 @@ export class TeamTimeService {
     );
   }
 
-  private async listTeamApproverRecipientIds(teamId: string): Promise<string[]> {
+  private async listTeamApproverRecipientIds(
+    teamId: string,
+  ): Promise<string[]> {
     const team = await this.fetchTeamWithFlag(teamId);
     const ids = new Set<string>([team.owner_id]);
     const { data, error } = await this.supabase
@@ -1523,6 +1565,7 @@ export class TeamTimeService {
     project_id?: string;
     member_user_id?: string;
     team_id?: string;
+    task_status?: string;
     from?: string;
     to?: string;
     page?: number;
@@ -1532,9 +1575,19 @@ export class TeamTimeService {
     const limit = filters.limit ?? 50;
     const offset = (page - 1) * limit;
 
+    // Filtering by the task's kanban status restricts logs to those whose task
+    // matches — which needs an INNER join on the embedded task, otherwise the
+    // filter would only prune the embed and leave every parent log.
+    const select = filters.task_status
+      ? TIME_LOG_SELECT.replace(
+          'task:roadmap_tasks!task_time_logs_task_id_fkey(',
+          'task:roadmap_tasks!task_time_logs_task_id_fkey!inner(',
+        )
+      : TIME_LOG_SELECT;
+
     let q = this.supabase
       .from('task_time_logs')
-      .select(TIME_LOG_SELECT, { count: 'exact' })
+      .select(select, { count: 'exact' })
       .order('started_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -1543,6 +1596,7 @@ export class TeamTimeService {
     if (filters.member_user_id)
       q = q.eq('member_user_id', filters.member_user_id);
     if (filters.team_id) q = q.eq('team_id', filters.team_id);
+    if (filters.task_status) q = q.eq('task.status', filters.task_status);
     if (filters.from) q = q.gte('started_at', filters.from);
     if (filters.to) q = q.lte('started_at', filters.to);
 
@@ -1599,8 +1653,8 @@ export class TeamTimeService {
       return false;
     };
 
-    const invalid = current.filter((row) =>
-      !isAllowedTransition(row.status, decision),
+    const invalid = current.filter(
+      (row) => !isAllowedTransition(row.status, decision),
     );
     if (invalid.length > 0) {
       const fromStatuses = Array.from(
@@ -1651,7 +1705,10 @@ export class TeamTimeService {
     return log;
   }
 
-  private async assertCanViewLog(callerId: string, logId: string): Promise<void> {
+  private async assertCanViewLog(
+    callerId: string,
+    logId: string,
+  ): Promise<void> {
     const log = await this.fetchLogOrThrow(logId);
     await this.assertCanViewFetchedLog(callerId, log);
   }
@@ -1711,14 +1768,13 @@ export class TeamTimeService {
       .eq('id', taskId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    const row = (
-      data as unknown as {
+    const row =
+      (data as unknown as {
         work_type: TaskWorkType | null;
         feature: {
           epic: { roadmap: { project_id: string | null } | null } | null;
         } | null;
-      } | null
-    ) ?? null;
+      } | null) ?? null;
     const projectId = row?.feature?.epic?.roadmap?.project_id;
     if (!projectId) throw new NotFoundException('Task not found');
     return {
@@ -1767,7 +1823,7 @@ export class TeamTimeService {
     const { data: rateRow, error: rateErr } = await this.supabase
       .from('team_member_rates')
       .select(
-        'hourly_rate, training_hourly_rate, currency, weekly_limit_hours, monthly_limit_hours, overtime_requires_approval',
+        'rate_type, hourly_rate, training_hourly_rate, currency, weekly_limit_hours, monthly_limit_hours, overtime_requires_approval',
       )
       .eq('team_id', chosen.team_id)
       .eq('user_id', userId)
@@ -1776,13 +1832,22 @@ export class TeamTimeService {
       .maybeSingle();
     if (rateErr) throw new Error(rateErr.message);
 
+    // When the member has no rate row yet, fall back to the PROJECT's currency
+    // rather than a hardcoded USD, so a log created before rates are set still
+    // carries the project's intended currency.
+    const currency =
+      rateRow?.currency ?? (await this.getProjectCurrency(projectId));
+
     return {
       team_id: chosen.team_id,
+      rate_type:
+        (rateRow?.rate_type as 'hourly' | 'fixed' | undefined) ?? 'hourly',
       hourly_rate: Number(rateRow?.hourly_rate ?? 0),
       training_hourly_rate: Number(rateRow?.training_hourly_rate ?? 0),
-      currency: rateRow?.currency ?? 'USD',
+      currency,
       weekly_limit_hours:
-        rateRow?.weekly_limit_hours === null || rateRow?.weekly_limit_hours === undefined
+        rateRow?.weekly_limit_hours === null ||
+        rateRow?.weekly_limit_hours === undefined
           ? null
           : Number(rateRow.weekly_limit_hours),
       monthly_limit_hours:
@@ -1792,6 +1857,16 @@ export class TeamTimeService {
           : Number(rateRow.monthly_limit_hours),
       overtime_requires_approval: Boolean(rateRow?.overtime_requires_approval),
     };
+  }
+
+  /** The project's default currency, or 'USD' if unset/missing. */
+  private async getProjectCurrency(projectId: string): Promise<string> {
+    const { data } = await this.supabase
+      .from('projects')
+      .select('currency')
+      .eq('id', projectId)
+      .maybeSingle();
+    return (data as { currency: string | null } | null)?.currency ?? 'USD';
   }
 
   private pickRateForWorkType(

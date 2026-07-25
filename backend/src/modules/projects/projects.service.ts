@@ -48,6 +48,8 @@ import {
   UpdateProjectResourceLinkDto,
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
+import { ContractsService } from '../contracts/contracts.service';
+import { ProjectActivationService } from '../contracts/project-activation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
@@ -101,6 +103,8 @@ export class ProjectsService {
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly config: ConfigService,
     private readonly chatService: ChatService,
+    private readonly contracts: ContractsService,
+    private readonly activation: ProjectActivationService,
   ) {}
 
   /**
@@ -237,9 +241,7 @@ export class ProjectsService {
    * synthesizer so the frontend permission UI keeps showing sensible
    * checkboxes derived from role.
    */
-  private synthesizePermissionsFromRole(
-    role: ProjectRole,
-  ): ProjectPermissions {
+  private synthesizePermissionsFromRole(role: ProjectRole): ProjectPermissions {
     const isOwnerOrAdmin = role === 'owner' || role === 'admin';
     const canEdit = isOwnerOrAdmin || role === 'editor';
     const canComment = canEdit || role === 'commenter';
@@ -517,7 +519,9 @@ export class ProjectsService {
       if (accessErr) throw new Error(accessErr.message);
       projectIds = Array.from(
         new Set(
-          (accessRows ?? []).map((row: { project_id: string }) => row.project_id),
+          (accessRows ?? []).map(
+            (row: { project_id: string }) => row.project_id,
+          ),
         ),
       );
     }
@@ -606,7 +610,9 @@ export class ProjectsService {
       new Set(
         logs
           .filter((row) => row.team_id)
-          .map((row) => `${row.team_id}|${row.project_id}|${row.member_user_id}`),
+          .map(
+            (row) => `${row.team_id}|${row.project_id}|${row.member_user_id}`,
+          ),
       ),
     );
     const rateMap = new Map<
@@ -617,7 +623,9 @@ export class ProjectsService {
       const teamIds = Array.from(
         new Set(rateKeys.map((key) => key.split('|')[0]).filter(Boolean)),
       );
-      const memberIds = Array.from(new Set(rateKeys.map((key) => key.split('|')[2])));
+      const memberIds = Array.from(
+        new Set(rateKeys.map((key) => key.split('|')[2])),
+      );
       let rateQuery = this.supabase
         .from('team_member_rates')
         .select(
@@ -626,7 +634,8 @@ export class ProjectsService {
         .is('end_date', null)
         .in('team_id', teamIds)
         .in('user_id', memberIds);
-      if (query.project_id) rateQuery = rateQuery.eq('project_id', query.project_id);
+      if (query.project_id)
+        rateQuery = rateQuery.eq('project_id', query.project_id);
       const { data: rateRows, error: ratesErr } = await rateQuery;
       if (ratesErr) throw new Error(ratesErr.message);
       for (const row of (rateRows ?? []) as Array<{
@@ -638,7 +647,8 @@ export class ProjectsService {
       }>) {
         rateMap.set(`${row.team_id}|${row.project_id}|${row.user_id}`, {
           weekly:
-            row.weekly_limit_hours === null || row.weekly_limit_hours === undefined
+            row.weekly_limit_hours === null ||
+            row.weekly_limit_hours === undefined
               ? null
               : Number(row.weekly_limit_hours),
           monthly:
@@ -722,7 +732,8 @@ export class ProjectsService {
     };
     let invoiceTotalAmount = 0;
     for (const row of invoices) {
-      invoiceStatusCounts[row.status] = (invoiceStatusCounts[row.status] ?? 0) + 1;
+      invoiceStatusCounts[row.status] =
+        (invoiceStatusCounts[row.status] ?? 0) + 1;
       invoiceTotalAmount += Number(row.total ?? 0);
     }
 
@@ -844,6 +855,24 @@ export class ProjectsService {
       } catch (err) {
         this.logger.error(
           `Failed to attach primary_team_id=${dto.primary_team_id} on project ${project.id} create (user ${userId}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    // Commercial terms from the wizard's Step 3 become a draft contract.
+    // Non-fatal for the same reason as primary_team_id: the project exists and
+    // the consultant can complete the contract from the Contract tab.
+    if (dto.contract) {
+      try {
+        await this.contracts.createContractInternal(userId, {
+          project_id: project.id,
+          ...dto.contract,
+        });
+      } catch (err) {
+        this.logger.error(
+          `Failed to create draft contract on project ${project.id} create (user ${userId}): ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
@@ -980,7 +1009,10 @@ export class ProjectsService {
 
       const { data: linkedRoadmap, error: linkError } = await this.supabase
         .from('roadmaps')
-        .update({ project_id: project.id, updated_at: new Date().toISOString() })
+        .update({
+          project_id: project.id,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', roadmap.id)
         .eq('owner_id', userId)
         .is('project_id', null)
@@ -1115,6 +1147,18 @@ export class ProjectsService {
         requiredRole: 'owner',
         label: 'update this project',
       });
+
+    // Activating a project means it starts paying the consultant and the team,
+    // so every billing input must exist first. Re-saving an already-active
+    // project must not re-run the gate — otherwise a later edit (e.g. removing
+    // a member's rate) would lock the owner out of unrelated updates.
+    if (dto.status === 'active') {
+      const existing = await this.getProjectOrThrow(id);
+      if (existing.status !== 'active') {
+        await this.activation.assertActivationReady(id);
+      }
+    }
+
     const updated = await this.projectsRepo.update(id, dto);
     await this.invalidateDashboardCache();
     return updated;
@@ -1331,18 +1375,19 @@ export class ProjectsService {
     refreshToken: string,
   ): Promise<string> {
     const body = new URLSearchParams({
-      client_id:     clientId,
+      client_id: clientId,
       client_secret: clientSecret,
       refresh_token: refreshToken,
-      grant_type:    'refresh_token',
+      grant_type: 'refresh_token',
     });
     const res = await fetch('https://oauth2.googleapis.com/token', {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    body.toString(),
+      body: body.toString(),
     });
-    if (!res.ok) throw new Error(`Gmail token refresh failed: ${await res.text()}`);
-    const { access_token } = await res.json() as { access_token: string };
+    if (!res.ok)
+      throw new Error(`Gmail token refresh failed: ${await res.text()}`);
+    const { access_token } = (await res.json()) as { access_token: string };
     return access_token;
   }
 
@@ -1607,18 +1652,23 @@ export class ProjectsService {
         payload.inviterAvatarUrl,
       );
 
-      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+      const res = await fetch(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ raw }),
         },
-        body: JSON.stringify({ raw }),
-      });
+      );
 
       if (!res.ok) {
         const err = await res.text();
-        this.logger.warn(`sendInviteEmail: Gmail API error for ${payload.to}: ${err}`);
+        this.logger.warn(
+          `sendInviteEmail: Gmail API error for ${payload.to}: ${err}`,
+        );
         return {
           sent: false,
           reason: `Gmail API rejected the message (${res.status}).`,
@@ -1626,14 +1676,14 @@ export class ProjectsService {
       }
 
       const { id } = (await res.json()) as { id: string };
-      this.logger.log(`sendInviteEmail: sent to ${payload.to} (messageId=${id})`);
+      this.logger.log(
+        `sendInviteEmail: sent to ${payload.to} (messageId=${id})`,
+      );
       return { sent: true, messageId: id };
     } catch (err) {
       // Non-fatal - invite row is already created; log and continue.
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `sendInviteEmail: failed for ${payload.to}: ${message}`,
-      );
+      this.logger.warn(`sendInviteEmail: failed for ${payload.to}: ${message}`);
       return {
         sent: false,
         reason: `Email send failed: ${message}`,
@@ -1671,9 +1721,10 @@ export class ProjectsService {
     const emailDelivery = await this.sendInviteEmail({
       to: dto.email.trim(),
       inviterName,
-      projectName: typeof project.title === 'string' && project.title.trim()
-        ? project.title.trim()
-        : 'a project',
+      projectName:
+        typeof project.title === 'string' && project.title.trim()
+          ? project.title.trim()
+          : 'a project',
       invitedPosition,
       inviteMessage: inviteNote,
       inviterAvatarUrl: inviterProfile.avatarUrl,
@@ -1756,10 +1807,7 @@ export class ProjectsService {
     // default_role (set at invite time on /welcome slide 4 or in the team
     // settings invite UI). Editor is the fallback when no default_role was
     // recorded — matches the slice 1 invite UX default.
-    if (
-      result.status === 'accepted' &&
-      typeof result.project_id === 'string'
-    ) {
+    if (result.status === 'accepted' && typeof result.project_id === 'string') {
       const defaultRole =
         result.default_role === 'viewer' ? 'viewer' : 'editor';
       const grantedBy =
@@ -1826,7 +1874,11 @@ export class ProjectsService {
     projectId: string,
     role: string,
   ): Promise<unknown> {
-    await this.assertProjectPermission(projectId, callerId, 'members.edit_permissions');
+    await this.assertProjectPermission(
+      projectId,
+      callerId,
+      'members.edit_permissions',
+    );
     return this.projectsRepo.getRolePermissions(projectId, role);
   }
 
@@ -2161,11 +2213,19 @@ export class ProjectsService {
     // section, so we merge field-by-field for each section it includes.
     const desired = resolvePermissions(role, origin, target.capabilities);
     const sections: (keyof ProjectPermissions)[] = [
-      'access', 'roadmap', 'members', 'teams', 'project',
-      'chat', 'resources', 'logs',
+      'access',
+      'roadmap',
+      'members',
+      'teams',
+      'project',
+      'chat',
+      'resources',
+      'logs',
     ];
     for (const section of sections) {
-      const incoming = (dto as unknown as Record<string, Record<string, boolean> | undefined>)[section];
+      const incoming = (
+        dto as unknown as Record<string, Record<string, boolean> | undefined>
+      )[section];
       if (!incoming) continue;
       for (const [field, value] of Object.entries(incoming)) {
         if (typeof value !== 'boolean') continue;
@@ -2185,7 +2245,8 @@ export class ProjectsService {
     if (!validation.ok) {
       throw new BadRequestException({
         code: 'permission_dependency_unmet',
-        message: 'One or more permissions require prerequisites that are not granted.',
+        message:
+          'One or more permissions require prerequisites that are not granted.',
         missing: validation.missing,
       });
     }
@@ -2264,4 +2325,3 @@ export class ProjectsService {
 function invoiceRound(value: number): number {
   return Math.round(value * 100) / 100;
 }
-

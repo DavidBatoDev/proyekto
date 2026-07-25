@@ -1,3 +1,4 @@
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
 	Link,
 	useChildMatches,
@@ -5,6 +6,7 @@ import {
 	useNavigate,
 	useParams,
 } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "framer-motion";
 import {
 	Briefcase,
 	ChevronDown,
@@ -16,25 +18,23 @@ import {
 	UserPlus,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { projectService, type Project } from "@/services/project.service";
-import { AnimatePresence, motion } from "framer-motion";
-import { NotificationBell } from "@/components/layout/NotificationBell";
-import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
-import { useUser } from "@/stores/authStore";
-import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { NotificationBell } from "@/components/layout/NotificationBell";
+import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectModal";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
+import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import { type Project, projectService } from "@/services/project.service";
 import {
-	listProjectTeams,
 	getTeam,
 	listCuratedMembers,
-	type Team,
+	listProjectTeams,
 	type ProjectTeam,
+	type Team,
 } from "@/services/teams.service";
-import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectModal";
-import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
+import { useUser } from "@/stores/authStore";
 import ProjectUserMenu from "./ProjectUserMenu";
+import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
 
 // Compute the destination path when switching projects, preserving the current view.
 // roadmap/$roadmapId and work-items/$roadmapId strip the sub-ID so the layout route
@@ -50,7 +50,9 @@ const getProjectSwitchPath = (
 	);
 	const roadmapStripped = base.match(/^(\/project\/[^/]+\/roadmap)\/[^/]+/);
 	if (roadmapStripped) return roadmapStripped[1];
-	const workItemsStripped = base.match(/^(\/project\/[^/]+\/work-items)\/[^/]+/);
+	const workItemsStripped = base.match(
+		/^(\/project\/[^/]+\/work-items)\/[^/]+/,
+	);
 	if (workItemsStripped) return workItemsStripped[1];
 	return base;
 };
@@ -63,6 +65,8 @@ const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
 	if (pathname.includes("/team")) return "Team";
 	if (pathname.includes("/resources")) return "Resources";
 	if (pathname.includes("/payments")) return "Payments";
+	if (pathname.includes("/contract")) return "Contract";
+	if (pathname.includes("/time")) return "Time";
 	if (pathname.includes("/logs")) return "Logs";
 	if (pathname.includes("/overview") || pathname.endsWith(projectId))
 		return "Overview";
@@ -156,7 +160,10 @@ export function ProjectHeader() {
 		})),
 	});
 
-	type EnrichedTeam = Team & { projectMemberCount: number | null; currentUserIsMember: boolean };
+	type EnrichedTeam = Team & {
+		projectMemberCount: number | null;
+		currentUserIsMember: boolean;
+	};
 	const teams: EnrichedTeam[] = projectTeamLinks
 		.map((_, i) => {
 			const team = teamDetailResults[i]?.data ?? null;
@@ -211,7 +218,11 @@ export function ProjectHeader() {
 
 	// Deduplicate members across teams by user_id so cross-team members count once
 	const allMemberIds = curatedMemberResults.every((r) => r.data != null)
-		? new Set(curatedMemberResults.flatMap((r) => (r.data ?? []).map((m) => m.user_id)))
+		? new Set(
+				curatedMemberResults.flatMap((r) =>
+					(r.data ?? []).map((m) => m.user_id),
+				),
+			)
 		: null;
 	const totalProjectMembers = allMemberIds?.size ?? null;
 
@@ -273,10 +284,7 @@ export function ProjectHeader() {
 					{/* Multi-team dropdown crumb */}
 					{visibleTeams.length >= 2 && (
 						<>
-							<div
-								ref={teamsDropdownRef}
-								className="relative hidden sm:block"
-							>
+							<div ref={teamsDropdownRef} className="relative hidden sm:block">
 								<button
 									type="button"
 									onClick={() => setTeamsDropdownOpen((v) => !v)}
@@ -320,7 +328,9 @@ export function ProjectHeader() {
 													className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
 												>
 													<TeamAvatar team={team} size="sm" />
-													<span className="truncate font-medium">{team.name}</span>
+													<span className="truncate font-medium">
+														{team.name}
+													</span>
 												</Link>
 											))}
 										</motion.div>
@@ -363,11 +373,17 @@ export function ProjectHeader() {
 										className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
 									>
 										{allProjects.length === 0 ? (
-											<p className="px-3 py-2 text-sm text-slate-400">No projects</p>
+											<p className="px-3 py-2 text-sm text-slate-400">
+												No projects
+											</p>
 										) : (
 											allProjects.map((p) => {
 												const isCurrent = p.id === projectId;
-												const targetPath = getProjectSwitchPath(location.pathname, projectId, p.id);
+												const targetPath = getProjectSwitchPath(
+													location.pathname,
+													projectId,
+													p.id,
+												);
 												return (
 													<button
 														key={p.id}
@@ -389,9 +405,13 @@ export function ProjectHeader() {
 																	: "bg-primary/10 text-primary"
 															}`}
 														>
-															{p.title?.[0]?.toUpperCase() ?? <FolderKanban className="h-3.5 w-3.5" />}
+															{p.title?.[0]?.toUpperCase() ?? (
+																<FolderKanban className="h-3.5 w-3.5" />
+															)}
 														</span>
-														<span className="truncate font-medium">{p.title || "Untitled"}</span>
+														<span className="truncate font-medium">
+															{p.title || "Untitled"}
+														</span>
 													</button>
 												);
 											})

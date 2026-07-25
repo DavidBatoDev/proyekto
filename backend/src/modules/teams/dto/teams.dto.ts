@@ -113,10 +113,7 @@ export class InviteTeamMemberDto {
   message?: string;
 }
 
-export const TEAM_INVITE_RESPONSE_STATUSES = [
-  'accepted',
-  'declined',
-] as const;
+export const TEAM_INVITE_RESPONSE_STATUSES = ['accepted', 'declined'] as const;
 export type TeamInviteResponseStatus =
   (typeof TEAM_INVITE_RESPONSE_STATUSES)[number];
 
@@ -155,6 +152,23 @@ export class CreateTeamMemberRateDto {
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
   project_ids!: string[];
+
+  // Some projects pay members a flat amount per period instead of by the hour.
+  // A fixed member still logs time (for client billing and hour caps) but their
+  // pay does not come from duration x rate.
+  @IsOptional()
+  @IsIn(['hourly', 'fixed'])
+  rate_type?: 'hourly' | 'fixed';
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber()
+  @Min(0)
+  fixed_amount?: number | null;
+
+  @IsOptional()
+  @IsIn(['month', 'semi_month'])
+  fixed_period?: 'month' | 'semi_month';
 
   @IsNumber()
   @Min(0)
@@ -198,6 +212,20 @@ export class CreateTeamMemberRateDto {
 }
 
 export class UpdateTeamMemberRateDto {
+  @IsOptional()
+  @IsIn(['hourly', 'fixed'])
+  rate_type?: 'hourly' | 'fixed';
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber()
+  @Min(0)
+  fixed_amount?: number | null;
+
+  @IsOptional()
+  @IsIn(['month', 'semi_month'])
+  fixed_period?: 'month' | 'semi_month';
+
   @IsOptional()
   @IsNumber()
   @Min(0)

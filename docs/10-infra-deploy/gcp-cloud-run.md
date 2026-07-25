@@ -1,6 +1,6 @@
 # GCP & Cloud Run
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-07-24 · **Status:** current
 
 The backend and agent run as Docker containers on **Google Cloud Run** in
 `asia-southeast1` (Singapore). Deploys are keyless — GitHub Actions authenticates via
@@ -63,6 +63,12 @@ the gated ones (`CLOUDFLARE_PURGE_API_TOKEN`, `REALTIME_PUBLISH_TOKEN`,
 - **Cloud Scheduler** (`asia-southeast1`) drives the meetings reminder cron by POSTing
   `/api/meetings/cron/reminders` every minute — see
   [Feature Domains → meetings](../11-domains/meetings/reminders.md).
+- **Cloud Scheduler** also drives automated client invoicing by POSTing
+  `/api/invoices/cron/run` once a day. It reuses the same `x-cron-secret` header
+  (`MEETINGS_CRON_SECRET`) and is gated by the `INVOICE_AUTOMATION_ENABLED` repo var:
+  until that var is set the endpoint still runs the scan and reports what it *would*
+  bill, but writes no invoices. Runs are safe to repeat — a partial unique index on
+  `(contract_id, period_start, period_end)` prevents a retry from double-billing.
 - **Cloud Trace** collects backend tracing (`OTEL_SERVICE_NAME=proyekto-backend`).
 - **FCM** push uses keyless ADC (`FIREBASE_USE_ADC`) on the Firebase project
   `tech-proyekto-app` — see [Mobile → push](../09-mobile/README.md).

@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FolderKanban, Loader2, Users } from "lucide-react";
+import { FolderKanban, ListChecks, Loader2, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
+import {
+	loadTimeView,
+	storeTimeView,
+	type TimeViewMode,
+	TimeViewToggle,
+} from "@/components/team-time/calendar/TimeViewToggle";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
 import {
 	buildCustomPeriodFromDateInputs,
 	buildTeamLogPeriodSearch,
@@ -11,34 +19,27 @@ import {
 	resolveTeamLogPeriod,
 	storePeriodSearch,
 } from "@/components/team-time/log-period";
-import { getTeam } from "@/services/teams.service";
-import { FilterSelect } from "@/components/team-time/FilterSelect";
-import {
-	type StatusTab,
-	TeamLogsStatusTabs,
-} from "@/components/team-time/TeamLogsStatusTabs";
 import { PayMemberModal } from "@/components/team-time/PayMemberModal";
 import {
 	type ReviewOnlyDecision,
 	TeamApprovalsInbox,
 } from "@/components/team-time/TeamApprovalsInbox";
-import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
-import {
-	loadTimeView,
-	storeTimeView,
-	type TimeViewMode,
-	TimeViewToggle,
-} from "@/components/team-time/calendar/TimeViewToggle";
 import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
 	EMPTY_LOG_STATS,
 	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
+import {
+	type StatusTab,
+	TeamLogsStatusTabs,
+} from "@/components/team-time/TeamLogsStatusTabs";
+import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import { useToast } from "@/hooks/useToast";
 import {
 	type TaskTimeLog,
 	teamTimeService,
 } from "@/services/team-time.service";
+import { getTeam } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/teams/$teamId/time/team-logs")({
@@ -112,6 +113,7 @@ function TeamLogsRoute() {
 	const [projectFilter, setProjectFilter] = useState<string>("");
 	// Seed from the URL so "View logs" from Manage Rates lands pre-filtered.
 	const [memberFilter, setMemberFilter] = useState<string>(search.member ?? "");
+	const [taskStatusFilter, setTaskStatusFilter] = useState<string>("");
 	const [busyLogIds, setBusyLogIds] = useState<Set<string>>(new Set());
 	const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
 
@@ -133,6 +135,7 @@ function TeamLogsRoute() {
 			{
 				projectFilter,
 				memberFilter,
+				taskStatusFilter,
 				activeStatus,
 				from: period.fromIso,
 				to: period.toIso,
@@ -142,6 +145,7 @@ function TeamLogsRoute() {
 			teamTimeService.listTeamLogs(teamId, {
 				project_id: projectFilter || undefined,
 				member_user_id: memberFilter || undefined,
+				task_status: taskStatusFilter || undefined,
 				status: activeStatus === "all" ? undefined : activeStatus,
 				from: period.fromIso,
 				to: period.toIso,
@@ -215,7 +219,8 @@ function TeamLogsRoute() {
 
 	// The list is capped at 200 rows; surface it so the (filtered) list below is
 	// never mistaken for the complete set. Totals above are unaffected (summary).
-	const listCapped = (logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
+	const listCapped =
+		(logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
 
 	const markBusy = (ids: string[], busy: boolean) =>
 		setBusyLogIds((prev) => {
@@ -357,87 +362,95 @@ function TeamLogsRoute() {
 				/>
 			) : (
 				<>
-			<TeamLogsStatsCard
-				rate={null}
-				stats={stats}
-				fallbackCurrency="USD"
-				loading={summaryQuery.isPending}
-			/>
+					<TeamLogsStatsCard
+						rate={null}
+						stats={stats}
+						fallbackCurrency="USD"
+						loading={summaryQuery.isPending}
+					/>
 
-			<TeamLogsPeriodFilter
-				period={period}
-				payPeriodConfig={payPeriodConfig}
-				onPresetChange={(preset) => updatePeriod(preset)}
-				onCutoffMonthChange={(month) =>
-					updatePeriod("cutoff", { cutoffMonth: month })
-				}
-				onCutoffPeriodChange={(periodId) =>
-					updatePeriod("cutoff", { cutoffPeriodId: periodId })
-				}
-				onApplyCustomRange={onApplyCustomRange}
-				workedDays={workedDays}
-			/>
+					<TeamLogsPeriodFilter
+						period={period}
+						payPeriodConfig={payPeriodConfig}
+						onPresetChange={(preset) => updatePeriod(preset)}
+						onCutoffMonthChange={(month) =>
+							updatePeriod("cutoff", { cutoffMonth: month })
+						}
+						onCutoffPeriodChange={(periodId) =>
+							updatePeriod("cutoff", { cutoffPeriodId: periodId })
+						}
+						onApplyCustomRange={onApplyCustomRange}
+						workedDays={workedDays}
+					/>
 
-			<div className="space-y-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-				<TeamLogsStatusTabs
-					value={activeStatus}
-					onChange={setActiveStatus}
-					counts={statusCounts}
-				/>
+					<div className="space-y-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+						<TeamLogsStatusTabs
+							value={activeStatus}
+							onChange={setActiveStatus}
+							counts={statusCounts}
+						/>
 
-				<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-				<FilterSelect
-					value={projectFilter}
-					onChange={setProjectFilter}
-					icon={<FolderKanban className="h-3.5 w-3.5" />}
-					placeholder="All projects"
-					options={[
-						{ value: "", label: "All projects" },
-						...(projectsQuery.data ?? []).map((project) => ({
-							value: project.id,
-							label: project.title ?? "(untitled)",
-						})),
-					]}
-				/>
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+							<FilterSelect
+								value={projectFilter}
+								onChange={setProjectFilter}
+								icon={<FolderKanban className="h-3.5 w-3.5" />}
+								placeholder="All projects"
+								options={[
+									{ value: "", label: "All projects" },
+									...(projectsQuery.data ?? []).map((project) => ({
+										value: project.id,
+										label: project.title ?? "(untitled)",
+									})),
+								]}
+							/>
 
-				<FilterSelect
-					value={memberFilter}
-					onChange={setMemberFilter}
-					icon={<Users className="h-3.5 w-3.5" />}
-					placeholder="All members"
-					options={[
-						{ value: "", label: "All members" },
-						...(membersQuery.data ?? []).map((member) => ({
-							value: member.id,
-							label: member.display_name || member.email || member.id,
-							avatarUrl: member.avatar_url ?? null,
-						})),
-					]}
-				/>
+							<FilterSelect
+								value={memberFilter}
+								onChange={setMemberFilter}
+								icon={<Users className="h-3.5 w-3.5" />}
+								placeholder="All members"
+								options={[
+									{ value: "", label: "All members" },
+									...(membersQuery.data ?? []).map((member) => ({
+										value: member.id,
+										label: member.display_name || member.email || member.id,
+										avatarUrl: member.avatar_url ?? null,
+									})),
+								]}
+							/>
 
-				{(projectsQuery.isPending || membersQuery.isPending) && (
-					<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-				)}
-				</div>
-			</div>
+							<FilterSelect
+								value={taskStatusFilter}
+								onChange={setTaskStatusFilter}
+								icon={<ListChecks className="h-3.5 w-3.5" />}
+								placeholder="All task statuses"
+								options={TASK_STATUS_FILTER_OPTIONS}
+							/>
 
-			{listCapped && (
-				<p className="px-1 text-xs text-slate-400">
-					Showing the most recent 200 logs — narrow the period, project, or
-					member to see the rest. Totals above cover the full range.
-				</p>
-			)}
+							{(projectsQuery.isPending || membersQuery.isPending) && (
+								<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+							)}
+						</div>
+					</div>
 
-			<TeamApprovalsInbox
-				logs={items}
-				loadingLogs={logsQuery.isPending}
-				currentUserId={user?.id ?? null}
-				busyLogIds={busyLogIds}
-				onReviewLogs={handleReviewLogs}
-				onPayMember={handlePayMember}
-				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-			/>
+					{listCapped && (
+						<p className="px-1 text-xs text-slate-400">
+							Showing the most recent 200 logs — narrow the period, project, or
+							member to see the rest. Totals above cover the full range.
+						</p>
+					)}
+
+					<TeamApprovalsInbox
+						logs={items}
+						loadingLogs={logsQuery.isPending}
+						currentUserId={user?.id ?? null}
+						busyLogIds={busyLogIds}
+						onReviewLogs={handleReviewLogs}
+						onPayMember={handlePayMember}
+						onOpenTaskInRoadmap={handleOpenInRoadmap}
+						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+					/>
 				</>
 			)}
 

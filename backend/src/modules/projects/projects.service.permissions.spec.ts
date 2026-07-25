@@ -77,6 +77,8 @@ describe('ProjectsService (permissions)', () => {
       cacheInvalidation as any,
       { get: jest.fn() } as any,
       { provisionDefaultChannels: jest.fn().mockResolvedValue(undefined) } as any,
+      { createContractInternal: jest.fn() } as any,
+      { assertActivationReady: jest.fn() } as any,
     );
   };
 

@@ -140,6 +140,14 @@ export class CreateTimeLogCommentDto {
   body!: string;
 }
 
+export const TASK_KANBAN_STATUSES = [
+  'todo',
+  'in_progress',
+  'in_review',
+  'done',
+  'blocked',
+] as const;
+
 export class ListLogsQueryDto {
   @IsOptional()
   @IsIn(TIME_LOG_STATUSES)
@@ -148,6 +156,11 @@ export class ListLogsQueryDto {
   @IsOptional()
   @IsUUID()
   project_id?: string;
+
+  /** Filter logs by the underlying task's kanban status. */
+  @IsOptional()
+  @IsIn(TASK_KANBAN_STATUSES)
+  task_status?: (typeof TASK_KANBAN_STATUSES)[number];
 
   @IsOptional()
   @IsUUID()

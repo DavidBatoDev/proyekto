@@ -34,7 +34,12 @@ export interface TaskTimeLog {
 	created_at: string;
 	updated_at: string;
 	limit_context?: TimeLogLimitContext;
-	task?: { id: string; title: string; work_type?: TaskWorkType } | null;
+	task?: {
+		id: string;
+		title: string;
+		work_type?: TaskWorkType;
+		status?: string;
+	} | null;
 	member?: ProfileMini | null;
 	reviewer?: Pick<ProfileMini, "id" | "display_name" | "avatar_url"> | null;
 	project?: { id: string; title: string | null } | null;
@@ -114,6 +119,8 @@ export interface ListLogsQuery {
 	status?: TimeLogStatus;
 	project_id?: string;
 	member_user_id?: string;
+	/** Filter by the underlying task's kanban status. */
+	task_status?: string;
 	from?: string;
 	to?: string;
 	page?: number;

@@ -5,6 +5,8 @@ import {
 	BookOpen,
 	ChevronRight,
 	ClipboardList,
+	Clock,
+	FileSignature,
 	FolderKanban,
 	LayoutDashboard,
 	ListChecks,
@@ -156,9 +158,21 @@ export function ProjectSidebar({
 			title: "Manage",
 			items: [
 				{
+					label: "Time",
+					icon: Clock,
+					to: `/project/${projectId}/time`,
+					requiresProject: true,
+				},
+				{
 					label: "Logs",
 					icon: ClipboardList,
 					to: `/project/${projectId}/logs`,
+					requiresProject: true,
+				},
+				{
+					label: "Contract",
+					icon: FileSignature,
+					to: `/project/${projectId}/contract`,
 					requiresProject: true,
 				},
 				{

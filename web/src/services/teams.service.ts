@@ -12,7 +12,11 @@ function maybeRewriteRateSchemaError(message: string): string {
 }
 
 export type TeamRole = "owner" | "admin" | "member";
-export type ProjectTeamDefaultRole = "admin" | "editor" | "commenter" | "viewer";
+export type ProjectTeamDefaultRole =
+	| "admin"
+	| "editor"
+	| "commenter"
+	| "viewer";
 
 /** A payout cut-off period. `end_day` is a day-of-month or "EOM" (end of month). */
 export type PayPeriodEndDay = number | "EOM";
@@ -72,11 +76,22 @@ export interface TeamMember {
 	user?: ProfileSummary | null;
 }
 
+/**
+ * How a member is paid on a project. `hourly` multiplies logged time by
+ * `hourly_rate`; `fixed` pays `fixed_amount` per `fixed_period` regardless of
+ * hours (hours are still tracked, for client billing and hour caps).
+ */
+export type MemberRateType = "hourly" | "fixed";
+export type FixedRatePeriod = "month" | "semi_month";
+
 export interface TeamMemberRate {
 	id: string;
 	team_id: string;
 	user_id: string;
 	project_id: string;
+	rate_type: MemberRateType;
+	fixed_amount: number | null;
+	fixed_period: FixedRatePeriod;
 	hourly_rate: number;
 	training_hourly_rate: number;
 	currency: string;
@@ -173,7 +188,9 @@ export async function listMyTeams(): Promise<Team[]> {
 
 export async function getTeam(teamId: string): Promise<Team> {
 	try {
-		const { data } = await apiClient.get<{ data: Team }>(`/api/teams/${teamId}`);
+		const { data } = await apiClient.get<{ data: Team }>(
+			`/api/teams/${teamId}`,
+		);
 		return data.data;
 	} catch (err) {
 		throw new Error(
@@ -216,7 +233,10 @@ export async function updateTeam(
 	},
 ): Promise<Team> {
 	try {
-		const { data } = await apiClient.patch<{ data: Team }>(`/api/teams/${teamId}`, patch);
+		const { data } = await apiClient.patch<{ data: Team }>(
+			`/api/teams/${teamId}`,
+			patch,
+		);
 		return data.data;
 	} catch (err) {
 		throw new Error(
@@ -245,7 +265,8 @@ export async function deleteTeam(teamId: string): Promise<void> {
 
 export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
 	try {
-		const { data } = await apiClient.get<{ data: TeamMember[] }>(`/api/teams/${teamId}/members`,
+		const { data } = await apiClient.get<{ data: TeamMember[] }>(
+			`/api/teams/${teamId}/members`,
 		);
 		return data.data;
 	} catch (err) {
@@ -289,6 +310,9 @@ export async function updateTeamMember(
 
 export interface CreateTeamMemberRatePayload {
 	project_ids: string[];
+	rate_type?: MemberRateType;
+	fixed_amount?: number | null;
+	fixed_period?: FixedRatePeriod;
 	hourly_rate: number;
 	training_hourly_rate: number;
 	currency?: string;
@@ -301,6 +325,9 @@ export interface CreateTeamMemberRatePayload {
 }
 
 export interface UpdateTeamMemberRatePayload {
+	rate_type?: MemberRateType;
+	fixed_amount?: number | null;
+	fixed_period?: FixedRatePeriod;
 	hourly_rate?: number;
 	training_hourly_rate?: number;
 	currency?: string;
@@ -396,9 +423,7 @@ export async function createMemberRate(
 			(err as { response?: { data?: unknown } }).response?.data,
 			"Failed to create rate",
 		);
-		throw new Error(
-			maybeRewriteRateSchemaError(message),
-		);
+		throw new Error(maybeRewriteRateSchemaError(message));
 	}
 }
 
@@ -419,9 +444,7 @@ export async function updateMemberRate(
 			(err as { response?: { data?: unknown } }).response?.data,
 			"Failed to update rate",
 		);
-		throw new Error(
-			maybeRewriteRateSchemaError(message),
-		);
+		throw new Error(maybeRewriteRateSchemaError(message));
 	}
 }
 
@@ -508,7 +531,8 @@ export async function listProjectTeams(
 	projectId: string,
 ): Promise<ProjectTeam[]> {
 	try {
-		const { data } = await apiClient.get<{ data: ProjectTeam[] }>(`/api/projects/${projectId}/teams`,
+		const { data } = await apiClient.get<{ data: ProjectTeam[] }>(
+			`/api/projects/${projectId}/teams`,
 		);
 		return data.data;
 	} catch (err) {
@@ -530,7 +554,8 @@ export async function attachTeam(
 	},
 ): Promise<ProjectTeam> {
 	try {
-		const { data } = await apiClient.post<{ data: ProjectTeam }>(`/api/projects/${projectId}/teams`,
+		const { data } = await apiClient.post<{ data: ProjectTeam }>(
+			`/api/projects/${projectId}/teams`,
 			input,
 		);
 		return data.data;
@@ -568,7 +593,8 @@ export async function updateProjectTeam(
 	},
 ): Promise<ProjectTeam> {
 	try {
-		const { data } = await apiClient.patch<{ data: ProjectTeam }>(`/api/projects/${projectId}/teams/${teamId}`,
+		const { data } = await apiClient.patch<{ data: ProjectTeam }>(
+			`/api/projects/${projectId}/teams/${teamId}`,
 			patch,
 		);
 		return data.data;
@@ -587,7 +613,8 @@ export async function listCuratedMembers(
 	teamId: string,
 ): Promise<ProjectTeamMember[]> {
 	try {
-		const { data } = await apiClient.get<{ data: ProjectTeamMember[] }>(`/api/projects/${projectId}/teams/${teamId}/members`,
+		const { data } = await apiClient.get<{ data: ProjectTeamMember[] }>(
+			`/api/projects/${projectId}/teams/${teamId}/members`,
 		);
 		return data.data;
 	} catch (err) {
@@ -605,7 +632,8 @@ export async function listAvailableTeamMembers(
 	teamId: string,
 ): Promise<AvailableTeamMember[]> {
 	try {
-		const { data } = await apiClient.get<{ data: AvailableTeamMember[] }>(`/api/projects/${projectId}/teams/${teamId}/available-members`,
+		const { data } = await apiClient.get<{ data: AvailableTeamMember[] }>(
+			`/api/projects/${projectId}/teams/${teamId}/available-members`,
 		);
 		return data.data;
 	} catch (err) {
@@ -624,7 +652,8 @@ export async function addCuratedMember(
 	input: { user_id: string; role?: ProjectTeamDefaultRole },
 ): Promise<ProjectTeamMember> {
 	try {
-		const { data } = await apiClient.post<{ data: ProjectTeamMember }>(`/api/projects/${projectId}/teams/${teamId}/members`,
+		const { data } = await apiClient.post<{ data: ProjectTeamMember }>(
+			`/api/projects/${projectId}/teams/${teamId}/members`,
 			input,
 		);
 		return data.data;
@@ -644,7 +673,8 @@ export async function removeCuratedMember(
 	userId: string,
 ): Promise<void> {
 	try {
-		await apiClient.delete(`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
+		await apiClient.delete(
+			`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
 		);
 	} catch (err) {
 		throw new Error(

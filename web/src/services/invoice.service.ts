@@ -12,7 +12,7 @@ export interface InvoiceLineItemInput {
 export interface InvoiceLineItem {
 	id: string;
 	invoice_id: string;
-	source_type: "manual" | "time_log";
+	source_type: "manual" | "time_log" | "retainer" | "overage";
 	source_log_id: string | null;
 	description: string;
 	quantity: number;
@@ -33,9 +33,21 @@ export interface InvoiceDocument {
 	created_at: string;
 }
 
+export type InvoiceOrigin = "manual" | "scheduled";
+/** How much time detail the CLIENT is shown. Never reveals member identity or cost. */
+export type HoursDetailLevel = "none" | "summary" | "detailed";
+
+export interface InvoiceParty {
+	name?: string | null;
+	address?: string | null;
+	tin?: string | null;
+	email?: string | null;
+}
+
 export interface Invoice {
 	id: string;
 	project_id: string;
+	contract_id: string | null;
 	issuer_user_id: string;
 	recipient_user_id: string | null;
 	number: string;
@@ -43,6 +55,13 @@ export interface Invoice {
 	currency: string;
 	issue_date: string | null;
 	due_date: string | null;
+	period_start: string | null;
+	period_end: string | null;
+	origin: InvoiceOrigin;
+	hours_detail_level: HoursDetailLevel;
+	bill_to: InvoiceParty;
+	issued_by: InvoiceParty;
+	payment_method: string | null;
 	notes: string | null;
 	attach_hours: boolean;
 	subtotal: number;
@@ -65,6 +84,10 @@ export interface InvoiceListResult {
 
 export interface CreateInvoicePayload {
 	project_id: string;
+	contract_id?: string;
+	period_start?: string;
+	period_end?: string;
+	hours_detail_level?: HoursDetailLevel;
 	recipient_user_id?: string | null;
 	number?: string;
 	currency?: string;
@@ -79,6 +102,9 @@ export interface CreateInvoicePayload {
 }
 
 export interface UpdateInvoicePayload {
+	hours_detail_level?: HoursDetailLevel;
+	period_start?: string;
+	period_end?: string;
 	recipient_user_id?: string | null;
 	number?: string;
 	currency?: string;
@@ -171,7 +197,10 @@ export const invoiceService = {
 		}
 	},
 
-	async update(invoiceId: string, payload: UpdateInvoicePayload): Promise<Invoice> {
+	async update(
+		invoiceId: string,
+		payload: UpdateInvoicePayload,
+	): Promise<Invoice> {
 		try {
 			const { data } = await apiClient.patch<{ data: Invoice }>(
 				`/api/invoices/${invoiceId}`,
@@ -204,9 +233,7 @@ export const invoiceService = {
 		}
 	},
 
-	async generatePdf(
-		invoiceId: string,
-	): Promise<{
+	async generatePdf(invoiceId: string): Promise<{
 		invoice_id: string;
 		document_id: string;
 		pdf_path: string;
@@ -227,6 +254,29 @@ export const invoiceService = {
 				extractApiErrorMessage(
 					(err as { response?: { data?: unknown } }).response?.data,
 					"Failed to generate invoice PDF",
+				),
+			);
+		}
+	},
+
+	/**
+	 * Short-lived presigned URL for the stored PDF. Invoice documents live in
+	 * the private R2 bucket, so there is no permanent public link — mirrors
+	 * how payout proofs are read.
+	 */
+	async getPdfUrl(
+		invoiceId: string,
+	): Promise<{ url: string; expires_in: number }> {
+		try {
+			const { data } = await apiClient.get<{
+				data: { url: string; expires_in: number };
+			}>(`/api/invoices/${invoiceId}/pdf-url`);
+			return data.data;
+		} catch (err) {
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to open the invoice PDF",
 				),
 			);
 		}
