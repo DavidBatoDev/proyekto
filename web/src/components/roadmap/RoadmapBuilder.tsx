@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
 	ArrowLeft,
+	Check,
 	CheckCircle2,
 	ImagePlus,
 	Loader2,
@@ -21,13 +22,23 @@ import {
 } from "@/lib/roadmapIntakeDraft";
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import {
+	type RoadmapIntakeCaptured,
+	type RoadmapIntakeTurn,
 	roadmapService,
-	type RoadmapObjectiveDecision,
 	type SuggestedRoadmapIntakeOption,
+	type SuggestedRoadmapIntakeQuestion,
 	type SuggestedRoadmapIntakeStep,
 } from "@/services/roadmap.service";
+import type { AgentClarifierAnswerEntry } from "@/services/roadmap-agent.service";
 import { uploadService } from "@/services/upload.service";
 import { useIsLoading, useUser } from "@/stores/authStore";
+import { RoadmapAiClarifierCard } from "./ai/RoadmapAiClarifierCard";
+import { buildClarifierDisplayLabel } from "./ai/RoadmapAiClarifierCard.logic";
+import {
+	buildTurnFromAnswers,
+	INTAKE_SLOT_CHIPS,
+	isSlotFilled,
+} from "./roadmapIntakeTurns";
 
 type RoadmapBuilderProps = {
 	projectId?: string;
@@ -131,71 +142,69 @@ function buildFallbackIntakeStep(
 	};
 }
 
-function buildFallbackObjectiveStep(
+/**
+ * Client-side degradation when the intake request itself throws (offline, 5xx).
+ * Deliberately NOT a mirror of the backend heuristics - a duplicate of that
+ * regex here silently diverged from the server's copy, and this path cannot
+ * synthesize idea-specific options anyway. A static clickable card plus the
+ * build-anyway escape is the honest fallback; the backend stays the single
+ * source of truth for the real decision.
+ */
+function buildOfflineObjectiveStep(
 	prompt: string,
-	clarificationAttempted: boolean,
+	round: number,
 ): SuggestedRoadmapIntakeStep {
 	const normalizedPrompt = prompt.trim().replace(/\s+/g, " ");
-	const lower = normalizedPrompt.toLowerCase();
-	const weakPattern =
-		/^(hi|hello|hey|test|testing|asdf|sample|demo|try|trying|roadmap|\?|\.|,|ok|okay)$/i;
-	const hasBuildObjective =
-		/\b(build|create|make|develop|design|launch|ship|plan|set up|setup)\b/.test(
-			lower,
-		) &&
-		/\b(app|website|site|platform|dashboard|tool|system|service|marketplace|product|portal|roadmap|project)\b/.test(
-			lower,
-		);
-	const hasAudience =
-		/\b(for|serving|help(?:ing)?|used by|users?|customers?|clients?|teams?|students?|farmers?|businesses?)\b/.test(
-			lower,
-		);
-	const hasScope =
-		/\b(with|including|include|features?|mvp|v1|dashboard|auth|payments?|booking|scheduling|tracking|analytics|notifications?|mobile|web|backend|frontend|api|database|workflow)\b/.test(
-			lower,
-		) || normalizedPrompt.split(/[,.]/).length > 1;
-	const scopeSignalCount = countScopeSignals(lower);
-	const hasDetailedScope =
-		scopeSignalCount >= 3 ||
-		(hasScope &&
-			(normalizedPrompt.length >= 90 ||
-				normalizedPrompt.split(/[,;]|\band\b/i).length >= 3));
-
-	if (
-		normalizedPrompt.length >= 12 &&
-		!weakPattern.test(normalizedPrompt) &&
-		hasBuildObjective &&
-		hasScope &&
-		(hasAudience || hasDetailedScope)
-	) {
+	// Two failed rounds: stop asking and let the user proceed with what we have.
+	if (round >= 2 && normalizedPrompt.length >= 12) {
 		return {
 			assistant_message:
-				"Great, I understand the project objective. I will use this context to set up the roadmap fields.",
+				"I could not reach the assistant, so I will set the roadmap up with what you have given me.",
 			options: [],
 			objective_decision: "ready",
 			refined_prompt: normalizedPrompt,
-			audience: "target users",
-			scope: normalizedPrompt,
 		};
 	}
 
 	return {
-		assistant_message: clarificationAttempted
-			? "No worries, I will cancel this roadmap setup for now. Come back when you have a project idea to build."
-			: "I need a little more before I can create a useful roadmap. What are you building, who is it for, and what should the first version include?",
+		assistant_message:
+			"I could not reach the assistant just now. Pick whatever fits and we will carry on.",
 		options: [],
-		objective_decision: clarificationAttempted ? "cancel" : "clarify",
+		objective_decision: "clarify",
 		refined_prompt: "",
-		audience: "",
-		scope: "",
+		can_build_anyway: normalizedPrompt.length >= 12,
+		questions: [
+			{
+				id: "audience",
+				header: "Who for",
+				question: "Who are the primary users?",
+				multi_select: false,
+				allow_custom: true,
+				options: [
+					{ label: "Everyday consumers", description: "The general public" },
+					{ label: "Businesses and teams", description: "Sold to companies" },
+					{
+						label: "Internal staff",
+						description: "Used inside your own organisation",
+					},
+				],
+			},
+			{
+				id: "features",
+				header: "First version",
+				question: "Which capabilities must the first version include?",
+				multi_select: true,
+				allow_custom: true,
+				options: [
+					{ label: "Accounts and sign-in" },
+					{ label: "Core dashboard and reporting" },
+					{ label: "Payments or billing" },
+					{ label: "Notifications and reminders" },
+					{ label: "Search and discovery" },
+				],
+			},
+		],
 	};
-}
-
-function countScopeSignals(lower: string): number {
-	const matches = lower.match(
-		/\b(auth|login|signup|database|api|backend|frontend|dashboard|payments?|billing|booking|scheduling|tracking|analytics|notifications?|chat|messaging|admin|cms|deployment|ci|cd|testing|onboarding|search|upload|mobile|web|kanban|collaboration|reports?|integrations?)\b/g,
-	);
-	return new Set(matches ?? []).size;
 }
 
 function buildFallbackTitleOptions(
@@ -214,28 +223,55 @@ function buildFallbackTitleOptions(
 	}));
 }
 
-function fallbackTitleTemplates(category: string, cleanedIdea: string): string[] {
+function fallbackTitleTemplates(
+	category: string,
+	cleanedIdea: string,
+): string[] {
 	if (category === "Health & Fitness") {
 		return ["FitFlow Studio", "PulseCoach Platform", "Momentum Fitness Hub"];
 	}
 	if (category === "AI / ML") {
-		return ["SmartFlow Assistant", "AI Launch Blueprint", "Automation Command Center"];
+		return [
+			"SmartFlow Assistant",
+			"AI Launch Blueprint",
+			"Automation Command Center",
+		];
 	}
 	if (category === "Mobile App") {
-		return ["Mobile Product Launch", "App Experience Blueprint", "Pocket Product Plan"];
+		return [
+			"Mobile Product Launch",
+			"App Experience Blueprint",
+			"Pocket Product Plan",
+		];
 	}
 	if (category === "E-commerce") {
-		return ["Commerce Growth Engine", "Storefront Launch System", "Checkout Experience Plan"];
+		return [
+			"Commerce Growth Engine",
+			"Storefront Launch System",
+			"Checkout Experience Plan",
+		];
 	}
 	if (category === "Marketing") {
-		return ["Campaign Growth Plan", "Brand Momentum System", "Content Launch Blueprint"];
+		return [
+			"Campaign Growth Plan",
+			"Brand Momentum System",
+			"Content Launch Blueprint",
+		];
 	}
 	if (category === "SaaS") {
-		return ["SaaS Launch System", "Customer Workflow Hub", "Subscription Growth Plan"];
+		return [
+			"SaaS Launch System",
+			"Customer Workflow Hub",
+			"Subscription Growth Plan",
+		];
 	}
 
 	const base = cleanedIdea || "Product";
-	return [`${base} Blueprint`, `${base} Launch System`, `${base} Execution Plan`];
+	return [
+		`${base} Blueprint`,
+		`${base} Launch System`,
+		`${base} Execution Plan`,
+	];
 }
 
 function extractIdeaPhrase(prompt: string): string {
@@ -364,19 +400,54 @@ export function RoadmapBuilder({
 	const [step, setStep] = useState<IntakeStep>("prompt");
 	const [prompt, setPrompt] = useState("");
 	const [refinedPrompt, setRefinedPrompt] = useState("");
-	const [objectiveDecision, setObjectiveDecision] =
-		useState<RoadmapObjectiveDecision | null>(null);
-	const [objectiveAudience, setObjectiveAudience] = useState("");
-	const [objectiveScope, setObjectiveScope] = useState("");
-	const [clarificationAttempted, setClarificationAttempted] = useState(false);
 	const [clarificationAnswer, setClarificationAnswer] = useState("");
+
+	/**
+	 * Guided-intake conversation state.
+	 *
+	 * Held in a ref, NOT state, on purpose: `requestIntakeStep` is a useCallback
+	 * whose identity feeds the draft-loading useEffect below. If turns/captured/
+	 * round entered its dependency array, that effect would re-run on every turn
+	 * and re-fire the intake. `loadedDraftIdRef` would mask it today, but that
+	 * guard is one refactor away from being load-bearing and forgotten.
+	 * Render-visible copies live in the state below.
+	 */
+	const intakeRef = useRef<{
+		turns: RoadmapIntakeTurn[];
+		captured: RoadmapIntakeCaptured;
+		round: number;
+	}>({ turns: [], captured: {}, round: 0 });
+	/**
+	 * `applyObjectiveResponse` has to kick off the title step, but is defined
+	 * before `requestIntakeStep`. A ref breaks that cycle without putting either
+	 * callback into the other's dependency array.
+	 */
+	const requestIntakeStepRef = useRef<
+		| ((
+				requestStep: "objective" | "title" | "description",
+				overrides?: {
+					prompt?: string;
+					title?: string;
+					description?: string;
+					category?: string;
+					forceReady?: boolean;
+				},
+		  ) => Promise<void>)
+		| null
+	>(null);
+	const [capturedView, setCapturedView] = useState<RoadmapIntakeCaptured>({});
+	const [intakeQuestions, setIntakeQuestions] = useState<
+		SuggestedRoadmapIntakeQuestion[]
+	>([]);
+	const [canBuildAnyway, setCanBuildAnyway] = useState(false);
+	const [showFreeText, setShowFreeText] = useState(false);
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [categories, setCategories] = useState<string[]>([]);
 	const [categoryInput, setCategoryInput] = useState("");
-	const [titleOptions, setTitleOptions] = useState<SuggestedRoadmapIntakeOption[]>(
-		[],
-	);
+	const [titleOptions, setTitleOptions] = useState<
+		SuggestedRoadmapIntakeOption[]
+	>([]);
 	const [descriptionOptions, setDescriptionOptions] = useState<
 		SuggestedRoadmapIntakeOption[]
 	>([]);
@@ -418,26 +489,29 @@ export function RoadmapBuilder({
 		[categories],
 	);
 	const effectivePrompt = refinedPrompt.trim() || prompt.trim();
-	const objectiveContextLabel = useMemo(() => {
-		if (objectiveDecision !== "ready") return "";
-		const parts = [
-			objectiveAudience ? `Audience: ${objectiveAudience}` : "",
-			objectiveScope ? `Scope: ${objectiveScope}` : "",
-		].filter(Boolean);
-		return parts.join(" | ");
-	}, [objectiveAudience, objectiveDecision, objectiveScope]);
+	const hasCapturedSlots = INTAKE_SLOT_CHIPS.some((chip) =>
+		isSlotFilled(capturedView, chip.key),
+	);
+	/**
+	 * The backend always returns at least one clickable question when it asks to
+	 * clarify, so this is normally true. Kept as a guard so a malformed or
+	 * question-less response degrades to the free-text box instead of a dead end.
+	 */
+	const showGuidedClarifier = intakeQuestions.length > 0;
 
-	const appendMessage = useCallback((role: ChatMessage["role"], content: string) => {
-		setMessages((current) => [
-			...current,
-			{ id: createMessageId(), role, content, createdAt: Date.now() },
-		]);
-	}, []);
+	const appendMessage = useCallback(
+		(role: ChatMessage["role"], content: string) => {
+			setMessages((current) => [
+				...current,
+				{ id: createMessageId(), role, content, createdAt: Date.now() },
+			]);
+		},
+		[],
+	);
 
 	const cancelIntake = useCallback(
 		async (message?: string) => {
 			if (message) appendMessage("assistant", message);
-			setObjectiveDecision("cancel");
 			setStep("canceled");
 			setError(null);
 			clearRoadmapIntakeDraft(draftId);
@@ -445,6 +519,55 @@ export function RoadmapBuilder({
 			await navigate({ to: "/" });
 		},
 		[appendMessage, draftId, navigate],
+	);
+
+	/**
+	 * Applies an objective-step response. Shared by the network and offline
+	 * paths so both agree on how a decision moves the flow.
+	 */
+	const applyObjectiveResponse = useCallback(
+		async (response: SuggestedRoadmapIntakeStep, trimmedPrompt: string) => {
+			const decision = response.objective_decision || "clarify";
+			const assistantMessage = response.assistant_message;
+
+			if (response.captured) {
+				intakeRef.current.captured = response.captured;
+				setCapturedView(response.captured);
+			}
+			setCanBuildAnyway(response.can_build_anyway === true);
+
+			if (decision === "cancel") {
+				await cancelIntake(assistantMessage);
+				return;
+			}
+
+			if (assistantMessage) {
+				appendMessage("assistant", assistantMessage);
+				intakeRef.current.turns.push({
+					role: "assistant",
+					content: assistantMessage,
+				});
+			}
+
+			if (decision === "clarify") {
+				intakeRef.current.round = response.round ?? intakeRef.current.round + 1;
+				setIntakeQuestions(response.questions ?? []);
+				setShowFreeText(false);
+				setStep("clarification");
+				return;
+			}
+
+			const nextRefinedPrompt =
+				response.refined_prompt?.trim() || trimmedPrompt;
+			setRefinedPrompt(nextRefinedPrompt);
+			setIntakeQuestions([]);
+			window.setTimeout(() => {
+				void requestIntakeStepRef.current?.("title", {
+					prompt: nextRefinedPrompt,
+				});
+			}, 0);
+		},
+		[appendMessage, cancelIntake],
 	);
 
 	const requestIntakeStep = useCallback(
@@ -455,17 +578,17 @@ export function RoadmapBuilder({
 				title?: string;
 				description?: string;
 				category?: string;
-				clarificationAttempted?: boolean;
+				forceReady?: boolean;
 			} = {},
 		) => {
 			const resolvedPrompt = overrides.prompt ?? prompt;
 			const resolvedTitle = overrides.title ?? title;
 			const resolvedDescription = overrides.description ?? description;
 			const resolvedCategory = overrides.category ?? selectedCategoryLabel;
-			const resolvedClarificationAttempted =
-				overrides.clarificationAttempted ?? clarificationAttempted;
 			const trimmedPrompt = resolvedPrompt.trim();
 			if (!trimmedPrompt) return;
+
+			const { turns, captured, round } = intakeRef.current;
 
 			setError(null);
 			if (requestStep !== "objective") {
@@ -480,50 +603,28 @@ export function RoadmapBuilder({
 					description: resolvedDescription,
 					category: resolvedCategory,
 					project_id: projectId !== "n" ? projectId : null,
-					clarification_attempted: resolvedClarificationAttempted,
+					...(requestStep === "objective"
+						? {
+								turns,
+								captured,
+								round,
+								...(overrides.forceReady ? { force_ready: true } : {}),
+							}
+						: {}),
 				});
 
 				if (requestStep === "objective") {
-					const fallback = buildFallbackObjectiveStep(
-						trimmedPrompt,
-						resolvedClarificationAttempted,
-					);
-					const decision =
-						response.objective_decision || fallback.objective_decision || "clarify";
-					const assistantMessage =
-						response.assistant_message || fallback.assistant_message;
-					if (decision === "cancel") {
-						await cancelIntake(assistantMessage);
-						return;
-					}
-					if (decision === "clarify") {
-						setObjectiveDecision("clarify");
-						setStep("clarification");
-						appendMessage("assistant", assistantMessage);
-						return;
-					}
-
-					const nextRefinedPrompt =
-						response.refined_prompt?.trim() ||
-						fallback.refined_prompt?.trim() ||
-						trimmedPrompt;
-					setObjectiveDecision("ready");
-					setRefinedPrompt(nextRefinedPrompt);
-					setObjectiveAudience(
-						response.audience?.trim() || fallback.audience || "",
-					);
-					setObjectiveScope(response.scope?.trim() || fallback.scope || "");
-					appendMessage("assistant", assistantMessage);
-					window.setTimeout(() => {
-						void requestIntakeStep("title", { prompt: nextRefinedPrompt });
-					}, 0);
+					await applyObjectiveResponse(response, trimmedPrompt);
 					return;
 				}
 
 				if (requestStep === "title") {
 					const fallback = buildFallbackIntakeStep("title", trimmedPrompt);
 					setTitleOptions(
-						normalizeOptions(response.options, fallback.options.map((o) => o.value)),
+						normalizeOptions(
+							response.options,
+							fallback.options.map((o) => o.value),
+						),
 					);
 					appendMessage(
 						"assistant",
@@ -539,12 +640,14 @@ export function RoadmapBuilder({
 					resolvedTitle,
 				);
 				setDescriptionOptions(
-					normalizeOptions(response.options, fallback.options.map((o) => o.value)),
+					normalizeOptions(
+						response.options,
+						fallback.options.map((o) => o.value),
+					),
 				);
-				const nextCategories =
-					response.category_suggestions?.length
-						? response.category_suggestions
-						: fallback.category_suggestions || FALLBACK_CATEGORIES;
+				const nextCategories = response.category_suggestions?.length
+					? response.category_suggestions
+					: fallback.category_suggestions || FALLBACK_CATEGORIES;
 				const normalizedNextCategories = uniqueCategories(nextCategories);
 				setCategorySuggestions(normalizedNextCategories);
 				setCategories((current) =>
@@ -563,29 +666,10 @@ export function RoadmapBuilder({
 			} catch (suggestError) {
 				console.error("Failed to suggest roadmap intake step:", suggestError);
 				if (requestStep === "objective") {
-					const fallback = buildFallbackObjectiveStep(
+					await applyObjectiveResponse(
+						buildOfflineObjectiveStep(trimmedPrompt, round),
 						trimmedPrompt,
-						resolvedClarificationAttempted,
 					);
-					if (fallback.objective_decision === "cancel") {
-						await cancelIntake(fallback.assistant_message);
-						return;
-					}
-					if (fallback.objective_decision === "ready") {
-						const nextRefinedPrompt = fallback.refined_prompt || trimmedPrompt;
-						setObjectiveDecision("ready");
-						setRefinedPrompt(nextRefinedPrompt);
-						setObjectiveAudience(fallback.audience || "");
-						setObjectiveScope(fallback.scope || "");
-						appendMessage("assistant", fallback.assistant_message);
-						window.setTimeout(() => {
-							void requestIntakeStep("title", { prompt: nextRefinedPrompt });
-						}, 0);
-						return;
-					}
-					setObjectiveDecision("clarify");
-					setStep("clarification");
-					appendMessage("assistant", fallback.assistant_message);
 					return;
 				}
 				const fallback = buildFallbackIntakeStep(
@@ -620,8 +704,7 @@ export function RoadmapBuilder({
 		},
 		[
 			appendMessage,
-			cancelIntake,
-			clarificationAttempted,
+			applyObjectiveResponse,
 			description,
 			projectId,
 			prompt,
@@ -629,6 +712,8 @@ export function RoadmapBuilder({
 			title,
 		],
 	);
+
+	requestIntakeStepRef.current = requestIntakeStep;
 
 	useEffect(() => {
 		if (!draftId || loadedDraftIdRef.current === draftId) return;
@@ -660,15 +745,32 @@ export function RoadmapBuilder({
 	const handleClarificationSubmit = () => {
 		const trimmedAnswer = clarificationAnswer.trim();
 		if (!trimmedAnswer || isSuggesting || isLocalThinking) return;
-		const combinedPrompt = `${prompt.trim()}\nAdditional detail: ${trimmedAnswer}`;
-		setPrompt(combinedPrompt);
 		setClarificationAnswer("");
-		setClarificationAttempted(true);
 		appendMessage("user", trimmedAnswer);
-		void requestIntakeStep("objective", {
-			prompt: combinedPrompt,
-			clarificationAttempted: true,
+		// Keep the original prompt intact and carry the answer as its own turn,
+		// so the model can tell a question from its answer. The old path mashed
+		// both into one "prompt\nAdditional detail:" string and lost that.
+		intakeRef.current.turns.push({ role: "user", content: trimmedAnswer });
+		setShowFreeText(false);
+		void requestIntakeStep("objective");
+	};
+
+	const handleIntakeAnswers = (answers: AgentClarifierAnswerEntry[]) => {
+		if (isSuggesting || isLocalThinking) return;
+		appendMessage("user", buildClarifierDisplayLabel(answers));
+		intakeRef.current.turns.push({
+			role: "user",
+			content: buildTurnFromAnswers(answers),
 		});
+		setIntakeQuestions([]);
+		void requestIntakeStep("objective");
+	};
+
+	const handleBuildAnyway = () => {
+		if (isSuggesting || isLocalThinking) return;
+		appendMessage("user", "Build it with what you have.");
+		setIntakeQuestions([]);
+		void requestIntakeStep("objective", { forceReady: true });
 	};
 
 	const handleTitleAnswer = (value: string, label?: string) => {
@@ -712,9 +814,14 @@ export function RoadmapBuilder({
 		const category = normalizeCategoryValue(categoryInput);
 		if (!category) return;
 		setCategories((current) =>
-			uniqueCategories([...current, category]).slice(0, MAX_SELECTED_CATEGORIES),
+			uniqueCategories([...current, category]).slice(
+				0,
+				MAX_SELECTED_CATEGORIES,
+			),
 		);
-		setCategorySuggestions((current) => uniqueCategories([category, ...current]));
+		setCategorySuggestions((current) =>
+			uniqueCategories([category, ...current]),
+		);
 		setCategoryInput("");
 	};
 
@@ -732,10 +839,7 @@ export function RoadmapBuilder({
 			? `${selectedDescriptionKey}: ${trimmedDescription}`
 			: trimmedDescription;
 		const categoryLabel = selectedCategoryLabel || DEFAULT_ROADMAP_CATEGORY;
-		appendMessage(
-			"user",
-			`${label}\nCategories: ${categoryLabel}`,
-		);
+		appendMessage("user", `${label}\nCategories: ${categoryLabel}`);
 		setIsLocalThinking(true);
 		await wait(650);
 		appendMessage("assistant", THUMBNAIL_MESSAGE);
@@ -770,7 +874,8 @@ export function RoadmapBuilder({
 	};
 
 	const handleCreate = async (mode: "generated" | "uploaded") => {
-		if (isCreating || isAuthLoading || !effectivePrompt || !title.trim()) return;
+		if (isCreating || isAuthLoading || !effectivePrompt || !title.trim())
+			return;
 
 		setError(null);
 		setIsCreating(true);
@@ -793,6 +898,10 @@ export function RoadmapBuilder({
 				isAuthenticated: Boolean(authenticatedUser),
 				previewUrl,
 				openMetadataModal: false,
+				// Carries audience/platform/v1 scope through to the agent turn that
+				// actually generates the epics - otherwise intake learns it and
+				// throws it away.
+				intake: intakeRef.current.captured,
 			});
 
 			clearRoadmapIntakeDraft(draftId);
@@ -864,7 +973,9 @@ export function RoadmapBuilder({
 							{message.role === "user" ? (
 								<div className="max-w-[min(720px,88%)] whitespace-pre-line rounded-[1.75rem] bg-primary px-5 py-4 text-primary-foreground shadow-lg">
 									<div className="mb-2 flex items-center justify-between gap-4 text-sm">
-										<span className="font-semibold text-primary-foreground/95">You</span>
+										<span className="font-semibold text-primary-foreground/95">
+											You
+										</span>
 										<span className="text-primary-foreground/75">
 											{formatMessageTime(message.createdAt)}
 										</span>
@@ -889,14 +1000,45 @@ export function RoadmapBuilder({
 
 					{isThinking && <TypingIndicator />}
 
-					{objectiveContextLabel &&
-						step !== "prompt" &&
-						step !== "clarification" &&
-						step !== "canceled" && (
-							<div className="roadmap-chat-message rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-								Objective locked. {objectiveContextLabel}
-							</div>
-						)}
+					{/*
+					 * Slot progress. Unlike the old "Objective locked" banner this
+					 * stays visible DURING clarification - which is exactly when the
+					 * user needs to see what has landed and what is still missing.
+					 */}
+					{hasCapturedSlots && step !== "prompt" && step !== "canceled" && (
+						<div
+							data-testid="intake-slot-strip"
+							className="roadmap-chat-message flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3"
+						>
+							<span className="text-xs font-semibold text-muted-foreground">
+								So far
+							</span>
+							{INTAKE_SLOT_CHIPS.map((chip) => {
+								const filled = isSlotFilled(capturedView, chip.key);
+								const value = capturedView[chip.key];
+								const detail = Array.isArray(value)
+									? value.join(", ")
+									: (value ?? "");
+								return (
+									<span
+										key={chip.key}
+										data-testid="intake-slot-chip"
+										data-slot={chip.key}
+										data-filled={filled}
+										title={detail || undefined}
+										className={
+											filled
+												? "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary"
+												: "inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground"
+										}
+									>
+										{filled ? <Check className="h-3 w-3" /> : null}
+										{chip.label}
+									</span>
+								);
+							})}
+						</div>
+					)}
 
 					{shouldShowPromptInput && (
 						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-card-foreground shadow-sm">
@@ -929,61 +1071,127 @@ export function RoadmapBuilder({
 						</section>
 					)}
 
-					{step === "clarification" && !isThinking && (
-						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-card-foreground shadow-sm">
-							<label
-								htmlFor="roadmap-objective-clarification"
-								className="block text-sm font-bold text-foreground"
-							>
-								Add the missing project details
-							</label>
-							<p className="mt-1 text-sm leading-6 text-muted-foreground">
-								Tell me what you are building, who it is for, and what the first
-								version should include.
-							</p>
-							<textarea
-								id="roadmap-objective-clarification"
-								value={clarificationAnswer}
-								maxLength={MAX_PROMPT_LENGTH}
-								rows={4}
-								onChange={(event) => setClarificationAnswer(event.target.value)}
-								onKeyDown={(event) => {
-									if (
-										event.key === "Enter" &&
-										!event.shiftKey &&
-										!event.nativeEvent.isComposing
-									) {
-										event.preventDefault();
-										handleClarificationSubmit();
-									}
-								}}
-								placeholder='Example: "A fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders."'
-								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/15"
-							/>
-							<div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-								<button
-									type="button"
-									onClick={() =>
-										void cancelIntake(
-											"No problem, I will cancel this roadmap setup for now.",
-										)
-									}
-									className="inline-flex items-center justify-center rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
+					{/* Guided path: clickable questions instead of a blank textarea. */}
+					{step === "clarification" &&
+						!isThinking &&
+						showGuidedClarifier &&
+						!showFreeText && (
+							<section className="roadmap-chat-message">
+								<RoadmapAiClarifierCard
+									card={{
+										question_id: `intake-r${intakeRef.current.round}`,
+										questions: intakeQuestions,
+									}}
+									badgeLabel="Project intake"
+									onSubmit={handleIntakeAnswers}
+									disabled={isThinking}
+								/>
+								<div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+									<div className="flex flex-wrap gap-2">
+										<button
+											type="button"
+											onClick={() =>
+												void cancelIntake(
+													"No problem, I will cancel this roadmap setup for now.",
+												)
+											}
+											className="inline-flex items-center justify-center rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
+										>
+											Cancel and go home
+										</button>
+										<button
+											type="button"
+											data-testid="intake-free-text-toggle"
+											onClick={() => setShowFreeText(true)}
+											className="inline-flex items-center justify-center rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
+										>
+											Type an answer instead
+										</button>
+									</div>
+									{canBuildAnyway && (
+										<button
+											type="button"
+											data-testid="intake-build-anyway"
+											onClick={handleBuildAnyway}
+											className="inline-flex items-center justify-center rounded-full border border-primary/40 px-4 py-2 text-xs font-bold text-primary transition hover:bg-primary/10"
+										>
+											Build it anyway
+										</button>
+									)}
+								</div>
+							</section>
+						)}
+
+					{step === "clarification" &&
+						!isThinking &&
+						(!showGuidedClarifier || showFreeText) && (
+							<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-card-foreground shadow-sm">
+								<label
+									htmlFor="roadmap-objective-clarification"
+									className="block text-sm font-bold text-foreground"
 								>
-									Cancel and go home
-								</button>
-								<button
-									type="button"
-									onClick={handleClarificationSubmit}
-									disabled={!canSubmitClarification}
-									className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									<Send className="h-4 w-4" />
-									Continue
-								</button>
-							</div>
-						</section>
-					)}
+									Add the missing project details
+								</label>
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									Tell me what you are building, who it is for, and what the
+									first version should include.
+								</p>
+								<textarea
+									id="roadmap-objective-clarification"
+									value={clarificationAnswer}
+									maxLength={MAX_PROMPT_LENGTH}
+									rows={4}
+									onChange={(event) =>
+										setClarificationAnswer(event.target.value)
+									}
+									onKeyDown={(event) => {
+										if (
+											event.key === "Enter" &&
+											!event.shiftKey &&
+											!event.nativeEvent.isComposing
+										) {
+											event.preventDefault();
+											handleClarificationSubmit();
+										}
+									}}
+									placeholder='Example: "A fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders."'
+									className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/15"
+								/>
+								<div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+									<button
+										type="button"
+										onClick={() =>
+											void cancelIntake(
+												"No problem, I will cancel this roadmap setup for now.",
+											)
+										}
+										className="inline-flex items-center justify-center rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
+									>
+										Cancel and go home
+									</button>
+									<div className="flex flex-wrap items-center gap-2">
+										{showFreeText && intakeQuestions.length > 0 && (
+											<button
+												type="button"
+												onClick={() => setShowFreeText(false)}
+												className="inline-flex items-center justify-center rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-muted-foreground transition hover:border-primary/40 hover:bg-muted hover:text-foreground"
+											>
+												Back to options
+											</button>
+										)}
+										<button
+											type="button"
+											onClick={handleClarificationSubmit}
+											disabled={!canSubmitClarification}
+											className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											<Send className="h-4 w-4" />
+											Continue
+										</button>
+									</div>
+								</div>
+							</section>
+						)}
 
 					{step === "canceled" && (
 						<section className="roadmap-chat-message rounded-[1.75rem] border border-border bg-card p-5 text-sm leading-6 text-muted-foreground shadow-sm">
@@ -998,9 +1206,7 @@ export function RoadmapBuilder({
 									<button
 										key={option.key}
 										type="button"
-										onClick={() =>
-											handleTitleAnswer(option.value, option.key)
-										}
+										onClick={() => handleTitleAnswer(option.value, option.key)}
 										className="roadmap-chat-option group flex items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:bg-muted/40 hover:shadow-md"
 										style={{ animationDelay: `${index * 80}ms` }}
 									>
@@ -1160,11 +1366,10 @@ export function RoadmapBuilder({
 											className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
 												categories.some(
 													(category) =>
-														category.toLowerCase() ===
-														suggestion.toLowerCase(),
+														category.toLowerCase() === suggestion.toLowerCase(),
 												)
-											? "border-primary bg-primary text-primary-foreground"
-											: "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+													? "border-primary bg-primary text-primary-foreground"
+													: "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
 											}`}
 										>
 											{suggestion}
@@ -1177,7 +1382,7 @@ export function RoadmapBuilder({
 										type="button"
 										onClick={() => void handleDescriptionContinue()}
 										disabled={!canContinueDescription}
-									className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+										className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										Continue
 									</button>
@@ -1219,9 +1424,7 @@ export function RoadmapBuilder({
 									<button
 										type="button"
 										onClick={() =>
-											void handleCreate(
-												thumbnailUrl ? "uploaded" : "generated",
-											)
+											void handleCreate(thumbnailUrl ? "uploaded" : "generated")
 										}
 										disabled={!canCreate}
 										className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-black text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1245,7 +1448,10 @@ export function RoadmapBuilder({
 								/>
 
 								{error && (
-									<p role="alert" className="mt-4 text-sm font-bold text-red-600 dark:text-red-400">
+									<p
+										role="alert"
+										className="mt-4 text-sm font-bold text-red-600 dark:text-red-400"
+									>
 										{error}
 									</p>
 								)}
@@ -1264,7 +1470,9 @@ export function RoadmapBuilder({
 									<div className="p-4">
 										<div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">
 											<CheckCircle2 className="h-4 w-4" />
-											{thumbnailUrl ? "Uploaded thumbnail" : "Generated thumbnail"}
+											{thumbnailUrl
+												? "Uploaded thumbnail"
+												: "Generated thumbnail"}
 										</div>
 									</div>
 								</div>
