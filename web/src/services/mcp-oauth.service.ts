@@ -10,12 +10,52 @@ import { MCP_SCOPE_LABELS, type McpScope } from "@/services/mcp-tokens.service";
 export const OFFLINE_ACCESS = "offline_access";
 
 export function scopeLabel(scope: string): string {
-	if (scope === OFFLINE_ACCESS) return "Stay connected without re-approving";
+	if (scope === OFFLINE_ACCESS) return "Stay connected";
 	return MCP_SCOPE_LABELS[scope as McpScope] ?? scope;
+}
+
+/**
+ * Plain-language consequence of each grant. The consent screen leads with these
+ * rather than the scope token — "projects:read" tells a non-developer nothing
+ * about what the app is actually about to see.
+ */
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+	"projects:read": "The projects you belong to, their details and members",
+	"roadmaps:read": "Roadmaps, epics, features, tasks and milestones",
+	"knowledge:read": "Search across chat, comments, briefs and activity",
+	"chat:read": "Messages in the channels you're a member of",
+	"roadmaps:write": "Add, edit, move and delete roadmap items",
+	"tasks:write": "Create and update tasks, and post comments on them",
+	"tasks:assign": "Change who a task is assigned to — this notifies them",
+	[OFFLINE_ACCESS]: "Keep working without asking you to approve again",
+};
+
+export function scopeDescription(scope: string): string {
+	return SCOPE_DESCRIPTIONS[scope] ?? scope;
 }
 
 export function isWriteScope(scope: string): boolean {
 	return scope.endsWith(":write") || scope === "tasks:assign";
+}
+
+/**
+ * How the app proved who it is.
+ *
+ * CIMD means the client_id is an https URL we fetched and checked for
+ * self-consistency, so the hostname is a real attestation. DCR means the app
+ * registered itself and named itself whatever it liked — worth flagging, since
+ * anything can claim to be "Claude" through that path.
+ */
+export function clientOrigin(request: ConsentRequest): {
+	host: string | null;
+	verified: boolean;
+} {
+	if (request.client_source !== "cimd") return { host: null, verified: false };
+	try {
+		return { host: new URL(request.client_id).hostname, verified: true };
+	} catch {
+		return { host: null, verified: false };
+	}
 }
 
 /** What the consent screen renders: which app is asking, and for what. */
