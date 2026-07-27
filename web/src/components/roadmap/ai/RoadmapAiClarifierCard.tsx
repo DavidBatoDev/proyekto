@@ -4,6 +4,7 @@ import type {
 	AgentClarifierAnswerEntry,
 	AgentClarifierCard,
 } from "@/services/roadmap-agent.service";
+import type { ClarifierCardLike } from "./RoadmapAiClarifierCard.logic";
 import {
 	buildClarifierAnswers,
 	CUSTOM_SENTINEL,
@@ -12,21 +13,25 @@ import {
 } from "./RoadmapAiClarifierCard.logic";
 
 export interface RoadmapAiClarifierCardProps {
-	card: AgentClarifierCard;
+	card: ClarifierCardLike;
 	onSubmit: (answers: AgentClarifierAnswerEntry[]) => void;
 	disabled?: boolean;
+	/** Overrides the lane-derived badge for non-agent surfaces. */
+	badgeLabel?: string;
 }
 
-const laneLabel = (lane: AgentClarifierCard["lane"]): string => {
+const laneLabel = (lane: AgentClarifierCard["lane"] | undefined): string => {
 	if (lane === "plan") return "Plan clarifier";
 	if (lane === "query") return "Resolve reference";
-	return "Edit clarifier";
+	if (lane === "edit") return "Edit clarifier";
+	return "Clarifier";
 };
 
 export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 	card,
 	onSubmit,
 	disabled,
+	badgeLabel,
 }) => {
 	const questions = useMemo(() => resolveClarifierQuestions(card), [card]);
 	const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -108,7 +113,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 		>
 			<div className="mb-2 flex items-center gap-2">
 				<span className="ai-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
-					{laneLabel(card.lane)}
+					{badgeLabel ?? laneLabel(card.lane)}
 				</span>
 				{currentQ.header ? (
 					<span className="inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200">
