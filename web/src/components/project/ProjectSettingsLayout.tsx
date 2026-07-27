@@ -1,7 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
+import { Clock, Settings, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
-import { Settings, Users, UsersRound } from "lucide-react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { projectService } from "@/services/project.service";
+import { useUser } from "@/stores/authStore";
 
 interface ProjectSettingsLayoutProps {
   projectId: string;
@@ -15,6 +18,16 @@ export function ProjectSettingsLayout({
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const user = useUser();
+  // The "Time" tab (per-member hour limits) is consultant-only — the client
+  // must not see it. Reuses the cached ["project", id] query other pages load.
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectService.get(projectId),
+  });
+  const isConsultant = Boolean(
+    user?.id && project?.consultant_id === user.id,
+  );
 
   const navItems = [
     {
@@ -37,6 +50,18 @@ export function ProjectSettingsLayout({
       icon: UsersRound,
       active: currentPath.startsWith(`/project/${projectId}/settings/teams`),
     },
+    ...(isConsultant
+      ? [
+          {
+            label: "Time",
+            to: `/project/${projectId}/settings/time`,
+            icon: Clock,
+            active: currentPath.startsWith(
+              `/project/${projectId}/settings/time`,
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -40,9 +40,33 @@ export class InvoiceLineItemInputDto {
   unit_rate!: number;
 }
 
+export const HOURS_DETAIL_LEVELS = ['none', 'summary', 'detailed'] as const;
+export type HoursDetailLevel = (typeof HOURS_DETAIL_LEVELS)[number];
+
 export class CreateInvoiceDto {
   @IsUUID()
   project_id!: string;
+
+  /**
+   * When set (or when the project has a live contract), lines are composed from
+   * the contract's billing mode and CLIENT rate rather than from manual entry.
+   */
+  @IsOptional()
+  @IsUUID()
+  contract_id?: string;
+
+  @IsOptional()
+  @IsDateString()
+  period_start?: string;
+
+  @IsOptional()
+  @IsDateString()
+  period_end?: string;
+
+  /** How much time detail the client is shown. Defaults to a single summary line. */
+  @IsOptional()
+  @IsIn(HOURS_DETAIL_LEVELS)
+  hours_detail_level?: HoursDetailLevel;
 
   @IsOptional()
   @IsUUID()
@@ -96,6 +120,18 @@ export class CreateInvoiceDto {
 }
 
 export class UpdateInvoiceDto {
+  @IsOptional()
+  @IsIn(HOURS_DETAIL_LEVELS)
+  hours_detail_level?: HoursDetailLevel;
+
+  @IsOptional()
+  @IsDateString()
+  period_start?: string;
+
+  @IsOptional()
+  @IsDateString()
+  period_end?: string;
+
   @IsOptional()
   @IsUUID()
   recipient_user_id?: string | null;

@@ -1,18 +1,25 @@
+import type { PayPeriodConfig, PayPeriodDef } from "@/services/teams.service";
+
 export type LogPeriodPreset =
 	| "this_week"
 	| "this_month"
 	| "this_year"
 	| "cutoff"
+	| "current_cutoff"
 	| "custom"
 	| "all_time";
-export type CutoffHalf = "1" | "2";
 
 export interface TeamLogPeriodSearch {
 	from?: string;
 	to?: string;
 	preset?: LogPeriodPreset;
 	cutoff_month?: string;
-	cutoff_half?: CutoffHalf;
+	/** Id of the selected pay period within the team's cut-off config. */
+	cutoff_period?: string;
+	/** Preselected member filter (e.g. arriving from Manage Rates → View logs). */
+	member?: string;
+	/** Preselected status tab (e.g. arriving from Payouts → Review pending). */
+	status?: string;
 }
 
 export interface TeamLogResolvedPeriod {
@@ -22,7 +29,9 @@ export interface TeamLogResolvedPeriod {
 	customFromDate: string;
 	customToDate: string;
 	cutoffMonth: string;
-	cutoffHalf: CutoffHalf;
+	cutoffPeriodId: string;
+	/** Scheduled pay date for cutoff / current_cutoff presets (ISO), else null. */
+	payDateIso: string | null;
 }
 
 const PRESETS: LogPeriodPreset[] = [
@@ -30,9 +39,141 @@ const PRESETS: LogPeriodPreset[] = [
 	"this_month",
 	"this_year",
 	"cutoff",
+	"current_cutoff",
 	"custom",
 	"all_time",
 ];
+
+// ─── Pay-period configuration ────────────────────────────────────────────────
+// A team's cut-off schedule lives on `teams.pay_period_config` (nullable). When
+// unset we fall back to this default, which matches the app's historical PH
+// semi-monthly behaviour (1–15 / 16–EOM) plus the pay dates the team actually
+// uses (1–15 paid on the 22nd; 16–EOM paid on the 7th of the next month).
+
+export const DEFAULT_PAY_PERIOD_CONFIG: PayPeriodConfig = {
+	cadence: "monthly",
+	periods: [
+		{
+			id: "h1",
+			label: "1st half",
+			start_day: 1,
+			end_day: 15,
+			pay_day: 22,
+			pay_month_offset: 0,
+		},
+		{
+			id: "h2",
+			label: "2nd half",
+			start_day: 16,
+			end_day: "EOM",
+			pay_day: 7,
+			pay_month_offset: 1,
+		},
+	],
+};
+
+export interface ResolvedPayPeriod {
+	id: string;
+	label: string;
+	from: Date;
+	to: Date;
+	payDate: Date;
+	/** e.g. "1–15" */
+	dayRangeLabel: string;
+}
+
+/** Returns the config when it has at least one period, else the default. */
+export function normalizePayPeriodConfig(
+	config?: PayPeriodConfig | null,
+): PayPeriodConfig {
+	if (
+		config &&
+		config.cadence === "monthly" &&
+		Array.isArray(config.periods) &&
+		config.periods.length > 0
+	) {
+		return config;
+	}
+	return DEFAULT_PAY_PERIOD_CONFIG;
+}
+
+function lastDayOfMonth(year: number, monthIndex: number): number {
+	return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function resolveOnePayPeriod(
+	def: PayPeriodDef,
+	year: number,
+	monthIndex: number,
+): ResolvedPayPeriod {
+	const eom = lastDayOfMonth(year, monthIndex);
+	const startDay = Math.min(Math.max(1, def.start_day), eom);
+	const endDay =
+		def.end_day === "EOM" ? eom : Math.min(Math.max(1, def.end_day), eom);
+	const from = new Date(year, monthIndex, startDay);
+	const to = new Date(year, monthIndex, endDay);
+	// Pay date lives in a later month (offset) at pay_day, clamped to that
+	// month's length so e.g. pay_day 31 in a 30-day month lands on the 30th.
+	const payMonthIndex = monthIndex + (def.pay_month_offset ?? 0);
+	const payEom = lastDayOfMonth(year, payMonthIndex);
+	const payDate = new Date(
+		year,
+		payMonthIndex,
+		Math.min(Math.max(1, def.pay_day), payEom),
+	);
+	const dayRangeLabel =
+		def.end_day === "EOM" ? `${startDay}–EOM` : `${startDay}–${endDay}`;
+	return { id: def.id, label: def.label, from, to, payDate, dayRangeLabel };
+}
+
+/** Concrete pay-period windows for a given `YYYY-MM` month. */
+export function resolvePayPeriods(
+	config: PayPeriodConfig | null | undefined,
+	month: string,
+): ResolvedPayPeriod[] {
+	const cfg = normalizePayPeriodConfig(config);
+	const parsed = parseMonthInput(month) ?? new Date();
+	const year = parsed.getFullYear();
+	const monthIndex = parsed.getMonth();
+	return cfg.periods.map((def) => resolveOnePayPeriod(def, year, monthIndex));
+}
+
+/** The pay period (and its month) that contains an arbitrary `date`. */
+export function payPeriodForDate(
+	config: PayPeriodConfig | null | undefined,
+	date: Date,
+): { month: string; period: ResolvedPayPeriod } {
+	const month = toMonthInput(date);
+	const periods = resolvePayPeriods(config, month);
+	const day = startOfDay(date).getTime();
+	const containing = periods.find(
+		(p) => startOfDay(p.from).getTime() <= day && day <= startOfDay(p.to).getTime(),
+	);
+	if (containing) return { month, period: containing };
+	// No period contains the date (e.g. a gap in the config) — fall back to the
+	// last period that has already started, else the first period.
+	const started = [...periods]
+		.filter((p) => startOfDay(p.from).getTime() <= day)
+		.sort((a, b) => b.from.getTime() - a.from.getTime());
+	return { month, period: started[0] ?? periods[0] };
+}
+
+/** The pay period (and its month) that contains `now`. */
+export function currentPayPeriod(
+	config: PayPeriodConfig | null | undefined,
+	now = new Date(),
+): { month: string; period: ResolvedPayPeriod } {
+	return payPeriodForDate(config, now);
+}
+
+/** e.g. "1–15 Jul 2026" for a resolved pay period. */
+export function payPeriodLabel(period: ResolvedPayPeriod): string {
+	const monthName = new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		year: "numeric",
+	}).format(period.from);
+	return `${period.dayRangeLabel} ${monthName}`;
+}
 
 function isPreset(value: unknown): value is LogPeriodPreset {
 	return (
@@ -107,18 +248,27 @@ export function parseTeamLogPeriodSearch(
 		/^\d{4}-\d{2}$/.test(search.cutoff_month)
 			? search.cutoff_month
 			: undefined;
-	const cutoffHalf =
-		search.cutoff_half === "2"
-			? "2"
-			: search.cutoff_half === "1"
-				? "1"
-				: undefined;
+	const cutoffPeriod =
+		typeof search.cutoff_period === "string" && search.cutoff_period.trim()
+			? search.cutoff_period.trim()
+			: undefined;
+	const member =
+		typeof search.member === "string" && search.member.trim()
+			? search.member.trim()
+			: undefined;
+	const status =
+		typeof search.status === "string" &&
+		["pending", "approved", "paid", "rejected", "all"].includes(search.status)
+			? search.status
+			: undefined;
 	return {
 		preset,
 		from,
 		to,
 		cutoff_month: cutoffMonth,
-		cutoff_half: cutoffHalf,
+		cutoff_period: cutoffPeriod,
+		member,
+		status,
 	};
 }
 
@@ -138,36 +288,20 @@ function monthBounds(now: Date): { from: Date; to: Date } {
 	return { from, to };
 }
 
-function cutoffBounds(
-	month: string,
-	half: CutoffHalf,
-): { from: Date; to: Date } {
-	const parsed = parseMonthInput(month) ?? new Date();
-	const year = parsed.getFullYear();
-	const monthIndex = parsed.getMonth();
-	if (half === "1") {
-		return {
-			from: new Date(year, monthIndex, 1),
-			to: new Date(year, monthIndex, 15),
-		};
-	}
-	return {
-		from: new Date(year, monthIndex, 16),
-		to: new Date(year, monthIndex + 1, 0),
-	};
-}
-
 export function resolveTeamLogPeriod(
 	search: TeamLogPeriodSearch,
+	config?: PayPeriodConfig | null,
 	now = new Date(),
 ): TeamLogResolvedPeriod {
+	const cfg = normalizePayPeriodConfig(config);
 	const fallbackCutoffMonth = toMonthInput(now);
-	const cutoffMonth = search.cutoff_month ?? fallbackCutoffMonth;
-	const cutoffHalf: CutoffHalf = search.cutoff_half === "2" ? "2" : "1";
+	let cutoffMonth = search.cutoff_month ?? fallbackCutoffMonth;
+	let cutoffPeriodId = search.cutoff_period ?? cfg.periods[0].id;
 	const preset: LogPeriodPreset = search.preset ?? "this_week";
 
 	let fromDate: Date;
 	let toDate: Date;
+	let payDate: Date | null = null;
 	if (preset === "all_time") {
 		fromDate = new Date(2000, 0, 1);
 		toDate = new Date(now.getFullYear() + 5, 11, 31);
@@ -178,10 +312,21 @@ export function resolveTeamLogPeriod(
 	} else if (preset === "this_year") {
 		fromDate = new Date(now.getFullYear(), 0, 1);
 		toDate = new Date(now.getFullYear(), 11, 31);
+	} else if (preset === "current_cutoff") {
+		const { month, period } = currentPayPeriod(cfg, now);
+		cutoffMonth = month;
+		cutoffPeriodId = period.id;
+		fromDate = period.from;
+		toDate = period.to;
+		payDate = period.payDate;
 	} else if (preset === "cutoff") {
-		const bounds = cutoffBounds(cutoffMonth, cutoffHalf);
-		fromDate = bounds.from;
-		toDate = bounds.to;
+		const periods = resolvePayPeriods(cfg, cutoffMonth);
+		const period =
+			periods.find((p) => p.id === cutoffPeriodId) ?? periods[0];
+		cutoffPeriodId = period.id;
+		fromDate = period.from;
+		toDate = period.to;
+		payDate = period.payDate;
 	} else if (preset === "custom") {
 		const fromCandidate = search.from ? new Date(search.from) : null;
 		const toCandidate = search.to ? new Date(search.to) : null;
@@ -214,7 +359,8 @@ export function resolveTeamLogPeriod(
 		customFromDate: toLocalDateInput(boundedFrom),
 		customToDate: toLocalDateInput(boundedTo),
 		cutoffMonth,
-		cutoffHalf,
+		cutoffPeriodId,
+		payDateIso: payDate ? payDate.toISOString() : null,
 	};
 }
 
@@ -226,7 +372,7 @@ export function buildTeamLogPeriodSearch(
 		from: period.fromIso,
 		to: period.toIso,
 		cutoff_month: period.cutoffMonth,
-		cutoff_half: period.cutoffHalf,
+		cutoff_period: period.cutoffPeriodId,
 	};
 }
 
@@ -300,16 +446,30 @@ export function periodRangeLabel(period: TeamLogResolvedPeriod): string {
 	return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 
-export function cutoffLabel(month: string, half: CutoffHalf): string {
-	const parsed = parseMonthInput(month) ?? new Date();
-	const year = parsed.getFullYear();
-	const monthIndex = parsed.getMonth();
-	const bounds = cutoffBounds(month, half);
-	const fromDay = bounds.from.getDate();
-	const toDay = bounds.to.getDate();
+/** e.g. "1–15 Jul 2026" for the selected cut-off period. */
+export function cutoffLabel(
+	config: PayPeriodConfig | null | undefined,
+	month: string,
+	periodId: string,
+): string {
+	const periods = resolvePayPeriods(config, month);
+	const period = periods.find((p) => p.id === periodId) ?? periods[0];
+	if (!period) return "";
 	const monthName = new Intl.DateTimeFormat(undefined, {
 		month: "short",
 		year: "numeric",
-	}).format(new Date(year, monthIndex, 1));
-	return `${fromDay}-${toDay} ${monthName}`;
+	}).format(period.from);
+	return `${period.dayRangeLabel} ${monthName}`;
+}
+
+/** e.g. "Pays Jul 22, 2026". */
+export function payDateLabel(iso: string | null | undefined): string | null {
+	if (!iso) return null;
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return null;
+	return `Pays ${new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	}).format(d)}`;
 }

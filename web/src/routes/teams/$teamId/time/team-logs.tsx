@@ -1,24 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FolderKanban, Loader2, Users } from "lucide-react";
+import { FolderKanban, ListChecks, Loader2, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-	buildCustomPeriodFromDateInputs,
-	buildTeamLogPeriodSearch,
-	type CutoffHalf,
-	type LogPeriodPreset,
-	loadStoredPeriodSearch,
-	parseTeamLogPeriodSearch,
-	resolveTeamLogPeriod,
-	storePeriodSearch,
-} from "@/components/team-time/log-period";
-import { FilterSelect } from "@/components/team-time/FilterSelect";
-import { LogStatusFilter } from "@/components/team-time/LogStatusFilter";
-import { PayMemberModal } from "@/components/team-time/PayMemberModal";
-import {
-	type ReviewOnlyDecision,
-	TeamApprovalsInbox,
-} from "@/components/team-time/TeamApprovalsInbox";
 import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
 import {
 	loadTimeView,
@@ -26,17 +9,37 @@ import {
 	type TimeViewMode,
 	TimeViewToggle,
 } from "@/components/team-time/calendar/TimeViewToggle";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
+import {
+	buildCustomPeriodFromDateInputs,
+	buildTeamLogPeriodSearch,
+	type LogPeriodPreset,
+	loadStoredPeriodSearch,
+	parseTeamLogPeriodSearch,
+	resolveTeamLogPeriod,
+	storePeriodSearch,
+} from "@/components/team-time/log-period";
+import { PayMemberModal } from "@/components/team-time/PayMemberModal";
+import {
+	type ReviewOnlyDecision,
+	TeamApprovalsInbox,
+} from "@/components/team-time/TeamApprovalsInbox";
 import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
 	EMPTY_LOG_STATS,
 	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
+import {
+	type StatusTab,
+	TeamLogsStatusTabs,
+} from "@/components/team-time/TeamLogsStatusTabs";
+import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import { useToast } from "@/hooks/useToast";
 import {
 	type TaskTimeLog,
-	type TimeLogStatus,
 	teamTimeService,
 } from "@/services/team-time.service";
+import { getTeam } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/teams/$teamId/time/team-logs")({
@@ -59,7 +62,16 @@ function TeamLogsRoute() {
 	const toast = useToast();
 	const qc = useQueryClient();
 
-	const period = useMemo(() => resolveTeamLogPeriod(search), [search]);
+	const teamQuery = useQuery({
+		queryKey: ["teams", "detail", teamId],
+		queryFn: () => getTeam(teamId),
+	});
+	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+
+	const period = useMemo(
+		() => resolveTeamLogPeriod(search, payPeriodConfig),
+		[search, payPeriodConfig],
+	);
 
 	useEffect(() => {
 		// Once the URL carries a resolved period, mirror it to localStorage so
@@ -74,21 +86,34 @@ function TeamLogsRoute() {
 		void navigate({
 			to: "/teams/$teamId/time/team-logs",
 			params: { teamId },
-			search: restored ?? buildTeamLogPeriodSearch(period),
+			// Preserve a member/status preselect (arriving from Manage Rates →
+			// View logs, or Payouts → Review).
+			search: {
+				...(restored ?? buildTeamLogPeriodSearch(period)),
+				member: search.member,
+				status: search.status,
+			},
 			replace: true,
 		});
 	}, [navigate, period, search, teamId]);
 
 	const [viewMode, setViewMode] = useState<TimeViewMode>(() =>
-		loadTimeView(teamId, "team"),
+		// Arriving with a member/status filter (e.g. from Payouts → Review) means
+		// the owner wants that filtered set — the list applies those filters, so
+		// land there rather than the calendar.
+		search.member || search.status ? "list" : loadTimeView(teamId, "team"),
 	);
 	const changeViewMode = (mode: TimeViewMode) => {
 		setViewMode(mode);
 		storeTimeView(teamId, "team", mode);
 	};
-	const [statusSet, setStatusSet] = useState<Set<TimeLogStatus>>(new Set());
+	const [activeStatus, setActiveStatus] = useState<StatusTab>(
+		() => (search.status as StatusTab | undefined) ?? "all",
+	);
 	const [projectFilter, setProjectFilter] = useState<string>("");
-	const [memberFilter, setMemberFilter] = useState<string>("");
+	// Seed from the URL so "View logs" from Manage Rates lands pre-filtered.
+	const [memberFilter, setMemberFilter] = useState<string>(search.member ?? "");
+	const [taskStatusFilter, setTaskStatusFilter] = useState<string>("");
 	const [busyLogIds, setBusyLogIds] = useState<Set<string>>(new Set());
 	const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
 
@@ -110,6 +135,8 @@ function TeamLogsRoute() {
 			{
 				projectFilter,
 				memberFilter,
+				taskStatusFilter,
+				activeStatus,
 				from: period.fromIso,
 				to: period.toIso,
 			},
@@ -118,6 +145,8 @@ function TeamLogsRoute() {
 			teamTimeService.listTeamLogs(teamId, {
 				project_id: projectFilter || undefined,
 				member_user_id: memberFilter || undefined,
+				task_status: taskStatusFilter || undefined,
+				status: activeStatus === "all" ? undefined : activeStatus,
 				from: period.fromIso,
 				to: period.toIso,
 				limit: 200,
@@ -179,19 +208,19 @@ function TeamLogsRoute() {
 			}),
 	});
 	const stats = summaryQuery.data ?? EMPTY_LOG_STATS;
+	// Per-status counts for the tab badges — from the summary, so they reflect
+	// the full filtered set (not the 200-row list cap) and are unaffected by the
+	// active tab (the summary query never sends a status filter).
+	const statusCounts = summaryQuery.data?.statusCounts;
 
-	// Status is filtered client-side so any combination of statuses can be
-	// selected at once (empty set = all statuses).
-	const items = useMemo(() => {
-		const all = logsQuery.data?.items ?? [];
-		return statusSet.size === 0
-			? all
-			: all.filter((log) => statusSet.has(log.status));
-	}, [logsQuery.data, statusSet]);
+	// Status is filtered server-side (via the active tab), so the loaded page is
+	// already the right set — no client-side narrowing.
+	const items = logsQuery.data?.items ?? [];
 
 	// The list is capped at 200 rows; surface it so the (filtered) list below is
 	// never mistaken for the complete set. Totals above are unaffected (summary).
-	const listCapped = (logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
+	const listCapped =
+		(logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
 
 	const markBusy = (ids: string[], busy: boolean) =>
 		setBusyLogIds((prev) => {
@@ -226,13 +255,16 @@ function TeamLogsRoute() {
 		preset: LogPeriodPreset,
 		overrides?: Partial<typeof period>,
 	) => {
-		const next = resolveTeamLogPeriod({
-			preset,
-			from: overrides?.fromIso ?? period.fromIso,
-			to: overrides?.toIso ?? period.toIso,
-			cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
-			cutoff_half: overrides?.cutoffHalf ?? period.cutoffHalf,
-		});
+		const next = resolveTeamLogPeriod(
+			{
+				preset,
+				from: overrides?.fromIso ?? period.fromIso,
+				to: overrides?.toIso ?? period.toIso,
+				cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
+				cutoff_period: overrides?.cutoffPeriodId ?? period.cutoffPeriodId,
+			},
+			payPeriodConfig,
+		);
 		void navigate({
 			to: "/teams/$teamId/time/team-logs",
 			params: { teamId },
@@ -330,79 +362,95 @@ function TeamLogsRoute() {
 				/>
 			) : (
 				<>
-			<TeamLogsStatsCard
-				rate={null}
-				stats={stats}
-				fallbackCurrency="USD"
-				loading={summaryQuery.isPending}
-			/>
+					<TeamLogsStatsCard
+						rate={null}
+						stats={stats}
+						fallbackCurrency="USD"
+						loading={summaryQuery.isPending}
+					/>
 
-			<TeamLogsPeriodFilter
-				period={period}
-				onPresetChange={(preset) => updatePeriod(preset)}
-				onCutoffMonthChange={(month) =>
-					updatePeriod("cutoff", { cutoffMonth: month })
-				}
-				onCutoffHalfChange={(half: CutoffHalf) =>
-					updatePeriod("cutoff", { cutoffHalf: half })
-				}
-				onApplyCustomRange={onApplyCustomRange}
-				workedDays={workedDays}
-			/>
+					<TeamLogsPeriodFilter
+						period={period}
+						payPeriodConfig={payPeriodConfig}
+						onPresetChange={(preset) => updatePeriod(preset)}
+						onCutoffMonthChange={(month) =>
+							updatePeriod("cutoff", { cutoffMonth: month })
+						}
+						onCutoffPeriodChange={(periodId) =>
+							updatePeriod("cutoff", { cutoffPeriodId: periodId })
+						}
+						onApplyCustomRange={onApplyCustomRange}
+						workedDays={workedDays}
+					/>
 
-			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-				<LogStatusFilter value={statusSet} onChange={setStatusSet} />
+					<div className="space-y-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+						<TeamLogsStatusTabs
+							value={activeStatus}
+							onChange={setActiveStatus}
+							counts={statusCounts}
+						/>
 
-				<FilterSelect
-					value={projectFilter}
-					onChange={setProjectFilter}
-					icon={<FolderKanban className="h-3.5 w-3.5" />}
-					placeholder="All projects"
-					options={[
-						{ value: "", label: "All projects" },
-						...(projectsQuery.data ?? []).map((project) => ({
-							value: project.id,
-							label: project.title ?? "(untitled)",
-						})),
-					]}
-				/>
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+							<FilterSelect
+								value={projectFilter}
+								onChange={setProjectFilter}
+								icon={<FolderKanban className="h-3.5 w-3.5" />}
+								placeholder="All projects"
+								options={[
+									{ value: "", label: "All projects" },
+									...(projectsQuery.data ?? []).map((project) => ({
+										value: project.id,
+										label: project.title ?? "(untitled)",
+									})),
+								]}
+							/>
 
-				<FilterSelect
-					value={memberFilter}
-					onChange={setMemberFilter}
-					icon={<Users className="h-3.5 w-3.5" />}
-					placeholder="All members"
-					options={[
-						{ value: "", label: "All members" },
-						...(membersQuery.data ?? []).map((member) => ({
-							value: member.id,
-							label: member.display_name || member.email || member.id,
-						})),
-					]}
-				/>
+							<FilterSelect
+								value={memberFilter}
+								onChange={setMemberFilter}
+								icon={<Users className="h-3.5 w-3.5" />}
+								placeholder="All members"
+								options={[
+									{ value: "", label: "All members" },
+									...(membersQuery.data ?? []).map((member) => ({
+										value: member.id,
+										label: member.display_name || member.email || member.id,
+										avatarUrl: member.avatar_url ?? null,
+									})),
+								]}
+							/>
 
-				{(projectsQuery.isPending || membersQuery.isPending) && (
-					<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-				)}
-			</div>
+							<FilterSelect
+								value={taskStatusFilter}
+								onChange={setTaskStatusFilter}
+								icon={<ListChecks className="h-3.5 w-3.5" />}
+								placeholder="All task statuses"
+								options={TASK_STATUS_FILTER_OPTIONS}
+							/>
 
-			{listCapped && (
-				<p className="px-1 text-xs text-slate-400">
-					Showing the most recent 200 logs — narrow the period, project, or
-					member to see the rest. Totals above cover the full range.
-				</p>
-			)}
+							{(projectsQuery.isPending || membersQuery.isPending) && (
+								<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+							)}
+						</div>
+					</div>
 
-			<TeamApprovalsInbox
-				logs={items}
-				loadingLogs={logsQuery.isPending}
-				currentUserId={user?.id ?? null}
-				busyLogIds={busyLogIds}
-				onReviewLogs={handleReviewLogs}
-				onPayMember={handlePayMember}
-				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-			/>
+					{listCapped && (
+						<p className="px-1 text-xs text-slate-400">
+							Showing the most recent 200 logs — narrow the period, project, or
+							member to see the rest. Totals above cover the full range.
+						</p>
+					)}
+
+					<TeamApprovalsInbox
+						logs={items}
+						loadingLogs={logsQuery.isPending}
+						currentUserId={user?.id ?? null}
+						busyLogIds={busyLogIds}
+						onReviewLogs={handleReviewLogs}
+						onPayMember={handlePayMember}
+						onOpenTaskInRoadmap={handleOpenInRoadmap}
+						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+					/>
 				</>
 			)}
 

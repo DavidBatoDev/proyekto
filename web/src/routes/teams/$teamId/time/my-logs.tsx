@@ -1,18 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ListChecks } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
-import {
-	buildCustomPeriodFromDateInputs,
-	buildTeamLogPeriodSearch,
-	type CutoffHalf,
-	type LogPeriodPreset,
-	loadStoredPeriodSearch,
-	parseTeamLogPeriodSearch,
-	resolveTeamLogPeriod,
-	storePeriodSearch,
-} from "@/components/team-time/log-period";
 import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
 import {
 	loadTimeView,
@@ -20,6 +11,17 @@ import {
 	type TimeViewMode,
 	TimeViewToggle,
 } from "@/components/team-time/calendar/TimeViewToggle";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
+import { HourCapBanner } from "@/components/team-time/HourCapBanner";
+import {
+	buildCustomPeriodFromDateInputs,
+	buildTeamLogPeriodSearch,
+	type LogPeriodPreset,
+	loadStoredPeriodSearch,
+	parseTeamLogPeriodSearch,
+	resolveTeamLogPeriod,
+	storePeriodSearch,
+} from "@/components/team-time/log-period";
 import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
 	EMPTY_LOG_STATS,
@@ -31,7 +33,9 @@ import {
 	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
+	ManualLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	confirmStopLongTimer,
 	fromLocalDateTimeInput,
@@ -49,6 +53,7 @@ import {
 	teamTimeService,
 } from "@/services/team-time.service";
 import {
+	getTeam,
 	listMemberRates,
 	type TeamMember,
 	type TeamMemberRate,
@@ -72,11 +77,21 @@ function MyLogsTab() {
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
-	const period = useMemo(() => resolveTeamLogPeriod(search), [search]);
+	const teamQuery = useQuery({
+		queryKey: ["teams", "detail", teamId],
+		queryFn: () => getTeam(teamId),
+	});
+	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+
+	const period = useMemo(
+		() => resolveTeamLogPeriod(search, payPeriodConfig),
+		[search, payPeriodConfig],
+	);
 
 	const [viewMode, setViewMode] = useState<TimeViewMode>(() =>
 		loadTimeView(teamId, "my"),
 	);
+	const [taskStatusFilter, setTaskStatusFilter] = useState("");
 	const changeViewMode = (mode: TimeViewMode) => {
 		setViewMode(mode);
 		storeTimeView(teamId, "my", mode);
@@ -102,13 +117,16 @@ function MyLogsTab() {
 		preset: LogPeriodPreset,
 		overrides?: Partial<typeof period>,
 	) => {
-		const next = resolveTeamLogPeriod({
-			preset,
-			from: overrides?.fromIso ?? period.fromIso,
-			to: overrides?.toIso ?? period.toIso,
-			cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
-			cutoff_half: overrides?.cutoffHalf ?? period.cutoffHalf,
-		});
+		const next = resolveTeamLogPeriod(
+			{
+				preset,
+				from: overrides?.fromIso ?? period.fromIso,
+				to: overrides?.toIso ?? period.toIso,
+				cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
+				cutoff_period: overrides?.cutoffPeriodId ?? period.cutoffPeriodId,
+			},
+			payPeriodConfig,
+		);
 		void navigate({
 			to: "/teams/$teamId/time/my-logs",
 			params: { teamId },
@@ -154,6 +172,7 @@ function MyLogsTab() {
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
+	const [editBreakMinutes, setEditBreakMinutes] = useState(0);
 	const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 	const [deletingLogLabel, setDeletingLogLabel] = useState<
 		string | undefined
@@ -161,6 +180,14 @@ function MyLogsTab() {
 	const [taskModalLog, setTaskModalLog] = useState<TaskTimeLog | null>(null);
 	const [taskModalTaskId, setTaskModalTaskId] = useState("");
 	const [historyOpen, setHistoryOpen] = useState(false);
+	// Manual (dated) log — "add a log for a day I forgot".
+	const [manualOpen, setManualOpen] = useState(false);
+	const [manualDateLabel, setManualDateLabel] = useState("");
+	const [manualProjectId, setManualProjectId] = useState("");
+	const [manualTaskId, setManualTaskId] = useState("");
+	const [manualStart, setManualStart] = useState("");
+	const [manualEnd, setManualEnd] = useState("");
+	const [manualBreakMinutes, setManualBreakMinutes] = useState(0);
 
 	// ─── Data ───────────────────────────────────────────────────────────────
 
@@ -176,12 +203,13 @@ function MyLogsTab() {
 			teamId,
 			"my-logs",
 			user?.id,
-			{ from: period.fromIso, to: period.toIso },
+			{ from: period.fromIso, to: period.toIso, taskStatusFilter },
 		],
 		queryFn: () =>
 			teamTimeService.listMyTeamLogs(teamId, {
 				from: period.fromIso,
 				to: period.toIso,
+				task_status: taskStatusFilter || undefined,
 				limit: 200,
 			}),
 		enabled: Boolean(user?.id),
@@ -217,6 +245,13 @@ function MyLogsTab() {
 		queryFn: () =>
 			teamTimeService.listTeamProjectTasks(teamId, taskModalLog!.project_id),
 		enabled: Boolean(taskModalLog),
+	});
+
+	const tasksForManualQuery = useQuery({
+		queryKey: ["team-time", teamId, "project-tasks", manualProjectId],
+		queryFn: () =>
+			teamTimeService.listTeamProjectTasks(teamId, manualProjectId),
+		enabled: Boolean(manualProjectId),
 	});
 
 	const myAllRates: TeamMemberRate[] = myRateHistoryQuery.data ?? [];
@@ -328,10 +363,12 @@ function MyLogsTab() {
 			id: string;
 			started_at?: string;
 			ended_at?: string;
+			break_minutes?: number;
 		}) =>
 			teamTimeService.updateLog(input.id, {
 				started_at: input.started_at,
 				ended_at: input.ended_at,
+				break_minutes: input.break_minutes,
 			}),
 		onSuccess: () => {
 			toast.success("Log updated");
@@ -348,6 +385,22 @@ function MyLogsTab() {
 			toast.success("Task changed");
 			qc.invalidateQueries({ queryKey: ["team-time", teamId, "my-logs"] });
 			setTaskModalLog(null);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const manualLogMutation = useMutation({
+		mutationFn: (input: {
+			project_id: string;
+			task_id: string | null;
+			started_at: string;
+			ended_at: string;
+			break_minutes?: number;
+		}) => teamTimeService.createManualLog(input),
+		onSuccess: () => {
+			toast.success("Log added");
+			qc.invalidateQueries({ queryKey: ["team-time", teamId, "my-logs"] });
+			setManualOpen(false);
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
@@ -527,11 +580,38 @@ function MyLogsTab() {
 		setEditingLog(log);
 		setEditStartedAt(toLocalDateTimeInput(log.started_at));
 		setEditEndedAt(toLocalDateTimeInput(log.ended_at));
+		setEditBreakMinutes(log.break_minutes ?? 0);
 	}, []);
 	const handleOpenTaskModal = useCallback((log: TaskTimeLog) => {
 		setTaskModalLog(log);
 		setTaskModalTaskId(log.task_id ?? "");
 	}, []);
+	const handleAddLogForDay = useCallback(
+		(date: Date) => {
+			// Seed a 09:00–10:00 block on the chosen day; the user adjusts as needed.
+			const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+			setManualDateLabel(
+				new Intl.DateTimeFormat(undefined, {
+					weekday: "long",
+					month: "long",
+					day: "numeric",
+					year: "numeric",
+				}).format(date),
+			);
+			setManualStart(`${ymd}T09:00`);
+			setManualEnd(`${ymd}T10:00`);
+			setManualBreakMinutes(0);
+			// Default the project to the most recently used one.
+			const recent = [...allLogs].sort(
+				(a, b) =>
+					new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+			)[0]?.project_id;
+			setManualProjectId(recent ?? projectsQuery.data?.[0]?.id ?? "");
+			setManualTaskId("");
+			setManualOpen(true);
+		},
+		[allLogs, projectsQuery.data],
+	);
 	const handleOpenInRoadmap = useCallback(
 		(log: TaskTimeLog) => {
 			if (!log.task_id) return;
@@ -606,6 +686,17 @@ function MyLogsTab() {
 		taskChangeMutation.variables,
 	]);
 
+	// Calendar day-modal spinners reuse the list's per-row pending map, as a Set.
+	const myBusyLogIds = useMemo(
+		() =>
+			new Set(Object.keys(rowPendingById).filter((id) => rowPendingById[id])),
+		[rowPendingById],
+	);
+	const hasActiveLog = useMemo(
+		() => allLogs.some((l) => !l.ended_at),
+		[allLogs],
+	);
+
 	const activeRate = firstActiveRate;
 	const rateHistory = myAllRates;
 	const hasRateHistory =
@@ -615,7 +706,14 @@ function MyLogsTab() {
 
 	return (
 		<>
-			<div className="mb-3 flex justify-end">
+			<div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+				<FilterSelect
+					value={taskStatusFilter}
+					onChange={setTaskStatusFilter}
+					icon={<ListChecks className="h-3.5 w-3.5" />}
+					placeholder="All task statuses"
+					options={TASK_STATUS_FILTER_OPTIONS}
+				/>
 				<TimeViewToggle value={viewMode} onChange={changeViewMode} />
 			</div>
 
@@ -624,6 +722,18 @@ function MyLogsTab() {
 					teamId={teamId}
 					mode="my"
 					currentUserId={user?.id ?? null}
+					busyLogIds={myBusyLogIds}
+					hasActiveLog={hasActiveLog}
+					loadingTasks={tasksForRowQuery.isFetching}
+					onStopLog={(log) => handleStop(log.id)}
+					onEditLog={handleEdit}
+					onDeleteLog={(log) => {
+						setDeletingLogLabel(log.task?.title ?? undefined);
+						setDeletingLogId(log.id);
+					}}
+					onChangeTask={handleOpenTaskModal}
+					onStartTimer={() => setAddOpen(true)}
+					onAddLogForDay={handleAddLogForDay}
 					onOpenTaskInRoadmap={handleOpenInRoadmap}
 					canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 				/>
@@ -645,16 +755,23 @@ function MyLogsTab() {
 							rateLabel="Rate"
 						/>
 					</div>
+					{/* Hour-cap progress (only when a rate has a weekly/monthly cap) */}
+					{allLogs.length > 0 && (
+						<div className="mb-3">
+							<HourCapBanner logs={allLogs} />
+						</div>
+					)}
 					{/* Date range filter (below the summary) */}
 					<div className="mb-4">
 						<TeamLogsPeriodFilter
 							period={period}
+							payPeriodConfig={payPeriodConfig}
 							onPresetChange={(preset) => updatePeriod(preset)}
 							onCutoffMonthChange={(month) =>
 								updatePeriod("cutoff", { cutoffMonth: month })
 							}
-							onCutoffHalfChange={(half: CutoffHalf) =>
-								updatePeriod("cutoff", { cutoffHalf: half })
+							onCutoffPeriodChange={(periodId) =>
+								updatePeriod("cutoff", { cutoffPeriodId: periodId })
 							}
 							onApplyCustomRange={onApplyCustomRange}
 							workedDays={workedDays}
@@ -762,6 +879,7 @@ function MyLogsTab() {
 				isOpen={Boolean(editingLog)}
 				startedAt={editStartedAt}
 				endedAt={editEndedAt}
+				breakMinutes={editBreakMinutes}
 				saving={editMutation.isPending}
 				onClose={() => {
 					if (editMutation.isPending) return;
@@ -773,10 +891,12 @@ function MyLogsTab() {
 						id: editingLog.id,
 						started_at: fromLocalDateTimeInput(editStartedAt),
 						ended_at: fromLocalDateTimeInput(editEndedAt),
+						break_minutes: editBreakMinutes,
 					});
 				}}
 				onChangeStartedAt={setEditStartedAt}
 				onChangeEndedAt={setEditEndedAt}
+				onChangeBreakMinutes={setEditBreakMinutes}
 			/>
 
 			{/* Delete modal */}
@@ -826,6 +946,45 @@ function MyLogsTab() {
 				}}
 				onChangeProjectId={() => {}}
 				onChangeTaskId={(v) => setTaskModalTaskId(v)}
+			/>
+
+			{/* Manual dated log (add for a past day) */}
+			<ManualLogModal
+				isOpen={manualOpen}
+				dateLabel={manualDateLabel}
+				projects={projectsQuery.data ?? []}
+				tasks={tasksForManualQuery.data ?? []}
+				loadingTasks={tasksForManualQuery.isFetching}
+				selectedProjectId={manualProjectId}
+				selectedTaskId={manualTaskId}
+				startedAt={manualStart}
+				endedAt={manualEnd}
+				breakMinutes={manualBreakMinutes}
+				saving={manualLogMutation.isPending}
+				onClose={() => {
+					if (manualLogMutation.isPending) return;
+					setManualOpen(false);
+				}}
+				onSave={() => {
+					const started = fromLocalDateTimeInput(manualStart);
+					const ended = fromLocalDateTimeInput(manualEnd);
+					if (!manualProjectId || !started || !ended) return;
+					manualLogMutation.mutate({
+						project_id: manualProjectId,
+						task_id: manualTaskId || null,
+						started_at: started,
+						ended_at: ended,
+						break_minutes: manualBreakMinutes,
+					});
+				}}
+				onChangeProjectId={(v) => {
+					setManualProjectId(v);
+					setManualTaskId("");
+				}}
+				onChangeTaskId={setManualTaskId}
+				onChangeStartedAt={setManualStart}
+				onChangeEndedAt={setManualEnd}
+				onChangeBreakMinutes={setManualBreakMinutes}
 			/>
 
 			<ScrollNavButtons />

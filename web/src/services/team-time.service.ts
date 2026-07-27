@@ -22,6 +22,7 @@ export interface TaskTimeLog {
 	started_at: string;
 	ended_at: string | null;
 	duration_seconds: number | null;
+	break_minutes?: number;
 	status: TimeLogStatus;
 	reviewed_by: string | null;
 	reviewed_at: string | null;
@@ -33,7 +34,12 @@ export interface TaskTimeLog {
 	created_at: string;
 	updated_at: string;
 	limit_context?: TimeLogLimitContext;
-	task?: { id: string; title: string; work_type?: TaskWorkType } | null;
+	task?: {
+		id: string;
+		title: string;
+		work_type?: TaskWorkType;
+		status?: string;
+	} | null;
 	member?: ProfileMini | null;
 	reviewer?: Pick<ProfileMini, "id" | "display_name" | "avatar_url"> | null;
 	project?: { id: string; title: string | null } | null;
@@ -113,6 +119,8 @@ export interface ListLogsQuery {
 	status?: TimeLogStatus;
 	project_id?: string;
 	member_user_id?: string;
+	/** Filter by the underlying task's kanban status. */
+	task_status?: string;
 	from?: string;
 	to?: string;
 	page?: number;
@@ -132,10 +140,19 @@ export interface LogsSummaryBucket {
  * Accurate log aggregates over the full filtered set — not capped by the 200-row
  * list limit. Structurally compatible with the web `LogStats` used by the stats card.
  */
+/** Log counts per status over the full filtered set (drives the Team Logs tabs). */
+export interface LogStatusCounts {
+	pending: number;
+	approved: number;
+	paid: number;
+	rejected: number;
+}
+
 export interface LogsSummary {
 	buckets: Record<string, LogsSummaryBucket>;
 	currencies: string[];
 	totalHours: number;
+	statusCounts?: LogStatusCounts;
 }
 
 type ApiResponse<T> = { data: T };
@@ -192,11 +209,14 @@ export const teamTimeService = {
 		}
 	},
 
-	async stopLog(logId: string, endedAt?: string): Promise<TaskTimeLog> {
+	async stopLog(logId: string, endedAt?: string, breakMinutes?: number): Promise<TaskTimeLog> {
 		try {
+			const body: { ended_at?: string; break_minutes?: number } = {};
+			if (endedAt) body.ended_at = endedAt;
+			if (typeof breakMinutes === "number") body.break_minutes = breakMinutes;
 			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
 				`/api/team-time/logs/${logId}/stop`,
-				endedAt ? { ended_at: endedAt } : {},
+				body,
 			);
 			return res.data.data;
 		} catch (e) {
@@ -210,6 +230,7 @@ export const teamTimeService = {
 			task_id?: string | null;
 			started_at?: string;
 			ended_at?: string;
+			break_minutes?: number;
 		},
 	): Promise<TaskTimeLog> {
 		try {
@@ -243,6 +264,7 @@ export const teamTimeService = {
 		task_id?: string | null;
 		started_at: string;
 		ended_at: string;
+		break_minutes?: number;
 	}): Promise<TaskTimeLog> {
 		try {
 			const normalizedPayload = {
@@ -436,6 +458,7 @@ export const teamTimeService = {
 		teamId: string,
 		memberId: string,
 		currency: string,
+		range?: { from?: string; to?: string },
 	): Promise<TaskTimeLog[]> {
 		const PAGE = 200;
 		const out: TaskTimeLog[] = [];
@@ -443,6 +466,8 @@ export const teamTimeService = {
 			const res = await this.listTeamLogs(teamId, {
 				member_user_id: memberId,
 				status: "approved",
+				from: range?.from,
+				to: range?.to,
 				page,
 				limit: PAGE,
 			});
@@ -450,6 +475,29 @@ export const teamTimeService = {
 			if (res.items.length < PAGE) break;
 		}
 		return out.filter((log) => (log.currency_snapshot || "USD") === currency);
+	},
+
+	/**
+	 * Every team log of a given status, paginated past the 200-row cap. Used by
+	 * Payouts to group outstanding (approved) balances by cut-off and to flag
+	 * cut-offs that still have pending logs awaiting review.
+	 */
+	async listAllTeamLogsByStatus(
+		teamId: string,
+		status: TimeLogStatus,
+	): Promise<TaskTimeLog[]> {
+		const PAGE = 200;
+		const out: TaskTimeLog[] = [];
+		for (let page = 1; ; page++) {
+			const res = await this.listTeamLogs(teamId, {
+				status,
+				page,
+				limit: PAGE,
+			});
+			out.push(...res.items);
+			if (res.items.length < PAGE) break;
+		}
+		return out;
 	},
 
 	async listTeamLogProjects(

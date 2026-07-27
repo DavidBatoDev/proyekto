@@ -78,6 +78,16 @@ export interface CreatePayoutMethodInput {
 
 export type UpdatePayoutMethodInput = Partial<CreatePayoutMethodInput>;
 
+/** An outstanding approved-but-unpaid balance for a member in one currency. */
+export interface OwedBucket {
+	member_user_id: string;
+	member: ProfileMini | null;
+	currency: string;
+	log_count: number;
+	hours: number;
+	amount: number;
+}
+
 export interface CreatePayoutInput {
 	team_id: string;
 	member_user_id: string;
@@ -202,6 +212,26 @@ export const payoutsService = {
 			return res.data.data ?? [];
 		} catch (e) {
 			throw extractError(e, "Failed to load payouts");
+		}
+	},
+
+	async getTeamOwed(
+		teamId: string,
+		range?: { from?: string; to?: string },
+	): Promise<OwedBucket[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<OwedBucket[]>>(
+				`/api/payouts/teams/${teamId}/owed`,
+				{
+					params: {
+						from: range?.from || undefined,
+						to: range?.to || undefined,
+					},
+				},
+			);
+			return res.data.data ?? [];
+		} catch (e) {
+			throw extractError(e, "Failed to load outstanding balances");
 		}
 	},
 

@@ -18,6 +18,9 @@ export interface TeamMemberRateRow {
   team_id: string;
   user_id: string;
   project_id: string;
+  rate_type: 'hourly' | 'fixed';
+  fixed_amount: number | null;
+  fixed_period: 'month' | 'semi_month';
   hourly_rate: number;
   training_hourly_rate: number;
   currency: string;
@@ -126,6 +129,12 @@ export class TeamMemberRatesService {
         team_id: teamId,
         user_id: userId,
         project_id: projectId,
+        rate_type: dto.rate_type ?? 'hourly',
+        // A fixed rate is meaningless without an amount; the DB CHECK enforces
+        // it too, this just gives a cleaner failure.
+        fixed_amount:
+          dto.rate_type === 'fixed' ? (dto.fixed_amount ?? null) : null,
+        fixed_period: dto.fixed_period ?? 'month',
         hourly_rate: dto.hourly_rate,
         training_hourly_rate: dto.training_hourly_rate,
         currency: (dto.currency ?? 'USD').toUpperCase(),
@@ -162,6 +171,15 @@ export class TeamMemberRatesService {
     const existing = await this.fetchOrThrow(teamId, userId, rateId);
 
     const patch: Record<string, unknown> = {};
+    if (dto.rate_type !== undefined) {
+      patch.rate_type = dto.rate_type;
+      // Switching back to hourly clears the fixed amount, so a stale value can
+      // never be picked up by a later cost rollup.
+      if (dto.rate_type === 'hourly') patch.fixed_amount = null;
+    }
+    if (dto.fixed_amount !== undefined)
+      patch.fixed_amount = dto.fixed_amount ?? null;
+    if (dto.fixed_period !== undefined) patch.fixed_period = dto.fixed_period;
     if (dto.hourly_rate !== undefined) patch.hourly_rate = dto.hourly_rate;
     if (dto.training_hourly_rate !== undefined) {
       patch.training_hourly_rate = dto.training_hourly_rate;

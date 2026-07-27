@@ -28,7 +28,8 @@ export const liveDurationSecondsFromLog = (log: TaskTimeLog, nowMs: number) => {
 	if (log.ended_at) return log.duration_seconds ?? 0;
 	const started = new Date(log.started_at).getTime();
 	if (Number.isNaN(started)) return log.duration_seconds ?? 0;
-	return Math.max(0, Math.floor((nowMs - started) / 1000));
+	const breakSeconds = (log.break_minutes ?? 0) * 60;
+	return Math.max(0, Math.floor((nowMs - started) / 1000) - breakSeconds);
 };
 
 /** Display name for a log's member, falling back through name parts to the raw id. */

@@ -76,6 +76,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (dto.start_date !== undefined) payload.start_date = dto.start_date;
     if (dto.custom_start_date !== undefined)
       payload.custom_start_date = dto.custom_start_date;
+    if (dto.currency !== undefined)
+      payload.currency = dto.currency.toUpperCase() || 'USD';
 
     return payload;
   }

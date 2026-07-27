@@ -14,6 +14,8 @@ import {
   AddTeamMemberDto,
   CreateTeamDto,
   InviteTeamMemberDto,
+  PayPeriodConfigInput,
+  PayPeriodInput,
   RespondTeamInviteDto,
   TeamMemberRole,
   UpdateTeamDto,
@@ -40,6 +42,7 @@ export interface TeamRow {
   time_tracking_enabled: boolean;
   retroactive_log_days: number | null;
   default_currency: string;
+  pay_period_config: PayPeriodConfigInput | null;
   created_at: string;
   updated_at: string;
   // Populated by listMyTeams for the team-list UI. Other endpoints that
@@ -349,6 +352,13 @@ export class TeamsService {
     if (dto.default_currency !== undefined) {
       patch.default_currency = dto.default_currency;
     }
+    if (dto.pay_period_config !== undefined) {
+      // `null` clears the config (falls back to the client default).
+      patch.pay_period_config =
+        dto.pay_period_config === null
+          ? null
+          : this.validatePayPeriodConfig(dto.pay_period_config);
+    }
 
     const { data, error } = await this.supabase
       .from('teams')
@@ -360,6 +370,90 @@ export class TeamsService {
       throw new Error(error?.message ?? 'Failed to update team');
     }
     return data as TeamRow;
+  }
+
+  /**
+   * Validate + normalize a payout cut-off configuration into the canonical
+   * shape stored in `teams.pay_period_config`. Rejects malformed input rather
+   * than persisting junk (the shape has no DB CHECK so it can evolve freely).
+   * Only the `monthly` cadence is supported today; weekly is reserved.
+   */
+  private validatePayPeriodConfig(
+    input: PayPeriodConfigInput,
+  ): PayPeriodConfigInput {
+    if (!input || typeof input !== 'object') {
+      throw new BadRequestException('pay_period_config must be an object');
+    }
+    if (input.cadence !== 'monthly') {
+      throw new BadRequestException(
+        "pay_period_config.cadence must be 'monthly'",
+      );
+    }
+    if (!Array.isArray(input.periods) || input.periods.length === 0) {
+      throw new BadRequestException(
+        'pay_period_config.periods must be a non-empty array',
+      );
+    }
+    if (input.periods.length > 12) {
+      throw new BadRequestException(
+        'pay_period_config.periods supports at most 12 periods',
+      );
+    }
+    const intInRange = (v: unknown, lo: number, hi: number): v is number =>
+      typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
+
+    const seenIds = new Set<string>();
+    const periods: PayPeriodInput[] = input.periods.map((p, i) => {
+      if (!p || typeof p !== 'object') {
+        throw new BadRequestException(`Period ${i + 1} is invalid`);
+      }
+      const id = typeof p.id === 'string' ? p.id.trim() : '';
+      if (!id || id.length > 40) {
+        throw new BadRequestException(`Period ${i + 1} needs a valid id`);
+      }
+      if (seenIds.has(id)) {
+        throw new BadRequestException(`Duplicate period id "${id}"`);
+      }
+      seenIds.add(id);
+      const label =
+        typeof p.label === 'string' && p.label.trim()
+          ? p.label.trim().slice(0, 60)
+          : id;
+      if (!intInRange(p.start_day, 1, 31)) {
+        throw new BadRequestException(
+          `Period "${id}" start_day must be 1–31`,
+        );
+      }
+      const endDay: number | 'EOM' =
+        p.end_day === 'EOM' ? 'EOM' : (p.end_day as number);
+      if (endDay !== 'EOM' && !intInRange(endDay, 1, 31)) {
+        throw new BadRequestException(
+          `Period "${id}" end_day must be 1–31 or "EOM"`,
+        );
+      }
+      if (endDay !== 'EOM' && endDay < p.start_day) {
+        throw new BadRequestException(
+          `Period "${id}" end_day must be on or after start_day`,
+        );
+      }
+      if (!intInRange(p.pay_day, 1, 31)) {
+        throw new BadRequestException(`Period "${id}" pay_day must be 1–31`);
+      }
+      if (!intInRange(p.pay_month_offset, 0, 2)) {
+        throw new BadRequestException(
+          `Period "${id}" pay_month_offset must be 0–2`,
+        );
+      }
+      return {
+        id,
+        label,
+        start_day: p.start_day,
+        end_day: endDay,
+        pay_day: p.pay_day,
+        pay_month_offset: p.pay_month_offset,
+      };
+    });
+    return { cadence: 'monthly', periods };
   }
 
   async deleteTeam(teamId: string, userId: string): Promise<void> {

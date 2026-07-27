@@ -33,6 +33,7 @@ jobs:
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
       MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
+      INVOICE_AUTOMATION_ENABLED: ${{ vars.INVOICE_AUTOMATION_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
@@ -127,6 +128,20 @@ jobs:
             echo "Meeting reminder cron secret enabled for this deploy."
           else
             echo "Meeting reminders disabled (create MEETINGS_CRON_SECRET secret, then set the MEETINGS_REMINDERS_ENABLED repo var to enable)."
+          fi
+
+          # Automated client invoicing. Gated on the INVOICE_AUTOMATION_ENABLED
+          # repo var. Cloud Scheduler POSTs /api/invoices/cron/run with the SAME
+          # shared cron secret as meeting reminders (MEETINGS_CRON_SECRET), so
+          # that secret must also be enabled for the endpoint to authenticate.
+          # Until the var is set, the endpoint still runs the scan and reports
+          # what it would bill, but writes no invoices. To enable: set the
+          # INVOICE_AUTOMATION_ENABLED repo var.
+          if [[ -n "${INVOICE_AUTOMATION_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},INVOICE_AUTOMATION_ENABLED=true"
+            echo "Automated client invoicing enabled for this deploy."
+          else
+            echo "Automated client invoicing disabled (set the INVOICE_AUTOMATION_ENABLED repo var to enable; the cron endpoint stays in dry-run)."
           fi
 
           # Knowledge pipeline (roadmap AI RAG). Gated on the

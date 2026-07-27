@@ -92,6 +92,16 @@ export class PayoutsController {
     return this.service.listTeamPayouts(user.id, teamId, memberId);
   }
 
+  @Get('payouts/teams/:teamId/owed')
+  listTeamOwed(
+    @Param('teamId') teamId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.listTeamOwed(user.id, teamId, from, to);
+  }
+
   @Get('payouts/:payoutId')
   getPayout(
     @Param('payoutId') payoutId: string,

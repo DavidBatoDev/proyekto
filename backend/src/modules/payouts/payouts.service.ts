@@ -319,6 +319,115 @@ export class PayoutsService {
     return (data ?? []) as unknown as PayoutRow[];
   }
 
+  /**
+   * Outstanding balances owed to members: approved (⟹ unpaid) logs grouped by
+   * (member, currency), summed with the same fee formula the payout RPC uses.
+   * Drives the Payouts page "To pay" section. Optional from/to scopes it to a
+   * cut-off window. A member can appear once per currency they have logs in.
+   */
+  async listTeamOwed(
+    callerId: string,
+    teamId: string,
+    from?: string,
+    to?: string,
+  ): Promise<
+    Array<{
+      member_user_id: string;
+      member: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+      } | null;
+      currency: string;
+      log_count: number;
+      hours: number;
+      amount: number;
+    }>
+  > {
+    await this.assertTeamApprover(callerId, teamId);
+    const PAGE = 1000;
+    type Bucket = {
+      member_user_id: string;
+      member: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+      } | null;
+      currency: string;
+      log_count: number;
+      seconds: number;
+      amount: number;
+    };
+    const map = new Map<string, Bucket>();
+
+    for (let offset = 0; ; offset += PAGE) {
+      let q = this.supabase
+        .from('task_time_logs')
+        .select(
+          `member_user_id, currency_snapshot, duration_seconds, rate_snapshot,
+           member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email)`,
+        )
+        .eq('team_id', teamId)
+        .eq('status', 'approved')
+        .is('payout_id', null)
+        .order('started_at', { ascending: false })
+        .range(offset, offset + PAGE - 1);
+      if (from) q = q.gte('started_at', from);
+      if (to) q = q.lte('started_at', to);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as unknown as Array<{
+        member_user_id: string;
+        currency_snapshot: string | null;
+        duration_seconds: number | null;
+        rate_snapshot: number | string | null;
+        member: Bucket['member'];
+      }>;
+      for (const row of rows) {
+        const currency = row.currency_snapshot || 'USD';
+        const key = `${row.member_user_id}:${currency}`;
+        let bucket = map.get(key);
+        if (!bucket) {
+          bucket = {
+            member_user_id: row.member_user_id,
+            member: row.member ?? null,
+            currency,
+            log_count: 0,
+            seconds: 0,
+            amount: 0,
+          };
+          map.set(key, bucket);
+        }
+        const seconds = row.duration_seconds ?? 0;
+        const rate = Number(row.rate_snapshot ?? 0);
+        bucket.log_count += 1;
+        if (seconds > 0) bucket.seconds += seconds;
+        if (Number.isFinite(rate) && rate > 0 && seconds > 0) {
+          bucket.amount += (seconds / 3600) * rate;
+        }
+      }
+      if (rows.length < PAGE) break;
+    }
+
+    return Array.from(map.values())
+      .map((b) => ({
+        member_user_id: b.member_user_id,
+        member: b.member,
+        currency: b.currency,
+        log_count: b.log_count,
+        hours: b.seconds / 3600,
+        amount: Math.round(b.amount * 100) / 100,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }
+
   async getPayout(
     callerId: string,
     payoutId: string,

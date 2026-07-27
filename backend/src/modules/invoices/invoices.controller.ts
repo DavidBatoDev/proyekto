@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -9,9 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { CronSecretGuard } from '../../common/guards/cron-secret.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { InvoicesService } from './invoices.service';
+import { InvoiceSchedulerService } from './invoice-scheduler.service';
 import {
   CreateInvoiceDto,
   InvoiceListQueryDto,
@@ -21,7 +26,25 @@ import {
 @UseGuards(SupabaseAuthGuard)
 @Controller('invoices')
 export class InvoicesController {
-  constructor(private readonly invoices: InvoicesService) {}
+  constructor(
+    private readonly invoices: InvoicesService,
+    private readonly scheduler: InvoiceSchedulerService,
+  ) {}
+
+  /**
+   * Scheduler-triggered (no user session): draft the invoice for every closed
+   * billing period. Auth is the shared cron secret; @Public skips the Supabase
+   * JWT guard, matching `POST /api/meetings/cron/reminders`.
+   *
+   * Declared BEFORE the `:id` routes so `cron` is never parsed as an id.
+   */
+  @Post('cron/run')
+  @Public()
+  @UseGuards(CronSecretGuard)
+  @HttpCode(HttpStatus.OK)
+  runScheduledInvoices() {
+    return this.scheduler.runDueInvoices();
+  }
 
   @Get('project/:projectId')
   listByProject(
@@ -41,10 +64,7 @@ export class InvoicesController {
   }
 
   @Get(':id')
-  getOne(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.getInvoice(user.id, id);
   }
 
@@ -58,18 +78,17 @@ export class InvoicesController {
   }
 
   @Post(':id/issue')
-  issue(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  issue(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.issueInvoice(user.id, id);
   }
 
   @Post(':id/generate-pdf')
-  generatePdf(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  generatePdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.generatePdf(user.id, id);
+  }
+
+  @Get(':id/pdf-url')
+  getPdfUrl(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invoices.getPdfUrl(user.id, id);
   }
 }

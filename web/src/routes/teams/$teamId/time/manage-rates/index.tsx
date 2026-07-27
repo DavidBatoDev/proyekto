@@ -1,29 +1,35 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
 import {
 	useMutation,
 	useQueries,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { useToast } from "@/hooks/useToast";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
-	createMemberRate,
-	deleteMemberRate,
-	listMemberRates,
-	listTeamMembers,
-	updateMemberRate,
-	type TeamMember,
-	type TeamMemberRate,
-} from "@/services/teams.service";
-import { teamTimeService } from "@/services/team-time.service";
-import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
+	DEFAULT_RATE_TYPE_DRAFT,
+	isRateTypeDraftValid,
+	type RateTypeDraft,
+	toRateTypePayload,
+} from "@/components/team-time/MemberRateTypeFields";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
+import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
 import {
 	AddRateModal,
 	DeleteRateModal,
 	EditRateModal,
 } from "@/components/team-time/TeamTimeModals";
+import { useToast } from "@/hooks/useToast";
+import { teamTimeService } from "@/services/team-time.service";
+import {
+	createMemberRate,
+	deleteMemberRate,
+	listMemberRates,
+	listTeamMembers,
+	type TeamMember,
+	type TeamMemberRate,
+	updateMemberRate,
+} from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/$teamId/time/manage-rates/")({
 	component: ManageRatesTab,
@@ -125,6 +131,12 @@ function ManageRatesTab() {
 	const [addCurrency, setAddCurrency] = useState("USD");
 	const [addStartDate, setAddStartDate] = useState("");
 	const [addEndDate, setAddEndDate] = useState("");
+	const [addRateType, setAddRateType] = useState<RateTypeDraft>(
+		DEFAULT_RATE_TYPE_DRAFT,
+	);
+	const [editRateType, setEditRateType] = useState<RateTypeDraft>(
+		DEFAULT_RATE_TYPE_DRAFT,
+	);
 	const [addScopeMode, setAddScopeMode] = useState<"all" | "specific">("all");
 	const [addSelectedProjectIds, setAddSelectedProjectIds] = useState<string[]>(
 		[],
@@ -258,18 +270,21 @@ function ManageRatesTab() {
 		const coveredSet = new Set(coveredProjectIdsForAddUser);
 		const projectIds =
 			addScopeMode === "all"
-				? attachedProjects
-						.map((p) => p.id)
-						.filter((id) => !coveredSet.has(id))
+				? attachedProjects.map((p) => p.id).filter((id) => !coveredSet.has(id))
 				: addSelectedProjectIds.filter((id) => !coveredSet.has(id));
 		if (projectIds.length === 0) {
 			toast.error("Pick at least one project that has no active rate yet.");
+			return;
+		}
+		if (!isRateTypeDraftValid(addRateType)) {
+			toast.error("A fixed rate needs an amount greater than zero.");
 			return;
 		}
 		await createMutation.mutateAsync({
 			userId: addUserId,
 			payload: {
 				project_ids: projectIds,
+				...toRateTypePayload(addRateType),
 				hourly_rate: Number(addValue),
 				training_hourly_rate: Number(addTrainingValue),
 				currency: addCurrency || "USD",
@@ -284,6 +299,11 @@ function ManageRatesTab() {
 		setEditing(rate);
 		setEditingMember(member);
 		setEditCustomId(rate.custom_id ?? "");
+		setEditRateType({
+			rateType: rate.rate_type ?? "hourly",
+			fixedAmount: rate.fixed_amount == null ? "" : String(rate.fixed_amount),
+			fixedPeriod: rate.fixed_period ?? "month",
+		});
 		setEditValue(String(rate.hourly_rate));
 		setEditTrainingValue(String(rate.training_hourly_rate));
 		setEditCurrency(rate.currency || "USD");
@@ -293,10 +313,15 @@ function ManageRatesTab() {
 
 	const handleSaveEdit = async () => {
 		if (!editing) return;
+		if (!isRateTypeDraftValid(editRateType)) {
+			toast.error("A fixed rate needs an amount greater than zero.");
+			return;
+		}
 		await updateMutation.mutateAsync({
 			userId: editing.user_id,
 			rateId: editing.id,
 			patch: {
+				...toRateTypePayload(editRateType),
 				hourly_rate: editValue === "" ? undefined : Number(editValue),
 				training_hourly_rate:
 					editTrainingValue === "" ? undefined : Number(editTrainingValue),
@@ -327,9 +352,12 @@ function ManageRatesTab() {
 				canManageRates
 				pendingMemberById={pendingMemberById}
 				onViewLogs={(m) => {
+					// Team Logs, pre-filtered to this member (replaces the old
+					// per-member sub-page).
 					void navigate({
-						to: "/teams/$teamId/time/manage-rates/$userId",
-						params: { teamId, userId: m.user_id },
+						to: "/teams/$teamId/time/team-logs",
+						params: { teamId },
+						search: { member: m.user_id },
 					});
 				}}
 				onOpenAddRate={() => setAddOpen(true)}
@@ -375,6 +403,10 @@ function ManageRatesTab() {
 				coveredProjectIds={coveredProjectIdsForAddUser}
 				scopeMode={addScopeMode}
 				selectedProjectIds={addSelectedProjectIds}
+				rateTypeDraft={addRateType}
+				onChangeRateTypeDraft={(updates) =>
+					setAddRateType((prev) => ({ ...prev, ...updates }))
+				}
 				onClose={() => {
 					if (createMutation.isPending) return;
 					setAddOpen(false);
@@ -403,6 +435,10 @@ function ManageRatesTab() {
 				editingRateStartDate={editStartDate}
 				editingRateEndDate={editEndDate}
 				savingRate={updateMutation.isPending}
+				rateTypeDraft={editRateType}
+				onChangeRateTypeDraft={(updates) =>
+					setEditRateType((prev) => ({ ...prev, ...updates }))
+				}
 				onClose={() => {
 					if (updateMutation.isPending) return;
 					setEditing(null);

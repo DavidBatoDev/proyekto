@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PayPeriodSettingsCard } from "@/components/team-time/PayPeriodSettingsCard";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
@@ -260,6 +261,14 @@ function TeamTimeSettings() {
 										})}
 									</div>
 								</div>
+							)}
+
+							{enabled && (
+								<PayPeriodSettingsCard
+									teamId={teamId}
+									config={team?.pay_period_config}
+									canManage={isOwner}
+								/>
 							)}
 						</div>
 					</div>

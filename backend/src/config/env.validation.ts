@@ -257,6 +257,15 @@ class EnvironmentVariables {
   @IsString()
   MEETINGS_CRON_SECRET?: string;
 
+  // ── Automated client invoicing — ships dark ────────────────────────────────
+  // Gates whether POST /api/invoices/cron/run actually writes invoices. Unset or
+  // false = the endpoint still runs the scan and reports what it WOULD bill, so
+  // the schedule can be verified in production before any client is invoiced.
+  // The endpoint's auth is MEETINGS_CRON_SECRET (the shared cron secret above).
+  @IsOptional()
+  @IsString()
+  INVOICE_AUTOMATION_ENABLED?: string;
+
   // ── Knowledge pipeline (roadmap AI RAG) — ships dark ────────────────────────
   // Gates the write-path outbox hooks and the ingest run itself. Unset/false =
   // zero footprint: no outbox rows are written and runIngest() short-circuits.
