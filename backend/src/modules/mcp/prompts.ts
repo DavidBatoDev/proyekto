@@ -75,7 +75,7 @@ export function registerPrompts(server: McpServer) {
     {
       title: 'Draft a roadmap change',
       description:
-        'Investigate a roadmap and propose a change (read-only in this phase — never commit).',
+        'Investigate a roadmap and propose a concrete change, previewing it before any commit.',
       argsSchema: {
         roadmap_id: z.string().uuid(),
         intent: z.string().min(1),
@@ -83,7 +83,7 @@ export function registerPrompts(server: McpServer) {
     },
     ({ roadmap_id, intent }) =>
       userMessage(
-        `The user wants to change roadmap ${roadmap_id}: "${intent}". First use roadmap_get_summary and roadmap_search_nodes to locate the affected nodes and resolve their ids, then describe the concrete change you would make. This MCP server is read-only right now, so present the plan for the user to apply — do not attempt to write.`,
+        `The user wants to change roadmap ${roadmap_id}: "${intent}". First use roadmap_get_summary and roadmap_search_nodes to locate the affected nodes and resolve their ids, then describe the concrete change you would make. Call roadmap_preview_operations to show the semantic diff and obtain a revision_token. Do NOT commit until the user has seen that diff and explicitly confirmed it; then call roadmap_commit_operations with the token and an idempotency_key.`,
       ),
   );
 

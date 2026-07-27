@@ -151,6 +151,38 @@ type ChangeTimelineRecord = {
   entries: ChangeTimelineEntryRecord[];
 };
 
+/**
+ * One row of the DURABLE change log (`roadmap_change_history`), as read back.
+ *
+ * This is the Postgres half of a deliberately split design. The Redis timeline
+ * above holds `stateBefore`/`stateAfter` and is what powers undo/redo — but it
+ * is keyed per USER, capped at 250 entries, expires on a sliding 30-day TTL, and
+ * is written best-effort. This table holds the operations and the semantic diff
+ * (never the snapshots — they run ~320KB per commit) scoped per ROADMAP, so the
+ * whole team can see who changed what long after the Redis entry is gone.
+ *
+ * Consequence worth remembering: a change can be listed here and still be
+ * un-revertable, because revert needs the snapshots. The MCP tool description
+ * says so explicitly.
+ */
+export type RoadmapChangeHistoryEntry = {
+  change_id: string;
+  roadmap_id: string;
+  project_id: string | null;
+  actor_id: string | null;
+  status: 'applied' | 'discarded';
+  operations_count: number;
+  operations_hash: string | null;
+  semantic_diff: SemanticDiffDto;
+  semantic_change_count: number;
+  temp_id_mapping: Record<string, string>;
+  committed_at: string;
+  discarded_at: string | null;
+  operations?: RoadmapAiOperationDto[];
+};
+
+const CHANGE_HISTORY_TABLE = 'roadmap_change_history';
+
 type FlatNodeSnapshot = {
   id: string;
   type: RoadmapNodeType;
@@ -1937,11 +1969,31 @@ export class RoadmapAiService {
       );
     }
 
+    const commitProjectId = (current.project_id as string | null) ?? null;
+
+    // Durable change log. Unlike the audit call below this is NOT gated on
+    // project_id — a personal roadmap gets a row with a null project, which is
+    // the only durable record such a commit has ever had.
+    this.recordChangeHistory({
+      changeId,
+      roadmapId,
+      projectId: commitProjectId,
+      actorId: userId,
+      operations,
+      operationsHash,
+      semanticDiff,
+      semanticChangeCount: semanticDiffSummary.total_changes ?? 0,
+      tempIdMapping,
+      revisionTokenBefore: currentRevisionToken,
+      revisionTokenAfter,
+      committedAt,
+    });
+
     // Durable audit trail for project-linked roadmaps (personal roadmaps have
     // no project to log against). Fire-and-forget — never blocks the response.
-    if (current.project_id) {
+    if (commitProjectId) {
       this.audit.log({
-        projectId: current.project_id as string,
+        projectId: commitProjectId,
         actorId: userId,
         action: 'roadmap.committed',
         entityType: 'roadmap',
@@ -2037,6 +2089,32 @@ export class RoadmapAiService {
       persistedMeta?.updated_at ?? discardedAt,
     );
 
+    this.markChangeHistoryStatus({
+      changeIds: affectedEntries.map((entry) => entry.changeId),
+      status: 'discarded',
+      at: discardedAt,
+      by: userId,
+    });
+
+    // Undo mutates the live roadmap, so it belongs in the durable trail exactly
+    // as much as commit and redo do. It was the one write path that logged
+    // nothing at all — which mattered because this is the path the MCP
+    // `roadmap_revert_change` tool calls.
+    if (current.project_id) {
+      this.audit.log({
+        projectId: current.project_id as string,
+        actorId: userId,
+        action: 'roadmap.reverted',
+        entityType: 'roadmap',
+        entityId: roadmapId,
+        metadata: {
+          change_id: dto.change_id,
+          discarded_change_count: affectedEntries.length,
+          revision_token_after: revisionToken,
+        },
+      });
+    }
+
     return {
       change_id: dto.change_id,
       discarded_at: discardedAt,
@@ -2108,6 +2186,13 @@ export class RoadmapAiService {
     const revisionToken = this.requireRevisionToken(
       persistedMeta?.updated_at ?? reappliedAt,
     );
+
+    this.markChangeHistoryStatus({
+      changeIds: affectedEntries.map((entry) => entry.changeId),
+      status: 'applied',
+      at: null,
+      by: null,
+    });
 
     if (current.project_id) {
       this.audit.log({
@@ -2220,6 +2305,151 @@ export class RoadmapAiService {
       );
       return [];
     }
+  }
+
+  /**
+   * Persist one committed change to the durable log. Fire-and-forget with the
+   * same tolerate-failure discipline as `appendChangeToTimeline`: the history is
+   * an observability surface, so a write failure must never fail a commit that
+   * already succeeded.
+   *
+   * Deliberately NOT wrapped in `if (projectId)` — the two AuditService call
+   * sites are, which is why personal roadmaps have no durable record of any kind
+   * today. Here they get a row with a null project_id.
+   */
+  private recordChangeHistory(params: {
+    changeId: string;
+    roadmapId: string;
+    projectId: string | null;
+    actorId: string;
+    operations: RoadmapAiOperationDto[];
+    operationsHash: string;
+    semanticDiff: SemanticDiffDto;
+    semanticChangeCount: number;
+    tempIdMapping?: Record<string, string>;
+    revisionTokenBefore: string;
+    revisionTokenAfter: string;
+    committedAt: string;
+  }): void {
+    void (async () => {
+      try {
+        const { error } = await this.db.from(CHANGE_HISTORY_TABLE).insert({
+          change_id: params.changeId,
+          roadmap_id: params.roadmapId,
+          project_id: params.projectId,
+          actor_id: params.actorId,
+          status: 'applied',
+          operations: params.operations,
+          operations_count: params.operations.length,
+          operations_hash: params.operationsHash,
+          semantic_diff: params.semanticDiff,
+          semantic_change_count: params.semanticChangeCount,
+          temp_id_mapping: params.tempIdMapping ?? {},
+          revision_token_before: params.revisionTokenBefore,
+          revision_token_after: params.revisionTokenAfter,
+          committed_at: params.committedAt,
+        });
+        if (error) throw new Error(error.message);
+      } catch (error) {
+        this.logger.warn(
+          [
+            'event=roadmap_change_history_write_failed',
+            `roadmap_id=${params.roadmapId}`,
+            `change_id=${params.changeId}`,
+            `error=${(error as Error)?.message ?? 'unknown'}`,
+          ].join(' '),
+        );
+      }
+    })();
+  }
+
+  /**
+   * Flip durable rows to match an undo (`discarded`) or redo (`applied`). Same
+   * fire-and-forget contract as `recordChangeHistory`. A no-op when the change
+   * predates this table — history only fills forward, it was never backfilled.
+   */
+  private markChangeHistoryStatus(params: {
+    changeIds: string[];
+    status: 'applied' | 'discarded';
+    at: string | null;
+    by: string | null;
+  }): void {
+    if (params.changeIds.length === 0) return;
+    void (async () => {
+      try {
+        const { error } = await this.db
+          .from(CHANGE_HISTORY_TABLE)
+          .update({
+            status: params.status,
+            discarded_at: params.at,
+            discarded_by: params.by,
+          })
+          .in('change_id', params.changeIds);
+        if (error) throw new Error(error.message);
+      } catch (error) {
+        this.logger.warn(
+          [
+            'event=roadmap_change_history_status_update_failed',
+            `status=${params.status}`,
+            `change_count=${params.changeIds.length}`,
+            `error=${(error as Error)?.message ?? 'unknown'}`,
+          ].join(' '),
+        );
+      }
+    })();
+  }
+
+  /**
+   * Read the durable change log for a roadmap, newest first. View-level access
+   * (any project member, or the owner of a personal roadmap) — this is a
+   * read-only history surface, not an edit capability.
+   *
+   * `operations` is omitted unless asked for: a single commit's operation array
+   * can be large, and most callers only want the timeline shape.
+   */
+  async listChangeHistory(
+    roadmapId: string,
+    userId: string,
+    options: {
+      limit?: number;
+      before?: string;
+      includeOperations?: boolean;
+    } = {},
+  ): Promise<RoadmapChangeHistoryEntry[]> {
+    await this.assertCanViewRoadmap(roadmapId, userId);
+
+    const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
+    const columns = [
+      'change_id',
+      'roadmap_id',
+      'project_id',
+      'actor_id',
+      'status',
+      'operations_count',
+      'operations_hash',
+      'semantic_diff',
+      'semantic_change_count',
+      'temp_id_mapping',
+      'committed_at',
+      'discarded_at',
+    ];
+    if (options.includeOperations) columns.push('operations');
+
+    let query = this.db
+      .from(CHANGE_HISTORY_TABLE)
+      .select(columns.join(','))
+      .eq('roadmap_id', roadmapId)
+      .order('committed_at', { ascending: false })
+      .limit(limit);
+    if (options.before) query = query.lt('committed_at', options.before);
+
+    const { data, error } = await query;
+    if (error) {
+      throw new InternalServerErrorException(
+        `Failed to read roadmap change history: ${error.message}`,
+      );
+    }
+    return (data ?? []) as unknown as RoadmapChangeHistoryEntry[];
   }
 
   private toTimelineEntryDto(
