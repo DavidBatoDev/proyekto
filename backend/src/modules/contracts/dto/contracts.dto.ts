@@ -199,6 +199,17 @@ export class SignContractDto {
   @IsString()
   @MaxLength(200)
   signer_name!: string;
+
+  /** Public URL of an uploaded signature image, optional. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  signature_url?: string;
+}
+
+export class UnsignContractDto {
+  @IsIn(['consultant', 'client'])
+  party!: 'consultant' | 'client';
 }
 
 export class UpdateProjectEconomicsDto {

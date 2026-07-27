@@ -219,10 +219,7 @@ class UploadService {
 	 * default `application/json` would otherwise suppress the boundary and multer
 	 * would see no file (400 "No file provided").
 	 */
-	private async uploadPrivateFile(
-		bucket: string,
-		file: File,
-	): Promise<string> {
+	private async uploadPrivateFile(bucket: string, file: File): Promise<string> {
 		const token = await getAccessToken();
 		const form = new FormData();
 		form.append("bucket", bucket);
@@ -248,10 +245,53 @@ class UploadService {
 			throw new Error(message);
 		}
 
-		const body = (await res.json()) as { data?: { path: string }; path?: string };
+		const body = (await res.json()) as {
+			data?: { path: string };
+			path?: string;
+		};
 		const path = body?.data?.path ?? body?.path;
 		if (!path) throw new Error("Upload succeeded but no path was returned.");
 		return path;
+	}
+
+	/**
+	 * Upload a contract signature image to the PUBLIC R2 bucket via the backend
+	 * (not the Worker — its bucket allow-list doesn't include this one). Returns
+	 * the public URL to persist on the contract and render in the agreement doc.
+	 */
+	async uploadContractSignature(file: File): Promise<string> {
+		const token = await getAccessToken();
+		const form = new FormData();
+		form.append("bucket", "contract_signatures");
+		form.append("file", file);
+
+		// Native fetch (not apiClient) so the browser sets the multipart
+		// Content-Type + boundary itself; apiClient's default application/json
+		// header would suppress the boundary and multer would see no file.
+		const res = await fetch(`${API_BASE_URL}${this.base}/file`, {
+			method: "POST",
+			headers: token ? { Authorization: `Bearer ${token}` } : {},
+			body: form,
+		});
+
+		if (!res.ok) {
+			let message = `Upload failed (${res.status})`;
+			try {
+				const body = await res.json();
+				message = body?.error?.message ?? body?.message ?? message;
+			} catch {
+				// non-JSON error body — keep the status-based message
+			}
+			throw new Error(message);
+		}
+
+		const body = (await res.json()) as {
+			data?: { publicUrl: string };
+			publicUrl?: string;
+		};
+		const url = body?.data?.publicUrl ?? body?.publicUrl;
+		if (!url) throw new Error("Upload succeeded but no URL was returned.");
+		return url;
 	}
 
 	/**

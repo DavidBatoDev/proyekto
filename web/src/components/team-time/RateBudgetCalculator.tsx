@@ -4,16 +4,18 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { Calculator, Loader2 } from "lucide-react";
+import { Calculator, Info, Link2, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney } from "@/lib/contract-term";
 import {
+	capsFromMonthlyHours,
 	capsFromRate,
 	evenAllocation,
 	monthlyRevenue,
 	monthlyTeamPool,
 	rateFromHours,
+	WEEKS_PER_MONTH,
 } from "@/lib/rate-budget";
 import { contractService } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
@@ -36,6 +38,12 @@ interface Props {
 }
 
 interface Draft {
+	/**
+	 * Whether this member is tied to a budget slice. When on, the allocation
+	 * drives the rate↔hours math; when off, rate and hours are set directly and
+	 * the cap comes straight from the entered hours.
+	 */
+	useBudget: boolean;
 	/** Monthly budget slice for this member. */
 	allocation: string;
 	rateType: "hourly" | "fixed";
@@ -51,6 +59,10 @@ function memberLabel(m: TeamMember): string {
 		.join(" ")
 		.trim();
 	return m.user?.display_name || composed || m.user?.email || m.user_id;
+}
+
+function fmtHrs(n: number): string {
+	return n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
 /**
@@ -125,6 +137,7 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 	const draftFor = (userId: string, rate: TeamMemberRate | null): Draft =>
 		drafts[userId] ?? {
+			useBudget: true,
 			allocation:
 				defaultAllocation > 0 ? String(Math.round(defaultAllocation)) : "",
 			rateType: rate?.rate_type ?? "hourly",
@@ -152,12 +165,16 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 		}) => {
 			const { row, rate, draft } = args;
 			const isFixed = draft.rateType === "fixed";
+			// Budget-tied members derive the cap from allocation ÷ rate; untied
+			// members use the hour cap entered directly.
 			const caps = isFixed
 				? { monthly: null, weekly: null }
-				: capsFromRate(
-						Number(draft.allocation) || 0,
-						Number(draft.hourlyRate) || 0,
-					);
+				: draft.useBudget
+					? capsFromRate(
+							Number(draft.allocation) || 0,
+							Number(draft.hourlyRate) || 0,
+						)
+					: capsFromMonthlyHours(Number(draft.monthlyHours) || 0);
 			const common = {
 				rate_type: draft.rateType,
 				fixed_amount: isFixed ? Number(draft.fixedAmount) || 0 : null,
@@ -221,7 +238,7 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 
 	return (
 		<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-			<div className="space-y-4 px-5 py-6">
+			<div className="space-y-5 px-5 py-6">
 				<div className="flex items-center gap-2">
 					<Calculator className="h-5 w-5 text-slate-700" />
 					<h3 className="text-lg font-semibold text-slate-900">
@@ -229,185 +246,159 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 					</h3>
 				</div>
 
-				{/* Pool summary */}
-				<div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-					<PoolStat
-						label="Monthly revenue"
-						value={formatMoney(currency, revenue)}
-					/>
-					<PoolStat
-						label={`Team pool (${teamPercent}%)`}
-						value={formatMoney(currency, pool)}
-						strong
-					/>
-					{contract.billing_mode === "time_based" && (
-						<label className="flex items-center gap-1.5 text-xs text-slate-500">
-							Expected billable hrs/mo
-							<input
-								type="number"
-								min={0}
-								value={expectedHours}
-								onChange={(e) => setExpectedHours(e.target.value)}
-								className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm tabular-nums"
+				<HowItWorks />
+
+				<PoolFormula
+					currency={currency}
+					revenue={revenue}
+					teamPercent={teamPercent}
+					pool={pool}
+					memberCount={rows.length}
+					each={defaultAllocation}
+					showExpectedHours={contract.billing_mode === "time_based"}
+					expectedHours={expectedHours}
+					onExpectedHoursChange={setExpectedHours}
+				/>
+
+				{/* Per-member cards */}
+				<div className="space-y-3">
+					{rows.map((row, i) => {
+						const rate = rateQueries[i]?.data ?? null;
+						const draft = draftFor(row.member.user_id, rate);
+						return (
+							<MemberCard
+								key={`${row.teamId}:${row.member.user_id}`}
+								currency={currency}
+								label={memberLabel(row.member)}
+								position={row.member.position ?? null}
+								avatarUrl={row.member.user?.avatar_url ?? null}
+								draft={draft}
+								onPatch={(patch) =>
+									patchDraft(row.member.user_id, draft, patch)
+								}
+								onSave={() => saveMutation.mutate({ row, rate, draft })}
+								saving={saveMutation.isPending}
 							/>
-						</label>
-					)}
-				</div>
-
-				<p className="text-xs text-slate-500">
-					Enter a member's hourly rate to see the hour cap that fits their
-					budget, or enter target monthly hours to get the rate. Saving writes
-					the rate and the weekly/monthly caps together.
-				</p>
-
-				<div className="overflow-x-auto">
-					<table className="w-full min-w-[720px] text-sm">
-						<thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-							<tr>
-								<th className="py-2 pr-3">Member</th>
-								<th className="px-3 py-2">Type</th>
-								<th className="px-3 py-2 text-right">Allocation/mo</th>
-								<th className="px-3 py-2 text-right">Rate</th>
-								<th className="px-3 py-2 text-right">Hours/mo</th>
-								<th className="px-3 py-2 text-right">Cap wk/mo</th>
-								<th className="px-3 py-2" />
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-slate-100">
-							{rows.map((row, i) => {
-								const rate = rateQueries[i]?.data ?? null;
-								const draft = draftFor(row.member.user_id, rate);
-								const isFixed = draft.rateType === "fixed";
-								const alloc = Number(draft.allocation) || 0;
-								const caps = capsFromRate(alloc, Number(draft.hourlyRate) || 0);
-								return (
-									<tr key={`${row.teamId}:${row.member.user_id}`}>
-										<td className="py-2.5 pr-3 font-medium text-slate-800">
-											{memberLabel(row.member)}
-										</td>
-										<td className="px-3 py-2.5">
-											<select
-												value={draft.rateType}
-												onChange={(e) =>
-													patchDraft(row.member.user_id, draft, {
-														rateType: e.target.value as "hourly" | "fixed",
-													})
-												}
-												className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-											>
-												<option value="hourly">Hourly</option>
-												<option value="fixed">Fixed</option>
-											</select>
-										</td>
-										<td className="px-3 py-2.5 text-right">
-											<input
-												type="number"
-												min={0}
-												value={draft.allocation}
-												onChange={(e) =>
-													patchDraft(row.member.user_id, draft, {
-														allocation: e.target.value,
-													})
-												}
-												className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums"
-											/>
-										</td>
-										<td className="px-3 py-2.5 text-right">
-											{isFixed ? (
-												<input
-													type="number"
-													min={0}
-													placeholder="fixed amt"
-													value={draft.fixedAmount}
-													onChange={(e) =>
-														patchDraft(row.member.user_id, draft, {
-															fixedAmount: e.target.value,
-														})
-													}
-													className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums"
-												/>
-											) : (
-												<input
-													type="number"
-													min={0}
-													step="0.01"
-													value={draft.hourlyRate}
-													onChange={(e) => {
-														// Entering a rate re-derives the suggested monthly hours.
-														const nextCaps = capsFromRate(
-															alloc,
-															Number(e.target.value) || 0,
-														);
-														patchDraft(row.member.user_id, draft, {
-															hourlyRate: e.target.value,
-															monthlyHours:
-																nextCaps.monthly != null
-																	? String(nextCaps.monthly)
-																	: draft.monthlyHours,
-														});
-													}}
-													className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums"
-												/>
-											)}
-										</td>
-										<td className="px-3 py-2.5 text-right">
-											{isFixed ? (
-												<span className="text-slate-400">—</span>
-											) : (
-												<input
-													type="number"
-													min={0}
-													step="0.5"
-													value={draft.monthlyHours}
-													onChange={(e) => {
-														// Entering target hours re-derives the rate.
-														const nextRate = rateFromHours(
-															alloc,
-															Number(e.target.value) || 0,
-														);
-														patchDraft(row.member.user_id, draft, {
-															monthlyHours: e.target.value,
-															hourlyRate:
-																nextRate != null
-																	? String(nextRate)
-																	: draft.hourlyRate,
-														});
-													}}
-													className="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums"
-												/>
-											)}
-										</td>
-										<td className="px-3 py-2.5 text-right text-xs text-slate-500 tabular-nums">
-											{isFixed
-												? "—"
-												: caps.monthly != null
-													? `${caps.weekly} / ${caps.monthly}`
-													: "—"}
-										</td>
-										<td className="px-3 py-2.5 text-right">
-											<button
-												type="button"
-												onClick={() =>
-													saveMutation.mutate({ row, rate, draft })
-												}
-												disabled={saveMutation.isPending}
-												className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-40"
-											>
-												Save
-											</button>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
+						);
+					})}
 				</div>
 			</div>
 		</div>
 	);
 }
 
-function PoolStat({
+/* ── How it works ─────────────────────────────────────────────────────────── */
+
+function HowItWorks() {
+	return (
+		<div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+			<div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-700">
+				<Info className="h-4 w-4 text-blue-600" />
+				How this works
+			</div>
+			<p>
+				<span className="font-semibold text-slate-700">Team pool</span> =
+				monthly revenue × the team's split. Divided evenly, each member gets a{" "}
+				<span className="font-semibold text-slate-700">monthly budget</span>{" "}
+				(you can adjust each slice).
+			</p>
+			<p>
+				<span className="font-semibold text-slate-700">Hourly members:</span>{" "}
+				<code className="rounded bg-white px-1 py-0.5 font-mono text-[11px] text-slate-700 ring-1 ring-slate-200">
+					budget ÷ rate = monthly hour cap
+				</code>{" "}
+				(weekly cap = monthly ÷ {WEEKS_PER_MONTH.toFixed(2)} weeks). Type a rate
+				to get the cap, or type target hours to get the rate — the two stay
+				linked.
+			</p>
+			<p>
+				<span className="font-semibold text-slate-700">Fixed members:</span> the
+				budget is a flat monthly amount — no hour cap.
+			</p>
+			<p>
+				The <span className="font-semibold text-slate-700">monthly budget</span>{" "}
+				is optional — switch it off for a member to set their rate and hour cap
+				directly, without tying them to a pool slice.
+			</p>
+			<p className="text-slate-400">
+				Saving writes the member's rate and the weekly + monthly caps together.
+			</p>
+		</div>
+	);
+}
+
+/* ── Pool formula strip ───────────────────────────────────────────────────── */
+
+function PoolFormula({
+	currency,
+	revenue,
+	teamPercent,
+	pool,
+	memberCount,
+	each,
+	showExpectedHours,
+	expectedHours,
+	onExpectedHoursChange,
+}: {
+	currency: string;
+	revenue: number;
+	teamPercent: number;
+	pool: number;
+	memberCount: number;
+	each: number;
+	showExpectedHours: boolean;
+	expectedHours: string;
+	onExpectedHoursChange: (v: string) => void;
+}) {
+	return (
+		<div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5">
+			<div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+				<PoolTerm
+					label="Monthly revenue"
+					value={formatMoney(currency, revenue)}
+				/>
+				<Op>×</Op>
+				<PoolTerm label="Team split" value={`${teamPercent}%`} />
+				<Op>=</Op>
+				<PoolTerm
+					label="Team pool"
+					value={formatMoney(currency, pool)}
+					strong
+				/>
+				<Op>÷</Op>
+				<PoolTerm label="Members" value={String(memberCount)} />
+				<Op>=</Op>
+				<PoolTerm
+					label="Budget each"
+					value={formatMoney(currency, each)}
+					strong
+				/>
+			</div>
+
+			{showExpectedHours && (
+				<div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+					<label className="flex items-center gap-2 text-xs text-slate-500">
+						<span className="font-medium text-slate-600">
+							Expected billable hrs / month
+						</span>
+						<input
+							type="number"
+							min={0}
+							value={expectedHours}
+							onChange={(e) => onExpectedHoursChange(e.target.value)}
+							className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm tabular-nums outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+						/>
+					</label>
+					<span className="text-[11px] text-slate-400">
+						This contract bills hourly, so revenue = client rate × these hours.
+					</span>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function PoolTerm({
 	label,
 	value,
 	strong,
@@ -418,12 +409,381 @@ function PoolStat({
 }) {
 	return (
 		<div>
-			<p className="text-xs text-slate-500">{label}</p>
+			<p className="text-[11px] uppercase tracking-wide text-slate-400">
+				{label}
+			</p>
 			<p
-				className={`tabular-nums ${strong ? "text-base font-semibold text-slate-900" : "text-sm text-slate-700"}`}
+				className={`tabular-nums ${
+					strong
+						? "text-base font-bold text-slate-900"
+						: "text-sm font-medium text-slate-700"
+				}`}
 			>
 				{value}
 			</p>
+		</div>
+	);
+}
+
+function Op({ children }: { children: string }) {
+	return (
+		<span className="pb-0.5 text-lg font-semibold text-slate-300 select-none">
+			{children}
+		</span>
+	);
+}
+
+/* ── Member card ──────────────────────────────────────────────────────────── */
+
+function MemberCard({
+	currency,
+	label,
+	position,
+	avatarUrl,
+	draft,
+	onPatch,
+	onSave,
+	saving,
+}: {
+	currency: string;
+	label: string;
+	position: string | null;
+	avatarUrl: string | null;
+	draft: Draft;
+	onPatch: (patch: Partial<Draft>) => void;
+	onSave: () => void;
+	saving: boolean;
+}) {
+	const isFixed = draft.rateType === "fixed";
+	const useBudget = draft.useBudget;
+	const alloc = Number(draft.allocation) || 0;
+	const rateVal = Number(draft.hourlyRate) || 0;
+	const hoursVal = Number(draft.monthlyHours) || 0;
+	// The cap shown/saved: derived from the budget when tied, otherwise taken
+	// straight from the entered monthly hours.
+	const caps = useBudget
+		? capsFromRate(alloc, rateVal)
+		: capsFromMonthlyHours(hoursVal);
+
+	return (
+		<div className="rounded-xl border border-slate-200 bg-white p-4">
+			{/* Header: identity + type toggle */}
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="flex min-w-0 items-center gap-2.5">
+					{avatarUrl ? (
+						<img
+							src={avatarUrl}
+							alt={label}
+							className="h-8 w-8 shrink-0 rounded-full object-cover"
+						/>
+					) : (
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold uppercase text-slate-600">
+							{label.trim().charAt(0) || "?"}
+						</div>
+					)}
+					<div className="min-w-0">
+						<div className="truncate text-sm font-semibold text-slate-800">
+							{label}
+						</div>
+						{position && (
+							<div className="truncate text-[11px] text-slate-500">
+								{position}
+							</div>
+						)}
+					</div>
+				</div>
+
+				<TypeToggle
+					value={draft.rateType}
+					onChange={(rateType) => onPatch({ rateType })}
+				/>
+			</div>
+
+			{/* Fields */}
+			<div className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-3">
+				<Field
+					label="Monthly budget"
+					help={
+						useBudget
+							? "This member's slice of the team pool"
+							: "Off — set the rate and hours directly"
+					}
+					action={
+						<Switch
+							checked={useBudget}
+							onChange={(v) => onPatch({ useBudget: v })}
+							label={useBudget ? "On" : "Off"}
+						/>
+					}
+				>
+					{useBudget ? (
+						<AdornedInput
+							prefix={currency}
+							value={draft.allocation}
+							onChange={(v) => onPatch({ allocation: v })}
+						/>
+					) : (
+						<div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-400">
+							Not tied to a budget
+						</div>
+					)}
+				</Field>
+
+				{isFixed ? (
+					<Field
+						label="Fixed monthly amount"
+						help="Flat pay — no hour cap applies"
+					>
+						<AdornedInput
+							prefix={currency}
+							value={draft.fixedAmount}
+							onChange={(v) => onPatch({ fixedAmount: v })}
+						/>
+					</Field>
+				) : (
+					<>
+						<Field label="Hourly rate" help="What this member costs per hour">
+							<AdornedInput
+								prefix={currency}
+								suffix="/hr"
+								step="0.01"
+								value={draft.hourlyRate}
+								onChange={(v) => {
+									// With a budget, entering a rate re-derives the hour cap.
+									// Untied, the rate stands alone.
+									if (!useBudget) {
+										onPatch({ hourlyRate: v });
+										return;
+									}
+									const next = capsFromRate(alloc, Number(v) || 0);
+									onPatch({
+										hourlyRate: v,
+										monthlyHours:
+											next.monthly != null
+												? String(next.monthly)
+												: draft.monthlyHours,
+									});
+								}}
+							/>
+						</Field>
+						<Field
+							label="Monthly hours"
+							help={
+								useBudget ? "Hour cap this budget buys" : "Hour cap per month"
+							}
+							hint={useBudget}
+						>
+							<AdornedInput
+								suffix="hrs"
+								step="0.5"
+								value={draft.monthlyHours}
+								onChange={(v) => {
+									// With a budget, target hours re-derive the rate. Untied,
+									// the hours are the cap outright.
+									if (!useBudget) {
+										onPatch({ monthlyHours: v });
+										return;
+									}
+									const nextRate = rateFromHours(alloc, Number(v) || 0);
+									onPatch({
+										monthlyHours: v,
+										hourlyRate:
+											nextRate != null ? String(nextRate) : draft.hourlyRate,
+									});
+								}}
+							/>
+						</Field>
+					</>
+				)}
+			</div>
+
+			{/* Result / formula line */}
+			<div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+				{isFixed ? (
+					<p className="text-xs text-slate-500">
+						Paid{" "}
+						<span className="font-semibold text-slate-700">
+							{formatMoney(currency, Number(draft.fixedAmount) || 0)}
+						</span>{" "}
+						per month · no hour cap.
+					</p>
+				) : useBudget ? (
+					caps.monthly != null ? (
+						<p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+							<span className="tabular-nums text-slate-500">
+								{formatMoney(currency, alloc)} ÷{" "}
+								{formatMoney(currency, rateVal)}
+								/hr
+							</span>
+							<span className="text-slate-300">=</span>
+							<span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-semibold tabular-nums text-slate-800">
+								{fmtHrs(caps.monthly)} hrs / mo cap
+							</span>
+							<span className="text-slate-400">
+								(≈ {fmtHrs(caps.weekly ?? 0)} hrs / wk)
+							</span>
+						</p>
+					) : (
+						<p className="text-xs text-slate-400">
+							Enter a budget and a rate (or target hours) to see the hour cap.
+						</p>
+					)
+				) : caps.monthly != null ? (
+					<p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+						<span className="text-slate-500">Cap set to</span>
+						<span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-semibold tabular-nums text-slate-800">
+							{fmtHrs(caps.monthly)} hrs / mo
+						</span>
+						<span className="text-slate-400">
+							(≈ {fmtHrs(caps.weekly ?? 0)} hrs / wk)
+						</span>
+					</p>
+				) : (
+					<p className="text-xs text-slate-400">
+						No hour cap — this member's logged hours aren't limited.
+					</p>
+				)}
+
+				<button
+					type="button"
+					onClick={onSave}
+					disabled={saving}
+					className="shrink-0 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:opacity-40"
+				>
+					{saving ? "Saving…" : "Save rate + caps"}
+				</button>
+			</div>
+		</div>
+	);
+}
+
+/* ── Small field primitives ───────────────────────────────────────────────── */
+
+function TypeToggle({
+	value,
+	onChange,
+}: {
+	value: "hourly" | "fixed";
+	onChange: (v: "hourly" | "fixed") => void;
+}) {
+	return (
+		<div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
+			{(["hourly", "fixed"] as const).map((t) => (
+				<button
+					key={t}
+					type="button"
+					onClick={() => onChange(t)}
+					className={`rounded-md px-3 py-1 capitalize transition ${
+						value === t
+							? "bg-white text-slate-900 shadow-sm"
+							: "text-slate-500 hover:text-slate-700"
+					}`}
+				>
+					{t}
+				</button>
+			))}
+		</div>
+	);
+}
+
+function Field({
+	label,
+	help,
+	hint,
+	action,
+	children,
+}: {
+	label: string;
+	help?: string;
+	/** Marks the field as one half of the linked rate↔hours pair. */
+	hint?: boolean;
+	/** Optional control shown right-aligned in the label row (e.g. a switch). */
+	action?: React.ReactNode;
+	children: React.ReactNode;
+}) {
+	return (
+		<div>
+			<div className="flex items-center justify-between gap-2">
+				<span className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+					{label}
+					{hint && <Link2 className="h-3 w-3 text-slate-400" />}
+				</span>
+				{action}
+			</div>
+			<div className="mt-1">{children}</div>
+			{help && <p className="mt-1 text-[11px] text-slate-400">{help}</p>}
+		</div>
+	);
+}
+
+/** Compact on/off switch used to toggle a field on or off. */
+function Switch({
+	checked,
+	onChange,
+	label,
+}: {
+	checked: boolean;
+	onChange: (v: boolean) => void;
+	label?: string;
+}) {
+	return (
+		<button
+			type="button"
+			role="switch"
+			aria-checked={checked}
+			aria-label={label ? undefined : "Toggle"}
+			onClick={() => onChange(!checked)}
+			className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
+		>
+			<span
+				className={`relative h-4 w-7 rounded-full transition-colors ${
+					checked ? "bg-slate-900" : "bg-slate-300"
+				}`}
+			>
+				<span
+					className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
+						checked ? "left-3.5" : "left-0.5"
+					}`}
+				/>
+			</span>
+			{label}
+		</button>
+	);
+}
+
+function AdornedInput({
+	prefix,
+	suffix,
+	value,
+	onChange,
+	step,
+}: {
+	prefix?: string;
+	suffix?: string;
+	value: string;
+	onChange: (v: string) => void;
+	step?: string;
+}) {
+	return (
+		<div className="flex items-center rounded-lg border border-slate-300 bg-white transition focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-900/10">
+			{prefix && (
+				<span className="pl-2.5 text-[11px] font-medium text-slate-400">
+					{prefix}
+				</span>
+			)}
+			<input
+				type="number"
+				min={0}
+				step={step}
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				className="w-full bg-transparent px-2 py-1.5 text-sm tabular-nums outline-none"
+			/>
+			{suffix && (
+				<span className="pr-2.5 text-[11px] font-medium text-slate-400">
+					{suffix}
+				</span>
+			)}
 		</div>
 	);
 }

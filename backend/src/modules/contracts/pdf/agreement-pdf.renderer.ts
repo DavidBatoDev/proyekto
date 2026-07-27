@@ -17,8 +17,8 @@ export interface AgreementPdfInput {
   contractNumber?: string | null;
   terms: Array<{ label: string; value: string }>;
   clauses: Array<{ title: string; body: string }>;
-  signedByConsultant?: { name: string; at: string } | null;
-  signedByClient?: { name: string; at: string } | null;
+  signedByConsultant?: { name: string; at: string; image?: Buffer } | null;
+  signedByClient?: { name: string; at: string; image?: Buffer } | null;
 }
 
 const HEADING = '#1f3a93';
@@ -183,7 +183,7 @@ function drawAgreement(
   const half = CONTENT_WIDTH / 2;
   const columns: Array<{
     heading: string;
-    signed?: { name: string; at: string } | null;
+    signed?: { name: string; at: string; image?: Buffer } | null;
   }> = [
     { heading: 'For Client', signed: input.signedByClient },
     {
@@ -199,6 +199,17 @@ function drawAgreement(
       .font('Helvetica-Bold')
       .fontSize(8)
       .text(column.heading, x, rowTop, { width: half - 12 });
+    // An uploaded signature image (optional) sits above the typed name.
+    if (column.signed?.image) {
+      try {
+        doc.image(column.signed.image, x, rowTop + 14, {
+          fit: [half - 12, 28],
+        });
+      } catch {
+        // A malformed image must never break the whole document.
+      }
+    }
+    const textY = rowTop + 14 + (column.signed?.image ? 30 : 0);
     doc
       .fillColor(INK)
       .font('Helvetica')
@@ -208,7 +219,7 @@ function drawAgreement(
           ? `${column.signed.name}\nSigned ${formatStamp(column.signed.at)}`
           : 'Name / Signature / Date',
         x,
-        rowTop + 14,
+        textY,
         { width: half - 12 },
       );
   });

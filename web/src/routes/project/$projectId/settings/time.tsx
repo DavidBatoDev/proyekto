@@ -5,13 +5,14 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Clock, Loader2, ShieldCheck } from "lucide-react";
+import { Clock, Loader2, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { RateBudgetCalculator } from "@/components/team-time/RateBudgetCalculator";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import {
+	listCuratedMembers,
 	listMemberRates,
 	listProjectTeams,
 	listTeamMembers,
@@ -55,7 +56,7 @@ function ProjectTimeSettings() {
 	});
 	const teams = teamsQuery.data ?? [];
 
-	// Members across every team attached to this project.
+	// Full roster of every attached team (for member details: position, avatar).
 	const memberQueries = useQueries({
 		queries: teams.map((t) => ({
 			queryKey: ["team", t.team_id, "members"] as const,
@@ -63,12 +64,28 @@ function ProjectTimeSettings() {
 			enabled: isConsultant,
 		})),
 	});
-	const rows = teams.flatMap((t, i) =>
-		(memberQueries[i]?.data ?? []).map((member) => ({
-			teamId: t.team_id,
-			member,
+	// The members actually ADDED to this project (curated participants). A team's
+	// roster can be large, but only the picked members participate — so the rate
+	// calculator and hour-limit editor must scope to these, not the whole roster.
+	const curatedQueries = useQueries({
+		queries: teams.map((t) => ({
+			queryKey: ["project", projectId, "teams", t.team_id, "curated"] as const,
+			queryFn: () => listCuratedMembers(projectId, t.team_id),
+			enabled: isConsultant,
 		})),
-	);
+	});
+	const rows = teams.flatMap((t, i) => {
+		const curatedIds = new Set(
+			(curatedQueries[i]?.data ?? []).map((m) => m.user_id),
+		);
+		return (memberQueries[i]?.data ?? [])
+			.filter((member) => curatedIds.has(member.user_id))
+			.map((member) => ({ teamId: t.team_id, member }));
+	});
+
+	const membersLoading =
+		memberQueries.some((q) => q.isPending) ||
+		curatedQueries.some((q) => q.isPending);
 
 	return (
 		<ProjectSettingsLayout projectId={projectId}>
@@ -102,15 +119,20 @@ function ProjectTimeSettings() {
 						)}
 						<div className="app-surface-card-strong overflow-hidden rounded-2xl">
 							<div className="space-y-4 px-5 py-6">
+								<div className="flex items-center gap-2">
+									<SlidersHorizontal className="h-5 w-5 text-slate-700" />
+									<h3 className="text-lg font-semibold text-slate-900">
+										Manual hour caps
+									</h3>
+								</div>
 								<p className="max-w-2xl text-sm text-slate-600">
-									Or set caps manually. Cap how many hours each team member can
-									log on this project per week or month. Members see their
-									progress in My Logs; when “block” is on, logging past the cap
-									needs your approval. Leave blank for no limit.
+									Prefer to set caps directly? Cap how many hours each team
+									member can log on this project per week or month. Members see
+									their progress in My Logs; when “block” is on, logging past
+									the cap needs your approval. Leave blank for no limit.
 								</p>
 
-								{teamsQuery.isPending ||
-								memberQueries.some((q) => q.isPending) ? (
+								{teamsQuery.isPending || membersLoading ? (
 									<div className="flex justify-center p-8">
 										<Loader2 className="h-5 w-5 animate-spin text-slate-400" />
 									</div>
@@ -121,7 +143,8 @@ function ProjectTimeSettings() {
 									</div>
 								) : rows.length === 0 ? (
 									<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-										No members on the attached team(s) yet.
+										No members added to this project yet. Add members under
+										Settings → Teams.
 									</div>
 								) : (
 									<ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">

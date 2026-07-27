@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	capsFromMonthlyHours,
 	capsFromRate,
 	evenAllocation,
 	monthlyRevenue,
@@ -83,6 +84,18 @@ describe("capsFromRate", () => {
 	it("null caps when rate or allocation is zero", () => {
 		expect(capsFromRate(3000, 0)).toEqual({ monthly: null, weekly: null });
 		expect(capsFromRate(0, 300)).toEqual({ monthly: null, weekly: null });
+	});
+});
+
+describe("capsFromMonthlyHours", () => {
+	it("takes the entered monthly hours as the cap; weekly = monthly / weeks-per-month", () => {
+		const caps = capsFromMonthlyHours(160);
+		expect(caps.monthly).toBe(160);
+		expect(caps.weekly).toBe(Math.round((160 / WEEKS_PER_MONTH) * 100) / 100);
+	});
+
+	it("null caps when hours are zero (no cap)", () => {
+		expect(capsFromMonthlyHours(0)).toEqual({ monthly: null, weekly: null });
 	});
 });
 

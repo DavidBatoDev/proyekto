@@ -15,6 +15,7 @@ import { ContractsService } from './contracts.service';
 import {
   CreateContractDto,
   SignContractDto,
+  UnsignContractDto,
   UpdateContractDto,
 } from './dto/contracts.dto';
 
@@ -63,5 +64,14 @@ export class ContractsController {
     @Body() dto: SignContractDto,
   ) {
     return this.contracts.signContract(user.id, id, dto);
+  }
+
+  @Post(':id/unsign')
+  unsign(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UnsignContractDto,
+  ) {
+    return this.contracts.unsignContract(user.id, id, dto);
   }
 }

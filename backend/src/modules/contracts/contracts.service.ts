@@ -26,6 +26,7 @@ import {
   CreateContractDto,
   InvoiceCadence,
   SignContractDto,
+  UnsignContractDto,
   UpdateContractDto,
 } from './dto/contracts.dto';
 
@@ -73,8 +74,10 @@ export interface ContractRow {
   notes: string | null;
   signed_by_consultant_at: string | null;
   signed_by_consultant_name: string | null;
+  signed_by_consultant_signature_url: string | null;
   signed_by_client_at: string | null;
   signed_by_client_name: string | null;
+  signed_by_client_signature_url: string | null;
 
   created_by: string | null;
   created_at: string;
@@ -237,24 +240,7 @@ export class ContractsService {
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
     const isClientParty = dto.party === 'client';
-
-    if (isClientParty) {
-      // The client may hold only a viewer role on the project (or none yet, if
-      // they were invited by email), so authorize them by identity rather than
-      // by project role.
-      const isRecordedClient =
-        existing.client_user_id === callerId ||
-        (await this.isProjectClient(callerId, existing.project_id));
-      if (!isRecordedClient) {
-        await this.projectAuth.assertRole(
-          callerId,
-          existing.project_id,
-          'admin',
-        );
-      }
-    } else {
-      await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
-    }
+    await this.assertCanManageSignature(callerId, existing, dto.party);
 
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
@@ -268,14 +254,17 @@ export class ContractsService {
     }
 
     const now = new Date().toISOString();
+    const signatureUrl = dto.signature_url?.trim() || null;
     const patch: Record<string, unknown> = isClientParty
       ? {
           signed_by_client_at: now,
           signed_by_client_name: dto.signer_name.trim(),
+          signed_by_client_signature_url: signatureUrl,
         }
       : {
           signed_by_consultant_at: now,
           signed_by_consultant_name: dto.signer_name.trim(),
+          signed_by_consultant_signature_url: signatureUrl,
         };
 
     const consultantSigned = isClientParty
@@ -289,6 +278,23 @@ export class ContractsService {
       patch.status = 'signed';
     } else if (existing.status === 'draft') {
       patch.status = 'sent';
+    }
+
+    // Superseding: a project may hold only ONE live (signed/active) contract
+    // (uq_contracts_live_per_project). When this signature makes a NEW version
+    // live, retire any previous live contract first — otherwise the partial
+    // unique index rejects the update. This is the amendment path the schema was
+    // designed for: a new version supersedes the old, which becomes `ended`.
+    if (patch.status === 'signed') {
+      const { error: supersedeError } = await this.supabase
+        .from('contracts')
+        .update({ status: 'ended', updated_at: now })
+        .eq('project_id', existing.project_id)
+        .neq('id', contractId)
+        .in('status', ['signed', 'active']);
+      if (supersedeError) {
+        throw new BadRequestException(supersedeError.message);
+      }
     }
 
     const { data, error } = await this.supabase
@@ -308,6 +314,90 @@ export class ContractsService {
       await this.notifyCounterparty(callerId, updated);
     }
     return this.withSchedule(updated);
+  }
+
+  /**
+   * Remove a party's signature so it can be re-done (e.g. to swap a typed name
+   * for an uploaded signature image). Clears that party's name/date/image and,
+   * if the contract had reached `signed`, drops it back to `sent` — it is no
+   * longer fully executed, so the sign controls reappear. An `active` contract
+   * governs a live project and is intentionally not editable here.
+   */
+  async unsignContract(
+    callerId: string,
+    contractId: string,
+    dto: UnsignContractDto,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.assertCanManageSignature(callerId, existing, dto.party);
+
+    if (existing.status === 'ended' || existing.status === 'cancelled') {
+      throw new BadRequestException(
+        `A ${existing.status} contract cannot be changed.`,
+      );
+    }
+    if (existing.status === 'active') {
+      throw new BadRequestException(
+        'This contract is active and governs the live project. Deactivate the project before changing signatures.',
+      );
+    }
+
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> =
+      dto.party === 'client'
+        ? {
+            signed_by_client_at: null,
+            signed_by_client_name: null,
+            signed_by_client_signature_url: null,
+          }
+        : {
+            signed_by_consultant_at: null,
+            signed_by_consultant_name: null,
+            signed_by_consultant_signature_url: null,
+          };
+    // No longer fully executed once a signature is pulled.
+    if (existing.status === 'signed') {
+      patch.status = 'sent';
+    }
+
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update({ ...patch, updated_at: now })
+      .eq('id', contractId)
+      .select('*')
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(
+        error?.message ?? 'Failed to remove the signature.',
+      );
+    }
+    return this.withSchedule(data as ContractRow);
+  }
+
+  /**
+   * A party may sign/unsign their own line: the client is authorized by
+   * identity (they may hold only a viewer role, or none yet if invited by
+   * email), the service-provider side by project `admin`.
+   */
+  private async assertCanManageSignature(
+    callerId: string,
+    existing: ContractRow,
+    party: 'consultant' | 'client',
+  ): Promise<void> {
+    if (party === 'client') {
+      const isRecordedClient =
+        existing.client_user_id === callerId ||
+        (await this.isProjectClient(callerId, existing.project_id));
+      if (!isRecordedClient) {
+        await this.projectAuth.assertRole(
+          callerId,
+          existing.project_id,
+          'admin',
+        );
+      }
+    } else {
+      await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+    }
   }
 
   /** Billing windows implied by a contract's terms. Empty when terms are incomplete. */

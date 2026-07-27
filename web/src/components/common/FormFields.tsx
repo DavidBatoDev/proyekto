@@ -5,6 +5,10 @@
  * identical and one place to restyle.
  */
 
+import { Check, Loader2, TriangleAlert } from "lucide-react";
+import type { AutosaveStatus } from "@/hooks/useAutosave";
+import { Dropdown } from "./Dropdown";
+
 const INPUT_CLASS =
 	"w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70";
 
@@ -58,18 +62,55 @@ export function SelectField({
 			<span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
 				{label}
 			</span>
-			<select
+			<Dropdown
 				value={value}
+				onChange={onChange}
+				options={options}
 				disabled={disabled}
-				onChange={(e) => onChange(e.target.value)}
-				className={INPUT_CLASS}
-			>
-				{options.map((option) => (
-					<option key={option.value} value={option.value}>
-						{option.label}
-					</option>
-				))}
-			</select>
+				ariaLabel={label}
+			/>
+		</div>
+	);
+}
+
+/**
+ * Passive status line for an auto-saving form — replaces the Save button on
+ * surfaces that persist edits automatically. Stays out of the way when idle and
+ * only speaks up while saving, once saved, or on failure.
+ */
+export function AutosaveIndicator({
+	status,
+	className = "",
+}: {
+	status: AutosaveStatus;
+	className?: string;
+}) {
+	if (status === "idle") return null;
+	const map = {
+		saving: {
+			icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
+			text: "Saving…",
+			tone: "text-muted-foreground",
+		},
+		saved: {
+			icon: <Check className="h-3.5 w-3.5" />,
+			text: "Saved",
+			tone: "text-emerald-600",
+		},
+		error: {
+			icon: <TriangleAlert className="h-3.5 w-3.5" />,
+			text: "Couldn't save — change a field to retry",
+			tone: "text-destructive",
+		},
+	} as const;
+	const { icon, text, tone } = map[status];
+	return (
+		<div
+			className={`mt-5 inline-flex items-center gap-1.5 text-xs font-medium ${tone} ${className}`}
+			aria-live="polite"
+		>
+			{icon}
+			{text}
 		</div>
 	);
 }

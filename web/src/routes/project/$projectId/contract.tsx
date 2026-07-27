@@ -1,18 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { CheckCircle2, FileSignature, Loader2, PenLine } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import {
+	CheckCircle2,
+	FileSignature,
+	Loader2,
+	PenLine,
+	Trash2,
+	Upload,
+	X,
+} from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { DateField } from "@/components/common/DateField";
 import {
-	SaveButton,
+	AutosaveIndicator,
 	SelectField,
 	TextField,
 } from "@/components/common/FormFields";
-import { ActivationGuide } from "@/components/project/ActivationGuide";
+import {
+	ActivationGuide,
+	checklistProgress,
+} from "@/components/project/ActivationGuide";
+import {
+	ContractDocumentPreview,
+	type PreviewParties,
+	type PreviewTerms,
+} from "@/components/project/ContractDocumentPreview";
 import { useActivationChecklist } from "@/hooks/useActivationChecklist";
+import { useAutosave } from "@/hooks/useAutosave";
 import { useToast } from "@/hooks/useToast";
 import {
 	type BillingMode,
@@ -22,6 +40,7 @@ import {
 	formatPeriodRange,
 	type InvoiceCadence,
 } from "@/lib/contract-term";
+import { CURRENCIES } from "@/lib/currency";
 import {
 	type Contract,
 	type ContractClause,
@@ -30,7 +49,13 @@ import {
 	type ProjectEconomics,
 } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
+import { uploadService } from "@/services/upload.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
+
+const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
+	value: c.code,
+	label: c.label,
+}));
 
 export const Route = createFileRoute("/project/$projectId/contract")({
 	beforeLoad: () => {
@@ -75,6 +100,21 @@ function ProjectContractPage() {
 
 	const [activeStep, setActiveStep] = useState<StepKey>("parties");
 
+	// Live drafts fed up from the Parties/Terms editors so the right-side document
+	// preview updates as the consultant types. Seeded from the saved contract and
+	// re-seeded when the contract identity changes (a different version loads).
+	const [previewParties, setPreviewParties] = useState<PreviewParties>(() =>
+		partiesPreview(contract),
+	);
+	const [previewTerms, setPreviewTerms] = useState<PreviewTerms>(() =>
+		termsPreview(contract),
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-seed only when a different contract loads, not on every field save (the editors keep the preview live in between).
+	useEffect(() => {
+		setPreviewParties(partiesPreview(contract));
+		setPreviewTerms(termsPreview(contract));
+	}, [contract?.id]);
+
 	const invalidateAll = () => {
 		void qc.invalidateQueries({ queryKey: ["contracts", projectId] });
 		void qc.invalidateQueries({ queryKey: ["project", projectId] });
@@ -93,12 +133,25 @@ function ProjectContractPage() {
 		mutationFn: ({
 			party,
 			name,
+			signatureUrl,
 		}: {
 			party: "consultant" | "client";
 			name: string;
-		}) => contractService.sign(contract?.id as string, party, name),
+			signatureUrl?: string | null;
+		}) =>
+			contractService.sign(contract?.id as string, party, name, signatureUrl),
 		onSuccess: () => {
 			toast.success("Signature recorded");
+			invalidateAll();
+		},
+		onError: (err: Error) => toast.error(err.message),
+	});
+
+	const unsignMutation = useMutation({
+		mutationFn: ({ party }: { party: "consultant" | "client" }) =>
+			contractService.unsign(contract?.id as string, party),
+		onSuccess: () => {
+			toast.success("Signature removed");
 			invalidateAll();
 		},
 		onError: (err: Error) => toast.error(err.message),
@@ -114,7 +167,7 @@ function ProjectContractPage() {
 
 	return (
 		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-8 md:py-8">
+			<div className="mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Finance"
@@ -150,23 +203,54 @@ function ProjectContractPage() {
 						)}
 					</AppSurfaceCard>
 				) : (
-					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
-						{/* Left: step rail */}
-						<StepRail
-							steps={visibleSteps(isConsultant)}
-							activeStep={activeStep}
-							onSelect={setActiveStep}
-							contract={contract}
-							economics={economicsQuery.data ?? null}
-						/>
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_minmax(0,480px)]">
+						{/* Left: step rail + activation guide (kept beside the steps so
+						    it stays visible, not buried under the tall preview). */}
+						<div className="space-y-5 lg:sticky lg:top-6 lg:self-start">
+							<StepRail
+								steps={visibleSteps(isConsultant)}
+								activeStep={activeStep}
+								onSelect={setActiveStep}
+								contract={contract}
+								economics={economicsQuery.data ?? null}
+							/>
+							{isConsultant && checklistQuery.data && (
+								<div className="app-surface-card-strong rounded-2xl p-4">
+									<div className="mb-2 flex items-center justify-between">
+										<h3 className="text-sm font-semibold text-foreground">
+											Make it live
+										</h3>
+										<span className="text-xs font-semibold text-muted-foreground">
+											{checklistProgress(checklistQuery.data).done}/
+											{checklistProgress(checklistQuery.data).total}
+										</span>
+									</div>
+									<ActivationGuide
+										projectId={projectId}
+										checklist={checklistQuery.data}
+										isLoading={checklistQuery.isPending}
+										projectStatus={project?.status ?? null}
+										mode="compact"
+									/>
+								</div>
+							)}
+						</div>
 
 						{/* Center: active step */}
 						<div className="min-w-0">
 							{activeStep === "parties" && (
-								<PartiesSection contract={contract} editable={isConsultant} />
+								<PartiesSection
+									contract={contract}
+									editable={isConsultant}
+									onDraftChange={setPreviewParties}
+								/>
 							)}
 							{activeStep === "terms" && (
-								<TermsSection contract={contract} editable={isConsultant} />
+								<TermsSection
+									contract={contract}
+									editable={isConsultant}
+									onDraftChange={setPreviewTerms}
+								/>
 							)}
 							{activeStep === "services" && (
 								<ServicesSection contract={contract} editable={isConsultant} />
@@ -191,24 +275,23 @@ function ProjectContractPage() {
 										(contract.client_user_id === user?.id ||
 											project?.client_id === user?.id)
 									}
-									onSign={(party, name) => signMutation.mutate({ party, name })}
+									onSign={(party, name, signatureUrl) =>
+										signMutation.mutate({ party, name, signatureUrl })
+									}
+									onUnsign={(party) => unsignMutation.mutate({ party })}
 									isPending={signMutation.isPending}
+									isUnsigning={unsignMutation.isPending}
 								/>
 							)}
 						</div>
 
-						{/* Right: at-a-glance + activation guide */}
-						<div className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-							<ContractGlanceCard contract={contract} />
-							{isConsultant && (
-								<ActivationGuide
-									projectId={projectId}
-									checklist={checklistQuery.data ?? null}
-									isLoading={checklistQuery.isPending}
-									projectStatus={project?.status ?? null}
-									mode="full"
-								/>
-							)}
+						{/* Right: the live document preview gets the whole column. */}
+						<div className="lg:sticky lg:top-6 lg:self-start">
+							<ContractDocumentPreview
+								contract={contract}
+								parties={previewParties}
+								terms={previewTerms}
+							/>
 						</div>
 					</div>
 				)}
@@ -298,7 +381,7 @@ function StepRail({
 	economics: ProjectEconomics | null;
 }) {
 	return (
-		<nav className="lg:sticky lg:top-6 lg:self-start">
+		<nav>
 			<ol className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-1">
 				{steps.map((step, index) => {
 					const status = stepStatus(step.key, contract, economics);
@@ -356,60 +439,58 @@ function StepDot({
 	);
 }
 
-/* ── At-a-glance ──────────────────────────────────────────────────────────── */
+/* ── Field group ──────────────────────────────────────────────────────────── */
 
-function ContractGlanceCard({ contract }: { contract: Contract }) {
+/**
+ * A titled cluster of fields in a roomy two-column grid. Replaces the single
+ * dense 3-column grid that squeezed ~15 controls together and wrapped their
+ * labels; grouping by purpose (Billing · Schedule · Invoicing · Scope) with a
+ * wider gap keeps every label on one line and the form scannable.
+ */
+function FieldGroup({
+	title,
+	children,
+}: {
+	title: string;
+	children: React.ReactNode;
+}) {
 	return (
-		<AppSurfaceCard className="p-5">
-			<h3 className="text-sm font-semibold text-foreground">
-				Contract at a glance
-			</h3>
-			<dl className="mt-3 space-y-2 text-xs">
-				<GlanceRow
-					label="Billing"
-					value={
-						contract.billing_mode === "retainer"
-							? `${formatMoney(contract.currency, contract.recurring_fee)} / period`
-							: contract.billing_mode === "time_based"
-								? `${formatMoney(contract.currency, contract.client_hourly_rate)} / hr`
-								: "Retainer + overage"
-					}
-				/>
-				<GlanceRow
-					label="Service"
-					value={`${formatContractDate(contract.service_start_date)} – ${formatContractDate(contract.service_end_date)}`}
-				/>
-				<GlanceRow
-					label="Cadence"
-					value={
-						contract.invoice_cadence === "monthly"
-							? "Monthly"
-							: contract.invoice_cadence === "semi_monthly"
-								? "Cut-off"
-								: "Custom"
-					}
-				/>
-				<GlanceRow
-					label="Billing periods"
-					value={String(contract.periods.length)}
-				/>
-			</dl>
-			{contract.periods.length > 0 && (
-				<p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-					First invoice covers {formatPeriodRange(contract.periods[0])}
-				</p>
-			)}
-		</AppSurfaceCard>
+		<fieldset>
+			<legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+				{title}
+			</legend>
+			<div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+				{children}
+			</div>
+		</fieldset>
 	);
 }
 
-function GlanceRow({ label, value }: { label: string; value: string }) {
-	return (
-		<div className="flex items-center justify-between gap-3">
-			<dt className="text-muted-foreground">{label}</dt>
-			<dd className="text-right font-medium text-foreground">{value}</dd>
-		</div>
-	);
+/* ── Preview draft builders ───────────────────────────────────────────────── */
+
+/** Maps the saved contract into the party fields the live document preview shows. */
+function partiesPreview(contract: Contract | null): PreviewParties {
+	return {
+		provider_name: contract?.provider_name ?? "",
+		provider_address: contract?.provider_address ?? "",
+		provider_email: contract?.provider_email ?? null,
+		client_name: contract?.client_name ?? "",
+		client_contact_name: contract?.client_contact_name ?? "",
+		client_address: contract?.client_address ?? "",
+	};
+}
+
+/** Maps the saved contract into the commercial-terms fields the preview shows. */
+function termsPreview(contract: Contract | null): PreviewTerms {
+	return {
+		currency: contract?.currency ?? "USD",
+		billing_mode: contract?.billing_mode ?? "time_based",
+		recurring_fee: contract?.recurring_fee?.toString() ?? "",
+		client_hourly_rate: contract?.client_hourly_rate?.toString() ?? "",
+		service_description: contract?.service_description ?? "",
+		payment_method: contract?.payment_method ?? "",
+		due_days: String(contract?.due_days ?? 15),
+	};
 }
 
 /* ── Status chip ──────────────────────────────────────────────────────────── */
@@ -437,9 +518,11 @@ function ContractStatusChip({ status }: { status: Contract["status"] }) {
 function PartiesSection({
 	contract,
 	editable,
+	onDraftChange,
 }: {
 	contract: Contract;
 	editable: boolean;
+	onDraftChange?: (parties: PreviewParties) => void;
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
@@ -454,18 +537,38 @@ function PartiesSection({
 		client_email: contract.client_email ?? "",
 	});
 
-	const mutation = useMutation({
-		mutationFn: () => contractService.update(contract.id, draft),
-		onSuccess: () => {
-			toast.success("Parties saved");
+	// Feed the live document preview as the consultant edits.
+	useEffect(() => {
+		onDraftChange?.({
+			provider_name: draft.provider_name,
+			provider_address: draft.provider_address,
+			provider_email: contract.provider_email,
+			client_name: draft.client_name,
+			client_contact_name: draft.client_contact_name,
+			client_address: draft.client_address,
+		});
+	}, [
+		draft.provider_name,
+		draft.provider_address,
+		draft.client_name,
+		draft.client_contact_name,
+		draft.client_address,
+		contract.provider_email,
+		onDraftChange,
+	]);
+
+	const locked = !editable || !isEditableStatus(contract.status);
+
+	const saveStatus = useAutosave(
+		draft,
+		async (value) => {
+			await contractService.update(contract.id, value);
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
-	const locked = !editable || !isEditableStatus(contract.status);
+		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+	);
 
 	return (
 		<AppSurfaceCard className="p-6">
@@ -532,12 +635,7 @@ function PartiesSection({
 					/>
 				</div>
 			</div>
-			{!locked && (
-				<SaveButton
-					onClick={() => mutation.mutate()}
-					isPending={mutation.isPending}
-				/>
-			)}
+			{!locked && <AutosaveIndicator status={saveStatus} />}
 		</AppSurfaceCard>
 	);
 }
@@ -547,9 +645,11 @@ function PartiesSection({
 function TermsSection({
 	contract,
 	editable,
+	onDraftChange,
 }: {
 	contract: Contract;
 	editable: boolean;
+	onDraftChange?: (terms: PreviewTerms) => void;
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
@@ -570,26 +670,49 @@ function TermsSection({
 		term_unit: contract.term_unit ?? ("month" as ContractTermUnit),
 	});
 
-	const mutation = useMutation({
-		mutationFn: () =>
-			contractService.update(contract.id, {
-				currency: draft.currency,
-				billing_mode: draft.billing_mode,
-				recurring_fee: numberOrNull(draft.recurring_fee),
-				client_hourly_rate: numberOrNull(draft.client_hourly_rate),
-				included_hours: numberOrNull(draft.included_hours),
-				invoice_cadence: draft.invoice_cadence,
-				invoice_offset_days: Number(draft.invoice_offset_days) || 0,
-				due_days: Number(draft.due_days) || 0,
-				invoice_number_prefix: draft.invoice_number_prefix.trim() || undefined,
-				service_description: draft.service_description.trim() || undefined,
-				payment_method: draft.payment_method.trim() || undefined,
-				service_start_date: draft.service_start_date || undefined,
-				term_count: Number(draft.term_count) || undefined,
-				term_unit: draft.term_unit,
-			}),
-		onSuccess: () => {
-			toast.success("Terms saved");
+	// Feed the live document preview as the consultant edits.
+	useEffect(() => {
+		onDraftChange?.({
+			currency: draft.currency,
+			billing_mode: draft.billing_mode,
+			recurring_fee: draft.recurring_fee,
+			client_hourly_rate: draft.client_hourly_rate,
+			service_description: draft.service_description,
+			payment_method: draft.payment_method,
+			due_days: draft.due_days,
+		});
+	}, [
+		draft.currency,
+		draft.billing_mode,
+		draft.recurring_fee,
+		draft.client_hourly_rate,
+		draft.service_description,
+		draft.payment_method,
+		draft.due_days,
+		onDraftChange,
+	]);
+
+	const locked = !editable || !isEditableStatus(contract.status);
+
+	const saveStatus = useAutosave(
+		draft,
+		async (d) => {
+			await contractService.update(contract.id, {
+				currency: d.currency,
+				billing_mode: d.billing_mode,
+				recurring_fee: numberOrNull(d.recurring_fee),
+				client_hourly_rate: numberOrNull(d.client_hourly_rate),
+				included_hours: numberOrNull(d.included_hours),
+				invoice_cadence: d.invoice_cadence,
+				invoice_offset_days: Number(d.invoice_offset_days) || 0,
+				due_days: Number(d.due_days) || 0,
+				invoice_number_prefix: d.invoice_number_prefix.trim() || undefined,
+				service_description: d.service_description.trim() || undefined,
+				payment_method: d.payment_method.trim() || undefined,
+				service_start_date: d.service_start_date || undefined,
+				term_count: Number(d.term_count) || undefined,
+				term_unit: d.term_unit,
+			});
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
@@ -597,10 +720,8 @@ function TermsSection({
 				queryKey: ["project", contract.project_id, "activation-checklist"],
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
-	const locked = !editable || !isEditableStatus(contract.status);
+		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+	);
 	const usesFee =
 		draft.billing_mode === "retainer" || draft.billing_mode === "hybrid";
 	const usesRate =
@@ -617,125 +738,142 @@ function TermsSection({
 				are separate and stay internal.
 			</p>
 
-			<div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-				<SelectField
-					label="Billing"
-					value={draft.billing_mode}
-					disabled={locked}
-					onChange={(v) =>
-						setDraft((d) => ({ ...d, billing_mode: v as BillingMode }))
-					}
-					options={[
-						{ value: "retainer", label: "Recurring retainer" },
-						{ value: "time_based", label: "Hourly (approved hours)" },
-						{ value: "hybrid", label: "Retainer + overage" },
-					]}
-				/>
-				<TextField
-					label="Currency"
-					value={draft.currency}
-					onChange={(v) => setDraft((d) => ({ ...d, currency: v }))}
-					disabled={locked}
-				/>
-				{usesFee && (
-					<TextField
-						label="Recurring fee"
-						type="number"
-						value={draft.recurring_fee}
-						onChange={(v) => setDraft((d) => ({ ...d, recurring_fee: v }))}
+			<div className="mt-6 space-y-6">
+				<FieldGroup title="Billing">
+					<SelectField
+						label="Billing model"
+						value={draft.billing_mode}
+						disabled={locked}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, billing_mode: v as BillingMode }))
+						}
+						options={[
+							{ value: "retainer", label: "Recurring retainer" },
+							{ value: "time_based", label: "Hourly (approved hours)" },
+							{ value: "hybrid", label: "Retainer + overage" },
+						]}
+					/>
+					<SelectField
+						label="Currency"
+						value={draft.currency}
+						disabled={locked}
+						onChange={(v) => setDraft((d) => ({ ...d, currency: v }))}
+						options={CURRENCY_OPTIONS}
+					/>
+					{usesFee && (
+						<TextField
+							label="Recurring fee"
+							type="number"
+							value={draft.recurring_fee}
+							onChange={(v) => setDraft((d) => ({ ...d, recurring_fee: v }))}
+							disabled={locked}
+						/>
+					)}
+					{usesRate && (
+						<TextField
+							label="Client hourly rate"
+							type="number"
+							value={draft.client_hourly_rate}
+							onChange={(v) =>
+								setDraft((d) => ({ ...d, client_hourly_rate: v }))
+							}
+							disabled={locked}
+						/>
+					)}
+					{draft.billing_mode === "hybrid" && (
+						<TextField
+							label="Hours included in fee"
+							type="number"
+							value={draft.included_hours}
+							onChange={(v) => setDraft((d) => ({ ...d, included_hours: v }))}
+							disabled={locked}
+						/>
+					)}
+				</FieldGroup>
+
+				<FieldGroup title="Schedule">
+					<DateField
+						label="Service start date"
+						value={draft.service_start_date}
+						onChange={(v) => setDraft((d) => ({ ...d, service_start_date: v }))}
 						disabled={locked}
 					/>
-				)}
-				{usesRate && (
+					<SelectField
+						label="Invoice cadence"
+						value={draft.invoice_cadence}
+						disabled={locked}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, invoice_cadence: v as InvoiceCadence }))
+						}
+						options={[
+							{ value: "semi_monthly", label: "Cut-off (team periods)" },
+							{ value: "monthly", label: "Monthly" },
+						]}
+					/>
 					<TextField
-						label="Client hourly rate"
+						label="Term length"
 						type="number"
-						value={draft.client_hourly_rate}
-						onChange={(v) => setDraft((d) => ({ ...d, client_hourly_rate: v }))}
+						value={draft.term_count}
+						onChange={(v) => setDraft((d) => ({ ...d, term_count: v }))}
 						disabled={locked}
 					/>
-				)}
-				{draft.billing_mode === "hybrid" && (
+					<SelectField
+						label="Term unit"
+						value={draft.term_unit}
+						disabled={locked}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, term_unit: v as ContractTermUnit }))
+						}
+						options={[
+							{ value: "month", label: "Months" },
+							{ value: "year", label: "Years" },
+						]}
+					/>
+				</FieldGroup>
+
+				<FieldGroup title="Invoicing">
 					<TextField
-						label="Hours included in fee"
+						label="Invoice delay (days after period)"
 						type="number"
-						value={draft.included_hours}
-						onChange={(v) => setDraft((d) => ({ ...d, included_hours: v }))}
+						value={draft.invoice_offset_days}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, invoice_offset_days: v }))
+						}
 						disabled={locked}
 					/>
-				)}
-				<SelectField
-					label="Invoice cadence"
-					value={draft.invoice_cadence}
-					disabled={locked}
-					onChange={(v) =>
-						setDraft((d) => ({ ...d, invoice_cadence: v as InvoiceCadence }))
-					}
-					options={[
-						{ value: "semi_monthly", label: "Cut-off (team periods)" },
-						{ value: "monthly", label: "Monthly" },
-					]}
-				/>
-				<TextField
-					label="Service starts"
-					type="date"
-					value={draft.service_start_date}
-					onChange={(v) => setDraft((d) => ({ ...d, service_start_date: v }))}
-					disabled={locked}
-				/>
-				<TextField
-					label="Term"
-					type="number"
-					value={draft.term_count}
-					onChange={(v) => setDraft((d) => ({ ...d, term_count: v }))}
-					disabled={locked}
-				/>
-				<SelectField
-					label="Term unit"
-					value={draft.term_unit}
-					disabled={locked}
-					onChange={(v) =>
-						setDraft((d) => ({ ...d, term_unit: v as ContractTermUnit }))
-					}
-					options={[
-						{ value: "month", label: "Months" },
-						{ value: "year", label: "Years" },
-					]}
-				/>
-				<TextField
-					label="Invoice N days after period end"
-					type="number"
-					value={draft.invoice_offset_days}
-					onChange={(v) => setDraft((d) => ({ ...d, invoice_offset_days: v }))}
-					disabled={locked}
-				/>
-				<TextField
-					label="Payment due in N days"
-					type="number"
-					value={draft.due_days}
-					onChange={(v) => setDraft((d) => ({ ...d, due_days: v }))}
-					disabled={locked}
-				/>
-				<TextField
-					label="Invoice number prefix"
-					value={draft.invoice_number_prefix}
-					onChange={(v) =>
-						setDraft((d) => ({ ...d, invoice_number_prefix: v }))
-					}
-					disabled={locked}
-				/>
-				<TextField
-					label="Service description"
-					value={draft.service_description}
-					onChange={(v) => setDraft((d) => ({ ...d, service_description: v }))}
-					disabled={locked}
-				/>
-				<TextField
-					label="Payment method"
-					value={draft.payment_method}
-					onChange={(v) => setDraft((d) => ({ ...d, payment_method: v }))}
-					disabled={locked}
-				/>
+					<TextField
+						label="Payment terms (days)"
+						type="number"
+						value={draft.due_days}
+						onChange={(v) => setDraft((d) => ({ ...d, due_days: v }))}
+						disabled={locked}
+					/>
+					<TextField
+						label="Invoice number prefix"
+						value={draft.invoice_number_prefix}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, invoice_number_prefix: v }))
+						}
+						disabled={locked}
+					/>
+				</FieldGroup>
+
+				<FieldGroup title="Scope & payment">
+					<TextField
+						label="Service description"
+						value={draft.service_description}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, service_description: v }))
+						}
+						disabled={locked}
+					/>
+					<TextField
+						label="Payment method"
+						value={draft.payment_method}
+						onChange={(v) => setDraft((d) => ({ ...d, payment_method: v }))}
+						disabled={locked}
+					/>
+				</FieldGroup>
 			</div>
 
 			{/* Derived schedule, computed server-side from the saved terms. */}
@@ -769,12 +907,7 @@ function TermsSection({
 				)}
 			</div>
 
-			{!locked && (
-				<SaveButton
-					onClick={() => mutation.mutate()}
-					isPending={mutation.isPending}
-				/>
-			)}
+			{!locked && <AutosaveIndicator status={saveStatus} />}
 		</AppSurfaceCard>
 	);
 }
@@ -807,15 +940,14 @@ function EconomicsSection({
 	const team = Number.isFinite(company) ? 100 - company : 0;
 	const valid = Number.isFinite(company) && company >= 0 && company <= 100;
 
-	const mutation = useMutation({
-		mutationFn: () =>
-			contractService.updateEconomics(projectId, {
+	const saveStatus = useAutosave(
+		{ company, team },
+		async () => {
+			await contractService.updateEconomics(projectId, {
 				company_percent: company,
 				team_percent: team,
 				currency: contract.currency,
-			}),
-		onSuccess: () => {
-			toast.success("Budget split saved");
+			});
 			void qc.invalidateQueries({
 				queryKey: ["project", projectId, "economics"],
 			});
@@ -823,8 +955,8 @@ function EconomicsSection({
 				queryKey: ["project", projectId, "activation-checklist"],
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
+		{ enabled: valid, onError: (err) => toast.error(err.message) },
+	);
 
 	// Per-period revenue is only knowable up front for a retainer; an hourly
 	// contract's revenue depends on hours actually logged, so we don't guess.
@@ -900,11 +1032,12 @@ function EconomicsSection({
 						</p>
 					)}
 
-					<SaveButton
-						onClick={() => mutation.mutate()}
-						isPending={mutation.isPending}
-						disabled={!valid}
-					/>
+					{!valid && (
+						<p className="mt-4 text-xs text-destructive">
+							Company % must be between 0 and 100.
+						</p>
+					)}
+					<AutosaveIndicator status={saveStatus} />
 				</>
 			)}
 		</AppSurfaceCard>
@@ -953,22 +1086,21 @@ function ServicesSection({
 		contract.services,
 	);
 
-	const mutation = useMutation({
-		mutationFn: () =>
-			contractService.update(contract.id, {
+	const locked = !editable || !isEditableStatus(contract.status);
+
+	const saveStatus = useAutosave(
+		services,
+		async (rows) => {
+			await contractService.update(contract.id, {
 				// Re-index positions so order survives a round-trip.
-				services: services.map((s, i) => ({ ...s, position: i })),
-			}),
-		onSuccess: () => {
-			toast.success("Services saved");
+				services: rows.map((s, i) => ({ ...s, position: i })),
+			});
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
-	const locked = !editable || !isEditableStatus(contract.status);
+		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+	);
 
 	const addRow = () =>
 		setServices((prev) => [
@@ -1072,10 +1204,7 @@ function ServicesSection({
 					>
 						+ Add service
 					</button>
-					<SaveButton
-						onClick={() => mutation.mutate()}
-						isPending={mutation.isPending}
-					/>
+					<AutosaveIndicator status={saveStatus} className="mt-0" />
 				</div>
 			)}
 		</AppSurfaceCard>
@@ -1095,18 +1224,18 @@ function AgreementSection({
 	const toast = useToast();
 	const [clauses, setClauses] = useState<ContractClause[]>(contract.clauses);
 
-	const mutation = useMutation({
-		mutationFn: () => contractService.update(contract.id, { clauses }),
-		onSuccess: () => {
-			toast.success("Agreement saved");
+	const locked = !editable || !isEditableStatus(contract.status);
+
+	const saveStatus = useAutosave(
+		clauses,
+		async (rows) => {
+			await contractService.update(contract.id, { clauses: rows });
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
-	const locked = !editable || !isEditableStatus(contract.status);
+		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+	);
 
 	return (
 		<AppSurfaceCard className="p-6">
@@ -1144,12 +1273,7 @@ function AgreementSection({
 				))}
 			</div>
 
-			{!locked && (
-				<SaveButton
-					onClick={() => mutation.mutate()}
-					isPending={mutation.isPending}
-				/>
-			)}
+			{!locked && <AutosaveIndicator status={saveStatus} />}
 		</AppSurfaceCard>
 	);
 }
@@ -1161,13 +1285,21 @@ function SignatureSection({
 	canSignAsConsultant,
 	canSignAsClient,
 	onSign,
+	onUnsign,
 	isPending,
+	isUnsigning,
 }: {
 	contract: Contract;
 	canSignAsConsultant: boolean;
 	canSignAsClient: boolean;
-	onSign: (party: "consultant" | "client", name: string) => void;
+	onSign: (
+		party: "consultant" | "client",
+		name: string,
+		signatureUrl?: string | null,
+	) => void;
+	onUnsign: (party: "consultant" | "client") => void;
 	isPending: boolean;
+	isUnsigning: boolean;
 }) {
 	const [consultantName, setConsultantName] = useState("");
 	const [clientName, setClientName] = useState("");
@@ -1181,7 +1313,8 @@ function SignatureSection({
 			<h2 className="text-lg font-semibold text-foreground">Signatures</h2>
 			<p className="mt-1 text-sm text-muted-foreground">
 				The contract becomes <span className="font-semibold">signed</span> only
-				once both parties have stamped it.
+				once both parties have stamped it. Draw or upload your signature, or
+				just type your name.
 			</p>
 
 			{!termsReady && (
@@ -1195,21 +1328,29 @@ function SignatureSection({
 					heading="For the service provider"
 					signedName={contract.signed_by_consultant_name}
 					signedAt={contract.signed_by_consultant_at}
+					signedImageUrl={contract.signed_by_consultant_signature_url}
 					canSign={canSignAsConsultant && termsReady}
+					canManage={canSignAsConsultant}
 					value={consultantName}
 					onChange={setConsultantName}
-					onSign={() => onSign("consultant", consultantName)}
+					onSign={(url) => onSign("consultant", consultantName, url)}
+					onUnsign={() => onUnsign("consultant")}
 					isPending={isPending}
+					isUnsigning={isUnsigning}
 				/>
 				<SignatureBlock
 					heading="For the client"
 					signedName={contract.signed_by_client_name}
 					signedAt={contract.signed_by_client_at}
+					signedImageUrl={contract.signed_by_client_signature_url}
 					canSign={canSignAsClient && termsReady}
+					canManage={canSignAsClient}
 					value={clientName}
 					onChange={setClientName}
-					onSign={() => onSign("client", clientName)}
+					onSign={(url) => onSign("client", clientName, url)}
+					onUnsign={() => onUnsign("client")}
 					isPending={isPending}
+					isUnsigning={isUnsigning}
 				/>
 			</div>
 		</AppSurfaceCard>
@@ -1220,33 +1361,71 @@ function SignatureBlock({
 	heading,
 	signedName,
 	signedAt,
+	signedImageUrl,
 	canSign,
+	canManage,
 	value,
 	onChange,
 	onSign,
+	onUnsign,
 	isPending,
+	isUnsigning,
 }: {
 	heading: string;
 	signedName: string | null;
 	signedAt: string | null;
+	signedImageUrl: string | null;
 	canSign: boolean;
+	canManage: boolean;
 	value: string;
 	onChange: (v: string) => void;
-	onSign: () => void;
+	onSign: (signatureUrl?: string | null) => void;
+	onUnsign: () => void;
 	isPending: boolean;
+	isUnsigning: boolean;
 }) {
 	if (signedAt) {
 		return (
 			<div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-				<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-					{heading}
-				</p>
+				<div className="flex items-start justify-between gap-2">
+					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						{heading}
+					</p>
+					{canManage && (
+						<button
+							type="button"
+							onClick={onUnsign}
+							disabled={isUnsigning}
+							className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+						>
+							{isUnsigning ? (
+								<Loader2 className="h-3 w-3 animate-spin" />
+							) : (
+								<Trash2 className="h-3 w-3" />
+							)}
+							Remove
+						</button>
+					)}
+				</div>
+				{signedImageUrl && (
+					<img
+						src={signedImageUrl}
+						alt={`${signedName ?? "Signature"} signature`}
+						className="mt-2 max-h-14 object-contain"
+					/>
+				)}
 				<p className="mt-2 text-sm font-semibold text-foreground">
 					{signedName}
 				</p>
 				<p className="mt-0.5 text-xs text-muted-foreground">
 					Signed {formatContractDate(signedAt.slice(0, 10))}
 				</p>
+				{canManage && (
+					<p className="mt-2 text-[11px] text-muted-foreground">
+						Remove to re-sign — e.g. to upload a signature image instead of a
+						typed name.
+					</p>
+				)}
 			</div>
 		);
 	}
@@ -1257,29 +1436,292 @@ function SignatureBlock({
 				{heading}
 			</p>
 			{canSign ? (
-				<div className="mt-3 space-y-2">
-					<input
-						type="text"
-						placeholder="Type your full name"
-						value={value}
-						onChange={(e) => onChange(e.target.value)}
-						className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-					/>
-					<button
-						type="button"
-						onClick={onSign}
-						disabled={!value.trim() || isPending}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-					>
-						<PenLine className="h-3.5 w-3.5" />
-						Sign
-					</button>
-				</div>
+				<SignaturePad
+					name={value}
+					onNameChange={onChange}
+					onSign={onSign}
+					isPending={isPending}
+				/>
 			) : (
 				<p className="mt-2 text-sm italic text-muted-foreground">
 					Awaiting signature
 				</p>
 			)}
+		</div>
+	);
+}
+
+/**
+ * Name input + signature capture: draw it on a canvas (default) or upload a
+ * signature image. Either way the result is flattened/stored as a PNG in R2 and
+ * its URL rides along with the sign request to persist on the contract and
+ * render in the document. Draw is the default because it can't be a stray photo;
+ * upload is there for a scanned/pre-made signature.
+ */
+function SignaturePad({
+	name,
+	onNameChange,
+	onSign,
+	isPending,
+}: {
+	name: string;
+	onNameChange: (v: string) => void;
+	onSign: (signatureUrl?: string | null) => void;
+	isPending: boolean;
+}) {
+	const toast = useToast();
+	const [mode, setMode] = useState<"draw" | "upload">("draw");
+
+	// Draw mode.
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const drawing = useRef(false);
+	const [hasDrawing, setHasDrawing] = useState(false);
+
+	// Upload mode.
+	const inputRef = useRef<HTMLInputElement>(null);
+	const [dragging, setDragging] = useState(false);
+	const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+
+	const [uploading, setUploading] = useState(false);
+	const accept = "image/png,image/jpeg,image/webp";
+
+	// Ink style is set once; the stroke is dark so it reads on the white document.
+	useEffect(() => {
+		if (mode !== "draw") return;
+		const ctx = canvasRef.current?.getContext("2d");
+		if (!ctx) return;
+		ctx.lineWidth = 2.5;
+		ctx.lineCap = "round";
+		ctx.lineJoin = "round";
+		ctx.strokeStyle = "#1e293b";
+	}, [mode]);
+
+	const pointFor = (e: React.PointerEvent<HTMLCanvasElement>) => {
+		const canvas = canvasRef.current;
+		if (!canvas) return { x: 0, y: 0 };
+		const rect = canvas.getBoundingClientRect();
+		return {
+			x: (e.clientX - rect.left) * (canvas.width / rect.width),
+			y: (e.clientY - rect.top) * (canvas.height / rect.height),
+		};
+	};
+
+	const startStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
+		const ctx = canvasRef.current?.getContext("2d");
+		if (!ctx) return;
+		drawing.current = true;
+		const { x, y } = pointFor(e);
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		e.currentTarget.setPointerCapture(e.pointerId);
+	};
+
+	const moveStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
+		if (!drawing.current) return;
+		const ctx = canvasRef.current?.getContext("2d");
+		if (!ctx) return;
+		const { x, y } = pointFor(e);
+		ctx.lineTo(x, y);
+		ctx.stroke();
+		if (!hasDrawing) setHasDrawing(true);
+	};
+
+	const endStroke = () => {
+		drawing.current = false;
+	};
+
+	const clear = () => {
+		const canvas = canvasRef.current;
+		const ctx = canvas?.getContext("2d");
+		if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+		setHasDrawing(false);
+	};
+
+	const handleFile = async (file: File | undefined) => {
+		if (!file) return;
+		if (!accept.split(",").includes(file.type)) {
+			toast.error("Signature must be a PNG, JPG, or WEBP image.");
+			return;
+		}
+		if (file.size > 5 * 1024 * 1024) {
+			toast.error("Signature image must be under 5 MB.");
+			return;
+		}
+		setUploading(true);
+		try {
+			const url = await uploadService.uploadContractSignature(file);
+			setUploadedUrl(url);
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Upload failed");
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	const handleSign = async () => {
+		if (mode === "upload") {
+			onSign(uploadedUrl);
+			return;
+		}
+		const canvas = canvasRef.current;
+		if (!hasDrawing || !canvas) {
+			onSign(null);
+			return;
+		}
+		setUploading(true);
+		try {
+			const blob = await new Promise<Blob | null>((resolve) =>
+				canvas.toBlob(resolve, "image/png"),
+			);
+			if (!blob) {
+				onSign(null);
+				return;
+			}
+			const file = new File([blob], "signature.png", { type: "image/png" });
+			const url = await uploadService.uploadContractSignature(file);
+			onSign(url);
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Signature upload failed",
+			);
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	return (
+		<div className="mt-3 space-y-2">
+			<input
+				type="text"
+				placeholder="Type your full name"
+				value={name}
+				onChange={(e) => onNameChange(e.target.value)}
+				className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+			/>
+
+			{/* Draw / Upload toggle */}
+			<div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
+				<button
+					type="button"
+					onClick={() => setMode("draw")}
+					className={`rounded-md px-2.5 py-1 transition ${
+						mode === "draw"
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:text-foreground"
+					}`}
+				>
+					Draw
+				</button>
+				<button
+					type="button"
+					onClick={() => setMode("upload")}
+					className={`rounded-md px-2.5 py-1 transition ${
+						mode === "upload"
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:text-foreground"
+					}`}
+				>
+					Upload
+				</button>
+			</div>
+
+			{mode === "draw" ? (
+				<div className="relative rounded-lg border border-border bg-card">
+					<canvas
+						ref={canvasRef}
+						width={600}
+						height={160}
+						onPointerDown={startStroke}
+						onPointerMove={moveStroke}
+						onPointerUp={endStroke}
+						onPointerLeave={endStroke}
+						className="h-28 w-full touch-none rounded-lg"
+					/>
+					{!hasDrawing && (
+						<span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+							Draw your signature here
+						</span>
+					)}
+					{hasDrawing && (
+						<button
+							type="button"
+							onClick={clear}
+							className="absolute right-1.5 top-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
+						>
+							Clear
+						</button>
+					)}
+				</div>
+			) : uploadedUrl ? (
+				<div className="relative overflow-hidden rounded-lg border border-border bg-card p-2">
+					<img
+						src={uploadedUrl}
+						alt="Signature preview"
+						className="mx-auto max-h-16 object-contain"
+					/>
+					<button
+						type="button"
+						onClick={() => setUploadedUrl(null)}
+						className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/60 p-1 text-white transition hover:bg-slate-900/80"
+						aria-label="Remove signature image"
+					>
+						<X className="h-3 w-3" />
+					</button>
+				</div>
+			) : (
+				<>
+					<button
+						type="button"
+						onClick={() => inputRef.current?.click()}
+						onDragOver={(e) => {
+							e.preventDefault();
+							setDragging(true);
+						}}
+						onDragLeave={() => setDragging(false)}
+						onDrop={(e) => {
+							e.preventDefault();
+							setDragging(false);
+							void handleFile(e.dataTransfer.files?.[0]);
+						}}
+						className={`flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-3 py-4 text-xs transition ${
+							dragging
+								? "border-primary bg-primary/5 text-primary"
+								: "border-border text-muted-foreground hover:border-primary/50"
+						}`}
+					>
+						{uploading ? (
+							<>
+								<Loader2 className="h-4 w-4 animate-spin" />
+								Uploading…
+							</>
+						) : (
+							<>
+								<Upload className="h-4 w-4" />
+								Drag &amp; drop or click to upload a signature image
+							</>
+						)}
+					</button>
+					<input
+						ref={inputRef}
+						type="file"
+						accept={accept}
+						className="hidden"
+						onChange={(e) => void handleFile(e.target.files?.[0] ?? undefined)}
+					/>
+				</>
+			)}
+
+			<div>
+				<button
+					type="button"
+					onClick={handleSign}
+					disabled={!name.trim() || isPending || uploading}
+					className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+				>
+					<PenLine className="h-3.5 w-3.5" />
+					{uploading ? "Signing…" : "Sign"}
+				</button>
+			</div>
 		</div>
 	);
 }

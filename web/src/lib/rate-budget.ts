@@ -75,6 +75,22 @@ export function capsFromRate(
 }
 
 /**
+ * Weekly + monthly caps from a directly-entered monthly hour cap — used when a
+ * member isn't tied to a budget slice, so their hours are set outright rather
+ * than derived from an allocation. Null caps when hours are 0 (no cap).
+ */
+export function capsFromMonthlyHours(monthlyHours: number): {
+	monthly: number | null;
+	weekly: number | null;
+} {
+	if (!(monthlyHours > 0)) return { monthly: null, weekly: null };
+	return {
+		monthly: round2(monthlyHours),
+		weekly: round2(monthlyHours / WEEKS_PER_MONTH),
+	};
+}
+
+/**
  * Given a member's monthly allocation and target monthly hours, the hourly rate
  * that spends exactly the allocation over those hours. Null when hours are 0.
  */

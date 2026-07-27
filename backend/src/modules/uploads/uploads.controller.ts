@@ -48,6 +48,10 @@ const BUCKET_CONFIG: Record<
     maxSize: 10 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
   },
+  contract_signatures: {
+    maxSize: 5 * 1024 * 1024,
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  },
   portfolio_projects: {
     maxSize: 20 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],

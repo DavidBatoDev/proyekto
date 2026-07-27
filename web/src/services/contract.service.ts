@@ -87,8 +87,10 @@ export interface Contract {
 	notes: string | null;
 	signed_by_consultant_at: string | null;
 	signed_by_consultant_name: string | null;
+	signed_by_consultant_signature_url: string | null;
 	signed_by_client_at: string | null;
 	signed_by_client_name: string | null;
+	signed_by_client_signature_url: string | null;
 
 	created_by: string | null;
 	created_at: string;
@@ -234,15 +236,36 @@ export const contractService = {
 		contractId: string,
 		party: "consultant" | "client",
 		signerName: string,
+		signatureUrl?: string | null,
 	): Promise<Contract> {
 		try {
 			const { data } = await apiClient.post<{ data: Contract }>(
 				`/api/contracts/${contractId}/sign`,
-				{ party, signer_name: signerName },
+				{
+					party,
+					signer_name: signerName,
+					...(signatureUrl ? { signature_url: signatureUrl } : {}),
+				},
 			);
 			return normalizeContract(data.data);
 		} catch (err) {
 			fail(err, "Failed to sign the contract");
+		}
+	},
+
+	/** Clear a party's signature so it can be re-done (typed → uploaded, etc.). */
+	async unsign(
+		contractId: string,
+		party: "consultant" | "client",
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.post<{ data: Contract }>(
+				`/api/contracts/${contractId}/unsign`,
+				{ party },
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to remove the signature");
 		}
 	},
 
