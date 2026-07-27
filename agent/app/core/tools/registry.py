@@ -136,6 +136,36 @@ _CANONICAL_OPERATION_REQUIREMENTS: dict[str, dict[str, Any]] = (
     _load_canonical_operation_requirements()
 )
 
+
+def _load_update_node_patch_fields() -> dict[str, frozenset[str]]:
+    """Per-node-type `update_node` patch allow-list from the shared contract.
+
+    The backend rejects a disallowed patch key at APPLY time, which aborts the
+    whole commit with an error the model never sees — so the same allow-list is
+    enforced at stage time here, where a violation becomes a tool error the loop
+    feeds back for self-correction. Kept in lockstep with the backend's
+    `allowedPatchFields` switch by scripts/check_roadmap_ai_schema.mjs.
+    """
+    schema_path = (
+        Path(__file__).resolve().parents[4] / 'schemas' / 'roadmap-ai-operations.json'
+    )
+    with schema_path.open('r', encoding='utf-8') as handle:
+        document = json.load(handle)
+    matrix = document.get('update_node_patch_fields')
+    if not isinstance(matrix, dict) or not matrix:
+        raise RuntimeError(
+            'update_node_patch_fields missing from '
+            'schemas/roadmap-ai-operations.json',
+        )
+    return {
+        node_type: frozenset(fields)
+        for node_type, fields in matrix.items()
+        if isinstance(fields, list)
+    }
+
+
+UPDATE_NODE_PATCH_FIELDS: dict[str, frozenset[str]] = _load_update_node_patch_fields()
+
 from app.core.contracts.statuses import (  # noqa: E402
     ALL_STATUS_VALUES,
     EPIC_STATUS_VALUES,

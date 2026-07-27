@@ -4213,6 +4213,15 @@ export class RoadmapAiService {
     return position;
   }
 
+  /**
+   * Per-node-type `update_node` patch allow-list. Every entry must be a real
+   * column on the backing table — a key allowed here but absent from the table
+   * passes validation and then silently dies in the upsert. Mirrored in
+   * schemas/roadmap-ai-operations.json (`update_node_patch_fields`) so the
+   * agent can reject a bad patch at stage time and let the model self-correct
+   * instead of failing the whole commit; `npm run check:roadmap-ai-schema`
+   * asserts the two stay in lockstep.
+   */
   private allowedPatchFields(nodeType: RoadmapNodeType): string[] {
     switch (nodeType) {
       case 'roadmap':
@@ -4235,11 +4244,12 @@ export class RoadmapAiService {
           'end_date',
           'tags',
         ];
+      // No `status`: roadmap_features has no status column — feature status is
+      // derived from child task statuses (see mark_status.feature_unsupported).
       case 'feature':
         return [
           'title',
           'description',
-          'status',
           'is_deliverable',
           'start_date',
           'end_date',
