@@ -22,8 +22,15 @@ import type {
 } from '../dto/roadmap-ai-project-context.dto';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
+import { ProjectAuthorizationService } from '../../projects/authorization/project-authorization.service';
+import { RedisDataCacheService } from '../../../common/cache/redis-data-cache.service';
 
 const BRIEF_EXCERPT_MAX_CHARS = 1_200;
+// Intake context: shorter than the agent's 600s because briefs churn while a
+// project is still being set up, which is exactly when intake runs.
+const INTAKE_CONTEXT_CACHE_TTL_SECONDS = 300;
+const INTAKE_BRIEF_EXCERPT_MAX_CHARS = 800;
+const INTAKE_CONTEXT_BLOCK_MAX_CHARS = 1_200;
 const FULL_BRIEF_MAX_CHARS = 12_000;
 const CUSTOM_FIELD_LIMIT = 50;
 const CUSTOM_FIELD_KEY_MAX_CHARS = 120;
@@ -71,7 +78,73 @@ export class RoadmapAiProjectContextService {
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     @Inject(ROADMAPS_REPOSITORY)
     private readonly roadmapsRepo: IRoadmapsRepository,
+    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly dataCache: RedisDataCacheService,
   ) {}
+
+  /**
+   * Compact "# Project context" prompt block for roadmap INTAKE, keyed on a
+   * projectId because no roadmap exists yet at that point.
+   *
+   * Deliberately not `getProjectContext`: that one is roadmap-keyed and fires
+   * ~10-12 queries for members/meetings/resources, none of which help decide
+   * "what are you building". This path is 2 queries and reuses the same
+   * projectId-keyed readers.
+   *
+   * Throws MissingPermissionException when the caller has no project access -
+   * the caller decides whether that is fatal.
+   */
+  async getIntakeProjectContextBlock(
+    projectId: string,
+    userId: string,
+  ): Promise<string> {
+    // Authorize BEFORE touching the cache, so a cache hit can never serve
+    // project data to someone who was not allowed to ask for it.
+    await this.projectAuth.assertRole(userId, projectId, 'viewer');
+
+    // Cached payload is project-scoped only - it carries no user-specific data.
+    return this.dataCache.rememberJson(
+      `intake:projctx:v1:${projectId}`,
+      INTAKE_CONTEXT_CACHE_TTL_SECONDS,
+      async () => {
+        const [project, brief] = await Promise.all([
+          this.readProject(projectId),
+          this.readLatestBrief(projectId),
+        ]);
+        if (!project) return '';
+        return this.renderIntakeContextBlock(project, brief);
+      },
+    );
+  }
+
+  private renderIntakeContextBlock(
+    project: RoadmapAiProjectDto,
+    brief: LatestBrief,
+  ): string {
+    const lines: string[] = ['# Project context', `Project: ${project.title}`];
+
+    const details = [
+      project.status ? `status: ${project.status}` : '',
+      project.category ? `category: ${project.category}` : '',
+      project.project_state ? `state: ${project.project_state}` : '',
+      project.duration ? `duration: ${project.duration}` : '',
+      project.budget_range ? `budget: ${project.budget_range}` : '',
+      project.start_date ? `start: ${project.start_date}` : '',
+    ].filter(Boolean);
+    if (details.length) lines.push(`Details: ${details.join(' | ')}`);
+
+    if (project.skills.length) {
+      lines.push(`Skills: ${project.skills.join(', ')}`);
+    }
+
+    const excerpt = htmlToText(
+      brief.projectSummary,
+      INTAKE_BRIEF_EXCERPT_MAX_CHARS,
+    );
+    if (excerpt) lines.push(`Brief excerpt: ${excerpt}`);
+
+    return truncatePromptText(lines.join('\n'), INTAKE_CONTEXT_BLOCK_MAX_CHARS);
+  }
 
   async getProjectContext(
     roadmapId: string,

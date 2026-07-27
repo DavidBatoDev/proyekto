@@ -60,13 +60,27 @@ function buildService(
   const roadmapsRepo = {
     findById: jest.fn().mockResolvedValue(roadmap),
   };
+  const projectAuth = {
+    assertRole: jest.fn().mockResolvedValue('owner'),
+  };
+  // Pass-through cache: the loader always runs, so these tests still assert on
+  // the real query fan-out rather than on a memoized result.
+  const dataCache = {
+    rememberJson: jest.fn(
+      (_key: string, _ttl: number, loader: () => Promise<unknown>) => loader(),
+    ),
+  };
   return {
     service: new RoadmapAiProjectContextService(
       db as never,
       roadmapsRepo as never,
+      projectAuth as never,
+      dataCache as never,
     ),
     db,
     roadmapsRepo,
+    projectAuth,
+    dataCache,
   };
 }
 

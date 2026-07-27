@@ -10,12 +10,14 @@ import {
   HttpCode,
   HttpStatus,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import { RoadmapsService } from '../services/roadmaps.service';
 import { RoadmapMetadataGeneratorService } from '../services/roadmap-metadata-generator.service';
+import { RoadmapAiProjectContextService } from '../services/roadmap-ai-project-context.service';
 import {
   CreateRoadmapDto,
   ReplaceProjectRoadmapDto,
@@ -27,9 +29,12 @@ import {
 @Controller('roadmaps')
 @UseGuards(SupabaseAuthGuard)
 export class RoadmapsController {
+  private readonly logger = new Logger(RoadmapsController.name);
+
   constructor(
     private readonly roadmapsService: RoadmapsService,
     private readonly metadataGenerator: RoadmapMetadataGeneratorService,
+    private readonly projectContext: RoadmapAiProjectContextService,
   ) {}
 
   @Get()
@@ -85,8 +90,45 @@ export class RoadmapsController {
   }
 
   @Post('intake/suggest')
-  suggestIntakeStep(@Body() dto: SuggestRoadmapIntakeStepDto) {
-    return this.metadataGenerator.suggestIntakeStep(dto);
+  async suggestIntakeStep(
+    @Body() dto: SuggestRoadmapIntakeStepDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const projectContextBlock = await this.resolveIntakeProjectBlock(dto, user);
+    return this.metadataGenerator.suggestIntakeStep(dto, projectContextBlock);
+  }
+
+  /**
+   * Resolves the optional project-context prompt block for intake.
+   *
+   * A permission failure is swallowed, not propagated: the block is only ever
+   * fed to the model and is never echoed back in the response, so degrading to
+   * a context-free intake leaks nothing - whereas 403-ing the create page over
+   * optional prompt enrichment would break a working flow. The warn log is
+   * what makes a systemic authz gap visible.
+   */
+  private async resolveIntakeProjectBlock(
+    dto: SuggestRoadmapIntakeStepDto,
+    user: AuthenticatedUser,
+  ): Promise<string> {
+    if (dto.step !== 'objective') return '';
+    if (!dto.project_id) return '';
+    // Guests reach this route via X-Guest-User-Id and are never project members.
+    if (user.is_guest) return '';
+
+    try {
+      return await this.projectContext.getIntakeProjectContextBlock(
+        dto.project_id,
+        user.id,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `intake project context skipped project=${dto.project_id} user=${
+          user.id
+        }: ${(error as Error)?.message ?? 'unknown error'}`,
+      );
+      return '';
+    }
   }
 
   @Get(':id')
