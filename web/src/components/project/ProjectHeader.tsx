@@ -33,6 +33,7 @@ import {
 	type Team,
 } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
+import { ActivationHeaderPill } from "./ActivationHeaderPill";
 import ProjectUserMenu from "./ProjectUserMenu";
 import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
 
@@ -65,6 +66,7 @@ const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
 	if (pathname.includes("/team")) return "Team";
 	if (pathname.includes("/resources")) return "Resources";
 	if (pathname.includes("/payments")) return "Payments";
+	if (pathname.includes("/financials")) return "Financials";
 	if (pathname.includes("/contract")) return "Contract";
 	if (pathname.includes("/time")) return "Time";
 	if (pathname.includes("/logs")) return "Logs";
@@ -497,6 +499,8 @@ export function ProjectHeader() {
 				>
 					<MessageCircle size={20} />
 				</button>
+
+				<ActivationHeaderPill projectId={projectId} project={project} />
 
 				<NotificationBell />
 

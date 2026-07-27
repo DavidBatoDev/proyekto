@@ -61,6 +61,7 @@ import { Route as ProjectProjectIdResourcesRouteImport } from './routes/project/
 import { Route as ProjectProjectIdPaymentsRouteImport } from './routes/project/$projectId/payments'
 import { Route as ProjectProjectIdOverviewRouteImport } from './routes/project/$projectId/overview'
 import { Route as ProjectProjectIdLogsRouteImport } from './routes/project/$projectId/logs'
+import { Route as ProjectProjectIdFinancialsRouteImport } from './routes/project/$projectId/financials'
 import { Route as ProjectProjectIdContractRouteImport } from './routes/project/$projectId/contract'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
@@ -355,6 +356,12 @@ const ProjectProjectIdLogsRoute = ProjectProjectIdLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => ProjectProjectIdRoute,
 } as any)
+const ProjectProjectIdFinancialsRoute =
+  ProjectProjectIdFinancialsRouteImport.update({
+    id: '/financials',
+    path: '/financials',
+    getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
 const ProjectProjectIdContractRoute =
   ProjectProjectIdContractRouteImport.update({
     id: '/contract',
@@ -565,6 +572,7 @@ export interface FileRoutesByFullPath {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
+  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -644,6 +652,7 @@ export interface FileRoutesByTo {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
+  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -728,6 +737,7 @@ export interface FileRoutesById {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
+  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -813,6 +823,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/contract'
+    | '/project/$projectId/financials'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -892,6 +903,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/contract'
+    | '/project/$projectId/financials'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -975,6 +987,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/contract'
+    | '/project/$projectId/financials'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -1422,6 +1435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdLogsRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
+    '/project/$projectId/financials': {
+      id: '/project/$projectId/financials'
+      path: '/financials'
+      fullPath: '/project/$projectId/financials'
+      preLoaderRoute: typeof ProjectProjectIdFinancialsRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/project/$projectId/contract': {
       id: '/project/$projectId/contract'
       path: '/contract'
@@ -1695,6 +1715,7 @@ const ProjectProjectIdWorkItemsRouteWithChildren =
 
 interface ProjectProjectIdRouteChildren {
   ProjectProjectIdContractRoute: typeof ProjectProjectIdContractRoute
+  ProjectProjectIdFinancialsRoute: typeof ProjectProjectIdFinancialsRoute
   ProjectProjectIdLogsRoute: typeof ProjectProjectIdLogsRoute
   ProjectProjectIdOverviewRoute: typeof ProjectProjectIdOverviewRoute
   ProjectProjectIdPaymentsRoute: typeof ProjectProjectIdPaymentsRoute
@@ -1716,6 +1737,7 @@ interface ProjectProjectIdRouteChildren {
 
 const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
   ProjectProjectIdContractRoute: ProjectProjectIdContractRoute,
+  ProjectProjectIdFinancialsRoute: ProjectProjectIdFinancialsRoute,
   ProjectProjectIdLogsRoute: ProjectProjectIdLogsRoute,
   ProjectProjectIdOverviewRoute: ProjectProjectIdOverviewRoute,
   ProjectProjectIdPaymentsRoute: ProjectProjectIdPaymentsRoute,

@@ -1,19 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import {
-	AlertTriangle,
-	CheckCircle2,
-	Circle,
-	FileSignature,
-	Loader2,
-	PenLine,
-	Rocket,
-} from "lucide-react";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { CheckCircle2, FileSignature, Loader2, PenLine } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import {
+	SaveButton,
+	SelectField,
+	TextField,
+} from "@/components/common/FormFields";
+import { ActivationGuide } from "@/components/project/ActivationGuide";
+import { useActivationChecklist } from "@/hooks/useActivationChecklist";
 import { useToast } from "@/hooks/useToast";
 import {
 	type BillingMode,
@@ -24,7 +23,6 @@ import {
 	type InvoiceCadence,
 } from "@/lib/contract-term";
 import {
-	type ActivationChecklist,
 	type Contract,
 	type ContractClause,
 	type ContractService,
@@ -71,11 +69,11 @@ function ProjectContractPage() {
 		enabled: isConsultant,
 	});
 
-	const checklistQuery = useQuery({
-		queryKey: ["project", projectId, "activation-checklist"],
-		queryFn: () => contractService.getActivationChecklist(projectId),
+	const checklistQuery = useActivationChecklist(projectId, {
 		enabled: isConsultant,
 	});
+
+	const [activeStep, setActiveStep] = useState<StepKey>("parties");
 
 	const invalidateAll = () => {
 		void qc.invalidateQueries({ queryKey: ["contracts", projectId] });
@@ -106,15 +104,6 @@ function ProjectContractPage() {
 		onError: (err: Error) => toast.error(err.message),
 	});
 
-	const activateMutation = useMutation({
-		mutationFn: () => projectService.update(projectId, { status: "active" }),
-		onSuccess: () => {
-			toast.success("Project activated");
-			invalidateAll();
-		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
 	if (projectQuery.isPending || contractsQuery.isPending) {
 		return (
 			<div className="app-shell-bg flex h-full items-center justify-center">
@@ -125,7 +114,7 @@ function ProjectContractPage() {
 
 	return (
 		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
+			<div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-8 md:py-8">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Finance"
@@ -161,42 +150,264 @@ function ProjectContractPage() {
 						)}
 					</AppSurfaceCard>
 				) : (
-					<div className="space-y-6">
-						<PartiesSection contract={contract} editable={isConsultant} />
-						<TermsSection contract={contract} editable={isConsultant} />
-						<ServicesSection contract={contract} editable={isConsultant} />
-						{isConsultant && (
-							<EconomicsSection
-								projectId={projectId}
-								contract={contract}
-								economics={economicsQuery.data ?? null}
-								isLoading={economicsQuery.isPending}
-							/>
-						)}
-						<AgreementSection contract={contract} editable={isConsultant} />
-						<SignatureSection
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
+						{/* Left: step rail */}
+						<StepRail
+							steps={visibleSteps(isConsultant)}
+							activeStep={activeStep}
+							onSelect={setActiveStep}
 							contract={contract}
-							canSignAsConsultant={isConsultant}
-							canSignAsClient={
-								Boolean(user?.id) &&
-								(contract.client_user_id === user?.id ||
-									project?.client_id === user?.id)
-							}
-							onSign={(party, name) => signMutation.mutate({ party, name })}
-							isPending={signMutation.isPending}
+							economics={economicsQuery.data ?? null}
 						/>
-						{isConsultant && (
-							<ActivationSection
-								checklist={checklistQuery.data ?? null}
-								isLoading={checklistQuery.isPending}
-								projectStatus={project?.status ?? null}
-								onActivate={() => activateMutation.mutate()}
-								isActivating={activateMutation.isPending}
-							/>
-						)}
+
+						{/* Center: active step */}
+						<div className="min-w-0">
+							{activeStep === "parties" && (
+								<PartiesSection contract={contract} editable={isConsultant} />
+							)}
+							{activeStep === "terms" && (
+								<TermsSection contract={contract} editable={isConsultant} />
+							)}
+							{activeStep === "services" && (
+								<ServicesSection contract={contract} editable={isConsultant} />
+							)}
+							{activeStep === "budget" && isConsultant && (
+								<EconomicsSection
+									projectId={projectId}
+									contract={contract}
+									economics={economicsQuery.data ?? null}
+									isLoading={economicsQuery.isPending}
+								/>
+							)}
+							{activeStep === "agreement" && (
+								<AgreementSection contract={contract} editable={isConsultant} />
+							)}
+							{activeStep === "signatures" && (
+								<SignatureSection
+									contract={contract}
+									canSignAsConsultant={isConsultant}
+									canSignAsClient={
+										Boolean(user?.id) &&
+										(contract.client_user_id === user?.id ||
+											project?.client_id === user?.id)
+									}
+									onSign={(party, name) => signMutation.mutate({ party, name })}
+									isPending={signMutation.isPending}
+								/>
+							)}
+						</div>
+
+						{/* Right: at-a-glance + activation guide */}
+						<div className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+							<ContractGlanceCard contract={contract} />
+							{isConsultant && (
+								<ActivationGuide
+									projectId={projectId}
+									checklist={checklistQuery.data ?? null}
+									isLoading={checklistQuery.isPending}
+									projectStatus={project?.status ?? null}
+									mode="full"
+								/>
+							)}
+						</div>
 					</div>
 				)}
 			</div>
+		</div>
+	);
+}
+
+/* ── Step rail ────────────────────────────────────────────────────────────── */
+
+type StepKey =
+	| "parties"
+	| "terms"
+	| "services"
+	| "budget"
+	| "agreement"
+	| "signatures";
+
+const STEP_META: Array<{
+	key: StepKey;
+	label: string;
+	consultantOnly?: boolean;
+}> = [
+	{ key: "parties", label: "Parties" },
+	{ key: "terms", label: "Commercial terms" },
+	{ key: "services", label: "Services" },
+	{ key: "budget", label: "Budget split", consultantOnly: true },
+	{ key: "agreement", label: "Agreement" },
+	{ key: "signatures", label: "Signatures" },
+];
+
+function visibleSteps(isConsultant: boolean) {
+	return STEP_META.filter((s) => isConsultant || !s.consultantOnly);
+}
+
+/**
+ * Per-step completeness for the rail's done/todo dot. Derived from the contract
+ * (and economics) directly rather than the activation checklist, so each step
+ * reflects its own data even for items the checklist doesn't track (services,
+ * agreement). "optional" steps show a neutral dot when empty, not a red todo.
+ */
+function stepStatus(
+	key: StepKey,
+	contract: Contract,
+	economics: ProjectEconomics | null,
+): "done" | "todo" | "optional" {
+	switch (key) {
+		case "parties":
+			return contract.client_name || contract.client_email ? "done" : "todo";
+		case "terms": {
+			const hasDates =
+				Boolean(contract.service_start_date) &&
+				Boolean(contract.service_end_date);
+			const hasMoney =
+				Number(contract.recurring_fee) > 0 ||
+				Number(contract.client_hourly_rate) > 0;
+			return hasDates && hasMoney ? "done" : "todo";
+		}
+		case "services":
+			return contract.services.length > 0 ? "done" : "optional";
+		case "budget":
+			return economics &&
+				Math.abs(economics.company_percent + economics.team_percent - 100) <
+					1e-9
+				? "done"
+				: "todo";
+		case "agreement":
+			return contract.clauses.length > 0 ? "done" : "optional";
+		case "signatures":
+			return contract.status === "signed" || contract.status === "active"
+				? "done"
+				: "todo";
+	}
+}
+
+function StepRail({
+	steps,
+	activeStep,
+	onSelect,
+	contract,
+	economics,
+}: {
+	steps: Array<{ key: StepKey; label: string }>;
+	activeStep: StepKey;
+	onSelect: (key: StepKey) => void;
+	contract: Contract;
+	economics: ProjectEconomics | null;
+}) {
+	return (
+		<nav className="lg:sticky lg:top-6 lg:self-start">
+			<ol className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-1">
+				{steps.map((step, index) => {
+					const status = stepStatus(step.key, contract, economics);
+					const active = step.key === activeStep;
+					return (
+						<li key={step.key}>
+							<button
+								type="button"
+								onClick={() => onSelect(step.key)}
+								className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
+									active
+										? "bg-primary text-primary-foreground shadow-sm"
+										: "text-muted-foreground hover:bg-muted"
+								}`}
+							>
+								<StepDot status={status} active={active} index={index} />
+								{step.label}
+							</button>
+						</li>
+					);
+				})}
+			</ol>
+		</nav>
+	);
+}
+
+function StepDot({
+	status,
+	active,
+	index,
+}: {
+	status: "done" | "todo" | "optional";
+	active: boolean;
+	index: number;
+}) {
+	if (status === "done") {
+		return (
+			<CheckCircle2
+				className={`h-4 w-4 shrink-0 ${active ? "text-primary-foreground" : "text-emerald-500"}`}
+			/>
+		);
+	}
+	return (
+		<span
+			className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+				active
+					? "border-primary-foreground/60 text-primary-foreground"
+					: status === "optional"
+						? "border-border text-muted-foreground"
+						: "border-amber-400 text-amber-500"
+			}`}
+		>
+			{index + 1}
+		</span>
+	);
+}
+
+/* ── At-a-glance ──────────────────────────────────────────────────────────── */
+
+function ContractGlanceCard({ contract }: { contract: Contract }) {
+	return (
+		<AppSurfaceCard className="p-5">
+			<h3 className="text-sm font-semibold text-foreground">
+				Contract at a glance
+			</h3>
+			<dl className="mt-3 space-y-2 text-xs">
+				<GlanceRow
+					label="Billing"
+					value={
+						contract.billing_mode === "retainer"
+							? `${formatMoney(contract.currency, contract.recurring_fee)} / period`
+							: contract.billing_mode === "time_based"
+								? `${formatMoney(contract.currency, contract.client_hourly_rate)} / hr`
+								: "Retainer + overage"
+					}
+				/>
+				<GlanceRow
+					label="Service"
+					value={`${formatContractDate(contract.service_start_date)} – ${formatContractDate(contract.service_end_date)}`}
+				/>
+				<GlanceRow
+					label="Cadence"
+					value={
+						contract.invoice_cadence === "monthly"
+							? "Monthly"
+							: contract.invoice_cadence === "semi_monthly"
+								? "Cut-off"
+								: "Custom"
+					}
+				/>
+				<GlanceRow
+					label="Billing periods"
+					value={String(contract.periods.length)}
+				/>
+			</dl>
+			{contract.periods.length > 0 && (
+				<p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+					First invoice covers {formatPeriodRange(contract.periods[0])}
+				</p>
+			)}
+		</AppSurfaceCard>
+	);
+}
+
+function GlanceRow({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex items-center justify-between gap-3">
+			<dt className="text-muted-foreground">{label}</dt>
+			<dd className="text-right font-medium text-foreground">{value}</dd>
 		</div>
 	);
 }
@@ -1075,91 +1286,6 @@ function SignatureBlock({
 
 /* ── Activation ───────────────────────────────────────────────────────────── */
 
-function ActivationSection({
-	checklist,
-	isLoading,
-	projectStatus,
-	onActivate,
-	isActivating,
-}: {
-	checklist: ActivationChecklist | null;
-	isLoading: boolean;
-	projectStatus: string | null;
-	onActivate: () => void;
-	isActivating: boolean;
-}) {
-	const alreadyActive = projectStatus === "active";
-
-	return (
-		<AppSurfaceCard strong className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">
-				Activate this project
-			</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
-				An active project bills the client and pays the team, so everything
-				billing depends on has to be in place first.
-			</p>
-
-			{isLoading ? (
-				<div className="flex justify-center py-8">
-					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-				</div>
-			) : checklist ? (
-				<>
-					<ul className="mt-5 space-y-2">
-						{checklist.items.map((item) => (
-							<li
-								key={item.key}
-								className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5"
-							>
-								{item.ok ? (
-									<CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-								) : item.severity === "warning" ? (
-									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-								) : (
-									<Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-								)}
-								<div className="min-w-0 flex-1">
-									<p className="text-sm font-medium text-foreground">
-										{item.label}
-									</p>
-									{item.detail && (
-										<p className="mt-0.5 text-xs text-muted-foreground">
-											{item.detail}
-										</p>
-									)}
-								</div>
-								{!item.ok && item.fixPath && (
-									<Link
-										to={item.fixPath}
-										className="shrink-0 text-xs font-semibold text-primary hover:underline"
-									>
-										Fix
-									</Link>
-								)}
-							</li>
-						))}
-					</ul>
-
-					<button
-						type="button"
-						onClick={onActivate}
-						disabled={!checklist.ready || alreadyActive || isActivating}
-						className="app-cta mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<Rocket className="h-4 w-4" />
-						{alreadyActive
-							? "Project is active"
-							: isActivating
-								? "Activating…"
-								: "Activate project"}
-					</button>
-				</>
-			) : null}
-		</AppSurfaceCard>
-	);
-}
-
 /* ── Shared field primitives ──────────────────────────────────────────────── */
 
 function isEditableStatus(status: Contract["status"]): boolean {
@@ -1169,88 +1295,4 @@ function isEditableStatus(status: Contract["status"]): boolean {
 function numberOrNull(value: string): number | null {
 	const parsed = Number(value);
 	return value.trim() && Number.isFinite(parsed) ? parsed : null;
-}
-
-function TextField({
-	label,
-	value,
-	onChange,
-	disabled,
-	type = "text",
-}: {
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-	disabled?: boolean;
-	type?: string;
-}) {
-	return (
-		<div>
-			<span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-				{label}
-			</span>
-			<input
-				type={type}
-				value={value}
-				disabled={disabled}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-			/>
-		</div>
-	);
-}
-
-function SelectField({
-	label,
-	value,
-	onChange,
-	options,
-	disabled,
-}: {
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-	options: Array<{ value: string; label: string }>;
-	disabled?: boolean;
-}) {
-	return (
-		<div>
-			<span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-				{label}
-			</span>
-			<select
-				value={value}
-				disabled={disabled}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-			>
-				{options.map((option) => (
-					<option key={option.value} value={option.value}>
-						{option.label}
-					</option>
-				))}
-			</select>
-		</div>
-	);
-}
-
-function SaveButton({
-	onClick,
-	isPending,
-	disabled,
-}: {
-	onClick: () => void;
-	isPending: boolean;
-	disabled?: boolean;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={isPending || disabled}
-			className="mt-5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:opacity-50"
-		>
-			{isPending ? "Saving…" : "Save"}
-		</button>
-	);
 }

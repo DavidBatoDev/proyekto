@@ -1,27 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { uploadService } from "@/services/upload.service";
-import { useUser } from "@/stores/authStore";
-import { supabase } from "@/lib/supabase";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
-import { projectService } from "@/services/project.service";
-import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
+import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import { ActivationGuide } from "@/components/project/ActivationGuide";
+import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
 import {
-	OverviewLoadingSkeleton,
+	deriveTimelineItems,
 	OverviewBanner,
 	OverviewContent,
+	OverviewLoadingSkeleton,
 	OverviewSidebar,
 	type ProjectBriefField,
 	toRichHtml,
-	deriveTimelineItems,
 } from "@/components/project/overview";
 import {
 	areProjectBriefFieldsEqual,
 	getOverviewBriefState,
 } from "@/components/project/overview/stateSync";
-import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
+import { useActivationChecklist } from "@/hooks/useActivationChecklist";
 import {
 	useInvalidateProjectQueries,
 	useLinkedRoadmapQuery,
@@ -30,6 +28,10 @@ import {
 	useProjectMembersQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
+import { supabase } from "@/lib/supabase";
+import { projectService } from "@/services/project.service";
+import { uploadService } from "@/services/upload.service";
+import { useUser } from "@/stores/authStore";
 
 function StatusBadgeSelector({
 	projectId,
@@ -105,7 +107,11 @@ function StatusBadgeSelector({
 							onClick={() => mutation.mutate(key)}
 							className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
 						>
-							<ProjectStatusBadge status={key} label={c.label} className="border-0 bg-transparent px-0" />
+							<ProjectStatusBadge
+								status={key}
+								label={c.label}
+								className="border-0 bg-transparent px-0"
+							/>
 							<span className="flex-1" />
 							{statusKey === key && (
 								<Check className="h-3.5 w-3.5 text-slate-500" />
@@ -209,6 +215,13 @@ function OverviewPage() {
 		isOwnerOnProject ||
 		["owner", "admin", "editor", "client", "consultant"].includes(memberRole);
 
+	// The activation guide is a home base for "make this project live". Only the
+	// owner/consultant sees it, and only while the project isn't active yet.
+	const showActivationGuide = isOwnerOnProject && project?.status !== "active";
+	const activationChecklist = useActivationChecklist(projectId, {
+		enabled: showActivationGuide,
+	});
+
 	const summaryHtml = toRichHtml(projectSummary ?? project?.description ?? "");
 
 	const upsertBrief = async (patch: {
@@ -308,6 +321,17 @@ function OverviewPage() {
 			<div className="px-3 py-4 sm:px-5 sm:py-6 md:px-8 md:py-8">
 				<div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
 					<div className="flex flex-col">
+						{showActivationGuide && (
+							<div className="app-slide-up mb-4">
+								<ActivationGuide
+									projectId={projectId}
+									checklist={activationChecklist.data ?? null}
+									isLoading={activationChecklist.isPending}
+									projectStatus={project.status}
+									mode="full"
+								/>
+							</div>
+						)}
 						<BringInAConsultantCard
 							isPersonalWorkspace={Boolean(
 								(project as unknown as { is_personal_workspace?: boolean })

@@ -14,6 +14,7 @@ import {
 	MessageSquare,
 	ReceiptText,
 	Settings,
+	TrendingUp,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -179,6 +180,12 @@ export function ProjectSidebar({
 					label: "Invoices",
 					icon: ReceiptText,
 					to: `/project/${projectId}/payments`,
+					requiresProject: true,
+				},
+				{
+					label: "Financials",
+					icon: TrendingUp,
+					to: `/project/${projectId}/financials`,
 					requiresProject: true,
 				},
 				{

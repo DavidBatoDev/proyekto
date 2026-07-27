@@ -8,6 +8,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
+import { RateBudgetCalculator } from "@/components/team-time/RateBudgetCalculator";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import {
@@ -45,9 +46,7 @@ function ProjectTimeSettings() {
 		queryFn: () => projectService.get(projectId),
 	});
 	const project = projectQuery.data;
-	const isConsultant = Boolean(
-		user?.id && project?.consultant_id === user.id,
-	);
+	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],
@@ -97,41 +96,46 @@ function ProjectTimeSettings() {
 						</div>
 					</div>
 				) : (
-					<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-						<div className="space-y-4 px-5 py-6">
-							<p className="max-w-2xl text-sm text-slate-600">
-								Cap how many hours each team member can log on this project per
-								week or month. Members see their progress in My Logs; when
-								“block” is on, logging past the cap needs your approval. Leave
-								blank for no limit.
-							</p>
+					<div className="space-y-6">
+						{rows.length > 0 && (
+							<RateBudgetCalculator projectId={projectId} rows={rows} />
+						)}
+						<div className="app-surface-card-strong overflow-hidden rounded-2xl">
+							<div className="space-y-4 px-5 py-6">
+								<p className="max-w-2xl text-sm text-slate-600">
+									Or set caps manually. Cap how many hours each team member can
+									log on this project per week or month. Members see their
+									progress in My Logs; when “block” is on, logging past the cap
+									needs your approval. Leave blank for no limit.
+								</p>
 
-							{teamsQuery.isPending ||
-							memberQueries.some((q) => q.isPending) ? (
-								<div className="flex justify-center p-8">
-									<Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-								</div>
-							) : teams.length === 0 ? (
-								<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-									No team is attached to this project yet. Attach a team under
-									Settings → Teams to manage hour limits.
-								</div>
-							) : rows.length === 0 ? (
-								<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-									No members on the attached team(s) yet.
-								</div>
-							) : (
-								<ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-									{rows.map((row) => (
-										<LimitRow
-											key={`${row.teamId}:${row.member.user_id}`}
-											projectId={projectId}
-											teamId={row.teamId}
-											member={row.member}
-										/>
-									))}
-								</ul>
-							)}
+								{teamsQuery.isPending ||
+								memberQueries.some((q) => q.isPending) ? (
+									<div className="flex justify-center p-8">
+										<Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+									</div>
+								) : teams.length === 0 ? (
+									<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+										No team is attached to this project yet. Attach a team under
+										Settings → Teams to manage hour limits.
+									</div>
+								) : rows.length === 0 ? (
+									<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+										No members on the attached team(s) yet.
+									</div>
+								) : (
+									<ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+										{rows.map((row) => (
+											<LimitRow
+												key={`${row.teamId}:${row.member.user_id}`}
+												projectId={projectId}
+												teamId={row.teamId}
+												member={row.member}
+											/>
+										))}
+									</ul>
+								)}
+							</div>
 						</div>
 					</div>
 				)}
@@ -244,7 +248,9 @@ function LimitEditor({
 
 	const dirty =
 		weekly !==
-			(rate.weekly_limit_hours == null ? "" : String(rate.weekly_limit_hours)) ||
+			(rate.weekly_limit_hours == null
+				? ""
+				: String(rate.weekly_limit_hours)) ||
 		monthly !==
 			(rate.monthly_limit_hours == null
 				? ""
