@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import { type RoadmapCardEpic, RoadmapPreviewCard } from "./RoadmapPreviewCard";
 
 afterEach(() => {
@@ -78,6 +79,108 @@ describe("RoadmapPreviewCard", () => {
 		fireEvent.click(epicButton as HTMLButtonElement);
 		expect(screen.queryByText("Interview customers")).toBeNull();
 		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it("shows the banner image above the epic overview when one is set", () => {
+		render(
+			<RoadmapPreviewCard
+				variant="roadmap"
+				title="Product roadmap"
+				description="Project roadmap"
+				epics={templateEpics}
+				previewImageUrl="https://cdn.proyekto.tech/roadmap-previews/banner.png"
+				status={<span>Active</span>}
+				footerAction={<span>Open roadmap</span>}
+			/>,
+		);
+
+		const banner = document.querySelector("[data-roadmap-card-banner]");
+		expect(banner?.getAttribute("src")).toBe(
+			"https://cdn.proyekto.tech/roadmap-previews/banner.png",
+		);
+		// The epics stay on the card - the banner only takes the top band, and
+		// one fewer row shows above the fold.
+		expect(screen.getByText("Scope framing")).toBeTruthy();
+		expect(screen.getByText("Billing setup")).toBeTruthy();
+		expect(screen.queryByText("Launch checklist")).toBeNull();
+		expect(screen.getByText("+2 more epics")).toBeTruthy();
+	});
+
+	it("keeps epics expandable on a banner card once it is selected", () => {
+		const roadmapEpics: RoadmapCardEpic[] = [
+			{
+				id: "epic-1",
+				title: "Product discovery",
+				position: 0,
+				features: [{ id: "feature-1", title: "Interview customers" }],
+			},
+		];
+
+		render(
+			<RoadmapPreviewCard
+				variant="roadmap"
+				interactive
+				title="Product roadmap"
+				description="Project roadmap"
+				epics={roadmapEpics}
+				previewImageUrl="https://cdn.proyekto.tech/roadmap-previews/banner.png"
+				status={<span>Active</span>}
+				footerAction={<span>Open roadmap</span>}
+			/>,
+		);
+
+		const card = screen.getByRole("button", { name: /product roadmap/i });
+		fireEvent.click(card);
+		expect(card.getAttribute("aria-pressed")).toBe("true");
+		expect(document.querySelector("[data-roadmap-card-banner]")).toBeTruthy();
+		expect(screen.getByText("Interview customers")).toBeTruthy();
+
+		const epicButton = screen
+			.getAllByRole("button", { name: /product discovery/i })
+			.find((element) => element.tagName === "BUTTON");
+		fireEvent.click(epicButton as HTMLButtonElement);
+		expect(screen.queryByText("Interview customers")).toBeNull();
+	});
+
+	it("keeps the epic overview for the generated placeholder thumbnail", () => {
+		render(
+			<RoadmapPreviewCard
+				variant="roadmap"
+				title="Product roadmap"
+				description="Project roadmap"
+				epics={templateEpics}
+				previewImageUrl={generateRoadmapThumbnailDataUri(
+					"roadmap-1",
+					"Product roadmap",
+				)}
+				status={<span>Active</span>}
+				footerAction={<span>Open roadmap</span>}
+			/>,
+		);
+
+		expect(document.querySelector("[data-roadmap-card-banner]")).toBeNull();
+		expect(screen.getByText("Scope framing")).toBeTruthy();
+	});
+
+	it("falls back to the epic overview when the banner image fails to load", () => {
+		render(
+			<RoadmapPreviewCard
+				variant="roadmap"
+				title="Product roadmap"
+				description="Project roadmap"
+				epics={templateEpics}
+				previewImageUrl="https://cdn.proyekto.tech/missing.png"
+				status={<span>Active</span>}
+				footerAction={<span>Open roadmap</span>}
+			/>,
+		);
+
+		const banner = document.querySelector("[data-roadmap-card-banner]");
+		expect(banner).toBeTruthy();
+		fireEvent.error(banner as HTMLImageElement);
+
+		expect(document.querySelector("[data-roadmap-card-banner]")).toBeNull();
+		expect(screen.getByText("Scope framing")).toBeTruthy();
 	});
 
 	it("lets template cards select and toggle their feature previews", () => {
