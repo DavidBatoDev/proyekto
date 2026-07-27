@@ -30,6 +30,7 @@ import { roadmapService } from "@/services/roadmap.service";
 import {
 	buildFallbackRoadmapMetadata,
 	buildRoadmapCreatePayload,
+	buildRoadmapPlanningPrompt,
 	createRoadmapFromIdea,
 	deriveRoadmapNameFromPrompt,
 } from "./roadmapCreationFlow";
@@ -43,11 +44,13 @@ describe("roadmapCreationFlow", () => {
 		expect(deriveRoadmapNameFromPrompt("Build   an AI\nchatbot")).toBe(
 			"Build an AI chatbot",
 		);
-		expect(buildFallbackRoadmapMetadata("Build an AI support chatbot")).toEqual({
-			name: "Build an AI support chatbot",
-			description: "Roadmap for Build an AI support chatbot.",
-			category: "AI / ML",
-		});
+		expect(buildFallbackRoadmapMetadata("Build an AI support chatbot")).toEqual(
+			{
+				name: "Build an AI support chatbot",
+				description: "Roadmap for Build an AI support chatbot.",
+				category: "AI / ML",
+			},
+		);
 	});
 
 	it("builds a roadmap create payload and only attaches real project ids", () => {
@@ -120,10 +123,52 @@ describe("roadmapCreationFlow", () => {
 			"roadmap-1",
 			expect.stringContaining("Roadmap title: Fitness Buddy"),
 		);
-	expect(setPendingRoadmapAiPrompt).toHaveBeenCalledWith(
-		"roadmap-1",
-		expect.stringContaining("Categories: Health & Fitness"),
-	);
+		expect(setPendingRoadmapAiPrompt).toHaveBeenCalledWith(
+			"roadmap-1",
+			expect.stringContaining("Categories: Health & Fitness"),
+		);
 		expect(setPendingRoadmapMetadataModal).toHaveBeenCalledWith("roadmap-1");
+	});
+
+	it("folds captured intake slots into the agent planning prompt", () => {
+		const prompt = buildRoadmapPlanningPrompt({
+			metadata: {
+				name: "PulseCoach",
+				description: "A fitness roadmap",
+				category: "Health & Fitness",
+			},
+			prompt: "A fitness app",
+			intake: {
+				product: "fitness mobile app",
+				audience: "adults 65+ living independently",
+				features: ["Workout plans", "Reminders"],
+				platform: "Mobile",
+				constraints: "Ship an MVP in 8 weeks",
+			},
+		});
+
+		expect(prompt).toContain("Audience: adults 65+ living independently");
+		expect(prompt).toContain("Platform: Mobile");
+		expect(prompt).toContain(
+			"Must-have v1 capabilities: Workout plans, Reminders",
+		);
+		expect(prompt).toContain("Constraints: Ship an MVP in 8 weeks");
+	});
+
+	it("omits intake lines entirely when no slots were captured", () => {
+		const prompt = buildRoadmapPlanningPrompt({
+			metadata: {
+				name: "PulseCoach",
+				description: "A fitness roadmap",
+				category: "Health & Fitness",
+			},
+			prompt: "A fitness app",
+		});
+
+		expect(prompt).not.toContain("Audience:");
+		expect(prompt).not.toContain("Must-have v1 capabilities:");
+		expect(prompt).toContain(
+			"Create the roadmap epics, features, and tasks from this context.",
+		);
 	});
 });
