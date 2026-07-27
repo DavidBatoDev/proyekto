@@ -7,6 +7,7 @@ import {
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import {
 	type CreateRoadmapDto,
+	type RoadmapIntakeCaptured,
 	roadmapService,
 	type SuggestedRoadmapMetadata,
 } from "@/services/roadmap.service";
@@ -146,6 +147,7 @@ export async function createRoadmapFromMetadata({
 	isAuthenticated,
 	openMetadataModal = false,
 	previewUrl,
+	intake,
 }: {
 	metadata: SuggestedRoadmapMetadata;
 	prompt: string;
@@ -153,6 +155,8 @@ export async function createRoadmapFromMetadata({
 	isAuthenticated: boolean;
 	openMetadataModal?: boolean;
 	previewUrl?: string;
+	/** Slots gathered during guided intake, folded into the planning prompt. */
+	intake?: RoadmapIntakeCaptured;
 }): Promise<Roadmap> {
 	const trimmedPrompt = prompt.trim();
 
@@ -175,7 +179,7 @@ export async function createRoadmapFromMetadata({
 	if (trimmedPrompt) {
 		setPendingRoadmapAiPrompt(
 			roadmap.id,
-			buildRoadmapPlanningPrompt({ metadata, prompt: trimmedPrompt }),
+			buildRoadmapPlanningPrompt({ metadata, prompt: trimmedPrompt, intake }),
 		);
 	}
 	if (openMetadataModal) {
@@ -188,9 +192,11 @@ export async function createRoadmapFromMetadata({
 export function buildRoadmapPlanningPrompt({
 	metadata,
 	prompt,
+	intake,
 }: {
 	metadata: SuggestedRoadmapMetadata;
 	prompt: string;
+	intake?: RoadmapIntakeCaptured;
 }): string {
 	return [
 		`Roadmap title: ${metadata.name.trim() || DEFAULT_ROADMAP_NAME}`,
@@ -199,6 +205,16 @@ export function buildRoadmapPlanningPrompt({
 			: "",
 		metadata.category.trim() ? `Categories: ${metadata.category.trim()}` : "",
 		`Original idea: ${prompt.trim()}`,
+		// Everything intake learned - without these lines the audience, platform,
+		// and agreed v1 scope never reach the agent that generates the epics.
+		intake?.audience?.trim() ? `Audience: ${intake.audience.trim()}` : "",
+		intake?.platform?.trim() ? `Platform: ${intake.platform.trim()}` : "",
+		intake?.features?.length
+			? `Must-have v1 capabilities: ${intake.features.join(", ")}`
+			: "",
+		intake?.constraints?.trim()
+			? `Constraints: ${intake.constraints.trim()}`
+			: "",
 		"",
 		"Create the roadmap epics, features, and tasks from this context.",
 	]

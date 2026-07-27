@@ -5,6 +5,7 @@ import { ChatModule } from '../chat/chat.module';
 import { McpController } from './mcp.controller';
 import { McpTokensController } from './mcp-tokens.controller';
 import { McpAuthGuard } from './mcp-auth.guard';
+import { McpCapabilitiesService } from './mcp-capabilities.service';
 import { McpTokenService } from './mcp-token.service';
 import { McpServerFactory } from './mcp-server.factory';
 import { OAuthConfigService } from './oauth/oauth-config.service';
@@ -25,6 +26,9 @@ import { WellKnownController } from './oauth/well-known.controller';
  *    is additionally gated by MCP_OAUTH_ENABLED and ships dark: while unset the
  *    discovery documents 404 and no WWW-Authenticate challenge is emitted, so
  *    PAT hosts are entirely unaffected.
+ *  - Phase 4 chat writes are gated by MCP_CHAT_WRITE_ENABLED via
+ *    McpCapabilitiesService. MCP_ENABLED is already on in prod, so without that
+ *    flag the new scope would go live on deploy with no activation step.
  */
 @Module({
   imports: [ProjectsModule, RoadmapsModule, ChatModule],
@@ -37,6 +41,7 @@ import { WellKnownController } from './oauth/well-known.controller';
   ],
   providers: [
     McpAuthGuard,
+    McpCapabilitiesService,
     McpTokenService,
     McpServerFactory,
     OAuthConfigService,

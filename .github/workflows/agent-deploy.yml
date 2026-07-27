@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'agent/**'
+      # The image embeds the shared contract (agent/Dockerfile: COPY schemas
+      # /schemas) and reads it at import time, so a schemas-only change must
+      # redeploy the agent — otherwise the running container keeps serving the
+      # previous contract.
+      - 'schemas/**'
       - '.github/workflows/agent-deploy.yml'
   workflow_dispatch:
 

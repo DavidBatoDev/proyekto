@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-07-27 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -264,6 +264,7 @@ use `SupabaseAuthGuard` and are owner-scoped. Full page:
 | GET | /mcp | McpAuth | **405** — stateless mode has no SSE channel |
 | POST | /api/mcp/tokens | Supabase | Issue a PAT — returns the raw `pk_` token once |
 | GET | /api/mcp/tokens | Supabase | List own token metadata (never the hash) |
+| GET | /api/mcp/tokens/scopes | Supabase | `{ scopes }` — scopes a PAT may currently be issued for (dark scopes omitted) |
 | DELETE | /api/mcp/tokens/:id | Supabase | Revoke a PAT (204) |
 
 ### OAuth 2.1 authorization server (Phase 3)

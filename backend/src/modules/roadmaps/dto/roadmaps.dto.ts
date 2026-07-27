@@ -1,14 +1,17 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -42,6 +45,30 @@ export class SuggestRoadmapMetadataDto {
   @IsUUID() @IsOptional() project_id?: string | null;
 }
 
+/** One replayed turn of the objective-step conversation. */
+export class RoadmapIntakeTurnDto {
+  @IsIn(['assistant', 'user']) role: 'assistant' | 'user';
+  @IsString() @IsNotEmpty() @MaxLength(900) content: string;
+}
+
+/**
+ * The intake slots gathered so far. Echoed by the client each turn and merged
+ * additively server-side, so the model can never forget (or clear) a slot it
+ * already filled.
+ */
+export class RoadmapIntakeCapturedDto {
+  @IsString() @IsOptional() @MaxLength(300) product?: string;
+  @IsString() @IsOptional() @MaxLength(200) audience?: string;
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  @ArrayMaxSize(12)
+  @IsOptional()
+  features?: string[];
+  @IsString() @IsOptional() @MaxLength(120) platform?: string;
+  @IsString() @IsOptional() @MaxLength(300) constraints?: string;
+}
+
 export class SuggestRoadmapIntakeStepDto {
   @IsIn(['objective', 'title', 'description'])
   step: 'objective' | 'title' | 'description';
@@ -51,7 +78,31 @@ export class SuggestRoadmapIntakeStepDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() @MaxLength(1200) description?: string;
   @IsString() @IsOptional() @MaxLength(80) category?: string;
+
+  /**
+   * @deprecated superseded by `round`. Still declared so a cached web bundle
+   * that predates the guided intake does not 400 under forbidNonWhitelisted.
+   * Safe to delete once the CDN bundle has rotated.
+   */
   @IsBoolean() @IsOptional() clarification_attempted?: boolean;
+
+  // Guided-intake state (objective step only). @Type is REQUIRED here - the
+  // global ValidationPipe runs whitelist + forbidNonWhitelisted, and without a
+  // declared nested type these are stripped silently rather than validated.
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapIntakeTurnDto)
+  @ArrayMaxSize(12)
+  @IsOptional()
+  turns?: RoadmapIntakeTurnDto[];
+
+  @ValidateNested()
+  @Type(() => RoadmapIntakeCapturedDto)
+  @IsOptional()
+  captured?: RoadmapIntakeCapturedDto;
+
+  @IsInt() @Min(0) @Max(5) @IsOptional() round?: number;
+  @IsBoolean() @IsOptional() force_ready?: boolean;
 }
 
 export class UpdateRoadmapDto {

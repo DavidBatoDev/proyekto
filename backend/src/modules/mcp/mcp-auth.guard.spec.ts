@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { McpAuthGuard, McpAuthenticatedRequest } from './mcp-auth.guard';
 import { McpTokenService } from './mcp-token.service';
+import { McpCapabilitiesService } from './mcp-capabilities.service';
+import { MCP_READ_SCOPES, MCP_WRITE_SCOPES } from './mcp-scopes';
 import { OAuthConfigService } from './oauth/oauth-config.service';
 import { OAuthJwtService } from './oauth/oauth-jwt.service';
 
@@ -47,7 +49,10 @@ function makeGuard(
   } as unknown as ConfigService;
 
   const tokens = { resolveToken } as unknown as McpTokenService;
-  const oauthConfig = new OAuthConfigService(config);
+  const oauthConfig = new OAuthConfigService(
+    config,
+    new McpCapabilitiesService(config),
+  );
   const oauthJwt = new OAuthJwtService(oauthConfig);
   return {
     guard: new McpAuthGuard(config, tokens, oauthConfig, oauthJwt),
@@ -109,8 +114,12 @@ describe('McpAuthGuard', () => {
 
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     expect(request.user.id).toBe('user-2');
-    expect(request.mcpScopes).toContain('roadmaps:read');
-    expect(request.mcpScopes).toContain('chat:read');
+    // Derived from MCP_READ_SCOPES, so a read scope added later cannot miss
+    // this branch — and, structurally, no write scope can ever appear here.
+    expect(request.mcpScopes).toEqual([...MCP_READ_SCOPES]);
+    for (const write of MCP_WRITE_SCOPES) {
+      expect(request.mcpScopes).not.toContain(write);
+    }
   });
 
   it('rejects a non-PAT bearer that fails Supabase verification', async () => {

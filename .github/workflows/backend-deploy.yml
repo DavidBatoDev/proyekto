@@ -38,6 +38,7 @@ jobs:
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
       MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
+      MCP_CHAT_WRITE_ENABLED: ${{ vars.MCP_CHAT_WRITE_ENABLED }}
 
     steps:
       - name: Checkout
@@ -201,6 +202,20 @@ jobs:
             echo "MCP OAuth authorization server enabled for this deploy."
           else
             echo "MCP OAuth disabled (create MCP_OAUTH_JWT_SECRET, then set the MCP_OAUTH_ENABLED repo var to enable)."
+          fi
+
+          # MCP chat writes (Phase 4) — lets a connected agent post, edit, and
+          # unsend messages in project channels. A THIRD gate, needed because
+          # MCP_ENABLED and MCP_OAUTH_ENABLED are already on: without it the new
+          # chat:write scope would go live on deploy, with no activation step.
+          # While unset, the scope cannot be granted, is absent from discovery
+          # and the consent screen, and the tools are never registered.
+          # No secret — the flag is the whole switch.
+          if [[ -n "${MCP_CHAT_WRITE_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},MCP_CHAT_WRITE_ENABLED=true"
+            echo "MCP chat write tools enabled for this deploy."
+          else
+            echo "MCP chat writes disabled (set the MCP_CHAT_WRITE_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

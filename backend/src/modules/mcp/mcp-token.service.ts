@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'crypto';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { McpCapabilitiesService } from './mcp-capabilities.service';
 import { McpScope, sanitizeScopes } from './mcp-scopes';
 
 const TOKEN_PREFIX = 'pk_';
@@ -37,7 +38,10 @@ export interface McpResolvedToken {
 export class McpTokenService {
   private readonly logger = new Logger(McpTokenService.name);
 
-  constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
+  constructor(
+    @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
+    private readonly capabilities: McpCapabilitiesService,
+  ) {}
 
   private hash(token: string): string {
     return createHash('sha256').update(token).digest('hex');
@@ -54,6 +58,18 @@ export class McpTokenService {
     expiresAt?: string | null,
   ): Promise<McpTokenIssued> {
     const scopes: McpScope[] = sanitizeScopes(requestedScopes);
+    // A scope can be a valid enum member and still be dark (see
+    // McpCapabilitiesService). Refuse rather than silently dropping it, so the
+    // caller learns the capability is off instead of getting a token that
+    // quietly can't do what they asked for.
+    const disabled = scopes.filter(
+      (scope) => !this.capabilities.isScopeEnabled(scope),
+    );
+    if (disabled.length > 0) {
+      throw new Error(
+        `MCP scope${disabled.length > 1 ? 's' : ''} not currently available: ${disabled.join(', ')}`,
+      );
+    }
     const raw = TOKEN_PREFIX + randomBytes(TOKEN_BYTES).toString('base64url');
     const tokenHash = this.hash(raw);
     const tokenPrefix = raw.slice(0, TOKEN_PREFIX.length + 8);

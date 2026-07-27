@@ -36,6 +36,49 @@
     "data",
     "targets"
   ],
+  "update_node_patch_fields": {
+    "roadmap": [
+      "name",
+      "description",
+      "status",
+      "start_date",
+      "end_date",
+      "settings"
+    ],
+    "epic": [
+      "title",
+      "description",
+      "status",
+      "priority",
+      "color",
+      "start_date",
+      "end_date",
+      "tags"
+    ],
+    "feature": [
+      "title",
+      "description",
+      "is_deliverable",
+      "start_date",
+      "end_date"
+    ],
+    "task": [
+      "title",
+      "description",
+      "status",
+      "priority",
+      "assignee_id",
+      "due_date"
+    ],
+    "milestone": [
+      "title",
+      "description",
+      "status",
+      "target_date",
+      "completed_date",
+      "color"
+    ]
+  },
   "resolver_tool": {
     "name": "resolve_node_reference",
     "required": [

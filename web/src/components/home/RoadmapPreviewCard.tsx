@@ -7,6 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { isGeneratedRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 
 export type RoadmapCardFeature = {
 	id: string;
@@ -27,6 +28,13 @@ export type RoadmapPreviewCardProps = {
 	title: string;
 	description: string;
 	epics: RoadmapCardEpic[];
+	/**
+	 * Banner/thumbnail image for the card. Rendered as a band above the epic
+	 * overview when it points at a real image - the deterministic gradient
+	 * placeholder (every roadmap has one) is skipped so those cards keep the
+	 * full-height epic preview.
+	 */
+	previewImageUrl?: string | null;
 	selected?: boolean;
 	onSelect?: () => void;
 	interactive?: boolean;
@@ -39,22 +47,26 @@ export type RoadmapPreviewCardProps = {
 };
 
 const MAX_EPICS = 4;
+// A banner eats into the preview area, so fewer rows fit above the fold.
+const MAX_EPICS_WITH_BANNER = 3;
 
 export function EpicOverview({
 	epics,
 	selected = false,
 	variant,
+	maxVisible = MAX_EPICS,
 }: {
 	epics: RoadmapCardEpic[];
 	selected?: boolean;
 	variant: RoadmapPreviewCardProps["variant"];
+	maxVisible?: number;
 }) {
 	const allEpics = [...epics].sort((a, b) => a.position - b.position);
 	const [expandedEpicIds, setExpandedEpicIds] = useState<Set<string>>(() =>
 		allEpics[0] ? new Set([allEpics[0].id]) : new Set(),
 	);
-	const displayedEpics = selected ? allEpics : allEpics.slice(0, MAX_EPICS);
-	const remainingCount = allEpics.length - MAX_EPICS;
+	const displayedEpics = selected ? allEpics : allEpics.slice(0, maxVisible);
+	const remainingCount = allEpics.length - maxVisible;
 
 	const toggleEpic = (epicId: string) =>
 		setExpandedEpicIds((current) => {
@@ -66,7 +78,7 @@ export function EpicOverview({
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
-			<div className="mb-2 flex items-center justify-between px-1">
+			<div className="mb-2 flex items-center justify-between px-1 pt-2">
 				<div className="flex min-w-0 items-center gap-2">
 					<div className="rounded-md bg-foreground p-1.5 text-background shadow-sm">
 						<Layers3 className="h-3.5 w-3.5" />
@@ -148,12 +160,12 @@ export function EpicOverview({
 											event.stopPropagation();
 											toggleEpic(epic.id);
 										}}
-										className="flex h-14 w-full shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-left shadow-sm transition-colors hover:border-input hover:bg-muted"
+										className="flex h-10 w-full shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-left shadow-sm transition-colors hover:border-input hover:bg-muted"
 									>
 										{rowContent}
 									</button>
 								) : (
-									<div className="flex h-14 w-full shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-left shadow-sm">
+									<div className="flex h-10 w-full shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-left shadow-sm">
 										{rowContent}
 									</div>
 								)}
@@ -203,6 +215,7 @@ export function RoadmapPreviewCard({
 	title,
 	description,
 	epics,
+	previewImageUrl,
 	selected = false,
 	onSelect,
 	interactive = false,
@@ -215,6 +228,14 @@ export function RoadmapPreviewCard({
 }: RoadmapPreviewCardProps) {
 	const cardRef = useRef<HTMLDivElement>(null);
 	const [internalSelected, setInternalSelected] = useState(false);
+	// A broken URL falls back to the epic overview; tracking the URL (not a
+	// boolean) means a later, different image still gets its own chance.
+	const [failedBannerUrl, setFailedBannerUrl] = useState<string | null>(null);
+	const bannerUrl = previewImageUrl?.trim() || null;
+	const showBanner =
+		Boolean(bannerUrl) &&
+		!isGeneratedRoadmapThumbnailDataUri(bannerUrl) &&
+		failedBannerUrl !== bannerUrl;
 	const canSelect = Boolean(onSelect) || interactive;
 	const isSelected = onSelect
 		? selected
@@ -274,8 +295,29 @@ export function RoadmapPreviewCard({
 		>
 			{menu}
 			<div className="flex h-full flex-col">
-				<div className="h-[330px] overflow-hidden p-4">
-					<EpicOverview epics={epics} selected={isSelected} variant={variant} />
+				<div className="flex h-[330px] flex-col gap-3 overflow-hidden">
+					{showBanner && bannerUrl ? (
+						// The banner sits above the epics rather than replacing them, and
+						// gives up height once the card is selected so the expanded epic
+						// list (and its feature toggles) keep room to breathe.
+						<img
+							src={bannerUrl}
+							alt=""
+							data-roadmap-card-banner=""
+							onError={() => setFailedBannerUrl(bannerUrl)}
+							className={`w-full shrink-0 object-cover transition-[height] duration-200 ${
+								isSelected ? "h-16" : "h-28"
+							}`}
+						/>
+					) : null}
+					<div className="min-h-0 flex-1 px-4">
+						<EpicOverview
+							epics={epics}
+							selected={isSelected}
+							variant={variant}
+							maxVisible={showBanner ? MAX_EPICS_WITH_BANNER : MAX_EPICS}
+						/>
+					</div>
 				</div>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-2.5">
 					<div className="flex items-start justify-between gap-2">

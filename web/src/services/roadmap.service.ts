@@ -133,6 +133,21 @@ export interface SuggestedRoadmapMetadata {
 	category: string;
 }
 
+/** One replayed turn of the guided-intake conversation. */
+export interface RoadmapIntakeTurn {
+	role: "assistant" | "user";
+	content: string;
+}
+
+/** Intake slots. Echoed each turn and merged additively server-side. */
+export interface RoadmapIntakeCaptured {
+	product?: string;
+	audience?: string;
+	features?: string[];
+	platform?: string;
+	constraints?: string;
+}
+
 export interface SuggestRoadmapIntakeStepDto {
 	step: "objective" | "title" | "description";
 	prompt: string;
@@ -140,7 +155,12 @@ export interface SuggestRoadmapIntakeStepDto {
 	description?: string;
 	category?: string;
 	project_id?: string | null;
+	/** @deprecated superseded by `round`. */
 	clarification_attempted?: boolean;
+	turns?: RoadmapIntakeTurn[];
+	captured?: RoadmapIntakeCaptured;
+	round?: number;
+	force_ready?: boolean;
 }
 
 export type RoadmapObjectiveDecision = "ready" | "clarify" | "cancel";
@@ -148,6 +168,20 @@ export type RoadmapObjectiveDecision = "ready" | "clarify" | "cancel";
 export interface SuggestedRoadmapIntakeOption {
 	key: "A" | "B" | "C";
 	value: string;
+}
+
+/**
+ * Structurally identical to `AgentClarifierQuestion` so it can be handed
+ * straight to RoadmapAiClarifierCard, without coupling intake to the
+ * backend/agent operations contract.
+ */
+export interface SuggestedRoadmapIntakeQuestion {
+	id: string;
+	header?: string | null;
+	question: string;
+	multi_select: boolean;
+	allow_custom: boolean;
+	options: { label: string; description?: string | null }[];
 }
 
 export interface SuggestedRoadmapIntakeStep {
@@ -158,6 +192,11 @@ export interface SuggestedRoadmapIntakeStep {
 	refined_prompt?: string;
 	audience?: string;
 	scope?: string;
+	// Guided intake (objective step). Absent when the backend flag is off.
+	questions?: SuggestedRoadmapIntakeQuestion[];
+	captured?: RoadmapIntakeCaptured;
+	can_build_anyway?: boolean;
+	round?: number;
 }
 
 export interface UpsertFullRoadmapTaskDto {
@@ -449,9 +488,9 @@ export const roadmapService = {
 	 */
 	async getAllFull(): Promise<FullRoadmapWithProject[]> {
 		try {
-			const response = await apiClient.get<ApiResponse<FullRoadmapWithProject[]>>(
-				"/api/roadmaps/all-full",
-			);
+			const response = await apiClient.get<
+				ApiResponse<FullRoadmapWithProject[]>
+			>("/api/roadmaps/all-full");
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, "Get all roadmaps full");
@@ -477,10 +516,9 @@ export const roadmapService = {
 		data: SuggestRoadmapMetadataDto,
 	): Promise<SuggestedRoadmapMetadata> {
 		try {
-			const response = await apiClient.post<ApiResponse<SuggestedRoadmapMetadata>>(
-				"/api/roadmaps/suggest-metadata",
-				data,
-			);
+			const response = await apiClient.post<
+				ApiResponse<SuggestedRoadmapMetadata>
+			>("/api/roadmaps/suggest-metadata", data);
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, "Suggest roadmap metadata");
@@ -1027,18 +1065,26 @@ export const taskService = {
 		}
 	},
 
-	async getDependencies(taskId: string): Promise<{ blocking: TaskDependency[]; blocked_by: TaskDependency[] }> {
+	async getDependencies(
+		taskId: string,
+	): Promise<{ blocking: TaskDependency[]; blocked_by: TaskDependency[] }> {
 		try {
-			const response = await apiClient.get<ApiResponse<{ blocking: TaskDependency[]; blocked_by: TaskDependency[] }>>(
-				`/api/tasks/${taskId}/dependencies`,
-			);
+			const response = await apiClient.get<
+				ApiResponse<{
+					blocking: TaskDependency[];
+					blocked_by: TaskDependency[];
+				}>
+			>(`/api/tasks/${taskId}/dependencies`);
 			return response.data.data ?? { blocking: [], blocked_by: [] };
 		} catch (error) {
 			throw handleServiceError(error, `Get dependencies for task ${taskId}`);
 		}
 	},
 
-	async addDependency(taskId: string, blockingTaskId: string): Promise<TaskDependency> {
+	async addDependency(
+		taskId: string,
+		blockingTaskId: string,
+	): Promise<TaskDependency> {
 		try {
 			const response = await apiClient.post<ApiResponse<TaskDependency>>(
 				`/api/tasks/${taskId}/dependencies`,
@@ -1052,7 +1098,9 @@ export const taskService = {
 
 	async removeDependency(taskId: string, dependencyId: string): Promise<void> {
 		try {
-			await apiClient.delete(`/api/tasks/${taskId}/dependencies/${dependencyId}`);
+			await apiClient.delete(
+				`/api/tasks/${taskId}/dependencies/${dependencyId}`,
+			);
 		} catch (error) {
 			throw handleServiceError(error, `Remove dependency ${dependencyId}`);
 		}

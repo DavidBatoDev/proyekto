@@ -145,7 +145,13 @@ export class OAuthService {
       throw fail('invalid_request', 'Unknown resource indicator.');
     }
 
-    const requestedScopes = parseScopes(query.scope);
+    // Filtered against the ENABLED set, not merely the known set: a dark scope
+    // must never reach the consent screen, or a user could grant a capability
+    // that has not been switched on.
+    const requestedScopes = parseScopes(
+      query.scope,
+      this.config.supportedScopes(),
+    );
     if (requestedScopes.length === 0) {
       throw fail('invalid_scope', 'No supported scopes were requested.');
     }
@@ -551,15 +557,24 @@ function stripSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-/** Keep only scopes this server actually understands; de-dupe, stable order. */
-export function parseScopes(raw?: string): string[] {
+/**
+ * Keep only scopes this server actually understands; de-dupe, stable order.
+ *
+ * `allowed` defaults to every scope the server knows about. Pass the currently
+ * ENABLED set when handling a fresh authorization request, so a dark scope is
+ * dropped before it can reach the consent screen.
+ */
+export function parseScopes(
+  raw?: string,
+  allowed: readonly string[] = OAUTH_SUPPORTED_SCOPES,
+): string[] {
   if (!raw) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const scope of raw.split(/[\s+]+/)) {
     const s = scope.trim();
     if (!s || seen.has(s)) continue;
-    if (!OAUTH_SUPPORTED_SCOPES.includes(s)) continue;
+    if (!allowed.includes(s)) continue;
     seen.add(s);
     out.push(s);
   }

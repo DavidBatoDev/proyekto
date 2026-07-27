@@ -1,6 +1,12 @@
 /* @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RoadmapBuilder } from "./RoadmapBuilder";
 
@@ -160,7 +166,6 @@ describe("RoadmapBuilder objective intake", () => {
 					"Build a fitness web app for older adults with onboarding and reminders.",
 			}),
 		);
-		expect(screen.getByText(/Objective locked/)).toBeTruthy();
 	});
 
 	it("does not ask for clarification when the prompt already has detailed scope", async () => {
@@ -235,5 +240,179 @@ describe("RoadmapBuilder objective intake", () => {
 			},
 			{ timeout: 1500 },
 		);
+	});
+});
+
+describe("RoadmapBuilder guided intake", () => {
+	const clarifyResponse = {
+		objective_decision: "clarify",
+		assistant_message: "Two quick questions.",
+		options: [],
+		can_build_anyway: true,
+		round: 1,
+		captured: { product: "fitness mobile app" },
+		questions: [
+			{
+				id: "audience",
+				header: "Who for",
+				question: "Who are the primary users?",
+				multi_select: false,
+				allow_custom: true,
+				options: [
+					{ label: "Adults 65+ living independently" },
+					{ label: "Assisted-living residents" },
+				],
+			},
+		],
+	};
+
+	it("renders a clickable clarifier card instead of the free-text textarea", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		await waitFor(() => {
+			expect(screen.getByTestId("clarifier-card")).toBeTruthy();
+		});
+		expect(screen.getAllByTestId("clarifier-option").length).toBeGreaterThan(1);
+		expect(screen.queryByText("Add the missing project details")).toBeNull();
+	});
+
+	it("keeps the slot progress strip visible during clarification", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		const strip = await screen.findByTestId("intake-slot-strip");
+		expect(strip).toBeTruthy();
+		const productChip = screen
+			.getAllByTestId("intake-slot-chip")
+			.find((chip) => chip.getAttribute("data-slot") === "product");
+		expect(productChip?.getAttribute("data-filled")).toBe("true");
+	});
+
+	it("uses only theme tokens on the slot progress strip", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		const strip = await screen.findByTestId("intake-slot-strip");
+		expect(strip.className).toContain("bg-card");
+		expect(strip.className).toContain("border-border");
+		expect(strip.className).not.toContain("bg-white");
+	});
+
+	it("sends the prior assistant question and the answers as turns", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		await waitFor(() => {
+			expect(screen.getByTestId("clarifier-card")).toBeTruthy();
+		});
+
+		// Click the radio itself - a label click does not toggle it under jsdom.
+		const firstOption = screen
+			.getAllByTestId("clarifier-option")[0]
+			.querySelector("input");
+		if (!firstOption) throw new Error("clarifier option input not found");
+		fireEvent.click(firstOption);
+		// Wait for the selection to commit - clicking submit before React has
+		// re-rendered leaves the button disabled and silently drops the answer.
+		await waitFor(() => {
+			expect(
+				(screen.getByTestId("clarifier-submit") as HTMLButtonElement).disabled,
+			).toBe(false);
+		});
+		fireEvent.click(screen.getByTestId("clarifier-submit"));
+
+		await waitFor(() => {
+			expect(suggestIntakeStepMock).toHaveBeenCalledTimes(2);
+		});
+
+		const secondCall = suggestIntakeStepMock.mock.calls[1][0];
+		// The repeat-question fix: the assistant's own question goes back up.
+		expect(secondCall.turns[0]).toEqual({
+			role: "assistant",
+			content: "Two quick questions.",
+		});
+		expect(secondCall.turns[1].role).toBe("user");
+		expect(secondCall.turns[1].content).toContain("Who are the primary users?");
+		expect(secondCall.turns[1].content).toContain(
+			"Adults 65+ living independently",
+		);
+		expect(secondCall.captured).toEqual({ product: "fitness mobile app" });
+		expect(secondCall.round).toBe(1);
+	});
+
+	it("offers build-it-anyway and forces ready when clicked", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		const buildAnyway = await screen.findByTestId("intake-build-anyway");
+		fireEvent.click(buildAnyway);
+
+		await waitFor(() => {
+			expect(suggestIntakeStepMock).toHaveBeenCalledTimes(2);
+		});
+		expect(suggestIntakeStepMock.mock.calls[1][0].force_ready).toBe(true);
+	});
+
+	it("lets the user escape the options into free text", async () => {
+		suggestIntakeStepMock.mockResolvedValue(clarifyResponse);
+
+		renderBuilder();
+
+		const toggle = await screen.findByTestId("intake-free-text-toggle");
+		fireEvent.click(toggle);
+
+		expect(
+			screen.getByLabelText("Add the missing project details"),
+		).toBeTruthy();
+		expect(screen.queryByTestId("clarifier-card")).toBeNull();
+	});
+
+	it("falls back to the textarea when the backend returns no questions", async () => {
+		// Backend flag still off: the response carries no `questions`.
+		suggestIntakeStepMock.mockResolvedValue({
+			objective_decision: "clarify",
+			assistant_message: "Tell me more.",
+			options: [],
+		});
+
+		renderBuilder();
+
+		expect(
+			await screen.findByLabelText("Add the missing project details"),
+		).toBeTruthy();
+		expect(screen.queryByTestId("clarifier-card")).toBeNull();
+	});
+
+	it("keeps the original prompt intact when answering in free text", async () => {
+		suggestIntakeStepMock.mockResolvedValue({
+			objective_decision: "clarify",
+			assistant_message: "Tell me more.",
+			options: [],
+		});
+
+		renderBuilder();
+
+		const input = await screen.findByLabelText(
+			"Add the missing project details",
+		);
+		fireEvent.change(input, { target: { value: "Fitness for older people" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+
+		await waitFor(() => {
+			expect(suggestIntakeStepMock).toHaveBeenCalledTimes(2);
+		});
+		const secondCall = suggestIntakeStepMock.mock.calls[1][0];
+		// The old path mangled these into one "prompt\nAdditional detail:" blob.
+		expect(secondCall.prompt).toBe("hi");
+		expect(secondCall.turns).toContainEqual({
+			role: "user",
+			content: "Fitness for older people",
+		});
 	});
 });

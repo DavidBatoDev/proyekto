@@ -9,12 +9,14 @@ export const MCP_READ_SCOPES = [
 	"roadmaps:read",
 	"knowledge:read",
 	"chat:read",
+	"ai-sessions:read",
 ] as const;
 
 export const MCP_WRITE_SCOPES = [
 	"roadmaps:write",
 	"tasks:write",
 	"tasks:assign",
+	"chat:write",
 ] as const;
 
 export type McpReadScope = (typeof MCP_READ_SCOPES)[number];
@@ -26,9 +28,11 @@ export const MCP_SCOPE_LABELS: Record<McpScope, string> = {
 	"roadmaps:read": "Read roadmaps & tasks",
 	"knowledge:read": "Search project knowledge",
 	"chat:read": "Read chat channels",
+	"ai-sessions:read": "Read your AI planning threads",
 	"roadmaps:write": "Edit roadmaps",
 	"tasks:write": "Create & edit tasks",
 	"tasks:assign": "Assign tasks",
+	"chat:write": "Post & delete chat messages",
 };
 
 /** Non-secret token metadata returned by the list endpoint. */
@@ -65,6 +69,25 @@ export async function listMcpTokens(): Promise<McpTokenSummary[]> {
 		return data.data;
 	} catch (err) {
 		throw toError(err, "Failed to load access tokens");
+	}
+}
+
+/**
+ * Which scopes a token may currently be issued for.
+ *
+ * A scope can exist in the shared enum but still be switched off server-side, so
+ * the picker asks rather than assuming — otherwise it offers a checkbox whose
+ * only possible outcome is an error. Falls back to the full set if the call
+ * fails, so a blip degrades to today's behaviour rather than an empty picker.
+ */
+export async function listAvailableMcpScopes(): Promise<McpScope[]> {
+	try {
+		const { data } = await apiClient.get<{ data: { scopes: McpScope[] } }>(
+			"/api/mcp/tokens/scopes",
+		);
+		return data.data.scopes;
+	} catch {
+		return [...MCP_READ_SCOPES, ...MCP_WRITE_SCOPES];
 	}
 }
 

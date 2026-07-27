@@ -24,9 +24,13 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 	"roadmaps:read": "Roadmaps, epics, features, tasks and milestones",
 	"knowledge:read": "Search across chat, comments, briefs and activity",
 	"chat:read": "Messages in the channels you're a member of",
+	"ai-sessions:read":
+		"Your own AI planning threads for a roadmap — never a teammate's",
 	"roadmaps:write": "Add, edit, move and delete roadmap items",
 	"tasks:write": "Create and update tasks, and post comments on them",
 	"tasks:assign": "Change who a task is assigned to — this notifies them",
+	"chat:write":
+		"Post, edit and delete messages in channels — people will see them",
 	[OFFLINE_ACCESS]: "Keep working without asking you to approve again",
 };
 

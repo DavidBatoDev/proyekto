@@ -148,7 +148,7 @@ export function registerRoadmapWriteTools(
     {
       title: 'Revert a roadmap change',
       description:
-        'Undo a previously committed change by its change_id (from a commit result or roadmap_get_summary timeline): restores the roadmap to the state just before that change, which also undoes any changes made after it. Confirm with the user first — this changes the live roadmap.',
+        'Undo a previously committed change by its change_id (from a roadmap_commit_operations result, or from roadmap_list_changes): restores the roadmap to the state just before that change, which also undoes any changes made after it. Revert is only available for changes YOU made within the last 30 days — older changes, and changes made by other people, return NOT_FOUND even though roadmap_list_changes still shows them. Confirm with the user first: this changes the live roadmap.',
       inputSchema: {
         roadmap_id: z.string().uuid(),
         change_id: z.string().uuid(),

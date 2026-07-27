@@ -9,12 +9,27 @@ export const CUSTOM_SENTINEL = "__custom__";
 const MAX_DISPLAY_LABEL_CHARS = 140;
 
 /**
+ * The minimum a card needs to render. Widened from `AgentClarifierCard` so
+ * non-agent surfaces (roadmap intake) can reuse the card without inheriting
+ * the agent's `lane` or its legacy flat mirror fields. `AgentClarifierCard` is
+ * assignable to this, so the assistant panel keeps working unchanged.
+ */
+export type ClarifierCardLike = {
+	question_id: string;
+	question?: string | null;
+	options?: string[];
+	allow_custom?: boolean;
+	questions?: AgentClarifierQuestion[];
+	lane?: AgentClarifierCard["lane"];
+};
+
+/**
  * Prefer the structured `questions` array; synthesize a single radio question
  * from the legacy flat fields otherwise (cards from older agents, old
  * persisted `metadata.clarifier` rows, budget cards).
  */
 export const resolveClarifierQuestions = (
-	card: AgentClarifierCard,
+	card: ClarifierCardLike,
 ): AgentClarifierQuestion[] => {
 	if (Array.isArray(card.questions) && card.questions.length > 0) {
 		return card.questions.filter((q) => (q.question ?? "").trim().length > 0);

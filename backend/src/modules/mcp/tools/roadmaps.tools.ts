@@ -127,4 +127,35 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
         );
       }),
   );
+
+  defineTool(
+    server,
+    'roadmap_list_changes',
+    {
+      title: 'List roadmap changes',
+      description:
+        'List committed changes to a roadmap, newest first — who changed it, when, and what the change did. Set include_operations to see the exact operations (they can be large, so leave it off unless you need them). Use `before` (a committed_at timestamp from a previous page) to page backwards. Note that a change listed here is not necessarily revertable: see roadmap_revert_change.',
+      inputSchema: {
+        roadmap_id: z.string().uuid(),
+        limit: z.number().int().min(1).optional(),
+        before: z.string().optional(),
+        include_operations: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ roadmap_id, limit, before, include_operations }) =>
+      runTool(async () => {
+        requireScope(deps.caller, 'roadmaps:read');
+        const changes = await deps.s.roadmapAi.listChangeHistory(
+          roadmap_id,
+          uid,
+          {
+            limit: clampLimit(limit, deps.s.maxPageSize, 25),
+            before,
+            includeOperations: include_operations === true,
+          },
+        );
+        return { changes };
+      }),
+  );
 }

@@ -38,6 +38,15 @@ const agentRegistryPath = path.join(
   'tools',
   'registry.py',
 );
+const backendAiServicePath = path.join(
+  root,
+  'backend',
+  'src',
+  'modules',
+  'roadmaps',
+  'services',
+  'roadmap-ai.service.ts',
+);
 
 function readUtf8(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -131,6 +140,69 @@ function extractPythonClassFields(content, className) {
   return fields;
 }
 
+/**
+ * Parse the `allowedPatchFields(nodeType)` switch in roadmap-ai.service.ts into
+ * { nodeType: [field, ...] }. This allow-list is the ONLY thing standing between
+ * an LLM-authored patch and the database, and it exists in three places (shared
+ * schema, backend switch, agent stage-time guard). A silent drift here fails the
+ * whole commit at apply time with "Field X is not allowed for update_node",
+ * which the model cannot see and therefore cannot self-correct — so parity is
+ * enforced here instead.
+ */
+function extractAllowedPatchFields(content) {
+  const fnStart = content.indexOf('private allowedPatchFields(');
+  if (fnStart === -1) {
+    throw new Error('Could not find allowedPatchFields in roadmap-ai.service.ts');
+  }
+  // Bound the scan to the switch body so a later `case 'task':` in an unrelated
+  // method cannot leak in.
+  const body = content.slice(fnStart, fnStart + 2000);
+  const result = {};
+  for (const match of body.matchAll(
+    /case '([a-z_]+)':\s*\n\s*return \[([\s\S]*?)\];/g,
+  )) {
+    result[match[1]] = [...match[2].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  }
+  if (Object.keys(result).length === 0) {
+    throw new Error('allowedPatchFields switch parsed to zero node types');
+  }
+  return result;
+}
+
+function comparePatchFieldMatrix(schemaMatrix, backendMatrix, nodeTypes) {
+  const failures = [];
+  if (!schemaMatrix || typeof schemaMatrix !== 'object') {
+    return ['registry.update_node_patch_fields missing from shared schema'];
+  }
+  for (const nodeType of nodeTypes) {
+    const expected = schemaMatrix[nodeType];
+    const actual = backendMatrix[nodeType];
+    if (!Array.isArray(expected)) {
+      failures.push(`registry.update_node_patch_fields missing node type "${nodeType}"`);
+      continue;
+    }
+    if (!Array.isArray(actual)) {
+      failures.push(`backend.allowedPatchFields missing node type "${nodeType}"`);
+      continue;
+    }
+    const drift = compare(
+      `update_node_patch_fields.${nodeType}`,
+      [...expected].sort(),
+      [...actual].sort(),
+    );
+    if (drift) failures.push(drift);
+  }
+  const extraBackend = Object.keys(backendMatrix).filter(
+    (key) => !nodeTypes.includes(key),
+  );
+  if (extraBackend.length > 0) {
+    failures.push(
+      `backend.allowedPatchFields has unknown node types ${JSON.stringify(extraBackend)}`,
+    );
+  }
+  return failures;
+}
+
 function compare(label, expected, actual) {
   if (JSON.stringify(expected) === JSON.stringify(actual)) {
     return null;
@@ -144,6 +216,7 @@ function main() {
   const backendContent = readUtf8(backendDtoPath);
   const agentContent = readUtf8(agentOpsPath);
   const registryContent = readUtf8(agentRegistryPath);
+  const backendAiServiceContent = readUtf8(backendAiServicePath);
 
   const failures = [];
   const canonicalOps = Object.keys(
@@ -219,6 +292,14 @@ function main() {
       `canonical.operations.strict_mode_incompatible: ${strictCompatViolation}`,
     );
   }
+
+  failures.push(
+    ...comparePatchFieldMatrix(
+      schema.update_node_patch_fields,
+      extractAllowedPatchFields(backendAiServiceContent),
+      schema.node_types ?? [],
+    ),
+  );
 
   if (!Array.isArray(schema.operation_fields) || !schema.operation_fields.includes('targets')) {
     failures.push('registry.operation_fields missing "targets"');

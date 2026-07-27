@@ -212,6 +212,7 @@ export function RoadmapsGrid() {
 									title={template.title}
 									description={template.category}
 									epics={template.preview.epics}
+									previewImageUrl={template.preview.preview_url}
 									selected={isSelected}
 									onSelect={selectCard}
 									className={

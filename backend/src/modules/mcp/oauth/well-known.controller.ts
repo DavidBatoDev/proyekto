@@ -1,10 +1,7 @@
 import { Controller, Get, NotFoundException, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { RawResponse } from '../../../common/decorators/raw-response.decorator';
-import {
-  OAuthConfigService,
-  OAUTH_SUPPORTED_SCOPES,
-} from './oauth-config.service';
+import { OAuthConfigService } from './oauth-config.service';
 
 /**
  * OAuth discovery documents.
@@ -59,7 +56,7 @@ export class WellKnownController {
       resource: this.config.resource,
       // Claude uses the FIRST entry and does not fall back — list only ours.
       authorization_servers: [this.config.issuer],
-      scopes_supported: [...OAUTH_SUPPORTED_SCOPES],
+      scopes_supported: [...this.config.supportedScopes()],
       bearer_methods_supported: ['header'],
       resource_documentation: 'https://proyekto.tech',
     };
@@ -89,7 +86,7 @@ export class WellKnownController {
       token_endpoint: `${issuer}/oauth/token`,
       registration_endpoint: `${issuer}/oauth/register`,
       revocation_endpoint: `${issuer}/oauth/revoke`,
-      scopes_supported: [...OAUTH_SUPPORTED_SCOPES],
+      scopes_supported: [...this.config.supportedScopes()],
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       // Claude verifies S256 support here before starting the flow.

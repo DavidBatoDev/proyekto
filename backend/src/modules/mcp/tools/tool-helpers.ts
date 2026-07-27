@@ -11,6 +11,7 @@ import type { RoadmapAiProjectContextService } from '../../roadmaps/services/roa
 import type { RoadmapAiKnowledgeService } from '../../roadmaps/services/roadmap-ai-knowledge.service';
 import type { TasksService } from '../../roadmaps/services/tasks.service';
 import type { TaskExtrasService } from '../../roadmaps/services/task-extras.service';
+import type { RoadmapAiSessionsService } from '../../roadmaps/services/roadmap-ai-sessions.service';
 import type { ChatService } from '../../chat/chat.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { McpScope } from '../mcp-scopes';
@@ -33,6 +34,7 @@ export interface McpServices {
   knowledge: RoadmapAiKnowledgeService;
   tasks: TasksService;
   taskExtras: TaskExtrasService;
+  aiSessions: RoadmapAiSessionsService;
   chat: ChatService;
   audit: AuditService;
   db: SupabaseClient;

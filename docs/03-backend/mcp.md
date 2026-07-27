@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-07-27 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -8,11 +8,12 @@ Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP host
 in the `mcp` backend module ([`backend/src/modules/mcp/`](../../backend/src/modules/mcp/))
 and reuses the existing project / roadmap / chat / knowledge / task domain
 services **in-process**, so every tool re-checks live authorization on each call
-— a scope on the token is necessary but never sufficient. **Phases 1–3 are
-current.** Two independent flags gate it: `MCP_ENABLED` covers the whole surface
-(while unset `/mcp` returns **503** and the PAT routes deny), and
-`MCP_OAUTH_ENABLED` is a **second** gate over the Phase-3 OAuth 2.1 authorization
-server, which ships dark on top of an already-live MCP.
+— a scope on the token is necessary but never sufficient. **Phases 1–4 are
+current.** Three independent flags gate it: `MCP_ENABLED` covers the whole
+surface (while unset `/mcp` returns **503** and the PAT routes deny),
+`MCP_OAUTH_ENABLED` is a **second** gate over the Phase-3 OAuth 2.1
+authorization server, and `MCP_CHAT_WRITE_ENABLED` is a **third**, narrower gate
+over the Phase-4 `chat:write` scope and its three chat write tools.
 
 > **⚠️ Writes are opt-in per credential.** A token only mutates if it carries the
 > relevant `*:write` scope **and** the caller holds the live Proyekto permission.
@@ -72,6 +73,11 @@ Identity is **always** derived from the token, never from tool inputs.
 | **OAuth access token** | a stateless HS256 JWT this server minted, audience-bound to the MCP resource | exactly the scopes in the `scope` claim |
 | **Session JWT** (fallback) | a live Supabase HS256 access token (local verify, mirrors `SupabaseAuthGuard`) | **all** read scopes — a dev/Inspector convenience |
 
+The fallback's scope list is spread from `MCP_READ_SCOPES` rather than spelled
+out, so a read scope added later can't silently miss that branch and — because
+the constant holds only read scopes — no write scope can structurally leak into
+it.
+
 Order matters: a `pk_` prefix short-circuits to the PAT path, then the OAuth
 verify runs (only while `MCP_OAUTH_ENABLED` is on), then the Supabase-session
 fallback. The session fallback grants every **read** scope so a logged-in
@@ -95,39 +101,77 @@ exactly as in Phases 1–2.
 ## Scopes
 
 Coarse OAuth-style grants
-([`mcp-scopes.ts`](../../backend/src/modules/mcp/mcp-scopes.ts)) — seven of them,
-carried either on a PAT or in an OAuth access token. PAT issuance rejects any
-unknown scope string and the OAuth server drops any it doesn't recognize, so a
-credential can't carry a grant no tool honors. Every tool requires **both** its
-scope **and** the live Proyekto project/roadmap permission.
+([`mcp-scopes.ts`](../../backend/src/modules/mcp/mcp-scopes.ts)) — nine of them,
+five read and four write, carried either on a PAT or in an OAuth access token.
+PAT issuance rejects any unknown scope string and the OAuth server drops any it
+doesn't recognize, so a credential can't carry a grant no tool honors. Every tool
+requires **both** its scope **and** the live Proyekto project/roadmap permission.
 
 | Scope | Kind | Covers |
 | --- | --- | --- |
 | `projects:read` | read | project list/detail, members |
-| `roadmaps:read` | read | roadmap graph, nodes, tasks |
+| `roadmaps:read` | read | roadmap graph, nodes, tasks, durable change history |
 | `knowledge:read` | read | RAG search over project knowledge |
 | `chat:read` | read | chat rooms + messages |
+| `ai-sessions:read` | read | the caller's **own** roadmap AI planning threads (Phase 4) |
 | `roadmaps:write` | write | structural roadmap operations (preview / commit / revert) |
 | `tasks:write` | write | create/update tasks, add task comments |
 | `tasks:assign` | write | set a task's assignee set (notifies newly-assigned) |
+| `chat:write` | write | send / edit / unsend **channel** messages (Phase 4) — dark unless `MCP_CHAT_WRITE_ENABLED` |
 
-The OAuth server advertises those seven **plus `offline_access`**
-(`OAUTH_SUPPORTED_SCOPES` in
-[`oauth-config.service.ts`](../../backend/src/modules/mcp/oauth/oauth-config.service.ts)).
-`offline_access` is the standard OAuth signal *"give me a refresh token"*, **not**
-a Proyekto permission: it is honoured by minting a refresh token and then
-filtered out of the access token's MCP scope set, so it grants no tool access.
+The OAuth server advertises the currently **enabled** scopes **plus
+`offline_access`** (`supportedScopes()` in
+[`oauth-config.service.ts`](../../backend/src/modules/mcp/oauth/oauth-config.service.ts);
+the `OAUTH_SUPPORTED_SCOPES` constant beside it is the *static* universe, kept
+for validation and tests). `offline_access` is the standard OAuth signal *"give
+me a refresh token"*, **not** a Proyekto permission: it is honoured by minting a
+refresh token and then filtered out of the access token's MCP scope set, so it
+grants no tool access.
 
-`chat:write` is reserved for a later phase and deliberately kept out of the known
-set until a tool honors it.
+### Dark scopes
+
+`chat:write` **is** in the scope enum, but it is not necessarily live. Phases 1–3
+needed no per-feature flag because `MCP_ENABLED` was still off in prod while they
+landed; both `MCP_ENABLED` and `MCP_OAUTH_ENABLED` are on now, so the moment a
+scope enters the enum it would reach discovery, the 401 challenge, and the
+consent screen **on deploy, with no activation step**. For writes that post text
+real people read, that breaks the staged-rollout rule.
+
+So the flag is resolved in exactly one place —
+[`mcp-capabilities.service.ts`](../../backend/src/modules/mcp/mcp-capabilities.service.ts)
+— and read at four points; the first three are the enforcement, the fourth only
+keeps the UI honest:
+
+| Enforcement point | Effect while dark |
+| --- | --- |
+| Tool registration (`mcp-server.factory.ts`) | the chat write tools are never registered, so they never appear in `tools/list` |
+| Token issuance (`mcp-token.service.ts`) | minting a PAT carrying a dark scope **fails** (400) rather than silently dropping it |
+| Scope advertisement (`OAuthConfigService.supportedScopes()`) | the scope is absent from discovery `scopes_supported`, the 401 challenge, and `/authorize` |
+| Scope listing (`GET /api/mcp/tokens/scopes`) | the scope is absent from the response, so the web PAT picker never renders it |
+
+Registering a dark tool and denying every call was rejected deliberately:
+advertising a capability that can only fail invites the model to retry it. The
+residual case is the safe one — a token minted while the flag was on keeps
+passing `requireScope` after the flag flips off, but the tools aren't registered,
+so the surface is closed anyway. `mcp-scopes.ts` stays a pure static enum (it is
+the type source and is mirrored by hand in the web app), so runtime config never
+leaks into it — which is why the web PAT picker has to **ask**: the settings page
+([`mcp-tokens.tsx`](../../web/src/routes/settings/mcp-tokens.tsx)) queries
+`listAvailableMcpScopes()` and filters both its read and write scope groups
+against the answer, falling back to the full static set if the call fails (a blip
+degrades to a checkbox that 400s, never to an empty picker). So a dark scope is
+absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Nineteen tools in [`tools/*.tools.ts`](../../backend/src/modules/mcp/tools/) —
-twelve read, seven write. Each reuses an existing domain service that carries its
-own authz; inputs are Zod-validated and page sizes are clamped to a per-tool
-ceiling (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search`
-caps at 20).
+Twenty-five tools in [`tools/*.tools.ts`](../../backend/src/modules/mcp/tools/) —
+fifteen read, ten write. Three of the ten (the chat writes) register only while
+`MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag unset advertises
+**twenty-two**. Each tool reuses an existing domain service that carries its own
+authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
+(at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
+`roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
+service DTO).
 
 ### Read tools
 
@@ -140,16 +184,36 @@ caps at 20).
 | `roadmap_get_summary` | `roadmaps:read` | `roadmap_id` | Compact tree summary (counts, epics, features, milestones) |
 | `roadmap_get_node` | `roadmaps:read` | `roadmap_id`, `node_id`, `include_children?`, `children_limit?` | One node's detail, optionally with children |
 | `roadmap_search_nodes` | `roadmaps:read` | `roadmap_id`, `query`, `node_type?`, `limit?` | Matching nodes + resolved ids |
+| `roadmap_list_changes` | `roadmaps:read` | `roadmap_id`, `limit?`, `before?`, `include_operations?` | Committed changes newest-first from the durable log — who, when, what. `before` is a `committed_at` cursor; `include_operations` defaults **off** |
 | `tasks_list` | `roadmaps:read` | `roadmap_id`, `assigned_to_me?`, `status?`, `parent_type?`, `parent_id?`, `assignee_id?`, `keyword?`, `include_completed?`, `limit?` | Filtered tasks; `assigned_to_me` = "what's on my plate" |
 | `project_knowledge_search` | `knowledge:read` | `roadmap_id`, `query`, `sources?`, `limit?` | Hybrid RAG over chat/comments/activity/brief (empty for guest/project-less roadmaps) |
 | `chat_rooms_list` | `chat:read` | `project_id` | Channels the user participates in |
 | `chat_messages_list` | `chat:read` | `room_id`, `before?`, `limit?` | Recent messages, newest first |
 | `chat_messages_search` | `chat:read` | `room_id`, `query`, `limit?` | Keyword search within a room |
+| `roadmap_ai_sessions_list` | `ai-sessions:read` | `roadmap_id`, `archived?`, `limit?` | **Your own** AI planning threads for a roadmap |
+| `roadmap_ai_session_messages` | `ai-sessions:read` | `roadmap_id`, `session_id`, `before_seq?`, `after_seq?`, `limit?` | One thread's messages oldest-first, plus a `next_before_seq` cursor |
+
+#### AI-session reads
+
+[`ai-sessions.tools.ts`](../../backend/src/modules/mcp/tools/ai-sessions.tools.ts)
+is **owner-only by construction**, at two layers: `RoadmapAiSessionsService`
+checks roadmap view access *and* filters every query on `user_id = caller`. It is
+therefore not a way to see what anyone else asked the planner.
+
+Both tools project through explicit **whitelists**, built field by field — a
+rest-spread blacklist would auto-leak the next column anyone adds, and the thing
+withheld here is the most sensitive payload in the schema.
+
+| Row | Kept | Dropped |
+| --- | --- | --- |
+| session | `id`, `roadmap_id`, `title`, `mode`, `is_archived`, `is_pinned`, `last_message_at`, `message_count`, `created_at`, `updated_at` | `metadata` (holds `agent_state`: pending plans, full per-node snapshots, staged-edit validation traces, rolled-up summaries), `user_id`, `archived_at` / `pinned_at` |
+| message | `id`, `seq`, `role`, `content`, `intent_type`, `created_at` | `artifacts`, `activity_timeline`, `commit_lifecycle`, `metadata` (free-form jsonb the agent writes with **no** backend validator, including tool-call traces and operation payloads), `response_mode` / `parse_mode`, `tokens`, `session_id` |
 
 ### Write tools
 
-Seven write tools (Phase 2), each requiring its `*:write` scope **and** the live
-Proyekto permission. Structural roadmap changes go through the
+Ten write tools — seven from Phase 2 plus the three Phase-4 chat writes — each
+requiring its `*:write` scope **and** the live Proyekto permission. Structural
+roadmap changes go through the
 **preview → commit → revert** lifecycle on `RoadmapAiService`
 ([`roadmap-write.tools.ts`](../../backend/src/modules/mcp/tools/roadmap-write.tools.ts));
 task writes take the **direct `TasksService` path**
@@ -163,16 +227,19 @@ notify, or post are flagged `destructiveHint` so the host asks the user first.
 | --- | --- | --- | --- |
 | `roadmap_preview_operations` | `roadmaps:write` | `roadmap_id`, `operations[]`, `revision_token?` | **Inspect only** — validates the batch, returns a `semantic_diff`, a temp-id → real-id map, and a `revision_token`. No mutation. |
 | `roadmap_commit_operations` | `roadmaps:write` | `roadmap_id`, `operations[]`, `revision_token` (**required**), `idempotency_key` (**required**) | Applies the previewed batch. On a concurrent edit returns **`STALE_REVISION`** → re-preview. `destructiveHint`. |
-| `roadmap_revert_change` | `roadmaps:write` | `roadmap_id`, `change_id` | Undoes a committed change — restores the state just before it, which also undoes any later changes. `destructiveHint`. |
+| `roadmap_revert_change` | `roadmaps:write` | `roadmap_id`, `change_id` | Undoes a committed change — restores the state just before it, which also undoes any later changes. Only for changes **you** made in the **last 30 days**; anything else is `NOT_FOUND` even when `roadmap_list_changes` still shows it. `destructiveHint`. |
 | `task_create` | `tasks:write` | `feature_id`, `title`, `description?`, `status?`, `priority?`, `due_date?`, `position?` | Creates a task under a feature (no assignee fields — assign separately). Perm `roadmap.create_tasks`. |
 | `task_update` | `tasks:write` | `task_id`, `title?`, `description?`, `status?`, `priority?`, `due_date?`, `position?` | Updates a task's fields. Perm `roadmap.edit`. |
 | `task_assign` | `tasks:assign` | `task_id`, `assignee_ids[]` | Replaces the assignee set (empty array unassigns); notifies newly-assigned. Perm `roadmap.assign`. `destructiveHint`. |
 | `task_comment_add` | `tasks:write` | `task_id`, `content` | Adds a task comment. Perm `roadmap.comment`. `destructiveHint`. |
+| `chat_send_message` | `chat:write` | `project_id`, `room_id`, `content`, `reply_to_id?` | Posts to a channel. `destructiveHint`. |
+| `chat_message_edit` | `chat:write` | `message_id`, `content` | Edits a message **you** sent; shows an "(edited)" marker. `destructiveHint`. |
+| `chat_message_unsend` | `chat:write` | `message_id` | Deletes a message **you** sent. `destructiveHint`. |
 
 The `operations[]` payload is the existing shared contract
 ([`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json)):
 `add_epic` / `add_feature` / `add_task` / `add_milestone`, `update_node`,
-`move_node`, `delete_node`, `mark_status`, `shift_dates`. Phases 2–3 added no new
+`move_node`, `delete_node`, `mark_status`, `shift_dates`. Phases 2–4 added no new
 operation shapes.
 
 > **⚠️ Two-stage by design.** `roadmap_commit_operations` **requires** the
@@ -181,6 +248,48 @@ operation shapes.
 > can mutate, and a stale token forces a re-preview. `roadmap_revert_change` maps
 > internally to the service's `discard` (undo); the inverse `rollback` (redo) is
 > intentionally **not** exposed.
+
+#### Chat writes
+
+[`chat-write.tools.ts`](../../backend/src/modules/mcp/tools/chat-write.tools.ts)
+is **channel messages only**, and dark behind `MCP_CHAT_WRITE_ENABLED`.
+`ChatService.sendChannelMessage` enforces the real capability
+(`chat.send_messages`, commenter and above, with a consultant/client fallback for
+people who hold the role without a `project_access` row), so a viewer holding a
+`chat:write` token still gets `FORBIDDEN`.
+
+Four things are deliberately **not** exposed:
+
+| Not exposed | Why |
+| --- | --- |
+| **Direct messages** | `sendDmMessage` has *no* capability check at all — the only gate is "do these two people share any project", and `chat.send_dm` appears solely as an error string `getPermission` is never called on. An agent could DM anyone across every project the user touches, including a client on a consulting engagement. Worse, DM messages are created with `project_id` **null**, so they cannot be audited. DMs would need their own scope **and** a real service-layer gate first. |
+| **Channel administration** (create/rename/archive, add/remove member) | already admin-gated, so an agent holding it acts as a project admin; and those methods self-audit inside `ChatService`, so an extra audit write would double-log |
+| **Reactions** | `toggleMessageReaction` returns `{ok:true}` with no post-state, so the model can't tell an add from a remove and a retry after a transport timeout silently **undoes** the reaction |
+| **Mentions and attachments** | the send payload is built as an explicit literal, never a spread of the tool args, so `mentions` / `attachments` cannot reach the service even if the input schema later grows |
+
+Two implementation details worth knowing:
+
+- `room_id` is **required**. `ChatService`'s no-`room_id` path calls
+  `provisionDefaultChannels` — it *creates* rooms as a side effect of a send and
+  falls back to `#general` when a slug misses. Requiring the id forces a
+  `chat_rooms_list` first and removes both surprises.
+- An edit re-reads the stored `mentions` before writing. `ChatService.editMessage`
+  treats an absent `mentions` as *"clear them"*, not *"leave unchanged"*, so an
+  edit that skipped the lookup would silently destroy the mention chips on a
+  message the user originally posted from the web app. The same lookup (on
+  `chat_room_messages`, **not** `chat_messages`) also resolves the owning project
+  for the best-effort `mcp.chat_*` row in `project_activity_log` — skipped when
+  `project_id` is null, i.e. a DM.
+
+Message content is deliberately **never** put in the audit metadata: the message
+row already holds it, and `AuditService.log` feeds the knowledge outbox, so
+duplicating would embed the same text twice.
+
+The server instructions carry a matching paragraph telling the host that chat
+writes are seen by real people, cannot be recalled, and need explicit
+confirmation of the exact text and target room — and that typing `"@name"` into
+the body is not a workaround, because it looks like a ping to the reader without
+ever notifying them.
 
 Tool failures are normalized to a structured `{ error, message }` result
 (`isError: true`) with a stable code — Nest `HttpException`s are mapped by status:
@@ -194,6 +303,82 @@ re-previews); other write conflicts (e.g. `IDEMPOTENCY_KEY_REUSED`) surface as
 **`CONFLICT`**. Project-level reads throw **`NOT_FOUND`** (not `FORBIDDEN`) on
 no-access, so a caller can't probe which ids exist.
 
+## Change history vs the Redis timeline
+
+Phase 4a split the roadmap change log in two. Understanding the split is what
+explains the tool asymmetry: **`roadmap_list_changes` can show a change that
+`roadmap_revert_change` refuses.**
+
+```
+  commit ---+--> REDIS   roadmap:ai:timeline:{roadmapId}:{userId}
+            |              stateBefore + stateAfter (~320KB/commit)
+            |              per USER, 250-entry cap, sliding 30-day TTL
+            |              best-effort write   ==> powers UNDO / REDO
+            |
+            +--> POSTGRES public.roadmap_change_history
+                           operations + semantic_diff, NO snapshots
+                           per ROADMAP, durable, RLS member-read
+                           fire-and-forget     ==> powers LISTING
+```
+
+Before this, a committed change existed **only** in Redis. Three consequences:
+the key is per-user, so nobody could answer "who changed this roadmap"; an idle
+roadmap lost its whole history at TTL; and a commit could succeed with no history
+at all. Meanwhile `project_activity_log` keeps only an `operations_hash`, never
+the operations, so the durable trail couldn't reconstruct what a change did.
+
+`roadmap_change_history`
+([`20260727090000_create_roadmap_change_history.sql`](../../supabase/migrations/20260727090000_create_roadmap_change_history.sql))
+is the durable half: `change_id` (UNIQUE — it doubles as the revert lookup
+index), `roadmap_id`, `project_id`, `actor_id`, `status`, the `operations` array,
+`operations_count` / `operations_hash`, `semantic_diff` /
+`semantic_change_count`, `temp_id_mapping`, the before/after revision tokens, and
+`committed_at` / `discarded_at` / `discarded_by`.
+
+- It deliberately does **not** store the two full roadmap snapshots. They run
+  ~320KB per commit, and replaying a month-old snapshot would blind-clobber
+  everyone's later work. Revert therefore stays Redis-bounded — **your own
+  changes, last 30 days** — and the tool description says so.
+- `project_id` is **nullable**, so personal (project-less) roadmaps finally get a
+  durable record. Both `AuditService` call sites are wrapped in
+  `if (current.project_id)`, which is why they had none before.
+- **RLS mirrors `project_activity_log`:** a member-read `SELECT` policy over
+  `can_view_roadmap(auth.uid(), roadmap_id)` as defense in depth, plus a
+  `service_role` policy — and no `INSERT`/`UPDATE`/`DELETE` path for
+  `authenticated`, so only the service-role backend writes. `can_view_roadmap`
+  is the right predicate over `project_chat_is_member` precisely because
+  `project_id` is nullable: it covers both the project-member case and the
+  personal-roadmap owner via the `share_role` ladder. `can_view_roadmap` /
+  `can_edit_roadmap` are defined in
+  [`20260504000030_restore_roadmap_children_rls.sql`](../../supabase/migrations/20260504000030_restore_roadmap_children_rls.sql)
+  and referenced only, never redefined. Per the migration's own note, the older
+  `can_access_roadmap` helper that the `roadmap_ai_sessions` migration references
+  **no longer exists in the Singapore database** — it was superseded by that pair
+  and must not be reintroduced.
+- The migration is reported as applied to SG prod (`byvbnkpiselvvulsvxgo`) —
+  *unverified*, since migration application state isn't visible from the repo.
+- **No backfill is possible** — Redis timelines are per-user and ephemeral, and
+  the operations payload was never persisted anywhere. The table started empty
+  and fills forward, so `markChangeHistoryStatus` is a no-op for any change that
+  predates it.
+
+On [`RoadmapAiService`](../../backend/src/modules/roadmaps/services/roadmap-ai.service.ts):
+`recordChangeHistory` (insert, from `commit`) and `markChangeHistoryStatus` (flip
+to `discarded` from `discard`, back to `applied` from `rollback`) are both
+fire-and-forget and tolerate failure — the history is an observability surface,
+so a write failure must never fail a commit that already succeeded. A revert
+flips **every** entry from the target forward, matching the Redis timeline's own
+cascade: undoing a change also undoes everything committed after it. The public
+`listChangeHistory(roadmapId, userId, { limit, before, includeOperations })`
+carries its own **view-level** authz (`assertCanViewRoadmap`), clamps `limit` to
+1–100 (default 25), pages backwards on `committed_at`, and omits the `operations`
+column from the projection unless asked.
+
+> **⚠️ `discard()` used to write no audit row at all** — the one mutating path
+> with no durable trail, and the exact path `roadmap_revert_change` calls. It now
+> emits `roadmap.reverted` to `project_activity_log` (still skipped when the
+> roadmap has no project, like every other audit call site).
+
 ## Resources & prompts
 
 **Resources** ([`resources.ts`](../../backend/src/modules/mcp/resources.ts)) — an
@@ -205,9 +390,12 @@ by the same authorized façade (nothing cached):
 - `proyekto://roadmaps/{roadmapId}/summary`
 
 **Prompts** ([`prompts.ts`](../../backend/src/modules/mcp/prompts.ts)) — reusable
-templates that steer the host model to drive the read tools; they never act on
-their own: `review_project_health`, `summarize_overdue_or_blocked`,
-`draft_roadmap_change`, `summarize_recent_discussions`.
+templates that steer the host model through the tools; they never act on their
+own: `review_project_health`, `summarize_overdue_or_blocked`,
+`draft_roadmap_change`, `summarize_recent_discussions`. Only
+`draft_roadmap_change` reaches a write tool, and it walks the host through
+summary → search → **preview** and instructs it not to commit until the user has
+seen the semantic diff and explicitly confirmed it.
 
 The server instructions also tell the host to treat all retrieved text (briefs,
 chat, comments, activity) as **untrusted data, not instructions** — a prompt-
@@ -431,6 +619,7 @@ owner-scoped by the caller's id (never a body-supplied user id) and gated by
 | --- | --- | --- |
 | POST | `/api/mcp/tokens` | Issue — body `{ name, scopes[], expires_at? }`; returns the raw `pk_` token **once** |
 | GET | `/api/mcp/tokens` | List token metadata (prefix, scopes, timestamps — never the hash) |
+| GET | `/api/mcp/tokens/scopes` | `{ scopes: [...] }` — the scopes a token may **currently** be issued for, from `McpCapabilitiesService.enabledScopes()`, so the picker never offers a dark scope |
 | DELETE | `/api/mcp/tokens/:id` | Revoke (soft-delete via `revoked_at`) — **204** |
 
 Only the **sha256 hash** plus a short display prefix (`pk_` + 8 chars) are
@@ -477,6 +666,7 @@ absent or mis-sized.
 | `MCP_OAUTH_ISSUER` | Authorization-server issuer (falls back to `PUBLIC_API_URL`) |
 | `MCP_OAUTH_RESOURCE` | Protected-resource id; must **byte-match** the URL users type into their host (defaults to `<issuer>/mcp`) |
 | `MCP_OAUTH_ACCESS_TTL_SECONDS` | Access-token lifetime (default 3600) |
+| `MCP_CHAT_WRITE_ENABLED` | Third gate — anything but `'true'` keeps the Phase-4 chat write tools unregistered, `chat:write` unmintable, and the scope out of discovery / the challenge / consent |
 
 All are registered in
 [`env.validation.ts`](../../backend/src/config/env.validation.ts) and all are
@@ -491,13 +681,20 @@ has its own gated block. `MCP_ENABLED` needs no secret (PATs reuse the existing
 on: create the `MCP_OAUTH_JWT_SECRET` secret (grant the runtime SA
 `secretAccessor`), then set the `MCP_OAUTH_ENABLED` repo var.
 
+`MCP_CHAT_WRITE_ENABLED` has its own block, and it is the simplest of the three:
+**env var only, no secret** — when the repo var is set the block appends
+`MCP_CHAT_WRITE_ENABLED=true` to `ENV_VARS`, otherwise it logs that chat writes
+stay off. The flag *is* the whole switch, so activation is a one-step repo-var
+flip with no Secret Manager work.
+
 > **⚠️ Cloud Run deploys full-replace the secret list**, so a new secret must be
 > added unconditionally to the workflow's `SECRETS` assembly — see
 > [Infra & deploy](../10-infra-deploy/README.md).
 
 ## Roadmap
 
-- **Phase 1 (current)** — read-only tools/resources/prompts, PATs, ships dark.
+- **Phase 1 (current)** — read-only tools/resources/prompts, PATs; shipped dark
+  behind `MCP_ENABLED`.
 - **Phase 2 (current)** — opt-in writes behind the `roadmaps:write` /
   `tasks:write` / `tasks:assign` scopes: structural roadmap preview → commit →
   revert and the direct-path task tools. Reuses `MCP_ENABLED` (no separate flag);
@@ -505,8 +702,25 @@ on: create the `MCP_OAUTH_JWT_SECRET` secret (grant the runtime SA
 - **Phase 3 (current)** — the OAuth 2.1 authorization server: discovery, CIMD +
   DCR client identity, PKCE authorization-code flow, a first-party consent
   screen, rotating refresh tokens, and "Connected apps". Gated by
-  `MCP_OAUTH_ENABLED` on top of `MCP_ENABLED`; **activation is a separate step**
-  (create the secret, then set the repo var — whether it is set today is not
-  visible from source).
-- **Phase 4 (next)** — chat writes (`chat:write`), `ai-sessions:read`, and
-  durable roadmap change history.
+  `MCP_OAUTH_ENABLED` on top of `MCP_ENABLED`; **activation was a separate step**
+  (create the secret, then set the repo var). Per the doc comment on
+  [`mcp-capabilities.service.ts`](../../backend/src/modules/mcp/mcp-capabilities.service.ts),
+  both `MCP_ENABLED` and `MCP_OAUTH_ENABLED` are now on in prod — which is
+  exactly why Phase 4b needed a flag of its own.
+- **Phase 4 (current)** — landed in two parts.
+  - **4a — durable change history.** The `roadmap_change_history` table, the
+    `recordChangeHistory` / `markChangeHistoryStatus` / `listChangeHistory`
+    methods on `RoadmapAiService`, the `roadmap_list_changes` tool on the
+    existing `roadmaps:read` scope, a corrected `roadmap_revert_change`
+    description, and the `roadmap.reverted` audit row that `discard()` was
+    missing. **No flag and no new scope** — nothing changes on the OAuth
+    challenge, so this is live wherever `MCP_ENABLED` is.
+  - **4b — chat writes + AI-session reads.** The `chat:write` and
+    `ai-sessions:read` scopes, three channel-message write tools, and two
+    owner-only AI-session read tools. `ai-sessions:read` is live on deploy;
+    **chat-write activation is a separate step** — set the
+    `MCP_CHAT_WRITE_ENABLED` repo var (no secret needed) and redeploy.
+
+Explicitly **not** exposed yet, and blocked on real work rather than scheduling:
+direct messages, which would need their own scope **and** a service-layer
+capability gate on `sendDmMessage` before they could be safe to automate.

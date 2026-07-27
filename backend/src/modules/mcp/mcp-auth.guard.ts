@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { AuthenticatedRequest } from '../../common/interfaces/authenticated-request.interface';
+import { MCP_READ_SCOPES } from './mcp-scopes';
 import { McpTokenService } from './mcp-token.service';
 import { OAuthConfigService } from './oauth/oauth-config.service';
 import { OAuthJwtService } from './oauth/oauth-jwt.service';
@@ -122,12 +123,10 @@ export class McpAuthGuard implements CanActivate {
     }
     request.user = user;
     // A real logged-in session may use any read tool during development.
-    request.mcpScopes = [
-      'projects:read',
-      'roadmaps:read',
-      'knowledge:read',
-      'chat:read',
-    ];
+    // Derived from MCP_READ_SCOPES rather than spelled out, so a read scope
+    // added later cannot silently miss this branch — and, structurally, no
+    // write scope can ever leak into it.
+    request.mcpScopes = [...MCP_READ_SCOPES];
     return true;
   }
 

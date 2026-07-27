@@ -15,7 +15,9 @@ import {
 	Pencil,
 	PlugZap,
 	Plus,
+	Send,
 	ShieldCheck,
+	Sparkles,
 	Terminal,
 	Trash2,
 	UserPlus,
@@ -31,6 +33,7 @@ import {
 } from "@/services/mcp-oauth.service";
 import {
 	createMcpToken,
+	listAvailableMcpScopes,
 	listMcpTokens,
 	MCP_READ_SCOPES,
 	MCP_WRITE_SCOPES,
@@ -52,6 +55,7 @@ export const Route = createFileRoute("/settings/mcp-tokens")({
 
 const mcpTokenKeys = { all: ["mcp-tokens"] as const };
 const mcpConnectionKeys = { all: ["mcp-connections"] as const };
+const mcpScopeKeys = { all: ["mcp-available-scopes"] as const };
 const MCP_ENDPOINT = `${API_BASE_URL.replace(/\/$/, "")}/mcp`;
 
 const SCOPE_META: Record<
@@ -78,6 +82,11 @@ const SCOPE_META: Record<
 		hint: "Channels you belong to",
 		Icon: MessagesSquare,
 	},
+	"ai-sessions:read": {
+		label: "AI threads",
+		hint: "Your own planning threads only",
+		Icon: Sparkles,
+	},
 	"roadmaps:write": {
 		label: "Edit roadmaps",
 		hint: "Preview & commit structural changes",
@@ -92,6 +101,11 @@ const SCOPE_META: Record<
 		label: "Assign tasks",
 		hint: "Set assignees (notifies members)",
 		Icon: UserPlus,
+	},
+	"chat:write": {
+		label: "Post to chat",
+		hint: "Send, edit & delete channel messages",
+		Icon: Send,
 	},
 };
 
@@ -292,6 +306,22 @@ function McpTokensPage() {
 		staleTime: 30 * 1000,
 	});
 
+	// Some scopes exist in the shared enum but are switched off server-side while
+	// a capability is still dark. Offering them would mean a checkbox whose only
+	// outcome is a 400, so the picker renders what the server says it can grant.
+	const availableScopesQuery = useQuery({
+		queryKey: mcpScopeKeys.all,
+		queryFn: listAvailableMcpScopes,
+		staleTime: 5 * 60 * 1000,
+	});
+	const availableScopes = availableScopesQuery.data;
+	const readScopes = availableScopes
+		? MCP_READ_SCOPES.filter((s) => availableScopes.includes(s))
+		: MCP_READ_SCOPES;
+	const writeScopes = availableScopes
+		? MCP_WRITE_SCOPES.filter((s) => availableScopes.includes(s))
+		: MCP_WRITE_SCOPES;
+
 	const createMutation = useMutation({
 		mutationFn: createMcpToken,
 		onSuccess: (data) => {
@@ -325,11 +355,17 @@ function McpTokensPage() {
 			toast.error("Give the token a name so you can recognize it later.");
 			return;
 		}
-		if (scopes.length === 0) {
+		// The form seeds its selection from the static read set, so a scope that
+		// is dark server-side could sit selected in state with no checkbox to
+		// clear it. Send only what the server said it can grant.
+		const grantable = scopes.filter(
+			(s) => !availableScopes || availableScopes.includes(s),
+		);
+		if (grantable.length === 0) {
 			toast.error("Select at least one scope.");
 			return;
 		}
-		createMutation.mutate({ name: name.trim(), scopes });
+		createMutation.mutate({ name: name.trim(), scopes: grantable });
 	};
 
 	const copy = (text: string, set: (v: boolean) => void, message: string) => {
@@ -496,7 +532,7 @@ function McpTokensPage() {
 									Read
 								</p>
 								<div className="grid gap-2.5 sm:grid-cols-2">
-									{MCP_READ_SCOPES.map((scope) => (
+									{readScopes.map((scope) => (
 										<ScopeCard
 											key={scope}
 											scope={scope}
@@ -516,7 +552,7 @@ function McpTokensPage() {
 									</span>
 								</div>
 								<div className="grid gap-2.5 sm:grid-cols-2">
-									{MCP_WRITE_SCOPES.map((scope) => (
+									{writeScopes.map((scope) => (
 										<ScopeCard
 											key={scope}
 											scope={scope}

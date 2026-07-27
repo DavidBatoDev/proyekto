@@ -1,5 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { McpCapabilitiesService } from '../mcp-capabilities.service';
 import { MCP_ALL_SCOPES } from '../mcp-scopes';
 
 /**
@@ -10,7 +11,14 @@ import { MCP_ALL_SCOPES } from '../mcp-scopes';
  */
 export const OFFLINE_ACCESS = 'offline_access';
 
-/** Everything a client may ask for at /authorize. */
+/**
+ * Every scope this authorization server knows about.
+ *
+ * Note this is the STATIC universe, not what is currently grantable — a scope
+ * can be dark (see McpCapabilitiesService). Use `supportedScopes()` on the
+ * service for anything user-facing; this constant exists for validation and
+ * tests.
+ */
 export const OAUTH_SUPPORTED_SCOPES: readonly string[] = [
   ...MCP_ALL_SCOPES,
   OFFLINE_ACCESS,
@@ -25,7 +33,10 @@ export const OAUTH_SUPPORTED_SCOPES: readonly string[] = [
  */
 @Injectable()
 export class OAuthConfigService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly capabilities: McpCapabilitiesService,
+  ) {}
 
   get enabled(): boolean {
     return (
@@ -69,14 +80,23 @@ export class OAuthConfigService {
   }
 
   /**
+   * Everything currently grantable — what discovery advertises and what
+   * /authorize will accept. Dark scopes are filtered out here, which is what
+   * keeps them off the consent screen entirely.
+   */
+  supportedScopes(): readonly string[] {
+    return [...this.capabilities.enabledScopes(), OFFLINE_ACCESS];
+  }
+
+  /**
    * The `scope` advertised on the 401 challenge, which is what Claude actually
-   * asks for. We advertise the FULL set — including write scopes and
+   * asks for. We advertise the full ENABLED set — including write scopes and
    * offline_access — and let the consent screen narrow it: an authorization
    * server may issue a subset of what was requested, but never a superset, so
    * asking small here would make write access unreachable.
    */
   defaultChallengeScopes(): readonly string[] {
-    return OAUTH_SUPPORTED_SCOPES;
+    return this.supportedScopes();
   }
 
   /**

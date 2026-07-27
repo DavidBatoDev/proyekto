@@ -11,6 +11,7 @@ import {
   verifyPkce,
 } from './oauth.service';
 import type { ResolvedOAuthClient } from './dto/oauth.types';
+import { McpCapabilitiesService } from '../mcp-capabilities.service';
 
 const ISSUER = 'https://api.example.test';
 const RESOURCE = `${ISSUER}/mcp`;
@@ -55,9 +56,13 @@ function makeService(
     MCP_OAUTH_RESOURCE: RESOURCE,
     CLIENT_URL: 'https://app.example.test',
   };
-  const config = new OAuthConfigService({
+  const configService = {
     get: (k: string) => values[k],
-  } as unknown as ConfigService);
+  } as unknown as ConfigService;
+  const config = new OAuthConfigService(
+    configService,
+    new McpCapabilitiesService(configService),
+  );
 
   const redis = fakeRedis();
   const clients = {
@@ -443,9 +448,13 @@ describe('OAuthService refresh rotation', () => {
 
 describe('OAuthService kill switch', () => {
   it('denies everything while MCP_OAUTH_ENABLED is unset', async () => {
-    const config = new OAuthConfigService({
+    const killSwitchConfig = {
       get: (k: string) => (k === 'MCP_ENABLED' ? 'true' : undefined),
-    } as unknown as ConfigService);
+    } as unknown as ConfigService;
+    const config = new OAuthConfigService(
+      killSwitchConfig,
+      new McpCapabilitiesService(killSwitchConfig),
+    );
     const service = new OAuthService(
       {} as any,
       fakeRedis() as any,

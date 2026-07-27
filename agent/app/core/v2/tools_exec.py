@@ -15,6 +15,7 @@ from typing import Any
 from app.core.contracts.operations import RoadmapOperation
 from app.core.orchestration.shared.operation_contracts import validate_operation_contract
 from app.core.tools.registry import (
+    UPDATE_NODE_PATCH_FIELDS,
     parse_plan_tool_args,
     parse_plan_tool_clarifier_options,
     parse_plan_tool_revision_operations,
@@ -80,6 +81,9 @@ def interpret_plan_tool(
         validation_error = validate_operation_contract(operations, is_uuid=is_uuid_like)
         if validation_error is not None:
             return PlanToolError(message=_format_validation_error(validation_error))
+        patch_error = _validate_update_node_patch_fields(operations, handle_map)
+        if patch_error is not None:
+            return PlanToolError(message=patch_error)
 
     return PlanToolParsed(
         assistant_message=assistant_message or '',
@@ -87,6 +91,82 @@ def interpret_plan_tool(
         revision_operations=parse_plan_tool_revision_operations(cleaned),
         clarifier_options=parse_plan_tool_clarifier_options(cleaned),
     )
+
+
+def _node_types_by_id(
+    handle_map: dict[str, dict[str, str]] | None,
+) -> dict[str, str]:
+    """Invert the handle map into { node_id: node_type }.
+
+    The outline carries epics, features and milestones — exactly the node types
+    that have no assignee and a narrower patch surface than tasks. Tasks are not
+    in the outline, so an unknown id is treated as unverifiable and left to the
+    backend rather than guessed at.
+    """
+    if not handle_map:
+        return {}
+    resolved: dict[str, str] = {}
+    for entry in handle_map.values():
+        if not isinstance(entry, dict):
+            continue
+        node_id = entry.get('id')
+        node_type = entry.get('type')
+        if isinstance(node_id, str) and node_id and isinstance(node_type, str):
+            resolved[node_id] = node_type
+    return resolved
+
+
+_PATCH_FIELD_HINTS = {
+    'assignee_id': (
+        'Only tasks can be assigned — epics, features and milestones have no '
+        'assignee. Assign the tasks underneath instead, and tell the user the '
+        'rest cannot be assigned.'
+    ),
+    'status': (
+        'Feature status is derived from its child tasks and cannot be set '
+        'directly. Set the status on the tasks instead.'
+    ),
+    'priority': 'Only epics and tasks carry a priority.',
+    'due_date': 'Only tasks have a due_date; epics and features use start_date/end_date.',
+    'target_date': 'Only milestones have a target_date.',
+}
+
+
+def _validate_update_node_patch_fields(
+    operations: list[RoadmapOperation],
+    handle_map: dict[str, dict[str, str]] | None,
+) -> str | None:
+    """Reject `update_node` patch keys the backend would refuse at apply time.
+
+    Without this the commit fails wholesale — one bad key on one op discards
+    every valid op in the batch, and the error surfaces as user-facing text the
+    model never sees. Catching it here turns it into a tool error the loop feeds
+    back, so the model drops the impossible edit and re-stages the rest.
+    """
+    types_by_id = _node_types_by_id(handle_map)
+    for index, operation in enumerate(operations):
+        op_name = getattr(operation.op, 'value', str(operation.op or ''))
+        if op_name != 'update_node' or not isinstance(operation.patch, dict):
+            continue
+        # The live roadmap is the authority on what this node IS; fall back to
+        # the model's declared node_type only when the id isn't in the outline.
+        node_type = types_by_id.get(operation.node_id or '')
+        if node_type is None and operation.node_type is not None:
+            node_type = getattr(operation.node_type, 'value', str(operation.node_type))
+        allowed = UPDATE_NODE_PATCH_FIELDS.get(node_type or '')
+        if allowed is None:
+            continue
+        for key in operation.patch:
+            if key in allowed:
+                continue
+            hint = _PATCH_FIELD_HINTS.get(key, '')
+            return (
+                f'Operation at index {index} (op=update_node) is invalid: '
+                f'"{key}" cannot be set on a {node_type}. '
+                f'A {node_type} accepts only: {", ".join(sorted(allowed))}. '
+                f'{hint} Re-stage without that field.'
+            ).replace('  ', ' ')
+    return None
 
 
 def _format_validation_error(error: dict[str, Any]) -> str:
