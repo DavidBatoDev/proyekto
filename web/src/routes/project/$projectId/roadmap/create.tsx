@@ -13,7 +13,11 @@ function ProjectRoadmapCreatePage() {
 	const { draftId } = Route.useSearch();
 
 	return (
-		<div className="min-h-screen bg-background text-foreground">
+		// The project shell is a fixed-height flex layout with overflow-hidden, so
+		// this page owns a definite height (not min-h-screen) - otherwise the
+		// builder's embedded `h-full` scroll container resolves to auto and its
+		// content is clipped instead of scrolling.
+		<div className="h-full min-h-0 bg-background text-foreground">
 			<RoadmapBuilder projectId={projectId} draftId={draftId} embedded />
 		</div>
 	);
