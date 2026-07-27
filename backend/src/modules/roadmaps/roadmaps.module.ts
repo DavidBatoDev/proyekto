@@ -109,6 +109,8 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapAiKnowledgeService,
     TasksService,
     TaskExtrasService,
+    // Owner-only AI thread reads (MCP `ai-sessions:read`).
+    RoadmapAiSessionsService,
   ],
 })
 export class RoadmapsModule {}
