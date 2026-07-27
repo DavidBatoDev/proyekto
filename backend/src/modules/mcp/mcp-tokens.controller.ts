@@ -16,6 +16,7 @@ import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { IssueMcpTokenDto } from './dto/issue-mcp-token.dto';
+import { McpCapabilitiesService } from './mcp-capabilities.service';
 import { McpTokenService } from './mcp-token.service';
 
 /**
@@ -30,6 +31,7 @@ export class McpTokensController {
   constructor(
     private readonly tokens: McpTokenService,
     private readonly config: ConfigService,
+    private readonly capabilities: McpCapabilitiesService,
   ) {}
 
   private assertEnabled(): void {
@@ -63,6 +65,21 @@ export class McpTokensController {
   async list(@CurrentUser() user: AuthenticatedUser) {
     this.assertEnabled();
     return this.tokens.listTokens(user.id);
+  }
+
+  /**
+   * Which scopes a token may currently be issued for.
+   *
+   * The scope list is a static enum shared with the web app, but a scope can be
+   * dark (see McpCapabilitiesService) — so the picker must ask rather than
+   * assume, otherwise it offers a checkbox whose only outcome is a 400.
+   * Deliberately not a static constant on the client: that would put the gate in
+   * two places and let them drift.
+   */
+  @Get('scopes')
+  availableScopes() {
+    this.assertEnabled();
+    return { scopes: this.capabilities.enabledScopes() };
   }
 
   @Delete(':id')

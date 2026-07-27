@@ -1,5 +1,17 @@
+import type { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { McpCapabilitiesService } from './mcp-capabilities.service';
 import { McpTokenService } from './mcp-token.service';
+
+/**
+ * Capability resolver with every gated scope switched ON, so these specs test
+ * token issuance rather than the dark-launch gate (which has its own spec).
+ */
+function capabilities(env: Record<string, string> = {}) {
+  return new McpCapabilitiesService({
+    get: (k: string) => ({ MCP_CHAT_WRITE_ENABLED: 'true', ...env })[k],
+  } as unknown as ConfigService);
+}
 
 /**
  * A minimal chainable Supabase stub. Each `.from()` call consumes the next
@@ -68,7 +80,7 @@ describe('McpTokenService', () => {
         error: null,
       },
     ]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
 
     const issued = await svc.issueToken('user-1', 'ci', ['roadmaps:read']);
 
@@ -88,10 +100,25 @@ describe('McpTokenService', () => {
 
   it('rejects an unknown scope at issuance', async () => {
     const db = makeDb([]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
     await expect(
       svc.issueToken('user-1', 'bad', ['not-a-real-scope']),
     ).rejects.toThrow(/Unknown MCP scope/);
+  });
+
+  it('refuses to mint a token carrying a scope that is still dark', async () => {
+    const db = makeDb([]);
+    // chat:write is a real scope, but off unless MCP_CHAT_WRITE_ENABLED is set.
+    // Refuse loudly rather than silently dropping it, so the caller learns the
+    // capability is off instead of holding a token that quietly can't do the
+    // thing they asked for.
+    const svc = new McpTokenService(
+      db,
+      capabilities({ MCP_CHAT_WRITE_ENABLED: '' }),
+    );
+    await expect(
+      svc.issueToken('user-1', 'chatty', ['chat:read', 'chat:write']),
+    ).rejects.toThrow(/not currently available: chat:write/);
   });
 
   it('resolveToken returns null for a revoked token', async () => {
@@ -107,7 +134,7 @@ describe('McpTokenService', () => {
         error: null,
       },
     ]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
     expect(await svc.resolveToken('pk_live')).toBeNull();
   });
 
@@ -124,13 +151,13 @@ describe('McpTokenService', () => {
         error: null,
       },
     ]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
     expect(await svc.resolveToken('pk_live')).toBeNull();
   });
 
   it('resolveToken returns null for a non-pk_ bearer without hitting the db', async () => {
     const db = makeDb([]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
     expect(await svc.resolveToken('eyJ-a-jwt')).toBeNull();
     expect(db._calls.length).toBe(0);
   });
@@ -149,7 +176,7 @@ describe('McpTokenService', () => {
       },
       { data: null, error: null }, // last_used_at bump
     ]);
-    const svc = new McpTokenService(db);
+    const svc = new McpTokenService(db, capabilities());
     const resolved = await svc.resolveToken('pk_live');
     expect(resolved?.user_id).toBe('user-9');
     expect(resolved?.scopes).toEqual(['chat:read']);

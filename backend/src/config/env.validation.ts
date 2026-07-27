@@ -359,6 +359,17 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   MCP_OAUTH_ACCESS_TTL_SECONDS?: number;
+
+  // ── MCP chat writes (Phase 4) — ships dark ────────────────────────────────
+  // Unless this is 'true', the `chat:write` scope cannot be granted, is absent
+  // from discovery and the consent screen, and the chat write tools are never
+  // registered. Needed because MCP_ENABLED and MCP_OAUTH_ENABLED are already on
+  // in prod: without this gate the new scope would go live the moment it
+  // entered the scope enum, letting an agent post to real channels with no
+  // activation step. Flip it as its own step.
+  @IsOptional()
+  @IsString()
+  MCP_CHAT_WRITE_ENABLED?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

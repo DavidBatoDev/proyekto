@@ -13,15 +13,21 @@ export const MCP_READ_SCOPES = [
   'roadmaps:read',
   'knowledge:read',
   'chat:read',
+  // Phase 4. Owner-only by construction: every AI-session read filters on
+  // user_id = caller, so this can never surface a teammate's threads.
+  'ai-sessions:read',
 ] as const;
 
-// Phase 2 write scopes. Opt-in per token: a read-only PAT carries none of these,
-// so it can never mutate even where MCP is enabled. Each write tool requires its
-// scope AND the live Proyekto permission. (Phase 4 will add 'chat:write'.)
+// Write scopes. Opt-in per token: a read-only PAT carries none of these, so it
+// can never mutate even where MCP is enabled. Each write tool requires its scope
+// AND the live Proyekto permission.
 export const MCP_WRITE_SCOPES = [
   'roadmaps:write',
   'tasks:write',
   'tasks:assign',
+  // Phase 4. Channel messages only — DMs are deliberately not exposed (see
+  // chat-write.tools.ts for why) and channel administration is not either.
+  'chat:write',
 ] as const;
 
 export const MCP_ALL_SCOPES = [
