@@ -150,7 +150,6 @@ class ProjectContextCacheTests(unittest.TestCase):
             auth_header='Bearer token',
             trace_id=None,
             settings=_settings(agent_project_context_enabled=False),
-            get_active_draft_if_available=lambda _session: None,
             get_recent_resolved_targets=lambda _session: [],
         )
 

@@ -51,7 +51,6 @@ def _outcome(loop_result, session=None, used_reads=False):
         session_context={'roadmap_id': session.roadmap_id},
         user_message='do the thing',
         trace_id=None,
-        utcnow=_utcnow,
     )
 
 

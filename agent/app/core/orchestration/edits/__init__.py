@@ -1,1 +1,1 @@
-"""Draft edit and recovery orchestration helpers."""
+"""Edit-resolution helpers (user label -> candidate roadmap node)."""

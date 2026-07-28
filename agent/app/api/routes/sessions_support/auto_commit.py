@@ -11,7 +11,7 @@ from fastapi.exceptions import HTTPException
 
 from app.api.routes.sessions_support.common import extract_upstream_error_code
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, AppliedDraftCommit
+from app.core.contracts.sessions import AgentSession
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.context.applied_changes_log import (
@@ -74,8 +74,6 @@ class AutoCommitExecutionResult:
     auto_commit_ms: int
     staged_operations_version: int
     staged_operations_count: int
-    active_draft_id: str | None
-    active_draft_version: int | None
     impacted_items: list[dict[str, Any]]
     impacted_item_count: int
     impacted_summary: dict[str, int]
@@ -119,8 +117,8 @@ def _sanitize_invalid_operation_snapshot(
     }
 
 
-def _first_invalid_operation_snapshot(draft_operations: list[Any]) -> dict[str, Any] | None:
-    for index, operation in enumerate(draft_operations):
+def _first_invalid_operation_snapshot(staged_snapshot: list[Any]) -> dict[str, Any] | None:
+    for index, operation in enumerate(staged_snapshot):
         if not isinstance(operation, RoadmapOperation):
             continue
         issues = operation.semantic_contract_issues(is_uuid=is_uuid_like)
@@ -304,14 +302,11 @@ async def execute_auto_commit(
     auth_header: str,
     trace_id: str | None,
     nest_client: Any,
-    resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
-    set_draft_status: Callable[..., bool],
     run_store_call: Callable[..., Awaitable[Any]],
 ) -> AutoCommitExecutionResult:
-    draft_id, draft_version, draft_operations = resolve_draft_snapshot(
-        session,
-        agent_service,
-    )
+    # Snapshot the staged ops: session.operations is rebound to [] once the
+    # commit lands, but the post-commit title refresh still needs what was sent.
+    staged_snapshot = list(session.operations)
 
     commit_started = perf_counter()
     # One key per logical commit: every retry below replays it, so the backend
@@ -328,7 +323,7 @@ async def execute_auto_commit(
             'idempotency_key': idempotency_key,
             'operations': [
                 operation.model_dump(exclude_none=True)
-                for operation in draft_operations
+                for operation in staged_snapshot
             ],
         }
 
@@ -362,7 +357,7 @@ async def execute_auto_commit(
         )
     except HTTPException as exc:
         if exc.status_code == 400:
-            invalid_snapshot = _first_invalid_operation_snapshot(draft_operations)
+            invalid_snapshot = _first_invalid_operation_snapshot(staged_snapshot)
             if invalid_snapshot is not None:
                 enriched_detail: dict[str, Any]
                 if isinstance(exc.detail, dict):
@@ -485,15 +480,6 @@ async def execute_auto_commit(
             applied_change_ids.append(change_id)
         session.metadata.applied_change_ids = applied_change_ids
 
-    session.metadata.applied_draft_commits.append(
-        AppliedDraftCommit(
-            change_id=change_id,
-            draft_id=draft_id,
-            draft_version=draft_version,
-            status='applied',
-        )
-    )
-
     record_recent_targets_from_preview = getattr(
         agent_service,
         'record_recent_targets_from_preview',
@@ -506,17 +492,10 @@ async def execute_auto_commit(
             source='commit_semantic_diff',
         )
 
-    set_draft_status(
-        session=session,
-        draft_id=draft_id,
-        status='applied',
-    )
     session.operations = []
     session.staged_operations_version += 1
     staged_operations_count = 0
     staged_operations_version = session.staged_operations_version
-    active_draft_id: str | None = None
-    active_draft_version: int | None = None
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
@@ -538,7 +517,7 @@ async def execute_auto_commit(
     # Keep recent_resolved_targets in sync with committed renames so the LLM
     # doesn't see a stale pre-rename title for an epic/feature/task it just
     # renamed in a previous turn.
-    _refresh_recent_resolved_target_titles(session, draft_operations)
+    _refresh_recent_resolved_target_titles(session, staged_snapshot)
     # Record the committed changes onto the session so the planner's prompt
     # can reference them (enables deterministic undo/revert reasoning).
     record_applied_changes_from_commit(session, commit_result)
@@ -575,8 +554,6 @@ async def execute_auto_commit(
         auto_commit_ms=auto_commit_ms,
         staged_operations_version=staged_operations_version,
         staged_operations_count=staged_operations_count,
-        active_draft_id=active_draft_id,
-        active_draft_version=active_draft_version,
         impacted_items=impacted_items,
         impacted_item_count=impacted_item_count,
         impacted_summary=impacted_summary,
@@ -618,8 +595,6 @@ async def run_auto_commit_in_background(
             auto_commit_ms=result.auto_commit_ms,
             staged_operations_count=result.staged_operations_count,
             staged_operations_version=result.staged_operations_version,
-            active_draft_id=result.active_draft_id,
-            active_draft_version=result.active_draft_version,
             impacted_items=result.impacted_items,
             impacted_item_count=result.impacted_item_count,
             impacted_summary=result.impacted_summary,

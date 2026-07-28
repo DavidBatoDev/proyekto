@@ -90,6 +90,8 @@ class AutoCommitObservabilityTests(unittest.IsolatedAsyncioTestCase):
             node_type='task',
             node_id='123e4567-e89b-12d3-a456-426614174000',
         )
+        # execute_auto_commit reads the staged ops off the session now.
+        session.operations = [invalid_operation]
 
         class _FakeNestClient:
             async def commit(self, **_kwargs):
@@ -113,8 +115,6 @@ class AutoCommitObservabilityTests(unittest.IsolatedAsyncioTestCase):
                 auth_header='Bearer test',
                 trace_id='trace-auto-commit-observability',
                 nest_client=_FakeNestClient(),
-                resolve_draft_snapshot=lambda _session, _service: ('draft-1', 1, [invalid_operation]),
-                set_draft_status=lambda **_kwargs: True,
                 run_store_call=_run_store_call,
             )
 
@@ -141,6 +141,8 @@ class AutoCommitStaleRevisionRetryTests(unittest.IsolatedAsyncioTestCase):
             node_type='epic',
             node_id='123e4567-e89b-12d3-a456-426614174000',
         )
+        # execute_auto_commit reads the staged ops off the session now.
+        session.operations = [invalid_operation]
 
     async def _invoke(
         self,
@@ -150,6 +152,7 @@ class AutoCommitStaleRevisionRetryTests(unittest.IsolatedAsyncioTestCase):
         draft_operation: RoadmapOperation | None = None,
     ) -> None:
         op = draft_operation or self._valid_op()
+        session.operations = [op]
 
         async def _run_store_call(*_args, **_kwargs):
             return None
@@ -171,8 +174,6 @@ class AutoCommitStaleRevisionRetryTests(unittest.IsolatedAsyncioTestCase):
             auth_header='Bearer test',
             trace_id='trace-stale-revision-retry',
             nest_client=nest_client,
-            resolve_draft_snapshot=lambda _s, _a: ('draft-1', 1, [op]),
-            set_draft_status=lambda **_k: True,
             run_store_call=_run_store_call,
         )
 

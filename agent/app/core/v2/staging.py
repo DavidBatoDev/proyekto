@@ -1,16 +1,14 @@
-"""Stage v2-produced operations onto the session / draft graph.
+"""Stage v2-produced operations onto the session.
 
-Reuses ``apply_planned_operations`` (the same applier the v1 edit lane uses)
-by constructing a minimal ``PlanningResult``, so staging, dedup, replace-vs-
-append, and draft-graph semantics are identical to v1. Default append
-semantics (``draft_action='append'``) — replacement only happens for explicit
-revisions, which v2 does not emit.
+Reuses ``apply_planned_operations`` by constructing a minimal
+``PlanningResult``, so staging, dedup, and replace-vs-append semantics live in
+one place. Default append semantics (``draft_action='append'``) — replacement
+only happens for explicit revisions, which v2 does not emit.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.orchestration.shared.planning_result import PlanningResult
@@ -26,7 +24,6 @@ def stage_operations(
     session: Any,
     operations: list[RoadmapOperation],
     assistant_message: str,
-    utcnow: Callable[[], datetime],
 ) -> ApplyPlannedOperationsResult:
     planning = PlanningResult(
         assistant_message=assistant_message or 'Staged your changes.',
@@ -40,15 +37,10 @@ def stage_operations(
         provider_error_code=None,
         draft_action='append',
     )
-    # Drafts/branching were removed — staged edits append directly to the session.
     return apply_planned_operations(
         session=session,
         planning=planning,
-        draft_graph_enabled=False,
-        active_draft=None,
         edit_continuation_trigger=None,
         should_replace_staged_operations=service._should_replace_staged_operations,
-        get_active_draft=service._get_active_draft,
         operation_signature=service._operation_signature,
-        utcnow=utcnow,
     )

@@ -10,8 +10,7 @@ including staged ops and metadata).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 from app.core.logging_utils import log_event
@@ -33,14 +32,11 @@ def to_outcome(
     session_context: dict[str, Any],
     user_message: str,
     trace_id: str | None,
-    utcnow: Callable[[], datetime],
     provider_used: str = 'openai',
     fallback_used: bool = False,
     provider_error_code: str | None = None,
 ) -> MessagePlanningOutcome:
     settings = service._settings
-    # Drafts/branching were removed — staged edits live directly on the session.
-    draft_graph_enabled = False
     kind = loop_result.kind
 
     response_mode = 'chat'
@@ -58,7 +54,6 @@ def to_outcome(
             session=session,
             operations=loop_result.operations,
             assistant_message=assistant_message,
-            utcnow=utcnow,
         )
         operations_out = apply_result.applied_operations
         try:
@@ -146,16 +141,9 @@ def to_outcome(
     service._store.append_message(session, 'user', user_message)
     service._store.append_message(session, 'assistant', assistant_message)
 
-    staged_operations, staged_operations_version = service._resolve_staged_state(
-        session,
-        draft_graph_enabled=draft_graph_enabled,
-        active_draft=None,
-    )
+    staged_operations, staged_operations_version = service._resolve_staged_state(session)
     preview_available = len(staged_operations) > 0
     preview_recommended = response_mode == 'edit_plan' and preview_available
-
-    active_draft_id: str | None = None
-    active_draft_version: int | None = None
 
     route_lane = f'v2_{kind}'
     progress.route_selected(
@@ -176,8 +164,6 @@ def to_outcome(
         roadmap_id=session.roadmap_id,
         staged_operations_count=len(staged_operations),
         staged_operations_version=staged_operations_version,
-        active_draft_id=active_draft_id,
-        active_draft_version=active_draft_version,
         response_mode=response_mode,
         intent_type=intent_type,
         route_lane=route_lane,
@@ -206,8 +192,6 @@ def to_outcome(
         tokens_total=loop_result.tokens_total or None,
         tokens_cached=loop_result.tokens_cached or None,
         route_lane=route_lane,
-        active_draft_id=active_draft_id,
-        active_draft_version=active_draft_version,
         react_loop_turns=loop_result.turns,
         react_loop_budget=settings.agent_v2_max_turns,
         react_loop_termination_reason=loop_result.termination_reason,

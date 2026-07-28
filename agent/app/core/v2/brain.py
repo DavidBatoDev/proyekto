@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from app.core.contracts.sessions import AgentSession
 from app.core.llm.context.dispatch import ToolDispatcher
@@ -194,9 +193,8 @@ def run_v2_message(
     replace: bool,
     auth_header: str | None,
     trace_id: str | None,
-    utcnow: Callable[[], datetime],
 ) -> MessagePlanningOutcome:
-    _ = replace  # API-compatible; v2 staging is append/draft-action driven.
+    _ = replace  # API-compatible; v2 staging always appends.
     settings = service._settings
 
     # Fold any pending conversation-summary candidate before context builds —
@@ -326,7 +324,6 @@ def run_v2_message(
             session_context=session_context,
             user_message=user_message,
             trace_id=trace_id,
-            utcnow=utcnow,
         )
     except Exception as exc:  # noqa: BLE001 — keep the endpoint resilient
         log_event(
@@ -356,7 +353,6 @@ def run_v2_message(
             session_context=session_context,
             user_message=user_message,
             trace_id=trace_id,
-            utcnow=utcnow,
             provider_used='rule_based',
             fallback_used=True,
             provider_error_code='v2_provider_error',

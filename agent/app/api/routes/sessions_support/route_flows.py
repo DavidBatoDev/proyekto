@@ -139,7 +139,6 @@ async def send_message_flow(
     get_agent_runtime_async: Callable[[], Awaitable[tuple[SessionStore, AgentService]]],
     get_session_or_404_async: Callable[[AgentService, str], Awaitable[AgentSession]],
     run_store_call: Callable[..., Awaitable[Any]],
-    resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
     execute_auto_commit: Callable[..., Awaitable[Any]],
     schedule_auto_commit_task: Callable[[Any], Any],
     run_auto_commit_in_background: Callable[..., Awaitable[None]],
@@ -200,8 +199,6 @@ async def send_message_flow(
     auto_commit_async_enqueued = False
     response_staged_operations_version: int | None = None
     response_staged_operations_count: int | None = None
-    response_active_draft_id: str | None = None
-    response_active_draft_version: int | None = None
     commit_summary: CommitSummary | None = None
     try:
         outcome = await run_store_call(
@@ -212,14 +209,9 @@ async def send_message_flow(
             resolve_forward_auth(request),
             trace_id,
         )
-        _, _, staged_snapshot_operations = resolve_draft_snapshot(
-            outcome.session,
-            agent_service,
-        )
+        staged_snapshot_operations = outcome.session.operations
         response_staged_operations_version = outcome.staged_operations_version
         response_staged_operations_count = outcome.staged_operations_count
-        response_active_draft_id = outcome.active_draft_id
-        response_active_draft_version = outcome.active_draft_version
 
         should_auto_commit = (
             outcome.response_mode == 'edit_plan'
@@ -252,8 +244,6 @@ async def send_message_flow(
                         auto_commit_ms = auto_commit_result.auto_commit_ms
                         response_staged_operations_count = auto_commit_result.staged_operations_count
                         response_staged_operations_version = auto_commit_result.staged_operations_version
-                        response_active_draft_id = auto_commit_result.active_draft_id
-                        response_active_draft_version = auto_commit_result.active_draft_version
                         # Lightweight summary the web uses to refresh the canvas
                         # and render the "Committed changes" confirmation.
                         commit_summary = CommitSummary(
@@ -427,16 +417,6 @@ async def send_message_flow(
                 response_staged_operations_count
                 if response_staged_operations_count is not None
                 else outcome.staged_operations_count
-            ),
-            active_draft_id=(
-                response_active_draft_id
-                if response_active_draft_id is not None
-                else outcome.active_draft_id
-            ),
-            active_draft_version=(
-                response_active_draft_version
-                if response_active_draft_version is not None
-                else outcome.active_draft_version
             ),
             plan_proposal=outcome.plan_proposal_payload,
             clarifier=outcome.clarifier_card,

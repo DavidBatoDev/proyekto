@@ -5,7 +5,7 @@ from typing import Callable
 from fastapi import HTTPException, status
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, DraftNode
+from app.core.contracts.sessions import AgentSession
 from app.core.session_store import SessionStore
 
 
@@ -26,21 +26,11 @@ def get_session_or_404(
 def resolve_session_staged_state(
     *,
     session: AgentSession,
-    draft_graph_enabled: bool | None,
-    active_draft: DraftNode | None,
-    settings_agent_draft_graph_enabled: bool,
-    resolve_staged_state: Callable[..., tuple[list[RoadmapOperation], int]],
 ) -> tuple[list[RoadmapOperation], int]:
-    use_draft_graph = (
-        settings_agent_draft_graph_enabled
-        if draft_graph_enabled is None
-        else draft_graph_enabled
-    )
-    return resolve_staged_state(
-        session,
-        draft_graph_enabled=use_draft_graph,
-        active_draft=active_draft,
-    )
+    """Staged operations + their version. Staged edits live directly on the
+    session; the draft-graph indirection this used to route through was removed
+    once branching was dropped."""
+    return session.operations, int(session.staged_operations_version)
 
 
 def get_current_staged_operations(

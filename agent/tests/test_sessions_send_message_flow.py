@@ -7,6 +7,7 @@ from fastapi.exceptions import HTTPException
 
 from app.api.routes.sessions_support.auto_commit import AutoCommitExecutionResult
 from app.api.routes.sessions_support.route_flows import send_message_flow
+from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, MessageRequest
 
 
@@ -37,8 +38,6 @@ def _build_outcome(session: AgentSession) -> SimpleNamespace:
         operations=[],
         staged_operations_version=0,
         staged_operations_count=0,
-        active_draft_id=None,
-        active_draft_version=None,
         provider_used='openai',
         fallback_used=False,
         provider_error_code=None,
@@ -100,7 +99,6 @@ class SendMessageFlowTraceIdTests(unittest.IsolatedAsyncioTestCase):
             get_agent_runtime_async=lambda: _as_awaitable((object(), fake_service)),
             get_session_or_404_async=lambda _svc, _session_id: _as_awaitable(session),
             run_store_call=_run_store_call,
-            resolve_draft_snapshot=lambda _session, _service: ('draft-1', 0, []),
             execute_auto_commit=lambda **_kwargs: _as_awaitable(None),
             schedule_auto_commit_task=lambda _coro: None,
             run_auto_commit_in_background=lambda **_kwargs: _as_awaitable(None),
@@ -143,7 +141,6 @@ class SendMessageFlowTraceIdTests(unittest.IsolatedAsyncioTestCase):
             get_agent_runtime_async=lambda: _as_awaitable((object(), fake_service)),
             get_session_or_404_async=lambda _svc, _session_id: _as_awaitable(session),
             run_store_call=_run_store_call,
-            resolve_draft_snapshot=lambda _session, _service: ('draft-1', 0, []),
             execute_auto_commit=lambda **_kwargs: _as_awaitable(None),
             schedule_auto_commit_task=lambda _coro: None,
             run_auto_commit_in_background=lambda **_kwargs: _as_awaitable(None),
@@ -184,6 +181,9 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
         outcome = _build_outcome(session)
         outcome.response_mode = 'edit_plan'
         outcome.staged_operations_count = 1
+        # Auto-commit fires on `edit_plan` + at least one op staged ON THE
+        # SESSION (the draft-snapshot indirection this used to fake was removed).
+        session.operations = [RoadmapOperation(op='add_epic', data={'title': 'Launch'})]
         return outcome
 
     async def _run(self, *, session, fake_service, store, execute_auto_commit, events):
@@ -197,7 +197,6 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
             get_agent_runtime_async=lambda: _as_awaitable((store, fake_service)),
             get_session_or_404_async=lambda _svc, _sid: _as_awaitable(session),
             run_store_call=_run_store_call,
-            resolve_draft_snapshot=lambda _s, _svc: ('draft-1', 1, [SimpleNamespace()]),
             execute_auto_commit=execute_auto_commit,
             schedule_auto_commit_task=lambda _coro: None,
             run_auto_commit_in_background=lambda **_kwargs: _as_awaitable(None),
@@ -227,8 +226,6 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
                 auto_commit_ms=42,
                 staged_operations_version=2,
                 staged_operations_count=0,
-                active_draft_id=None,
-                active_draft_version=None,
                 impacted_items=[
                     {
                         'node_id': 'epic-1',

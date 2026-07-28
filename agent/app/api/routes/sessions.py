@@ -24,10 +24,6 @@ from app.api.routes.sessions_support.common import (
     sanitize_session_metadata as sanitize_session_metadata_helper,
     utcnow as utcnow_helper,
 )
-from app.api.routes.sessions_support.draft_state import (
-    resolve_draft_snapshot as resolve_draft_snapshot_helper,
-    set_draft_status as set_draft_status_helper,
-)
 from app.api.routes.sessions_support.runtime import (
     configure_runtime_resolver,
     get_agent_runtime as get_agent_runtime_helper,
@@ -86,27 +82,6 @@ def _extract_upstream_error_details(detail: object) -> dict:
     return details if isinstance(details, dict) else {}
 
 
-def _resolve_draft_snapshot(
-    session: AgentSession,
-    agent_service: AgentService,
-) -> tuple[str, int, list]:
-    return resolve_draft_snapshot_helper(session=session)
-
-
-def _set_draft_status(
-    *,
-    session: AgentSession,
-    draft_id: str,
-    status: str,
-) -> bool:
-    return set_draft_status_helper(
-        session=session,
-        draft_id=draft_id,
-        status=status,
-        utcnow=_utcnow,
-    )
-
-
 def _service_unavailable(reason: str) -> HTTPException:
     return service_unavailable_helper(reason)
 
@@ -161,8 +136,6 @@ async def _execute_auto_commit(
         auth_header=auth_header,
         trace_id=trace_id,
         nest_client=_nest_client,
-        resolve_draft_snapshot=_resolve_draft_snapshot,
-        set_draft_status=_set_draft_status,
         run_store_call=_run_store_call,
     )
 
@@ -217,7 +190,6 @@ async def send_message(
         get_agent_runtime_async=_get_agent_runtime_async,
         get_session_or_404_async=_get_session_or_404_async,
         run_store_call=_run_store_call,
-        resolve_draft_snapshot=_resolve_draft_snapshot,
         execute_auto_commit=_execute_auto_commit,
         schedule_auto_commit_task=_schedule_auto_commit_task,
         run_auto_commit_in_background=_run_auto_commit_in_background,

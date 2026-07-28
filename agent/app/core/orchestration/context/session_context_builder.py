@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from app.core.contracts.sessions import AgentSession, DraftNode
+from app.core.contracts.sessions import AgentSession
 
 
 def build_session_context(
@@ -11,15 +11,9 @@ def build_session_context(
     auth_header: str | None,
     trace_id: str | None,
     settings: Any,
-    get_active_draft_if_available: Callable[[AgentSession], DraftNode | None],
     get_recent_resolved_targets: Callable[[AgentSession], list[Any]],
 ) -> dict[str, Any]:
-    active_draft = get_active_draft_if_available(session)
-    staged_operations_count = (
-        len(active_draft.operations)
-        if isinstance(active_draft, DraftNode)
-        else len(session.operations)
-    )
+    staged_operations_count = len(session.operations)
     recent_messages = [
         {
             'role': item.role,
@@ -38,13 +32,6 @@ def build_session_context(
         'base_revision': session.base_revision,
         'revision_token': session.revision_token,
         'staged_operations_count': staged_operations_count,
-        'active_draft_id': session.metadata.active_draft_id,
-        'active_draft_version': (
-            active_draft.draft_version if active_draft is not None else None
-        ),
-        'active_draft_mode': (
-            active_draft.draft_mode if active_draft is not None else None
-        ),
         'last_intent_type': session.last_intent_type,
         'recent_messages': recent_messages,
         'recent_resolved_targets': recent_resolved_targets,

@@ -42,8 +42,6 @@ IntentType = Literal[
 ]
 ResponseMode = Literal['chat', 'edit_plan', 'plan_proposal']
 ProviderUsed = Literal['openai', 'rule_based']
-DraftMode = Literal['append', 'revise', 'branch']
-DraftStatus = Literal['active', 'previewed', 'applied', 'abandoned']
 TraceEventDetailMode = Literal['verbose', 'structured']
 TraceEventStatus = Literal['running', 'success', 'error']
 RecentResolvedTargetType = Literal['epic', 'feature', 'task']
@@ -178,7 +176,6 @@ class PendingEditContext(BaseModel):
         'shift_dates',
         'roadmap_edit_clarifier',
     ]
-    draft_operations: list[RoadmapOperation] = Field(default_factory=list)
     required_fields: list[str] = Field(default_factory=list)
     resolved_references: PendingEditResolvedReferences = Field(
         default_factory=PendingEditResolvedReferences
@@ -248,29 +245,6 @@ class PendingEditContext(BaseModel):
         if mapped in canonical:
             return mapped
         return 'roadmap_edit_clarifier'
-
-
-class DraftNode(BaseModel):
-    draft_id: str
-    parent_draft_id: str | None = None
-    draft_mode: DraftMode = 'append'
-    operations: list[RoadmapOperation] = Field(default_factory=list)
-    draft_version: int = 0
-    base_revision: int | None = None
-    revision_token: str | None = None
-    created_from_message_id: str | None = None
-    summary: str | None = None
-    status: DraftStatus = 'active'
-    updated_at: datetime = Field(default_factory=_utcnow)
-
-
-class AppliedDraftCommit(BaseModel):
-    change_id: str | None = None
-    draft_id: str
-    draft_version: int
-    status: Literal['applied', 'discarded'] = 'applied'
-    discarded_at: datetime | None = None
-    committed_at: datetime = Field(default_factory=_utcnow)
 
 
 class ActorContext(BaseModel):
@@ -439,10 +413,6 @@ class SessionMetadata(BaseModel):
     recent_resolved_targets: list[RecentResolvedTarget] = Field(default_factory=list)
     actor_context: ActorContext | None = None
     applied_change_ids: list[str] = Field(default_factory=list)
-    active_draft_id: str | None = None
-    drafts: dict[str, DraftNode] = Field(default_factory=dict)
-    draft_head_ids: list[str] = Field(default_factory=list)
-    applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
     roadmap_overview_summary: str | None = None
     roadmap_overview_summary_fetched_at: datetime | None = None
     # Maps each rendered handle (e.g. "E1", "E1.F2") in
@@ -509,7 +479,7 @@ class CreateSessionRequest(BaseModel):
     # The web client replays the last N messages from the DB into a fresh
     # Redis session so the planner has context. Ignored on a miss-hit race
     # where the session already exists — Redis remains authoritative for
-    # transient working state (staged operations, drafts, resolver caches).
+    # transient working state (staged operations, resolver caches).
     seed_messages: list[Message] | None = None
 
 
@@ -534,8 +504,6 @@ class MessageResponse(BaseModel):
     operations: list[RoadmapOperation]
     staged_operations_version: int
     staged_operations_count: int
-    active_draft_id: str | None = None
-    active_draft_version: int | None = None
     plan_proposal: dict[str, Any] | None = None
     clarifier: ClarifierCard | None = None
     provider_used: ProviderUsed = 'rule_based'

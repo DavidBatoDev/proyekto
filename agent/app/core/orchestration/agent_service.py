@@ -10,18 +10,11 @@ from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
     AgentSession,
-    DraftNode,
     RecentResolvedTarget,
 )
 from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
 from app.core.orchestration.shared.async_bridge import run_async_call
-from app.core.orchestration.edits.draft_graph_manager import (
-    ensure_draft_graph_initialized as ensure_draft_graph_initialized_helper,
-    get_active_draft as get_active_draft_helper,
-    get_active_draft_if_available as get_active_draft_if_available_helper,
-    resolve_staged_state as resolve_staged_state_helper,
-)
 from app.core.orchestration.context.roadmap_overview_summarizer import (
     build_roadmap_overview_summary as build_roadmap_overview_summary_helper,
 )
@@ -105,7 +98,6 @@ class AgentService:
             replace=replace,
             auth_header=auth_header,
             trace_id=trace_id,
-            utcnow=_utcnow,
         )
 
     # ------------------------------------------------------------------
@@ -411,40 +403,13 @@ class AgentService:
         )
 
     # ------------------------------------------------------------------
-    # Public Draft Graph Accessors
+    # Session Runtime Helpers
     # ------------------------------------------------------------------
-    def ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
-        return self._ensure_draft_graph_initialized(session)
-
-    def get_active_draft(self, session: AgentSession) -> DraftNode:
-        return self._get_active_draft(session)
-
-    # ------------------------------------------------------------------
-    # Draft Graph And Session Runtime Helpers
-    # ------------------------------------------------------------------
-    def _ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
-        return ensure_draft_graph_initialized_helper(session)
-
-    def _get_active_draft(self, session: AgentSession) -> DraftNode:
-        return get_active_draft_helper(session)
-
-    def _get_active_draft_if_available(self, session: AgentSession) -> DraftNode | None:
-        return get_active_draft_if_available_helper(session)
-
     def _resolve_staged_state(
         self,
         session: AgentSession,
-        *,
-        draft_graph_enabled: bool | None = None,
-        active_draft: DraftNode | None = None,
     ) -> tuple[list[RoadmapOperation], int]:
-        return resolve_session_staged_state_helper(
-            session=session,
-            draft_graph_enabled=draft_graph_enabled,
-            active_draft=active_draft,
-            settings_agent_draft_graph_enabled=False,
-            resolve_staged_state=resolve_staged_state_helper,
-        )
+        return resolve_session_staged_state_helper(session=session)
 
     def _get_current_staged_operations(self, session: AgentSession) -> list[RoadmapOperation]:
         return get_current_staged_operations_helper(
@@ -469,6 +434,5 @@ class AgentService:
             auth_header=auth_header,
             trace_id=trace_id,
             settings=self._settings,
-            get_active_draft_if_available=self._get_active_draft_if_available,
             get_recent_resolved_targets=self._get_recent_resolved_targets,
         )

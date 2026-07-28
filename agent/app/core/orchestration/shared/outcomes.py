@@ -54,9 +54,6 @@ class MessagePlanningOutcome:
     needs_more_info: bool | None = None
     stop_reason: str | None = None
     tool_plan_steps: int | None = None
-    active_draft_id: str | None = None
-    active_draft_version: int | None = None
-    draft_graph_migration_applied: bool = False
     react_terminal_action: str | None = None
     react_loop_turns: int | None = None
     react_loop_budget: int | None = None
