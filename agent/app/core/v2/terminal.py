@@ -204,6 +204,7 @@ def to_outcome(
         tokens_input=loop_result.tokens_input or None,
         tokens_output=loop_result.tokens_output or None,
         tokens_total=loop_result.tokens_total or None,
+        tokens_cached=loop_result.tokens_cached or None,
         route_lane=route_lane,
         active_draft_id=active_draft_id,
         active_draft_version=active_draft_version,

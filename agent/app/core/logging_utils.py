@@ -496,7 +496,15 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
     if event in {'provider_attempt', 'provider_success', 'provider_failure'}:
         return _pick_progress_detail_fields(
             details,
-            ('provider', 'phase', 'error_code', 'tokens_input', 'tokens_output', 'tokens_total'),
+            (
+                'provider',
+                'phase',
+                'error_code',
+                'tokens_input',
+                'tokens_output',
+                'tokens_total',
+                'tokens_cached',
+            ),
         )
     if event == 'session_staged_state':
         return _pick_progress_detail_fields(
@@ -976,6 +984,7 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
         trace.response['tokens_input'] = payload.get('tokens_input')
         trace.response['tokens_output'] = payload.get('tokens_output')
         trace.response['tokens_total'] = payload.get('tokens_total')
+        trace.response['tokens_cached'] = payload.get('tokens_cached')
         trace.response['fallback_used'] = payload.get('fallback_used')
         return
     if event == 'message_completed':
@@ -1010,6 +1019,7 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'tokens_input': payload.get('tokens_input'),
                 'tokens_output': payload.get('tokens_output'),
                 'tokens_total': payload.get('tokens_total'),
+                'tokens_cached': payload.get('tokens_cached'),
             },
         }
         trace.routing['intent_type'] = payload.get('intent_type') or trace.routing.get('intent_type')
@@ -1078,6 +1088,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  retry_auto  {_yes_no(trace.response.get("retry_autostage_applied"))}',
             f'  validation  {trace.response.get("operation_validation_error")}',
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
+            f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"))}',
             '',
             'ASSISTANT',
             f'  {_format_message_summary(trace.assistant.get("assistant_message"))}',
@@ -1193,6 +1204,22 @@ def _yes_no(value: Any) -> str:
     if value is False:
         return 'no'
     return str(value)
+
+
+def _format_cache_hit(tokens_input: Any, tokens_cached: Any) -> str:
+    """Render prompt-cache effectiveness as `cached/input (NN%)`.
+
+    Cached input tokens bill at ~10%, and the prompt is ordered so the static
+    prefix stays byte-stable (see v2/context.py compact_state). A hit rate that
+    collapses to 0% across a multi-turn conversation means something per-turn
+    crept above the "# Actor" block and broke the cacheable prefix.
+    """
+    if not isinstance(tokens_input, int) or tokens_input <= 0:
+        return 'n/a'
+    if not isinstance(tokens_cached, int) or tokens_cached < 0:
+        return f'0/{tokens_input} (0%)'
+    percent = round(tokens_cached * 100 / tokens_input)
+    return f'{tokens_cached}/{tokens_input} ({percent}%)'
 
 
 def _ordered_keys(payload: dict[str, Any]) -> list[str]:

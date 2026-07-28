@@ -513,6 +513,11 @@ async def send_message_flow(
             tokens_input=outcome.tokens_input if outcome else None,
             tokens_output=outcome.tokens_output if outcome else None,
             tokens_total=outcome.tokens_total if outcome else None,
+            # Cached-prefix tokens for the whole turn. Compare against
+            # tokens_input: a healthy roadmap conversation should cache most of
+            # its input after the first turn, because the system prompt + state
+            # header are ordered to stay byte-stable (v2/context.py).
+            tokens_cached=outcome.tokens_cached if outcome else None,
             operations_count=len(outcome.operations) if outcome else 0,
             staged_changes_present=staged_changes_present,
             actor_present=(
