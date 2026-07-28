@@ -85,6 +85,25 @@ describe("roadmapCreationFlow", () => {
 		).toBeUndefined();
 	});
 
+	it("keeps a supplied preview url instead of generating a gradient", () => {
+		// The stock-image picker resolves a cdn.proyekto.tech URL before create is
+		// called; the generated-thumbnail fallback must not overwrite it.
+		const previewUrl =
+			"https://cdn.proyekto.tech/roadmap_previews/stock/pexels-2379004-w940.jpg";
+
+		const payload = buildRoadmapCreatePayload({
+			projectId: "project-1",
+			previewUrl,
+			metadata: {
+				name: "Fitness Buddy",
+				description: "A fitness roadmap",
+				category: "Health & Fitness",
+			},
+		});
+
+		expect(payload.preview_url).toBe(previewUrl);
+	});
+
 	it("creates a guest roadmap, remembers it, and prepares page handoffs", async () => {
 		vi.mocked(getOrCreateGuestUser).mockResolvedValue("guest-1");
 		vi.mocked(roadmapService.suggestMetadata).mockResolvedValue({

@@ -5,10 +5,12 @@ import {
 	CheckCircle2,
 	ImagePlus,
 	Loader2,
+	RefreshCw,
 	Send,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/layout/Header";
+import { featureFlags } from "@/config/featureFlags";
 import { getOrCreateGuestUser } from "@/lib/guestAuth";
 import {
 	buildFallbackRoadmapMetadata,
@@ -21,6 +23,11 @@ import {
 	readRoadmapIntakeDraft,
 } from "@/lib/roadmapIntakeDraft";
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
+import {
+	pickStockPhotoUrl,
+	resolveStockTheme,
+	stockPhotoPoolSize,
+} from "@/lib/stockPhoto";
 import {
 	type RoadmapIntakeCaptured,
 	type RoadmapIntakeTurn,
@@ -72,6 +79,12 @@ const DEFAULT_TITLE_MESSAGE =
 const DEFAULT_DESCRIPTION_MESSAGE =
 	"What is the goal of this roadmap? Pick one direction below or write your own.";
 const THUMBNAIL_MESSAGE =
+	"Last step: I picked a cover image that fits your roadmap. Keep it, shuffle for another, or upload your own.";
+/**
+ * Used when curated photos are off or the theme pool is empty, so the degraded
+ * flow reads exactly as it did before cover images existed.
+ */
+const THUMBNAIL_MESSAGE_FALLBACK =
 	"Last step: upload a thumbnail or skip this part. If you skip, I will use the generated thumbnail below.";
 
 const FALLBACK_CATEGORIES = [
@@ -465,6 +478,8 @@ export function RoadmapBuilder({
 	const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
 	const [isCreating, setIsCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	/** Incremented by Shuffle to step through the theme's photo pool. */
+	const [stockOffset, setStockOffset] = useState(0);
 
 	const timestampLabel = useMemo(() => {
 		return `Today at ${new Intl.DateTimeFormat(undefined, {
@@ -483,11 +498,40 @@ export function RoadmapBuilder({
 		);
 	}, [categories, title]);
 
-	const previewUrl = thumbnailUrl || generatedPreviewUrl;
 	const selectedCategoryLabel = useMemo(
 		() => categoriesToString(categories),
 		[categories],
 	);
+
+	/**
+	 * The curated cover photo. Purely local — the manifest is committed and the
+	 * objects live on our CDN — so this is a synchronous memo with no loading
+	 * state and no failure mode. An unseeded pool yields null, which falls back
+	 * to the generated gradient.
+	 */
+	const stockTheme = useMemo(
+		() =>
+			resolveStockTheme(
+				selectedCategoryLabel || DEFAULT_ROADMAP_CATEGORY,
+				title,
+			),
+		[selectedCategoryLabel, title],
+	);
+	const stockPhotoUrl = useMemo(() => {
+		if (!featureFlags.stockPhotos) return null;
+		return pickStockPhotoUrl(
+			stockTheme,
+			title || DEFAULT_ROADMAP_NAME,
+			stockOffset,
+		);
+	}, [stockOffset, stockTheme, title]);
+	const canShuffleStockPhoto =
+		Boolean(stockPhotoUrl) && stockPhotoPoolSize(stockTheme) > 1;
+
+	// An explicit upload always wins, then the curated photo, then the generated
+	// gradient. `stockPhotoUrl` is null whenever the flag is off, so disabling
+	// the feature restores the original behaviour with no other path dangling.
+	const previewUrl = thumbnailUrl || stockPhotoUrl || generatedPreviewUrl;
 	const effectivePrompt = refinedPrompt.trim() || prompt.trim();
 	const hasCapturedSlots = INTAKE_SLOT_CHIPS.some((chip) =>
 		isSlotFilled(capturedView, chip.key),
@@ -842,7 +886,10 @@ export function RoadmapBuilder({
 		appendMessage("user", `${label}\nCategories: ${categoryLabel}`);
 		setIsLocalThinking(true);
 		await wait(650);
-		appendMessage("assistant", THUMBNAIL_MESSAGE);
+		appendMessage(
+			"assistant",
+			stockPhotoUrl ? THUMBNAIL_MESSAGE : THUMBNAIL_MESSAGE_FALLBACK,
+		);
 		setStep("thumbnail");
 		setIsLocalThinking(false);
 	};
@@ -873,7 +920,7 @@ export function RoadmapBuilder({
 		}
 	};
 
-	const handleCreate = async (mode: "generated" | "uploaded") => {
+	const handleCreate = async (mode: "generated" | "uploaded" | "stock") => {
 		if (isCreating || isAuthLoading || !effectivePrompt || !title.trim())
 			return;
 
@@ -883,9 +930,12 @@ export function RoadmapBuilder({
 			"user",
 			mode === "uploaded"
 				? "Use my uploaded thumbnail."
-				: "Skip thumbnail upload and use the generated thumbnail.",
+				: mode === "stock"
+					? "Use the suggested cover image."
+					: "Skip thumbnail upload and use the generated thumbnail.",
 		);
 		setIsLocalThinking(true);
+
 		try {
 			const roadmap = await createRoadmapFromMetadata({
 				metadata: {
@@ -896,6 +946,8 @@ export function RoadmapBuilder({
 				prompt: effectivePrompt,
 				projectId,
 				isAuthenticated: Boolean(authenticatedUser),
+				// Already a cdn.proyekto.tech URL (curated photo) or a data URI
+				// (generated gradient) — nothing to upload or re-host.
 				previewUrl,
 				openMetadataModal: false,
 				// Carries audience/platform/v1 scope through to the agent turn that
@@ -1407,7 +1459,7 @@ export function RoadmapBuilder({
 									{selectedCategoryLabel || DEFAULT_ROADMAP_CATEGORY}
 								</p>
 
-								<div className="mt-6 flex flex-col gap-3 sm:flex-row">
+								<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
 									<button
 										type="button"
 										onClick={() => fileInputRef.current?.click()}
@@ -1421,10 +1473,28 @@ export function RoadmapBuilder({
 										)}
 										{isUploadingThumbnail ? "Uploading..." : "Upload thumbnail"}
 									</button>
+									{/* Only useful while the curated photo is what will be used. */}
+									{canShuffleStockPhoto && !thumbnailUrl && (
+										<button
+											type="button"
+											onClick={() => setStockOffset((current) => current + 1)}
+											disabled={isUploadingThumbnail || isCreating}
+											className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-foreground transition hover:border-primary/50 hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											<RefreshCw className="h-4 w-4" />
+											Shuffle image
+										</button>
+									)}
 									<button
 										type="button"
 										onClick={() =>
-											void handleCreate(thumbnailUrl ? "uploaded" : "generated")
+											void handleCreate(
+												thumbnailUrl
+													? "uploaded"
+													: stockPhotoUrl
+														? "stock"
+														: "generated",
+											)
 										}
 										disabled={!canCreate}
 										className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-black text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1432,7 +1502,9 @@ export function RoadmapBuilder({
 										{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
 										{thumbnailUrl
 											? "Use uploaded thumbnail"
-											: "Skip and create roadmap"}
+											: stockPhotoUrl
+												? "Use this image and create"
+												: "Skip and create roadmap"}
 									</button>
 								</div>
 
@@ -1464,7 +1536,7 @@ export function RoadmapBuilder({
 								<div className="overflow-hidden rounded-3xl border border-border bg-background shadow-sm">
 									<img
 										src={previewUrl}
-										alt="Generated roadmap thumbnail preview"
+										alt="Roadmap thumbnail preview"
 										className="h-44 w-full object-cover"
 									/>
 									<div className="p-4">
@@ -1472,7 +1544,9 @@ export function RoadmapBuilder({
 											<CheckCircle2 className="h-4 w-4" />
 											{thumbnailUrl
 												? "Uploaded thumbnail"
-												: "Generated thumbnail"}
+												: stockPhotoUrl
+													? "Cover image"
+													: "Generated thumbnail"}
 										</div>
 									</div>
 								</div>

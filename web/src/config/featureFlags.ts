@@ -47,4 +47,15 @@ export const featureFlags = {
 	 * side is publishing (AGENT_REALTIME_TRACE_PUSH_ENABLED).
 	 */
 	realtimeAiTracePush: true as boolean,
+
+	/**
+	 * Curated stock photos as the default roadmap thumbnail, served from R2 via
+	 * the committed manifest in src/data/stockPhotoManifest.ts. Off = roadmap
+	 * create keeps generating the gradient thumbnail, exactly as before.
+	 *
+	 * Do NOT enable until `node scripts/seed_stock_photos.mjs` has run and the
+	 * objects are live on cdn.proyekto.tech — the manifest can be committed
+	 * ahead of the upload, and this flag is what keeps that ordering safe.
+	 */
+	stockPhotos: import.meta.env.VITE_STOCK_PHOTOS_ENABLED === "true",
 } as const;
