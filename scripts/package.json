@@ -1,0 +1,9 @@
+{
+  "name": "proyekto-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Dependencies for repo-root scripts. Most scripts here are dependency-free (node: builtins + global fetch) and need no install; only seed_stock_photos.mjs requires sharp for image compression. Install with: cd scripts && npm install",
+  "dependencies": {
+    "sharp": "^0.35.3"
+  }
+}

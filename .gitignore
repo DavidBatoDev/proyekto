@@ -23,6 +23,12 @@ keys
 # references resolved from the developer's own environment.
 mcp.json
 
+# Stock photo seeding (scripts/seed_stock_photos.mjs). Source images and the
+# compressed staging output stay local — only the generated manifest at
+# web/src/data/stockPhotoManifest.ts is committed.
+/seed-images/
+/.stock-staging/
+
 # Playwright
 node_modules/
 /test-results/

@@ -174,3 +174,79 @@ Legacy aliases remain supported for one release:
 - `AGENT_EDIT_PLANNER_REPAIR_RETRIES`
 
 Exit code is non-zero if either profile fails.
+
+## Stock Photo Seeding
+
+`node scripts/seed_stock_photos.mjs` compresses a folder of source images,
+uploads them to the `proyekto-media` R2 bucket, and regenerates
+`web/src/data/stockPhotoManifest.ts` — the manifest the roadmap create flow
+reads to pick a cover image. This is the only script here with an npm
+dependency (`sharp`). Install it from inside `scripts/` — `npm --prefix scripts
+install` fails on Windows, where npm still reads `package.json` from the cwd.
+
+```bash
+cd scripts && npm install && cd ..
+node scripts/seed_stock_photos.mjs --source=./seed-images --dry-run
+node scripts/seed_stock_photos.mjs --source=./seed-images
+```
+
+### Source layout
+
+One directory per theme, named exactly as in `THEMES` at the top of the script.
+`generic/` is required — it is the fallback pool for categories that match no
+theme. Each theme needs at least 3 images so the Shuffle button has somewhere
+to go.
+
+```
+seed-images/
+  web-development/  mobile-app/     saas/       ai-ml/
+  e-commerce/       marketing/      health-fitness/
+  finance/          education/      design/     data-analytics/
+  devops-cloud/     security/       operations/ team-collaboration/
+  generic/
+```
+
+Any format `sharp` reads is fine at any size: each image is re-encoded to
+1200x675 JPEG and stepped down the quality ladder until it fits `--max-bytes`
+(default 1 MB). `seed-images/` and `.stock-staging/` are gitignored.
+
+### Useful options
+
+- `--dry-run` — report the per-theme plan and exit without writing anything
+- `--skip-upload` — compress and write the manifest, but do not touch R2
+- `--max-bytes=`, `--width=`, `--height=`, `--quality=` — encoding budget
+- `--bucket=`, `--prefix=`, `--base-url=` — R2 target and public origin
+- `--source=`, `--out=`, `--staging=` — paths
+
+### Sourcing the images
+
+`node scripts/fetch_stock_photos.mjs` fills `seed-images/` from Pexels — one
+search per theme, ~16 of the 200/hour free allowance for a full run. It needs
+`PEXELS_API_KEY` (already in `backend/.env`). This is build-time only; the
+product never calls Pexels. Photographer credits land in
+`docs/08-storage-media/stock-photo-credits.md`.
+
+```bash
+node scripts/fetch_stock_photos.mjs --per-theme=16
+node scripts/fetch_stock_photos.mjs --themes=finance,security --force  # refresh some
+```
+
+Skip it entirely if you would rather curate `seed-images/` by hand — the seed
+script does not care where the files came from.
+
+### Upload transport
+
+`--upload=auto` (the default) probes R2's S3 endpoint and uses it when
+reachable, since it reuses the `R2_*` keys already in `backend/.env` and needs
+no login. It falls back to `wrangler r2 object put --remote` — which requires
+`npx --prefix realtime wrangler login` first — because
+`docs/08-storage-media/r2-architecture.md` records TLS handshake failures
+against `<account>.r2.cloudflarestorage.com` on some networks. Force either
+with `--upload=s3` or `--upload=wrangler`.
+
+After seeding, verify an object and only then enable the surface:
+
+```bash
+curl -sI https://cdn.proyekto.tech/stock/generic/01.jpg | head -1
+# then set VITE_STOCK_PHOTOS_ENABLED=true in the web build
+```
