@@ -1,25 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
 	ChevronDown,
 	ChevronUp,
+	Coffee,
 	ExternalLink,
 	Loader2,
-	Pause,
 	Play,
 	Square,
 	Timer,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useToast } from "@/contexts/ToastContext";
-import { teamTimeService } from "@/services/team-time.service";
-import { useUser } from "@/stores/authStore";
+import { useEffect, useState } from "react";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import {
-	confirmStopLongTimer,
-	liveDurationSecondsFromLog,
-	useLiveNowMs,
-} from "./time-utils";
+import { useActiveTimer } from "./useActiveTimer";
 
 const TIMER_VISIBLE_PATH_PREFIXES = [
 	"/dashboard",
@@ -72,119 +64,21 @@ function workTypeLabel(value: "real_work" | "training"): string {
 }
 
 export function FloatingActiveTimer() {
-	const user = useUser();
-	const toast = useToast();
-	const queryClient = useQueryClient();
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const shouldRender = shouldShowOnPath(pathname);
 	const [anchor, setAnchor] = useState<TimerAnchor>("bottom-right");
 	const [isCollapsed, setIsCollapsed] = useState(false);
-	const [breakMinutesInput, setBreakMinutesInput] = useState<number>(0);
 
-	// Pause / Resume Dial State
-	const [pauseStartMs, setPauseStartMs] = useState<number | null>(null);
-
-	const runningQuery = useQuery({
-		queryKey: ["team-time", "running-log", user?.id ?? "anonymous"] as const,
-		queryFn: () => teamTimeService.getMyRunningLog(),
-		enabled: Boolean(user?.id) && shouldRender,
-		refetchInterval: (query) => (query.state.data ? 3_000 : 30_000),
-		refetchIntervalInBackground: false,
-		retry: 1,
-	});
-
-	const stopMutation = useMutation({
-		mutationFn: ({
-			logId,
-			breakMinutes,
-		}: {
-			logId: string;
-			breakMinutes?: number;
-		}) => teamTimeService.stopLog(logId, undefined, breakMinutes),
-		onMutate: async () => {
-			if (!user?.id) return;
-			await queryClient.cancelQueries({
-				queryKey: ["team-time", "running-log", user.id] as const,
-			});
-			queryClient.setQueryData(
-				["team-time", "running-log", user.id] as const,
-				null,
-			);
-		},
-		onSuccess: () => {
-			if (log?.id) {
-				localStorage.removeItem(`active_timer_break_${log.id}`);
-				localStorage.removeItem(`active_timer_pause_${log.id}`);
-			}
-			setBreakMinutesInput(0);
-			setPauseStartMs(null);
-			if (user?.id) {
-				queryClient.setQueryData(
-					["team-time", "running-log", user.id] as const,
-					null,
-				);
-			}
-			void queryClient.invalidateQueries({ queryKey: ["team-time"] });
-			toast.success("Timer stopped.");
-		},
-		onError: (error) => {
-			const message =
-				error instanceof Error ? error.message : "Failed to stop timer";
-			toast.error(message);
-			void queryClient.invalidateQueries({ queryKey: ["team-time"] });
-		},
-	});
-
-	const log = runningQuery.data ?? null;
-	const isRunning = Boolean(log);
-	const nowMs = useLiveNowMs(isRunning);
-
-	// Calculate elapsed pause seconds when paused
-	const pauseElapsedSeconds = useMemo(() => {
-		if (!pauseStartMs) return 0;
-		return Math.max(0, Math.floor((nowMs - pauseStartMs) / 1000));
-	}, [pauseStartMs, nowMs]);
-
-	// Sync & Restore live break state from localStorage or log object across browser refreshes
-	useEffect(() => {
-		if (!log?.id) {
-			setBreakMinutesInput(0);
-			setPauseStartMs(null);
-			return;
-		}
-		const storedBreakMins = localStorage.getItem(`active_timer_break_${log.id}`);
-		if (storedBreakMins !== null) {
-			setBreakMinutesInput(Number(storedBreakMins));
-		} else {
-			setBreakMinutesInput(log.break_minutes ?? 0);
-		}
-
-		const storedPauseMs = localStorage.getItem(`active_timer_pause_${log.id}`);
-		if (storedPauseMs) {
-			setPauseStartMs(Number(storedPauseMs));
-		}
-	}, [log?.id, log?.break_minutes]);
-
-	// Save break input to localStorage whenever updated
-	useEffect(() => {
-		if (!log?.id) return;
-		localStorage.setItem(`active_timer_break_${log.id}`, String(breakMinutesInput));
-	}, [log?.id, breakMinutesInput]);
-
-	// Save pause state to localStorage whenever updated
-	useEffect(() => {
-		if (!log?.id) return;
-		if (pauseStartMs) {
-			localStorage.setItem(`active_timer_pause_${log.id}`, String(pauseStartMs));
-		} else {
-			localStorage.removeItem(`active_timer_pause_${log.id}`);
-		}
-	}, [log?.id, pauseStartMs]);
-
-	const elapsedSeconds = useMemo(
-		() => (log ? liveDurationSecondsFromLog(log, nowMs) : 0),
-		[log, nowMs],
-	);
+	const {
+		log,
+		isPaused,
+		workSeconds,
+		breakSeconds,
+		toggleBreak,
+		stop,
+		isBusy,
+		isStopping,
+	} = useActiveTimer({ enabled: shouldRender });
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -213,7 +107,7 @@ export function FloatingActiveTimer() {
 		);
 	}, [isCollapsed]);
 
-	if (!user?.id || !shouldRender || !log) return null;
+	if (!shouldRender || !log) return null;
 
 	const anchorClass =
 		anchor === "top-left"
@@ -224,63 +118,62 @@ export function FloatingActiveTimer() {
 					? "absolute bottom-4 left-4"
 					: "absolute bottom-4 right-4";
 
-	const handleTogglePause = () => {
-		if (!pauseStartMs) {
-			// Start Pausing / Break
-			const now = Date.now();
-			setPauseStartMs(now);
-			if (log?.id) {
-				localStorage.setItem(`active_timer_pause_${log.id}`, String(now));
-			}
-			toast.success("⏸ Timer Paused. Click Resume when back!");
-		} else {
-			// Resume Work Timer
-			const elapsedMs = Date.now() - pauseStartMs;
-			const addedMins = Math.floor(elapsedMs / 60000);
-			setPauseStartMs(null);
-			if (log?.id) {
-				localStorage.removeItem(`active_timer_pause_${log.id}`);
-			}
-			if (addedMins > 0) {
-				const newTotal = breakMinutesInput + addedMins;
-				setBreakMinutesInput(newTotal);
-				if (log?.id) {
-					teamTimeService.updateLog(log.id, { break_minutes: newTotal }).catch(() => {});
-				}
-				toast.success(`▶ Timer Resumed! Logged ${addedMins}m break time.`);
-			} else {
-				toast.success("▶ Timer Resumed!");
-			}
-		}
-	};
-
 	return (
 		<div className="pointer-events-none fixed inset-0 z-80">
 			<div
 				className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-xl shadow-slate-900/10 ${anchorClass}`}
 			>
-				<div className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${pauseStartMs ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
-					{pauseStartMs ? <Pause className="h-4 w-4 text-amber-600 animate-pulse" /> : <Timer className="h-4 w-4" />}
+				<div
+					className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${
+						isPaused
+							? "bg-amber-100 text-amber-700"
+							: "bg-emerald-100 text-emerald-700"
+					}`}
+				>
+					{isPaused ? (
+						<Coffee className="h-4 w-4 animate-pulse text-amber-600" />
+					) : (
+						<Timer className="h-4 w-4" />
+					)}
 				</div>
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
-						<span className={`inline-block h-2 w-2 rounded-full ${pauseStartMs ? "bg-amber-500 animate-ping" : "bg-emerald-500 animate-pulse"}`} />
-						<p className={`text-[11px] font-semibold uppercase tracking-wide ${pauseStartMs ? "text-amber-700 font-bold" : "text-emerald-700"}`}>
-							{pauseStartMs ? "⏸ Paused (On Break)" : "Timer running"}
+						<span
+							className={`inline-block h-2 w-2 rounded-full ${
+								isPaused
+									? "animate-ping bg-amber-500"
+									: "animate-pulse bg-emerald-500"
+							}`}
+						/>
+						<p
+							className={`text-[11px] font-semibold uppercase tracking-wide ${
+								isPaused ? "text-amber-700" : "text-emerald-700"
+							}`}
+						>
+							{isPaused ? "On break" : "Timer running"}
 						</p>
 					</div>
 					<div className="flex items-baseline gap-2">
-						<p className="tabular-nums text-sm font-bold text-slate-900">
-							{formatTimer(elapsedSeconds)}
+						<p
+							className={`tabular-nums text-sm font-bold ${
+								isPaused ? "text-slate-400" : "text-slate-900"
+							}`}
+							title={isPaused ? "Work clock is paused" : "Time worked"}
+						>
+							{formatTimer(workSeconds)}
 						</p>
-						{pauseStartMs ? (
-							<span className="inline-flex items-center gap-1 rounded bg-amber-200/80 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 animate-pulse">
-								<Pause className="h-3 w-3" />
-								Paused: {formatCountdown(pauseElapsedSeconds)}
+						{isPaused ? (
+							<span className="inline-flex animate-pulse items-center gap-1 rounded bg-amber-200/80 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+								<Coffee className="h-3 w-3" />
+								{formatCountdown(breakSeconds)}
 							</span>
-						) : breakMinutesInput > 0 ? (
-							<span className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700" title="Break logged to session">
-								✓ {breakMinutesInput}m break logged
+						) : breakSeconds > 0 ? (
+							<span
+								className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
+								title="Break time logged on this session"
+							>
+								<Coffee className="h-3 w-3" />
+								{Math.round(breakSeconds / 60)}m break
 							</span>
 						) : null}
 					</div>
@@ -378,39 +271,38 @@ export function FloatingActiveTimer() {
 					) : null}
 					<button
 						type="button"
-						onClick={handleTogglePause}
-						className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all ${
-							pauseStartMs
-								? "border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 shadow-md animate-pulse"
+						onClick={toggleBreak}
+						disabled={isBusy}
+						className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
+							isPaused
+								? "border-emerald-500 bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
 								: "border-amber-400 bg-amber-100 text-amber-900 hover:bg-amber-200"
 						}`}
-						title={pauseStartMs ? "Resume work timer" : "Pause work timer (Go on break)"}
+						title={
+							isPaused
+								? "End the break and resume the work timer"
+								: "Start a break — the work timer pauses"
+						}
 					>
-						{pauseStartMs ? (
+						{isPaused ? (
 							<>
 								<Play className="h-3.5 w-3.5 fill-current" />
 								Resume
 							</>
 						) : (
 							<>
-								<Pause className="h-3.5 w-3.5 fill-current" />
-								Pause
+								<Coffee className="h-3.5 w-3.5" />
+								Break
 							</>
 						)}
 					</button>
 					<button
 						type="button"
-						onClick={() => {
-							if (!confirmStopLongTimer(elapsedSeconds)) return;
-							stopMutation.mutate({
-								logId: log.id,
-								breakMinutes: breakMinutesInput,
-							});
-						}}
-						disabled={stopMutation.isPending}
+						onClick={stop}
+						disabled={isBusy}
 						className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
 					>
-						{stopMutation.isPending ? (
+						{isStopping ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />
 						) : (
 							<Square className="h-3.5 w-3.5" />

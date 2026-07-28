@@ -146,6 +146,10 @@ export interface ProjectPermissions {
 		chat: boolean;
 		resources: boolean;
 		project_settings: boolean;
+		time: boolean;
+		contract: boolean;
+		invoices: boolean;
+		financials: boolean;
 	};
 	roadmap: {
 		view: boolean;
@@ -198,6 +202,9 @@ export interface ProjectPermissions {
 	logs: {
 		view: boolean;
 		view_sensitive: boolean;
+	};
+	time: {
+		view_team_logs: boolean;
 	};
 }
 

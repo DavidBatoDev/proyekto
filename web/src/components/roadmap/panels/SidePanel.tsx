@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
 import { DueDatePicker } from "./DueDatePicker";
 import { Button } from "@/ui/button";
 import { useProfile, useUser } from "@/stores/authStore";
@@ -233,6 +234,10 @@ export const SidePanel = ({
 	const profile = useProfile();
 	const toast = useToast();
 	const [activeTab, setActiveTab] = useState<TabType>("details");
+	// Not every mount site passes projectId (the canvas opens the panel from
+	// the store), but the timer needs one.
+	const roadmapProjectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
+	const effectiveProjectId = projectId || roadmapProjectId;
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
 	const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
@@ -1186,24 +1191,33 @@ export const SidePanel = ({
 
 			{/* Tabs - only show in edit mode */}
 			{!isCreateMode && (
-				<div className="flex items-center border-b border-gray-200 px-6 shrink-0">
-					{(["details", "comments", "history"] as TabType[]).map((tab) => (
-						<button
-							key={tab}
-							onClick={() => setActiveTab(tab)}
-							className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-								activeTab === tab
-									? "text-primary border-primary"
-									: "text-gray-600 hover:text-gray-900 border-transparent"
-							}`}
-						>
-							{tab === "details"
-								? "Overview"
-								: tab === "comments"
-									? "Comments"
-									: "History"}
-						</button>
-					))}
+				<div className="flex items-center justify-between gap-3 border-b border-gray-200 px-6 shrink-0">
+					<div className="flex items-center">
+						{(["details", "comments", "history"] as TabType[]).map((tab) => (
+							<button
+								key={tab}
+								onClick={() => setActiveTab(tab)}
+								className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
+									activeTab === tab
+										? "text-primary border-primary"
+										: "text-gray-600 hover:text-gray-900 border-transparent"
+								}`}
+							>
+								{tab === "details"
+									? "Overview"
+									: tab === "comments"
+										? "Comments"
+										: "History"}
+							</button>
+						))}
+					</div>
+					{effectiveProjectId && task?.id ? (
+						<TaskTimerInline
+							projectId={effectiveProjectId}
+							taskId={task.id}
+							className="shrink-0"
+						/>
+					) : null}
 				</div>
 			)}
 

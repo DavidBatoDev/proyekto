@@ -17,8 +17,24 @@ export interface AgreementPdfInput {
   contractNumber?: string | null;
   terms: Array<{ label: string; value: string }>;
   clauses: Array<{ title: string; body: string }>;
-  signedByConsultant?: { name: string; at: string; image?: Buffer } | null;
-  signedByClient?: { name: string; at: string; image?: Buffer } | null;
+  signedByConsultant?: {
+    name: string;
+    at: string;
+    image?: Buffer;
+    /** Display multiplier for the image; 1 = SIGNATURE_BASE_HEIGHT. */
+    imageScale?: number;
+    /** Placement offsets in base-height multiples; +x right, +y up. */
+    imageOffsetX?: number;
+    imageOffsetY?: number;
+  } | null;
+  signedByClient?: {
+    name: string;
+    at: string;
+    image?: Buffer;
+    imageScale?: number;
+    imageOffsetX?: number;
+    imageOffsetY?: number;
+  } | null;
 }
 
 const HEADING = '#1f3a93';
@@ -28,6 +44,10 @@ const MARGIN = 56;
 const PAGE_WIDTH = 595.28;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const PAGE_BOTTOM = 780;
+/** Height of a signature image at scale 1, in points. */
+const SIGNATURE_BASE_HEIGHT = 32;
+/** Reserved height of the signature field — fixed, whatever the image does. */
+const SIGNATURE_FIELD_HEIGHT = 36;
 
 function formatStamp(at: string): string {
   const parsed = new Date(at);
@@ -183,7 +203,14 @@ function drawAgreement(
   const half = CONTENT_WIDTH / 2;
   const columns: Array<{
     heading: string;
-    signed?: { name: string; at: string; image?: Buffer } | null;
+    signed?: {
+      name: string;
+      at: string;
+      image?: Buffer;
+      imageScale?: number;
+      imageOffsetX?: number;
+      imageOffsetY?: number;
+    } | null;
   }> = [
     { heading: 'For Client', signed: input.signedByClient },
     {
@@ -192,6 +219,23 @@ function drawAgreement(
     },
   ];
 
+  // The signature field is a FIXED block: the heading, the rule and the typed
+  // name occupy the same space whether or not a signature image exists and
+  // whatever size it is. The image is an overlay stamped onto that field, so
+  // resizing or repositioning it never changes the document's length.
+  const clamp = (
+    value: number | undefined,
+    lo: number,
+    hi: number,
+    dflt: number,
+  ) =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.min(hi, Math.max(lo, value))
+      : dflt;
+
+  const ruleY = rowTop + 14 + SIGNATURE_FIELD_HEIGHT;
+  const textY = ruleY + 4;
+
   columns.forEach((column, index) => {
     const x = MARGIN + index * half;
     doc
@@ -199,17 +243,6 @@ function drawAgreement(
       .font('Helvetica-Bold')
       .fontSize(8)
       .text(column.heading, x, rowTop, { width: half - 12 });
-    // An uploaded signature image (optional) sits above the typed name.
-    if (column.signed?.image) {
-      try {
-        doc.image(column.signed.image, x, rowTop + 14, {
-          fit: [half - 12, 28],
-        });
-      } catch {
-        // A malformed image must never break the whole document.
-      }
-    }
-    const textY = rowTop + 14 + (column.signed?.image ? 30 : 0);
     doc
       .fillColor(INK)
       .font('Helvetica')
@@ -223,4 +256,30 @@ function drawAgreement(
         { width: half - 12 },
       );
   });
+
+  // Signature images are drawn LAST so they sit on top of the page content,
+  // and are positioned rather than laid out — nothing below them moves.
+  columns.forEach((column, index) => {
+    if (!column.signed?.image) return;
+    const x = MARGIN + index * half;
+    const scale = clamp(column.signed.imageScale, 0.5, 3, 1);
+    const height = SIGNATURE_BASE_HEIGHT * scale;
+    const offsetX = clamp(column.signed.imageOffsetX, -3, 3, 0);
+    const offsetY = clamp(column.signed.imageOffsetY, -3, 3, 0);
+    try {
+      doc.image(
+        column.signed.image,
+        x + offsetX * SIGNATURE_BASE_HEIGHT,
+        // Anchored so the ink sits on the rule, then nudged by the offset
+        // (+y is up, matching the on-screen editor).
+        ruleY - height - offsetY * SIGNATURE_BASE_HEIGHT,
+        { fit: [half - 12, height] },
+      );
+    } catch {
+      // A malformed image must never break the whole document.
+    }
+  });
+
+  // Keep the cursor below the fixed field regardless of signature size.
+  doc.y = textY + 24;
 }

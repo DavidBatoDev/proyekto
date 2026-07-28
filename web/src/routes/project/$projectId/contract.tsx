@@ -17,9 +17,11 @@ import {
 import { DateField } from "@/components/common/DateField";
 import {
 	AutosaveIndicator,
+	FieldLabel,
 	SelectField,
 	TextField,
 } from "@/components/common/FormFields";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import {
 	ActivationGuide,
 	checklistProgress,
@@ -46,7 +48,9 @@ import {
 	type ContractClause,
 	type ContractService,
 	contractService,
+	DEFAULT_SIGNATURE_PLACEMENT,
 	type ProjectEconomics,
+	type SignaturePlacement,
 } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
 import { uploadService } from "@/services/upload.service";
@@ -62,8 +66,19 @@ export const Route = createFileRoute("/project/$projectId/contract")({
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
 	},
-	component: ProjectContractPage,
+	component: ProjectContractRoute,
 });
+
+function ProjectContractRoute() {
+	const { projectId } = Route.useParams();
+	return (
+		<div className="app-shell-bg h-full w-full overflow-y-auto">
+			<RequireProjectAccess projectId={projectId} access="contract">
+				<ProjectContractPage />
+			</RequireProjectAccess>
+		</div>
+	);
+}
 
 function ProjectContractPage() {
 	const { projectId } = Route.useParams();
@@ -134,16 +149,44 @@ function ProjectContractPage() {
 			party,
 			name,
 			signatureUrl,
+			placement,
 		}: {
 			party: "consultant" | "client";
 			name: string;
 			signatureUrl?: string | null;
+			placement?: SignaturePlacement;
 		}) =>
-			contractService.sign(contract?.id as string, party, name, signatureUrl),
+			contractService.sign(
+				contract?.id as string,
+				party,
+				name,
+				signatureUrl,
+				placement,
+			),
 		onSuccess: () => {
 			toast.success("Signature recorded");
 			invalidateAll();
 		},
+		onError: (err: Error) => toast.error(err.message),
+	});
+
+	// Moving/resizing the overlay is cosmetic and stays available after
+	// signing, so it gets its own quiet mutation rather than forcing a
+	// remove-and-re-sign.
+	const placementMutation = useMutation({
+		mutationFn: ({
+			party,
+			placement,
+		}: {
+			party: "consultant" | "client";
+			placement: Partial<SignaturePlacement>;
+		}) =>
+			contractService.setSignaturePlacement(
+				contract?.id as string,
+				party,
+				placement,
+			),
+		onSuccess: () => invalidateAll(),
 		onError: (err: Error) => toast.error(err.message),
 	});
 
@@ -159,14 +202,14 @@ function ProjectContractPage() {
 
 	if (projectQuery.isPending || contractsQuery.isPending) {
 		return (
-			<div className="app-shell-bg flex h-full items-center justify-center">
+			<div className="flex h-full items-center justify-center">
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
+		<div className="w-full">
 			<div className="mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
@@ -275,12 +318,21 @@ function ProjectContractPage() {
 										(contract.client_user_id === user?.id ||
 											project?.client_id === user?.id)
 									}
-									onSign={(party, name, signatureUrl) =>
-										signMutation.mutate({ party, name, signatureUrl })
+									onSign={(party, name, signatureUrl, placement) =>
+										signMutation.mutate({
+											party,
+											name,
+											signatureUrl,
+											placement,
+										})
 									}
 									onUnsign={(party) => unsignMutation.mutate({ party })}
+									onPlacementChange={(party, placement) =>
+										placementMutation.mutate({ party, placement })
+									}
 									isPending={signMutation.isPending}
 									isUnsigning={unsignMutation.isPending}
+									isRescaling={placementMutation.isPending}
 								/>
 							)}
 						</div>
@@ -742,6 +794,7 @@ function TermsSection({
 				<FieldGroup title="Billing">
 					<SelectField
 						label="Billing model"
+						hint="How the client is charged. Retainer bills a flat fee each period; Hourly bills approved time at the rate below; Retainer + overage bills the fee plus any hours beyond the included allowance."
 						value={draft.billing_mode}
 						disabled={locked}
 						onChange={(v) =>
@@ -755,6 +808,7 @@ function TermsSection({
 					/>
 					<SelectField
 						label="Currency"
+						hint="The currency every invoice on this contract is issued in. It should match your team members' rate currency, or the margin maths compares apples to oranges."
 						value={draft.currency}
 						disabled={locked}
 						onChange={(v) => setDraft((d) => ({ ...d, currency: v }))}
@@ -763,6 +817,7 @@ function TermsSection({
 					{usesFee && (
 						<TextField
 							label="Recurring fee"
+							hint="The flat amount billed every billing period, before any overage. This is the client price — what you pay the team is separate."
 							type="number"
 							value={draft.recurring_fee}
 							onChange={(v) => setDraft((d) => ({ ...d, recurring_fee: v }))}
@@ -772,6 +827,7 @@ function TermsSection({
 					{usesRate && (
 						<TextField
 							label="Client hourly rate"
+							hint="What the client pays per approved hour. Only approved time logs are billed, so unreviewed hours never reach an invoice."
 							type="number"
 							value={draft.client_hourly_rate}
 							onChange={(v) =>
@@ -783,6 +839,7 @@ function TermsSection({
 					{draft.billing_mode === "hybrid" && (
 						<TextField
 							label="Hours included in fee"
+							hint="Hours the retainer already covers each period. Approved time beyond this is billed at the hourly rate as overage."
 							type="number"
 							value={draft.included_hours}
 							onChange={(v) => setDraft((d) => ({ ...d, included_hours: v }))}
@@ -794,12 +851,14 @@ function TermsSection({
 				<FieldGroup title="Schedule">
 					<DateField
 						label="Service start date"
+						hint="The day the engagement begins. Billing periods are counted from here, and no invoice is generated before it."
 						value={draft.service_start_date}
 						onChange={(v) => setDraft((d) => ({ ...d, service_start_date: v }))}
 						disabled={locked}
 					/>
 					<SelectField
 						label="Invoice cadence"
+						hint="How often an invoice is raised. Monthly bills once per calendar month; Cut-off follows your team's pay periods (usually twice a month), so client billing lines up with when you pay the team."
 						value={draft.invoice_cadence}
 						disabled={locked}
 						onChange={(v) =>
@@ -812,6 +871,7 @@ function TermsSection({
 					/>
 					<TextField
 						label="Term length"
+						hint="How long the engagement runs, counted in the unit beside it. 12 + Months ends the service period a year after the start date."
 						type="number"
 						value={draft.term_count}
 						onChange={(v) => setDraft((d) => ({ ...d, term_count: v }))}
@@ -819,6 +879,7 @@ function TermsSection({
 					/>
 					<SelectField
 						label="Term unit"
+						hint="The unit the term length is counted in — months or years."
 						value={draft.term_unit}
 						disabled={locked}
 						onChange={(v) =>
@@ -834,6 +895,7 @@ function TermsSection({
 				<FieldGroup title="Invoicing">
 					<TextField
 						label="Invoice delay (days after period)"
+						hint="How long to wait after a billing period closes before raising its invoice. 0 invoices on the closing day; use a few days if you need time to approve hours first."
 						type="number"
 						value={draft.invoice_offset_days}
 						onChange={(v) =>
@@ -843,6 +905,7 @@ function TermsSection({
 					/>
 					<TextField
 						label="Payment terms (days)"
+						hint="How many days the client has to pay after the invoice date — 'Net 15' means 15. It sets each invoice's due date."
 						type="number"
 						value={draft.due_days}
 						onChange={(v) => setDraft((d) => ({ ...d, due_days: v }))}
@@ -850,6 +913,8 @@ function TermsSection({
 					/>
 					<TextField
 						label="Invoice number prefix"
+						hint="Your own short code at the front of every invoice number on this contract — e.g. 'BS' produces BS2026-001, BS2026-002. Use whatever your bookkeeping expects; it has no effect beyond the label."
+						placeholder="e.g. BS"
 						value={draft.invoice_number_prefix}
 						onChange={(v) =>
 							setDraft((d) => ({ ...d, invoice_number_prefix: v }))
@@ -861,6 +926,8 @@ function TermsSection({
 				<FieldGroup title="Scope & payment">
 					<TextField
 						label="Service description"
+						optional
+						hint="One line summarising what you're delivering. It appears in the Commercial Terms table on the agreement."
 						value={draft.service_description}
 						onChange={(v) =>
 							setDraft((d) => ({ ...d, service_description: v }))
@@ -869,6 +936,8 @@ function TermsSection({
 					/>
 					<TextField
 						label="Payment method"
+						optional
+						hint="How the client should pay — e.g. bank transfer, online payment. Printed on the invoice so they know where to send it."
 						value={draft.payment_method}
 						onChange={(v) => setDraft((d) => ({ ...d, payment_method: v }))}
 						disabled={locked}
@@ -877,38 +946,106 @@ function TermsSection({
 			</div>
 
 			{/* Derived schedule, computed server-side from the saved terms. */}
-			<div className="mt-6 rounded-xl border border-border bg-muted/40 p-4">
-				<p className="text-sm font-semibold text-foreground">
-					Service {formatContractDate(contract.service_start_date)} –{" "}
-					{formatContractDate(contract.service_end_date)}
-				</p>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Contract ends {formatContractDate(contract.contract_end_date)} ·{" "}
-					{contract.periods.length} billing period
-					{contract.periods.length === 1 ? "" : "s"}
-				</p>
-				{contract.periods.length > 0 && (
-					<ul className="mt-3 max-h-48 space-y-1 overflow-y-auto text-xs text-muted-foreground">
-						{contract.periods.slice(0, 12).map((period) => (
-							<li key={period.id} className="flex flex-wrap gap-x-3">
-								<span className="font-medium text-foreground">
-									{formatPeriodRange(period)}
-								</span>
-								<span>invoice {formatContractDate(period.invoiceDate)}</span>
-								<span>due {formatContractDate(period.dueDate)}</span>
-							</li>
-						))}
-						{contract.periods.length > 12 && (
-							<li className="italic">
-								…and {contract.periods.length - 12} more
-							</li>
-						)}
-					</ul>
-				)}
-			</div>
+			<BillingSchedulePreview contract={contract} />
 
 			{!locked && <AutosaveIndicator status={saveStatus} />}
 		</AppSurfaceCard>
+	);
+}
+
+/* ── Billing schedule preview ─────────────────────────────────────────────── */
+
+/**
+ * The invoice calendar this contract's terms produce. Previously a wall of
+ * run-on lines ("Aug 1 – Aug 31 invoice Aug 31 due Sep 15") that took real
+ * effort to parse; now a numbered table with aligned columns, so it reads as
+ * the schedule it is and you can see at a glance which periods have passed.
+ */
+function BillingSchedulePreview({ contract }: { contract: Contract }) {
+	const [showAll, setShowAll] = useState(false);
+	const periods = contract.periods;
+	const today = new Date().toISOString().slice(0, 10);
+	const VISIBLE = 6;
+	const shown = showAll ? periods : periods.slice(0, VISIBLE);
+
+	if (periods.length === 0) {
+		return (
+			<div className="mt-6 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+				Set a service start date and term length to see the billing schedule.
+			</div>
+		);
+	}
+
+	return (
+		<div className="mt-6 overflow-hidden rounded-xl border border-border">
+			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border bg-muted/40 px-4 py-3">
+				<div>
+					<p className="text-sm font-semibold text-foreground">
+						Billing schedule
+					</p>
+					<p className="mt-0.5 text-xs text-muted-foreground">
+						{formatContractDate(contract.service_start_date)} –{" "}
+						{formatContractDate(contract.service_end_date)}
+						{contract.contract_end_date &&
+						contract.contract_end_date !== contract.service_end_date
+							? ` · contract ends ${formatContractDate(contract.contract_end_date)}`
+							: ""}
+					</p>
+				</div>
+				<span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+					{periods.length} invoice{periods.length === 1 ? "" : "s"}
+				</span>
+			</div>
+
+			<div className="overflow-x-auto">
+				<table className="w-full text-xs">
+					<thead className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+						<tr className="border-b border-border">
+							<th className="px-4 py-2 font-semibold">#</th>
+							<th className="px-4 py-2 font-semibold">Period covered</th>
+							<th className="px-4 py-2 font-semibold">Invoice date</th>
+							<th className="px-4 py-2 font-semibold">Payment due</th>
+						</tr>
+					</thead>
+					<tbody className="divide-y divide-border">
+						{shown.map((period, index) => {
+							const past = period.invoiceDate <= today;
+							return (
+								<tr
+									key={period.id}
+									className={past ? "text-muted-foreground" : "text-foreground"}
+								>
+									<td className="px-4 py-2 tabular-nums text-muted-foreground">
+										{index + 1}
+									</td>
+									<td className="px-4 py-2 font-medium">
+										{formatPeriodRange(period)}
+									</td>
+									<td className="px-4 py-2 tabular-nums">
+										{formatContractDate(period.invoiceDate)}
+									</td>
+									<td className="px-4 py-2 tabular-nums">
+										{formatContractDate(period.dueDate)}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+
+			{periods.length > VISIBLE && (
+				<button
+					type="button"
+					onClick={() => setShowAll((v) => !v)}
+					className="w-full border-t border-border bg-muted/30 px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+				>
+					{showAll
+						? "Show fewer"
+						: `Show all ${periods.length} billing periods`}
+				</button>
+			)}
+		</div>
 	);
 }
 
@@ -1073,6 +1210,20 @@ function Row({
 
 /* ── Services catalog ─────────────────────────────────────────────────────── */
 
+/**
+ * How a service is billed. Free text invited typos ("hr", "Hour", "hours")
+ * that then read inconsistently on the invoice, so the choices are fixed.
+ */
+const SERVICE_UNIT_OPTIONS: Array<{ value: string; label: string }> = [
+	{ value: "", label: "Select…" },
+	{ value: "hour", label: "Hour" },
+	{ value: "day", label: "Day" },
+	{ value: "week", label: "Week" },
+	{ value: "month", label: "Month" },
+	{ value: "project", label: "Project (one-off)" },
+	{ value: "item", label: "Item" },
+];
+
 function ServicesSection({
 	contract,
 	editable,
@@ -1082,6 +1233,7 @@ function ServicesSection({
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
+	const currency = contract.currency || "USD";
 	const [services, setServices] = useState<ContractService[]>(
 		contract.services,
 	);
@@ -1140,57 +1292,87 @@ function ServicesSection({
 				{services.map((service) => (
 					<div
 						key={service.id}
-						className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-muted/30 p-4 sm:grid-cols-[1fr_120px_140px_auto]"
+						className="rounded-xl border border-border bg-muted/30 p-4"
 					>
-						<div className="space-y-2">
-							<input
-								type="text"
-								value={service.name}
-								disabled={locked}
-								placeholder="Service name"
-								onChange={(e) => patchRow(service.id, { name: e.target.value })}
-								className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-							/>
+						<div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_160px_auto]">
+							<FieldLabel
+								label="Service"
+								hint="What you're billing for. This becomes the invoice line's description."
+							>
+								<input
+									type="text"
+									value={service.name}
+									disabled={locked}
+									placeholder="e.g. Digital Marketing"
+									onChange={(e) =>
+										patchRow(service.id, { name: e.target.value })
+									}
+									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+								/>
+							</FieldLabel>
+							<FieldLabel
+								label="Billed per"
+								hint="The unit the rate applies to — per hour, per month, or a one-off per project."
+							>
+								<select
+									value={service.unit ?? ""}
+									disabled={locked}
+									onChange={(e) =>
+										patchRow(service.id, { unit: e.target.value })
+									}
+									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+								>
+									{SERVICE_UNIT_OPTIONS.map((option) => (
+										<option key={option.value} value={option.value}>
+											{option.label}
+										</option>
+									))}
+								</select>
+							</FieldLabel>
+							<FieldLabel
+								label={`Rate (${currency})`}
+								hint="What the CLIENT pays per unit. Team member costs are separate and stay internal."
+							>
+								<input
+									type="number"
+									min={0}
+									step="0.01"
+									value={service.unit_rate}
+									disabled={locked}
+									placeholder="0.00"
+									onChange={(e) =>
+										patchRow(service.id, { unit_rate: Number(e.target.value) })
+									}
+									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+								/>
+							</FieldLabel>
+							{!locked && (
+								<button
+									type="button"
+									onClick={() => removeRow(service.id)}
+									className="h-fit self-end rounded-lg border border-border px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:border-destructive hover:text-destructive"
+								>
+									Remove
+								</button>
+							)}
+						</div>
+						<FieldLabel
+							label="Description"
+							optional
+							hint="Extra detail shown under the line on the invoice."
+							className="mt-3"
+						>
 							<input
 								type="text"
 								value={service.description ?? ""}
 								disabled={locked}
-								placeholder="Description (optional)"
+								placeholder="e.g. Monthly retainer covering channel management"
 								onChange={(e) =>
 									patchRow(service.id, { description: e.target.value })
 								}
-								className="w-full rounded-lg border border-input bg-card px-3 py-2 text-xs text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+								className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
 							/>
-						</div>
-						<input
-							type="text"
-							value={service.unit ?? ""}
-							disabled={locked}
-							placeholder="Unit (e.g. hour)"
-							onChange={(e) => patchRow(service.id, { unit: e.target.value })}
-							className="h-fit w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-						/>
-						<input
-							type="number"
-							min={0}
-							step="0.01"
-							value={service.unit_rate}
-							disabled={locked}
-							placeholder="Rate"
-							onChange={(e) =>
-								patchRow(service.id, { unit_rate: Number(e.target.value) })
-							}
-							className="h-fit w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-						/>
-						{!locked && (
-							<button
-								type="button"
-								onClick={() => removeRow(service.id)}
-								className="h-fit rounded-lg border border-border px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:border-destructive hover:text-destructive"
-							>
-								Remove
-							</button>
-						)}
+						</FieldLabel>
 					</div>
 				))}
 			</div>
@@ -1286,8 +1468,10 @@ function SignatureSection({
 	canSignAsClient,
 	onSign,
 	onUnsign,
+	onPlacementChange,
 	isPending,
 	isUnsigning,
+	isRescaling,
 }: {
 	contract: Contract;
 	canSignAsConsultant: boolean;
@@ -1296,10 +1480,16 @@ function SignatureSection({
 		party: "consultant" | "client",
 		name: string,
 		signatureUrl?: string | null,
+		placement?: SignaturePlacement,
 	) => void;
 	onUnsign: (party: "consultant" | "client") => void;
+	onPlacementChange: (
+		party: "consultant" | "client",
+		placement: Partial<SignaturePlacement>,
+	) => void;
 	isPending: boolean;
 	isUnsigning: boolean;
+	isRescaling: boolean;
 }) {
 	const [consultantName, setConsultantName] = useState("");
 	const [clientName, setClientName] = useState("");
@@ -1329,28 +1519,44 @@ function SignatureSection({
 					signedName={contract.signed_by_consultant_name}
 					signedAt={contract.signed_by_consultant_at}
 					signedImageUrl={contract.signed_by_consultant_signature_url}
+					placement={{
+						scale: contract.signed_by_consultant_signature_scale,
+						offsetX: contract.signed_by_consultant_signature_offset_x,
+						offsetY: contract.signed_by_consultant_signature_offset_y,
+					}}
 					canSign={canSignAsConsultant && termsReady}
 					canManage={canSignAsConsultant}
 					value={consultantName}
 					onChange={setConsultantName}
-					onSign={(url) => onSign("consultant", consultantName, url)}
+					onSign={(url, next) =>
+						onSign("consultant", consultantName, url, next)
+					}
 					onUnsign={() => onUnsign("consultant")}
+					onPlacementChange={(next) => onPlacementChange("consultant", next)}
 					isPending={isPending}
 					isUnsigning={isUnsigning}
+					isRescaling={isRescaling}
 				/>
 				<SignatureBlock
 					heading="For the client"
 					signedName={contract.signed_by_client_name}
 					signedAt={contract.signed_by_client_at}
 					signedImageUrl={contract.signed_by_client_signature_url}
+					placement={{
+						scale: contract.signed_by_client_signature_scale,
+						offsetX: contract.signed_by_client_signature_offset_x,
+						offsetY: contract.signed_by_client_signature_offset_y,
+					}}
 					canSign={canSignAsClient && termsReady}
 					canManage={canSignAsClient}
 					value={clientName}
 					onChange={setClientName}
-					onSign={(url) => onSign("client", clientName, url)}
+					onSign={(url, next) => onSign("client", clientName, url, next)}
 					onUnsign={() => onUnsign("client")}
+					onPlacementChange={(next) => onPlacementChange("client", next)}
 					isPending={isPending}
 					isUnsigning={isUnsigning}
+					isRescaling={isRescaling}
 				/>
 			</div>
 		</AppSurfaceCard>
@@ -1362,27 +1568,36 @@ function SignatureBlock({
 	signedName,
 	signedAt,
 	signedImageUrl,
+	placement,
 	canSign,
 	canManage,
 	value,
 	onChange,
 	onSign,
 	onUnsign,
+	onPlacementChange,
 	isPending,
 	isUnsigning,
+	isRescaling,
 }: {
 	heading: string;
 	signedName: string | null;
 	signedAt: string | null;
 	signedImageUrl: string | null;
+	placement: SignaturePlacement;
 	canSign: boolean;
 	canManage: boolean;
 	value: string;
 	onChange: (v: string) => void;
-	onSign: (signatureUrl?: string | null) => void;
+	onSign: (
+		signatureUrl?: string | null,
+		placement?: SignaturePlacement,
+	) => void;
 	onUnsign: () => void;
+	onPlacementChange: (placement: Partial<SignaturePlacement>) => void;
 	isPending: boolean;
 	isUnsigning: boolean;
+	isRescaling: boolean;
 }) {
 	if (signedAt) {
 		return (
@@ -1408,10 +1623,14 @@ function SignatureBlock({
 					)}
 				</div>
 				{signedImageUrl && (
-					<img
-						src={signedImageUrl}
+					<SignaturePlacementField
+						imageUrl={signedImageUrl}
 						alt={`${signedName ?? "Signature"} signature`}
-						className="mt-2 max-h-14 object-contain"
+						placement={placement}
+						editable={canManage}
+						busy={isRescaling}
+						onCommit={onPlacementChange}
+						className="mt-2"
 					/>
 				)}
 				<p className="mt-2 text-sm font-semibold text-foreground">
@@ -1451,6 +1670,249 @@ function SignatureBlock({
 	);
 }
 
+/** Base rendered height of a signature image at scale 1, in px. */
+const SIGNATURE_BASE_HEIGHT_PX = 56;
+/** Height of the signature field. FIXED — matches the document exactly. */
+const SIGNATURE_FIELD_HEIGHT_PX = 64;
+const SIGNATURE_MIN_SCALE = 0.5;
+const SIGNATURE_MAX_SCALE = 3;
+const SIGNATURE_MAX_OFFSET = 3;
+
+const clampOffset = (v: number) =>
+	Math.min(SIGNATURE_MAX_OFFSET, Math.max(-SIGNATURE_MAX_OFFSET, v));
+
+/**
+ * A signature field you can drag the signature around inside, the way a PDF
+ * signer lets you nudge a stamp onto the printed signature line.
+ *
+ * The field's height is fixed and the image is an absolutely positioned
+ * overlay on top of it, so neither resizing nor repositioning can change the
+ * surrounding layout — which is what kept knocking the document's two
+ * signature columns out of alignment.
+ *
+ * Offsets are stored in multiples of the base height rather than pixels, so
+ * the same value renders correctly in the compact preview, the full-size
+ * document, and the PDF.
+ */
+function SignaturePlacementField({
+	imageUrl,
+	alt,
+	placement,
+	editable,
+	busy,
+	onCommit,
+	className = "",
+}: {
+	imageUrl: string;
+	alt: string;
+	placement: SignaturePlacement;
+	editable: boolean;
+	busy?: boolean;
+	/** Fires once per gesture, on release. */
+	onCommit: (placement: Partial<SignaturePlacement>) => void;
+	className?: string;
+}) {
+	// Local copy so the overlay tracks the cursor; the server value lands on
+	// release and this re-syncs to it.
+	const [draft, setDraft] = useState(placement);
+	useEffect(() => setDraft(placement), [placement]);
+
+	const dragRef = useRef<{
+		pointerId: number;
+		startX: number;
+		startY: number;
+		originX: number;
+		originY: number;
+	} | null>(null);
+
+	const height = SIGNATURE_BASE_HEIGHT_PX * draft.scale;
+
+	const startDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+		if (!editable) return;
+		e.preventDefault();
+		dragRef.current = {
+			pointerId: e.pointerId,
+			startX: e.clientX,
+			startY: e.clientY,
+			originX: draft.offsetX,
+			originY: draft.offsetY,
+		};
+		e.currentTarget.setPointerCapture(e.pointerId);
+	};
+
+	const moveDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+		const drag = dragRef.current;
+		if (!drag || drag.pointerId !== e.pointerId) return;
+		setDraft((prev) => ({
+			...prev,
+			offsetX: clampOffset(
+				drag.originX + (e.clientX - drag.startX) / SIGNATURE_BASE_HEIGHT_PX,
+			),
+			// Screen y grows downward; our offset grows upward.
+			offsetY: clampOffset(
+				drag.originY - (e.clientY - drag.startY) / SIGNATURE_BASE_HEIGHT_PX,
+			),
+		}));
+	};
+
+	const endDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+		const drag = dragRef.current;
+		if (!drag || drag.pointerId !== e.pointerId) return;
+		dragRef.current = null;
+		if (
+			draft.offsetX !== placement.offsetX ||
+			draft.offsetY !== placement.offsetY
+		) {
+			onCommit({ offsetX: draft.offsetX, offsetY: draft.offsetY });
+		}
+	};
+
+	// Arrow keys nudge by a tenth of the base height — the fine adjustment a
+	// pointer can't do precisely.
+	const nudge = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+		if (!editable) return;
+		const step = e.shiftKey ? 0.02 : 0.1;
+		const delta: Partial<SignaturePlacement> = {};
+		if (e.key === "ArrowLeft")
+			delta.offsetX = clampOffset(draft.offsetX - step);
+		else if (e.key === "ArrowRight")
+			delta.offsetX = clampOffset(draft.offsetX + step);
+		else if (e.key === "ArrowUp")
+			delta.offsetY = clampOffset(draft.offsetY + step);
+		else if (e.key === "ArrowDown")
+			delta.offsetY = clampOffset(draft.offsetY - step);
+		else return;
+		e.preventDefault();
+		setDraft((prev) => ({ ...prev, ...delta }));
+		onCommit(delta);
+	};
+
+	const isPlaced =
+		draft.offsetX !== 0 || draft.offsetY !== 0 || draft.scale !== 1;
+
+	return (
+		<div className={className}>
+			<div
+				className="relative overflow-visible border-b border-border/60"
+				style={{ height: SIGNATURE_FIELD_HEIGHT_PX }}
+			>
+				{/* A button rather than a bare div: it is focusable and labelled for
+				    free, so arrow-key nudging works without a custom tabindex. */}
+				<button
+					type="button"
+					disabled={!editable}
+					aria-label="Drag to position the signature; arrow keys nudge it"
+					onPointerDown={startDrag}
+					onPointerMove={moveDrag}
+					onPointerUp={endDrag}
+					onPointerCancel={endDrag}
+					onKeyDown={nudge}
+					className={`absolute bottom-0 left-0 z-10 touch-none rounded-sm p-0 outline-none ${
+						editable
+							? "cursor-grab ring-primary/40 hover:ring-2 focus-visible:ring-2 active:cursor-grabbing"
+							: "cursor-default"
+					} ${busy ? "opacity-60" : ""}`}
+					style={{
+						height,
+						transform: `translate(${draft.offsetX * SIGNATURE_BASE_HEIGHT_PX}px, ${
+							-draft.offsetY * SIGNATURE_BASE_HEIGHT_PX
+						}px)`,
+					}}
+				>
+					<img
+						src={imageUrl}
+						alt={alt}
+						draggable={false}
+						className="pointer-events-none h-full max-w-none select-none object-contain"
+					/>
+				</button>
+			</div>
+
+			{editable && (
+				<div className="mt-2 space-y-1.5">
+					<SignatureSizeControl
+						scale={placement.scale}
+						disabled={busy}
+						onPreview={(scale) => setDraft((prev) => ({ ...prev, scale }))}
+						onCommit={(scale) => onCommit({ scale })}
+					/>
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-[11px] text-muted-foreground">
+							Drag the signature onto the line — arrow keys nudge it.
+						</p>
+						{isPlaced && (
+							<button
+								type="button"
+								onClick={() => {
+									setDraft(DEFAULT_SIGNATURE_PLACEMENT);
+									onCommit(DEFAULT_SIGNATURE_PLACEMENT);
+								}}
+								disabled={busy}
+								className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
+							>
+								Reset
+							</button>
+						)}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Slider for how large a signature image renders in the agreement. The same
+ * multiplier drives the editor, the live preview, and the PDF, so what the
+ * signer sets here is what the client sees.
+ */
+function SignatureSizeControl({
+	scale,
+	disabled,
+	onPreview,
+	onCommit,
+	className = "",
+}: {
+	scale: number;
+	disabled?: boolean;
+	/** Fires on every drag step so the signature resizes under the cursor. */
+	onPreview: (scale: number) => void;
+	/** Fires on release — the only point anything is persisted. */
+	onCommit: (scale: number) => void;
+	className?: string;
+}) {
+	const [draft, setDraft] = useState(scale);
+	// Follow the server once a save lands (or another device changes it).
+	useEffect(() => setDraft(scale), [scale]);
+
+	return (
+		<div className={`flex items-center gap-2 ${className}`}>
+			<span className="text-[11px] font-medium text-muted-foreground">
+				Size
+			</span>
+			<input
+				type="range"
+				min={SIGNATURE_MIN_SCALE}
+				max={SIGNATURE_MAX_SCALE}
+				step={0.1}
+				value={draft}
+				disabled={disabled}
+				aria-label="Signature size"
+				onChange={(e) => {
+					const next = Number(e.target.value);
+					setDraft(next);
+					onPreview(next);
+				}}
+				onPointerUp={() => onCommit(draft)}
+				onKeyUp={() => onCommit(draft)}
+				className="h-1 flex-1 cursor-pointer accent-primary disabled:opacity-50"
+			/>
+			<span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+				{Math.round(draft * 100)}%
+			</span>
+		</div>
+	);
+}
+
 /**
  * Name input + signature capture: draw it on a canvas (default) or upload a
  * signature image. Either way the result is flattened/stored as a PNG in R2 and
@@ -1466,11 +1928,19 @@ function SignaturePad({
 }: {
 	name: string;
 	onNameChange: (v: string) => void;
-	onSign: (signatureUrl?: string | null) => void;
+	onSign: (
+		signatureUrl?: string | null,
+		placement?: SignaturePlacement,
+	) => void;
 	isPending: boolean;
 }) {
 	const toast = useToast();
 	const [mode, setMode] = useState<"draw" | "upload">("draw");
+	// Where and how large the signature sits on its field. Set it here and the
+	// preview below shows the real placement before you commit.
+	const [placement, setPlacement] = useState<SignaturePlacement>(
+		DEFAULT_SIGNATURE_PLACEMENT,
+	);
 
 	// Draw mode.
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1560,7 +2030,7 @@ function SignaturePad({
 
 	const handleSign = async () => {
 		if (mode === "upload") {
-			onSign(uploadedUrl);
+			onSign(uploadedUrl, uploadedUrl ? placement : undefined);
 			return;
 		}
 		const canvas = canvasRef.current;
@@ -1579,7 +2049,7 @@ function SignaturePad({
 			}
 			const file = new File([blob], "signature.png", { type: "image/png" });
 			const url = await uploadService.uploadContractSignature(file);
-			onSign(url);
+			onSign(url, placement);
 		} catch (err) {
 			toast.error(
 				err instanceof Error ? err.message : "Signature upload failed",
@@ -1653,11 +2123,16 @@ function SignaturePad({
 					)}
 				</div>
 			) : uploadedUrl ? (
-				<div className="relative overflow-hidden rounded-lg border border-border bg-card p-2">
-					<img
-						src={uploadedUrl}
+				<div className="relative rounded-lg border border-border bg-card p-2">
+					{/* The very same field the document uses — position and size the
+					    signature here and that is exactly how it lands. Nothing is
+					    persisted until Sign, so "commit" is just local state. */}
+					<SignaturePlacementField
+						imageUrl={uploadedUrl}
 						alt="Signature preview"
-						className="mx-auto max-h-16 object-contain"
+						placement={placement}
+						editable
+						onCommit={(next) => setPlacement((prev) => ({ ...prev, ...next }))}
 					/>
 					<button
 						type="button"

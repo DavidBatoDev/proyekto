@@ -31,6 +31,10 @@ export type ProjectPermissions = {
     chat: boolean;
     resources: boolean;
     project_settings: boolean;
+    time: boolean;
+    contract: boolean;
+    invoices: boolean;
+    financials: boolean;
   };
   roadmap: {
     view: boolean;
@@ -84,6 +88,10 @@ export type ProjectPermissions = {
     view: boolean;
     view_sensitive: boolean;
   };
+  time: {
+    /** See every member's time on the project, not just your own. */
+    view_team_logs: boolean;
+  };
 };
 
 export type PermissionPath =
@@ -93,6 +101,10 @@ export type PermissionPath =
   | 'access.chat'
   | 'access.resources'
   | 'access.project_settings'
+  | 'access.time'
+  | 'access.contract'
+  | 'access.invoices'
+  | 'access.financials'
   | 'roadmap.view'
   | 'roadmap.edit'
   | 'roadmap.comment'
@@ -130,12 +142,14 @@ export type PermissionPath =
   | 'resources.upload'
   | 'resources.delete'
   | 'logs.view'
-  | 'logs.view_sensitive';
+  | 'logs.view_sensitive'
+  | 'time.view_team_logs';
 
 // Runtime list — handy for iteration in dep validation and the UI.
 export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'access.roadmap', 'access.work_items', 'access.team',
   'access.chat', 'access.resources', 'access.project_settings',
+  'access.time', 'access.contract', 'access.invoices', 'access.financials',
   'roadmap.view', 'roadmap.edit', 'roadmap.comment', 'roadmap.promote',
   'roadmap.assign', 'roadmap.edit_metadata', 'roadmap.view_internal',
   'roadmap.create_tasks', 'roadmap.edit_tasks', 'roadmap.share',
@@ -150,6 +164,7 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'chat.message_clients', 'chat.message_consultants', 'chat.message_freelancers',
   'resources.view', 'resources.upload', 'resources.delete',
   'logs.view', 'logs.view_sensitive',
+  'time.view_team_logs',
 ] as const;
 
 // ─── Path helpers ──────────────────────────────────────────────────────────
@@ -180,6 +195,7 @@ function allFalse(): ProjectPermissions {
     access: {
       roadmap: false, work_items: false, team: false,
       chat: false, resources: false, project_settings: false,
+      time: false, contract: false, invoices: false, financials: false,
     },
     roadmap: {
       view: false, edit: false, comment: false, promote: false,
@@ -206,6 +222,7 @@ function allFalse(): ProjectPermissions {
     },
     resources: { view: false, upload: false, delete: false },
     logs: { view: false, view_sensitive: false },
+    time: { view_team_logs: false },
   };
 }
 
@@ -246,6 +263,15 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'access.chat': true,
     'access.resources': true,
     'access.project_settings': false,
+    // Everyone who can see the project can open Time — but they only get their
+    // OWN logs there. Seeing the rest of the team's time is
+    // `time.view_team_logs`, granted at admin and to the consultant below.
+    'access.time': true,
+    // The money surfaces stay consultant-and-owner by default. The client
+    // origin re-opens the billing three (contract/invoices/financials) below.
+    'access.contract': false,
+    'access.invoices': false,
+    'access.financials': false,
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
@@ -287,6 +313,10 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
   // Admin adds: members, channels, financials, settings, internals
   applyPaths(p, {
     'access.project_settings': true,
+    'time.view_team_logs': true,
+    'access.contract': true,
+    'access.invoices': true,
+    'access.financials': true,
     'roadmap.promote': true,
     'roadmap.view_internal': true,
     'roadmap.dev_mode': true,
@@ -325,12 +355,21 @@ export const ORIGIN_DELTAS: Record<
   // pool directly — the consultant mediates (per soft-isolation design).
   client: {
     'chat.message_freelancers': false,
+    // They fund the work, so the billing surfaces stay open to them — but
+    // not Time, which is the delivery team's cost side.
+    'access.contract': true,
+    'access.invoices': true,
+    'access.financials': true,
   },
   // Consultants get the operator toolkit additively, regardless of role.
   consultant: {
     'chat.message_freelancers': true,
     'members.manage': true,
     'teams.manage': true,
+    'time.view_team_logs': true,
+    'access.contract': true,
+    'access.invoices': true,
+    'access.financials': true,
   },
   // Pure invite — no extra capabilities beyond the role baseline.
   invited: {},
@@ -383,6 +422,8 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'project.settings': ['access.project_settings'],
 
   'logs.view_sensitive': ['logs.view'],
+
+  'time.view_team_logs': ['access.time'],
 };
 
 // ─── Public API ────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import {
   SignContractDto,
   UnsignContractDto,
   UpdateContractDto,
+  UpdateSignaturePlacementDto,
 } from './dto/contracts.dto';
 
 @UseGuards(SupabaseAuthGuard)
@@ -73,5 +74,14 @@ export class ContractsController {
     @Body() dto: UnsignContractDto,
   ) {
     return this.contracts.unsignContract(user.id, id, dto);
+  }
+
+  @Patch(':id/signature-placement')
+  updateSignaturePlacement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSignaturePlacementDto,
+  ) {
+    return this.contracts.updateSignaturePlacement(user.id, id, dto);
   }
 }

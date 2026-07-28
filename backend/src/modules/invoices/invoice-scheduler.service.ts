@@ -1,8 +1,14 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import {
+  billingPeriodsForRange,
   configForCadence,
   lastBillablePeriod,
 } from '../contracts/billing-period';
@@ -11,6 +17,7 @@ import {
   type ContractRow,
 } from '../contracts/contracts.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
 
 export interface InvoiceRunResult {
@@ -47,6 +54,7 @@ export class InvoiceSchedulerService {
     private readonly invoices: InvoicesService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly projectAuth: ProjectAuthorizationService,
   ) {}
 
   async runDueInvoices(
@@ -90,6 +98,108 @@ export class InvoiceSchedulerService {
     }
 
     await this.emitEndingSoonNotices(today);
+    return result;
+  }
+
+  /**
+   * On-demand catch-up for ONE project, triggered by the consultant from the
+   * Invoices page rather than by the cron.
+   *
+   * Unlike the nightly run — which bills only the most recently closed period
+   * — this drafts every closed period the contract has not been billed for
+   * yet, so a project whose automation was off (or which was set up midway
+   * through its term) can be brought current in one click. Duplicate
+   * suppression is the same partial unique index, so pressing the button twice
+   * is harmless.
+   *
+   * Invoices are still created as DRAFTS; nothing reaches the client until the
+   * consultant issues it.
+   */
+  async generateDraftsForProject(
+    callerId: string,
+    projectId: string,
+    today = new Date().toISOString().slice(0, 10),
+  ): Promise<InvoiceRunResult> {
+    await this.projectAuth.assertRole(callerId, projectId, 'admin');
+
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('project_id', projectId)
+      .in('status', ['signed', 'active'])
+      .order('version', { ascending: false })
+      .limit(1);
+    if (error) throw new BadRequestException(error.message);
+
+    const contract = ((data ?? []) as ContractRow[])[0];
+    if (!contract) {
+      throw new BadRequestException(
+        'This project has no signed contract yet. Sign the contract before generating invoices.',
+      );
+    }
+    if (!contract.service_start_date || !contract.service_end_date) {
+      throw new BadRequestException(
+        'Set the service start date and term on the contract before generating invoices.',
+      );
+    }
+
+    const teamConfig =
+      contract.period_source === 'team_config'
+        ? await this.contracts.getTeamPayPeriodConfig(contract.project_id)
+        : null;
+
+    const periods = billingPeriodsForRange(
+      configForCadence(contract.invoice_cadence, teamConfig),
+      contract.service_start_date,
+      contract.service_end_date,
+      {
+        invoiceOffsetDays: contract.invoice_offset_days,
+        dueDays: contract.due_days,
+      },
+      // Only periods that have actually closed — never bill the future.
+    ).filter((p) => p.periodEnd < today && p.invoiceDate <= today);
+
+    const result: InvoiceRunResult = {
+      scanned: periods.length,
+      created: 0,
+      skipped: 0,
+      failed: 0,
+    };
+
+    for (const period of periods) {
+      try {
+        const invoice = await this.invoices.createScheduledInvoice(
+          contract,
+          period.periodStart,
+          period.periodEnd,
+          period.dueDate,
+          period.invoiceDate,
+        );
+        // null means the unique index rejected it — already billed.
+        if (!invoice) {
+          result.skipped += 1;
+          continue;
+        }
+        result.created += 1;
+        try {
+          await this.invoices.renderAndStorePdf(invoice, callerId);
+        } catch (err) {
+          this.logger.error(
+            `Invoice ${invoice.id} created but PDF render failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      } catch (err) {
+        result.failed += 1;
+        this.logger.error(
+          `On-demand invoice failed for contract ${contract.id} period ${period.periodStart}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     return result;
   }
 

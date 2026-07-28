@@ -1,7 +1,11 @@
 import apiClient from "@/api/axios";
 
 export type TimeLogStatus = "pending" | "approved" | "paid" | "rejected";
-export type TimeLogReviewDecision = "pending" | "approved" | "paid" | "rejected";
+export type TimeLogReviewDecision =
+	| "pending"
+	| "approved"
+	| "paid"
+	| "rejected";
 export type TaskWorkType = "real_work" | "training";
 
 export interface ProfileMini {
@@ -22,7 +26,12 @@ export interface TaskTimeLog {
 	started_at: string;
 	ended_at: string | null;
 	duration_seconds: number | null;
+	/** Rounded mirror of break_seconds; what manual edits and invoices use. */
 	break_minutes?: number;
+	/** Accumulated break time in seconds — the source of truth. */
+	break_seconds?: number;
+	/** Non-null while on break; the work clock is frozen at this instant. */
+	paused_at?: string | null;
 	status: TimeLogStatus;
 	reviewed_by: string | null;
 	reviewed_at: string | null;
@@ -209,7 +218,11 @@ export const teamTimeService = {
 		}
 	},
 
-	async stopLog(logId: string, endedAt?: string, breakMinutes?: number): Promise<TaskTimeLog> {
+	async stopLog(
+		logId: string,
+		endedAt?: string,
+		breakMinutes?: number,
+	): Promise<TaskTimeLog> {
 		try {
 			const body: { ended_at?: string; break_minutes?: number } = {};
 			if (endedAt) body.ended_at = endedAt;
@@ -224,6 +237,30 @@ export const teamTimeService = {
 		}
 	},
 
+	/** Go on break. The work clock freezes server-side at `paused_at`. */
+	async pauseLog(logId: string): Promise<TaskTimeLog> {
+		try {
+			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
+				`/api/team-time/logs/${logId}/pause`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to start break");
+		}
+	},
+
+	/** Come back from break; the interval is banked into break_seconds. */
+	async resumeLog(logId: string): Promise<TaskTimeLog> {
+		try {
+			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
+				`/api/team-time/logs/${logId}/resume`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to end break");
+		}
+	},
+
 	async updateLog(
 		logId: string,
 		payload: {
@@ -234,13 +271,12 @@ export const teamTimeService = {
 		},
 	): Promise<TaskTimeLog> {
 		try {
-			const normalizedPayload =
-				Object.prototype.hasOwnProperty.call(payload, "task_id")
-					? {
-							...payload,
-							task_id: normalizeNullableUuid(payload.task_id),
-						}
-					: payload;
+			const normalizedPayload = Object.hasOwn(payload, "task_id")
+				? {
+						...payload,
+						task_id: normalizeNullableUuid(payload.task_id),
+					}
+				: payload;
 			const res = await apiClient.patch<ApiResponse<TaskTimeLog>>(
 				`/api/team-time/logs/${logId}`,
 				normalizedPayload,
@@ -346,10 +382,7 @@ export const teamTimeService = {
 		}
 	},
 
-	async createLogComment(
-		logId: string,
-		body: string,
-	): Promise<TimeLogComment> {
+	async createLogComment(logId: string, body: string): Promise<TimeLogComment> {
 		try {
 			const res = await apiClient.post<ApiResponse<TimeLogComment>>(
 				`/api/team-time/logs/${logId}/comments`,
@@ -449,6 +482,83 @@ export const teamTimeService = {
 		}
 	},
 
+	// ─── project-scoped lists ──────────────────────────────────────────
+	//
+	// Logs carry project_id, so these need no fan-out over the project's
+	// attached teams, and they authorize on project_access — which is why a
+	// consultant who isn't a team owner/admin can still see project time.
+
+	async listMyProjectLogs(
+		projectId: string,
+		query?: ListLogsQuery,
+	): Promise<TimeLogListResult> {
+		try {
+			const res = await apiClient.get<ApiResponse<TimeLogListResult>>(
+				`/api/team-time/projects/${projectId}/my`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch your logs on this project");
+		}
+	},
+
+	async getMyProjectLogsSummary(
+		projectId: string,
+		query?: ListLogsQuery,
+	): Promise<LogsSummary> {
+		try {
+			const res = await apiClient.get<ApiResponse<LogsSummary>>(
+				`/api/team-time/projects/${projectId}/my/summary`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch your log totals");
+		}
+	},
+
+	async listProjectLogs(
+		projectId: string,
+		query?: ListLogsQuery,
+	): Promise<TimeLogListResult> {
+		try {
+			const res = await apiClient.get<ApiResponse<TimeLogListResult>>(
+				`/api/team-time/projects/${projectId}/logs`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch project logs");
+		}
+	},
+
+	async getProjectLogsSummary(
+		projectId: string,
+		query?: ListLogsQuery,
+	): Promise<LogsSummary> {
+		try {
+			const res = await apiClient.get<ApiResponse<LogsSummary>>(
+				`/api/team-time/projects/${projectId}/logs/summary`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch project log totals");
+		}
+	},
+
+	async listProjectLogMembers(projectId: string): Promise<TeamLogMember[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<TeamLogMember[]>>(
+				`/api/team-time/projects/${projectId}/members`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch project log members");
+		}
+	},
+
 	/**
 	 * Every approved log for a member (approved ⟹ unpaid), paginated past the
 	 * 200-row list cap and filtered to one currency — the complete set the
@@ -500,9 +610,7 @@ export const teamTimeService = {
 		return out;
 	},
 
-	async listTeamLogProjects(
-		teamId: string,
-	): Promise<TeamLogProject[]> {
+	async listTeamLogProjects(teamId: string): Promise<TeamLogProject[]> {
 		try {
 			const res = await apiClient.get<ApiResponse<TeamLogProject[]>>(
 				`/api/team-time/teams/${teamId}/projects`,
@@ -513,9 +621,7 @@ export const teamTimeService = {
 		}
 	},
 
-	async listTeamLogMembers(
-		teamId: string,
-	): Promise<TeamLogMember[]> {
+	async listTeamLogMembers(teamId: string): Promise<TeamLogMember[]> {
 		try {
 			const res = await apiClient.get<ApiResponse<TeamLogMember[]>>(
 				`/api/team-time/teams/${teamId}/members`,

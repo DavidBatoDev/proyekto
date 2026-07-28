@@ -1,17 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import {
-	Loader2,
-	ShieldCheck,
-	TrendingDown,
-	TrendingUp,
-	Wallet,
-} from "lucide-react";
+import { Loader2, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import {
 	AppSectionHeader,
 	AppStatCard,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import {
 	MarginTrendChart,
 	RevenueCostChart,
@@ -21,64 +16,55 @@ import {
 	financialsService,
 	type ProjectFinancials,
 } from "@/services/financials.service";
-import { projectService } from "@/services/project.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/project/$projectId/financials")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
 	},
-	component: FinancialsPage,
+	component: FinancialsRoute,
 });
+
+// Margins are internal — `access.financials` defaults to owner/admin,
+// consultant-origin, and the client (who funds the work).
+function FinancialsRoute() {
+	const { projectId } = Route.useParams();
+	return (
+		<div className="app-shell-bg h-full w-full overflow-y-auto">
+			<RequireProjectAccess projectId={projectId} access="financials">
+				<FinancialsPage />
+			</RequireProjectAccess>
+		</div>
+	);
+}
 
 function FinancialsPage() {
 	const { projectId } = Route.useParams();
-	const user = useUser();
-
-	const projectQuery = useQuery({
-		queryKey: ["project", projectId],
-		queryFn: () => projectService.get(projectId),
-	});
-	const project = projectQuery.data;
-	// Owner/consultant only — margins are internal.
-	const canView = Boolean(
-		user?.id &&
-			(project?.consultant_id === user.id || project?.client_id === user.id),
-	);
 
 	const financialsQuery = useQuery({
 		queryKey: ["project", projectId, "financials"],
 		queryFn: () => financialsService.getProjectFinancials(projectId),
-		enabled: canView,
 	});
 	const fin = financialsQuery.data;
 
 	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
-				<AppSurfaceCard strong className="mb-6 p-6">
-					<AppSectionHeader
-						kicker="Finance"
-						title="Financials"
-						subtitle="Is this project profitable? Revenue from invoices, cost from logged time, and how the margin splits."
-					/>
-				</AppSurfaceCard>
+		<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
+			<AppSurfaceCard strong className="mb-6 p-6">
+				<AppSectionHeader
+					kicker="Finance"
+					title="Financials"
+					subtitle="Is this project profitable? Revenue from invoices, cost from logged time, and how the margin splits."
+				/>
+			</AppSurfaceCard>
 
-				{projectQuery.isPending ? (
-					<Center>
-						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-					</Center>
-				) : !canView ? (
-					<Gated />
-				) : financialsQuery.isPending ? (
-					<Center>
-						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-					</Center>
-				) : fin ? (
-					<FinancialsBody fin={fin} />
-				) : null}
-			</div>
+			{financialsQuery.isPending ? (
+				<Center>
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				</Center>
+			) : fin ? (
+				<FinancialsBody fin={fin} />
+			) : null}
 		</div>
 	);
 }
@@ -239,18 +225,4 @@ function Split({
 
 function Center({ children }: { children: React.ReactNode }) {
 	return <div className="flex justify-center py-16">{children}</div>;
-}
-
-function Gated() {
-	return (
-		<div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-			<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-			<div>
-				<div className="font-semibold">Consultant only</div>
-				<p className="mt-0.5">
-					Only the project's owner or consultant can see financials.
-				</p>
-			</div>
-		</div>
-	);
 }

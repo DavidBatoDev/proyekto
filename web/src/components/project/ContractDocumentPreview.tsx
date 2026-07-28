@@ -322,6 +322,9 @@ function PaperDocument({
 						name={contract.signed_by_client_name}
 						at={contract.signed_by_client_at}
 						imageUrl={contract.signed_by_client_signature_url}
+						imageScale={contract.signed_by_client_signature_scale}
+						imageOffsetX={contract.signed_by_client_signature_offset_x}
+						imageOffsetY={contract.signed_by_client_signature_offset_y}
 						large={large}
 					/>
 					<SignatureColumn
@@ -329,6 +332,9 @@ function PaperDocument({
 						name={contract.signed_by_consultant_name}
 						at={contract.signed_by_consultant_at}
 						imageUrl={contract.signed_by_consultant_signature_url}
+						imageScale={contract.signed_by_consultant_signature_scale}
+						imageOffsetX={contract.signed_by_consultant_signature_offset_x}
+						imageOffsetY={contract.signed_by_consultant_signature_offset_y}
 						large={large}
 					/>
 				</div>
@@ -359,7 +365,7 @@ function PartyBlock({
 			</p>
 			<p className="mt-0.5 font-semibold text-slate-900">{name}</p>
 			{contact && contact !== name && (
-				<p className="text-slate-500">Attn: {contact}</p>
+				<p className="text-slate-500">Contact: {contact}</p>
 			)}
 			{address && <p className="text-slate-500">{address}</p>}
 		</div>
@@ -387,19 +393,41 @@ function Section({
 	);
 }
 
+/** Signature image height at scale 1, matching the contract editor's base. */
+const SIGNATURE_BASE_HEIGHT_PX = 56;
+const SIGNATURE_COMPACT_BASE_HEIGHT_PX = 44;
+/** Height of the signature field itself. FIXED — the document never reflows. */
+const SIGNATURE_FIELD_HEIGHT_PX = 64;
+const SIGNATURE_COMPACT_FIELD_HEIGHT_PX = 48;
+
 function SignatureColumn({
 	heading,
 	name,
 	at,
 	imageUrl,
+	imageScale = 1,
+	imageOffsetX = 0,
+	imageOffsetY = 0,
 	large,
 }: {
 	heading: string;
 	name: string | null;
 	at: string | null;
 	imageUrl?: string | null;
+	/** Display multiplier the signer chose; 1 = base height. */
+	imageScale?: number;
+	/** Overlay offsets in base-height multiples; +x right, +y up. */
+	imageOffsetX?: number;
+	imageOffsetY?: number;
 	large?: boolean;
 }) {
+	const base = large
+		? SIGNATURE_BASE_HEIGHT_PX
+		: SIGNATURE_COMPACT_BASE_HEIGHT_PX;
+	const fieldHeight = large
+		? SIGNATURE_FIELD_HEIGHT_PX
+		: SIGNATURE_COMPACT_FIELD_HEIGHT_PX;
+	const imageHeight = base * (imageScale || 1);
 	return (
 		<div>
 			<p
@@ -407,14 +435,25 @@ function SignatureColumn({
 			>
 				{heading}
 			</p>
+			{/* A signature field of FIXED height, exactly like the one you drop a
+			    signature into in a PDF signer. The image is an absolutely
+			    positioned overlay above the page content — resizing or moving it
+			    changes nothing about the document's layout or length, and the two
+			    columns' rules stay on one baseline no matter what either party
+			    does. */}
 			<div
-				className={`mt-1 flex items-end border-b border-slate-300 ${large ? "h-16" : "h-12"}`}
+				className="relative mt-1 border-b border-slate-300"
+				style={{ height: fieldHeight }}
 			>
 				{imageUrl ? (
 					<img
 						src={imageUrl}
 						alt={`${name ?? "Signature"} signature`}
-						className={`object-contain ${large ? "max-h-14" : "max-h-11"}`}
+						className="pointer-events-none absolute bottom-0 left-0 z-10 max-w-none object-contain"
+						style={{
+							height: imageHeight,
+							transform: `translate(${imageOffsetX * base}px, ${-imageOffsetY * base}px)`,
+						}}
 					/>
 				) : null}
 			</div>

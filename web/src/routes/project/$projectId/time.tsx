@@ -1,238 +1,921 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { ExternalLink, ListChecks, Loader2, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
+import {
+	loadTimeView,
+	storeTimeView,
+	type TimeViewMode,
+	TimeViewToggle,
+} from "@/components/team-time/calendar/TimeViewToggle";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
+import { HourCapBanner } from "@/components/team-time/HourCapBanner";
+import {
+	buildCustomPeriodFromDateInputs,
+	buildTeamLogPeriodSearch,
+	type LogPeriodPreset,
+	loadStoredPeriodSearch,
+	parseTeamLogPeriodSearch,
+	resolveTeamLogPeriod,
+	storePeriodSearch,
+} from "@/components/team-time/log-period";
+import { PayMemberModal } from "@/components/team-time/PayMemberModal";
+import {
+	type ReviewOnlyDecision,
+	TeamApprovalsInbox,
+} from "@/components/team-time/TeamApprovalsInbox";
+import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
+import {
+	EMPTY_LOG_STATS,
+	TeamLogsStatsCard,
+} from "@/components/team-time/TeamLogsStatsCard";
+import {
+	type StatusTab,
+	TeamLogsStatusTabs,
+} from "@/components/team-time/TeamLogsStatusTabs";
+import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
+import {
+	DeleteTimeLogModal,
+	EditLogModal,
+	ManualLogModal,
+} from "@/components/team-time/TeamTimeModals";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
-import { formatHours, formatMoney } from "@/components/team-time/time-utils";
+import {
+	fromLocalDateTimeInput,
+	toLocalDateTimeInput,
+} from "@/components/team-time/time-utils";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
+import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import {
 	type TaskTimeLog,
-	type TimeLogStatus,
 	teamTimeService,
 } from "@/services/team-time.service";
-import { listProjectTeams } from "@/services/teams.service";
+import {
+	getTeam,
+	listMemberRates,
+	listProjectTeams,
+	type TeamMemberRate,
+} from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/project/$projectId/time")({
+	validateSearch: parseTeamLogPeriodSearch,
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
 	},
-	component: ProjectTimePage,
+	component: ProjectTimeRoute,
 });
 
 type Tab = "mine" | "team";
 
-const LOG_STATUS_TABS: Array<{ key: TimeLogStatus | "all"; label: string }> = [
-	{ key: "all", label: "All" },
-	{ key: "pending", label: "Pending" },
-	{ key: "approved", label: "Approved" },
-	{ key: "paid", label: "Paid" },
-	{ key: "rejected", label: "Rejected" },
-];
+interface PayTarget {
+	memberId: string;
+	memberLabel: string;
+	currency: string;
+	logs: TaskTimeLog[];
+}
+
+function ProjectTimeRoute() {
+	const { projectId } = Route.useParams();
+	return (
+		<div className="app-shell-bg h-full w-full overflow-y-auto">
+			<RequireProjectAccess projectId={projectId} access="time">
+				<ProjectTimePage />
+			</RequireProjectAccess>
+		</div>
+	);
+}
 
 function ProjectTimePage() {
 	const { projectId } = Route.useParams();
+	const search = Route.useSearch();
 	const user = useUser();
-	const [tab, setTab] = useState<Tab>("mine");
-	const [statusFilter, setStatusFilter] = useState<TimeLogStatus | "all">(
-		"all",
-	);
-	const [taskStatus, setTaskStatus] = useState("");
+	const toast = useToast();
+	const qc = useQueryClient();
+	const navigate = useNavigate();
+
+	// Opening Time only gets you your own logs; the team's time is a separate
+	// grant (default: admin/owner and the consultant). Deriving the active tab
+	// rather than trusting state means a revoked grant can't leave someone
+	// parked on a tab that now 403s.
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+	const canViewTeamLogs = permissionsQuery.data?.time.view_team_logs === true;
+	const [selectedTab, setTab] = useState<Tab>("mine");
+	const tab: Tab = canViewTeamLogs ? selectedTab : "mine";
+	const [activeStatus, setActiveStatus] = useState<StatusTab>("all");
+	const [taskStatusFilter, setTaskStatusFilter] = useState("");
+	const [memberFilter, setMemberFilter] = useState("");
+	const [busyLogIds, setBusyLogIds] = useState<Set<string>>(new Set());
+	const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
+
+	// ─── Scope ──────────────────────────────────────────────────────────────
 
 	const projectQuery = useQuery({
 		queryKey: ["project", projectId],
 		queryFn: () => projectService.get(projectId),
 	});
-	const project = projectQuery.data;
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
-	const projectCurrency = project?.currency ?? "USD";
+	const projectCurrency = projectQuery.data?.currency ?? "USD";
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],
 		queryFn: () => listProjectTeams(projectId),
 	});
-	const teams = teamsQuery.data ?? [];
+	// Logs are read project-wide, but a few team-owned concerns (task pickers,
+	// rate history, the pay-period calendar, links out to Payouts) still need
+	// one team — use the primary attachment.
+	const primaryTeamId = useMemo(() => {
+		const teams = teamsQuery.data ?? [];
+		return (teams.find((t) => t.is_primary) ?? teams[0])?.team_id ?? "";
+	}, [teamsQuery.data]);
 
-	// One query per attached team, scoped to this project. My-tab uses the
-	// caller's own logs; team-tab (consultant only) uses all team logs.
-	const logQueries = useQueries({
-		queries: teams.map((t) => ({
-			queryKey: [
-				"project-time",
-				projectId,
-				t.team_id,
-				tab,
-				statusFilter,
-				taskStatus,
-			],
-			queryFn: () => {
-				const query = {
-					project_id: projectId,
-					status: statusFilter === "all" ? undefined : statusFilter,
-					task_status: taskStatus || undefined,
-					limit: 200,
-				};
-				return tab === "team"
-					? teamTimeService.listTeamLogs(t.team_id, query)
-					: teamTimeService.listMyTeamLogs(t.team_id, query);
+	const teamQuery = useQuery({
+		queryKey: ["teams", "detail", primaryTeamId],
+		queryFn: () => getTeam(primaryTeamId),
+		enabled: Boolean(primaryTeamId),
+	});
+	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+
+	// ─── Period ─────────────────────────────────────────────────────────────
+
+	const period = useMemo(
+		() => resolveTeamLogPeriod(search, payPeriodConfig),
+		[search, payPeriodConfig],
+	);
+	// Project-keyed so it doesn't collide with the team Time pages' stored range.
+	const periodScopeKey = `project:${projectId}`;
+
+	useEffect(() => {
+		if (search.preset && search.from && search.to) {
+			storePeriodSearch(periodScopeKey, search);
+			return;
+		}
+		const restored = loadStoredPeriodSearch(periodScopeKey);
+		void navigate({
+			to: "/project/$projectId/time",
+			params: { projectId },
+			search: restored ?? buildTeamLogPeriodSearch(period),
+			replace: true,
+		});
+	}, [navigate, period, periodScopeKey, projectId, search]);
+
+	const updatePeriod = (
+		preset: LogPeriodPreset,
+		overrides?: Partial<typeof period>,
+	) => {
+		const next = resolveTeamLogPeriod(
+			{
+				preset,
+				from: overrides?.fromIso ?? period.fromIso,
+				to: overrides?.toIso ?? period.toIso,
+				cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
+				cutoff_period: overrides?.cutoffPeriodId ?? period.cutoffPeriodId,
 			},
-			enabled: tab !== "team" || isConsultant,
-		})),
+			payPeriodConfig,
+		);
+		void navigate({
+			to: "/project/$projectId/time",
+			params: { projectId },
+			search: buildTeamLogPeriodSearch(next),
+			replace: true,
+		});
+	};
+
+	const onApplyCustomRange = (fromDate: string, toDate: string) => {
+		const next = buildCustomPeriodFromDateInputs(fromDate, toDate);
+		if (!next) {
+			toast.error("Enter a valid custom date range.");
+			return;
+		}
+		updatePeriod("custom", { fromIso: next.fromIso, toIso: next.toIso });
+	};
+
+	const [viewMode, setViewMode] = useState<TimeViewMode>(() =>
+		loadTimeView(`project:${projectId}`, "my"),
+	);
+	const changeViewMode = (mode: TimeViewMode) => {
+		setViewMode(mode);
+		storeTimeView(`project:${projectId}`, "my", mode);
+	};
+
+	// ─── Logs ───────────────────────────────────────────────────────────────
+	//
+	// One query per tab against the project-scoped endpoints — no fan-out over
+	// attached teams, and the keys sit under ["team-time", …] so every existing
+	// time mutation's invalidation reaches this page.
+
+	const logsQuery = useQuery({
+		queryKey: [
+			"team-time",
+			"project",
+			projectId,
+			"logs",
+			tab,
+			{
+				status: activeStatus,
+				taskStatusFilter,
+				memberFilter,
+				from: period.fromIso,
+				to: period.toIso,
+			},
+		],
+		queryFn: () => {
+			const query = {
+				status: activeStatus === "all" ? undefined : activeStatus,
+				task_status: taskStatusFilter || undefined,
+				from: period.fromIso,
+				to: period.toIso,
+				limit: 200,
+			};
+			return tab === "team"
+				? teamTimeService.listProjectLogs(projectId, {
+						...query,
+						member_user_id: memberFilter || undefined,
+					})
+				: teamTimeService.listMyProjectLogs(projectId, query);
+		},
+	});
+	const logs = logsQuery.data?.items ?? [];
+	const listCapped = (logsQuery.data?.total ?? 0) > logs.length;
+
+	// Accurate totals over the FULL filtered set, not the 200-row list cap. The
+	// summary never sends a status filter, so the tab badges stay stable.
+	const summaryQuery = useQuery({
+		queryKey: [
+			"team-time",
+			"project",
+			projectId,
+			"summary",
+			tab,
+			{ memberFilter, from: period.fromIso, to: period.toIso },
+		],
+		queryFn: () => {
+			const query = { from: period.fromIso, to: period.toIso };
+			return tab === "team"
+				? teamTimeService.getProjectLogsSummary(projectId, {
+						...query,
+						member_user_id: memberFilter || undefined,
+					})
+				: teamTimeService.getMyProjectLogsSummary(projectId, query);
+		},
+	});
+	const stats = summaryQuery.data ?? EMPTY_LOG_STATS;
+	const statusCounts = summaryQuery.data?.statusCounts;
+
+	// Recent logs independent of the period, purely to dot worked days in the
+	// period picker's calendar.
+	const workedDaysQuery = useQuery({
+		queryKey: ["team-time", "project", projectId, "worked-days", tab],
+		queryFn: () =>
+			tab === "team"
+				? teamTimeService.listProjectLogs(projectId, { limit: 200 })
+				: teamTimeService.listMyProjectLogs(projectId, { limit: 200 }),
+	});
+	const workedDays = useMemo(() => {
+		const set = new Set<string>();
+		for (const log of workedDaysQuery.data?.items ?? []) {
+			const d = new Date(log.started_at);
+			set.add(
+				`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+					d.getDate(),
+				).padStart(2, "0")}`,
+			);
+		}
+		return set;
+	}, [workedDaysQuery.data]);
+
+	const membersQuery = useQuery({
+		queryKey: ["team-time", "project", projectId, "members"],
+		queryFn: () => teamTimeService.listProjectLogMembers(projectId),
+		enabled: tab === "team",
 	});
 
-	const isLoading = teamsQuery.isPending || logQueries.some((q) => q.isPending);
+	// Task options for the "change task" flow, scoped to this project.
+	const tasksQuery = useQuery({
+		queryKey: ["team-time", primaryTeamId, "project-tasks", projectId],
+		queryFn: () =>
+			teamTimeService.listTeamProjectTasks(primaryTeamId, projectId),
+		enabled: Boolean(primaryTeamId),
+	});
 
-	// Merge logs across the project's teams, newest first.
-	const logs = useMemo(() => {
-		const all: TaskTimeLog[] = logQueries.flatMap((q) => q.data?.items ?? []);
-		return all.sort((a, b) => b.started_at.localeCompare(a.started_at));
-	}, [logQueries]);
+	const myRatesQuery = useQuery({
+		queryKey: ["team", primaryTeamId, "rates", "history", user?.id],
+		queryFn: () => listMemberRates(primaryTeamId, user?.id ?? ""),
+		enabled: Boolean(primaryTeamId && user?.id),
+	});
+	const myRates: TeamMemberRate[] = myRatesQuery.data ?? [];
+	const ownRateByProjectId = useMemo(() => {
+		const map: Record<string, { hourly_rate: number; currency: string }> = {};
+		for (const r of myRates) {
+			if (r.end_date !== null) continue;
+			map[r.project_id] = {
+				hourly_rate: Number(r.hourly_rate),
+				currency: r.currency || "USD",
+			};
+		}
+		return map;
+	}, [myRates]);
+	const activeRate = useMemo(
+		() => myRates.find((r) => r.end_date === null) ?? null,
+		[myRates],
+	);
+
+	// ─── Mutations ──────────────────────────────────────────────────────────
+
+	const invalidate = () =>
+		qc.invalidateQueries({ queryKey: ["team-time", "project", projectId] });
+
+	const markBusy = (ids: string[], busy: boolean) =>
+		setBusyLogIds((prev) => {
+			const next = new Set(prev);
+			for (const id of ids) {
+				if (busy) next.add(id);
+				else next.delete(id);
+			}
+			return next;
+		});
+
+	const reviewMutation = useMutation({
+		mutationFn: async (input: {
+			ids: string[];
+			decision: ReviewOnlyDecision;
+		}) => {
+			markBusy(input.ids, true);
+			return teamTimeService.reviewLogsBulk(input.ids, input.decision);
+		},
+		onSuccess: (data, variables) => {
+			toast.success(`Updated ${data.reviewed} log(s).`);
+			markBusy(variables.ids, false);
+			invalidate();
+		},
+		onError: (e: Error, variables) => {
+			markBusy(variables.ids, false);
+			toast.error(e.message);
+		},
+	});
+
+	const stopMutation = useMutation({
+		mutationFn: (id: string) => teamTimeService.stopLog(id),
+		onSuccess: () => {
+			toast.success("Timer stopped");
+			void qc.invalidateQueries({ queryKey: ["team-time"] });
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: (id: string) => teamTimeService.deleteLog(id),
+		onSuccess: () => {
+			toast.success("Log deleted");
+			invalidate();
+			setDeletingLogId(null);
+			setDeletingLogLabel(undefined);
+		},
+		onError: (e: Error) => {
+			toast.error(e.message);
+			setDeletingLogId(null);
+		},
+	});
+
+	const editMutation = useMutation({
+		mutationFn: (input: {
+			id: string;
+			started_at?: string;
+			ended_at?: string;
+			break_minutes?: number;
+		}) =>
+			teamTimeService.updateLog(input.id, {
+				started_at: input.started_at,
+				ended_at: input.ended_at,
+				break_minutes: input.break_minutes,
+			}),
+		onSuccess: () => {
+			toast.success("Log updated");
+			invalidate();
+			setEditingLog(null);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const taskChangeMutation = useMutation({
+		mutationFn: (input: { id: string; task_id: string | null }) =>
+			teamTimeService.updateLog(input.id, { task_id: input.task_id }),
+		onSuccess: () => {
+			toast.success("Task changed");
+			invalidate();
+			setTaskModalLog(null);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const manualLogMutation = useMutation({
+		mutationFn: (input: {
+			project_id: string;
+			task_id: string | null;
+			started_at: string;
+			ended_at: string;
+			break_minutes?: number;
+		}) => teamTimeService.createManualLog(input),
+		onSuccess: () => {
+			toast.success("Log added");
+			invalidate();
+			setManualOpen(false);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	// ─── Row-action modal state ─────────────────────────────────────────────
+
+	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
+	const [editStartedAt, setEditStartedAt] = useState("");
+	const [editEndedAt, setEditEndedAt] = useState("");
+	const [editBreakMinutes, setEditBreakMinutes] = useState(0);
+	const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+	const [deletingLogLabel, setDeletingLogLabel] = useState<
+		string | undefined
+	>();
+	const [taskModalLog, setTaskModalLog] = useState<TaskTimeLog | null>(null);
+	const [taskModalTaskId, setTaskModalTaskId] = useState("");
+	const [manualOpen, setManualOpen] = useState(false);
+	const [manualDateLabel, setManualDateLabel] = useState("");
+	const [manualTaskId, setManualTaskId] = useState("");
+	const [manualStart, setManualStart] = useState("");
+	const [manualEnd, setManualEnd] = useState("");
+	const [manualBreakMinutes, setManualBreakMinutes] = useState(0);
+
+	const handleEdit = (log: TaskTimeLog) => {
+		setEditingLog(log);
+		setEditStartedAt(toLocalDateTimeInput(log.started_at));
+		setEditEndedAt(toLocalDateTimeInput(log.ended_at));
+		setEditBreakMinutes(log.break_minutes ?? 0);
+	};
+
+	const handleDelete = (logId: string) => {
+		const log = logs.find((l) => l.id === logId);
+		setDeletingLogLabel(log?.task?.title ?? undefined);
+		setDeletingLogId(logId);
+	};
+
+	const handleOpenTaskModal = (log: TaskTimeLog) => {
+		setTaskModalLog(log);
+		setTaskModalTaskId(log.task_id ?? "");
+	};
+
+	const openManualForDay = (date: Date) => {
+		const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+			date.getDate(),
+		).padStart(2, "0")}`;
+		setManualDateLabel(date.toLocaleDateString());
+		setManualStart(`${ymd}T09:00`);
+		setManualEnd(`${ymd}T10:00`);
+		setManualBreakMinutes(0);
+		setManualTaskId("");
+		setManualOpen(true);
+	};
+
+	const handleOpenInRoadmap = (log: TaskTimeLog) => {
+		if (!log.task_id) return;
+		void navigate({
+			to: "/project/$projectId/roadmap",
+			params: { projectId: log.project_id },
+			search: { taskId: log.task_id } as never,
+		});
+	};
+
+	const handlePayMember = async (
+		memberId: string,
+		logIds: string[],
+		currency: string,
+		payAll?: boolean,
+	) => {
+		if (!primaryTeamId) {
+			toast.error("Attach a team to this project before recording payouts.");
+			return;
+		}
+		let target: TaskTimeLog[];
+		if (payAll) {
+			try {
+				target = await teamTimeService.listAllMemberApprovedLogs(
+					primaryTeamId,
+					memberId,
+					currency,
+				);
+			} catch (e) {
+				toast.error((e as Error).message);
+				return;
+			}
+		} else {
+			const idSet = new Set(logIds);
+			target = logs.filter((log) => idSet.has(log.id));
+		}
+		if (target.length === 0) return;
+		const first = target[0];
+		setPayTarget({
+			memberId,
+			memberLabel:
+				first.member?.display_name || first.member?.email || memberId,
+			currency,
+			logs: target,
+		});
+	};
+
+	const handleReviewLogs = async (
+		ids: string[],
+		decision: ReviewOnlyDecision,
+	) => {
+		if (ids.length === 0) return;
+		await reviewMutation.mutateAsync({ ids, decision });
+	};
+
+	const rowPendingById = useMemo<Record<string, boolean>>(() => {
+		const map: Record<string, boolean> = {};
+		if (stopMutation.isPending && stopMutation.variables)
+			map[stopMutation.variables] = true;
+		if (editMutation.isPending && editMutation.variables)
+			map[editMutation.variables.id] = true;
+		if (taskChangeMutation.isPending && taskChangeMutation.variables)
+			map[taskChangeMutation.variables.id] = true;
+		return map;
+	}, [
+		stopMutation.isPending,
+		stopMutation.variables,
+		editMutation.isPending,
+		editMutation.variables,
+		taskChangeMutation.isPending,
+		taskChangeMutation.variables,
+	]);
+
+	const myBusyLogIds = useMemo(
+		() =>
+			new Set(Object.keys(rowPendingById).filter((id) => rowPendingById[id])),
+		[rowPendingById],
+	);
+
+	// ─── Render ─────────────────────────────────────────────────────────────
+
+	const noTeams = !teamsQuery.isPending && (teamsQuery.data ?? []).length === 0;
 
 	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
+		<div className="w-full">
+			<div className="mx-auto w-full max-w-[1200px] px-5 py-6 md:px-8 md:py-8">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Time"
 						title="Time logs"
-						subtitle="Time tracked on this project. Approvals and payouts live under Team → Time."
+						subtitle="Time tracked on this project — approve it, and see what it costs."
+						rightSlot={
+							primaryTeamId && canViewTeamLogs ? (
+								<a
+									href={`/teams/${primaryTeamId}/time/payouts`}
+									className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
+								>
+									<ExternalLink className="h-3.5 w-3.5" />
+									Payouts &amp; rates
+								</a>
+							) : undefined
+						}
 					/>
 				</AppSurfaceCard>
 
-				{/* Tabs + filters */}
-				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-					<div className="inline-flex rounded-lg border border-border bg-card p-1">
-						<TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
-							My logs
-						</TabButton>
-						{isConsultant && (
-							<TabButton active={tab === "team"} onClick={() => setTab("team")}>
-								Team logs
-							</TabButton>
-						)}
+				{noTeams ? (
+					<div className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-12 text-center text-sm text-muted-foreground">
+						No team is attached to this project yet, so there is no time to
+						track. Attach one under Settings → Teams.
 					</div>
-					<select
-						value={taskStatus}
-						onChange={(e) => setTaskStatus(e.target.value)}
-						className="rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground"
-					>
-						{TASK_STATUS_FILTER_OPTIONS.map((o) => (
-							<option key={o.value} value={o.value}>
-								{o.label || "All tasks"}
-							</option>
-						))}
-					</select>
-				</div>
-
-				<div className="mb-4 inline-flex flex-wrap gap-1">
-					{LOG_STATUS_TABS.map((s) => (
-						<button
-							type="button"
-							key={s.key}
-							onClick={() => setStatusFilter(s.key)}
-							className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-								statusFilter === s.key
-									? "bg-primary text-primary-foreground"
-									: "border border-border bg-card text-muted-foreground hover:bg-muted"
-							}`}
-						>
-							{s.label}
-						</button>
-					))}
-				</div>
-
-				{isLoading ? (
-					<div className="flex justify-center py-16">
-						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-					</div>
-				) : teams.length === 0 ? (
-					<EmptyRow text="No team is attached to this project yet." />
-				) : logs.length === 0 ? (
-					<EmptyRow text="No time logs match these filters yet." />
 				) : (
-					<div className="overflow-hidden rounded-2xl border border-border">
-						<table className="w-full text-sm">
-							<thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-								<tr>
-									<th className="px-4 py-2.5">Task</th>
-									{tab === "team" && <th className="px-4 py-2.5">Member</th>}
-									<th className="px-4 py-2.5">Date</th>
-									<th className="px-4 py-2.5 text-right">Hours</th>
-									<th className="px-4 py-2.5">Status</th>
-									<th className="px-4 py-2.5 text-right">Amount</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-border">
-								{logs.map((log) => (
-									<LogRow
-										key={log.id}
-										log={log}
-										showMember={tab === "team"}
-										fallbackCurrency={projectCurrency}
+					<>
+						{/* Scope + view */}
+						<div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+							<div className="inline-flex rounded-lg border border-border bg-card p-1">
+								<TabButton
+									active={tab === "mine"}
+									onClick={() => setTab("mine")}
+								>
+									My logs
+								</TabButton>
+								{canViewTeamLogs && (
+									<TabButton
+										active={tab === "team"}
+										onClick={() => setTab("team")}
+									>
+										Team logs
+									</TabButton>
+								)}
+							</div>
+							<TimeViewToggle value={viewMode} onChange={changeViewMode} />
+						</div>
+
+						{viewMode === "calendar" ? (
+							<TimeLogCalendar
+								projectId={projectId}
+								mode={tab === "team" ? "team" : "my"}
+								currentUserId={user?.id ?? null}
+								busyLogIds={tab === "team" ? busyLogIds : myBusyLogIds}
+								onReviewLogs={tab === "team" ? handleReviewLogs : undefined}
+								onPayMember={tab === "team" ? handlePayMember : undefined}
+								onStopLog={
+									tab === "mine"
+										? (log) => stopMutation.mutate(log.id)
+										: undefined
+								}
+								onEditLog={tab === "mine" ? handleEdit : undefined}
+								onDeleteLog={
+									tab === "mine" ? (log) => handleDelete(log.id) : undefined
+								}
+								onChangeTask={tab === "mine" ? handleOpenTaskModal : undefined}
+								onAddLogForDay={tab === "mine" ? openManualForDay : undefined}
+								loadingTasks={tasksQuery.isFetching}
+								onOpenTaskInRoadmap={handleOpenInRoadmap}
+								canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+							/>
+						) : (
+							<>
+								<div className="mb-3">
+									<TeamLogsStatsCard
+										rate={tab === "mine" ? activeRate : null}
+										stats={stats}
+										fallbackCurrency={
+											(tab === "mine" ? activeRate?.currency : null) ||
+											projectCurrency
+										}
+										loading={summaryQuery.isPending}
+										includePaidColumn
+										includeTrainingRate={false}
+										rateLabel="Rate"
 									/>
-								))}
-							</tbody>
-						</table>
-					</div>
+								</div>
+
+								{tab === "mine" && logs.length > 0 && (
+									<div className="mb-3">
+										<HourCapBanner logs={logs} />
+									</div>
+								)}
+
+								<div className="mb-4">
+									<TeamLogsPeriodFilter
+										period={period}
+										payPeriodConfig={payPeriodConfig}
+										onPresetChange={(preset) => updatePeriod(preset)}
+										onCutoffMonthChange={(month) =>
+											updatePeriod("cutoff", { cutoffMonth: month })
+										}
+										onCutoffPeriodChange={(periodId) =>
+											updatePeriod("cutoff", { cutoffPeriodId: periodId })
+										}
+										onApplyCustomRange={onApplyCustomRange}
+										workedDays={workedDays}
+									/>
+								</div>
+
+								<div className="mb-3 space-y-2.5 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
+									<TeamLogsStatusTabs
+										value={activeStatus}
+										onChange={setActiveStatus}
+										counts={statusCounts}
+									/>
+									<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+										{tab === "team" && (
+											<FilterSelect
+												value={memberFilter}
+												onChange={setMemberFilter}
+												icon={<Users className="h-3.5 w-3.5" />}
+												placeholder="All members"
+												options={[
+													{ value: "", label: "All members" },
+													...(membersQuery.data ?? []).map((member) => ({
+														value: member.id,
+														label:
+															member.display_name || member.email || member.id,
+														avatarUrl: member.avatar_url ?? null,
+													})),
+												]}
+											/>
+										)}
+										<FilterSelect
+											value={taskStatusFilter}
+											onChange={setTaskStatusFilter}
+											icon={<ListChecks className="h-3.5 w-3.5" />}
+											placeholder="All task statuses"
+											options={TASK_STATUS_FILTER_OPTIONS}
+										/>
+										{(logsQuery.isFetching || membersQuery.isPending) && (
+											<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+										)}
+									</div>
+								</div>
+
+								{listCapped && (
+									<p className="mb-2 px-1 text-xs text-muted-foreground">
+										Showing the most recent 200 logs — narrow the period or
+										filters to see the rest. Totals above cover the full range.
+									</p>
+								)}
+
+								{tab === "team" ? (
+									<TeamApprovalsInbox
+										logs={logs}
+										loadingLogs={logsQuery.isPending}
+										currentUserId={user?.id ?? null}
+										busyLogIds={busyLogIds}
+										onReviewLogs={handleReviewLogs}
+										onPayMember={handlePayMember}
+										onOpenTaskInRoadmap={handleOpenInRoadmap}
+										canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+									/>
+								) : (
+									<TeamMyLogsList
+										logs={logs}
+										tasks={tasksQuery.data ?? []}
+										ownRateByProjectId={ownRateByProjectId}
+										loadingLogs={logsQuery.isPending}
+										loadingTasks={tasksQuery.isFetching}
+										taskSyncById={{}}
+										rowPendingById={rowPendingById}
+										onOpenTaskModal={handleOpenTaskModal}
+										onStopLog={(id) => stopMutation.mutate(id)}
+										onDeleteLog={handleDelete}
+										onEditLog={handleEdit}
+										onOpenTaskInRoadmap={handleOpenInRoadmap}
+										canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+										onOpenAddLog={() => openManualForDay(new Date())}
+									/>
+								)}
+							</>
+						)}
+					</>
 				)}
 			</div>
+
+			<EditLogModal
+				isOpen={Boolean(editingLog)}
+				startedAt={editStartedAt}
+				endedAt={editEndedAt}
+				breakMinutes={editBreakMinutes}
+				saving={editMutation.isPending}
+				onClose={() => setEditingLog(null)}
+				onSave={() => {
+					if (!editingLog) return;
+					editMutation.mutate({
+						id: editingLog.id,
+						started_at: fromLocalDateTimeInput(editStartedAt),
+						ended_at: fromLocalDateTimeInput(editEndedAt),
+						break_minutes: editBreakMinutes,
+					});
+				}}
+				onChangeStartedAt={setEditStartedAt}
+				onChangeEndedAt={setEditEndedAt}
+				onChangeBreakMinutes={setEditBreakMinutes}
+			/>
+
+			<DeleteTimeLogModal
+				isOpen={Boolean(deletingLogId)}
+				deleting={deleteMutation.isPending}
+				taskLabel={deletingLogLabel}
+				onClose={() => setDeletingLogId(null)}
+				onConfirm={() => {
+					if (deletingLogId) deleteMutation.mutate(deletingLogId);
+				}}
+			/>
+
+			<ManualLogModal
+				isOpen={manualOpen}
+				dateLabel={manualDateLabel}
+				projects={[
+					{ id: projectId, title: projectQuery.data?.title ?? "This project" },
+				]}
+				tasks={tasksQuery.data ?? []}
+				loadingTasks={tasksQuery.isFetching}
+				selectedProjectId={projectId}
+				selectedTaskId={manualTaskId}
+				startedAt={manualStart}
+				endedAt={manualEnd}
+				breakMinutes={manualBreakMinutes}
+				saving={manualLogMutation.isPending}
+				onClose={() => setManualOpen(false)}
+				onSave={() => {
+					const startedAt = fromLocalDateTimeInput(manualStart);
+					const endedAt = fromLocalDateTimeInput(manualEnd);
+					if (!startedAt || !endedAt) {
+						toast.error("Enter a valid start and end time.");
+						return;
+					}
+					manualLogMutation.mutate({
+						project_id: projectId,
+						task_id: manualTaskId || null,
+						started_at: startedAt,
+						ended_at: endedAt,
+						break_minutes: manualBreakMinutes,
+					});
+				}}
+				onChangeProjectId={() => {}}
+				onChangeTaskId={setManualTaskId}
+				onChangeStartedAt={setManualStart}
+				onChangeEndedAt={setManualEnd}
+				onChangeBreakMinutes={setManualBreakMinutes}
+			/>
+
+			{/* Change the task a log is attributed to. */}
+			<ChangeTaskModal
+				log={taskModalLog}
+				taskId={taskModalTaskId}
+				tasks={tasksQuery.data ?? []}
+				saving={taskChangeMutation.isPending}
+				onChangeTaskId={setTaskModalTaskId}
+				onClose={() => setTaskModalLog(null)}
+				onSave={() => {
+					if (!taskModalLog) return;
+					taskChangeMutation.mutate({
+						id: taskModalLog.id,
+						task_id: taskModalTaskId || null,
+					});
+				}}
+			/>
+
+			{payTarget && primaryTeamId && (
+				<PayMemberModal
+					isOpen
+					teamId={primaryTeamId}
+					memberId={payTarget.memberId}
+					memberLabel={payTarget.memberLabel}
+					currency={payTarget.currency}
+					logs={payTarget.logs}
+					onClose={() => setPayTarget(null)}
+					onSuccess={() => {
+						setPayTarget(null);
+						invalidate();
+						void qc.invalidateQueries({ queryKey: ["payouts", primaryTeamId] });
+					}}
+				/>
+			)}
 		</div>
 	);
 }
 
-function LogRow({
+function ChangeTaskModal({
 	log,
-	showMember,
-	fallbackCurrency,
+	taskId,
+	tasks,
+	saving,
+	onChangeTaskId,
+	onClose,
+	onSave,
 }: {
-	log: TaskTimeLog;
-	showMember: boolean;
-	fallbackCurrency: string;
+	log: TaskTimeLog | null;
+	taskId: string;
+	tasks: Array<{ id: string; title: string }>;
+	saving: boolean;
+	onChangeTaskId: (value: string) => void;
+	onClose: () => void;
+	onSave: () => void;
 }) {
-	const currency = log.currency_snapshot || fallbackCurrency || "USD";
-	const hours = formatHours(log.duration_seconds);
-	const amount =
-		((log.duration_seconds ?? 0) / 3600) * Number(log.rate_snapshot ?? 0);
+	if (!log) return null;
 	return (
-		<tr className="text-foreground">
-			<td className="px-4 py-3">{log.task?.title ?? "—"}</td>
-			{showMember && (
-				<td className="px-4 py-3">
-					{log.member?.display_name ?? log.member?.email ?? "—"}
-				</td>
-			)}
-			<td className="px-4 py-3 text-muted-foreground">
-				{log.started_at.slice(0, 10)}
-			</td>
-			<td className="px-4 py-3 text-right tabular-nums">{hours}</td>
-			<td className="px-4 py-3">
-				<LogStatusChip status={log.status} />
-			</td>
-			<td className="px-4 py-3 text-right tabular-nums">
-				{formatMoney(amount, currency)}
-			</td>
-		</tr>
-	);
-}
-
-function LogStatusChip({ status }: { status: TimeLogStatus }) {
-	const classes: Record<TimeLogStatus, string> = {
-		pending: "bg-amber-500/15 text-amber-600",
-		approved: "bg-emerald-500/15 text-emerald-600",
-		paid: "bg-sky-500/15 text-sky-600",
-		rejected: "bg-rose-500/15 text-rose-600",
-	};
-	return (
-		<span
-			className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${classes[status]}`}
-		>
-			{status}
-		</span>
+		<div className="fixed inset-0 z-100 flex items-center justify-center bg-black/40 p-4">
+			<div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl">
+				<h2 className="text-sm font-bold text-card-foreground">
+					Change the task for this log
+				</h2>
+				<p className="mt-1 text-xs text-muted-foreground">
+					Moving a log to another task re-snapshots its rate.
+				</p>
+				<select
+					value={taskId}
+					onChange={(e) => onChangeTaskId(e.target.value)}
+					className="mt-4 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+				>
+					<option value="">No task (general project time)</option>
+					{tasks.map((t) => (
+						<option key={t.id} value={t.id}>
+							{t.title}
+						</option>
+					))}
+				</select>
+				<div className="mt-5 flex justify-end gap-2">
+					<button
+						type="button"
+						onClick={onClose}
+						className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={onSave}
+						disabled={saving}
+						className="app-cta rounded-lg px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-50"
+					>
+						{saving ? "Saving…" : "Save"}
+					</button>
+				</div>
+			</div>
+		</div>
 	);
 }
 
@@ -257,13 +940,5 @@ function TabButton({
 		>
 			{children}
 		</button>
-	);
-}
-
-function EmptyRow({ text }: { text: string }) {
-	return (
-		<div className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-12 text-center text-sm text-muted-foreground">
-			{text}
-		</div>
 	);
 }

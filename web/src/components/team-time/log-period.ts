@@ -147,7 +147,8 @@ export function payPeriodForDate(
 	const periods = resolvePayPeriods(config, month);
 	const day = startOfDay(date).getTime();
 	const containing = periods.find(
-		(p) => startOfDay(p.from).getTime() <= day && day <= startOfDay(p.to).getTime(),
+		(p) =>
+			startOfDay(p.from).getTime() <= day && day <= startOfDay(p.to).getTime(),
 	);
 	if (containing) return { month, period: containing };
 	// No period contains the date (e.g. a gap in the config) — fall back to the
@@ -321,8 +322,7 @@ export function resolveTeamLogPeriod(
 		payDate = period.payDate;
 	} else if (preset === "cutoff") {
 		const periods = resolvePayPeriods(cfg, cutoffMonth);
-		const period =
-			periods.find((p) => p.id === cutoffPeriodId) ?? periods[0];
+		const period = periods.find((p) => p.id === cutoffPeriodId) ?? periods[0];
 		cutoffPeriodId = period.id;
 		fromDate = period.from;
 		toDate = period.to;
@@ -398,17 +398,20 @@ export function buildCustomPeriodFromDateInputs(
 }
 
 // ─── cross-tab persistence ───────────────────────────────────────────────
-// The period lives in the team-logs route's URL search, which is lost when
-// the user visits another Time tab. Mirror it into localStorage per team so
-// it can be restored (e.g. a custom range the user set) on return.
+// The period lives in the logs route's URL search, which is lost when the
+// user visits another Time tab. Mirror it into localStorage per scope so it
+// can be restored (e.g. a custom range the user set) on return.
+//
+// `scopeKey` is a team id for the team pages and `project:<id>` for the
+// project Time page, so the two don't stomp on each other.
 
 const PERIOD_STORAGE_PREFIX = "teamLogPeriod:";
 
 export function loadStoredPeriodSearch(
-	teamId: string,
+	scopeKey: string,
 ): TeamLogPeriodSearch | null {
 	try {
-		const raw = localStorage.getItem(`${PERIOD_STORAGE_PREFIX}${teamId}`);
+		const raw = localStorage.getItem(`${PERIOD_STORAGE_PREFIX}${scopeKey}`);
 		if (!raw) return null;
 		const parsed = parseTeamLogPeriodSearch(JSON.parse(raw));
 		return parsed.preset ? parsed : null;
@@ -418,12 +421,12 @@ export function loadStoredPeriodSearch(
 }
 
 export function storePeriodSearch(
-	teamId: string,
+	scopeKey: string,
 	search: TeamLogPeriodSearch,
 ): void {
 	try {
 		localStorage.setItem(
-			`${PERIOD_STORAGE_PREFIX}${teamId}`,
+			`${PERIOD_STORAGE_PREFIX}${scopeKey}`,
 			JSON.stringify(search),
 		);
 	} catch {

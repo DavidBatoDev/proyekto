@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
+import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListModal } from "../modals/TaskListModal";
 import {
@@ -157,6 +159,7 @@ const CanvasTaskRow = memo(
   }: CanvasTaskRowProps) => {
     const [isPulsing, setIsPulsing] = useState(false);
     const isDone = task.status === "done";
+    const projectId = useRoadmapStore((state) => state.roadmap?.project_id ?? "");
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const statusTriggerRef = useRef<HTMLButtonElement>(null);
     const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -218,7 +221,7 @@ const CanvasTaskRow = memo(
     return (
       <div
         data-task-id={task.id}
-        className={`nodrag flex items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
+        className={`nodrag group flex items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
           isRunning ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200" : ""
         } ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
         onClick={() => onClick?.(task)}
@@ -273,7 +276,7 @@ const CanvasTaskRow = memo(
               createPortal(
                 <div
                   ref={statusMenuRef}
-                  className="fixed z-300 min-w-[160px] rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
+                  className="fixed z-300 min-w-40 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
                   style={{
                     top: statusMenuPosition.top,
                     left: statusMenuPosition.left,
@@ -302,6 +305,18 @@ const CanvasTaskRow = memo(
         ) : (
           <TaskStatusBadge status={task.status} className="shrink-0 text-[10px]" />
         )}
+
+        {/* Start/stop the timer without leaving the canvas. Stays visible
+            while this task is the one running. */}
+        {projectId ? (
+          <span
+            className={`shrink-0 transition-opacity ${
+              isRunning ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <TaskTimerButton projectId={projectId} taskId={task.id} />
+          </span>
+        ) : null}
 
         <EditingTaskAvatar editors={editors} />
         <CanvasTaskAssignees task={task} />
@@ -780,7 +795,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                 <div
                   role="presentation"
                   ref={taskListRef}
-                  className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:theme(colors.gray.300)_white] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+                  className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <CanvasTaskList

@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
 	BookOpen,
 	ClipboardList,
+	Clock,
+	FileSignature,
 	LayoutDashboard,
 	ListChecks,
 	Map,
@@ -11,11 +13,14 @@ import {
 	MoreHorizontal,
 	ReceiptText,
 	Settings,
+	TrendingUp,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
+import type { ProjectPermissions } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
 interface ProjectBottomNavProps {
@@ -23,6 +28,8 @@ interface ProjectBottomNavProps {
 	hasProject?: boolean;
 	roadmapId?: string;
 }
+
+type AccessGate = keyof ProjectPermissions["access"];
 
 export function ProjectBottomNav({
 	projectId,
@@ -40,6 +47,11 @@ export function ProjectBottomNav({
 	const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
 	const isProjectActive = hasProject ?? true;
+
+	const permissionsQuery = useProjectMyPermissionsQuery(
+		isProjectActive ? projectId : "",
+	);
+	const access = permissionsQuery.data?.access;
 
 	const chatRoomsQuery = useQuery({
 		queryKey: chatKeys.rooms(projectId),
@@ -78,7 +90,15 @@ export function ProjectBottomNav({
 
 	const isChatRoute = currentPath.startsWith(`/project/${projectId}/chat`);
 
-	const primaryItems = [
+	const primaryItems: Array<{
+		label: string;
+		icon: typeof Map;
+		to: string;
+		isActive: boolean;
+		requiresProject: boolean;
+		hasUnread?: boolean;
+		access?: AccessGate;
+	}> = [
 		{
 			label: "Overview",
 			icon: LayoutDashboard,
@@ -94,6 +114,7 @@ export function ProjectBottomNav({
 				: `/project/${projectId}/roadmap`,
 			isActive: currentPath.includes("/roadmap"),
 			requiresProject: false,
+			access: "roadmap",
 		},
 		{
 			label: "Work Items",
@@ -103,6 +124,7 @@ export function ProjectBottomNav({
 				: `/project/${projectId}/work-items`,
 			isActive: currentPath.includes("/work-items"),
 			requiresProject: false,
+			access: "work_items",
 		},
 		{
 			label: "Chat",
@@ -111,6 +133,7 @@ export function ProjectBottomNav({
 			isActive: isChatRoute,
 			requiresProject: true,
 			hasUnread: hasUnreadChat && !isChatRoute,
+			access: "chat",
 		},
 		{
 			label: "Resources",
@@ -118,15 +141,31 @@ export function ProjectBottomNav({
 			to: `/project/${projectId}/resources`,
 			isActive: currentPath.startsWith(`/project/${projectId}/resources`),
 			requiresProject: true,
+			access: "resources",
 		},
 	];
 
-	const moreItems = [
+	// Mirrors the desktop sidebar's Collaborate + Manage groups.
+	const moreItems: Array<{
+		label: string;
+		icon: typeof Map;
+		to: string;
+		isActive: boolean;
+		access?: AccessGate;
+	}> = [
 		{
 			label: "Team",
 			icon: Users,
 			to: `/project/${projectId}/team`,
 			isActive: currentPath.startsWith(`/project/${projectId}/team`),
+			access: "team",
+		},
+		{
+			label: "Time",
+			icon: Clock,
+			to: `/project/${projectId}/time`,
+			isActive: currentPath.startsWith(`/project/${projectId}/time`),
+			access: "time",
 		},
 		{
 			label: "Logs",
@@ -135,10 +174,25 @@ export function ProjectBottomNav({
 			isActive: currentPath.startsWith(`/project/${projectId}/logs`),
 		},
 		{
+			label: "Contract",
+			icon: FileSignature,
+			to: `/project/${projectId}/contract`,
+			isActive: currentPath.startsWith(`/project/${projectId}/contract`),
+			access: "contract",
+		},
+		{
 			label: "Invoices",
 			icon: ReceiptText,
 			to: `/project/${projectId}/payments`,
 			isActive: currentPath.startsWith(`/project/${projectId}/payments`),
+			access: "invoices",
+		},
+		{
+			label: "Financials",
+			icon: TrendingUp,
+			to: `/project/${projectId}/financials`,
+			isActive: currentPath.startsWith(`/project/${projectId}/financials`),
+			access: "financials",
 		},
 		{
 			label: "Settings",
@@ -148,12 +202,18 @@ export function ProjectBottomNav({
 		},
 	];
 
+	// Until permissions resolve, show everything — each route gates itself.
+	const allowed = (gate?: AccessGate) =>
+		!gate || !access || access[gate] === true;
+
 	const visiblePrimary = primaryItems.filter(
-		(item) => !item.requiresProject || isProjectActive,
+		(item) =>
+			(!item.requiresProject || isProjectActive) && allowed(item.access),
 	);
+	const visibleMore = moreItems.filter((item) => allowed(item.access));
 
 	const isMoreActive =
-		isProjectActive && moreItems.some((item) => item.isActive);
+		isProjectActive && visibleMore.some((item) => item.isActive);
 
 	return (
 		<>
@@ -235,7 +295,7 @@ export function ProjectBottomNav({
 							</p>
 
 							<div className="grid grid-cols-4 gap-3">
-								{moreItems.map((item) => {
+								{visibleMore.map((item) => {
 									const Icon = item.icon;
 									return (
 										<Link
