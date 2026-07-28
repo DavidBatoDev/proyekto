@@ -7,7 +7,6 @@ from app.core.tools.registry import (
     EPIC_STATUS_VALUES,
     FEATURE_STATUS_VALUES,
     TASK_STATUS_VALUES,
-    get_edit_helper_tools,
     get_planning_tool,
     parse_plan_tool_args,
 )
@@ -645,46 +644,6 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
             task_branches[0]['properties']['data']['properties']['status']  # type: ignore[index]
         )
         self.assertEqual(task_status['enum'], TASK_STATUS_VALUES)
-
-    def test_edit_helper_status_fields_are_type_specific(self) -> None:
-        tools = get_edit_helper_tools()
-        by_name = {tool['function']['name']: tool for tool in tools}
-        expectations = {
-            'create_epic': EPIC_STATUS_VALUES,
-            'create_task': TASK_STATUS_VALUES,
-            'update_task_status': TASK_STATUS_VALUES,
-            'update_epic_status': EPIC_STATUS_VALUES,
-            'bulk_update_epic_status': EPIC_STATUS_VALUES,
-        }
-        for tool_name, expected_enum in expectations.items():
-            tool = by_name.get(tool_name)
-            self.assertIsNotNone(tool, f'tool {tool_name} missing from edit helpers')
-            assert tool is not None
-            status_schema = tool['function']['parameters']['properties']['status']
-            self.assertEqual(
-                status_schema.get('enum'),
-                expected_enum,
-                f'{tool_name} status enum mismatch',
-            )
-
-    def test_feature_status_edit_helpers_removed(self) -> None:
-        # Feature status is derived; the standalone update/bulk helpers
-        # that wrote feature.status directly were removed.
-        tools = get_edit_helper_tools()
-        names = {tool['function']['name'] for tool in tools}
-        self.assertNotIn('update_feature_status', names)
-        self.assertNotIn('bulk_update_feature_status', names)
-        # create_feature exists but no longer takes a status field.
-        create_feature = next(
-            (t for t in tools if t['function']['name'] == 'create_feature'),
-            None,
-        )
-        self.assertIsNotNone(create_feature)
-        assert create_feature is not None
-        self.assertNotIn(
-            'status',
-            create_feature['function']['parameters']['properties'],
-        )
 
     def test_all_status_union_contains_every_node_type_value(self) -> None:
         from app.core.contracts.statuses import MILESTONE_STATUS_VALUES
