@@ -1,5 +1,13 @@
 {
   "includeCoAuthoredBy": false,
+  "enabledMcpjsonServers": [
+    "supabase",
+    "github",
+    "vercel",
+    "cloudflare-api",
+    "cloudflare-docs",
+    "cloudflare-bindings"
+  ],
   "permissions": {
     "allow": [
       "Bash(git status:*)",

@@ -19,8 +19,8 @@ __pycache__/
 .claude/settings.local.json
 keys
 
-# Local MCP config holds a Supabase access token — never commit
-.mcp.json
+# .mcp.json IS tracked: it must never contain literal tokens, only ${ENV_VAR}
+# references resolved from the developer's own environment.
 mcp.json
 
 # Playwright
