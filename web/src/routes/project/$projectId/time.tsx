@@ -705,7 +705,7 @@ function ProjectTimePage() {
 											placeholder="All task statuses"
 											options={TASK_STATUS_FILTER_OPTIONS}
 										/>
-										{(logsQuery.isFetching || membersQuery.isPending) && (
+										{(logsQuery.isFetching || membersQuery.isLoading) && (
 											<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
 										)}
 									</div>
