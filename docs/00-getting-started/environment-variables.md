@@ -1,6 +1,6 @@
 # Environment Variables
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-07-28 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
@@ -64,6 +64,29 @@ Only public values — no secrets. See [Web → state & services](../04-web/READ
 
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` — see the
 [Google OAuth email runbook](../12-runbooks/google-oauth-email.md).
+
+## Developer machine (MCP tokens for Claude Code)
+
+`.mcp.json` at the repo root is **tracked** and holds no secrets — it references
+tokens as `${VAR}`, resolved from your own shell environment. Set these once as
+persistent user environment variables (never in a repo file):
+
+| Var | Used by | Where to get it |
+| --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | `supabase` MCP server (`Authorization: Bearer`) | [Supabase account tokens](https://supabase.com/dashboard/account/tokens) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | `github` MCP server (`api.githubcopilot.com/mcp/`) | `gh auth token`, or a fine-grained PAT |
+| `VERCEL_TOKEN` | `vercel` CLI (`vercel --token $VERCEL_TOKEN`) | [Vercel account tokens](https://vercel.com/account/settings/tokens) |
+
+```powershell
+# PowerShell, persistent for the current user — restart Claude Code afterwards
+[Environment]::SetEnvironmentVariable('SUPABASE_ACCESS_TOKEN', 'sbp_…', 'User')
+[Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN', (gh auth token).Trim(), 'User')
+[Environment]::SetEnvironmentVariable('VERCEL_TOKEN', '…', 'User')
+```
+
+The `vercel` and `cloudflare-*` MCP servers authenticate over **OAuth**, not a
+token header — run `/mcp` in an interactive Claude Code session to authorize
+them. A Vercel API token only helps the CLI, not `mcp.vercel.com`.
 
 ## Where values live in production
 
