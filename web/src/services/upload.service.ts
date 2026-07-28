@@ -129,14 +129,39 @@ class UploadService {
 	}
 
 	/**
+	 * Persist an already-hosted avatar URL to the profile.
+	 * Split out from uploadAvatar so the stock-image picker — which produces a
+	 * CDN URL without ever handling a File — reuses the same confirm call.
+	 */
+	async confirmAvatarUrl(url: string): Promise<string> {
+		await apiClient.post(`${this.base}/confirm-avatar`, { avatar_url: url });
+		return url;
+	}
+
+	/** Persist an already-hosted banner URL to the profile. */
+	async confirmBannerUrl(url: string): Promise<string> {
+		await apiClient.post(`${this.base}/confirm-banner`, { banner_url: url });
+		return url;
+	}
+
+	/** Persist an already-hosted banner URL to a project. */
+	async confirmProjectBannerUrl(
+		projectId: string,
+		url: string,
+	): Promise<string> {
+		await apiClient.post(`${this.base}/confirm-project-banner`, {
+			project_id: projectId,
+			banner_url: url,
+		});
+		return url;
+	}
+
+	/**
 	 * Upload avatar and persist to profile
 	 */
 	async uploadAvatar(file: File): Promise<string> {
 		const publicUrl = await this.upload("avatars", file);
-		await apiClient.post(`${this.base}/confirm-avatar`, {
-			avatar_url: publicUrl,
-		});
-		return publicUrl;
+		return this.confirmAvatarUrl(publicUrl);
 	}
 
 	/**
@@ -144,10 +169,7 @@ class UploadService {
 	 */
 	async uploadBanner(file: File): Promise<string> {
 		const publicUrl = await this.upload("banners", file);
-		await apiClient.post(`${this.base}/confirm-banner`, {
-			banner_url: publicUrl,
-		});
-		return publicUrl;
+		return this.confirmBannerUrl(publicUrl);
 	}
 
 	/**
@@ -155,11 +177,7 @@ class UploadService {
 	 */
 	async uploadProjectBanner(projectId: string, file: File): Promise<string> {
 		const publicUrl = await this.upload("project_banners", file);
-		await apiClient.post(`${this.base}/confirm-project-banner`, {
-			project_id: projectId,
-			banner_url: publicUrl,
-		});
-		return publicUrl;
+		return this.confirmProjectBannerUrl(projectId, publicUrl);
 	}
 
 	/**
