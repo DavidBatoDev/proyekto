@@ -21,9 +21,9 @@ import {
 import { useMemo, useState } from "react";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { teamTimeService } from "@/services/team-time.service";
+import { TaskDetailPeek } from "../TaskDetailPeek";
 import type { ReviewOnlyDecision } from "../TeamApprovalsInbox";
 import { initialsFromName, statusBadgeClass } from "../time-utils";
-import { TaskDetailPeek } from "../TaskDetailPeek";
 import { DayLogsModal } from "./DayLogsModal";
 
 type CalendarView = "month" | "week";
@@ -36,7 +36,14 @@ const DAY_MODAL_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 });
 
 interface TimeLogCalendarProps {
-	teamId: string;
+	/** Team scope. Ignored when `projectId` is set. */
+	teamId?: string;
+	/**
+	 * Project scope. When set, the calendar fetches from the project-scoped
+	 * endpoints instead of the team ones — used by the project Time page,
+	 * which spans every team attached to the project.
+	 */
+	projectId?: string;
 	/** "my" fetches the caller's logs; "team" fetches all members' logs. */
 	mode: "my" | "team";
 	currentUserId?: string | null;
@@ -82,6 +89,7 @@ function eventLabel(log: TaskTimeLog): string {
  */
 export function TimeLogCalendar({
 	teamId,
+	projectId,
 	mode,
 	currentUserId = null,
 	busyLogIds,
@@ -151,19 +159,26 @@ export function TimeLogCalendar({
 	);
 
 	const logsQuery = useQuery({
-		queryKey: ["team-time", teamId, "calendar", mode, { fromIso, toIso }],
-		queryFn: () =>
-			mode === "my"
-				? teamTimeService.listMyTeamLogs(teamId, {
-						from: fromIso,
-						to: toIso,
-						limit: 200,
-					})
-				: teamTimeService.listTeamLogs(teamId, {
-						from: fromIso,
-						to: toIso,
-						limit: 200,
-					}),
+		queryKey: [
+			"team-time",
+			projectId ? "project" : "team",
+			projectId ?? teamId,
+			"calendar",
+			mode,
+			{ fromIso, toIso },
+		],
+		queryFn: () => {
+			const range = { from: fromIso, to: toIso, limit: 200 };
+			if (projectId) {
+				return mode === "my"
+					? teamTimeService.listMyProjectLogs(projectId, range)
+					: teamTimeService.listProjectLogs(projectId, range);
+			}
+			return mode === "my"
+				? teamTimeService.listMyTeamLogs(teamId ?? "", range)
+				: teamTimeService.listTeamLogs(teamId ?? "", range);
+		},
+		enabled: Boolean(projectId || teamId),
 	});
 
 	const logs = logsQuery.data?.items ?? [];

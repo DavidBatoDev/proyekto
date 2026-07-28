@@ -2221,6 +2221,7 @@ export class ProjectsService {
       'chat',
       'resources',
       'logs',
+      'time',
     ];
     for (const section of sections) {
       const incoming = (

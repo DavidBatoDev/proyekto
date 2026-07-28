@@ -24,12 +24,39 @@ export const fromLocalDateTimeInput = (value: string) => {
 	return parsed.toISOString();
 };
 
+/** Break seconds banked on the row, ignoring any in-progress pause. */
+const bankedBreakSeconds = (log: TaskTimeLog) =>
+	Math.max(0, log.break_seconds ?? (log.break_minutes ?? 0) * 60);
+
+/**
+ * Live break total, including the pause currently in progress. Drives the
+ * break counter on the floating timer.
+ */
+export const liveBreakSecondsFromLog = (log: TaskTimeLog, nowMs: number) => {
+	const banked = bankedBreakSeconds(log);
+	if (!log.paused_at) return banked;
+	const pausedAt = new Date(log.paused_at).getTime();
+	if (Number.isNaN(pausedAt)) return banked;
+	return banked + Math.max(0, Math.floor((nowMs - pausedAt) / 1000));
+};
+
+/**
+ * Live worked seconds, net of breaks. While the log is paused the clock is
+ * frozen at `paused_at` — breaks are not work.
+ */
 export const liveDurationSecondsFromLog = (log: TaskTimeLog, nowMs: number) => {
 	if (log.ended_at) return log.duration_seconds ?? 0;
 	const started = new Date(log.started_at).getTime();
 	if (Number.isNaN(started)) return log.duration_seconds ?? 0;
-	const breakSeconds = (log.break_minutes ?? 0) * 60;
-	return Math.max(0, Math.floor((nowMs - started) / 1000) - breakSeconds);
+	let upTo = nowMs;
+	if (log.paused_at) {
+		const pausedAt = new Date(log.paused_at).getTime();
+		if (!Number.isNaN(pausedAt)) upTo = Math.min(nowMs, pausedAt);
+	}
+	return Math.max(
+		0,
+		Math.floor((upTo - started) / 1000) - bankedBreakSeconds(log),
+	);
 };
 
 /** Display name for a log's member, falling back through name parts to the raw id. */
@@ -83,7 +110,9 @@ const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 /** A log's start time, formatted time-only (em dash on an invalid date). */
 export function formatLogStart(started: Date): string {
-	return Number.isNaN(started.getTime()) ? "—" : TIME_ONLY_FORMATTER.format(started);
+	return Number.isNaN(started.getTime())
+		? "—"
+		: TIME_ONLY_FORMATTER.format(started);
 }
 
 /**

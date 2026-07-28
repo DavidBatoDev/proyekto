@@ -88,9 +88,18 @@ export interface Contract {
 	signed_by_consultant_at: string | null;
 	signed_by_consultant_name: string | null;
 	signed_by_consultant_signature_url: string | null;
+	/** Display multiplier (0.5–3) for the provider signature image. */
+	signed_by_consultant_signature_scale: number;
+	/** Overlay offsets in base-height multiples; +x right, +y up. */
+	signed_by_consultant_signature_offset_x: number;
+	signed_by_consultant_signature_offset_y: number;
 	signed_by_client_at: string | null;
 	signed_by_client_name: string | null;
 	signed_by_client_signature_url: string | null;
+	/** Display multiplier (0.5–3) for the client signature image. */
+	signed_by_client_signature_scale: number;
+	signed_by_client_signature_offset_x: number;
+	signed_by_client_signature_offset_y: number;
 
 	created_by: string | null;
 	created_at: string;
@@ -169,6 +178,23 @@ function fail(err: unknown, fallback: string): never {
 	);
 }
 
+/**
+ * Where a signature overlay sits on its field. Offsets are in multiples of the
+ * base signature height, so one value renders correctly in the compact
+ * preview, the full-size document, and the PDF.
+ */
+export interface SignaturePlacement {
+	scale: number;
+	offsetX: number;
+	offsetY: number;
+}
+
+export const DEFAULT_SIGNATURE_PLACEMENT: SignaturePlacement = {
+	scale: 1,
+	offsetX: 0,
+	offsetY: 0,
+};
+
 function normalizeContract(contract: Contract): Contract {
 	return {
 		...contract,
@@ -186,6 +212,19 @@ function normalizeContract(contract: Contract): Contract {
 		services: [...(contract.services ?? [])]
 			.map((s) => ({ ...s, unit_rate: Number(s.unit_rate ?? 0) }))
 			.sort((a, b) => a.position - b.position),
+		// numeric columns can arrive as strings; a missing/0 scale means "base".
+		signed_by_consultant_signature_scale:
+			Number(contract.signed_by_consultant_signature_scale) || 1,
+		signed_by_client_signature_scale:
+			Number(contract.signed_by_client_signature_scale) || 1,
+		signed_by_consultant_signature_offset_x:
+			Number(contract.signed_by_consultant_signature_offset_x) || 0,
+		signed_by_consultant_signature_offset_y:
+			Number(contract.signed_by_consultant_signature_offset_y) || 0,
+		signed_by_client_signature_offset_x:
+			Number(contract.signed_by_client_signature_offset_x) || 0,
+		signed_by_client_signature_offset_y:
+			Number(contract.signed_by_client_signature_offset_y) || 0,
 		periods: contract.periods ?? [],
 	};
 }
@@ -237,6 +276,7 @@ export const contractService = {
 		party: "consultant" | "client",
 		signerName: string,
 		signatureUrl?: string | null,
+		placement?: SignaturePlacement,
 	): Promise<Contract> {
 		try {
 			const { data } = await apiClient.post<{ data: Contract }>(
@@ -245,11 +285,48 @@ export const contractService = {
 					party,
 					signer_name: signerName,
 					...(signatureUrl ? { signature_url: signatureUrl } : {}),
+					...(placement
+						? {
+								signature_scale: placement.scale,
+								signature_offset_x: placement.offsetX,
+								signature_offset_y: placement.offsetY,
+							}
+						: {}),
 				},
 			);
 			return normalizeContract(data.data);
 		} catch (err) {
 			fail(err, "Failed to sign the contract");
+		}
+	},
+
+	/**
+	 * Resize or reposition a stamped signature overlay. Cosmetic, so it stays
+	 * available after the contract is signed — unlike unsigning. Fields are
+	 * independent: send only what changed.
+	 */
+	async setSignaturePlacement(
+		contractId: string,
+		party: "consultant" | "client",
+		placement: Partial<SignaturePlacement>,
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.patch<{ data: Contract }>(
+				`/api/contracts/${contractId}/signature-placement`,
+				{
+					party,
+					...(placement.scale !== undefined ? { scale: placement.scale } : {}),
+					...(placement.offsetX !== undefined
+						? { offset_x: placement.offsetX }
+						: {}),
+					...(placement.offsetY !== undefined
+						? { offset_y: placement.offsetY }
+						: {}),
+				},
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to reposition the signature");
 		}
 	},
 

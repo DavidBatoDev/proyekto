@@ -115,7 +115,10 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 		})),
 	});
 
-	const currency = projectQuery.data?.currency ?? contract?.currency ?? "USD";
+	// The contract is what the client is actually billed in, and these rates are
+	// carved out of that contract's pool — so it wins over the project-level
+	// default. Same precedence as the invoice builder.
+	const currency = contract?.currency ?? projectQuery.data?.currency ?? "USD";
 	const teamPercent = economicsQuery.data?.team_percent ?? 100;
 
 	// time_based contracts need an expected-hours input to have a monthly figure.
@@ -165,6 +168,14 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 		}) => {
 			const { row, rate, draft } = args;
 			const isFixed = draft.rateType === "fixed";
+			// `team_member_rates_fixed_amount_check` requires a positive amount on
+			// every fixed row. Catch it here so a blank field reads as a field
+			// error instead of a raw Postgres constraint message.
+			if (isFixed && !(Number(draft.fixedAmount) > 0)) {
+				throw new Error(
+					"Enter the fixed monthly amount before saving this member.",
+				);
+			}
 			// Budget-tied members derive the cap from allocation ÷ rate; untied
 			// members use the hour cap entered directly.
 			const caps = isFixed
@@ -456,6 +467,10 @@ function MemberCard({
 }) {
 	const isFixed = draft.rateType === "fixed";
 	const useBudget = draft.useBudget;
+	const fixedVal = Number(draft.fixedAmount) || 0;
+	// A fixed row without a positive amount is rejected by the DB check
+	// constraint, so hold the save until it's filled in.
+	const fixedIncomplete = isFixed && fixedVal <= 0;
 	const alloc = Number(draft.allocation) || 0;
 	const rateVal = Number(draft.hourlyRate) || 0;
 	const hoursVal = Number(draft.monthlyHours) || 0;
@@ -495,7 +510,20 @@ function MemberCard({
 
 				<TypeToggle
 					value={draft.rateType}
-					onChange={(rateType) => onPatch({ rateType })}
+					onChange={(rateType) =>
+						onPatch({
+							rateType,
+							// Switching to fixed with a budget slice already set: that
+							// slice IS the flat monthly pay (see HowItWorks), so seed it
+							// rather than making the consultant retype the same number.
+							...(rateType === "fixed" &&
+							draft.useBudget &&
+							!draft.fixedAmount &&
+							alloc > 0
+								? { fixedAmount: String(alloc) }
+								: {}),
+						})
+					}
 				/>
 			</div>
 
@@ -520,7 +548,15 @@ function MemberCard({
 						<AdornedInput
 							prefix={currency}
 							value={draft.allocation}
-							onChange={(v) => onPatch({ allocation: v })}
+							onChange={(v) =>
+								// For a fixed member the budget slice is the flat pay, so the
+								// two move together. Hourly members derive the cap instead.
+								onPatch(
+									isFixed
+										? { allocation: v, fixedAmount: v }
+										: { allocation: v },
+								)
+							}
 						/>
 					) : (
 						<div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-400">
@@ -600,13 +636,19 @@ function MemberCard({
 			{/* Result / formula line */}
 			<div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
 				{isFixed ? (
-					<p className="text-xs text-slate-500">
-						Paid{" "}
-						<span className="font-semibold text-slate-700">
-							{formatMoney(currency, Number(draft.fixedAmount) || 0)}
-						</span>{" "}
-						per month · no hour cap.
-					</p>
+					fixedIncomplete ? (
+						<p className="text-xs text-amber-600">
+							Enter the fixed monthly amount to save this member.
+						</p>
+					) : (
+						<p className="text-xs text-slate-500">
+							Paid{" "}
+							<span className="font-semibold text-slate-700">
+								{formatMoney(currency, fixedVal)}
+							</span>{" "}
+							per month · no hour cap.
+						</p>
+					)
 				) : useBudget ? (
 					caps.monthly != null ? (
 						<p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
@@ -647,7 +689,10 @@ function MemberCard({
 				<button
 					type="button"
 					onClick={onSave}
-					disabled={saving}
+					disabled={saving || fixedIncomplete}
+					title={
+						fixedIncomplete ? "Fixed members need a monthly amount" : undefined
+					}
 					className="shrink-0 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:opacity-40"
 				>
 					{saving ? "Saving…" : "Save rate + caps"}

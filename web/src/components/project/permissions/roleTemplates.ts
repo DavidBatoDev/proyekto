@@ -7,10 +7,7 @@
 // hierarchy (viewer < commenter < editor < admin).
 
 import type { ProjectPermissions } from "@/services/project.service";
-import {
-	PERMISSION_SECTIONS,
-	type PermissionMeta,
-} from "./permissionCatalog";
+import { PERMISSION_SECTIONS, type PermissionMeta } from "./permissionCatalog";
 
 export type RolePresetKey = "admin" | "editor" | "viewer";
 
@@ -45,6 +42,8 @@ function buildViewer(): ProjectPermissions {
 		"access.chat": true,
 		"access.resources": true,
 		"access.project_settings": false,
+		// Time is open to every member, but only for their own logs.
+		"access.time": true,
 		"roadmap.view": true,
 		"roadmap.export": true,
 		"members.view": true,
@@ -82,6 +81,10 @@ function buildEditor(): ProjectPermissions {
 function buildAdmin(): ProjectPermissions {
 	return applyPaths(buildEditor(), {
 		"access.project_settings": true,
+		"time.view_team_logs": true,
+		"access.contract": true,
+		"access.invoices": true,
+		"access.financials": true,
 		"roadmap.promote": true,
 		"roadmap.view_internal": true,
 		"roadmap.dev_mode": true,
@@ -114,7 +117,7 @@ export const ROLE_PRESET_LABELS: Record<RolePresetKey, string> = {
 export const ROLE_PRESET_DESCRIPTIONS: Record<RolePresetKey, string> = {
 	admin: "Full management of members, channels, financials, and settings.",
 	editor: "Edit roadmap and content, log time, send messages.",
-	viewer: "Read-only access to roadmap, work items, time, and chat.",
+	viewer: "Read-only access to roadmap, work items, resources, and chat.",
 };
 
 /**

@@ -15,6 +15,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { FieldHint } from "./FormFields";
 
 /**
  * A labelled date input backed by a custom calendar popover — replacing the
@@ -37,12 +38,15 @@ export function DateField({
 	onChange,
 	disabled,
 	placeholder = "Select date",
+	hint,
 }: {
 	label: string;
 	value: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
 	placeholder?: string;
+	/** Inline "what is this?" help, shown as an ⓘ beside the label. */
+	hint?: string;
 }) {
 	const id = useId();
 	const [open, setOpen] = useState(false);
@@ -80,9 +84,12 @@ export function DateField({
 
 	return (
 		<div ref={rootRef} className="relative">
-			<span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-				{label}
-			</span>
+			<div className="mb-1.5 flex items-center gap-1">
+				<span className="text-xs font-semibold text-muted-foreground">
+					{label}
+				</span>
+				{hint && <FieldHint label={label} hint={hint} />}
+			</div>
 			<button
 				type="button"
 				id={id}

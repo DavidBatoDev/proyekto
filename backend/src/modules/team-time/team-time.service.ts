@@ -25,8 +25,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,
-  duration_seconds, status, reviewed_by, reviewed_at, review_note, source,
-  rate_snapshot, currency_snapshot, work_type_snapshot, created_at, updated_at,
+  duration_seconds, break_minutes, break_seconds, paused_at,
+  status, reviewed_by, reviewed_at, review_note, source,
+  rate_snapshot, rate_type_snapshot, currency_snapshot, work_type_snapshot,
+  created_at, updated_at,
   task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type, status),
   member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email),
   reviewer:profiles!task_time_logs_reviewed_by_fkey(id, display_name, avatar_url),
@@ -76,7 +78,12 @@ export interface TimeLogRow {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  /** Rounded mirror of break_seconds, kept for invoicing and manual edits. */
   break_minutes: number;
+  /** Accumulated break time in seconds — the source of truth. */
+  break_seconds: number;
+  /** Non-null while the timer is on break; the work clock freezes here. */
+  paused_at: string | null;
   status: 'pending' | 'approved' | 'paid' | 'rejected';
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -233,6 +240,72 @@ export class TeamTimeService implements OnModuleInit {
     return this.attachLimitContext(data as unknown as TimeLogRow);
   }
 
+  /**
+   * Put a running timer on break. The work clock freezes at `paused_at`;
+   * the accumulated break is only folded into `break_seconds` on resume (or
+   * on stop, if the member never resumes).
+   */
+  async pauseLog(callerId: string, logId: string): Promise<TimeLogRow> {
+    const log = await this.fetchOwnLogOrThrow(logId, callerId);
+    if (log.ended_at) {
+      throw new BadRequestException('This log is already stopped.');
+    }
+    if (log.paused_at) {
+      throw new BadRequestException('This timer is already on break.');
+    }
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from('task_time_logs')
+      .update({ paused_at: now, updated_at: now })
+      .eq('id', logId)
+      .select(TIME_LOG_SELECT)
+      .single();
+    if (error || !data) {
+      throw new Error(error?.message ?? 'Failed to pause timer');
+    }
+    return this.attachLimitContext(data as unknown as TimeLogRow);
+  }
+
+  /** Resume a paused timer, banking the break interval into break_seconds. */
+  async resumeLog(callerId: string, logId: string): Promise<TimeLogRow> {
+    const log = await this.fetchOwnLogOrThrow(logId, callerId);
+    if (log.ended_at) {
+      throw new BadRequestException('This log is already stopped.');
+    }
+    if (!log.paused_at) {
+      throw new BadRequestException('This timer is not on break.');
+    }
+    const now = new Date();
+    const breakSeconds = this.foldPause(log, now);
+    const { data, error } = await this.supabase
+      .from('task_time_logs')
+      .update({
+        paused_at: null,
+        break_seconds: breakSeconds,
+        break_minutes: Math.round(breakSeconds / 60),
+        updated_at: now.toISOString(),
+      })
+      .eq('id', logId)
+      .select(TIME_LOG_SELECT)
+      .single();
+    if (error || !data) {
+      throw new Error(error?.message ?? 'Failed to resume timer');
+    }
+    return this.attachLimitContext(data as unknown as TimeLogRow);
+  }
+
+  /**
+   * Total break seconds for a log as of `asOf`, including an in-progress
+   * pause. Stopping mid-break must not silently discard that interval.
+   */
+  private foldPause(log: TimeLogRow, asOf: Date): number {
+    const banked = Math.max(0, log.break_seconds ?? 0);
+    if (!log.paused_at) return banked;
+    const pausedAt = new Date(log.paused_at).getTime();
+    if (Number.isNaN(pausedAt)) return banked;
+    return banked + Math.max(0, Math.floor((asOf.getTime() - pausedAt) / 1000));
+  }
+
   async stopLog(
     callerId: string,
     logId: string,
@@ -243,7 +316,11 @@ export class TeamTimeService implements OnModuleInit {
       throw new BadRequestException('This log is already stopped.');
     }
     const endedAt = dto.ended_at ?? new Date().toISOString();
-    const breakMins = Math.max(0, dto.break_minutes ?? 0);
+    // Server-stored break wins. `dto.break_minutes` is only a fallback for
+    // older clients that tracked break time locally.
+    const storedBreak = this.foldPause(log, new Date(endedAt));
+    const breakSeconds =
+      storedBreak > 0 ? storedBreak : Math.max(0, dto.break_minutes ?? 0) * 60;
     const grossDuration = Math.max(
       0,
       Math.floor(
@@ -251,28 +328,20 @@ export class TeamTimeService implements OnModuleInit {
           1000,
       ),
     );
-    const netDuration = Math.max(0, grossDuration - breakMins * 60);
+    const netDuration = Math.max(0, grossDuration - breakSeconds);
     const updatePayload: Record<string, unknown> = {
       ended_at: endedAt,
       duration_seconds: netDuration,
+      break_seconds: breakSeconds,
+      break_minutes: Math.round(breakSeconds / 60),
+      paused_at: null,
       updated_at: new Date().toISOString(),
     };
-    if (breakMins > 0) {
-      updatePayload.break_minutes = breakMins;
-    }
-    let res = await this.supabase
+    const res = await this.supabase
       .from('task_time_logs')
       .update(updatePayload)
       .eq('id', logId)
       .select(TIME_LOG_SELECT);
-    if (res.error && res.error.message.includes('break_minutes')) {
-      delete updatePayload.break_minutes;
-      res = await this.supabase
-        .from('task_time_logs')
-        .update(updatePayload)
-        .eq('id', logId)
-        .select(TIME_LOG_SELECT);
-    }
     if (res.error) {
       throw new Error(res.error?.message ?? 'Failed to stop timer');
     }
@@ -357,12 +426,15 @@ export class TeamTimeService implements OnModuleInit {
     if (dto.started_at !== undefined) patch.started_at = dto.started_at;
     if (dto.ended_at !== undefined) patch.ended_at = dto.ended_at;
 
-    const breakMins =
+    // A manual break edit is expressed in whole minutes; mirror it into
+    // break_seconds so the two never drift.
+    const breakSeconds =
       dto.break_minutes !== undefined
-        ? Math.max(0, dto.break_minutes)
-        : (log.break_minutes ?? 0);
+        ? Math.max(0, dto.break_minutes) * 60
+        : Math.max(0, log.break_seconds ?? 0);
     if (dto.break_minutes !== undefined) {
-      patch.break_minutes = breakMins;
+      patch.break_minutes = Math.max(0, dto.break_minutes);
+      patch.break_seconds = breakSeconds;
     }
 
     if (endedAt) {
@@ -374,26 +446,17 @@ export class TeamTimeService implements OnModuleInit {
         );
       }
       const grossSeconds = Math.floor((end - start) / 1000);
-      patch.duration_seconds = Math.max(0, grossSeconds - breakMins * 60);
+      patch.duration_seconds = Math.max(0, grossSeconds - breakSeconds);
     } else if (dto.ended_at === null) {
       patch.duration_seconds = null;
     }
 
-    let res = await this.supabase
+    const res = await this.supabase
       .from('task_time_logs')
       .update(patch)
       .eq('id', logId)
       .select(TIME_LOG_SELECT)
       .single();
-    if (res.error && res.error.message.includes('break_minutes')) {
-      delete patch.break_minutes;
-      res = await this.supabase
-        .from('task_time_logs')
-        .update(patch)
-        .eq('id', logId)
-        .select(TIME_LOG_SELECT)
-        .single();
-    }
     if (res.error || !res.data) {
       throw new Error(res.error?.message ?? 'Failed to update log');
     }
@@ -471,24 +534,15 @@ export class TeamTimeService implements OnModuleInit {
       rate_type_snapshot: rate?.rate_type ?? 'hourly',
       currency_snapshot: rate?.currency ?? 'USD',
       work_type_snapshot: workType,
+      break_minutes: breakMins,
+      break_seconds: breakMins * 60,
     };
-    if (breakMins > 0) {
-      insertPayload.break_minutes = breakMins;
-    }
 
-    let res = await this.supabase
+    const res = await this.supabase
       .from('task_time_logs')
       .insert(insertPayload)
       .select(TIME_LOG_SELECT)
       .single();
-    if (res.error && res.error.message.includes('break_minutes')) {
-      delete insertPayload.break_minutes;
-      res = await this.supabase
-        .from('task_time_logs')
-        .insert(insertPayload)
-        .select(TIME_LOG_SELECT)
-        .single();
-    }
     if (res.error || !res.data) {
       throw new Error(res.error?.message ?? 'Failed to create log');
     }
@@ -645,6 +699,125 @@ export class TeamTimeService implements OnModuleInit {
       to: query.to,
       team_id: teamId,
     });
+  }
+
+  // ─── project-scoped lists ────────────────────────────────────────────
+  //
+  // Logs already carry project_id, so a project view needs no fan-out over
+  // the project's attached teams — and authorizing on project_access rather
+  // than team-approver is what lets a consultant who isn't a team owner see
+  // the project's time.
+
+  /** The caller's own logs on one project. Any project viewer may read these. */
+  async listMyProjectLogs(
+    callerId: string,
+    projectId: string,
+    query: ListLogsQueryDto,
+  ): Promise<{ items: TimeLogRow[]; total: number }> {
+    await this.projectAuth.assertRole(callerId, projectId, 'viewer');
+    return this.listLogs({
+      ...query,
+      project_id: projectId,
+      member_user_id: callerId,
+    });
+  }
+
+  /** Accurate totals for the caller's own logs on one project. */
+  async myProjectLogsSummary(
+    callerId: string,
+    projectId: string,
+    query: ListLogsQueryDto,
+  ): Promise<LogsSummary> {
+    await this.projectAuth.assertRole(callerId, projectId, 'viewer');
+    return this.logsSummary({
+      project_id: projectId,
+      member_user_id: callerId,
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /**
+   * Every member's logs on one project. Opening the Time page only gets you
+   * your own logs (`access.time`); seeing the rest of the team is a separate
+   * grant.
+   */
+  async listProjectLogs(
+    callerId: string,
+    projectId: string,
+    query: ListLogsQueryDto,
+  ): Promise<{ items: TimeLogRow[]; total: number }> {
+    await this.projectAuth.assertPermission(
+      callerId,
+      projectId,
+      'time.view_team_logs',
+    );
+    return this.listLogs({ ...query, project_id: projectId });
+  }
+
+  /** Accurate project-wide totals (not capped by the list limit). */
+  async projectLogsSummary(
+    callerId: string,
+    projectId: string,
+    query: ListLogsQueryDto,
+  ): Promise<LogsSummary> {
+    await this.projectAuth.assertPermission(
+      callerId,
+      projectId,
+      'time.view_team_logs',
+    );
+    return this.logsSummary({
+      project_id: projectId,
+      member_user_id: query.member_user_id,
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /** Members who have logged time on this project — drives the member filter. */
+  async listProjectLogMembers(
+    callerId: string,
+    projectId: string,
+  ): Promise<
+    Array<{
+      id: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      email: string | null;
+    }>
+  > {
+    await this.projectAuth.assertPermission(
+      callerId,
+      projectId,
+      'time.view_team_logs',
+    );
+    const { data, error } = await this.supabase
+      .from('task_time_logs')
+      .select(
+        'member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, email)',
+      )
+      .eq('project_id', projectId);
+    if (error) throw new Error(error.message);
+    const seen = new Map<
+      string,
+      {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        email: string | null;
+      }
+    >();
+    for (const row of (data ?? []) as unknown as Array<{
+      member: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        email: string | null;
+      } | null;
+    }>) {
+      if (row.member) seen.set(row.member.id, row.member);
+    }
+    return Array.from(seen.values());
   }
 
   async listTeamLogProjects(
@@ -947,6 +1120,10 @@ export class TeamTimeService implements OnModuleInit {
       break_minutes: Number(
         (log as unknown as Record<string, unknown>).break_minutes ?? 0,
       ),
+      break_seconds: Number(
+        (log as unknown as Record<string, unknown>).break_seconds ?? 0,
+      ),
+      paused_at: log.paused_at ?? null,
       limit_context: limitContext,
       day_review_summary: log.day_review_summary
         ? { ...log.day_review_summary, limit_context: limitContext }

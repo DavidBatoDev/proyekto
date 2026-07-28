@@ -1,13 +1,10 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Tooltip } from "@mui/material";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	Check,
 	ChevronDown,
 	GripVertical,
-	Play,
 	Search,
-	Square,
 	Tag,
 	Trash2,
 	UserPlus,
@@ -25,12 +22,13 @@ import {
 	SemanticBadge,
 	TaskStatusBadge,
 } from "@/components/common/SemanticBadge";
+import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import { useRunningTaskId } from "@/components/team-time/useActiveTimer";
 import { useToast } from "@/contexts/ToastContext";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { recordRecentAssignment } from "@/hooks/useRecentAssignees";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import type { ProjectMember } from "@/services/project.service";
-import { teamTimeService } from "@/services/team-time.service";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { AssigneeProfile, RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { EditingTaskAvatar } from "../collaboration/EditingPresenceBadge";
@@ -155,7 +153,7 @@ export const TaskListItem = memo(
 		onUpdateStatus,
 		density = "normal",
 		pulseToken,
-		isRunning = false,
+		isRunning: isRunningProp = false,
 		editors,
 		dragHandleProps,
 	}: TaskListItemProps) => {
@@ -188,34 +186,11 @@ export const TaskListItem = memo(
 		const projectId = useRoadmapStore(
 			(state) => state.roadmap?.project_id ?? "",
 		);
-		const queryClient = useQueryClient();
-
-		// Start/stop a timer directly from a task row. The running-task highlight
-		// (isRunning) and the global FloatingActiveTimer both key off
-		// ["team-time","running-log"], so invalidating it refreshes them.
-		const refreshRunning = () =>
-			queryClient.invalidateQueries({ queryKey: ["team-time", "running-log"] });
-		const startTimer = useMutation({
-			mutationFn: () => teamTimeService.startLog(projectId, task.id),
-			onSuccess: () => {
-				toast.success("Timer started");
-				void refreshRunning();
-			},
-			onError: (e: Error) => toast.error(e.message),
-		});
-		const stopTimer = useMutation({
-			mutationFn: async () => {
-				const running = await teamTimeService.getMyRunningLog();
-				if (running?.id) return teamTimeService.stopLog(running.id);
-				return null;
-			},
-			onSuccess: () => {
-				toast.success("Timer stopped");
-				void refreshRunning();
-			},
-			onError: (e: Error) => toast.error(e.message),
-		});
-		const timerBusy = startTimer.isPending || stopTimer.isPending;
+		// The running-task highlight is derived, not passed: most mount sites
+		// never threaded the `isRunning` prop, so the row used to look idle
+		// while its own timer was running.
+		const runningTaskId = useRunningTaskId();
+		const isRunning = isRunningProp || runningTaskId === task.id;
 
 		const membersQuery = useProjectMembersQuery(projectId);
 		const members = useMemo<ProjectMember[]>(
@@ -819,29 +794,7 @@ export const TaskListItem = memo(
 
 				{/* Actions (shown on hover) */}
 				<div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-					{projectId && (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								if (isRunning) stopTimer.mutate();
-								else startTimer.mutate();
-							}}
-							disabled={timerBusy}
-							className={`p-1 rounded transition-colors disabled:opacity-50 ${
-								isRunning
-									? "hover:bg-red-100 text-red-600"
-									: "hover:bg-emerald-100 text-emerald-600"
-							}`}
-							title={isRunning ? "Stop timer" : "Start timer"}
-						>
-							{isRunning ? (
-								<Square className="w-4 h-4" />
-							) : (
-								<Play className="w-4 h-4" />
-							)}
-						</button>
-					)}
+					<TaskTimerButton projectId={projectId} taskId={task.id} />
 					{onDelete && (
 						<button
 							type="button"

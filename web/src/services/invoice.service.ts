@@ -75,11 +75,30 @@ export interface Invoice {
 	updated_at: string;
 	line_items: InvoiceLineItem[];
 	documents: InvoiceDocument[];
+	/** Present on the issue/resend responses only. */
+	email_delivery?: InvoiceEmailDelivery;
 }
 
 export interface InvoiceListResult {
 	items: Invoice[];
 	total: number;
+}
+
+/** Outcome of emailing an invoice to the client. */
+export interface InvoiceEmailDelivery {
+	sent: boolean;
+	/** Why it didn't send. Absent on success. */
+	reason?: string;
+	/** The address it went to. Absent on failure. */
+	to?: string;
+}
+
+/** Result of an on-demand scheduled-invoice run. */
+export interface InvoiceRunResult {
+	scanned: number;
+	created: number;
+	skipped: number;
+	failed: number;
 }
 
 export interface CreateInvoicePayload {
@@ -217,6 +236,10 @@ export const invoiceService = {
 		}
 	},
 
+	/**
+	 * Issue the invoice and email it to the client. The response carries the
+	 * delivery outcome so the caller can report "issued, but not emailed".
+	 */
 	async issue(invoiceId: string): Promise<Invoice> {
 		try {
 			const { data } = await apiClient.post<{ data: Invoice }>(
@@ -228,6 +251,57 @@ export const invoiceService = {
 				extractApiErrorMessage(
 					(err as { response?: { data?: unknown } }).response?.data,
 					"Failed to issue invoice",
+				),
+			);
+		}
+	},
+
+	/** Re-send an already-issued invoice to the client. */
+	async resend(invoiceId: string): Promise<InvoiceEmailDelivery> {
+		try {
+			const { data } = await apiClient.post<{ data: InvoiceEmailDelivery }>(
+				`/api/invoices/${invoiceId}/resend`,
+			);
+			return data.data;
+		} catch (err) {
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to re-send the invoice",
+				),
+			);
+		}
+	},
+
+	/** Delete a draft. Issued invoices must be voided, not erased. */
+	async remove(invoiceId: string): Promise<void> {
+		try {
+			await apiClient.delete(`/api/invoices/${invoiceId}`);
+		} catch (err) {
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to delete the invoice",
+				),
+			);
+		}
+	},
+
+	/**
+	 * Draft every closed billing period the contract hasn't been billed for.
+	 * Requires a signed/active contract; safe to run repeatedly.
+	 */
+	async generateScheduled(projectId: string): Promise<InvoiceRunResult> {
+		try {
+			const { data } = await apiClient.post<{ data: InvoiceRunResult }>(
+				`/api/invoices/project/${projectId}/generate-scheduled`,
+			);
+			return data.data;
+		} catch (err) {
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to generate scheduled invoices",
 				),
 			);
 		}

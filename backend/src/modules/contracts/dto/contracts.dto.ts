@@ -205,11 +205,68 @@ export class SignContractDto {
   @IsString()
   @MaxLength(1000)
   signature_url?: string;
+
+  /** Display multiplier for the signature image. 1 = base size. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.5)
+  @Max(3)
+  signature_scale?: number;
+
+  /** Placement offsets in base-height multiples; +x right, +y up. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-3)
+  @Max(3)
+  signature_offset_x?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-3)
+  @Max(3)
+  signature_offset_y?: number;
 }
 
 export class UnsignContractDto {
   @IsIn(['consultant', 'client'])
   party!: 'consultant' | 'client';
+}
+
+/**
+ * Resize or reposition an already-stamped signature. Purely cosmetic — it
+ * changes where and how large the overlay is drawn, never the terms — so
+ * unlike unsigning it stays available once the contract is signed or active.
+ *
+ * Every field is optional so the size slider and the drag handle can write
+ * independently without clobbering each other.
+ */
+export class UpdateSignaturePlacementDto {
+  @IsIn(['consultant', 'client'])
+  party!: 'consultant' | 'client';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.5)
+  @Max(3)
+  scale?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-3)
+  @Max(3)
+  offset_x?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-3)
+  @Max(3)
+  offset_y?: number;
 }
 
 export class UpdateProjectEconomicsDto {

@@ -18,9 +18,14 @@ import {
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
-import { type Project, projectService } from "@/services/project.service";
+import {
+	type Project,
+	type ProjectPermissions,
+	projectService,
+} from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
 interface ProjectSidebarProps {
@@ -65,6 +70,12 @@ export function ProjectSidebar({
 	const isRoadmapView = currentPath.includes("/roadmap");
 	const isProjectActive = hasProject ?? (!isRoadmapView || project !== null);
 	const isChatRoute = currentPath.includes(`/project/${projectId}/chat`);
+	// Drives which nav items are visible — without this the sidebar advertises
+	// sections that only lead to a permission-denied banner.
+	const permissionsQuery = useProjectMyPermissionsQuery(
+		isProjectActive ? projectId : "",
+	);
+	const access = permissionsQuery.data?.access;
 	const chatRoomsQuery = useQuery({
 		queryKey: chatKeys.rooms(projectId),
 		queryFn: () => fetchProjectChatRooms(projectId),
@@ -104,7 +115,16 @@ export function ProjectSidebar({
 		return rooms.some(roomHasUnread);
 	}, [chatRoomsQuery.data, user?.id]);
 
-	const navSections = [
+	const navSections: Array<{
+		title: string;
+		items: Array<{
+			label: string;
+			icon: typeof Map;
+			to: string;
+			requiresProject: boolean;
+			access?: keyof ProjectPermissions["access"];
+		}>;
+	}> = [
 		{
 			title: "Plan",
 			items: [
@@ -115,6 +135,7 @@ export function ProjectSidebar({
 						? `/project/${projectId}/roadmap/${effectiveRoadmapId}`
 						: `/project/${projectId}/roadmap`,
 					requiresProject: false,
+					access: "roadmap",
 				},
 				{
 					label: "Work Items",
@@ -123,6 +144,7 @@ export function ProjectSidebar({
 						? `/project/${projectId}/work-items/${effectiveRoadmapId}`
 						: `/project/${projectId}/work-items`,
 					requiresProject: false,
+					access: "work_items",
 				},
 				{
 					label: "Overview",
@@ -140,18 +162,21 @@ export function ProjectSidebar({
 					icon: Users,
 					to: `/project/${projectId}/team`,
 					requiresProject: true,
+					access: "team",
 				},
 				{
 					label: "Chat",
 					icon: MessageSquare,
 					to: `/project/${projectId}/chat/channel-general`,
 					requiresProject: true,
+					access: "chat",
 				},
 				{
 					label: "Resources",
 					icon: BookOpen,
 					to: `/project/${projectId}/resources`,
 					requiresProject: true,
+					access: "resources",
 				},
 			],
 		},
@@ -163,6 +188,7 @@ export function ProjectSidebar({
 					icon: Clock,
 					to: `/project/${projectId}/time`,
 					requiresProject: true,
+					access: "time",
 				},
 				{
 					label: "Logs",
@@ -175,19 +201,24 @@ export function ProjectSidebar({
 					icon: FileSignature,
 					to: `/project/${projectId}/contract`,
 					requiresProject: true,
+					access: "contract",
 				},
 				{
 					label: "Invoices",
 					icon: ReceiptText,
 					to: `/project/${projectId}/payments`,
 					requiresProject: true,
+					access: "invoices",
 				},
 				{
 					label: "Financials",
 					icon: TrendingUp,
 					to: `/project/${projectId}/financials`,
 					requiresProject: true,
+					access: "financials",
 				},
+				// Settings stays ungated: its route body is open to every member
+				// (it also hosts "leave project").
 				{
 					label: "Settings",
 					icon: Settings,
@@ -201,9 +232,13 @@ export function ProjectSidebar({
 	const visibleSections = navSections
 		.map((section) => ({
 			...section,
-			items: section.items.filter(
-				(item) => !item.requiresProject || isProjectActive,
-			),
+			items: section.items.filter((item) => {
+				if (item.requiresProject && !isProjectActive) return false;
+				// Until permissions land, show everything — hiding then revealing
+				// items reads as a glitch, and each route gates itself anyway.
+				if (!item.access || !access) return true;
+				return access[item.access] === true;
+			}),
 		}))
 		.filter((section) => section.items.length > 0);
 

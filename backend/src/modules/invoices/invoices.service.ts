@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { MailerService } from '../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -19,6 +21,7 @@ import {
   type HoursDetailLevel,
   type InvoiceLineSource,
 } from './invoice-composition.service';
+import { buildInvoiceEmailHtml } from './invoice-email.template';
 import { renderInvoicePdf } from './pdf/invoice-pdf.renderer';
 import {
   CreateInvoiceDto,
@@ -93,6 +96,27 @@ export interface InvoiceDocumentRow {
 export interface InvoiceWithLines extends InvoiceRow {
   line_items: InvoiceLineItemRow[];
   documents: InvoiceDocumentRow[];
+  /** Present on the issue/resend responses only. */
+  email_delivery?: InvoiceEmailDelivery;
+}
+
+/** Outcome of emailing an invoice — surfaced so the UI can explain a failure. */
+export interface InvoiceEmailDelivery {
+  sent: boolean;
+  /** Why it didn't send. Absent on success. */
+  reason?: string;
+  /** The address it went to. Absent on failure. */
+  to?: string;
+}
+
+/**
+ * Stable R2 key per invoice — keyed on the immutable id, not the editable
+ * number, so regenerating OVERWRITES rather than leaking a new object.
+ */
+function invoicePdfPath(
+  invoice: Pick<InvoiceRow, 'project_id' | 'id'>,
+): string {
+  return `invoice_documents/${invoice.project_id}/${invoice.id}/invoice.pdf`;
 }
 
 interface ComposeLinesInput {
@@ -112,6 +136,8 @@ export class InvoicesService {
     private readonly contracts: ContractsService,
     private readonly composition: InvoiceCompositionService,
     private readonly uploads: UploadsService,
+    private readonly mailer: MailerService,
+    private readonly config: ConfigService,
   ) {}
 
   async listProjectInvoices(
@@ -354,6 +380,29 @@ export class InvoicesService {
     return this.getInvoiceInternal(invoiceId);
   }
 
+  /**
+   * Delete a draft invoice. Only drafts: once an invoice has been issued the
+   * client has seen that number, so the audit trail must keep it — void it
+   * instead of erasing it.
+   */
+  async deleteInvoice(callerId: string, invoiceId: string): Promise<void> {
+    const invoice = await this.getInvoiceInternal(invoiceId);
+    await this.projectAuth.assertRole(callerId, invoice.project_id, 'admin');
+
+    if (invoice.status !== 'draft') {
+      throw new BadRequestException(
+        `Only draft invoices can be deleted. ${invoice.number} is ${invoice.status} — void it instead so the numbering stays auditable.`,
+      );
+    }
+
+    // Line items and documents cascade from the invoice row.
+    const { error } = await this.supabase
+      .from('invoices')
+      .delete()
+      .eq('id', invoiceId);
+    if (error) throw new BadRequestException(error.message);
+  }
+
   async issueInvoice(
     callerId: string,
     invoiceId: string,
@@ -407,7 +456,131 @@ export class InvoicesService {
       // notification failures should not fail invoice issuing
     }
 
-    return this.getInvoiceInternal(invoiceId);
+    const fresh = await this.getInvoiceInternal(invoiceId);
+    const delivery = await this.emailInvoiceToClient(fresh, callerId);
+    return { ...fresh, email_delivery: delivery };
+  }
+
+  /**
+   * Emails the issued invoice to the client with the PDF attached.
+   *
+   * Best-effort: the invoice is already issued by the time this runs, so a
+   * missing email address or an unconfigured mail server is reported back to
+   * the consultant rather than rolling the issue back. The result rides along
+   * on the response so the UI can say "issued, but not emailed — here's why".
+   */
+  private async emailInvoiceToClient(
+    invoice: InvoiceWithLines,
+    callerId: string,
+  ): Promise<InvoiceEmailDelivery> {
+    const to = await this.resolveClientEmail(invoice);
+    if (!to) {
+      return {
+        sent: false,
+        reason:
+          'No client email on file. Add one on the contract (Parties → Client → Email) and re-send.',
+      };
+    }
+
+    // Render fresh rather than trusting a stale stored PDF, and store it via
+    // the normal path so the document row and `pdf_path` are recorded too —
+    // what the client received is then exactly what "Open" shows.
+    let pdf: Buffer | null = null;
+    try {
+      pdf = (await this.renderAndStorePdf(invoice, callerId)).buffer;
+    } catch {
+      // Send the email without the attachment rather than not at all.
+      pdf = null;
+    }
+
+    // CLIENT_URL is the registered, always-present base URL (env.validation.ts
+    // defaults it). APP_URL is only read as an override — it is NOT declared
+    // there, so relying on it alone would put localhost links in client email.
+    const appUrl =
+      this.config.get<string>('APP_URL') ??
+      this.config.get<string>('CLIENT_URL', 'http://localhost:3000');
+    const result = await this.mailer.send({
+      to,
+      subject: `Invoice ${invoice.number} from ${invoice.issued_by?.name ?? 'your service provider'}`,
+      html: buildInvoiceEmailHtml({
+        invoice,
+        link: `${appUrl}/project/${invoice.project_id}/payments`,
+        hasAttachment: Boolean(pdf),
+      }),
+      attachments: pdf
+        ? [
+            {
+              filename: `${invoice.number}.pdf`,
+              contentType: 'application/pdf',
+              content: pdf,
+            },
+          ]
+        : undefined,
+    });
+
+    if (result.sent) {
+      await this.supabase
+        .from('invoices')
+        .update({ sent_at: new Date().toISOString() })
+        .eq('id', invoice.id);
+    }
+    return {
+      sent: result.sent,
+      reason: result.reason,
+      to: result.sent ? to : undefined,
+    };
+  }
+
+  /** Where an invoice should be emailed: the snapshot first, then the account. */
+  private async resolveClientEmail(
+    invoice: InvoiceRow,
+  ): Promise<string | null> {
+    const snapshot = invoice.bill_to?.email?.trim();
+    if (snapshot) return snapshot;
+
+    if (invoice.recipient_user_id) {
+      const { data } = await this.supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', invoice.recipient_user_id)
+        .maybeSingle();
+      const email = (data as { email: string | null } | null)?.email?.trim();
+      if (email) return email;
+    }
+
+    const { data: project } = await this.supabase
+      .from('projects')
+      .select('client_id')
+      .eq('id', invoice.project_id)
+      .maybeSingle();
+    const clientId = (project as { client_id: string | null } | null)
+      ?.client_id;
+    if (!clientId) return null;
+
+    const { data: client } = await this.supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', clientId)
+      .maybeSingle();
+    return (client as { email: string | null } | null)?.email?.trim() ?? null;
+  }
+
+  /**
+   * Re-send an already-issued invoice — for a bounced address, or a client who
+   * says it never arrived.
+   */
+  async resendInvoiceEmail(
+    callerId: string,
+    invoiceId: string,
+  ): Promise<InvoiceEmailDelivery> {
+    const invoice = await this.getInvoiceInternal(invoiceId);
+    await this.projectAuth.assertRole(callerId, invoice.project_id, 'admin');
+    if (invoice.status === 'draft') {
+      throw new BadRequestException(
+        'This invoice is still a draft. Issue it to send it to the client.',
+      );
+    }
+    return this.emailInvoiceToClient(invoice, callerId);
   }
 
   /**
@@ -448,7 +621,14 @@ export class InvoicesService {
   }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
-    return this.renderAndStorePdf(invoice, callerId);
+    const stored = await this.renderAndStorePdf(invoice, callerId);
+    // Drop the rendered bytes — this is an HTTP response, not a download.
+    return {
+      invoice_id: stored.invoice_id,
+      document_id: stored.document_id,
+      pdf_path: stored.pdf_path,
+      generated_at: stored.generated_at,
+    };
   }
 
   /**
@@ -467,35 +647,15 @@ export class InvoicesService {
     document_id: string;
     pdf_path: string;
     generated_at: string;
+    /** The rendered bytes, so callers can attach them without re-rendering. */
+    buffer: Buffer;
   }> {
     // Stable key per invoice (keyed on the immutable id, not the editable
     // number) so regenerating OVERWRITES the R2 object instead of leaking a new
     // one on every click. Presigned reads are minted per request, so there is
     // no stale-cache concern from reusing the key.
-    const pdfPath = `invoice_documents/${invoice.project_id}/${invoice.id}/invoice.pdf`;
-
-    const buffer = await renderInvoicePdf({
-      number: invoice.number,
-      currency: invoice.currency,
-      issueDate: invoice.issue_date,
-      dueDate: invoice.due_date,
-      periodStart: invoice.period_start,
-      periodEnd: invoice.period_end,
-      issuedBy: invoice.issued_by ?? {},
-      billTo: invoice.bill_to ?? {},
-      paymentMethod: invoice.payment_method,
-      notes: invoice.notes,
-      total: Number(invoice.total ?? 0),
-      lines: invoice.line_items.map((item) => ({
-        description: item.description,
-        quantity: Number(item.quantity ?? 0),
-        unit_rate: Number(item.unit_rate ?? 0),
-        amount: Number(item.amount ?? 0),
-        // Retainer and manual lines are counts, not hours.
-        isHours:
-          item.source_type === 'time_log' || item.source_type === 'overage',
-      })),
-    });
+    const pdfPath = invoicePdfPath(invoice);
+    const buffer = await this.renderInvoiceBuffer(invoice);
 
     // Upload BEFORE recording the row, so a failed render never leaves a
     // document row pointing at a key that does not exist.
@@ -540,7 +700,34 @@ export class InvoicesService {
       document_id: (document as InvoiceDocumentRow).id,
       pdf_path: pdfPath,
       generated_at: generatedAt,
+      buffer,
     };
+  }
+
+  /** Renders the invoice document to PDF bytes. */
+  private renderInvoiceBuffer(invoice: InvoiceWithLines): Promise<Buffer> {
+    return renderInvoicePdf({
+      number: invoice.number,
+      currency: invoice.currency,
+      issueDate: invoice.issue_date,
+      dueDate: invoice.due_date,
+      periodStart: invoice.period_start,
+      periodEnd: invoice.period_end,
+      issuedBy: invoice.issued_by ?? {},
+      billTo: invoice.bill_to ?? {},
+      paymentMethod: invoice.payment_method,
+      notes: invoice.notes,
+      total: Number(invoice.total ?? 0),
+      lines: invoice.line_items.map((item) => ({
+        description: item.description,
+        quantity: Number(item.quantity ?? 0),
+        unit_rate: Number(item.unit_rate ?? 0),
+        amount: Number(item.amount ?? 0),
+        // Retainer and manual lines are counts, not hours.
+        isHours:
+          item.source_type === 'time_log' || item.source_type === 'overage',
+      })),
+    });
   }
 
   /**

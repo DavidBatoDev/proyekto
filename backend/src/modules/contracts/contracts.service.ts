@@ -28,6 +28,7 @@ import {
   SignContractDto,
   UnsignContractDto,
   UpdateContractDto,
+  UpdateSignaturePlacementDto,
 } from './dto/contracts.dto';
 
 export interface ContractRow {
@@ -75,9 +76,18 @@ export interface ContractRow {
   signed_by_consultant_at: string | null;
   signed_by_consultant_name: string | null;
   signed_by_consultant_signature_url: string | null;
+  /** Display multiplier (0.5–3) for the provider signature image. */
+  signed_by_consultant_signature_scale: number;
+  /** Offsets in multiples of the base signature height; +x right, +y up. */
+  signed_by_consultant_signature_offset_x: number;
+  signed_by_consultant_signature_offset_y: number;
   signed_by_client_at: string | null;
   signed_by_client_name: string | null;
   signed_by_client_signature_url: string | null;
+  /** Display multiplier (0.5–3) for the client signature image. */
+  signed_by_client_signature_scale: number;
+  signed_by_client_signature_offset_x: number;
+  signed_by_client_signature_offset_y: number;
 
   created_by: string | null;
   created_at: string;
@@ -90,6 +100,28 @@ export interface ContractWithSchedule extends ContractRow {
 }
 
 const EDITABLE_STATUSES: ContractStatus[] = ['draft', 'sent'];
+
+const MIN_SIGNATURE_SCALE = 0.5;
+const MAX_SIGNATURE_SCALE = 3;
+const MAX_SIGNATURE_OFFSET = 3;
+
+/** Keep the stored multiplier inside the column's check constraint. */
+function clampSignatureScale(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  return Math.min(
+    MAX_SIGNATURE_SCALE,
+    Math.max(MIN_SIGNATURE_SCALE, Math.round(value * 100) / 100),
+  );
+}
+
+/** Same, for a placement offset (base-height multiples, ±3). */
+function clampSignatureOffset(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(
+    MAX_SIGNATURE_OFFSET,
+    Math.max(-MAX_SIGNATURE_OFFSET, Math.round(value * 1000) / 1000),
+  );
+}
 
 @Injectable()
 export class ContractsService {
@@ -255,16 +287,25 @@ export class ContractsService {
 
     const now = new Date().toISOString();
     const signatureUrl = dto.signature_url?.trim() || null;
+    const signatureScale = clampSignatureScale(dto.signature_scale);
+    const offsetX = clampSignatureOffset(dto.signature_offset_x);
+    const offsetY = clampSignatureOffset(dto.signature_offset_y);
     const patch: Record<string, unknown> = isClientParty
       ? {
           signed_by_client_at: now,
           signed_by_client_name: dto.signer_name.trim(),
           signed_by_client_signature_url: signatureUrl,
+          signed_by_client_signature_scale: signatureScale,
+          signed_by_client_signature_offset_x: offsetX,
+          signed_by_client_signature_offset_y: offsetY,
         }
       : {
           signed_by_consultant_at: now,
           signed_by_consultant_name: dto.signer_name.trim(),
           signed_by_consultant_signature_url: signatureUrl,
+          signed_by_consultant_signature_scale: signatureScale,
+          signed_by_consultant_signature_offset_x: offsetX,
+          signed_by_consultant_signature_offset_y: offsetY,
         };
 
     const consultantSigned = isClientParty
@@ -314,6 +355,59 @@ export class ContractsService {
       await this.notifyCounterparty(callerId, updated);
     }
     return this.withSchedule(updated);
+  }
+
+  /**
+   * Resize or reposition a stamped signature image. Cosmetic only — it changes
+   * where and how large the overlay is drawn, never the terms — so unlike
+   * unsigning it stays available on a signed or active contract.
+   */
+  async updateSignaturePlacement(
+    callerId: string,
+    contractId: string,
+    dto: UpdateSignaturePlacementDto,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.assertCanManageSignature(callerId, existing, dto.party);
+
+    if (existing.status === 'ended' || existing.status === 'cancelled') {
+      throw new BadRequestException(
+        `A ${existing.status} contract cannot be changed.`,
+      );
+    }
+
+    const isClient = dto.party === 'client';
+    const prefix = isClient
+      ? 'signed_by_client_signature'
+      : 'signed_by_consultant_signature';
+    // Each field is optional: the size slider and the drag handle write
+    // independently, so an omitted field must keep its current value.
+    const patch: Record<string, unknown> = {};
+    if (dto.scale !== undefined) {
+      patch[`${prefix}_scale`] = clampSignatureScale(dto.scale);
+    }
+    if (dto.offset_x !== undefined) {
+      patch[`${prefix}_offset_x`] = clampSignatureOffset(dto.offset_x);
+    }
+    if (dto.offset_y !== undefined) {
+      patch[`${prefix}_offset_y`] = clampSignatureOffset(dto.offset_y);
+    }
+    if (Object.keys(patch).length === 0) {
+      return this.withSchedule(existing);
+    }
+
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', contractId)
+      .select('*')
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(
+        error?.message ?? 'Failed to reposition the signature.',
+      );
+    }
+    return this.withSchedule(data as ContractRow);
   }
 
   /**

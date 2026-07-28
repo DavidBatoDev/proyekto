@@ -102,7 +102,7 @@ export function ManualLogModal({
 			{isOpen && (
 				<motion.div
 					key="manual-log-modal"
-					className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[2px]"
+					className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[2px]"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -292,7 +292,7 @@ export function EditLogModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-[165] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-165lex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={onClose}
 		>
 			<div
@@ -486,7 +486,7 @@ export function AddRateModal({
 			{visible && (
 				<motion.div
 					key="add-rate-modal"
-					className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-160 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -825,7 +825,7 @@ export function EditRateModal({
 			{visible && editingRate && (
 				<motion.div
 					key="edit-rate-modal"
-					className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -1014,7 +1014,7 @@ export function DeleteRateModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-180 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={onClose}
 		>
 			<div
@@ -1106,7 +1106,7 @@ export function DeleteTimeLogModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-[175] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-175 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={() => {
 				if (deleting) return;
 				onClose();
@@ -1579,7 +1579,7 @@ export function AddLogModal({
 			{isOpen && (
 				<motion.div
 					key="add-log-modal"
-					className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-9999 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>

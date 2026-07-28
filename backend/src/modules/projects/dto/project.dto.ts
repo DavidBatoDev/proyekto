@@ -58,6 +58,10 @@ export class UpdateProjectMemberPermissionsDto {
   @IsOptional()
   @IsObject()
   logs?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  time?: Record<string, boolean>;
 }
 
 export class AddProjectMemberDto {

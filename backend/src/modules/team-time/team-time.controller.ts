@@ -64,6 +64,22 @@ export class TeamTimeController {
     return this.service.stopLog(user.id, logId, dto);
   }
 
+  @Post('logs/:logId/pause')
+  pause(
+    @Param('logId') logId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.pauseLog(user.id, logId);
+  }
+
+  @Post('logs/:logId/resume')
+  resume(
+    @Param('logId') logId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.resumeLog(user.id, logId);
+  }
+
   @Post('logs/:logId/review')
   review(
     @Param('logId') logId: string,
@@ -190,5 +206,51 @@ export class TeamTimeController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.listTeamLogMembers(user.id, teamId);
+  }
+
+  // ─── project-scoped lists ────────────────────────────────────────────
+
+  @Get('projects/:projectId/my')
+  listMyProjectLogs(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.listMyProjectLogs(user.id, projectId, query);
+  }
+
+  @Get('projects/:projectId/my/summary')
+  myProjectLogsSummary(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.myProjectLogsSummary(user.id, projectId, query);
+  }
+
+  @Get('projects/:projectId/logs')
+  listProjectLogs(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.listProjectLogs(user.id, projectId, query);
+  }
+
+  @Get('projects/:projectId/logs/summary')
+  projectLogsSummary(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.projectLogsSummary(user.id, projectId, query);
+  }
+
+  @Get('projects/:projectId/members')
+  listProjectLogMembers(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listProjectLogMembers(user.id, projectId);
   }
 }

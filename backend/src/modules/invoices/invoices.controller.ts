@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -77,9 +78,33 @@ export class InvoicesController {
     return this.invoices.updateInvoice(user.id, id, dto);
   }
 
+  /**
+   * Draft every closed billing period this project's contract hasn't been
+   * billed for yet. Consultant-triggered counterpart to the nightly cron.
+   */
+  @Post('project/:projectId/generate-scheduled')
+  generateScheduled(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.scheduler.generateDraftsForProject(user.id, projectId);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invoices.deleteInvoice(user.id, id);
+  }
+
   @Post(':id/issue')
   issue(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.issueInvoice(user.id, id);
+  }
+
+  /** Re-send an issued invoice — bounced address, or the client lost it. */
+  @Post(':id/resend')
+  resend(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invoices.resendInvoiceEmail(user.id, id);
   }
 
   @Post(':id/generate-pdf')
