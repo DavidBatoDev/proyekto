@@ -8,6 +8,7 @@ import type { ClarifierCardLike } from "./RoadmapAiClarifierCard.logic";
 import {
 	buildClarifierAnswers,
 	CUSTOM_SENTINEL,
+	findCatchAllOptionIndex,
 	isClarifierQuestionAnswered,
 	resolveClarifierQuestions,
 } from "./RoadmapAiClarifierCard.logic";
@@ -56,8 +57,19 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 
 	const selected = selections[currentQ.id] ?? [];
 	const customText = customs[currentQ.id] ?? "";
-	const allowCustom = currentQ.allow_custom !== false;
 	const customSelected = selected.includes(CUSTOM_SENTINEL);
+
+	/**
+	 * The model is prone to inventing its own "Other — please specify" option.
+	 * When it does, that option becomes the free-text trigger and the card's own
+	 * row is suppressed, so the user sees one catch-all with a working text box
+	 * rather than two rows (or, previously, one that promised a box and had
+	 * none). This also overrides `allow_custom: false`, which the model
+	 * sometimes sets alongside its own catch-all — leaving no way to answer.
+	 */
+	const catchAllIndex = findCatchAllOptionIndex(currentQ);
+	const hasCatchAllOption = catchAllIndex !== -1;
+	const allowCustom = !hasCatchAllOption && currentQ.allow_custom !== false;
 
 	const currentAnswered = isClarifierQuestionAnswered(
 		currentQ,
@@ -146,33 +158,51 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 				<div className="space-y-1.5">
 					{currentQ.options.map((option, idx) => {
 						const optionId = `clarifier-${currentQ.id}-opt-${idx}`;
+						// The model's own catch-all answers to the sentinel, not to its
+						// literal label — otherwise picking it submits the word "Other".
+						const isCatchAll = idx === catchAllIndex;
+						const optionValue = isCatchAll ? CUSTOM_SENTINEL : option.label;
 						return (
-							<label
-								key={optionId}
-								htmlFor={optionId}
-								data-testid="clarifier-option"
-								data-option-label={option.label}
-								className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
-							>
-								<input
-									id={optionId}
-									type={inputType}
-									name={groupName}
-									value={option.label}
-									checked={selected.includes(option.label)}
-									onChange={() => setValue(option.label)}
-									disabled={disabled}
-									className="mt-0.5"
-								/>
-								<span>
-									{option.label}
-									{option.description ? (
-										<span className="block text-xs text-neutral-500 dark:text-neutral-400">
-											{option.description}
-										</span>
-									) : null}
-								</span>
-							</label>
+							<div key={optionId}>
+								<label
+									htmlFor={optionId}
+									data-testid={
+										isCatchAll ? "clarifier-other" : "clarifier-option"
+									}
+									data-option-label={option.label}
+									className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
+								>
+									<input
+										id={optionId}
+										type={inputType}
+										name={groupName}
+										value={optionValue}
+										checked={selected.includes(optionValue)}
+										onChange={() => setValue(optionValue)}
+										disabled={disabled}
+										className="mt-0.5"
+									/>
+									<span>
+										{option.label}
+										{option.description ? (
+											<span className="block text-xs text-neutral-500 dark:text-neutral-400">
+												{option.description}
+											</span>
+										) : null}
+									</span>
+								</label>
+								{isCatchAll && customSelected ? (
+									<textarea
+										data-testid="clarifier-other-input"
+										value={customText}
+										onChange={(event) => setCurrentCustom(event.target.value)}
+										disabled={disabled}
+										rows={2}
+										placeholder="Type your answer..."
+										className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-purple-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+									/>
+								) : null}
+							</div>
 						);
 					})}
 

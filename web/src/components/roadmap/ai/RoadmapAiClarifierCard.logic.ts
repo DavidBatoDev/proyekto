@@ -9,6 +9,64 @@ export const CUSTOM_SENTINEL = "__custom__";
 const MAX_DISPLAY_LABEL_CHARS = 140;
 
 /**
+ * Catch-all labels a model is likely to invent for its "none of the above"
+ * option. Deliberately a tight allow-list plus one narrow pattern: a loose
+ * `startsWith("other")` would swallow real answers like "Other integrations".
+ */
+const CATCH_ALL_EXACT = new Set([
+	"something else",
+	"someone else",
+	"none of these",
+	"none of the above",
+	"not listed",
+	"not listed here",
+	"custom",
+	"custom answer",
+	"let me specify",
+]);
+
+const CATCH_ALL_OTHER =
+	/^other(\s+(option|options|answer|idea|thing|please\s+specify|specify))?$/;
+
+const normalizeOptionLabel = (label: string): string =>
+	label
+		.toLowerCase()
+		.replace(/[.…]+$/g, "")
+		.replace(/[^a-z0-9\s]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+
+/**
+ * True for an option that means "let me type my own".
+ *
+ * The intake model is asked for concrete options and tends to add one of these
+ * on its own, described as "Please specify…". Rendered as an ordinary radio it
+ * promises a text box that never appears, and submits the useless literal
+ * string "Other". Detecting it lets the card wire it to the free-text input
+ * instead.
+ */
+export const isCatchAllOptionLabel = (
+	label: string | null | undefined,
+): boolean => {
+	const normalized = normalizeOptionLabel(label ?? "");
+	if (!normalized) return false;
+	return CATCH_ALL_EXACT.has(normalized) || CATCH_ALL_OTHER.test(normalized);
+};
+
+/**
+ * Index of the option that should act as the free-text trigger, or -1.
+ *
+ * Only the first match counts — two catch-alls in one question would otherwise
+ * both bind to the same sentinel and behave as one control in two places.
+ */
+export const findCatchAllOptionIndex = (
+	question: Pick<AgentClarifierQuestion, "options">,
+): number =>
+	(question.options ?? []).findIndex((option) =>
+		isCatchAllOptionLabel(option?.label),
+	);
+
+/**
  * The minimum a card needs to render. Widened from `AgentClarifierCard` so
  * non-agent surfaces (roadmap intake) can reuse the card without inheriting
  * the agent's `lane` or its legacy flat mirror fields. `AgentClarifierCard` is

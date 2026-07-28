@@ -8,6 +8,8 @@ import {
 	buildClarifierDisplayLabel,
 	buildClarifierSentinelPayload,
 	CUSTOM_SENTINEL,
+	findCatchAllOptionIndex,
+	isCatchAllOptionLabel,
 	isClarifierQuestionAnswered,
 	resolveClarifierQuestions,
 } from "./RoadmapAiClarifierCard.logic";
@@ -225,5 +227,134 @@ describe("buildClarifierSentinelPayload", () => {
 		]);
 		expect(payload.custom_answer).toBe("the second one");
 		expect(payload.selected_option).toBeUndefined();
+	});
+});
+
+describe("isCatchAllOptionLabel", () => {
+	it.each([
+		"Other",
+		"other",
+		"Other...",
+		"Other…",
+		"Other option",
+		"Other (please specify)",
+		"Something else",
+		"None of these",
+		"None of the above",
+		"Not listed",
+		"Custom",
+	])("treats %s as a free-text trigger", (label) => {
+		expect(isCatchAllOptionLabel(label)).toBe(true);
+	});
+
+	it.each([
+		// The reason this is an allow-list and not a startsWith("other") check.
+		"Other integrations",
+		"Other team members",
+		"Mother tongue",
+		"Fitness app",
+		"E-commerce platform",
+		"None",
+		"",
+		"   ",
+	])("leaves %s as an ordinary option", (label) => {
+		expect(isCatchAllOptionLabel(label)).toBe(false);
+	});
+
+	it("tolerates null and undefined", () => {
+		expect(isCatchAllOptionLabel(null)).toBe(false);
+		expect(isCatchAllOptionLabel(undefined)).toBe(false);
+	});
+});
+
+describe("findCatchAllOptionIndex", () => {
+	it("finds the model-supplied catch-all in a real intake question", () => {
+		expect(
+			findCatchAllOptionIndex({
+				options: [
+					{ label: "Fitness app" },
+					{ label: "E-commerce platform" },
+					{ label: "Social media network" },
+					{ label: "Educational tool" },
+					{ label: "Other", description: "Please specify your product." },
+				],
+			}),
+		).toBe(4);
+	});
+
+	it("returns -1 when every option is concrete", () => {
+		expect(findCatchAllOptionIndex(radioQuestion)).toBe(-1);
+		expect(findCatchAllOptionIndex(multiQuestion)).toBe(-1);
+	});
+
+	it("binds only the first catch-all so two rows cannot share one control", () => {
+		expect(
+			findCatchAllOptionIndex({
+				options: [{ label: "Other" }, { label: "Something else" }],
+			}),
+		).toBe(0);
+	});
+
+	it("handles a question with no options", () => {
+		expect(findCatchAllOptionIndex({ options: [] })).toBe(-1);
+	});
+});
+
+describe("catch-all answers travel as custom text, not the literal label", () => {
+	const questionWithCatchAll: AgentClarifierQuestion = {
+		id: "product",
+		header: "Product and Audience",
+		question: "What product are you looking to build and who is it for?",
+		multi_select: false,
+		// The model sometimes sends this alongside its own catch-all, which used
+		// to leave the question unanswerable.
+		allow_custom: false,
+		options: [
+			{ label: "Fitness app" },
+			{ label: "Other", description: "Please specify your product." },
+		],
+	};
+
+	it("submits the typed text and no selected option", () => {
+		const answers = buildClarifierAnswers(
+			[questionWithCatchAll],
+			{ product: [CUSTOM_SENTINEL] },
+			{ product: "  A B2B invoicing tool for freelancers  " },
+		);
+
+		expect(answers).toEqual([
+			{
+				question_id: "product",
+				question: questionWithCatchAll.question,
+				selected_options: [],
+				custom_answer: "A B2B invoicing tool for freelancers",
+			},
+		]);
+	});
+
+	it("blocks submission until the text is filled in", () => {
+		expect(
+			isClarifierQuestionAnswered(
+				questionWithCatchAll,
+				{ product: [CUSTOM_SENTINEL] },
+				{ product: "   " },
+			),
+		).toBe(false);
+		expect(
+			isClarifierQuestionAnswered(
+				questionWithCatchAll,
+				{ product: [CUSTOM_SENTINEL] },
+				{ product: "A niche CRM" },
+			),
+		).toBe(true);
+	});
+
+	it("shows the typed text in the chat bubble, not the word Other", () => {
+		const answers = buildClarifierAnswers(
+			[questionWithCatchAll],
+			{ product: [CUSTOM_SENTINEL] },
+			{ product: "A niche CRM" },
+		);
+		expect(buildClarifierDisplayLabel(answers)).toBe("A niche CRM");
 	});
 });
