@@ -14,14 +14,12 @@ from app.core.orchestration.shared.async_bridge import run_async_call
 from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES,
-    EDIT_HELPER_TOOL_NAMES,
     EXECUTABLE_TOOL_NAMES,
 )
 
 from .handlers.base import ToolHandlerBase
 from .handlers.context_query import ContextQueryHandler
 from .handlers.memory_tools import MemoryToolHandler
-from .handlers.edit_helpers import EditHelperHandler
 
 
 def _derive_invocation_outcome(result: Any) -> tuple[str, str | None]:
@@ -66,7 +64,6 @@ class ToolDispatcher:
         )
         self._context_handler = ContextQueryHandler(**shared)
         self._memory_handler = MemoryToolHandler(**shared)
-        self._edit_handler = EditHelperHandler(**shared)
         self._base_helper = ToolHandlerBase(**shared)
 
     def _drive_handler_coroutine(self, coro: Awaitable[dict[str, Any]]) -> dict[str, Any]:
@@ -218,9 +215,6 @@ class ToolDispatcher:
 
             if tool_name in CONTEXT_TOOL_NAMES:
                 result = await self._context_handler.execute(tool_name, args, session_context)
-                return result
-            if tool_name in EDIT_HELPER_TOOL_NAMES:
-                result = await self._edit_handler.execute(tool_name, args, session_context)
                 return result
             if tool_name in MEMORY_TOOL_NAMES:
                 result = await self._memory_handler.execute(tool_name, args, session_context)

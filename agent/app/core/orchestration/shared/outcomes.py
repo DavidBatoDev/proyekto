@@ -27,6 +27,12 @@ class MessagePlanningOutcome:
     tokens_output: int | None
     tokens_total: int | None
     route_lane: str | None
+    # Cached-prefix input tokens (billed at ~10%). The prompt is deliberately
+    # ordered so the static prefix stays byte-stable — see v2/context.py
+    # compact_state — and this is the only signal that the ordering is actually
+    # paying off. Surfaced so a regression (a per-turn block creeping above
+    # "# Actor") shows up as a hit-rate drop instead of a silent cost increase.
+    tokens_cached: int | None = None
     phase_timings: dict[str, Any] = field(default_factory=dict)
     invalid_operation_detected: bool = False
     invalid_operation_reason: str | None = None

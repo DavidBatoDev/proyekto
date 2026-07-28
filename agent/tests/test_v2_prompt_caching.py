@@ -10,6 +10,7 @@ two additions that make that measurable and better-routed:
 import unittest
 from types import SimpleNamespace
 
+from app.core.logging_utils import _format_cache_hit
 from app.core.v2.openai_client import (
     LLMResponse,
     V2LLMClient,
@@ -91,6 +92,47 @@ class PromptCacheKeyTests(unittest.TestCase):
         client, fake = self._client(None)
         client.complete([], [])
         self.assertNotIn('prompt_cache_key', fake.responses.last_kwargs)
+
+
+class CacheHitFormattingTests(unittest.TestCase):
+    """`cache` line in the human-readable trace (agent/logs.txt). Without a
+    rendered hit rate, a broken cacheable prefix looks identical to a working
+    one — it just costs ~10x more on input."""
+
+    def test_renders_ratio_and_percent(self):
+        self.assertEqual(_format_cache_hit(1000, 900), '900/1000 (90%)')
+
+    def test_zero_cached_is_explicit_not_blank(self):
+        # The regression case: prefix broke, nothing cached.
+        self.assertEqual(_format_cache_hit(1000, 0), '0/1000 (0%)')
+
+    def test_missing_cached_counts_as_zero(self):
+        self.assertEqual(_format_cache_hit(1000, None), '0/1000 (0%)')
+
+    def test_no_input_tokens_is_not_a_division_error(self):
+        self.assertEqual(_format_cache_hit(0, 0), 'n/a')
+        self.assertEqual(_format_cache_hit(None, None), 'n/a')
+
+    def test_percent_is_rounded(self):
+        self.assertEqual(_format_cache_hit(3, 1), '1/3 (33%)')
+
+
+class OutcomeCarriesCachedTokensTests(unittest.TestCase):
+    """tokens_cached must survive loop -> outcome, or cache effectiveness is
+    only visible per-provider-call and never per turn."""
+
+    def test_loop_result_cached_tokens_reach_the_outcome(self):
+        from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
+
+        self.assertIn('tokens_cached', MessagePlanningOutcome.__dataclass_fields__)
+
+    def test_terminal_forwards_cached_tokens(self):
+        import inspect
+
+        from app.core.v2 import terminal
+
+        source = inspect.getsource(terminal.to_outcome)
+        self.assertIn('tokens_cached=loop_result.tokens_cached', source)
 
 
 if __name__ == '__main__':

@@ -47,6 +47,7 @@ def _build_outcome(session: AgentSession) -> SimpleNamespace:
         tokens_input=123,
         tokens_output=45,
         tokens_total=168,
+        tokens_cached=100,
         route_lane='llm_edit_plan',
         llm_skipped_for_simple_edit=False,
         actor_fetch_attempted=False,

@@ -13,23 +13,23 @@ const scriptDir = path.dirname(scriptFile);
 
 loadEnvFiles();
 
-const defaultTests = [
-  'tests.test_v2_loop',
-  'tests.test_v2_outcome',
-  'tests.test_v2_sentinels',
-  'tests.test_v2_brain',
-  'tests.test_v2_reasoning_effort',
-  'tests.test_v2_prompt_caching',
-  'tests.test_v2_streaming',
-  'tests.test_v2_memory_tools',
-  'tests.test_v2_project_context',
-  'tests.test_v2_knowledge_search',
-  'tests.test_v2_semantic_memories',
-  'tests.test_agent_state_snapshot',
-  'tests.test_operation_contracts',
-  'tests.test_edit_resolver',
-  'tests.test_session_store_cas',
-];
+// Every tests/test_*.py module, discovered from disk. This was previously a
+// hand-maintained allowlist, which silently drifted: 22 of 37 modules — including
+// whole regression suites — were never run by `node scripts/test_agent_unit.mjs`,
+// and a module that failed to even IMPORT still reported a green "OK". Discovery
+// means a new test file is covered the moment it lands.
+// If a module ever hangs, delete that test (standing team rule in agent/CLAUDE.md)
+// rather than re-introducing an allowlist that hides the rest.
+function discoverTests() {
+  const testsDir = path.join(agentDir, 'tests');
+  return fs
+    .readdirSync(testsDir)
+    .filter((name) => name.startsWith('test_') && name.endsWith('.py'))
+    .sort()
+    .map((name) => `tests.${name.slice(0, -3)}`);
+}
+
+const defaultTests = discoverTests();
 
 const pythonCandidates = [
   process.env.AGENT_PYTHON_BIN,
