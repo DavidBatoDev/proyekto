@@ -13,6 +13,7 @@ import {
   Background,
   BackgroundVariant,
   applyNodeChanges,
+  useNodesInitialized,
   type Node,
   type Edge,
   type NodeTypes,
@@ -23,7 +24,7 @@ import "@xyflow/react/dist/style.css";
 import { useDraggable } from "@dnd-kit/core";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useShallow } from "zustand/react/shallow";
-import { GripHorizontal, Layers3, ListTodo } from "lucide-react";
+import { GripHorizontal, Layers3, ListTodo, Loader2 } from "lucide-react";
 import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
 import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
@@ -53,6 +54,30 @@ import type {
 } from "@/hooks/useRoadmapCollaboration";
 import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
 import { featureFlags } from "@/config/featureFlags";
+
+function InitialCanvasReady({
+  nodeCount,
+  onReady,
+}: {
+  nodeCount: number;
+  onReady: () => void;
+}) {
+  const nodesInitialized = useNodesInitialized({
+    includeHiddenNodes: true,
+  });
+
+  useEffect(() => {
+    if (nodeCount > 0 && !nodesInitialized) return;
+
+    // Let React Flow commit its measured node bounds and initial viewport before
+    // revealing the canvas. This prevents the empty/default-position flash seen
+    // on the first visit while keeping later node updates immediate.
+    const frameId = window.requestAnimationFrame(onReady);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [nodeCount, nodesInitialized, onReady]);
+
+  return null;
+}
 
 const getAvatarInitials = (name: string) =>
   name
@@ -379,6 +404,11 @@ export const RoadmapView = ({
     useState<
       ReactFlowInstance<Node<EpicWidgetData | FeatureWidgetData>, Edge> | null
     >(null);
+  const [readyRoadmapId, setReadyRoadmapId] = useState<string | null>(null);
+  const isCanvasReady = readyRoadmapId === roadmap.id;
+  const handleCanvasReady = useCallback(() => {
+    setReadyRoadmapId(roadmap.id);
+  }, [roadmap.id]);
 
   const DEFAULT_VIEWPORT_X = -50;
   const DEFAULT_VIEWPORT_Y = 0;
@@ -1621,6 +1651,9 @@ export const RoadmapView = ({
       }}
     >
       <ReactFlow
+        className={`transition-opacity duration-150 ${
+          isCanvasReady ? "opacity-100" : "opacity-0"
+        }`}
         nodes={
           (workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ??
           (remoteWorkingNodes as
@@ -1672,6 +1705,10 @@ export const RoadmapView = ({
           type: "simplebezier",
         }}
       >
+        <InitialCanvasReady
+          nodeCount={nodes.length}
+          onReady={handleCanvasReady}
+        />
         <Background
           variant={BackgroundVariant.Dots}
           bgColor="var(--background)"
@@ -1684,6 +1721,18 @@ export const RoadmapView = ({
           <CollaborationCursorsOverlay remoteCursors={remoteCursors} />
         )}
       </ReactFlow>
+
+      {!isCanvasReady && (
+        <output
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Preparing roadmap
+          </div>
+        </output>
+      )}
 
       <EpicReorderConfirmModal
         isOpen={pendingCanvasDrag?.kind === "epicReorder"}

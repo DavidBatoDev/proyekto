@@ -2524,10 +2524,10 @@ export function RoadmapAiAssistantPanel({
 								)}
 
 								{message.role === "assistant" && commitLifecycle && (
-									<div className="mt-2 rounded-md border border-gray-200 bg-white px-2.5 py-2">
-										<div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-700">
+									<div className="mt-2 rounded-md border border-border bg-card px-2.5 py-2">
+										<div className="flex items-center gap-1.5 text-[10px] font-semibold text-card-foreground">
 											{commitLifecycle.state === "committing" ? (
-												<Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+												<Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
 											) : commitLifecycle.state === "committed" ? (
 												<Check className="h-3.5 w-3.5 text-green-600" />
 											) : (
@@ -2554,7 +2554,7 @@ export function RoadmapAiAssistantPanel({
 														if (!items.length) return null;
 														return (
 															<div key={`${message.id}-${kind}`}>
-																<p className="text-[10px] font-medium text-gray-700">
+																<p className="text-[10px] font-medium text-card-foreground">
 																	{COMMIT_IMPACT_KIND_LABEL[kind]} (
 																	{items.length})
 																</p>
@@ -2568,7 +2568,7 @@ export function RoadmapAiAssistantPanel({
 																				nodeId: item.nodeId,
 																				view: roadmapLinkView,
 																			}}
-																			className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700 hover:bg-slate-200"
+																			className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] text-primary transition-colors hover:border-primary/40 hover:bg-primary/15"
 																		>
 																			{item.title ||
 																				`${item.nodeType} ${item.nodeId.slice(0, 8)}`}
