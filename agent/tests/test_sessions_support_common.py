@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from fastapi.exceptions import HTTPException
 
@@ -297,6 +298,130 @@ class AutoCommitStaleRevisionRetryTests(unittest.IsolatedAsyncioTestCase):
         # No retry fired because the refreshed token matched the stale one.
         self.assertEqual(client.commit_calls, 1)
         self.assertEqual(client.summary_calls, 1)
+
+
+class AutoCommitTransientRetryTests(unittest.IsolatedAsyncioTestCase):
+    def _make_session(self) -> AgentSession:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-transient-retry'
+        session.operations = [
+            RoadmapOperation(op='add_epic', data={'title': 'Launch'})
+        ]
+        return session
+
+    async def test_retries_transient_transport_failure_with_same_idempotency_key(
+        self,
+    ) -> None:
+        session = self._make_session()
+
+        class _FakeNestClient:
+            def __init__(self) -> None:
+                self.commit_payloads: list[dict[str, object]] = []
+
+            async def commit(self, *, payload, **_kwargs):
+                self.commit_payloads.append(payload)
+                if len(self.commit_payloads) == 1:
+                    raise HTTPException(
+                        status_code=503,
+                        detail={
+                            'upstream': 'nestjs',
+                            'detail': {
+                                'statusCode': 503,
+                                'code': 'NEST_UNAVAILABLE',
+                                'message': (
+                                    'The backend service is temporarily unavailable. '
+                                    'Please retry.'
+                                ),
+                            },
+                        },
+                    )
+                return {
+                    'change_id': '11111111-1111-1111-1111-111111111111',
+                    'revision_token': 'fresh-token',
+                    'semantic_diff': {'summary': {}, 'changes': []},
+                }
+
+        async def _run_store_call(func, *args):
+            return await func(*args)
+
+        class _FakeStore:
+            async def update(self, *_args):
+                return None
+
+        class _FakeAgentService:
+            record_recent_targets_from_preview = None
+
+        client = _FakeNestClient()
+        with patch(
+            'app.api.routes.sessions_support.auto_commit.asyncio.sleep',
+            new=AsyncMock(),
+        ):
+            await execute_auto_commit(
+                store=_FakeStore(),
+                agent_service=_FakeAgentService(),
+                session=session,
+                auth_header='Bearer test',
+                trace_id='trace-transient-retry',
+                nest_client=client,
+                run_store_call=_run_store_call,
+            )
+
+        self.assertEqual(len(client.commit_payloads), 2)
+        first_key = client.commit_payloads[0].get('idempotency_key')
+        second_key = client.commit_payloads[1].get('idempotency_key')
+        self.assertIsInstance(first_key, str)
+        self.assertEqual(first_key, second_key)
+        self.assertEqual(session.operations, [])
+
+    async def test_second_transient_failure_propagates_after_one_retry(self) -> None:
+        session = self._make_session()
+
+        class _FakeNestClient:
+            def __init__(self) -> None:
+                self.commit_payloads: list[dict[str, object]] = []
+
+            async def commit(self, *, payload, **_kwargs):
+                self.commit_payloads.append(payload)
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        'upstream': 'nestjs',
+                        'detail': {
+                            'statusCode': 503,
+                            'code': 'NEST_UNAVAILABLE',
+                            'message': (
+                                'The backend service is temporarily unavailable. '
+                                'Please retry.'
+                            ),
+                        },
+                    },
+                )
+
+        async def _run_store_call(*_args):
+            return None
+
+        client = _FakeNestClient()
+        with patch(
+            'app.api.routes.sessions_support.auto_commit.asyncio.sleep',
+            new=AsyncMock(),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await execute_auto_commit(
+                    store=object(),
+                    agent_service=object(),
+                    session=session,
+                    auth_header='Bearer test',
+                    trace_id='trace-transient-double-failure',
+                    nest_client=client,
+                    run_store_call=_run_store_call,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(len(client.commit_payloads), 2)
+        first_key = client.commit_payloads[0].get('idempotency_key')
+        second_key = client.commit_payloads[1].get('idempotency_key')
+        self.assertEqual(first_key, second_key)
+        self.assertEqual(len(session.operations), 1)
 
 
 if __name__ == '__main__':

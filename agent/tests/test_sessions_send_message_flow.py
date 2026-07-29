@@ -296,6 +296,53 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(failure_events), 1)
         self.assertTrue(failure_events[0].get('staged_operations_discarded'))
 
+    async def test_transport_failure_returns_failed_commit_instead_of_raising(
+        self,
+    ) -> None:
+        session = AgentSession(roadmap_id='roadmap-sync-unavailable')
+        fake_service = _FakeAgentService(self._edit_outcome(session))
+        store = _FakeStore()
+        events: list[tuple[str, dict]] = []
+        message = 'The backend service is temporarily unavailable. Please retry.'
+
+        async def _execute_auto_commit(**_kwargs):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    'code': 'NEST_UNAVAILABLE',
+                    'status_code': 503,
+                    'error': 'Service Unavailable',
+                    'message': message,
+                },
+            )
+
+        response = await self._run(
+            session=session,
+            fake_service=fake_service,
+            store=store,
+            execute_auto_commit=_execute_auto_commit,
+            events=events,
+        )
+
+        assert response.commit_summary is not None
+        self.assertFalse(response.commit_summary.committed)
+        self.assertEqual(
+            response.commit_summary.error_code,
+            'NEST_UNAVAILABLE',
+        )
+        self.assertEqual(response.commit_summary.error_message, message)
+        self.assertEqual(
+            response.assistant_message,
+            f"I couldn't apply that change: {message}",
+        )
+        self.assertEqual(response.staged_operations_count, 0)
+        self.assertEqual(session.operations, [])
+        self.assertEqual(store.updated_sessions, [session])
+        failure_events = [d for n, d in events if n == 'auto_commit_sync_failed']
+        self.assertEqual(len(failure_events), 1)
+        self.assertTrue(failure_events[0].get('auto_commit_error_retryable'))
+        self.assertTrue(failure_events[0].get('staged_operations_discarded'))
+
 
 async def _as_awaitable(value):
     return value

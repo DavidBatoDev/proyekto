@@ -96,6 +96,52 @@ class NestRoadmapClient:
         ):
             await cached_client.aclose()
 
+    def _transport_error(
+        self,
+        *,
+        exc: httpx.RequestError,
+        method: str,
+        path: str,
+        trace_id: str | None,
+        started: float,
+    ) -> HTTPException:
+        is_timeout = isinstance(exc, httpx.TimeoutException)
+        status_code = 504 if is_timeout else 503
+        error_code = 'NEST_TIMEOUT' if is_timeout else 'NEST_UNAVAILABLE'
+        error_label = 'Gateway Timeout' if is_timeout else 'Service Unavailable'
+        message = (
+            'The backend service timed out. Please retry.'
+            if is_timeout
+            else 'The backend service is temporarily unavailable. Please retry.'
+        )
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        log_event(
+            self._logger,
+            'nest_http_call',
+            settings=self._settings,
+            trace_id=trace_id,
+            method=method,
+            path=path,
+            status_code=status_code,
+            nest_http_call_ms=elapsed_ms,
+            nest_http_network_ms=elapsed_ms,
+            nest_http_parse_ms=0,
+            nest_transport_error=type(exc).__name__,
+        )
+        return HTTPException(
+            status_code=status_code,
+            detail={
+                'upstream': 'nestjs',
+                'path': path,
+                'detail': {
+                    'statusCode': status_code,
+                    'error': error_label,
+                    'code': error_code,
+                    'message': message,
+                },
+            },
+        )
+
     async def preview(
         self,
         roadmap_id: str,
@@ -467,7 +513,16 @@ class NestRoadmapClient:
         client = await self._get_client()
         started = perf_counter()
         network_started = perf_counter()
-        response = await client.post(url, json=payload, headers=headers)
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+        except httpx.RequestError as exc:
+            raise self._transport_error(
+                exc=exc,
+                method='POST',
+                path=path,
+                trace_id=trace_id,
+                started=started,
+            ) from exc
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:
@@ -535,7 +590,16 @@ class NestRoadmapClient:
         url = f"{self._settings.nest_api_base_url}{path}"
         client = await self._get_client()
         started = perf_counter()
-        response = await client.request(method, url, json=payload, headers=headers)
+        try:
+            response = await client.request(method, url, json=payload, headers=headers)
+        except httpx.RequestError as exc:
+            raise self._transport_error(
+                exc=exc,
+                method=method,
+                path=path,
+                trace_id=trace_id,
+                started=started,
+            ) from exc
         elapsed_ms = int((perf_counter() - started) * 1000)
 
         log_event(
@@ -706,7 +770,16 @@ class NestRoadmapClient:
         client = await self._get_client()
         started = perf_counter()
         network_started = perf_counter()
-        response = await client.get(url, headers=headers)
+        try:
+            response = await client.get(url, headers=headers)
+        except httpx.RequestError as exc:
+            raise self._transport_error(
+                exc=exc,
+                method='GET',
+                path=path,
+                trace_id=trace_id,
+                started=started,
+            ) from exc
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:
