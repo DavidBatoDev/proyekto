@@ -642,6 +642,20 @@ class NestRoadmapClient:
             trace_id=trace_id,
         )
 
+    async def ai_task_comments_add(
+        self,
+        roadmap_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._post(
+            f"/roadmaps/{roadmap_id}/ai/task-comments",
+            payload,
+            auth_header,
+            trace_id=trace_id,
+        )
+
     async def ai_memories_relevant(
         self,
         roadmap_id: str,

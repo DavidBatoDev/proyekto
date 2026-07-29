@@ -12,12 +12,14 @@ from app.core.logging_utils import log_event, summarize_tool_result
 from app.core.metrics import record_tool_invocation
 from app.core.orchestration.shared.async_bridge import run_async_call
 from app.core.tools.registry import (
+    COMMENT_TOOL_NAMES,
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES,
     EXECUTABLE_TOOL_NAMES,
 )
 
 from .handlers.base import ToolHandlerBase
+from .handlers.comment_tools import CommentToolHandler
 from .handlers.context_query import ContextQueryHandler
 from .handlers.memory_tools import MemoryToolHandler
 
@@ -64,6 +66,7 @@ class ToolDispatcher:
         )
         self._context_handler = ContextQueryHandler(**shared)
         self._memory_handler = MemoryToolHandler(**shared)
+        self._comment_handler = CommentToolHandler(**shared)
         self._base_helper = ToolHandlerBase(**shared)
 
     def _drive_handler_coroutine(self, coro: Awaitable[dict[str, Any]]) -> dict[str, Any]:
@@ -218,6 +221,9 @@ class ToolDispatcher:
                 return result
             if tool_name in MEMORY_TOOL_NAMES:
                 result = await self._memory_handler.execute(tool_name, args, session_context)
+                return result
+            if tool_name in COMMENT_TOOL_NAMES:
+                result = await self._comment_handler.execute(tool_name, args, session_context)
                 return result
             result = {
                 'error': {

@@ -221,7 +221,13 @@ MEMORY_TOOL_NAMES = {
     'forget_memory',
 }
 
-EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | MEMORY_TOOL_NAMES
+# Mid-loop write tools that post task comments via the backend (not roadmap
+# operations — comments live outside the structural-ops contract).
+COMMENT_TOOL_NAMES = {
+    'add_task_comments',
+}
+
+EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES
 
 _UNASSIGN_ASSIGNEE_TOKENS = {
     'unassign',

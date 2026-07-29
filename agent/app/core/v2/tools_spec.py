@@ -16,6 +16,7 @@ from typing import Any
 
 from app.core.contracts.statuses import TASK_STATUS_VALUES
 from app.core.tools.registry import (
+    COMMENT_TOOL_NAMES as _REGISTRY_COMMENT_TOOL_NAMES,
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES as _REGISTRY_MEMORY_TOOL_NAMES,
     PLANNING_TOOL_NAME,
@@ -27,6 +28,7 @@ PROPOSE_PLAN_TOOL_NAME = 'propose_plan'
 ASK_USER_TOOL_NAME = 'ask_user'
 SAVE_MEMORY_TOOL_NAME = 'save_memory'
 FORGET_MEMORY_TOOL_NAME = 'forget_memory'
+ADD_TASK_COMMENTS_TOOL_NAME = 'add_task_comments'
 REVERT_CHANGES_TOOL_NAME = 'revert_changes'
 
 # Read tools are non-terminal: the model uses them to gather facts, results
@@ -37,9 +39,13 @@ READ_TOOL_NAMES = frozenset(CONTEXT_TOOL_NAMES)
 # and then finishes its answer), but unlike reads they WRITE to the backend.
 MEMORY_TOOL_NAMES = frozenset(_REGISTRY_MEMORY_TOOL_NAMES)
 
+# Comment tools follow the same non-terminal write pattern: the model posts
+# task comments, reads the per-task results, and continues its answer.
+COMMENT_TOOL_NAMES = frozenset(_REGISTRY_COMMENT_TOOL_NAMES)
+
 # Everything the mid-loop dispatcher executes (results fed back, loop
 # continues).
-DISPATCHER_TOOL_NAMES = READ_TOOL_NAMES | MEMORY_TOOL_NAMES
+DISPATCHER_TOOL_NAMES = READ_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES
 
 # Terminal tools end the turn.
 TERMINAL_TOOL_NAMES = frozenset(
@@ -87,6 +93,7 @@ def build_tools(
             ask_user_tool(),
             save_memory_tool(),
             forget_memory_tool(),
+            add_task_comments_tool(),
             revert_changes_tool(),
         ]
     )
@@ -201,6 +208,42 @@ def forget_memory_tool() -> dict[str, Any]:
                 'required': ['memory_id'],
                 'properties': {
                     'memory_id': {'type': 'string'},
+                },
+            },
+        },
+    }
+
+
+def add_task_comments_tool() -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': ADD_TASK_COMMENTS_TOOL_NAME,
+            'description': (
+                'Post the SAME comment to one or more tasks, authored as the '
+                'current user and visible to collaborators immediately. Put '
+                'every target task in ONE call via task_ids, using ids from '
+                'read tools — never invent them. Plain text only; @mentions '
+                'do not notify anyone. The result reports per-task success/'
+                'failure — never re-post to a task that already succeeded. '
+                'Continue your answer after posting.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'required': ['task_ids', 'content'],
+                'properties': {
+                    'task_ids': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'minItems': 1,
+                        'maxItems': 25,
+                    },
+                    'content': {
+                        'type': 'string',
+                        'minLength': 1,
+                        'maxLength': 2000,
+                        'description': 'The comment text, plain text.',
+                    },
                 },
             },
         },
