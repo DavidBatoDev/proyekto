@@ -220,12 +220,13 @@ function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
 export interface UseRoadmapAiAssistantSessionResult {
   messages: RoadmapAiChatMessage[];
   isLoading: boolean;
-  appendMessage: (message: RoadmapAiChatMessage) => void;
+  appendMessage: (threadId: string, message: RoadmapAiChatMessage) => void;
   updateMessage: (
+    threadId: string,
     messageId: string,
     updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
   ) => void;
-  clearMessages: () => void;
+  clearMessages: (threadId: string) => void;
   // Called after creating a brand-new thread so the hydration effect skips
   // the DB fetch (the DB is empty for a new row). Without this, the effect
   // fires after `setActiveThread`, fetches `[]`, and overwrites the user's
@@ -234,6 +235,7 @@ export interface UseRoadmapAiAssistantSessionResult {
   // Persist a completed turn to the backend. Returns the seed_messages the
   // agent should fall back on if its Redis session has expired.
   persistTurn: (
+    threadId: string,
     role: "user" | "assistant",
     content: string,
     extras?: {
@@ -249,6 +251,7 @@ export interface UseRoadmapAiAssistantSessionResult {
   // On Redis-miss (agent sendMessage returns 404), replay the given
   // seed_messages into the agent's session so the next send succeeds.
   rehydrateAgentSession: (
+    threadId: string,
     seedMessages: Array<{ role: string; content: string }>,
     options: { roadmapId: string; baseRevision?: number },
   ) => Promise<void>;
@@ -277,22 +280,6 @@ export function useRoadmapAiAssistantSession(
     (s) => s.setActiveThread,
   );
   const clearDraftInput = useRoadmapAiThreadsStore((s) => s.clearDraftInput);
-
-  // Resolve the current thread id at call time. The prop reflects the last
-  // committed render, but the panel's first-message flow calls `setActiveThread`
-  // (zustand, synchronous) and then immediately calls `appendMessage` /
-  // `persistTurn` — before React has had a chance to re-render this hook with
-  // the new threadId. Without this fallback, those writes silently drop
-  // because the closed-over `threadId` is still null, which surfaces as the
-  // user's message and the AI response both disappearing on the first turn
-  // in a brand-new thread.
-  const resolveThreadId = useCallback((): string | null => {
-    if (threadId) return threadId;
-    return (
-      useRoadmapAiThreadsStore.getState().activeThreadIdByRoadmap[roadmapId] ??
-      null
-    );
-  }, [threadId, roadmapId]);
 
   useEffect(() => {
     if (!threadId || !roadmapId) return;
@@ -361,38 +348,35 @@ export function useRoadmapAiAssistantSession(
   ]);
 
   const appendMessage = useCallback(
-    (message: RoadmapAiChatMessage) => {
-      const tid = resolveThreadId();
-      if (!tid) return;
-      appendToThread(tid, message);
+    (targetThreadId: string, message: RoadmapAiChatMessage) => {
+      appendToThread(targetThreadId, message);
     },
-    [resolveThreadId, appendToThread],
+    [appendToThread],
   );
 
   const updateMessage = useCallback(
     (
+      targetThreadId: string,
       messageId: string,
       updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
     ) => {
-      const tid = resolveThreadId();
-      if (!tid) return;
-      updateInThread(tid, messageId, updater);
+      updateInThread(targetThreadId, messageId, updater);
     },
-    [resolveThreadId, updateInThread],
+    [updateInThread],
   );
 
-  const clearMessages = useCallback(() => {
-    const tid = resolveThreadId();
-    if (!tid) return;
-    clearThread(tid);
-  }, [resolveThreadId, clearThread]);
+  const clearMessages = useCallback(
+    (targetThreadId: string) => {
+      clearThread(targetThreadId);
+    },
+    [clearThread],
+  );
 
   const persistTurn = useCallback<
     UseRoadmapAiAssistantSessionResult["persistTurn"]
   >(
-    async (role, content, extras) => {
-      const tid = resolveThreadId();
-      if (!tid || !roadmapId) {
+    async (targetThreadId, role, content, extras) => {
+      if (!roadmapId) {
         return { seed_messages: [] };
       }
       const payload: AppendRoadmapAiMessagePayload = {
@@ -408,48 +392,43 @@ export function useRoadmapAiAssistantSession(
       };
       const result = await roadmapAiSessionsService.appendMessage(
         roadmapId,
-        tid,
+        targetThreadId,
         payload,
       );
       return { seed_messages: result.seed_messages };
     },
-    [roadmapId, resolveThreadId],
+    [roadmapId],
   );
 
   const rehydrateAgentSession = useCallback<
     UseRoadmapAiAssistantSessionResult["rehydrateAgentSession"]
-  >(
-    async (seedMessages, options) => {
-      const tid = resolveThreadId();
-      if (!tid) return;
-      // Restore the agent's memory-class state (pending plan, undo log,
-      // recents, conversation summary) saved by the agent's snapshot
-      // write-back. Best-effort: a missing snapshot just means a plain
-      // text-only rehydrate.
-      let agentState: Record<string, unknown> | undefined;
-      try {
-        const row = await roadmapAiSessionsService.getById(
-          options.roadmapId,
-          tid,
-        );
-        const candidate = (row.metadata as Record<string, unknown> | null)
-          ?.agent_state;
-        if (candidate && typeof candidate === "object") {
-          agentState = candidate as Record<string, unknown>;
-        }
-      } catch {
-        /* snapshot fetch is best-effort */
+  >(async (targetThreadId, seedMessages, options) => {
+    // Restore the agent's memory-class state (pending plan, undo log,
+    // recents, conversation summary) saved by the agent's snapshot
+    // write-back. Best-effort: a missing snapshot just means a plain
+    // text-only rehydrate.
+    let agentState: Record<string, unknown> | undefined;
+    try {
+      const row = await roadmapAiSessionsService.getById(
+        options.roadmapId,
+        targetThreadId,
+      );
+      const candidate = (row.metadata as Record<string, unknown> | null)
+        ?.agent_state;
+      if (candidate && typeof candidate === "object") {
+        agentState = candidate as Record<string, unknown>;
       }
-      await roadmapAgentService.createSession({
-        session_id: tid,
-        roadmap_id: options.roadmapId,
-        base_revision: options.baseRevision,
-        metadata: agentState,
-        seed_messages: seedMessages,
-      });
-    },
-    [resolveThreadId],
-  );
+    } catch {
+      /* snapshot fetch is best-effort */
+    }
+    await roadmapAgentService.createSession({
+      session_id: targetThreadId,
+      roadmap_id: options.roadmapId,
+      base_revision: options.baseRevision,
+      metadata: agentState,
+      seed_messages: seedMessages,
+    });
+  }, []);
 
   return useMemo(
     () => ({

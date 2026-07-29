@@ -1432,57 +1432,11 @@ export function RoadmapAiAssistantPanel({
 		setActiveThread,
 	]);
 
-	// Returns the active thread id, creating a brand-new DB row + agent Redis
-	// session if none exists. On Redis-TTL expiry of an existing thread, the
-	// send-message path rehydrates via `rehydrateAgentSession` on 404 rather
-	// than calling this.
+	// Resolve the durable thread first so the optimistic user bubble can be
+	// attached to a concrete id before any agent warm-up or model work begins.
 	const ensureThread = async (): Promise<string> => {
-		if (activeThreadId) {
-			// Guarantee the agent has a Redis session for this thread — first hit
-			// after a cold browser load, the DB row exists but Redis may not.
-			// Pass the durable agent-state snapshot so a cold create is a restore
-			// (pending plan/undo/recents survive); when Redis is still live the
-			// agent's no-clobber guard makes this a no-op.
-			if (!agentSessionsInitializedRef.current.has(activeThreadId)) {
-				try {
-					let agentState: Record<string, unknown> | undefined;
-					try {
-						const row = await roadmapAiSessionsService.getById(
-							roadmapId,
-							activeThreadId,
-						);
-						const candidate = (row.metadata as Record<string, unknown> | null)
-							?.agent_state;
-						if (candidate && typeof candidate === "object") {
-							agentState = candidate as Record<string, unknown>;
-						}
-					} catch {
-						/* snapshot fetch is best-effort */
-					}
-					await roadmapAgentService.createSession({
-						session_id: activeThreadId,
-						roadmap_id: roadmapId,
-						base_revision: baseRevision,
-						metadata: agentState,
-					});
-					agentSessionsInitializedRef.current.add(activeThreadId);
-				} catch (err) {
-					// Non-fatal — the send call below will surface any real error.
-					console.warn(
-						"[RoadmapAiAssistantPanel] agent createSession precheck failed",
-						err,
-					);
-				}
-			}
-			return activeThreadId;
-		}
+		if (activeThreadId) return activeThreadId;
 		const dbRow = await createAiSession.mutateAsync({});
-		await roadmapAgentService.createSession({
-			session_id: dbRow.id,
-			roadmap_id: roadmapId,
-			base_revision: baseRevision,
-		});
-		agentSessionsInitializedRef.current.add(dbRow.id);
 		// Mark hydrated BEFORE setActiveThread so the hook's hydration effect
 		// short-circuits on its first run with the new threadId. Otherwise the
 		// effect fetches an empty DB result and overwrites the user message that
@@ -1490,6 +1444,37 @@ export function RoadmapAiAssistantPanel({
 		markThreadHydrated(dbRow.id);
 		setActiveThread(roadmapId, dbRow.id);
 		return dbRow.id;
+	};
+
+	const ensureAgentSession = async (threadId: string): Promise<void> => {
+		if (agentSessionsInitializedRef.current.has(threadId)) return;
+		try {
+			let agentState: Record<string, unknown> | undefined;
+			try {
+				const row = await roadmapAiSessionsService.getById(roadmapId, threadId);
+				const candidate = (row.metadata as Record<string, unknown> | null)
+					?.agent_state;
+				if (candidate && typeof candidate === "object") {
+					agentState = candidate as Record<string, unknown>;
+				}
+			} catch {
+				/* snapshot fetch is best-effort */
+			}
+			await roadmapAgentService.createSession({
+				session_id: threadId,
+				roadmap_id: roadmapId,
+				base_revision: baseRevision,
+				metadata: agentState,
+			});
+			agentSessionsInitializedRef.current.add(threadId);
+		} catch (err) {
+			// Non-fatal — sendMessage below will either use the live session or
+			// trigger the existing 404 rehydration path.
+			console.warn(
+				"[RoadmapAiAssistantPanel] agent createSession precheck failed",
+				err,
+			);
+		}
 	};
 
 	// Detect 404-from-agent (Redis miss) and recreate the session with the
@@ -1505,7 +1490,10 @@ export function RoadmapAiAssistantPanel({
 			const isNotFound =
 				err instanceof RoadmapAgentServiceError && err.statusCode === 404;
 			if (!isNotFound) throw err;
-			await rehydrateAgentSession(seedMessages, { roadmapId, baseRevision });
+			await rehydrateAgentSession(threadId, seedMessages, {
+				roadmapId,
+				baseRevision,
+			});
 			agentSessionsInitializedRef.current.add(threadId);
 			return op();
 		}
@@ -1729,6 +1717,7 @@ export function RoadmapAiAssistantPanel({
 	}, [currentUser?.id]);
 
 	const finalizeTraceTimeline = (
+		threadId: string,
 		assistantMessageId: string,
 		traceId: string,
 	) => {
@@ -1737,7 +1726,7 @@ export function RoadmapAiAssistantPanel({
 			const existingTimeline = liveActivityRef.current;
 			if (existingTimeline && existingTimeline.traceId === traceId) {
 				const completedTimeline = ensureTimelineCompleted(existingTimeline);
-				updateMessage(assistantMessageId, (message) => {
+				updateMessage(threadId, assistantMessageId, (message) => {
 					const resolvedCommitLifecycleRaw =
 						resolveCommitLifecycleFromTimeline(completedTimeline);
 					const resolvedCommitLifecycle =
@@ -1858,7 +1847,7 @@ export function RoadmapAiAssistantPanel({
 				timeline.steps.length > 0
 			) {
 				const completedTimeline = ensureTimelineCompleted(timeline);
-				updateMessage(assistantMessageId, (message) => {
+				updateMessage(threadId, assistantMessageId, (message) => {
 					const resolvedCommitLifecycleRaw =
 						resolveCommitLifecycleFromTimeline(completedTimeline);
 					const resolvedCommitLifecycle =
@@ -1948,13 +1937,10 @@ export function RoadmapAiAssistantPanel({
 		let traceId: string | null = null;
 		let assistantId: string | null = null;
 		try {
-			// ensureThread must run first — if there is no activeThreadId yet (first
-			// message), it creates the DB row and calls setActiveThread so the hook's
-			// threadId is non-null before appendMessage fires. Calling appendMessage
-			// before this resolves silently drops the message (threadId === null
-			// hits the early return in useRoadmapAiAssistantSession).
+			// Resolve the thread once and pin every write from this turn to that id.
+			// The active selection may change while network work is in flight.
 			activeSessionId = await ensureThread();
-			appendMessage({
+			appendMessage(activeSessionId, {
 				id: crypto.randomUUID(),
 				role: "user",
 				content: userFacingContent,
@@ -1969,9 +1955,11 @@ export function RoadmapAiAssistantPanel({
 			// history doesn't show raw JSON, and agent session rehydration replays
 			// the same human-readable turn the UI already shows.
 			const { seed_messages: seedMessagesForRetry } = await persistTurn(
+				activeSessionId,
 				"user",
 				userFacingContent,
 			);
+			await ensureAgentSession(activeSessionId);
 			startTracePolling(activeSessionId, traceId);
 
 			const boundSessionId = activeSessionId;
@@ -2010,7 +1998,7 @@ export function RoadmapAiAssistantPanel({
 			const initialCommitImpactedItems = parseCommitImpactedItemsFromOperations(
 				response.operations,
 			);
-			appendMessage({
+			appendMessage(boundSessionId, {
 				...buildAssistantMessage(
 					response.assistant_message || "I analyzed your request.",
 					response.parse_mode || "agent_response",
@@ -2037,28 +2025,33 @@ export function RoadmapAiAssistantPanel({
 			// trace, commit lifecycle), but those updates are ephemeral UI state
 			// and don't round-trip to the DB — past threads still render fine
 			// since the assistant text + intent + response_mode are persisted.
-			void persistTurn("assistant", response.assistant_message || "", {
-				intentType: response.intent_type,
-				responseMode: response.response_mode,
-				parseMode: response.parse_mode || "agent_response",
-				tokens: undefined,
-				metadata: (() => {
-					const meta: Record<string, unknown> = {};
-					if (response.plan_proposal) {
-						meta.plan_proposal = response.plan_proposal as unknown as Record<
-							string,
-							unknown
-						>;
-					}
-					if (response.clarifier) {
-						meta.clarifier = response.clarifier as unknown as Record<
-							string,
-							unknown
-						>;
-					}
-					return Object.keys(meta).length > 0 ? meta : undefined;
-				})(),
-			}).catch((err) => {
+			void persistTurn(
+				boundSessionId,
+				"assistant",
+				response.assistant_message || "",
+				{
+					intentType: response.intent_type,
+					responseMode: response.response_mode,
+					parseMode: response.parse_mode || "agent_response",
+					tokens: undefined,
+					metadata: (() => {
+						const meta: Record<string, unknown> = {};
+						if (response.plan_proposal) {
+							meta.plan_proposal = response.plan_proposal as unknown as Record<
+								string,
+								unknown
+							>;
+						}
+						if (response.clarifier) {
+							meta.clarifier = response.clarifier as unknown as Record<
+								string,
+								unknown
+							>;
+						}
+						return Object.keys(meta).length > 0 ? meta : undefined;
+					})(),
+				},
+			).catch((err) => {
 				console.warn(
 					"[RoadmapAiAssistantPanel] assistant message persistence failed",
 					err,
@@ -2076,7 +2069,7 @@ export function RoadmapAiAssistantPanel({
 				const impactedItems = parseCommitImpactedItemsFromTraceDetails({
 					impacted_items: commitSummary.impacted_items ?? [],
 				});
-				updateMessage(assistantId, (message) => ({
+				updateMessage(boundSessionId, assistantId, (message) => ({
 					...message,
 					commitLifecycle: {
 						state: "committed",
@@ -2111,7 +2104,7 @@ export function RoadmapAiAssistantPanel({
 				// The sync commit failed. The agent already discarded the staged ops,
 				// so the deterministic UX is a failed card with the backend's reason —
 				// the user re-asks with a fix; nothing is left dangling server-side.
-				updateMessage(assistantId, (message) => ({
+				updateMessage(boundSessionId, assistantId, (message) => ({
 					...message,
 					commitLifecycle: {
 						state: "failed",
@@ -2139,14 +2132,17 @@ export function RoadmapAiAssistantPanel({
 					trace_id: traceId,
 				});
 			}
-			appendMessage(
-				buildAssistantMessage(
-					timeoutError
-						? timeoutMessage
-						: "I couldn't complete that request. Please try again.",
-					"agent_error",
-				),
-			);
+			if (activeSessionId) {
+				appendMessage(
+					activeSessionId,
+					buildAssistantMessage(
+						timeoutError
+							? timeoutMessage
+							: "I couldn't complete that request. Please try again.",
+						"agent_error",
+					),
+				);
+			}
 			stopActivePollLoop();
 			setLiveActivity(null);
 			setLiveActivityExpanded(false);
@@ -2156,8 +2152,8 @@ export function RoadmapAiAssistantPanel({
 			// The final assistant message (or error bubble) replaces the
 			// streamed preview.
 			setStreamingPreview(null);
-			if (assistantId && traceId) {
-				finalizeTraceTimeline(assistantId, traceId);
+			if (activeSessionId && assistantId && traceId) {
+				finalizeTraceTimeline(activeSessionId, assistantId, traceId);
 			}
 		}
 	};
