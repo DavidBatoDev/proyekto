@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { registerRoadmapWriteTools } from './roadmap-write.tools';
 import { registerTaskWriteTools } from './task-write.tools';
 import type { McpToolDeps } from './tool-helpers';
@@ -98,13 +99,11 @@ describe('MCP roadmap write tools', () => {
 
   it('roadmap_commit_operations calls the service when scope + tokens are present', async () => {
     const { server, handlers } = captureServer();
-    const commit = jest
-      .fn()
-      .mockResolvedValue({
-        change_id: 'c1',
-        revision_token: 'r2',
-        semantic_diff: {},
-      });
+    const commit = jest.fn().mockResolvedValue({
+      change_id: 'c1',
+      revision_token: 'r2',
+      semantic_diff: {},
+    });
     const deps = depsWith(['roadmaps:write'], {
       roadmapAi: { preview: jest.fn(), commit, rollback: jest.fn() } as any,
     });
@@ -172,5 +171,57 @@ describe('MCP task write tools', () => {
       { assignee_ids: ['u2', 'u3'] },
       'user-1',
     );
+  });
+
+  it('task_comment_add denies a token without tasks:write', async () => {
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read']);
+    registerTaskWriteTools(server, deps);
+
+    const res = await handlers.task_comment_add({
+      task_id: 't1',
+      content: 'hi',
+    });
+    expect(isError(res)).toBe(true);
+    expect(errorCode(res)).toBe('FORBIDDEN');
+    expect(deps.s.taskExtras.addComment).not.toHaveBeenCalled();
+  });
+
+  it('task_comment_add routes through taskExtras.addComment when authorized', async () => {
+    const { server, handlers } = captureServer();
+    const addComment = jest.fn().mockResolvedValue({ id: 'c1' });
+    const deps = depsWith(['tasks:write'], {
+      taskExtras: { addComment } as any,
+    });
+    registerTaskWriteTools(server, deps);
+
+    const res = await handlers.task_comment_add({
+      task_id: 't1',
+      content: 'Looks good.',
+    });
+    expect(isError(res)).toBeFalsy();
+    expect(addComment).toHaveBeenCalledWith(
+      't1',
+      { content: 'Looks good.' },
+      'user-1',
+    );
+  });
+
+  it('task_comment_add maps a service 403 to FORBIDDEN', async () => {
+    const { server, handlers } = captureServer();
+    const addComment = jest
+      .fn()
+      .mockRejectedValue(new ForbiddenException('No comment permission'));
+    const deps = depsWith(['tasks:write'], {
+      taskExtras: { addComment } as any,
+    });
+    registerTaskWriteTools(server, deps);
+
+    const res = await handlers.task_comment_add({
+      task_id: 't1',
+      content: 'hi',
+    });
+    expect(isError(res)).toBe(true);
+    expect(errorCode(res)).toBe('FORBIDDEN');
   });
 });

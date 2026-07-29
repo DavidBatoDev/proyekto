@@ -109,6 +109,9 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapAiKnowledgeService,
     TasksService,
     TaskExtrasService,
+    // Epic/feature comment writes (MCP `epic_comment_add` / `feature_comment_add`).
+    EpicsService,
+    FeaturesService,
     // Owner-only AI thread reads (MCP `ai-sessions:read`).
     RoadmapAiSessionsService,
   ],

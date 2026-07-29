@@ -1,4 +1,10 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { ITaskExtrasRepository } from '../repositories/task-extras.repository.interface';
 import {
   AddCommentDto,
@@ -33,9 +39,12 @@ export class TaskExtrasService {
 
     // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
     const commentId = (comment as { id?: string }).id;
-    void this.fireMentionNotifications(taskId, dto.content, userId, commentId).catch(
-      () => {},
-    );
+    void this.fireMentionNotifications(
+      taskId,
+      dto.content,
+      userId,
+      commentId,
+    ).catch(() => {});
     if (commentId) {
       this.knowledgeOutbox.enqueue({
         sourceType: 'task_comment',
@@ -45,6 +54,81 @@ export class TaskExtrasService {
     }
 
     return comment;
+  }
+
+  /**
+   * Batch comment for the roadmap AI agent: the same comment posted to many
+   * tasks, reusing addComment per task so authz, sanitization, mention
+   * notifications, and knowledge indexing stay identical to the human path.
+   * Per-task failures are data the agent reports back — never a batch abort —
+   * and a task outside the given roadmap surfaces as NOT_FOUND so a probe
+   * cannot distinguish "other roadmap" from "does not exist".
+   */
+  async addCommentToTasks(
+    roadmapId: string,
+    taskIds: string[],
+    content: string,
+    userId: string,
+  ) {
+    const uniqueIds = [...new Set(taskIds)];
+    const results: Array<{
+      task_id: string;
+      ok: boolean;
+      comment_id?: string | null;
+      error?: { code: string; message: string };
+    }> = [];
+
+    for (const taskId of uniqueIds) {
+      try {
+        const owner = await this.roadmapAuthz.resolveRoadmapId({ taskId });
+        if (!owner || owner !== roadmapId) {
+          results.push({
+            task_id: taskId,
+            ok: false,
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Task not found on this roadmap.',
+            },
+          });
+          continue;
+        }
+        const comment = await this.addComment(taskId, { content }, userId);
+        results.push({
+          task_id: taskId,
+          ok: true,
+          comment_id: (comment as { id?: string }).id ?? null,
+        });
+      } catch (err) {
+        results.push({
+          task_id: taskId,
+          ok: false,
+          error: this.toPerTaskCommentError(err),
+        });
+      }
+    }
+
+    return {
+      posted: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    };
+  }
+
+  private toPerTaskCommentError(err: unknown): {
+    code: string;
+    message: string;
+  } {
+    if (err instanceof HttpException) {
+      const status = err.getStatus();
+      if (status === HttpStatus.FORBIDDEN) {
+        return { code: 'FORBIDDEN', message: err.message };
+      }
+      if (status === HttpStatus.NOT_FOUND) {
+        return { code: 'NOT_FOUND', message: err.message };
+      }
+      return { code: 'COMMENT_FAILED', message: err.message };
+    }
+    return { code: 'COMMENT_FAILED', message: 'Failed to add the comment.' };
   }
 
   private async fireMentionNotifications(
@@ -131,11 +215,7 @@ export class TaskExtrasService {
     return this.repo.getDependencies(taskId);
   }
 
-  async addDependency(
-    taskId: string,
-    blockingTaskId: string,
-    userId: string,
-  ) {
+  async addDependency(taskId: string, blockingTaskId: string, userId: string) {
     await this.roadmapAuthz.assertTaskPermission(
       taskId,
       userId,
@@ -156,7 +236,11 @@ export class TaskExtrasService {
     ) {
       throw new NotFoundException('Dependency not found');
     }
-    await this.roadmapAuthz.assertTaskPermission(taskId, userId, 'roadmap.edit');
+    await this.roadmapAuthz.assertTaskPermission(
+      taskId,
+      userId,
+      'roadmap.edit',
+    );
     return this.repo.removeDependency(dependencyId);
   }
 }

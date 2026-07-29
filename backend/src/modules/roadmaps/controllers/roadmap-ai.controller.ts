@@ -32,6 +32,8 @@ import {
 import { RoadmapAiService } from '../services/roadmap-ai.service';
 import { RoadmapAiMemoriesService } from '../services/roadmap-ai-memories.service';
 import { CreateRoadmapAiMemoryDto } from '../dto/roadmap-ai-memories.dto';
+import { RoadmapAiTaskCommentsDto } from '../dto/roadmap-ai-task-comments.dto';
+import { TaskExtrasService } from '../services/task-extras.service';
 import {
   RoadmapAiKnowledgeSearchQueryDto,
   RoadmapAiRelevantMemoriesQueryDto,
@@ -48,6 +50,7 @@ export class RoadmapAiController {
     private readonly memoriesService: RoadmapAiMemoriesService,
     private readonly projectContextService: RoadmapAiProjectContextService,
     private readonly knowledgeService: RoadmapAiKnowledgeService,
+    private readonly taskExtrasService: TaskExtrasService,
   ) {}
 
   @Post('preview')
@@ -222,6 +225,25 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
     await this.memoriesService.deactivate(roadmapId, memoryId, user.id);
+  }
+
+  /**
+   * Agent batch-comment endpoint. Always 200: per-task failures are payload
+   * (the agent reads results[] and reports them), not transport errors.
+   */
+  @Post('task-comments')
+  @HttpCode(HttpStatus.OK)
+  addTaskComments(
+    @Param('id') roadmapId: string,
+    @Body() dto: RoadmapAiTaskCommentsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.addCommentToTasks(
+      roadmapId,
+      dto.task_ids,
+      dto.content,
+      user.id,
+    );
   }
 
   @Get('context/members')

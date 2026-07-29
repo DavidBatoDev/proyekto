@@ -11,6 +11,8 @@ import type { RoadmapAiProjectContextService } from '../../roadmaps/services/roa
 import type { RoadmapAiKnowledgeService } from '../../roadmaps/services/roadmap-ai-knowledge.service';
 import type { TasksService } from '../../roadmaps/services/tasks.service';
 import type { TaskExtrasService } from '../../roadmaps/services/task-extras.service';
+import type { EpicsService } from '../../roadmaps/services/epics.service';
+import type { FeaturesService } from '../../roadmaps/services/features.service';
 import type { RoadmapAiSessionsService } from '../../roadmaps/services/roadmap-ai-sessions.service';
 import type { ChatService } from '../../chat/chat.service';
 import type { AuditService } from '../../audit/audit.service';
@@ -34,6 +36,8 @@ export interface McpServices {
   knowledge: RoadmapAiKnowledgeService;
   tasks: TasksService;
   taskExtras: TaskExtrasService;
+  epics: EpicsService;
+  features: FeaturesService;
   aiSessions: RoadmapAiSessionsService;
   chat: ChatService;
   audit: AuditService;

@@ -72,6 +72,7 @@ describe('RoadmapAiController trace forwarding', () => {
   };
 
   let controller: RoadmapAiController;
+  let taskExtrasService: { addCommentToTasks: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -81,11 +82,15 @@ describe('RoadmapAiController trace forwarding', () => {
       deactivate: jest.fn(),
       relevant: jest.fn(),
     };
+    taskExtrasService = {
+      addCommentToTasks: jest.fn(),
+    };
     controller = new RoadmapAiController(
       roadmapAiService as never,
       memoriesService as never,
       projectContextService as never,
       knowledgeService as never,
+      taskExtrasService as never,
     );
   });
 
@@ -346,5 +351,31 @@ describe('RoadmapAiController trace forwarding', () => {
     expect(result.timeline[0].temp_id_mapping).toEqual({
       tmp_feature_1: '44444444-4444-4444-4444-444444444444',
     });
+  });
+
+  it('delegates task-comments to TaskExtrasService with the route roadmap id', async () => {
+    const batchResult = {
+      posted: 2,
+      failed: 0,
+      results: [
+        { task_id: 'task-1', ok: true, comment_id: 'c-1' },
+        { task_id: 'task-2', ok: true, comment_id: 'c-2' },
+      ],
+    };
+    taskExtrasService.addCommentToTasks.mockResolvedValue(batchResult);
+
+    const result = await controller.addTaskComments(
+      roadmapId,
+      { task_ids: ['task-1', 'task-2'], content: 'Carried over to August.' },
+      user,
+    );
+
+    expect(taskExtrasService.addCommentToTasks).toHaveBeenCalledWith(
+      roadmapId,
+      ['task-1', 'task-2'],
+      'Carried over to August.',
+      user.id,
+    );
+    expect(result).toEqual(batchResult);
   });
 });

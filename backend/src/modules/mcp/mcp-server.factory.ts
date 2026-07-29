@@ -12,6 +12,8 @@ import { RoadmapAiProjectContextService } from '../roadmaps/services/roadmap-ai-
 import { RoadmapAiKnowledgeService } from '../roadmaps/services/roadmap-ai-knowledge.service';
 import { TasksService } from '../roadmaps/services/tasks.service';
 import { TaskExtrasService } from '../roadmaps/services/task-extras.service';
+import { EpicsService } from '../roadmaps/services/epics.service';
+import { FeaturesService } from '../roadmaps/services/features.service';
 import { RoadmapAiSessionsService } from '../roadmaps/services/roadmap-ai-sessions.service';
 import { ChatService } from '../chat/chat.service';
 import { AuditService } from '../audit/audit.service';
@@ -23,6 +25,7 @@ import { registerKnowledgeTools } from './tools/knowledge.tools';
 import { registerChatTools } from './tools/chat.tools';
 import { registerRoadmapWriteTools } from './tools/roadmap-write.tools';
 import { registerTaskWriteTools } from './tools/task-write.tools';
+import { registerCommentWriteTools } from './tools/comment-write.tools';
 import { registerChatWriteTools } from './tools/chat-write.tools';
 import { registerAiSessionTools } from './tools/ai-sessions.tools';
 import { registerResources } from './resources';
@@ -59,6 +62,8 @@ export class McpServerFactory {
     private readonly knowledge: RoadmapAiKnowledgeService,
     private readonly tasks: TasksService,
     private readonly taskExtras: TaskExtrasService,
+    private readonly epics: EpicsService,
+    private readonly features: FeaturesService,
     private readonly aiSessions: RoadmapAiSessionsService,
     private readonly chat: ChatService,
     private readonly audit: AuditService,
@@ -81,6 +86,8 @@ export class McpServerFactory {
       knowledge: this.knowledge,
       tasks: this.tasks,
       taskExtras: this.taskExtras,
+      epics: this.epics,
+      features: this.features,
       aiSessions: this.aiSessions,
       chat: this.chat,
       audit: this.audit,
@@ -99,6 +106,7 @@ export class McpServerFactory {
     registerChatTools(server, deps);
     registerRoadmapWriteTools(server, deps);
     registerTaskWriteTools(server, deps);
+    registerCommentWriteTools(server, deps);
     registerAiSessionTools(server, deps);
     // Dark by default. Not registered rather than registered-and-denying:
     // advertising a tool in tools/list that can only ever fail would invite the

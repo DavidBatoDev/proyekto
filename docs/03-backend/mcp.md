@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-07-27 · **Status:** current
+> **Last updated:** 2026-07-29 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -115,7 +115,7 @@ requires **both** its scope **and** the live Proyekto project/roadmap permission
 | `chat:read` | read | chat rooms + messages |
 | `ai-sessions:read` | read | the caller's **own** roadmap AI planning threads (Phase 4) |
 | `roadmaps:write` | write | structural roadmap operations (preview / commit / revert) |
-| `tasks:write` | write | create/update tasks, add task comments |
+| `tasks:write` | write | create/update tasks, add task/epic/feature comments |
 | `tasks:assign` | write | set a task's assignee set (notifies newly-assigned) |
 | `chat:write` | write | send / edit / unsend **channel** messages (Phase 4) — dark unless `MCP_CHAT_WRITE_ENABLED` |
 
@@ -164,10 +164,10 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Twenty-five tools in [`tools/*.tools.ts`](../../backend/src/modules/mcp/tools/) —
-fifteen read, ten write. Three of the ten (the chat writes) register only while
-`MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag unset advertises
-**twenty-two**. Each tool reuses an existing domain service that carries its own
+Twenty-eight tools in [`tools/*.tools.ts`](../../backend/src/modules/mcp/tools/) —
+sixteen read, twelve write. Three of the twelve (the chat writes) register only
+while `MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag unset advertises
+**twenty-five**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
@@ -186,6 +186,7 @@ service DTO).
 | `roadmap_search_nodes` | `roadmaps:read` | `roadmap_id`, `query`, `node_type?`, `limit?` | Matching nodes + resolved ids |
 | `roadmap_list_changes` | `roadmaps:read` | `roadmap_id`, `limit?`, `before?`, `include_operations?` | Committed changes newest-first from the durable log — who, when, what. `before` is a `committed_at` cursor; `include_operations` defaults **off** |
 | `tasks_list` | `roadmaps:read` | `roadmap_id`, `assigned_to_me?`, `status?`, `parent_type?`, `parent_id?`, `assignee_id?`, `keyword?`, `include_completed?`, `limit?` | Filtered tasks; `assigned_to_me` = "what's on my plate" |
+| `task_comments_list` | `roadmaps:read` | `task_id`, `limit?` | A task's comments oldest-first (newest `limit` of them, default 50, plus the true `total`); authors whitelisted to `id` + `display_name` |
 | `project_knowledge_search` | `knowledge:read` | `roadmap_id`, `query`, `sources?`, `limit?` | Hybrid RAG over chat/comments/activity/brief (empty for guest/project-less roadmaps) |
 | `chat_rooms_list` | `chat:read` | `project_id` | Channels the user participates in |
 | `chat_messages_list` | `chat:read` | `room_id`, `before?`, `limit?` | Recent messages, newest first |
@@ -211,8 +212,10 @@ withheld here is the most sensitive payload in the schema.
 
 ### Write tools
 
-Ten write tools — seven from Phase 2 plus the three Phase-4 chat writes — each
-requiring its `*:write` scope **and** the live Proyekto permission. Structural
+Twelve write tools — seven from Phase 2, the three Phase-4 chat writes, and the
+two epic/feature comment tools
+([`comment-write.tools.ts`](../../backend/src/modules/mcp/tools/comment-write.tools.ts))
+— each requiring its `*:write` scope **and** the live Proyekto permission. Structural
 roadmap changes go through the
 **preview → commit → revert** lifecycle on `RoadmapAiService`
 ([`roadmap-write.tools.ts`](../../backend/src/modules/mcp/tools/roadmap-write.tools.ts));
@@ -231,7 +234,9 @@ notify, or post are flagged `destructiveHint` so the host asks the user first.
 | `task_create` | `tasks:write` | `feature_id`, `title`, `description?`, `status?`, `priority?`, `due_date?`, `position?` | Creates a task under a feature (no assignee fields — assign separately). Perm `roadmap.create_tasks`. |
 | `task_update` | `tasks:write` | `task_id`, `title?`, `description?`, `status?`, `priority?`, `due_date?`, `position?` | Updates a task's fields. Perm `roadmap.edit`. |
 | `task_assign` | `tasks:assign` | `task_id`, `assignee_ids[]` | Replaces the assignee set (empty array unassigns); notifies newly-assigned. Perm `roadmap.assign`. `destructiveHint`. |
-| `task_comment_add` | `tasks:write` | `task_id`, `content` | Adds a task comment. Perm `roadmap.comment`. `destructiveHint`. |
+| `task_comment_add` | `tasks:write` | `task_id`, `content` | Adds a task comment (knowledge-indexed, so `project_knowledge_search` finds it later). Perm `roadmap.comment`. `destructiveHint`. |
+| `epic_comment_add` | `tasks:write` | `epic_id`, `content` | Adds an epic comment. Perm `roadmap.comment`. **Not** knowledge-indexed. `destructiveHint`. |
+| `feature_comment_add` | `tasks:write` | `feature_id`, `content` | Adds a feature comment. Perm `roadmap.comment`. **Not** knowledge-indexed. `destructiveHint`. |
 | `chat_send_message` | `chat:write` | `project_id`, `room_id`, `content`, `reply_to_id?` | Posts to a channel. `destructiveHint`. |
 | `chat_message_edit` | `chat:write` | `message_id`, `content` | Edits a message **you** sent; shows an "(edited)" marker. `destructiveHint`. |
 | `chat_message_unsend` | `chat:write` | `message_id` | Deletes a message **you** sent. `destructiveHint`. |
@@ -720,6 +725,12 @@ flip with no Secret Manager work.
     owner-only AI-session read tools. `ai-sessions:read` is live on deploy;
     **chat-write activation is a separate step** — set the
     `MCP_CHAT_WRITE_ENABLED` repo var (no secret needed) and redeploy.
+- **Comments expansion (current, 2026-07)** — `task_comments_list` on
+  `roadmaps:read` plus `epic_comment_add` / `feature_comment_add` on the
+  existing `tasks:write` scope (same risk class as `task_comment_add`, so no
+  new scope). No flag — live wherever `MCP_ENABLED` is. Caveat: epic/feature
+  comments are **not** knowledge-outbox indexed, so unlike task comments they
+  never surface in `project_knowledge_search`.
 
 Explicitly **not** exposed yet, and blocked on real work rather than scheduling:
 direct messages, which would need their own scope **and** a service-layer

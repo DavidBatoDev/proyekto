@@ -77,4 +77,51 @@ export function registerTaskTools(server: McpServer, deps: McpToolDeps) {
         );
       }),
   );
+
+  defineTool(
+    server,
+    'task_comments_list',
+    {
+      title: 'List task comments',
+      description:
+        'List the comments on a task, oldest first, with author names. Returns the most recent `limit` comments and the total count.',
+      inputSchema: {
+        task_id: z.string().uuid(),
+        limit: z.number().int().min(1).optional(),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ task_id, limit }) =>
+      runTool(async () => {
+        requireScope(deps.caller, 'roadmaps:read');
+        // View permission is asserted inside findComments.
+        const all = (await deps.s.taskExtras.findComments(
+          task_id,
+          uid,
+        )) as Array<{
+          id: string;
+          task_id: string;
+          content: string;
+          created_at: string;
+          edited_at: string | null;
+          author?: { id: string; display_name: string | null } | null;
+        }>;
+        // Rows come back ascending; keep the newest N so long threads stay
+        // useful, and whitelist fields (no avatar URLs / raw author_id).
+        const capped = all.slice(-clampLimit(limit, deps.s.maxPageSize, 50));
+        return {
+          total: all.length,
+          comments: capped.map((c) => ({
+            id: c.id,
+            task_id: c.task_id,
+            content: c.content,
+            author: c.author
+              ? { id: c.author.id, display_name: c.author.display_name }
+              : null,
+            created_at: c.created_at,
+            edited_at: c.edited_at,
+          })),
+        };
+      }),
+  );
 }
