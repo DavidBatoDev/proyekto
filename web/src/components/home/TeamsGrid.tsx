@@ -111,7 +111,7 @@ function TeamCard({ team }: { team: Team }) {
 		<Link
 			to="/teams/$teamId"
 			params={{ teamId: team.id }}
-			className="group flex h-40 flex-col rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-lg"
+			className="group flex h-40 flex-col rounded-2xl border border-border bg-(--app-surface-strong) p-4 text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-lg"
 		>
 			<div className="flex items-start gap-2.5">
 				<TeamAvatar team={team} />
@@ -314,7 +314,7 @@ function TeamsEmptyState({ className }: { className?: string }) {
 
 function TeamCardSkeleton() {
 	return (
-		<div className="h-40 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+		<div className="h-40 rounded-2xl border border-border bg-(--app-surface-strong) p-4 shadow-sm">
 			<div className="flex items-start gap-3">
 				<div className="h-10 w-10 animate-pulse rounded-xl bg-slate-200" />
 				<div className="flex-1 space-y-2">

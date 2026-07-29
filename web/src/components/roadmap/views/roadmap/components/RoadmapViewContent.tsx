@@ -954,7 +954,7 @@ export function RoadmapViewContent({
 								<div
 									ref={leftPanelRef}
 									id="roadmap-left-panel"
-									className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur flex-shrink-0"
+									className="relative h-full flex-shrink-0 border-r border-border bg-card/95 backdrop-blur"
 									style={{
 										width: leftPanelWidth,
 										minWidth: LEFT_PANEL_MIN_WIDTH,
@@ -1077,7 +1077,7 @@ export function RoadmapViewContent({
 								<div
 									ref={chatPanelRef}
 									id="roadmap-right-ai-chat-panel"
-									className="relative h-full border-l border-gray-200 bg-white"
+									className="relative h-full border-l border-border bg-card"
 									style={{
 										minWidth: CHAT_PANEL_MIN_WIDTH,
 										width: chatPanelWidth,

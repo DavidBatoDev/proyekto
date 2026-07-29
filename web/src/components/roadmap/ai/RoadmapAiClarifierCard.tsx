@@ -121,19 +121,19 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 	return (
 		<div
 			data-testid="clarifier-card"
-			className="ai-gradient-soft mt-2 rounded-lg border border-indigo-200 p-3 dark:border-indigo-900 dark:bg-indigo-950/30"
+			className="ai-gradient-soft mt-2 rounded-lg border border-primary/30 p-3 text-card-foreground"
 		>
 			<div className="mb-2 flex items-center gap-2">
 				<span className="ai-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
 					{badgeLabel ?? laneLabel(card.lane)}
 				</span>
 				{currentQ.header ? (
-					<span className="inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200">
+					<span className="inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
 						{currentQ.header}
 					</span>
 				) : null}
 				{hasMultiple ? (
-					<span className="text-xs font-medium text-indigo-800 dark:text-indigo-300">
+					<span className="text-xs font-medium text-primary">
 						Question {boundedIndex + 1} of {totalQuestions}
 					</span>
 				) : null}
@@ -144,11 +144,11 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 				data-question-id={currentQ.id}
 				data-multi-select={currentQ.multi_select}
 			>
-				<div className="mb-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+				<div className="mb-1 text-sm font-medium text-foreground">
 					{currentQ.question}
 				</div>
 				{currentQ.multi_select ? (
-					<div className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+					<div className="mb-2 text-xs text-muted-foreground">
 						Select all that apply
 					</div>
 				) : (
@@ -170,7 +170,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 										isCatchAll ? "clarifier-other" : "clarifier-option"
 									}
 									data-option-label={option.label}
-									className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
+									className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-foreground hover:bg-primary/10"
 								>
 									<input
 										id={optionId}
@@ -185,7 +185,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 									<span>
 										{option.label}
 										{option.description ? (
-											<span className="block text-xs text-neutral-500 dark:text-neutral-400">
+											<span className="block text-xs text-muted-foreground">
 												{option.description}
 											</span>
 										) : null}
@@ -199,7 +199,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 										disabled={disabled}
 										rows={2}
 										placeholder="Type your answer..."
-										className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-purple-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+										className="mt-1.5 w-full rounded-md border border-input bg-card px-2 py-1 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
 									/>
 								) : null}
 							</div>
@@ -211,7 +211,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 							<label
 								htmlFor={`clarifier-${currentQ.id}-custom`}
 								data-testid="clarifier-other"
-								className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
+								className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-foreground hover:bg-primary/10"
 							>
 								<input
 									id={`clarifier-${currentQ.id}-custom`}
@@ -233,7 +233,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 									disabled={disabled}
 									rows={2}
 									placeholder="Type your answer..."
-									className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-purple-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+									className="mt-1.5 w-full rounded-md border border-input bg-card px-2 py-1 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
 								/>
 							) : null}
 						</div>
@@ -241,14 +241,14 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
 				</div>
 			</div>
 
-			<div className="mt-3 flex items-center gap-2 border-t border-indigo-200 pt-2 dark:border-indigo-900">
+			<div className="mt-3 flex items-center gap-2 border-t border-border pt-2">
 				{hasMultiple && boundedIndex > 0 ? (
 					<button
 						type="button"
 						data-testid="clarifier-back"
 						onClick={handleBack}
 						disabled={disabled}
-						className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+						className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						Back
 					</button>

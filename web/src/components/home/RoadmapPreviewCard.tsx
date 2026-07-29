@@ -286,7 +286,7 @@ export function RoadmapPreviewCard({
 			aria-pressed={canSelect ? isSelected : undefined}
 			onClick={canSelect ? selectCard : undefined}
 			onKeyDown={handleKeyDown}
-			className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${variant === "template" ? "sm:h-[440px]" : "sm:h-[420px]"} ${
+			className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${variant === "template" ? "bg-card sm:h-[440px]" : "bg-(--app-surface-strong) sm:h-[420px]"} ${
 				isSelected
 					? "border-primary ring-2 ring-primary/45 shadow-lg dark:ring-primary/80"
 					: "border-border hover:border-input"

@@ -138,7 +138,7 @@ export function RoadmapStructureHeader({
 	onToggleCollapseAll,
 	showCollapseToggle = true,
 	searchPlaceholder = "Search epics, features, tasks...",
-	className = "px-4 py-4 border-b border-gray-200 bg-white min-w-0",
+	className = "min-w-0 border-b border-border bg-card px-4 py-4",
 	footerContent,
 }: RoadmapStructureHeaderProps) {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -182,11 +182,11 @@ export function RoadmapStructureHeader({
 	return (
 		<div className={className}>
 			<div className="flex items-center justify-between mb-2">
-				<h2 className="text-base font-semibold text-gray-900">
+				<h2 className="text-base font-semibold text-foreground">
 					Roadmap Structure
 				</h2>
 				{totalEpics > 0 && (
-					<span className="text-xs font-medium text-gray-500">
+					<span className="text-xs font-medium text-muted-foreground">
 						{totalEpics} {totalEpics === 1 ? "epic" : "epics"}
 					</span>
 				)}
@@ -194,7 +194,7 @@ export function RoadmapStructureHeader({
 
 			<div className="relative mb-3" ref={searchRef}>
 				<div className="relative">
-					<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 					<input
 						type="text"
 						placeholder={searchPlaceholder}
@@ -205,7 +205,7 @@ export function RoadmapStructureHeader({
 								setShowSearchPopup(true);
 							}
 						}}
-						className="w-full pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+						className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-9 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
 					/>
 					{searchQuery && (
 						<button
@@ -214,7 +214,7 @@ export function RoadmapStructureHeader({
 								setSearchQuery("");
 								setShowSearchPopup(false);
 							}}
-							className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+							className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
 						>
 							<X className="w-4 h-4" />
 						</button>
@@ -222,9 +222,9 @@ export function RoadmapStructureHeader({
 				</div>
 
 				{showSearchPopup && searchResults.length > 0 && (
-					<div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
+					<div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
 						<div className="py-1">
-							<div className="text-[10px] font-medium text-gray-400 px-3 py-1.5 uppercase tracking-wide">
+							<div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
 								{searchResults.length}{" "}
 								{searchResults.length === 1 ? "result" : "results"}
 							</div>
@@ -238,7 +238,7 @@ export function RoadmapStructureHeader({
 											setSearchQuery("");
 											onSearchResultSelect(result);
 										}}
-										className="w-full text-left px-3 py-1.5 hover:bg-gray-50 transition-colors group border-b border-gray-50 last:border-b-0"
+										className="group w-full border-b border-border px-3 py-1.5 text-left transition-colors last:border-b-0 hover:bg-muted"
 									>
 										<div className="flex items-center gap-2">
 											{result.type === "epic" && (
@@ -252,11 +252,11 @@ export function RoadmapStructureHeader({
 											)}
 
 											<div className="flex-1 min-w-0">
-												<div className="text-sm text-gray-900 truncate group-hover:text-primary font-medium">
+												<div className="truncate text-sm font-medium text-foreground group-hover:text-primary">
 													{result.title}
 												</div>
 												{(result.epicTitle || result.featureTitle) && (
-													<div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+													<div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
 														{result.type === "feature" && result.epicTitle && (
 															<div className="flex items-center gap-1">
 																<ChevronRight className="w-2.5 h-2.5" />

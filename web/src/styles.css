@@ -766,7 +766,11 @@ html[data-ui-theme] {
 }
 
 .ai-gradient-soft {
-  background-image: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--primary) 8%, var(--card)) 0%,
+    color-mix(in oklch, var(--primary-dark) 7%, var(--card)) 100%
+  );
 }
 
 /* Live collaborator drag preview (roadmap canvas). The dragged node gets an

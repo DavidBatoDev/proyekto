@@ -971,7 +971,7 @@ function ExplorerPanel({
 					<button
 						type="button"
 						onClick={handleResetToDefaultCollapse}
-						className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+						className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 						title="Reset to default collapse"
 						aria-label="Reset to default collapse"
 					>
@@ -984,13 +984,13 @@ function ExplorerPanel({
 			<div className="flex-1 overflow-y-auto px-3 pl-4 py-3 pt-2 hide-scrollbar">
 				{sortedEpics.length === 0 ? (
 					<div className="flex flex-col items-center justify-center h-full px-4 text-center">
-						<div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-							<FolderOpen className="w-8 h-8 text-gray-400" />
+						<div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+							<FolderOpen className="h-8 w-8 text-muted-foreground" />
 						</div>
-						<h3 className="text-sm font-semibold text-gray-900 mb-1">
+						<h3 className="mb-1 text-sm font-semibold text-foreground">
 							No roadmap structure yet
 						</h3>
-						<p className="text-xs text-gray-500 leading-relaxed">
+						<p className="text-xs leading-relaxed text-muted-foreground">
 							Your epics, features, and tasks will appear here once you start
 							building your roadmap.
 						</p>

@@ -211,29 +211,21 @@ function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: 
 }
 
 function CompactProjectCard({
-	number,
 	projectId,
 	teamId,
 	title,
 	client,
 	status,
-	statusColor,
-	progress,
-	progressColor,
 	bannerUrl = null,
 	isLocked = false,
 	canSetStatus = false,
 	members = [],
 }: {
-	number: number;
 	projectId: string;
 	teamId: string;
 	title: string;
 	client: string;
 	status: string;
-	statusColor: string;
-	progress: number | null;
-	progressColor: string;
 	bannerUrl?: string | null;
 	isLocked?: boolean;
 	canSetStatus?: boolean;
@@ -270,7 +262,7 @@ function CompactProjectCard({
 					{displayedMembers.map((m, i) => (
 						<div
 							key={m.user_id}
-							className="shrink-0 overflow-hidden rounded-full border-2 border-card"
+							className="shrink-0 overflow-hidden rounded-full border-2 border-(--app-surface-strong)"
 							style={{ marginLeft: i === 0 ? 0 : -6, zIndex: displayedMembers.length - i }}
 						>
 							<MemberAvatar member={m} size={6} />
@@ -278,7 +270,7 @@ function CompactProjectCard({
 					))}
 					{extraCount > 0 && (
 						<div
-							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-card bg-muted px-1 text-[9px] font-bold text-muted-foreground"
+							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-(--app-surface-strong) bg-muted px-1 text-[9px] font-bold text-muted-foreground"
 							style={{ marginLeft: -6, zIndex: 0 }}
 						>
 							+{extraCount}
@@ -291,7 +283,7 @@ function CompactProjectCard({
 
 	if (isLocked) {
 		return (
-			<div className="flex h-full cursor-not-allowed select-none flex-col rounded-xl border border-border bg-card text-card-foreground opacity-60 shadow-sm grayscale">
+			<div className="flex h-full cursor-not-allowed select-none flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground opacity-60 shadow-sm grayscale">
 				{bannerUrl && (
 					<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
 						<img src={bannerUrl} alt="" className="h-full w-full object-cover" />
@@ -299,9 +291,7 @@ function CompactProjectCard({
 					</div>
 				)}
 				<div className="flex flex-1 flex-col gap-2 p-3">
-					<div className="flex items-center gap-2">
-						<span className="text-[11px] font-semibold text-muted-foreground">#{number}</span>
-						<div className="h-3 w-px bg-border" />
+					<div>
 						<span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
 							<Lock className="h-2.5 w-2.5" />
 							No access
@@ -322,10 +312,7 @@ function CompactProjectCard({
 		<Link
 			to="/project/$projectId/roadmap"
 			params={{ projectId }}
-			className="group relative flex h-full flex-col rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
-			style={bannerUrl ? undefined : {
-				backgroundImage: `linear-gradient(to bottom, var(--card) 88%, color-mix(in srgb, ${statusColor} 9%, var(--card)))`,
-			}}
+			className="group relative flex h-full flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
 		>
 			<CardActionMenu
 				projectId={projectId}
@@ -337,18 +324,14 @@ function CompactProjectCard({
 				<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
 					<img src={bannerUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
 					<div className="absolute inset-0 bg-linear-to-t from-black/65 via-black/30 to-black/10" />
-					<div className="absolute bottom-2 left-3 flex items-center gap-1.5">
-						<span className="text-[11px] font-semibold text-white/80">#{number}</span>
-						<div className="h-3 w-px bg-white/40" />
+					<div className="absolute bottom-2 left-3">
 						<ProjectStatusBadge status={status} />
 					</div>
 				</div>
 			)}
 			<div className="flex flex-1 flex-col gap-2 p-3">
 				{!bannerUrl && (
-					<div className="flex items-center gap-2">
-						<span className="text-[11px] font-semibold text-muted-foreground">#{number}</span>
-						<div className="h-3 w-px bg-border" />
+					<div>
 						<ProjectStatusBadge status={status} />
 					</div>
 				)}
@@ -358,21 +341,7 @@ function CompactProjectCard({
 						<span className="font-medium text-card-foreground/80">Client:</span> {client}
 					</p>
 				</div>
-				<div className="mt-auto flex flex-col gap-2 pt-1">
-					<div>
-						<div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
-							<span>Progress</span>
-							<span>{progress === null ? "Not tracked" : `${progress}%`}</span>
-						</div>
-						<div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-							<div
-								className="h-full rounded-full transition-all"
-								style={{ width: `${progress ?? 0}%`, backgroundColor: progressColor }}
-							/>
-						</div>
-					</div>
-					{avatarStrip}
-				</div>
+				{avatarStrip ? <div className="mt-auto pt-1">{avatarStrip}</div> : null}
 			</div>
 		</Link>
 	);
@@ -485,7 +454,7 @@ function TeamDetailPage() {
 						</AppSurfaceCard>
 					) : (
 						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-							{attachedProjects.map((row, index) => {
+							{attachedProjects.map((row) => {
 								if (!row.project) return null;
 								const statusKey = (row.project.status || "").toLowerCase();
 								const statusConfig = PROJECT_STATUS_CONFIG[statusKey] ?? {
@@ -495,17 +464,11 @@ function TeamDetailPage() {
 								return (
 									<CompactProjectCard
 										key={row.project.id}
-										number={index + 1}
 										projectId={row.project.id}
 										teamId={teamId}
 										title={row.project.title ?? "Untitled project"}
 										client={row.project.client?.display_name || "Assigned"}
 										status={statusConfig.label}
-										statusColor={statusConfig.color}
-										progress={
-											row.project.status === "completed" ? 100 : null
-										}
-										progressColor={statusConfig.color}
 										bannerUrl={row.project.banner_url}
 										isLocked={!row.viewer_has_access}
 										canSetStatus={

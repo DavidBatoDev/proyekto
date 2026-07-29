@@ -461,7 +461,7 @@ export function ProjectCard({
 }) {
 	return (
 		<div
-			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:shadow-lg ${
+			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-border bg-(--app-surface-strong) p-4 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:shadow-lg ${
 				className ?? ""
 			}`}
 			style={style}
@@ -539,7 +539,7 @@ export function ProjectCard({
 
 function ProjectCardSkeleton() {
 	return (
-		<div className="flex h-[385px] flex-col rounded-xl border border-border bg-card p-4 shadow-sm">
+		<div className="flex h-[385px] flex-col rounded-xl border border-border bg-(--app-surface-strong) p-4 shadow-sm">
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2 w-full">

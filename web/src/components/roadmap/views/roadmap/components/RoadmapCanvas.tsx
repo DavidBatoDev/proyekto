@@ -287,7 +287,7 @@ const RoadmapCanvas = ({
   );
 
   return (
-    <div className="relative h-full bg-white flex flex-col">
+    <div className="relative flex h-full flex-col bg-background text-foreground">
       {/* Presence bar — rendered here (outside overflow-hidden) so it and its
           tooltip are never clipped by the canvas container */}
       {collaborators.length > 0 && (
@@ -301,31 +301,32 @@ const RoadmapCanvas = ({
         {mobile ? (
           viewMode === "milestones" ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                <CalendarDays className="h-6 w-6 text-slate-400" />
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <CalendarDays className="h-6 w-6 text-muted-foreground" />
               </div>
-              <h3 className="text-base font-semibold text-gray-900">
+              <h3 className="text-base font-semibold text-foreground">
                 Milestones timeline
               </h3>
-              <p className="mt-1 max-w-xs text-sm text-gray-500">
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                 The milestones timeline is best viewed on a larger screen. Switch
                 to Roadmap to browse epics, features, and tasks.
               </p>
             </div>
           ) : epics.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                <Plus className="h-8 w-8 text-gray-400" />
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <Plus className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="mb-2 text-lg font-semibold text-gray-900">
+              <h3 className="mb-2 text-lg font-semibold text-foreground">
                 No Epics Yet
               </h3>
-              <p className="mb-6 max-w-xs text-sm text-gray-600">
+              <p className="mb-6 max-w-xs text-sm text-muted-foreground">
                 Create your first epic to start building this roadmap.
               </p>
               <button
+                type="button"
                 onClick={() => setIsAddEpicModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4" />
                 Add Epic
@@ -360,32 +361,34 @@ const RoadmapCanvas = ({
         <>
         {viewMode === "roadmap" && epics.length === 0 ? (
           // Empty state - no epics
-          <div className="flex flex-col bg-[#F9F9F9] items-center justify-center h-full">
+          <div className="flex h-full flex-col items-center justify-center bg-background">
             <div className="text-center max-w-md">
               <div className="mb-4">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                  <Plus className="w-8 h-8 text-gray-400" />
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                  <Plus className="h-8 w-8 text-muted-foreground" />
                 </div>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="mb-2 text-xl font-semibold text-foreground">
                 No Epics Yet
               </h3>
-              <p className="text-gray-600 mb-6">
+              <p className="mb-6 text-muted-foreground">
                 Get started by creating your first epic. Epics help you organize
                 large bodies of work into manageable pieces.
               </p>
               <div className="flex items-center justify-center gap-3">
                 <button
+                  type="button"
                   onClick={() => setIsAddEpicModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-700 transition-colors text-sm font-medium"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   <Plus className="w-4 h-4" />
                   Add Epic
                 </button>
                 {canLinkExisting && (
                   <button
+                    type="button"
                     onClick={() => setIsLinkRoadmapModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors text-sm font-medium"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
                   >
                     <Link2 className="w-4 h-4" />
                     Link Existing Roadmap
@@ -455,12 +458,13 @@ const RoadmapCanvas = ({
         )}
 
         {viewMode === "epic" && !currentEpic && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex h-full items-center justify-center bg-background">
             <div className="text-center">
-              <p className="text-gray-500 mb-4">No epic selected</p>
+              <p className="mb-4 text-muted-foreground">No epic selected</p>
               <button
+                type="button"
                 onClick={() => setViewMode("roadmap")}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                className="rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
               >
                 Go to Roadmap View
               </button>
