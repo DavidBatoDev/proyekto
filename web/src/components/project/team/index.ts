@@ -1,4 +1,3 @@
-export { TeamPage } from "./TeamPage";
-export { TeamSkeleton } from "./TeamSkeleton";
-export { ProjectMemberRow } from "./ProjectMemberRow";
 export { InviteToProjectModal } from "./InviteToProjectModal";
+export { PositionCell } from "./PositionCell";
+export { TeamSkeleton } from "./TeamSkeleton";

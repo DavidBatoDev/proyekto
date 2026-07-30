@@ -127,6 +127,32 @@ class EnvironmentVariables {
   @IsString()
   GMAIL_FROM_EMAIL?: string;
 
+  // Per-purpose sender addresses (see common/mail/mail-senders.ts). Each is
+  // optional and falls back to GMAIL_FROM_EMAIL, then to omitting the From
+  // header entirely — so an unconfigured deploy behaves exactly as before.
+  // Every address MUST be verified under "Send mail as" on the authenticated
+  // Gmail mailbox or Gmail rejects the message.
+  @IsOptional()
+  @IsString()
+  MAIL_FROM_NOREPLY?: string;
+
+  @IsOptional()
+  @IsString()
+  MAIL_FROM_BILLING?: string;
+
+  @IsOptional()
+  @IsString()
+  MAIL_FROM_ACCOUNTS?: string;
+
+  @IsOptional()
+  @IsString()
+  MAIL_FROM_SUPPORT?: string;
+
+  /** Display name applied to every outbound sender. */
+  @IsOptional()
+  @IsString()
+  MAIL_FROM_NAME?: string;
+
   @IsOptional()
   @IsString()
   ROADMAP_AI_AUTO_TITLE_ENABLED?: string;

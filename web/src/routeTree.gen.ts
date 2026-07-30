@@ -63,6 +63,7 @@ import { Route as ProjectProjectIdOverviewRouteImport } from './routes/project/$
 import { Route as ProjectProjectIdLogsRouteImport } from './routes/project/$projectId/logs'
 import { Route as ProjectProjectIdFinancialsRouteImport } from './routes/project/$projectId/financials'
 import { Route as ProjectProjectIdContractRouteImport } from './routes/project/$projectId/contract'
+import { Route as ContractSignTokenRouteImport } from './routes/contract/sign/$token'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
 import { Route as TeamsTeamIdTimeRouteRouteImport } from './routes/teams/$teamId/time/route'
@@ -368,6 +369,11 @@ const ProjectProjectIdContractRoute =
     path: '/contract',
     getParentRoute: () => ProjectProjectIdRoute,
   } as any)
+const ContractSignTokenRoute = ContractSignTokenRouteImport.update({
+  id: '/contract/sign/$token',
+  path: '/contract/sign/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthAdminSigninRoute = AuthAdminSigninRouteImport.update({
   id: '/auth/admin/signin',
   path: '/auth/admin/signin',
@@ -571,6 +577,7 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/contract/sign/$token': typeof ContractSignTokenRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
   '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -651,6 +658,7 @@ export interface FileRoutesByTo {
   '/teams': typeof TeamsIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/contract/sign/$token': typeof ContractSignTokenRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
   '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -736,6 +744,7 @@ export interface FileRoutesById {
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/contract/sign/$token': typeof ContractSignTokenRoute
   '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
   '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -822,6 +831,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/contract/sign/$token'
     | '/project/$projectId/contract'
     | '/project/$projectId/financials'
     | '/project/$projectId/logs'
@@ -902,6 +912,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/contract/sign/$token'
     | '/project/$projectId/contract'
     | '/project/$projectId/financials'
     | '/project/$projectId/logs'
@@ -986,6 +997,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/contract/sign/$token'
     | '/project/$projectId/contract'
     | '/project/$projectId/financials'
     | '/project/$projectId/logs'
@@ -1063,6 +1075,7 @@ export interface RootRouteChildren {
   TeamsIndexRoute: typeof TeamsIndexRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
+  ContractSignTokenRoute: typeof ContractSignTokenRoute
   RoadmapSharedTokenRoute: typeof RoadmapSharedTokenRoute
   TeamsMeInvitesRoute: typeof TeamsMeInvitesRoute
   ProjectRoadmapIndexRoute: typeof ProjectRoadmapIndexRoute
@@ -1448,6 +1461,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/project/$projectId/contract'
       preLoaderRoute: typeof ProjectProjectIdContractRouteImport
       parentRoute: typeof ProjectProjectIdRoute
+    }
+    '/contract/sign/$token': {
+      id: '/contract/sign/$token'
+      path: '/contract/sign/$token'
+      fullPath: '/contract/sign/$token'
+      preLoaderRoute: typeof ContractSignTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/admin/signin': {
       id: '/auth/admin/signin'
@@ -1845,6 +1865,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamsIndexRoute: TeamsIndexRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,
+  ContractSignTokenRoute: ContractSignTokenRoute,
   RoadmapSharedTokenRoute: RoadmapSharedTokenRoute,
   TeamsMeInvitesRoute: TeamsMeInvitesRoute,
   ProjectRoadmapIndexRoute: ProjectRoadmapIndexRoute,

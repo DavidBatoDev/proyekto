@@ -109,6 +109,22 @@ export interface InvoiceEmailDelivery {
   to?: string;
 }
 
+/** Which of the three fallbacks supplied the address an invoice will go to. */
+export type InvoiceRecipientSource =
+  /** `bill_to.email`, snapshotted from the contract when the invoice was made. */
+  | 'contract_snapshot'
+  /** The linked recipient account's profile email. */
+  | 'recipient_account'
+  /** The project's client account. */
+  | 'project_client'
+  /** Nothing resolved — the invoice cannot be sent. */
+  | 'none';
+
+export interface InvoiceRecipient {
+  email: string | null;
+  source: InvoiceRecipientSource;
+}
+
 /**
  * Stable R2 key per invoice — keyed on the immutable id, not the editable
  * number, so regenerating OVERWRITES rather than leaking a new object.
@@ -501,6 +517,12 @@ export class InvoicesService {
       this.config.get<string>('CLIENT_URL', 'http://localhost:3000');
     const result = await this.mailer.send({
       to,
+      sender: 'billing',
+      // The client is doing business with the agency, not with Proyekto, so
+      // the agency's name leads in the inbox and replies go to them. The
+      // address stays ours — it is the only domain we can authenticate.
+      onBehalfOf: invoice.issued_by?.name ?? null,
+      replyTo: invoice.issued_by?.email ?? undefined,
       subject: `Invoice ${invoice.number} from ${invoice.issued_by?.name ?? 'your service provider'}`,
       html: buildInvoiceEmailHtml({
         invoice,
@@ -535,8 +557,21 @@ export class InvoicesService {
   private async resolveClientEmail(
     invoice: InvoiceRow,
   ): Promise<string | null> {
+    return (await this.resolveRecipient(invoice)).email;
+  }
+
+  /**
+   * The same resolution as `resolveClientEmail`, but reporting WHICH fallback
+   * supplied the address.
+   *
+   * The pre-send confirmation shows the consultant where the invoice is about
+   * to go, and "which one of the three sources is this" is the difference
+   * between a reassuring confirmation and a misleading one — a snapshot taken
+   * when the contract was drafted can easily be staler than the account on file.
+   */
+  async resolveRecipient(invoice: InvoiceRow): Promise<InvoiceRecipient> {
     const snapshot = invoice.bill_to?.email?.trim();
-    if (snapshot) return snapshot;
+    if (snapshot) return { email: snapshot, source: 'contract_snapshot' };
 
     if (invoice.recipient_user_id) {
       const { data } = await this.supabase
@@ -545,7 +580,7 @@ export class InvoicesService {
         .eq('id', invoice.recipient_user_id)
         .maybeSingle();
       const email = (data as { email: string | null } | null)?.email?.trim();
-      if (email) return email;
+      if (email) return { email, source: 'recipient_account' };
     }
 
     const { data: project } = await this.supabase
@@ -555,14 +590,27 @@ export class InvoicesService {
       .maybeSingle();
     const clientId = (project as { client_id: string | null } | null)
       ?.client_id;
-    if (!clientId) return null;
+    if (!clientId) return { email: null, source: 'none' };
 
     const { data: client } = await this.supabase
       .from('profiles')
       .select('email')
       .eq('id', clientId)
       .maybeSingle();
-    return (client as { email: string | null } | null)?.email?.trim() ?? null;
+    const email = (client as { email: string | null } | null)?.email?.trim();
+    return email
+      ? { email, source: 'project_client' }
+      : { email: null, source: 'none' };
+  }
+
+  /** Read-only lookup behind `GET /api/invoices/:id/recipient`. */
+  async getRecipient(
+    callerId: string,
+    invoiceId: string,
+  ): Promise<InvoiceRecipient> {
+    const invoice = await this.getInvoiceInternal(invoiceId);
+    await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
+    return this.resolveRecipient(invoice);
   }
 
   /**

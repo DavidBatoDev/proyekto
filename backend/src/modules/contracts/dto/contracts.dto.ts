@@ -35,6 +35,18 @@ export type InvoiceCadence = (typeof INVOICE_CADENCES)[number];
 export const TERM_UNITS = ['month', 'year'] as const;
 export const PERIOD_SOURCES = ['team_config', 'contract'] as const;
 
+/** Whose identity signs a contract: the consultant personally, or their team. */
+export const PROVIDER_KINDS = ['individual', 'agency'] as const;
+export type ProviderKind = (typeof PROVIDER_KINDS)[number];
+
+/**
+ * When the invoice for a period is raised. 'advance' is the prepaid retainer:
+ * bill November 30 for December. Retainer-only — an hourly contract cannot be
+ * billed before its hours are logged and approved.
+ */
+export const BILLING_TIMINGS = ['arrears', 'advance'] as const;
+export type BillingTiming = (typeof BILLING_TIMINGS)[number];
+
 export class ContractClauseDto {
   @IsString()
   @MaxLength(80)
@@ -93,6 +105,7 @@ export class ContractServiceDto {
  * half-finished draft.
  */
 export class ContractTermsDto {
+  @IsOptional() @IsIn(PROVIDER_KINDS) provider_kind?: ProviderKind;
   @IsOptional() @IsString() @MaxLength(200) provider_name?: string;
   @IsOptional() @IsString() @MaxLength(500) provider_address?: string;
   @IsOptional() @IsString() @MaxLength(80) provider_tin?: string;
@@ -107,6 +120,7 @@ export class ContractTermsDto {
 
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsIn(BILLING_MODES) billing_mode?: BillingMode;
+  @IsOptional() @IsIn(BILLING_TIMINGS) billing_timing?: BillingTiming;
 
   @IsOptional()
   @Type(() => Number)
@@ -192,6 +206,47 @@ export class CreateContractDto extends ContractTermsDto {
 
 export class UpdateContractDto extends ContractTermsDto {}
 
+/**
+ * Which invoices a terms change applies to. Mirrors MEETING_EDIT_SCOPES.
+ *
+ * Because future invoices are not materialized, only 'following' and 'all'
+ * reach the contract at all — 'this' is a single-invoice edit and belongs to
+ * the invoice editor. The enum still carries it so the UI and the API agree on
+ * one vocabulary and the server can say so explicitly.
+ */
+export const CONTRACT_EDIT_SCOPES = ['this', 'following', 'all'] as const;
+export type ContractEditScope = (typeof CONTRACT_EDIT_SCOPES)[number];
+
+export class AmendContractDto extends ContractTermsDto {
+  @IsIn(CONTRACT_EDIT_SCOPES) scope!: ContractEditScope;
+
+  /**
+   * First day the new terms apply. Defaults to the start of the billing period
+   * containing today for 'following', and to the service start for 'all'.
+   */
+  @IsOptional() @IsDateString() effective_from?: string;
+}
+
+/**
+ * Refill the provider block from a chosen identity. Deliberately its own
+ * endpoint rather than a side effect of `PATCH /contracts/:id`: a consultant
+ * who hand-edited the provider details should not lose them the moment they
+ * flip the Individual/Agency toggle, so overwriting is an explicit act.
+ */
+export class ReseedProviderDto {
+  @IsIn(PROVIDER_KINDS) provider_kind!: ProviderKind;
+
+  /**
+   * Which team's billing identity to copy, for `agency`. Defaults to the
+   * project's primary team. Only teams attached to the project are accepted —
+   * without that check any project admin could read out an arbitrary team's
+   * legal name, address and tax id by guessing a UUID.
+   *
+   * Ignored for `individual`, which always reads the caller's own profile.
+   */
+  @IsOptional() @IsUUID() team_id?: string;
+}
+
 export class SignContractDto {
   @IsIn(['consultant', 'client'])
   party!: 'consultant' | 'client';
@@ -269,6 +324,28 @@ export class UpdateSignaturePlacementDto {
   offset_y?: number;
 }
 
+/**
+ * How the team pool divides between members. 'equal' derives each slice from
+ * the member count on read; 'custom' uses the stored per-member amounts —
+ * hours are never truly equal, so the consultant needs both.
+ */
+export const ALLOCATION_MODES = ['equal', 'custom'] as const;
+export type AllocationMode = (typeof ALLOCATION_MODES)[number];
+
+/** One member's slice of the team pool. */
+export class ProjectMemberAllocationDto {
+  @IsUUID() team_id!: string;
+  @IsUUID() user_id!: string;
+
+  /** null = in the split, but with no explicit amount yet. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  monthly_allocation?: number | null;
+}
+
 export class UpdateProjectEconomicsDto {
   @Type(() => Number)
   @IsNumber()
@@ -283,6 +360,19 @@ export class UpdateProjectEconomicsDto {
   team_percent!: number;
 
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
+
+  @IsOptional() @IsIn(ALLOCATION_MODES) allocation_mode?: AllocationMode;
+
+  /**
+   * The complete set of per-member slices. Omit to leave them untouched; send
+   * an array to REPLACE them — anyone absent is dropped from the split, which
+   * is how "remove this member from the budget" persists.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectMemberAllocationDto)
+  allocations?: ProjectMemberAllocationDto[];
 
   /**
    * Consultant's explicit acknowledgement that hourly members deliberately run

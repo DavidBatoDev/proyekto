@@ -47,11 +47,21 @@ export function useRunningTaskId(): string | null {
 	return useRunningLogQuery(true, user?.id).data?.task_id ?? null;
 }
 
-export function useActiveTimer(options?: { enabled?: boolean }) {
+export function useActiveTimer(options?: {
+	enabled?: boolean;
+	/**
+	 * Callbacks so route-level UI (a toast, closing the picker) can react
+	 * without re-implementing start/stop and losing the running-log cache
+	 * update this hook owns.
+	 */
+	onStarted?: (log: TaskTimeLog) => void;
+	onStopped?: () => void;
+}) {
 	const user = useUser();
 	const toast = useToast();
 	const queryClient = useQueryClient();
 	const enabled = options?.enabled !== false;
+	const { onStarted, onStopped } = options ?? {};
 
 	const runningKey = useMemo(
 		() => ["team-time", "running-log", user?.id ?? "anonymous"] as const,
@@ -86,6 +96,7 @@ export function useActiveTimer(options?: { enabled?: boolean }) {
 		onSuccess: (row) => {
 			setRunning(row);
 			invalidateTime();
+			onStarted?.(row);
 		},
 		onError: (error) => {
 			toast.error(
@@ -167,6 +178,7 @@ export function useActiveTimer(options?: { enabled?: boolean }) {
 			setRunning(null);
 			invalidateTime();
 			toast.success("Timer stopped.");
+			onStopped?.();
 		},
 	});
 

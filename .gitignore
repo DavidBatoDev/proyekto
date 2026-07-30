@@ -29,6 +29,10 @@ mcp.json
 /seed-images/
 /.stock-staging/
 
+# Downloaded Google OAuth client JSON — carries the client secret in plaintext.
+# Use it with `node scripts/gmail_auth.mjs --secrets <file>` and then delete it.
+client_secret*.json
+
 # Playwright
 node_modules/
 /test-results/

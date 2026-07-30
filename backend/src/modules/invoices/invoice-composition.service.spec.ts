@@ -64,6 +64,7 @@ const BASE_CONTRACT: ContractRow = {
   version: 1,
   contract_number: 'BS2026-001',
   status: 'active',
+  provider_kind: 'agency',
   provider_name: 'Prodigitality',
   provider_address: null,
   provider_tin: null,
@@ -76,6 +77,9 @@ const BASE_CONTRACT: ContractRow = {
   client_user_id: null,
   currency: 'USD',
   billing_mode: 'time_based',
+  billing_timing: 'arrears',
+  supersedes_contract_id: null,
+  amendment_effective_date: null,
   recurring_fee: null,
   client_hourly_rate: 15,
   included_hours: null,
@@ -378,12 +382,18 @@ describe('assertNoInternalRates', () => {
     ).not.toThrow();
   });
 
-  it.each(['rate_snapshot', 'member_user_id', 'currency_snapshot'])(
-    'throws when a line carries %s',
-    (key) => {
-      expect(() => assertNoInternalRates([line({ [key]: 4 })])).toThrow(
-        /member cost rates/,
-      );
-    },
-  );
+  it.each([
+    // What a member costs.
+    'rate_snapshot',
+    'member_user_id',
+    'currency_snapshot',
+    // How the revenue divides internally — margin, not price.
+    'monthly_allocation',
+    'allocation',
+    'team_pool',
+  ])('throws when a line carries %s', (key) => {
+    expect(() => assertNoInternalRates([line({ [key]: 4 })])).toThrow(
+      /member cost rates/,
+    );
+  });
 });

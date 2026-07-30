@@ -6,6 +6,7 @@ import {
 	FolderKanban,
 	Pencil,
 	Play,
+	Plus,
 	Square,
 	Timer,
 	Trash2,
@@ -67,7 +68,14 @@ interface TeamMyLogsListProps {
 	onEditLog: (log: TaskTimeLog) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	/** Opens the timer picker — this is the "Start a timer" action. */
 	onOpenAddLog: () => void;
+	/**
+	 * Opens the manual-entry form for time already worked. Optional so a
+	 * surface without a manual path can omit it, but both time pages pass it —
+	 * it used to be reachable only through the calendar.
+	 */
+	onOpenManualLog?: () => void;
 }
 
 export function TeamMyLogsList({
@@ -85,6 +93,7 @@ export function TeamMyLogsList({
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
 	onOpenAddLog,
+	onOpenManualLog,
 }: TeamMyLogsListProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 	const [unusualOpen, setUnusualOpen] = useState(false);
@@ -168,14 +177,26 @@ export function TeamMyLogsList({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<h3 className="text-sm font-semibold text-foreground">Activity</h3>
-				<button
-					type="button"
-					onClick={onOpenAddLog}
-					className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-				>
-					<Play className="h-3.5 w-3.5" />
-					Start a timer
-				</button>
+				<div className="flex items-center gap-2">
+					{onOpenManualLog && (
+						<button
+							type="button"
+							onClick={onOpenManualLog}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+						>
+							<Plus className="h-3.5 w-3.5" />
+							Add past work
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={onOpenAddLog}
+						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+					>
+						<Play className="h-3.5 w-3.5" />
+						Start a timer
+					</button>
+				</div>
 			</div>
 
 			{unusualLogs.length > 0 && (
@@ -317,7 +338,11 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	const started = new Date(log.started_at);
 	const ended = log.ended_at ? new Date(log.ended_at) : null;
 	const startedLabel = formatLogStart(started);
-	const endedLabel = isRunning ? "now" : ended ? formatLogEnd(started, ended) : "—";
+	const endedLabel = isRunning
+		? "now"
+		: ended
+			? formatLogEnd(started, ended)
+			: "—";
 
 	const taskTitle =
 		log.task?.title ||
@@ -392,7 +417,9 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 			{/* Icon */}
 			<div
 				className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-					isRunning ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+					isRunning
+						? "bg-primary/15 text-primary"
+						: "bg-muted text-muted-foreground"
 				}`}
 			>
 				{isRunning ? (
@@ -447,7 +474,10 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 							title="Unusually long — a timer may have been left running."
 							className="inline-flex text-amber-500"
 						>
-							<AlertTriangle className="h-3 w-3" aria-label="Unusually long log" />
+							<AlertTriangle
+								className="h-3 w-3"
+								aria-label="Unusually long log"
+							/>
 						</span>
 					)}
 					{hours.toFixed(2)} h

@@ -13,7 +13,9 @@ import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { ContractsService } from './contracts.service';
 import {
+  AmendContractDto,
   CreateContractDto,
+  ReseedProviderDto,
   SignContractDto,
   UnsignContractDto,
   UpdateContractDto,
@@ -83,5 +85,34 @@ export class ContractsController {
     @Body() dto: UpdateSignaturePlacementDto,
   ) {
     return this.contracts.updateSignaturePlacement(user.id, id, dto);
+  }
+
+  /**
+   * Change the terms of a signed contract from a chosen date onward. Creates
+   * version + 1 as a draft; the current version governs until both parties
+   * re-sign the new one.
+   */
+  @Post(':id/amend')
+  amend(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AmendContractDto,
+  ) {
+    return this.contracts.amendContract(user.id, id, dto);
+  }
+
+  /** Refill the provider block from the team record or the personal profile. */
+  @Post(':id/provider')
+  reseedProvider(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReseedProviderDto,
+  ) {
+    return this.contracts.reseedProvider(
+      user.id,
+      id,
+      dto.provider_kind,
+      dto.team_id,
+    );
   }
 }

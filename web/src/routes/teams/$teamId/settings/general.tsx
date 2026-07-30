@@ -1,7 +1,5 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	Edit2,
@@ -12,17 +10,15 @@ import {
 	Upload,
 	X,
 } from "lucide-react";
-import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
-import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { UploadModal } from "@/components/profile/UploadModal";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
-import { useAuthStore, useUser } from "@/stores/authStore";
-import {
-	deleteTeam,
-	getTeam,
-	updateTeam,
-} from "@/services/teams.service";
+import { deleteTeam, getTeam, updateTeam } from "@/services/teams.service";
 import { uploadService } from "@/services/upload.service";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/teams/$teamId/settings/general")({
 	beforeLoad: () => {
@@ -56,11 +52,24 @@ function TeamGeneralSettings() {
 	const [deleteText, setDeleteText] = useState("");
 	const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 	const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+	const [isEditingBilling, setIsEditingBilling] = useState(false);
+	const [billingDraft, setBillingDraft] = useState({
+		legal_name: "",
+		billing_address: "",
+		tax_id: "",
+		billing_email: "",
+	});
 
 	useEffect(() => {
 		if (team) {
 			setNameDraft(team.name || "");
 			setDescriptionDraft(team.description ?? "");
+			setBillingDraft({
+				legal_name: team.legal_name ?? "",
+				billing_address: team.billing_address ?? "",
+				tax_id: team.tax_id ?? "",
+				billing_email: team.billing_email ?? "",
+			});
 		}
 	}, [team]);
 
@@ -69,6 +78,10 @@ function TeamGeneralSettings() {
 			name?: string;
 			description?: string;
 			avatar_url?: string;
+			legal_name?: string;
+			billing_address?: string;
+			tax_id?: string;
+			billing_email?: string;
 		}) => updateTeam(teamId, patch),
 		onSuccess: (updated) => {
 			queryClient.setQueryData(["teams", "detail", teamId], updated);
@@ -107,6 +120,16 @@ function TeamGeneralSettings() {
 		setIsEditingDescription(false);
 	};
 
+	const saveBilling = async () => {
+		await updateMutation.mutateAsync({
+			legal_name: billingDraft.legal_name.trim(),
+			billing_address: billingDraft.billing_address.trim(),
+			tax_id: billingDraft.tax_id.trim(),
+			billing_email: billingDraft.billing_email.trim(),
+		});
+		setIsEditingBilling(false);
+	};
+
 	// The UploadModal validates type/size and hands back the chosen file(s);
 	// we only ever take the first (single-image avatar).
 	const handleAvatarUpload = async (files: File[]) => {
@@ -142,8 +165,7 @@ function TeamGeneralSettings() {
 		}
 	};
 
-	const deleteConfirmMatches =
-		deleteText.trim() === (team?.name?.trim() || "");
+	const deleteConfirmMatches = deleteText.trim() === (team?.name?.trim() || "");
 
 	if (teamQuery.isLoading) {
 		return (
@@ -359,6 +381,116 @@ function TeamGeneralSettings() {
 									</p>
 								)}
 							</section>
+
+							<section>
+								<div className="mb-1 flex items-center justify-between gap-2">
+									<h3 className="text-[18px] font-semibold text-slate-900">
+										Billing identity
+									</h3>
+									{isOwner && !isEditingBilling && (
+										<button
+											type="button"
+											onClick={() => setIsEditingBilling(true)}
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+										>
+											<Edit2 className="h-4 w-4" />
+											Edit
+										</button>
+									)}
+								</div>
+								<p className="mb-3 text-[13px] leading-6 text-slate-500">
+									Used as the service-provider block on contracts and invoices
+									when a project bills through this team. Anything left blank
+									falls back to the consultant's own profile.
+								</p>
+
+								{isEditingBilling ? (
+									<div className="space-y-3">
+										<BillingField
+											label="Registered business name"
+											placeholder={team.name || "e.g. Pro Digitality"}
+											value={billingDraft.legal_name}
+											onChange={(v) =>
+												setBillingDraft((d) => ({ ...d, legal_name: v }))
+											}
+											disabled={updateMutation.isPending}
+										/>
+										<BillingField
+											label="Business address"
+											placeholder="Street, city, country"
+											value={billingDraft.billing_address}
+											onChange={(v) =>
+												setBillingDraft((d) => ({ ...d, billing_address: v }))
+											}
+											disabled={updateMutation.isPending}
+										/>
+										<BillingField
+											label="Tax ID"
+											placeholder="TIN / VAT / EIN"
+											value={billingDraft.tax_id}
+											onChange={(v) =>
+												setBillingDraft((d) => ({ ...d, tax_id: v }))
+											}
+											disabled={updateMutation.isPending}
+										/>
+										<BillingField
+											label="Billing email"
+											type="email"
+											placeholder="billing@example.com"
+											value={billingDraft.billing_email}
+											onChange={(v) =>
+												setBillingDraft((d) => ({ ...d, billing_email: v }))
+											}
+											disabled={updateMutation.isPending}
+										/>
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => void saveBilling()}
+												disabled={updateMutation.isPending}
+												className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+											>
+												{updateMutation.isPending ? (
+													<Loader2 className="h-4 w-4 animate-spin" />
+												) : (
+													<Save className="h-4 w-4" />
+												)}
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													setBillingDraft({
+														legal_name: team.legal_name ?? "",
+														billing_address: team.billing_address ?? "",
+														tax_id: team.tax_id ?? "",
+														billing_email: team.billing_email ?? "",
+													});
+													setIsEditingBilling(false);
+												}}
+												disabled={updateMutation.isPending}
+												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+											>
+												<X className="h-4 w-4" />
+												Cancel
+											</button>
+										</div>
+									</div>
+								) : (
+									<dl className="space-y-1.5 text-[13px] leading-6">
+										<BillingRow
+											label="Registered name"
+											value={team.legal_name}
+										/>
+										<BillingRow label="Address" value={team.billing_address} />
+										<BillingRow label="Tax ID" value={team.tax_id} />
+										<BillingRow
+											label="Billing email"
+											value={team.billing_email}
+										/>
+									</dl>
+								)}
+							</section>
 						</div>
 					</div>
 				</section>
@@ -433,8 +565,7 @@ function TeamGeneralSettings() {
 									Delete team
 								</h3>
 								<p className="mt-1 text-sm text-red-700">
-									Type{" "}
-									<span className="font-semibold">{team.name}</span> to
+									Type <span className="font-semibold">{team.name}</span> to
 									confirm deletion.
 								</p>
 							</div>
@@ -470,8 +601,59 @@ function TeamGeneralSettings() {
 							</div>
 						</div>
 					</div>,
-					document.body
+					document.body,
 				)}
 		</TeamSettingsLayout>
+	);
+}
+
+/** One editable field in the Billing identity block. */
+function BillingField({
+	label,
+	value,
+	onChange,
+	disabled,
+	placeholder,
+	type = "text",
+}: {
+	label: string;
+	value: string;
+	onChange: (value: string) => void;
+	disabled?: boolean;
+	placeholder?: string;
+	type?: string;
+}) {
+	return (
+		<label className="block">
+			<span className="mb-1 block text-xs font-semibold text-slate-600">
+				{label}
+			</span>
+			<input
+				type={type}
+				value={value}
+				placeholder={placeholder}
+				disabled={disabled}
+				onChange={(e) => onChange(e.target.value)}
+				className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30 disabled:opacity-60"
+			/>
+		</label>
+	);
+}
+
+/** One read-only row in the Billing identity block. */
+function BillingRow({
+	label,
+	value,
+}: {
+	label: string;
+	value?: string | null;
+}) {
+	return (
+		<div className="flex gap-3">
+			<dt className="w-36 shrink-0 text-slate-400">{label}</dt>
+			<dd className="text-slate-700">
+				{value?.trim() || <span className="text-slate-400">Not set</span>}
+			</dd>
+		</div>
 	);
 }

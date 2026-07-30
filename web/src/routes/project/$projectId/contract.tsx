@@ -1,59 +1,70 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useMutation,
+	useQueries,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import {
 	CheckCircle2,
 	FileSignature,
+	Link2,
 	Loader2,
-	PenLine,
+	PanelRightOpen,
 	Trash2,
-	Upload,
-	X,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { DateField } from "@/components/common/DateField";
+import { Dropdown } from "@/components/common/Dropdown";
 import {
 	AutosaveIndicator,
 	FieldLabel,
 	SelectField,
 	TextField,
+	ToggleField,
 } from "@/components/common/FormFields";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { ScopeDialog, type ScopeOption } from "@/components/common/ScopeDialog";
 import {
 	ActivationGuide,
 	checklistProgress,
 } from "@/components/project/ActivationGuide";
+import { ClientSigningLinkModal } from "@/components/project/ClientSigningLinkModal";
 import {
 	ContractDocumentPreview,
 	type PreviewParties,
 	type PreviewTerms,
 } from "@/components/project/ContractDocumentPreview";
+import { SignaturePad } from "@/components/project/signature/SignaturePad";
+import { SignaturePlacementField } from "@/components/project/signature/SignaturePlacementField";
 import { useActivationChecklist } from "@/hooks/useActivationChecklist";
 import { useAutosave } from "@/hooks/useAutosave";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import {
 	type BillingMode,
 	type ContractTermUnit,
 	formatContractDate,
-	formatMoney,
 	formatPeriodRange,
 	type InvoiceCadence,
 } from "@/lib/contract-term";
 import { CURRENCIES } from "@/lib/currency";
 import {
+	type BillingTiming,
 	type Contract,
 	type ContractClause,
+	type ContractEditScope,
 	type ContractService,
 	contractService,
-	DEFAULT_SIGNATURE_PLACEMENT,
-	type ProjectEconomics,
+	type ProviderKind,
 	type SignaturePlacement,
 } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
-import { uploadService } from "@/services/upload.service";
+import { getTeam, listProjectTeams } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
@@ -61,7 +72,19 @@ const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
 	label: c.label,
 }));
 
+/** localStorage key for the live-preview show/hide preference. */
+const PREVIEW_PREF_KEY = "contract-preview-visible";
+
 export const Route = createFileRoute("/project/$projectId/contract")({
+	/**
+	 * `?step=` lets the activation checklist deep-link to the section an item is
+	 * actually about. Unknown values fall through to the default step rather
+	 * than erroring — a stale bookmark should still open the page.
+	 */
+	validateSearch: (search: Record<string, unknown>): { step?: StepKey } => {
+		const step = search.step;
+		return typeof step === "string" && isStepKey(step) ? { step } : {};
+	},
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
@@ -103,17 +126,30 @@ function ProjectContractPage() {
 	// Newest version governs; older versions are history.
 	const contract = contractsQuery.data?.[0] ?? null;
 
-	const economicsQuery = useQuery({
-		queryKey: ["project", projectId, "economics"],
-		queryFn: () => contractService.getEconomics(projectId),
-		enabled: isConsultant,
-	});
-
 	const checklistQuery = useActivationChecklist(projectId, {
 		enabled: isConsultant,
 	});
 
-	const [activeStep, setActiveStep] = useState<StepKey>("parties");
+	const { step: stepFromUrl } = Route.useSearch();
+	const [activeStep, setActiveStep] = useState<StepKey>(
+		stepFromUrl ?? "parties",
+	);
+
+	// The preview costs a fixed 440px, which is what squeezed the form fields.
+	// Remembered per browser so hiding it once sticks; defaults on, because a
+	// consultant who has never seen it shouldn't have to discover it.
+	const [previewOpen, setPreviewOpen] = useState(() => {
+		if (typeof localStorage === "undefined") return true;
+		return localStorage.getItem(PREVIEW_PREF_KEY) !== "hidden";
+	});
+	const setPreviewVisible = (visible: boolean) => {
+		setPreviewOpen(visible);
+		try {
+			localStorage.setItem(PREVIEW_PREF_KEY, visible ? "shown" : "hidden");
+		} catch {
+			// Private-mode / quota — the preference just won't persist.
+		}
+	};
 
 	// Live drafts fed up from the Parties/Terms editors so the right-side document
 	// preview updates as the consultant types. Seeded from the saved contract and
@@ -210,14 +246,28 @@ function ProjectContractPage() {
 
 	return (
 		<div className="w-full">
-			<div className="mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
+			<div className="mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8 2xl:max-w-[1680px]">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Finance"
 						title="Contract"
 						subtitle="What the client pays, for how long, and how the money splits between the company and the team."
 						rightSlot={
-							contract ? <ContractStatusChip status={contract.status} /> : null
+							<div className="flex items-center gap-2">
+								{contract && !previewOpen && (
+									<button
+										type="button"
+										onClick={() => setPreviewVisible(true)}
+										className="hidden items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground lg:inline-flex"
+									>
+										<PanelRightOpen className="h-3.5 w-3.5" />
+										Show preview
+									</button>
+								)}
+								{contract ? (
+									<ContractStatusChip status={contract.status} />
+								) : null}
+							</div>
 						}
 					/>
 				</AppSurfaceCard>
@@ -246,7 +296,13 @@ function ProjectContractPage() {
 						)}
 					</AppSurfaceCard>
 				) : (
-					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_minmax(0,480px)]">
+					<div
+						className={
+							previewOpen
+								? "grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,440px)]"
+								: "grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]"
+						}
+					>
 						{/* Left: step rail + activation guide (kept beside the steps so
 						    it stays visible, not buried under the tall preview). */}
 						<div className="space-y-5 lg:sticky lg:top-6 lg:self-start">
@@ -255,7 +311,6 @@ function ProjectContractPage() {
 								activeStep={activeStep}
 								onSelect={setActiveStep}
 								contract={contract}
-								economics={economicsQuery.data ?? null}
 							/>
 							{isConsultant && checklistQuery.data && (
 								<div className="app-surface-card-strong rounded-2xl p-4">
@@ -298,20 +353,13 @@ function ProjectContractPage() {
 							{activeStep === "services" && (
 								<ServicesSection contract={contract} editable={isConsultant} />
 							)}
-							{activeStep === "budget" && isConsultant && (
-								<EconomicsSection
-									projectId={projectId}
-									contract={contract}
-									economics={economicsQuery.data ?? null}
-									isLoading={economicsQuery.isPending}
-								/>
-							)}
 							{activeStep === "agreement" && (
 								<AgreementSection contract={contract} editable={isConsultant} />
 							)}
 							{activeStep === "signatures" && (
 								<SignatureSection
 									contract={contract}
+									isConsultant={isConsultant}
 									canSignAsConsultant={isConsultant}
 									canSignAsClient={
 										Boolean(user?.id) &&
@@ -338,13 +386,16 @@ function ProjectContractPage() {
 						</div>
 
 						{/* Right: the live document preview gets the whole column. */}
-						<div className="lg:sticky lg:top-6 lg:self-start">
-							<ContractDocumentPreview
-								contract={contract}
-								parties={previewParties}
-								terms={previewTerms}
-							/>
-						</div>
+						{previewOpen && (
+							<div className="lg:sticky lg:top-6 lg:self-start">
+								<ContractDocumentPreview
+									contract={contract}
+									parties={previewParties}
+									terms={previewTerms}
+									onHide={() => setPreviewVisible(false)}
+								/>
+							</div>
+						)}
 					</div>
 				)}
 			</div>
@@ -354,13 +405,7 @@ function ProjectContractPage() {
 
 /* ── Step rail ────────────────────────────────────────────────────────────── */
 
-type StepKey =
-	| "parties"
-	| "terms"
-	| "services"
-	| "budget"
-	| "agreement"
-	| "signatures";
+type StepKey = "parties" | "terms" | "services" | "agreement" | "signatures";
 
 const STEP_META: Array<{
 	key: StepKey;
@@ -370,7 +415,6 @@ const STEP_META: Array<{
 	{ key: "parties", label: "Parties" },
 	{ key: "terms", label: "Commercial terms" },
 	{ key: "services", label: "Services" },
-	{ key: "budget", label: "Budget split", consultantOnly: true },
 	{ key: "agreement", label: "Agreement" },
 	{ key: "signatures", label: "Signatures" },
 ];
@@ -379,16 +423,19 @@ function visibleSteps(isConsultant: boolean) {
 	return STEP_META.filter((s) => isConsultant || !s.consultantOnly);
 }
 
+function isStepKey(value: string): value is StepKey {
+	return STEP_META.some((s) => s.key === value);
+}
+
 /**
  * Per-step completeness for the rail's done/todo dot. Derived from the contract
- * (and economics) directly rather than the activation checklist, so each step
+ * directly rather than the activation checklist, so each step
  * reflects its own data even for items the checklist doesn't track (services,
  * agreement). "optional" steps show a neutral dot when empty, not a red todo.
  */
 function stepStatus(
 	key: StepKey,
 	contract: Contract,
-	economics: ProjectEconomics | null,
 ): "done" | "todo" | "optional" {
 	switch (key) {
 		case "parties":
@@ -404,12 +451,6 @@ function stepStatus(
 		}
 		case "services":
 			return contract.services.length > 0 ? "done" : "optional";
-		case "budget":
-			return economics &&
-				Math.abs(economics.company_percent + economics.team_percent - 100) <
-					1e-9
-				? "done"
-				: "todo";
 		case "agreement":
 			return contract.clauses.length > 0 ? "done" : "optional";
 		case "signatures":
@@ -424,19 +465,17 @@ function StepRail({
 	activeStep,
 	onSelect,
 	contract,
-	economics,
 }: {
 	steps: Array<{ key: StepKey; label: string }>;
 	activeStep: StepKey;
 	onSelect: (key: StepKey) => void;
 	contract: Contract;
-	economics: ProjectEconomics | null;
 }) {
 	return (
 		<nav>
 			<ol className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-1">
 				{steps.map((step, index) => {
-					const status = stepStatus(step.key, contract, economics);
+					const status = stepStatus(step.key, contract);
 					const active = step.key === activeStep;
 					return (
 						<li key={step.key}>
@@ -511,7 +550,7 @@ function FieldGroup({
 			<legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 				{title}
 			</legend>
-			<div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+			<div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
 				{children}
 			</div>
 		</fieldset>
@@ -542,6 +581,9 @@ function termsPreview(contract: Contract | null): PreviewTerms {
 		service_description: contract?.service_description ?? "",
 		payment_method: contract?.payment_method ?? "",
 		due_days: String(contract?.due_days ?? 15),
+		billing_timing: contract?.billing_timing ?? "arrears",
+		auto_renew: contract?.auto_renew ?? false,
+		notice_days: String(contract?.notice_days ?? 30),
 	};
 }
 
@@ -578,7 +620,13 @@ function PartiesSection({
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
+	const confirm = useConfirm();
 	const [draft, setDraft] = useState({
+		// provider_kind rides the autosave draft so flipping the toggle records
+		// the choice without touching the typed-in details. It used to fire a
+		// destructive reseed on click, which is exactly what ReseedProviderDto's
+		// own docstring says must not happen.
+		provider_kind: contract.provider_kind,
 		provider_name: contract.provider_name ?? "",
 		provider_address: contract.provider_address ?? "",
 		provider_tin: contract.provider_tin ?? "",
@@ -588,6 +636,41 @@ function PartiesSection({
 		client_tin: contract.client_tin ?? "",
 		client_email: contract.client_email ?? "",
 	});
+
+	// Only teams attached to this project are legitimate providers — and the
+	// backend enforces the same rule, so offering anything else would just 400.
+	const attachedTeamsQuery = useQuery({
+		queryKey: ["project", contract.project_id, "teams"],
+		queryFn: () => listProjectTeams(contract.project_id),
+	});
+	const attachedTeams = useMemo(
+		() => attachedTeamsQuery.data ?? [],
+		[attachedTeamsQuery.data],
+	);
+	// project_teams carries only ids, so resolve the names the picker shows.
+	const teamDetailQueries = useQueries({
+		queries: attachedTeams.map((t) => ({
+			queryKey: ["teams", "detail", t.team_id],
+			queryFn: () => getTeam(t.team_id),
+			staleTime: 5 * 60_000,
+		})),
+	});
+	const teamNameById = useMemo(() => {
+		const map: Record<string, string> = {};
+		teamDetailQueries.forEach((q, i) => {
+			const id = attachedTeams[i]?.team_id;
+			if (id) map[id] = q.data?.name ?? "Team";
+		});
+		return map;
+	}, [teamDetailQueries, attachedTeams]);
+	const primaryTeamId = useMemo(
+		() =>
+			(attachedTeams.find((t) => t.is_primary) ?? attachedTeams[0])?.team_id ??
+			"",
+		[attachedTeams],
+	);
+	const [refillTeamId, setRefillTeamId] = useState("");
+	const effectiveRefillTeamId = refillTeamId || primaryTeamId;
 
 	// Feed the live document preview as the consultant edits.
 	useEffect(() => {
@@ -622,14 +705,136 @@ function PartiesSection({
 		{ enabled: !locked, onError: (err) => toast.error(err.message) },
 	);
 
+	/**
+	 * Refilling is destructive, so it goes through its own endpoint and its own
+	 * confirm — never through the autosave draft above, which would race with it.
+	 */
+	const reseedMutation = useMutation({
+		mutationFn: (input: { kind: ProviderKind; teamId?: string }) =>
+			contractService.reseedProvider(contract.id, input.kind, input.teamId),
+		onSuccess: (updated) => {
+			setDraft((d) => ({
+				...d,
+				provider_name: updated.provider_name ?? "",
+				provider_address: updated.provider_address ?? "",
+				provider_tin: updated.provider_tin ?? "",
+			}));
+			void qc.invalidateQueries({
+				queryKey: ["contracts", contract.project_id],
+			});
+			toast.success(
+				updated.provider_kind === "agency"
+					? "Filled in from your team's billing identity."
+					: "Filled in from your profile.",
+			);
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
+
+	const hasProviderDetails = Boolean(
+		draft.provider_name.trim() ||
+			draft.provider_address.trim() ||
+			draft.provider_tin.trim(),
+	);
+
+	const refill = async () => {
+		const kind = draft.provider_kind;
+		const source =
+			kind === "agency"
+				? (teamNameById[effectiveRefillTeamId] ?? "that team")
+				: "your profile";
+		if (hasProviderDetails) {
+			const ok = await confirm({
+				title: "Replace the service-provider details?",
+				message: `Name, address and TIN will be overwritten with ${
+					kind === "agency"
+						? `the billing identity saved on ${source}`
+						: "your personal profile"
+				}. Anything you typed here is lost.`,
+				confirmLabel: "Replace details",
+				tone: "danger",
+			});
+			if (!ok) return;
+		}
+		reseedMutation.mutate({
+			kind,
+			teamId:
+				kind === "agency" ? effectiveRefillTeamId || undefined : undefined,
+		});
+	};
+
 	return (
 		<AppSurfaceCard className="p-6">
 			<h2 className="text-lg font-semibold text-foreground">Parties</h2>
-			<div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+			<div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2">
 				<div className="space-y-3">
 					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Service provider
 					</p>
+
+					<ProviderKindToggle
+						value={draft.provider_kind}
+						disabled={locked}
+						onChange={(kind) =>
+							setDraft((d) => ({ ...d, provider_kind: kind }))
+						}
+					/>
+
+					{draft.provider_kind === "agency" && attachedTeams.length > 1 && (
+						<div className="space-y-1">
+							<span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+								Bill as
+							</span>
+							<Dropdown
+								value={effectiveRefillTeamId}
+								onChange={setRefillTeamId}
+								disabled={locked || reseedMutation.isPending}
+								options={attachedTeams.map((t) => ({
+									value: t.team_id,
+									label: `${teamNameById[t.team_id] ?? "Team"}${
+										t.is_primary ? " · primary" : ""
+									}`,
+								}))}
+							/>
+						</div>
+					)}
+
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<button
+							type="button"
+							onClick={() => void refill()}
+							disabled={
+								locked ||
+								reseedMutation.isPending ||
+								(draft.provider_kind === "agency" && !effectiveRefillTeamId)
+							}
+							className="text-[11px] font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-50"
+						>
+							{reseedMutation.isPending
+								? "Refilling…"
+								: draft.provider_kind === "agency"
+									? "Refill from team settings"
+									: "Refill from my profile"}
+						</button>
+						{draft.provider_kind === "individual" && (
+							<span className="text-[11px] text-muted-foreground">
+								Your profile has no business address or tax ID — type them here.
+							</span>
+						)}
+						{draft.provider_kind === "agency" && attachedTeams.length === 0 && (
+							<span className="text-[11px] text-muted-foreground">
+								No team attached — attach one on the Team page to bill as an
+								agency.
+							</span>
+						)}
+					</div>
+					{draft.provider_kind === "agency" && attachedTeams.length > 1 && (
+						<p className="text-[11px] text-muted-foreground">
+							This only picks whose details to copy. It does not change the
+							project's primary team.
+						</p>
+					)}
+
 					<TextField
 						label="Name"
 						value={draft.provider_name}
@@ -694,20 +899,15 @@ function PartiesSection({
 
 /* ── Commercial terms ─────────────────────────────────────────────────────── */
 
-function TermsSection({
-	contract,
-	editable,
-	onDraftChange,
-}: {
-	contract: Contract;
-	editable: boolean;
-	onDraftChange?: (terms: PreviewTerms) => void;
-}) {
-	const qc = useQueryClient();
-	const toast = useToast();
-	const [draft, setDraft] = useState({
+/**
+ * The editable Commercial Terms draft, seeded from a saved contract. Named so
+ * that discarding an amendment can reset straight back to what is signed.
+ */
+function draftFromContract(contract: Contract) {
+	return {
 		currency: contract.currency,
 		billing_mode: contract.billing_mode,
+		billing_timing: contract.billing_timing ?? ("arrears" as BillingTiming),
 		recurring_fee: contract.recurring_fee?.toString() ?? "",
 		client_hourly_rate: contract.client_hourly_rate?.toString() ?? "",
 		included_hours: contract.included_hours?.toString() ?? "",
@@ -720,7 +920,23 @@ function TermsSection({
 		service_start_date: contract.service_start_date ?? "",
 		term_count: contract.term_count?.toString() ?? "12",
 		term_unit: contract.term_unit ?? ("month" as ContractTermUnit),
-	});
+		auto_renew: contract.auto_renew ?? false,
+		notice_days: String(contract.notice_days ?? 30),
+	};
+}
+
+function TermsSection({
+	contract,
+	editable,
+	onDraftChange,
+}: {
+	contract: Contract;
+	editable: boolean;
+	onDraftChange?: (terms: PreviewTerms) => void;
+}) {
+	const qc = useQueryClient();
+	const toast = useToast();
+	const [draft, setDraft] = useState(() => draftFromContract(contract));
 
 	// Feed the live document preview as the consultant edits.
 	useEffect(() => {
@@ -732,6 +948,9 @@ function TermsSection({
 			service_description: draft.service_description,
 			payment_method: draft.payment_method,
 			due_days: draft.due_days,
+			billing_timing: draft.billing_timing,
+			auto_renew: draft.auto_renew,
+			notice_days: draft.notice_days,
 		});
 	}, [
 		draft.currency,
@@ -741,10 +960,59 @@ function TermsSection({
 		draft.service_description,
 		draft.payment_method,
 		draft.due_days,
+		draft.billing_timing,
+		draft.auto_renew,
+		draft.notice_days,
 		onDraftChange,
 	]);
 
-	const locked = !editable || !isEditableStatus(contract.status);
+	// A signed contract can't be edited in place, but its terms may still need
+	// to change. "Amend" unlocks the same fields into a local draft that is
+	// submitted as a new version rather than autosaved over the signed one.
+	const [amending, setAmending] = useState(false);
+	const [scopeOpen, setScopeOpen] = useState(false);
+	const signedAndLive =
+		contract.status === "signed" || contract.status === "active";
+	const locked = !editable || (!isEditableStatus(contract.status) && !amending);
+
+	const termsPayload = (d: typeof draft) => ({
+		currency: d.currency,
+		billing_mode: d.billing_mode,
+		billing_timing: d.billing_timing,
+		recurring_fee: numberOrNull(d.recurring_fee),
+		client_hourly_rate: numberOrNull(d.client_hourly_rate),
+		included_hours: numberOrNull(d.included_hours),
+		invoice_cadence: d.invoice_cadence,
+		invoice_offset_days: Number(d.invoice_offset_days) || 0,
+		due_days: Number(d.due_days) || 0,
+		invoice_number_prefix: d.invoice_number_prefix.trim() || undefined,
+		service_description: d.service_description.trim() || undefined,
+		payment_method: d.payment_method.trim() || undefined,
+		service_start_date: d.service_start_date || undefined,
+		term_count: Number(d.term_count) || undefined,
+		term_unit: d.term_unit,
+		auto_renew: d.auto_renew,
+		notice_days: numberOrNull(d.notice_days),
+	});
+
+	const amendMutation = useMutation({
+		mutationFn: (scope: ContractEditScope) =>
+			contractService.amend(contract.id, scope, termsPayload(draft)),
+		onSuccess: (created) => {
+			toast.success(
+				`Version ${created.version} created as a draft — both parties need to sign it.`,
+			);
+			setAmending(false);
+			setScopeOpen(false);
+			void qc.invalidateQueries({
+				queryKey: ["contracts", contract.project_id],
+			});
+		},
+		onError: (err) => {
+			toast.error((err as Error).message);
+			setScopeOpen(false);
+		},
+	});
 
 	const saveStatus = useAutosave(
 		draft,
@@ -752,6 +1020,7 @@ function TermsSection({
 			await contractService.update(contract.id, {
 				currency: d.currency,
 				billing_mode: d.billing_mode,
+				billing_timing: d.billing_timing,
 				recurring_fee: numberOrNull(d.recurring_fee),
 				client_hourly_rate: numberOrNull(d.client_hourly_rate),
 				included_hours: numberOrNull(d.included_hours),
@@ -764,6 +1033,8 @@ function TermsSection({
 				service_start_date: d.service_start_date || undefined,
 				term_count: Number(d.term_count) || undefined,
 				term_unit: d.term_unit,
+				auto_renew: d.auto_renew,
+				notice_days: numberOrNull(d.notice_days),
 			});
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
@@ -772,34 +1043,89 @@ function TermsSection({
 				queryKey: ["project", contract.project_id, "activation-checklist"],
 			});
 		},
-		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+		{
+			enabled: !locked && !amending,
+			onError: (err) => toast.error(err.message),
+		},
 	);
 	const usesFee =
 		draft.billing_mode === "retainer" || draft.billing_mode === "hybrid";
 	const usesRate =
 		draft.billing_mode === "time_based" || draft.billing_mode === "hybrid";
+	const advanceBilling = draft.billing_timing === "advance";
 
 	return (
 		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">
-				Commercial terms
-			</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
-				These drive every client invoice. Rates here are what the{" "}
-				<span className="font-semibold">client</span> pays — team member rates
-				are separate and stay internal.
-			</p>
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div>
+					<h2 className="text-lg font-semibold text-foreground">
+						Commercial terms
+					</h2>
+					<p className="mt-1 text-sm text-muted-foreground">
+						These drive every client invoice. Rates here are what the{" "}
+						<span className="font-semibold">client</span> pays — team member
+						rates are separate and stay internal.
+					</p>
+				</div>
+				{editable && signedAndLive && !amending && (
+					<button
+						type="button"
+						onClick={() => setAmending(true)}
+						className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+					>
+						Amend terms
+					</button>
+				)}
+			</div>
+
+			{amending && (
+				<div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+					<p className="text-xs text-muted-foreground">
+						Editing an amendment. Nothing is saved until you choose which
+						invoices it applies to.
+					</p>
+					<div className="flex shrink-0 items-center gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								setDraft(draftFromContract(contract));
+								setAmending(false);
+							}}
+							className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition hover:bg-muted"
+						>
+							Discard
+						</button>
+						<button
+							type="button"
+							onClick={() => setScopeOpen(true)}
+							disabled={amendMutation.isPending}
+							className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+						>
+							{amendMutation.isPending ? "Amending…" : "Apply change…"}
+						</button>
+					</div>
+				</div>
+			)}
 
 			<div className="mt-6 space-y-6">
-				<FieldGroup title="Billing">
+				<FieldGroup title="How the client is charged">
 					<SelectField
-						label="Billing model"
+						label="Charging model"
 						hint="How the client is charged. Retainer bills a flat fee each period; Hourly bills approved time at the rate below; Retainer + overage bills the fee plus any hours beyond the included allowance."
 						value={draft.billing_mode}
 						disabled={locked}
-						onChange={(v) =>
-							setDraft((d) => ({ ...d, billing_mode: v as BillingMode }))
-						}
+						onChange={(v) => {
+							const mode = v as BillingMode;
+							setDraft((d) => ({
+								...d,
+								billing_mode: mode,
+								// Advance is retainer-only (the backend and a DB CHECK both
+								// enforce it). Snap back rather than autosaving a combination
+								// that would 400.
+								billing_timing:
+									mode === "retainer" ? d.billing_timing : "arrears",
+							}));
+						}}
 						options={[
 							{ value: "retainer", label: "Recurring retainer" },
 							{ value: "time_based", label: "Hourly (approved hours)" },
@@ -816,8 +1142,8 @@ function TermsSection({
 					/>
 					{usesFee && (
 						<TextField
-							label="Recurring fee"
-							hint="The flat amount billed every billing period, before any overage. This is the client price — what you pay the team is separate."
+							label="Fee per billing period"
+							hint="The flat amount billed each period, before any overage. This is the client price — what you pay the team is set separately, in Financials."
 							type="number"
 							value={draft.recurring_fee}
 							onChange={(v) => setDraft((d) => ({ ...d, recurring_fee: v }))}
@@ -838,7 +1164,7 @@ function TermsSection({
 					)}
 					{draft.billing_mode === "hybrid" && (
 						<TextField
-							label="Hours included in fee"
+							label="Hours included in the fee"
 							hint="Hours the retainer already covers each period. Approved time beyond this is billed at the hourly rate as overage."
 							type="number"
 							value={draft.included_hours}
@@ -848,54 +1174,47 @@ function TermsSection({
 					)}
 				</FieldGroup>
 
-				<FieldGroup title="Schedule">
-					<DateField
-						label="Service start date"
-						hint="The day the engagement begins. Billing periods are counted from here, and no invoice is generated before it."
-						value={draft.service_start_date}
-						onChange={(v) => setDraft((d) => ({ ...d, service_start_date: v }))}
-						disabled={locked}
-					/>
+				<FieldGroup title="When invoices go out">
 					<SelectField
-						label="Invoice cadence"
-						hint="How often an invoice is raised. Monthly bills once per calendar month; Cut-off follows your team's pay periods (usually twice a month), so client billing lines up with when you pay the team."
+						label="How often you invoice"
+						hint="Monthly raises one invoice per calendar month. Twice a month follows your team's pay cut-offs, so client billing lines up with when you pay the team."
 						value={draft.invoice_cadence}
 						disabled={locked}
 						onChange={(v) =>
 							setDraft((d) => ({ ...d, invoice_cadence: v as InvoiceCadence }))
 						}
 						options={[
-							{ value: "semi_monthly", label: "Cut-off (team periods)" },
-							{ value: "monthly", label: "Monthly" },
+							{ value: "monthly", label: "Once a month" },
+							{
+								value: "semi_monthly",
+								label: "Twice a month (your team's pay cut-offs)",
+							},
 						]}
-					/>
-					<TextField
-						label="Term length"
-						hint="How long the engagement runs, counted in the unit beside it. 12 + Months ends the service period a year after the start date."
-						type="number"
-						value={draft.term_count}
-						onChange={(v) => setDraft((d) => ({ ...d, term_count: v }))}
-						disabled={locked}
 					/>
 					<SelectField
-						label="Term unit"
-						hint="The unit the term length is counted in — months or years."
-						value={draft.term_unit}
-						disabled={locked}
+						label="Invoice timing"
+						hint="In arrears — invoice after the period has been delivered. In advance — invoice before the period starts (a prepaid retainer). Advance is only available on a recurring retainer, since hourly work has to be logged and approved before it can be billed."
+						value={draft.billing_timing}
+						disabled={locked || draft.billing_mode !== "retainer"}
 						onChange={(v) =>
-							setDraft((d) => ({ ...d, term_unit: v as ContractTermUnit }))
+							setDraft((d) => ({ ...d, billing_timing: v as BillingTiming }))
 						}
 						options={[
-							{ value: "month", label: "Months" },
-							{ value: "year", label: "Years" },
+							{ value: "arrears", label: "In arrears (after the period)" },
+							{ value: "advance", label: "In advance (prepaid)" },
 						]}
 					/>
-				</FieldGroup>
-
-				<FieldGroup title="Invoicing">
 					<TextField
-						label="Invoice delay (days after period)"
-						hint="How long to wait after a billing period closes before raising its invoice. 0 invoices on the closing day; use a few days if you need time to approve hours first."
+						label={
+							advanceBilling
+								? "Invoice lead time (days before)"
+								: "Invoice lead time (days after)"
+						}
+						hint={
+							advanceBilling
+								? "Days BEFORE the period starts to raise its invoice. 7 sends the invoice a week ahead of the month it covers."
+								: "Days to wait AFTER a period closes before raising its invoice. 0 invoices on the closing day; a few days gives you time to approve hours first."
+						}
 						type="number"
 						value={draft.invoice_offset_days}
 						onChange={(v) =>
@@ -904,8 +1223,8 @@ function TermsSection({
 						disabled={locked}
 					/>
 					<TextField
-						label="Payment terms (days)"
-						hint="How many days the client has to pay after the invoice date — 'Net 15' means 15. It sets each invoice's due date."
+						label="Payment due (days after invoice)"
+						hint="Your net terms. 15 means the client has 15 days from the invoice date to pay; it sets each invoice's due date. This is the payment window, not a late-payment grace period."
 						type="number"
 						value={draft.due_days}
 						onChange={(v) => setDraft((d) => ({ ...d, due_days: v }))}
@@ -919,6 +1238,42 @@ function TermsSection({
 						onChange={(v) =>
 							setDraft((d) => ({ ...d, invoice_number_prefix: v }))
 						}
+						disabled={locked}
+					/>
+				</FieldGroup>
+
+				<FieldGroup title="Term & renewal">
+					<DateField
+						label="Service start date"
+						hint="The day the engagement begins. Billing periods are counted from here, and no invoice is generated before it."
+						value={draft.service_start_date}
+						onChange={(v) => setDraft((d) => ({ ...d, service_start_date: v }))}
+						disabled={locked}
+					/>
+					<TermLengthField
+						count={draft.term_count}
+						unit={draft.term_unit}
+						disabled={locked}
+						onCountChange={(v) => setDraft((d) => ({ ...d, term_count: v }))}
+						onUnitChange={(v) => setDraft((d) => ({ ...d, term_unit: v }))}
+					/>
+					<ToggleField
+						label="Renews automatically"
+						hint={`When on, the term rolls over for another ${draft.term_count || "—"} ${
+							draft.term_unit === "year" ? "year(s)" : "month(s)"
+						} unless either side gives notice.`}
+						checked={draft.auto_renew}
+						disabled={locked}
+						onChange={(v) => setDraft((d) => ({ ...d, auto_renew: v }))}
+						onLabel="Renews automatically"
+						offLabel="Ends at the term"
+					/>
+					<TextField
+						label="Notice to cancel (days)"
+						hint="Written notice either side must give to end the agreement or stop a renewal. It also drives the 'contract ending soon' reminder."
+						type="number"
+						value={draft.notice_days}
+						onChange={(v) => setDraft((d) => ({ ...d, notice_days: v }))}
 						disabled={locked}
 					/>
 				</FieldGroup>
@@ -948,8 +1303,142 @@ function TermsSection({
 			{/* Derived schedule, computed server-side from the saved terms. */}
 			<BillingSchedulePreview contract={contract} />
 
-			{!locked && <AutosaveIndicator status={saveStatus} />}
+			{!locked && !amending && <AutosaveIndicator status={saveStatus} />}
+
+			<ScopeDialog
+				open={scopeOpen}
+				title="Which invoices does this change apply to?"
+				options={CONTRACT_SCOPE_OPTIONS}
+				footnote={`Amending creates version ${contract.version + 1} of the agreement. Both parties re-sign it before it takes effect — the current version keeps governing until then.`}
+				onClose={() => setScopeOpen(false)}
+				onPick={(scope) => {
+					if (scope === "this") {
+						setScopeOpen(false);
+						toast.error(
+							"Open that invoice in the invoice editor — a one-off change doesn't alter the agreement.",
+						);
+						return;
+					}
+					amendMutation.mutate(scope);
+				}}
+			/>
 		</AppSurfaceCard>
+	);
+}
+
+/**
+ * The contract flavour of the recurring-scope prompt. Unlike the meetings
+ * version, two of these three write a whole new agreement — so the dialog says
+ * what each one actually does rather than just naming it.
+ */
+const CONTRACT_SCOPE_OPTIONS: ReadonlyArray<ScopeOption<ContractEditScope>> = [
+	{
+		scope: "this",
+		label: "Only this invoice",
+		description: "A one-off change. The agreement is untouched.",
+	},
+	{
+		scope: "following",
+		label: "This period and future ones",
+		description:
+			"The current agreement ends the day before, and a new version takes over.",
+	},
+	{
+		scope: "all",
+		label: "The whole engagement",
+		description: "Replaces the terms from the original service start date.",
+	},
+];
+
+/**
+ * Individual-vs-agency, at the contract level rather than the team level.
+ *
+ * Some consultants work under an agency, some as themselves, and the same
+ * person may want one engagement kept off the agency's books for tax reasons.
+ * Tying this to "does the project have a team attached" would get that wrong,
+ * so it is a per-contract choice.
+ */
+function ProviderKindToggle({
+	value,
+	disabled,
+	onChange,
+}: {
+	value: ProviderKind;
+	disabled?: boolean;
+	onChange: (kind: ProviderKind) => void;
+}) {
+	const options: Array<{ kind: ProviderKind; label: string }> = [
+		{ kind: "individual", label: "Individual contractor" },
+		{ kind: "agency", label: "Agency or company" },
+	];
+	return (
+		<div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
+			{options.map((o) => (
+				<button
+					key={o.kind}
+					type="button"
+					disabled={disabled || value === o.kind}
+					onClick={() => onChange(o.kind)}
+					className={`rounded-md px-2.5 py-1 transition ${
+						value === o.kind
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:text-foreground disabled:opacity-50"
+					}`}
+				>
+					{o.label}
+				</button>
+			))}
+		</div>
+	);
+}
+
+/**
+ * Term length as one field rather than two. "Term length: 12" beside a separate
+ * "Term unit: Months" read as two unrelated settings; the count is meaningless
+ * without its unit, so they share a row and a label.
+ */
+function TermLengthField({
+	count,
+	unit,
+	disabled,
+	onCountChange,
+	onUnitChange,
+}: {
+	count: string;
+	unit: ContractTermUnit;
+	disabled?: boolean;
+	onCountChange: (value: string) => void;
+	onUnitChange: (value: ContractTermUnit) => void;
+}) {
+	return (
+		<FieldLabel
+			label="Term length"
+			hint="How long the engagement runs from the start date. The exact service end date is shown in the schedule below."
+		>
+			<div className="flex items-center gap-2">
+				<input
+					type="number"
+					min={1}
+					value={count}
+					disabled={disabled}
+					aria-label="Term length"
+					onChange={(e) => onCountChange(e.target.value)}
+					className="w-20 rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+				/>
+				<div className="flex-1">
+					<Dropdown
+						value={unit}
+						onChange={(v) => onUnitChange(v as ContractTermUnit)}
+						options={[
+							{ value: "month", label: "Months" },
+							{ value: "year", label: "Years" },
+						]}
+						disabled={disabled}
+						ariaLabel="Term unit"
+					/>
+				</div>
+			</div>
+		</FieldLabel>
 	);
 }
 
@@ -989,6 +1478,9 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 						{contract.contract_end_date &&
 						contract.contract_end_date !== contract.service_end_date
 							? ` · contract ends ${formatContractDate(contract.contract_end_date)}`
+							: ""}
+						{contract.billing_timing === "advance"
+							? " · invoiced in advance"
 							: ""}
 					</p>
 				</div>
@@ -1045,163 +1537,6 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 						: `Show all ${periods.length} billing periods`}
 				</button>
 			)}
-		</div>
-	);
-}
-
-/* ── Budget split (projections) ───────────────────────────────────────────── */
-
-function EconomicsSection({
-	projectId,
-	contract,
-	economics,
-	isLoading,
-}: {
-	projectId: string;
-	contract: Contract;
-	economics: ProjectEconomics | null;
-	isLoading: boolean;
-}) {
-	const qc = useQueryClient();
-	const toast = useToast();
-	const companyPercentId = useId();
-	const [companyPercent, setCompanyPercent] = useState(
-		economics ? String(economics.company_percent) : "40",
-	);
-
-	useEffect(() => {
-		if (economics) setCompanyPercent(String(economics.company_percent));
-	}, [economics]);
-
-	const company = Number(companyPercent);
-	const team = Number.isFinite(company) ? 100 - company : 0;
-	const valid = Number.isFinite(company) && company >= 0 && company <= 100;
-
-	const saveStatus = useAutosave(
-		{ company, team },
-		async () => {
-			await contractService.updateEconomics(projectId, {
-				company_percent: company,
-				team_percent: team,
-				currency: contract.currency,
-			});
-			void qc.invalidateQueries({
-				queryKey: ["project", projectId, "economics"],
-			});
-			void qc.invalidateQueries({
-				queryKey: ["project", projectId, "activation-checklist"],
-			});
-		},
-		{ enabled: valid, onError: (err) => toast.error(err.message) },
-	);
-
-	// Per-period revenue is only knowable up front for a retainer; an hourly
-	// contract's revenue depends on hours actually logged, so we don't guess.
-	const periodRevenue =
-		contract.billing_mode === "time_based" ? null : contract.recurring_fee;
-
-	return (
-		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">Budget split</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
-				How each period's revenue divides between company margin and the pool
-				available to pay the team. Internal — the client never sees this.
-			</p>
-
-			{isLoading ? (
-				<div className="flex justify-center py-8">
-					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-				</div>
-			) : (
-				<>
-					<div className="mt-5 flex flex-wrap items-end gap-4">
-						<div>
-							<label
-								htmlFor={companyPercentId}
-								className="mb-1.5 block text-xs font-semibold text-muted-foreground"
-							>
-								Company %
-							</label>
-							<input
-								id={companyPercentId}
-								type="number"
-								min={0}
-								max={100}
-								step="1"
-								value={companyPercent}
-								onChange={(e) => setCompanyPercent(e.target.value)}
-								className="w-28 rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-							/>
-						</div>
-						<div className="text-sm text-muted-foreground">
-							Team pool:{" "}
-							<span className="font-semibold text-foreground">{team}%</span>
-						</div>
-					</div>
-
-					{periodRevenue ? (
-						<div className="mt-5 rounded-xl border border-border bg-muted/40 p-4 text-sm">
-							<Row
-								label="Period revenue"
-								value={formatMoney(contract.currency, periodRevenue)}
-								strong
-							/>
-							<Row
-								label={`Company (${company}%)`}
-								value={formatMoney(
-									contract.currency,
-									(periodRevenue * company) / 100,
-								)}
-							/>
-							<Row
-								label={`Team pool (${team}%)`}
-								value={formatMoney(
-									contract.currency,
-									(periodRevenue * team) / 100,
-								)}
-							/>
-						</div>
-					) : (
-						<p className="mt-4 text-xs text-muted-foreground">
-							This contract bills by the hour, so period revenue depends on
-							approved hours. The split is applied to whatever each period
-							actually invoices.
-						</p>
-					)}
-
-					{!valid && (
-						<p className="mt-4 text-xs text-destructive">
-							Company % must be between 0 and 100.
-						</p>
-					)}
-					<AutosaveIndicator status={saveStatus} />
-				</>
-			)}
-		</AppSurfaceCard>
-	);
-}
-
-function Row({
-	label,
-	value,
-	strong,
-}: {
-	label: string;
-	value: string;
-	strong?: boolean;
-}) {
-	return (
-		<div className="flex items-center justify-between py-1">
-			<span className="text-muted-foreground">{label}</span>
-			<span
-				className={
-					strong
-						? "font-semibold text-foreground"
-						: "tabular-nums text-foreground"
-				}
-			>
-				{value}
-			</span>
 		</div>
 	);
 }
@@ -1472,10 +1807,13 @@ function SignatureSection({
 	isPending,
 	isUnsigning,
 	isRescaling,
+	isConsultant,
 }: {
 	contract: Contract;
 	canSignAsConsultant: boolean;
 	canSignAsClient: boolean;
+	/** Only the consultant may mint a client signing link. */
+	isConsultant: boolean;
 	onSign: (
 		party: "consultant" | "client",
 		name: string,
@@ -1493,6 +1831,7 @@ function SignatureSection({
 }) {
 	const [consultantName, setConsultantName] = useState("");
 	const [clientName, setClientName] = useState("");
+	const [linkOpen, setLinkOpen] = useState(false);
 
 	const termsReady = Boolean(
 		contract.service_start_date && contract.service_end_date,
@@ -1502,10 +1841,23 @@ function SignatureSection({
 		<AppSurfaceCard className="p-6">
 			<h2 className="text-lg font-semibold text-foreground">Signatures</h2>
 			<p className="mt-1 text-sm text-muted-foreground">
-				The contract becomes <span className="font-semibold">signed</span> only
-				once both parties have stamped it. Draw or upload your signature, or
-				just type your name.
+				Type your full name and, if you like, draw your signature. The contract
+				becomes <span className="font-semibold">signed</span> only once both
+				parties have stamped it.
 			</p>
+
+			{/* Remote signing: the client doesn't need an account, and the
+			    consultant shouldn't have to sign on their behalf. */}
+			{isConsultant && !contract.signed_by_client_at && (
+				<button
+					type="button"
+					onClick={() => setLinkOpen(true)}
+					className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+				>
+					<Link2 className="h-3.5 w-3.5" />
+					Send to the client to sign
+				</button>
+			)}
 
 			{!termsReady && (
 				<p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
@@ -1559,6 +1911,13 @@ function SignatureSection({
 					isRescaling={isRescaling}
 				/>
 			</div>
+
+			{linkOpen && (
+				<ClientSigningLinkModal
+					contract={contract}
+					onClose={() => setLinkOpen(false)}
+				/>
+			)}
 		</AppSurfaceCard>
 	);
 }
@@ -1641,8 +2000,7 @@ function SignatureBlock({
 				</p>
 				{canManage && (
 					<p className="mt-2 text-[11px] text-muted-foreground">
-						Remove to re-sign — e.g. to upload a signature image instead of a
-						typed name.
+						Remove to sign again.
 					</p>
 				)}
 			</div>
@@ -1666,537 +2024,6 @@ function SignatureBlock({
 					Awaiting signature
 				</p>
 			)}
-		</div>
-	);
-}
-
-/** Base rendered height of a signature image at scale 1, in px. */
-const SIGNATURE_BASE_HEIGHT_PX = 56;
-/** Height of the signature field. FIXED — matches the document exactly. */
-const SIGNATURE_FIELD_HEIGHT_PX = 64;
-const SIGNATURE_MIN_SCALE = 0.5;
-const SIGNATURE_MAX_SCALE = 3;
-const SIGNATURE_MAX_OFFSET = 3;
-
-const clampOffset = (v: number) =>
-	Math.min(SIGNATURE_MAX_OFFSET, Math.max(-SIGNATURE_MAX_OFFSET, v));
-
-/**
- * A signature field you can drag the signature around inside, the way a PDF
- * signer lets you nudge a stamp onto the printed signature line.
- *
- * The field's height is fixed and the image is an absolutely positioned
- * overlay on top of it, so neither resizing nor repositioning can change the
- * surrounding layout — which is what kept knocking the document's two
- * signature columns out of alignment.
- *
- * Offsets are stored in multiples of the base height rather than pixels, so
- * the same value renders correctly in the compact preview, the full-size
- * document, and the PDF.
- */
-function SignaturePlacementField({
-	imageUrl,
-	alt,
-	placement,
-	editable,
-	busy,
-	onCommit,
-	className = "",
-}: {
-	imageUrl: string;
-	alt: string;
-	placement: SignaturePlacement;
-	editable: boolean;
-	busy?: boolean;
-	/** Fires once per gesture, on release. */
-	onCommit: (placement: Partial<SignaturePlacement>) => void;
-	className?: string;
-}) {
-	// Local copy so the overlay tracks the cursor; the server value lands on
-	// release and this re-syncs to it.
-	const [draft, setDraft] = useState(placement);
-	useEffect(() => setDraft(placement), [placement]);
-
-	const dragRef = useRef<{
-		pointerId: number;
-		startX: number;
-		startY: number;
-		originX: number;
-		originY: number;
-	} | null>(null);
-
-	const height = SIGNATURE_BASE_HEIGHT_PX * draft.scale;
-
-	const startDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
-		if (!editable) return;
-		e.preventDefault();
-		dragRef.current = {
-			pointerId: e.pointerId,
-			startX: e.clientX,
-			startY: e.clientY,
-			originX: draft.offsetX,
-			originY: draft.offsetY,
-		};
-		e.currentTarget.setPointerCapture(e.pointerId);
-	};
-
-	const moveDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
-		const drag = dragRef.current;
-		if (!drag || drag.pointerId !== e.pointerId) return;
-		setDraft((prev) => ({
-			...prev,
-			offsetX: clampOffset(
-				drag.originX + (e.clientX - drag.startX) / SIGNATURE_BASE_HEIGHT_PX,
-			),
-			// Screen y grows downward; our offset grows upward.
-			offsetY: clampOffset(
-				drag.originY - (e.clientY - drag.startY) / SIGNATURE_BASE_HEIGHT_PX,
-			),
-		}));
-	};
-
-	const endDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
-		const drag = dragRef.current;
-		if (!drag || drag.pointerId !== e.pointerId) return;
-		dragRef.current = null;
-		if (
-			draft.offsetX !== placement.offsetX ||
-			draft.offsetY !== placement.offsetY
-		) {
-			onCommit({ offsetX: draft.offsetX, offsetY: draft.offsetY });
-		}
-	};
-
-	// Arrow keys nudge by a tenth of the base height — the fine adjustment a
-	// pointer can't do precisely.
-	const nudge = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-		if (!editable) return;
-		const step = e.shiftKey ? 0.02 : 0.1;
-		const delta: Partial<SignaturePlacement> = {};
-		if (e.key === "ArrowLeft")
-			delta.offsetX = clampOffset(draft.offsetX - step);
-		else if (e.key === "ArrowRight")
-			delta.offsetX = clampOffset(draft.offsetX + step);
-		else if (e.key === "ArrowUp")
-			delta.offsetY = clampOffset(draft.offsetY + step);
-		else if (e.key === "ArrowDown")
-			delta.offsetY = clampOffset(draft.offsetY - step);
-		else return;
-		e.preventDefault();
-		setDraft((prev) => ({ ...prev, ...delta }));
-		onCommit(delta);
-	};
-
-	const isPlaced =
-		draft.offsetX !== 0 || draft.offsetY !== 0 || draft.scale !== 1;
-
-	return (
-		<div className={className}>
-			<div
-				className="relative overflow-visible border-b border-border/60"
-				style={{ height: SIGNATURE_FIELD_HEIGHT_PX }}
-			>
-				{/* A button rather than a bare div: it is focusable and labelled for
-				    free, so arrow-key nudging works without a custom tabindex. */}
-				<button
-					type="button"
-					disabled={!editable}
-					aria-label="Drag to position the signature; arrow keys nudge it"
-					onPointerDown={startDrag}
-					onPointerMove={moveDrag}
-					onPointerUp={endDrag}
-					onPointerCancel={endDrag}
-					onKeyDown={nudge}
-					className={`absolute bottom-0 left-0 z-10 touch-none rounded-sm p-0 outline-none ${
-						editable
-							? "cursor-grab ring-primary/40 hover:ring-2 focus-visible:ring-2 active:cursor-grabbing"
-							: "cursor-default"
-					} ${busy ? "opacity-60" : ""}`}
-					style={{
-						height,
-						transform: `translate(${draft.offsetX * SIGNATURE_BASE_HEIGHT_PX}px, ${
-							-draft.offsetY * SIGNATURE_BASE_HEIGHT_PX
-						}px)`,
-					}}
-				>
-					<img
-						src={imageUrl}
-						alt={alt}
-						draggable={false}
-						className="pointer-events-none h-full max-w-none select-none object-contain"
-					/>
-				</button>
-			</div>
-
-			{editable && (
-				<div className="mt-2 space-y-1.5">
-					<SignatureSizeControl
-						scale={placement.scale}
-						disabled={busy}
-						onPreview={(scale) => setDraft((prev) => ({ ...prev, scale }))}
-						onCommit={(scale) => onCommit({ scale })}
-					/>
-					<div className="flex items-center justify-between gap-2">
-						<p className="text-[11px] text-muted-foreground">
-							Drag the signature onto the line — arrow keys nudge it.
-						</p>
-						{isPlaced && (
-							<button
-								type="button"
-								onClick={() => {
-									setDraft(DEFAULT_SIGNATURE_PLACEMENT);
-									onCommit(DEFAULT_SIGNATURE_PLACEMENT);
-								}}
-								disabled={busy}
-								className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
-							>
-								Reset
-							</button>
-						)}
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
-/**
- * Slider for how large a signature image renders in the agreement. The same
- * multiplier drives the editor, the live preview, and the PDF, so what the
- * signer sets here is what the client sees.
- */
-function SignatureSizeControl({
-	scale,
-	disabled,
-	onPreview,
-	onCommit,
-	className = "",
-}: {
-	scale: number;
-	disabled?: boolean;
-	/** Fires on every drag step so the signature resizes under the cursor. */
-	onPreview: (scale: number) => void;
-	/** Fires on release — the only point anything is persisted. */
-	onCommit: (scale: number) => void;
-	className?: string;
-}) {
-	const [draft, setDraft] = useState(scale);
-	// Follow the server once a save lands (or another device changes it).
-	useEffect(() => setDraft(scale), [scale]);
-
-	return (
-		<div className={`flex items-center gap-2 ${className}`}>
-			<span className="text-[11px] font-medium text-muted-foreground">
-				Size
-			</span>
-			<input
-				type="range"
-				min={SIGNATURE_MIN_SCALE}
-				max={SIGNATURE_MAX_SCALE}
-				step={0.1}
-				value={draft}
-				disabled={disabled}
-				aria-label="Signature size"
-				onChange={(e) => {
-					const next = Number(e.target.value);
-					setDraft(next);
-					onPreview(next);
-				}}
-				onPointerUp={() => onCommit(draft)}
-				onKeyUp={() => onCommit(draft)}
-				className="h-1 flex-1 cursor-pointer accent-primary disabled:opacity-50"
-			/>
-			<span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
-				{Math.round(draft * 100)}%
-			</span>
-		</div>
-	);
-}
-
-/**
- * Name input + signature capture: draw it on a canvas (default) or upload a
- * signature image. Either way the result is flattened/stored as a PNG in R2 and
- * its URL rides along with the sign request to persist on the contract and
- * render in the document. Draw is the default because it can't be a stray photo;
- * upload is there for a scanned/pre-made signature.
- */
-function SignaturePad({
-	name,
-	onNameChange,
-	onSign,
-	isPending,
-}: {
-	name: string;
-	onNameChange: (v: string) => void;
-	onSign: (
-		signatureUrl?: string | null,
-		placement?: SignaturePlacement,
-	) => void;
-	isPending: boolean;
-}) {
-	const toast = useToast();
-	const [mode, setMode] = useState<"draw" | "upload">("draw");
-	// Where and how large the signature sits on its field. Set it here and the
-	// preview below shows the real placement before you commit.
-	const [placement, setPlacement] = useState<SignaturePlacement>(
-		DEFAULT_SIGNATURE_PLACEMENT,
-	);
-
-	// Draw mode.
-	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const drawing = useRef(false);
-	const [hasDrawing, setHasDrawing] = useState(false);
-
-	// Upload mode.
-	const inputRef = useRef<HTMLInputElement>(null);
-	const [dragging, setDragging] = useState(false);
-	const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
-
-	const [uploading, setUploading] = useState(false);
-	const accept = "image/png,image/jpeg,image/webp";
-
-	// Ink style is set once; the stroke is dark so it reads on the white document.
-	useEffect(() => {
-		if (mode !== "draw") return;
-		const ctx = canvasRef.current?.getContext("2d");
-		if (!ctx) return;
-		ctx.lineWidth = 2.5;
-		ctx.lineCap = "round";
-		ctx.lineJoin = "round";
-		ctx.strokeStyle = "#1e293b";
-	}, [mode]);
-
-	const pointFor = (e: React.PointerEvent<HTMLCanvasElement>) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return { x: 0, y: 0 };
-		const rect = canvas.getBoundingClientRect();
-		return {
-			x: (e.clientX - rect.left) * (canvas.width / rect.width),
-			y: (e.clientY - rect.top) * (canvas.height / rect.height),
-		};
-	};
-
-	const startStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
-		const ctx = canvasRef.current?.getContext("2d");
-		if (!ctx) return;
-		drawing.current = true;
-		const { x, y } = pointFor(e);
-		ctx.beginPath();
-		ctx.moveTo(x, y);
-		e.currentTarget.setPointerCapture(e.pointerId);
-	};
-
-	const moveStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
-		if (!drawing.current) return;
-		const ctx = canvasRef.current?.getContext("2d");
-		if (!ctx) return;
-		const { x, y } = pointFor(e);
-		ctx.lineTo(x, y);
-		ctx.stroke();
-		if (!hasDrawing) setHasDrawing(true);
-	};
-
-	const endStroke = () => {
-		drawing.current = false;
-	};
-
-	const clear = () => {
-		const canvas = canvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-		setHasDrawing(false);
-	};
-
-	const handleFile = async (file: File | undefined) => {
-		if (!file) return;
-		if (!accept.split(",").includes(file.type)) {
-			toast.error("Signature must be a PNG, JPG, or WEBP image.");
-			return;
-		}
-		if (file.size > 5 * 1024 * 1024) {
-			toast.error("Signature image must be under 5 MB.");
-			return;
-		}
-		setUploading(true);
-		try {
-			const url = await uploadService.uploadContractSignature(file);
-			setUploadedUrl(url);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Upload failed");
-		} finally {
-			setUploading(false);
-		}
-	};
-
-	const handleSign = async () => {
-		if (mode === "upload") {
-			onSign(uploadedUrl, uploadedUrl ? placement : undefined);
-			return;
-		}
-		const canvas = canvasRef.current;
-		if (!hasDrawing || !canvas) {
-			onSign(null);
-			return;
-		}
-		setUploading(true);
-		try {
-			const blob = await new Promise<Blob | null>((resolve) =>
-				canvas.toBlob(resolve, "image/png"),
-			);
-			if (!blob) {
-				onSign(null);
-				return;
-			}
-			const file = new File([blob], "signature.png", { type: "image/png" });
-			const url = await uploadService.uploadContractSignature(file);
-			onSign(url, placement);
-		} catch (err) {
-			toast.error(
-				err instanceof Error ? err.message : "Signature upload failed",
-			);
-		} finally {
-			setUploading(false);
-		}
-	};
-
-	return (
-		<div className="mt-3 space-y-2">
-			<input
-				type="text"
-				placeholder="Type your full name"
-				value={name}
-				onChange={(e) => onNameChange(e.target.value)}
-				className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-			/>
-
-			{/* Draw / Upload toggle */}
-			<div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
-				<button
-					type="button"
-					onClick={() => setMode("draw")}
-					className={`rounded-md px-2.5 py-1 transition ${
-						mode === "draw"
-							? "bg-primary text-primary-foreground"
-							: "text-muted-foreground hover:text-foreground"
-					}`}
-				>
-					Draw
-				</button>
-				<button
-					type="button"
-					onClick={() => setMode("upload")}
-					className={`rounded-md px-2.5 py-1 transition ${
-						mode === "upload"
-							? "bg-primary text-primary-foreground"
-							: "text-muted-foreground hover:text-foreground"
-					}`}
-				>
-					Upload
-				</button>
-			</div>
-
-			{mode === "draw" ? (
-				<div className="relative rounded-lg border border-border bg-card">
-					<canvas
-						ref={canvasRef}
-						width={600}
-						height={160}
-						onPointerDown={startStroke}
-						onPointerMove={moveStroke}
-						onPointerUp={endStroke}
-						onPointerLeave={endStroke}
-						className="h-28 w-full touch-none rounded-lg"
-					/>
-					{!hasDrawing && (
-						<span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-							Draw your signature here
-						</span>
-					)}
-					{hasDrawing && (
-						<button
-							type="button"
-							onClick={clear}
-							className="absolute right-1.5 top-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
-						>
-							Clear
-						</button>
-					)}
-				</div>
-			) : uploadedUrl ? (
-				<div className="relative rounded-lg border border-border bg-card p-2">
-					{/* The very same field the document uses — position and size the
-					    signature here and that is exactly how it lands. Nothing is
-					    persisted until Sign, so "commit" is just local state. */}
-					<SignaturePlacementField
-						imageUrl={uploadedUrl}
-						alt="Signature preview"
-						placement={placement}
-						editable
-						onCommit={(next) => setPlacement((prev) => ({ ...prev, ...next }))}
-					/>
-					<button
-						type="button"
-						onClick={() => setUploadedUrl(null)}
-						className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/60 p-1 text-white transition hover:bg-slate-900/80"
-						aria-label="Remove signature image"
-					>
-						<X className="h-3 w-3" />
-					</button>
-				</div>
-			) : (
-				<>
-					<button
-						type="button"
-						onClick={() => inputRef.current?.click()}
-						onDragOver={(e) => {
-							e.preventDefault();
-							setDragging(true);
-						}}
-						onDragLeave={() => setDragging(false)}
-						onDrop={(e) => {
-							e.preventDefault();
-							setDragging(false);
-							void handleFile(e.dataTransfer.files?.[0]);
-						}}
-						className={`flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-3 py-4 text-xs transition ${
-							dragging
-								? "border-primary bg-primary/5 text-primary"
-								: "border-border text-muted-foreground hover:border-primary/50"
-						}`}
-					>
-						{uploading ? (
-							<>
-								<Loader2 className="h-4 w-4 animate-spin" />
-								Uploading…
-							</>
-						) : (
-							<>
-								<Upload className="h-4 w-4" />
-								Drag &amp; drop or click to upload a signature image
-							</>
-						)}
-					</button>
-					<input
-						ref={inputRef}
-						type="file"
-						accept={accept}
-						className="hidden"
-						onChange={(e) => void handleFile(e.target.files?.[0] ?? undefined)}
-					/>
-				</>
-			)}
-
-			<div>
-				<button
-					type="button"
-					onClick={handleSign}
-					disabled={!name.trim() || isPending || uploading}
-					className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-				>
-					<PenLine className="h-3.5 w-3.5" />
-					{uploading ? "Signing…" : "Sign"}
-				</button>
-			</div>
 		</div>
 	);
 }

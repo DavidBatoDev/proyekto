@@ -4,6 +4,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Calculator, Info, Link2, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useToast } from "@/hooks/useToast";
@@ -38,14 +39,6 @@ interface Props {
 }
 
 interface Draft {
-	/**
-	 * Whether this member is tied to a budget slice. When on, the allocation
-	 * drives the rate↔hours math; when off, rate and hours are set directly and
-	 * the cap comes straight from the entered hours.
-	 */
-	useBudget: boolean;
-	/** Monthly budget slice for this member. */
-	allocation: string;
 	rateType: "hourly" | "fixed";
 	hourlyRate: string;
 	/** Target monthly hours (drives the rate when the consultant edits it). */
@@ -134,15 +127,30 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 			})
 		: 0;
 	const pool = monthlyTeamPool(revenue, teamPercent);
-	const defaultAllocation = evenAllocation(pool, rows.length);
+	const evenShare = evenAllocation(pool, rows.length);
 
-	// Per-member editable draft, seeded from the active rate + even allocation.
+	/**
+	 * This member's slice of the pool, as SAVED in Financials. Read-only here —
+	 * the budget is set there now, and this screen turns it into a rate and a
+	 * cap. In 'equal' mode nothing is stored per member, so the even share is
+	 * derived instead.
+	 */
+	const allocationFor = (teamId: string, userId: string): number => {
+		const economics = economicsQuery.data;
+		if (!economics) return 0;
+		if (economics.allocation_mode === "equal") return evenShare;
+		const match = economics.allocations.find(
+			(a) => a.team_id === teamId && a.user_id === userId,
+		);
+		return Number(match?.monthly_allocation ?? 0);
+	};
+
+	// Per-member editable draft, seeded from the active rate. Keyed by TEAM AND
+	// user: the same person can be on two attached teams with different rates,
+	// and keying by user alone made them share one draft.
 	const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-	const draftFor = (userId: string, rate: TeamMemberRate | null): Draft =>
-		drafts[userId] ?? {
-			useBudget: true,
-			allocation:
-				defaultAllocation > 0 ? String(Math.round(defaultAllocation)) : "",
+	const draftFor = (key: string, rate: TeamMemberRate | null): Draft =>
+		drafts[key] ?? {
 			rateType: rate?.rate_type ?? "hourly",
 			hourlyRate: rate?.hourly_rate ? String(rate.hourly_rate) : "",
 			monthlyHours:
@@ -151,8 +159,8 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 					: "",
 			fixedAmount: rate?.fixed_amount != null ? String(rate.fixed_amount) : "",
 		};
-	const patchDraft = (userId: string, base: Draft, patch: Partial<Draft>) =>
-		setDrafts((prev) => ({ ...prev, [userId]: { ...base, ...patch } }));
+	const patchDraft = (key: string, base: Draft, patch: Partial<Draft>) =>
+		setDrafts((prev) => ({ ...prev, [key]: { ...base, ...patch } }));
 
 	const anyLoading =
 		projectQuery.isPending ||
@@ -176,15 +184,14 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 					"Enter the fixed monthly amount before saving this member.",
 				);
 			}
-			// Budget-tied members derive the cap from allocation ÷ rate; untied
-			// members use the hour cap entered directly.
+			// A member with a budget slice derives the cap from allocation ÷ rate;
+			// one without uses the hour cap entered directly. The slice now comes
+			// from Financials rather than an editable field on this screen.
+			const allocation = allocationFor(row.teamId, row.member.user_id);
 			const caps = isFixed
 				? { monthly: null, weekly: null }
-				: draft.useBudget
-					? capsFromRate(
-							Number(draft.allocation) || 0,
-							Number(draft.hourlyRate) || 0,
-						)
+				: allocation > 0
+					? capsFromRate(allocation, Number(draft.hourlyRate) || 0)
 					: capsFromMonthlyHours(Number(draft.monthlyHours) || 0);
 			const common = {
 				rate_type: draft.rateType,
@@ -265,7 +272,7 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 					teamPercent={teamPercent}
 					pool={pool}
 					memberCount={rows.length}
-					each={defaultAllocation}
+					each={evenShare}
 					showExpectedHours={contract.billing_mode === "time_based"}
 					expectedHours={expectedHours}
 					onExpectedHoursChange={setExpectedHours}
@@ -275,18 +282,19 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 				<div className="space-y-3">
 					{rows.map((row, i) => {
 						const rate = rateQueries[i]?.data ?? null;
-						const draft = draftFor(row.member.user_id, rate);
+						const key = `${row.teamId}:${row.member.user_id}`;
+						const draft = draftFor(key, rate);
 						return (
 							<MemberCard
-								key={`${row.teamId}:${row.member.user_id}`}
+								key={key}
 								currency={currency}
 								label={memberLabel(row.member)}
 								position={row.member.position ?? null}
 								avatarUrl={row.member.user?.avatar_url ?? null}
+								allocation={allocationFor(row.teamId, row.member.user_id)}
+								projectId={projectId}
 								draft={draft}
-								onPatch={(patch) =>
-									patchDraft(row.member.user_id, draft, patch)
-								}
+								onPatch={(patch) => patchDraft(key, draft, patch)}
 								onSave={() => saveMutation.mutate({ row, rate, draft })}
 								saving={saveMutation.isPending}
 							/>
@@ -451,6 +459,8 @@ function MemberCard({
 	label,
 	position,
 	avatarUrl,
+	allocation,
+	projectId,
 	draft,
 	onPatch,
 	onSave,
@@ -460,22 +470,25 @@ function MemberCard({
 	label: string;
 	position: string | null;
 	avatarUrl: string | null;
+	/** This member's saved slice of the pool. Set in Financials, read-only here. */
+	allocation: number;
+	projectId: string;
 	draft: Draft;
 	onPatch: (patch: Partial<Draft>) => void;
 	onSave: () => void;
 	saving: boolean;
 }) {
 	const isFixed = draft.rateType === "fixed";
-	const useBudget = draft.useBudget;
+	const alloc = allocation;
+	const useBudget = alloc > 0;
 	const fixedVal = Number(draft.fixedAmount) || 0;
 	// A fixed row without a positive amount is rejected by the DB check
 	// constraint, so hold the save until it's filled in.
 	const fixedIncomplete = isFixed && fixedVal <= 0;
-	const alloc = Number(draft.allocation) || 0;
 	const rateVal = Number(draft.hourlyRate) || 0;
 	const hoursVal = Number(draft.monthlyHours) || 0;
-	// The cap shown/saved: derived from the budget when tied, otherwise taken
-	// straight from the entered monthly hours.
+	// The cap shown/saved: derived from the budget when the member has a slice,
+	// otherwise taken straight from the entered monthly hours.
 	const caps = useBudget
 		? capsFromRate(alloc, rateVal)
 		: capsFromMonthlyHours(hoursVal);
@@ -516,10 +529,7 @@ function MemberCard({
 							// Switching to fixed with a budget slice already set: that
 							// slice IS the flat monthly pay (see HowItWorks), so seed it
 							// rather than making the consultant retype the same number.
-							...(rateType === "fixed" &&
-							draft.useBudget &&
-							!draft.fixedAmount &&
-							alloc > 0
+							...(rateType === "fixed" && !draft.fixedAmount && alloc > 0
 								? { fixedAmount: String(alloc) }
 								: {}),
 						})
@@ -533,31 +543,23 @@ function MemberCard({
 					label="Monthly budget"
 					help={
 						useBudget
-							? "This member's slice of the team pool"
-							: "Off — set the rate and hours directly"
+							? "This member's slice of the team pool — set in Financials"
+							: "No slice yet — set the rate and hours directly"
 					}
 					action={
-						<Switch
-							checked={useBudget}
-							onChange={(v) => onPatch({ useBudget: v })}
-							label={useBudget ? "On" : "Off"}
-						/>
+						<Link
+							to="/project/$projectId/financials"
+							params={{ projectId }}
+							className="text-[11px] font-semibold text-blue-600 hover:underline"
+						>
+							Edit split
+						</Link>
 					}
 				>
 					{useBudget ? (
-						<AdornedInput
-							prefix={currency}
-							value={draft.allocation}
-							onChange={(v) =>
-								// For a fixed member the budget slice is the flat pay, so the
-								// two move together. Hourly members derive the cap instead.
-								onPatch(
-									isFixed
-										? { allocation: v, fixedAmount: v }
-										: { allocation: v },
-								)
-							}
-						/>
+						<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold tabular-nums text-slate-700">
+							{formatMoney(currency, alloc)}
+						</div>
 					) : (
 						<div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-400">
 							Not tied to a budget
@@ -758,41 +760,6 @@ function Field({
 			<div className="mt-1">{children}</div>
 			{help && <p className="mt-1 text-[11px] text-slate-400">{help}</p>}
 		</div>
-	);
-}
-
-/** Compact on/off switch used to toggle a field on or off. */
-function Switch({
-	checked,
-	onChange,
-	label,
-}: {
-	checked: boolean;
-	onChange: (v: boolean) => void;
-	label?: string;
-}) {
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={checked}
-			aria-label={label ? undefined : "Toggle"}
-			onClick={() => onChange(!checked)}
-			className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
-		>
-			<span
-				className={`relative h-4 w-7 rounded-full transition-colors ${
-					checked ? "bg-slate-900" : "bg-slate-300"
-				}`}
-			>
-				<span
-					className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
-						checked ? "left-3.5" : "left-0.5"
-					}`}
-				/>
-			</span>
-			{label}
-		</button>
 	);
 }
 

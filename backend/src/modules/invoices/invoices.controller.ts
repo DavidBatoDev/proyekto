@@ -116,4 +116,17 @@ export class InvoicesController {
   getPdfUrl(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.getPdfUrl(user.id, id);
   }
+
+  /**
+   * Where this invoice would be emailed, and which fallback supplied it. Read
+   * by the pre-send confirmation so the consultant sees the actual address
+   * before committing, rather than discovering it in the delivery report.
+   */
+  @Get(':id/recipient')
+  getRecipient(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.invoices.getRecipient(user.id, id);
+  }
 }

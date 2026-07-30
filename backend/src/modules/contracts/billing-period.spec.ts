@@ -208,6 +208,124 @@ describe('lastBillablePeriod', () => {
   });
 });
 
+describe('advance (prepaid) billing', () => {
+  const start = '2026-11-01';
+  const end = '2027-10-31';
+  const advance = (invoiceOffsetDays: number) => ({
+    invoiceOffsetDays,
+    dueDays: 15,
+    billingTiming: 'advance' as const,
+  });
+
+  it('raises each invoice before the period it covers', () => {
+    const periods = billingPeriodsForRange(
+      MONTHLY_PAY_PERIOD_CONFIG,
+      start,
+      end,
+      advance(7),
+    );
+    // December's invoice goes out on Nov 24, a week before December opens.
+    const december = periods.find((p) => p.periodStart === '2026-12-01');
+    expect(december?.invoiceDate).toBe('2026-11-24');
+    expect(december?.dueDate).toBe('2026-12-09');
+    for (const period of periods) {
+      expect(period.invoiceDate < period.periodStart).toBe(true);
+    }
+  });
+
+  it('leaves arrears anchored to the period end', () => {
+    const [first] = billingPeriodsForRange(
+      MONTHLY_PAY_PERIOD_CONFIG,
+      start,
+      end,
+      { invoiceOffsetDays: 7, dueDays: 15 },
+    );
+    expect(first.periodEnd).toBe('2026-11-30');
+    expect(first.invoiceDate).toBe('2026-12-07');
+  });
+
+  it('anchors a clamped first period to its clamped START, not its end', () => {
+    // Mid-month start: the first period is truncated to Nov 10–30. Deriving
+    // the invoice date from the clamped end would put a prepaid invoice AFTER
+    // the period it covers.
+    const [first] = billingPeriodsForRange(
+      MONTHLY_PAY_PERIOD_CONFIG,
+      '2026-11-10',
+      '2027-10-31',
+      advance(7),
+    );
+    expect(first.periodStart).toBe('2026-11-10');
+    expect(first.periodEnd).toBe('2026-11-30');
+    expect(first.invoiceDate).toBe('2026-11-03');
+  });
+
+  it('clamps a month-end lead into the previous month correctly', () => {
+    // 31-day lead from Mar 1 lands on Jan 29 — addDays walks calendar days, so
+    // February's length is handled without a clamp special case.
+    const periods = billingPeriodsForRange(
+      MONTHLY_PAY_PERIOD_CONFIG,
+      '2027-01-01',
+      '2027-12-31',
+      advance(31),
+    );
+    const march = periods.find((p) => p.periodStart === '2027-03-01');
+    expect(march?.invoiceDate).toBe('2027-01-29');
+  });
+
+  it('bills a period that has not started yet, once its invoice date arrives', () => {
+    const options = advance(7);
+    // Nov 24 is December's invoice date; December is entirely in the future.
+    const period = lastBillablePeriod(
+      MONTHLY_PAY_PERIOD_CONFIG,
+      start,
+      end,
+      '2026-11-24',
+      options,
+    );
+    expect(period?.periodStart).toBe('2026-12-01');
+    expect(period?.periodEnd).toBe('2026-12-31');
+  });
+
+  it('still refuses to bill before the lead time has arrived', () => {
+    // The very first invoice (for November) goes out Oct 25.
+    const options = advance(7);
+    expect(
+      lastBillablePeriod(
+        MONTHLY_PAY_PERIOD_CONFIG,
+        start,
+        end,
+        '2026-10-24',
+        options,
+      ),
+    ).toBeNull();
+    expect(
+      lastBillablePeriod(
+        MONTHLY_PAY_PERIOD_CONFIG,
+        start,
+        end,
+        '2026-10-25',
+        options,
+      )?.periodStart,
+    ).toBe('2026-11-01');
+  });
+
+  it('picks the latest period whose invoice date has arrived, and no further', () => {
+    // February's invoice date is Jan 25. The day before, January is still the
+    // furthest the scheduler may go — advance billing runs one period ahead,
+    // not arbitrarily far ahead.
+    const at = (today: string) =>
+      lastBillablePeriod(
+        MONTHLY_PAY_PERIOD_CONFIG,
+        start,
+        end,
+        today,
+        advance(7),
+      )?.periodStart;
+    expect(at('2027-01-24')).toBe('2027-01-01');
+    expect(at('2027-01-25')).toBe('2027-02-01');
+  });
+});
+
 describe('configForCadence', () => {
   const teamConfig: PayPeriodConfig = {
     cadence: 'monthly',

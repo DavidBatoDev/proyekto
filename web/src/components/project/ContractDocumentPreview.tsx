@@ -1,16 +1,52 @@
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, PanelRightClose, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+	SIGNATURE_BASE_HEIGHT_PX,
+	SIGNATURE_COMPACT_BASE_HEIGHT_PX,
+	SIGNATURE_COMPACT_FIELD_HEIGHT_PX,
+	SIGNATURE_FIELD_HEIGHT_PX,
+} from "@/components/project/signature/signature-constants";
 import {
 	type BillingMode,
 	formatContractDate,
 	formatMoney,
 } from "@/lib/contract-term";
 import type {
-	Contract,
+	BillingTiming,
 	ContractClause,
+	ContractPeriod,
 	ContractService,
 } from "@/services/contract.service";
+
+/**
+ * The slice of a contract the document actually renders.
+ *
+ * Narrower than `Contract` on purpose: the public signing page is served a
+ * whitelist projection with no project_id, created_by or internal notes, and
+ * typing the preview against that slice is what lets it render the same
+ * document for a signer who has no account. A full `Contract` still satisfies it.
+ */
+export interface ContractDocumentView {
+	contract_number: string | null;
+	service_start_date: string | null;
+	service_end_date: string | null;
+	clauses: ContractClause[];
+	services: ContractService[];
+	periods: ContractPeriod[];
+	signed_by_consultant_at: string | null;
+	signed_by_consultant_name: string | null;
+	signed_by_consultant_signature_url: string | null;
+	signed_by_consultant_signature_scale: number;
+	signed_by_consultant_signature_offset_x: number;
+	signed_by_consultant_signature_offset_y: number;
+	signed_by_client_at: string | null;
+	signed_by_client_name: string | null;
+	signed_by_client_signature_url: string | null;
+	signed_by_client_signature_scale: number;
+	signed_by_client_signature_offset_x: number;
+	signed_by_client_signature_offset_y: number;
+}
 
 /**
  * A live, paper-styled preview of the service agreement — the document the
@@ -47,6 +83,9 @@ export interface PreviewTerms {
 	service_description: string;
 	payment_method: string;
 	due_days: string;
+	billing_timing: BillingTiming;
+	auto_renew: boolean;
+	notice_days: string;
 }
 
 function renderClause(body: string, provider: string, client: string): string {
@@ -74,10 +113,17 @@ export function ContractDocumentPreview({
 	contract,
 	parties,
 	terms,
+	onHide,
 }: {
-	contract: Contract;
+	contract: ContractDocumentView;
 	parties: PreviewParties;
 	terms: PreviewTerms;
+	/**
+	 * Collapse the preview column entirely. The panel is a fixed 480px of a
+	 * 1440px page, which squeezed every form field beside it to ~310px — wide
+	 * enough for "Net 15", not for a company address.
+	 */
+	onHide?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
 
@@ -88,14 +134,26 @@ export function ContractDocumentPreview({
 					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
 						Live preview
 					</p>
-					<button
-						type="button"
-						onClick={() => setExpanded(true)}
-						className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/10"
-					>
-						<Maximize2 className="h-3 w-3" />
-						Expand
-					</button>
+					<div className="flex items-center gap-1">
+						<button
+							type="button"
+							onClick={() => setExpanded(true)}
+							className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/10"
+						>
+							<Maximize2 className="h-3 w-3" />
+							Expand
+						</button>
+						{onHide && (
+							<button
+								type="button"
+								onClick={onHide}
+								className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+							>
+								<PanelRightClose className="h-3 w-3" />
+								Hide
+							</button>
+						)}
+					</div>
 				</div>
 				<div className="max-h-[75vh] overflow-y-auto">
 					<PaperDocument contract={contract} parties={parties} terms={terms} />
@@ -180,7 +238,7 @@ function PaperDocument({
 	terms,
 	large,
 }: {
-	contract: Contract;
+	contract: ContractDocumentView;
 	parties: PreviewParties;
 	terms: PreviewTerms;
 	large?: boolean;
@@ -196,8 +254,25 @@ function PaperDocument({
 			value: `${formatContractDate(contract.service_start_date)} – ${formatContractDate(contract.service_end_date)}`,
 		},
 		{
+			label: "Invoicing",
+			value:
+				terms.billing_timing === "advance"
+					? "In advance, before each period begins"
+					: "In arrears, after each period is delivered",
+		},
+		{
 			label: "Payment terms",
 			value: terms.due_days ? `Net ${terms.due_days} days` : "—",
+		},
+		{
+			label: "Renewal",
+			value: terms.auto_renew
+				? "Renews automatically at the end of the term"
+				: "Ends at the end of the term",
+		},
+		{
+			label: "Notice to cancel",
+			value: terms.notice_days ? `${terms.notice_days} days` : "—",
 		},
 		{ label: "Billing periods", value: String(contract.periods.length) },
 	];
@@ -392,13 +467,6 @@ function Section({
 		</div>
 	);
 }
-
-/** Signature image height at scale 1, matching the contract editor's base. */
-const SIGNATURE_BASE_HEIGHT_PX = 56;
-const SIGNATURE_COMPACT_BASE_HEIGHT_PX = 44;
-/** Height of the signature field itself. FIXED — the document never reflows. */
-const SIGNATURE_FIELD_HEIGHT_PX = 64;
-const SIGNATURE_COMPACT_FIELD_HEIGHT_PX = 48;
 
 function SignatureColumn({
 	heading,

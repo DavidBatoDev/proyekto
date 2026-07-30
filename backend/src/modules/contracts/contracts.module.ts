@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../common/mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
+import { UploadsModule } from '../uploads/uploads.module';
+import { ContractSignatureLinksController } from './contract-signature-links.controller';
+import { ContractSignatureLinksService } from './contract-signature-links.service';
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
 import { ProjectActivationController } from './project-activation.controller';
@@ -10,11 +14,28 @@ import { ProjectActivationService } from './project-activation.service';
  * Depends on AuthorizationModule rather than the whole ProjectsModule, so
  * ProjectsModule can import THIS module (for the activation gate) without a
  * circular dependency.
+ *
+ * ContractSignatureLinksController is listed FIRST deliberately: it owns the
+ * literal `contracts/sign/:token` paths, and ContractsController's
+ * `@Get(':id')` (with a ParseUUIDPipe) would otherwise swallow them.
  */
 @Module({
-  imports: [AuthorizationModule, NotificationsModule],
-  controllers: [ContractsController, ProjectActivationController],
-  providers: [ContractsService, ProjectActivationService],
+  imports: [
+    AuthorizationModule,
+    NotificationsModule,
+    UploadsModule,
+    MailModule,
+  ],
+  controllers: [
+    ContractSignatureLinksController,
+    ContractsController,
+    ProjectActivationController,
+  ],
+  providers: [
+    ContractsService,
+    ContractSignatureLinksService,
+    ProjectActivationService,
+  ],
   exports: [ContractsService, ProjectActivationService],
 })
 export class ContractsModule {}

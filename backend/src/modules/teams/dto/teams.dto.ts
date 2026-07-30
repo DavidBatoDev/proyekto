@@ -68,6 +68,31 @@ export class UpdateTeamDto {
   @IsString()
   avatar_url?: string;
 
+  // ── Billing identity ──────────────────────────────────────────────────────
+  // The service-provider block on contracts and invoices. All four accept ''
+  // so a field can be cleared without deleting the team.
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 200)
+  legal_name?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  billing_address?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  tax_id?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== '')
+  @IsEmail()
+  @MaxLength(320)
+  billing_email?: string;
+
   @IsOptional()
   @IsBoolean()
   time_tracking_enabled?: boolean;

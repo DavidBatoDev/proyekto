@@ -41,6 +41,14 @@ export interface Team {
 	description: string | null;
 	avatar_url: string | null;
 	is_personal: boolean;
+	/**
+	 * Billing identity — the service-provider block on contracts and invoices
+	 * when a project bills through this team. Null until the owner fills it in.
+	 */
+	legal_name?: string | null;
+	billing_address?: string | null;
+	tax_id?: string | null;
+	billing_email?: string | null;
 	time_tracking_enabled: boolean;
 	retroactive_log_days?: number | null;
 	default_currency?: string | null;
@@ -226,6 +234,10 @@ export async function updateTeam(
 		name?: string;
 		description?: string;
 		avatar_url?: string;
+		legal_name?: string;
+		billing_address?: string;
+		tax_id?: string;
+		billing_email?: string;
 		time_tracking_enabled?: boolean;
 		retroactive_log_days?: number;
 		default_currency?: "USD" | "CAD" | "PHP";

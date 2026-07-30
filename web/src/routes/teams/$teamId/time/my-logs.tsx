@@ -37,17 +37,13 @@ import {
 } from "@/components/team-time/TeamTimeModals";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
-	confirmStopLongTimer,
 	fromLocalDateTimeInput,
+	seedManualLogRange,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
+import { useActiveTimer } from "@/components/team-time/useActiveTimer";
+import { useTimeTaskCreation } from "@/components/team-time/useTimeTaskCreation";
 import { useToast } from "@/hooks/useToast";
-import {
-	epicService,
-	featureService,
-	roadmapService,
-	taskService,
-} from "@/services/roadmap.service";
 import {
 	type TaskTimeLog,
 	teamTimeService,
@@ -156,19 +152,6 @@ function MyLogsTab() {
 		epicTitle: string | null;
 		featureTitle: string | null;
 	} | null>(null);
-	// Epics/features created from the timer modal that have no tasks yet, so the
-	// picker can keep showing them (its tree is otherwise derived from tasks).
-	const [pendingEpics, setPendingEpics] = useState<
-		Array<{ id: string; title: string }>
-	>([]);
-	const [pendingFeatures, setPendingFeatures] = useState<
-		Array<{
-			id: string;
-			epicId: string | null;
-			epicTitle: string;
-			title: string;
-		}>
-	>([]);
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
@@ -323,25 +306,16 @@ function MyLogsTab() {
 
 	// ─── Mutations ──────────────────────────────────────────────────────────
 
-	const startMutation = useMutation({
-		mutationFn: (input: { projectId: string; taskId?: string | null }) =>
-			teamTimeService.startLog(input.projectId, input.taskId),
-		onSuccess: () => {
-			toast.success("Timer started");
-			qc.invalidateQueries({ queryKey: ["team-time", teamId, "my-logs"] });
+	// Start/stop go through useActiveTimer, which owns the
+	// ["team-time","running-log",userId] cache entry the floating widget reads.
+	// These used to call the service directly and invalidate only
+	// ["team-time", teamId, "my-logs"] — a key that does NOT prefix-match the
+	// running-log one, so the widget lagged up to 30s behind its idle poll.
+	const activeTimer = useActiveTimer({
+		onStarted: () => {
 			setAddOpen(false);
 			setAddTaskId("");
 		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const stopMutation = useMutation({
-		mutationFn: (id: string) => teamTimeService.stopLog(id),
-		onSuccess: () => {
-			toast.success("Timer stopped");
-			qc.invalidateQueries({ queryKey: ["team-time", teamId, "my-logs"] });
-		},
-		onError: (e: Error) => toast.error(e.message),
 	});
 
 	const deleteMutation = useMutation({
@@ -405,145 +379,18 @@ function MyLogsTab() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
-	const normalizePathLabel = (value?: string | null) =>
-		(value ?? "")
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, " ")
-			.trim();
-
-	const createEpicMutation = useMutation({
-		mutationFn: async (title: string) => {
-			if (!addProjectId) throw new Error("Select a project first.");
-			const roadmap = await roadmapService.getByProjectId(addProjectId);
-			if (!roadmap?.id)
-				throw new Error("This project has no roadmap to add an epic to.");
-			return epicService.create({
-				roadmap_id: roadmap.id,
-				title: title.trim() || "Untitled epic",
-			});
-		},
-		onSuccess: (created) => {
-			toast.success("Epic created");
-			setPendingEpics((prev) =>
-				prev.some((e) => e.id === created.id)
-					? prev
-					: [...prev, { id: created.id, title: created.title }],
-			);
-			void qc.invalidateQueries({
-				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
-			});
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const createFeatureMutation = useMutation({
-		mutationFn: async (input: {
-			epicId: string | null;
-			epicTitle: string;
-			title: string;
-		}) => {
-			if (!addProjectId) throw new Error("Select a project first.");
-			const roadmap = await roadmapService.getByProjectId(addProjectId);
-			if (!roadmap?.id)
-				throw new Error("This project has no roadmap to add a feature to.");
-			let epicId = input.epicId?.trim() ?? "";
-			if (!epicId) {
-				// The picker only knows the epic by title — resolve it to an id.
-				const full = await roadmapService.getFull(roadmap.id);
-				const nEt = normalizePathLabel(input.epicTitle);
-				epicId =
-					(full.epics ?? []).find(
-						(epic) => normalizePathLabel(epic.title) === nEt,
-					)?.id ?? "";
-			}
-			if (!epicId) throw new Error("Select an epic before creating a feature.");
-			return featureService.create({
-				roadmap_id: roadmap.id,
-				epic_id: epicId,
-				title: input.title.trim() || "Untitled feature",
-			});
-		},
-		onSuccess: (created, variables) => {
-			toast.success("Feature created");
-			setPendingFeatures((prev) =>
-				prev.some((f) => f.id === created.id)
-					? prev
-					: [
-							...prev,
-							{
-								id: created.id,
-								epicId: variables.epicId,
-								epicTitle: variables.epicTitle,
-								title: created.title,
-							},
-						],
-			);
-			void qc.invalidateQueries({
-				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
-			});
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const createTaskMutation = useMutation({
-		mutationFn: async (input: {
-			taskData: Partial<RoadmapTask>;
-			featureId: string | null;
-			context: {
-				featureId: string | null;
-				epicTitle: string | null;
-				featureTitle: string | null;
-			} | null;
-			projectId: string;
-		}) => {
-			const { taskData, context, projectId } = input;
-			const resolveFeature = async (): Promise<string | null> => {
-				const nFt = normalizePathLabel(context?.featureTitle);
-				const nEt = normalizePathLabel(context?.epicTitle);
-				if (!nFt) return null;
-				const matched = (tasksForAddQuery.data ?? []).find((t) => {
-					if (normalizePathLabel(t.feature_title) !== nFt) return false;
-					return !nEt || normalizePathLabel(t.epic_title) === nEt;
-				});
-				if (matched?.feature_id) return matched.feature_id;
-				if (!projectId) return null;
-				const roadmap = await roadmapService.getByProjectId(projectId);
-				if (!roadmap?.id) return null;
-				const full = await roadmapService.getFull(roadmap.id);
-				for (const epic of full.epics ?? []) {
-					const et = normalizePathLabel(epic.title);
-					if (nEt && et !== nEt) continue;
-					const feat = (epic.features ?? []).find(
-						(f) => normalizePathLabel(f.title) === nFt,
-					);
-					if (feat?.id) return feat.id;
-				}
-				return null;
-			};
-			let featureId = input.featureId?.trim() ?? "";
-			if (!featureId) featureId = (await resolveFeature()) ?? "";
-			if (!featureId)
-				throw new Error("Select a feature before creating a task.");
-			const title = (taskData.title ?? "").trim();
-			return taskService.create({
-				feature_id: featureId,
-				title: title || "Untitled task",
-				status: taskData.status ?? "todo",
-				priority: taskData.priority ?? "medium",
-				work_type: taskData.work_type ?? "real_work",
-				assignee_id: taskData.assignee_id ?? null,
-				due_date: taskData.due_date || undefined,
-			});
-		},
-		onSuccess: (created) => {
-			toast.success("Task created");
-			void qc.invalidateQueries({
-				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
-			});
-			setAddTaskId(created.id);
-		},
-		onError: (e: Error) => toast.error(e.message),
-		onSettled: () => {
+	// Inline epic/feature/task creation from the timer picker. This used to be
+	// ~140 lines of route-local mutations here, which is the only reason the
+	// project Time page could not render the same picker.
+	const taskCreation = useTimeTaskCreation({
+		projectId: addProjectId || null,
+		tasks: tasksForAddQuery.data ?? [],
+		invalidateKeys: [
+			["team-time", teamId, "project-tasks", addProjectId],
+			["team-time", "project", addProjectId, "tasks"],
+		],
+		onTaskCreated: (taskId) => setAddTaskId(taskId),
+		onTaskSettled: () => {
 			setIsCreateTaskPanelOpen(false);
 			setCreateTaskFeatureId(null);
 			setCreateTaskContext(null);
@@ -552,21 +399,11 @@ function MyLogsTab() {
 
 	// ─── Handlers ───────────────────────────────────────────────────────────
 
-	const handleStop = useCallback(
-		async (id: string) => {
-			// Guard against a forgotten timer that has been running unusually long.
-			const log = allLogs.find((l) => l.id === id);
-			if (log && !log.ended_at) {
-				const elapsed = Math.max(
-					0,
-					Math.floor((Date.now() - new Date(log.started_at).getTime()) / 1000),
-				);
-				if (!confirmStopLongTimer(elapsed)) return;
-			}
-			await stopMutation.mutateAsync(id);
-		},
-		[stopMutation, allLogs],
-	);
+	// activeTimer.stop() carries the forgotten-timer confirmation itself, so the
+	// duplicate elapsed-time guard that used to live here is gone.
+	const handleStop = useCallback(() => {
+		activeTimer.stop();
+	}, [activeTimer]);
 	const handleDelete = useCallback(
 		(id: string) => {
 			const label = allLogs.find((l) => l.id === id)?.task?.title ?? undefined;
@@ -588,8 +425,9 @@ function MyLogsTab() {
 	}, []);
 	const handleAddLogForDay = useCallback(
 		(date: Date) => {
-			// Seed a 09:00–10:00 block on the chosen day; the user adjusts as needed.
-			const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+			// For today this seeds the hour that just ended rather than a fixed
+			// 09:00–10:00 block, which was wrong for anyone logging after lunch.
+			const { start, end } = seedManualLogRange(date);
 			setManualDateLabel(
 				new Intl.DateTimeFormat(undefined, {
 					weekday: "long",
@@ -598,8 +436,8 @@ function MyLogsTab() {
 					year: "numeric",
 				}).format(date),
 			);
-			setManualStart(`${ymd}T09:00`);
-			setManualEnd(`${ymd}T10:00`);
+			setManualStart(start);
+			setManualEnd(end);
 			setManualBreakMinutes(0);
 			// Default the project to the most recently used one.
 			const recent = [...allLogs].sort(
@@ -641,45 +479,34 @@ function MyLogsTab() {
 	);
 	const handleCreateTaskFromTimer = useCallback(
 		async (taskData: Partial<RoadmapTask>) => {
-			await createTaskMutation.mutateAsync({
+			await taskCreation.createTask({
 				taskData,
 				featureId: createTaskFeatureId,
 				context: createTaskContext,
-				projectId: addProjectId,
 			});
 		},
-		[addProjectId, createTaskContext, createTaskFeatureId, createTaskMutation],
-	);
-	const handleCreateEpicFromTimer = useCallback(
-		(title: string) => createEpicMutation.mutateAsync(title),
-		[createEpicMutation],
-	);
-	const handleCreateFeatureFromTimer = useCallback(
-		(input: { epicId: string | null; epicTitle: string; title: string }) =>
-			createFeatureMutation.mutateAsync(input),
-		[createFeatureMutation],
+		[createTaskContext, createTaskFeatureId, taskCreation],
 	);
 
 	// New epics/features are scoped to the selected project; drop them when the
 	// project changes so a different project never shows another's pending nodes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: addProjectId is a trigger-only dep — the body just clears state on project switch.
 	useEffect(() => {
-		setPendingEpics([]);
-		setPendingFeatures([]);
+		taskCreation.reset();
 	}, [addProjectId]);
 
 	const rowPendingById = useMemo<Record<string, boolean>>(() => {
 		const map: Record<string, boolean> = {};
-		if (stopMutation.isPending && stopMutation.variables)
-			map[stopMutation.variables as string] = true;
+		if (activeTimer.isStopping && activeTimer.runningLogId)
+			map[activeTimer.runningLogId] = true;
 		if (editMutation.isPending && editMutation.variables)
 			map[editMutation.variables.id] = true;
 		if (taskChangeMutation.isPending && taskChangeMutation.variables)
 			map[taskChangeMutation.variables.id] = true;
 		return map;
 	}, [
-		stopMutation.isPending,
-		stopMutation.variables,
+		activeTimer.isStopping,
+		activeTimer.runningLogId,
 		editMutation.isPending,
 		editMutation.variables,
 		taskChangeMutation.isPending,
@@ -725,7 +552,7 @@ function MyLogsTab() {
 					busyLogIds={myBusyLogIds}
 					hasActiveLog={hasActiveLog}
 					loadingTasks={tasksForRowQuery.isFetching}
-					onStopLog={(log) => handleStop(log.id)}
+					onStopLog={() => handleStop()}
 					onEditLog={handleEdit}
 					onDeleteLog={(log) => {
 						setDeletingLogLabel(log.task?.title ?? undefined);
@@ -799,6 +626,8 @@ function MyLogsTab() {
 						onOpenTaskInRoadmap={handleOpenInRoadmap}
 						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 						onOpenAddLog={() => setAddOpen(true)}
+						// Manual entry used to be reachable only through the calendar.
+						onOpenManualLog={() => handleAddLogForDay(new Date())}
 					/>
 				</>
 			)}
@@ -828,31 +657,26 @@ function MyLogsTab() {
 				loadingTasks={tasksForAddQuery.isFetching}
 				selectedProjectId={addProjectId}
 				selectedTaskId={addTaskId}
-				saving={startMutation.isPending}
+				saving={activeTimer.isStarting}
 				saveLabel="Start Timer"
 				title="Start a timer"
 				description="Pick a project, then a task to start logging."
 				onClose={() => {
-					if (startMutation.isPending) return;
+					if (activeTimer.isStarting) return;
 					setAddOpen(false);
 					setAddTaskId("");
 				}}
-				onSave={() =>
-					startMutation.mutate({
-						projectId: addProjectId,
-						taskId: addTaskId || null,
-					})
-				}
+				onSave={() => activeTimer.start(addProjectId, addTaskId || null)}
 				onChangeProjectId={(v) => setAddProjectId(v)}
 				onChangeTaskId={(v) => setAddTaskId(v)}
 				onRequestCreateTask={handleOpenCreateTaskPanel}
-				creatingTask={createTaskMutation.isPending}
-				pendingEpics={pendingEpics}
-				pendingFeatures={pendingFeatures}
-				onCreateEpic={handleCreateEpicFromTimer}
-				onCreateFeature={handleCreateFeatureFromTimer}
-				creatingEpic={createEpicMutation.isPending}
-				creatingFeature={createFeatureMutation.isPending}
+				creatingTask={taskCreation.creatingTask}
+				pendingEpics={taskCreation.pendingEpics}
+				pendingFeatures={taskCreation.pendingFeatures}
+				onCreateEpic={taskCreation.createEpic}
+				onCreateFeature={taskCreation.createFeature}
+				creatingEpic={taskCreation.creatingEpic}
+				creatingFeature={taskCreation.creatingFeature}
 			/>
 
 			{/* Create task panel */}
@@ -862,7 +686,7 @@ function MyLogsTab() {
 				isCreating
 				projectId={addProjectId}
 				onClose={() => {
-					if (createTaskMutation.isPending) return;
+					if (taskCreation.creatingTask) return;
 					setIsCreateTaskPanelOpen(false);
 					setCreateTaskFeatureId(null);
 					setCreateTaskContext(null);
@@ -870,7 +694,7 @@ function MyLogsTab() {
 				onUpdateTask={() => {}}
 				onDeleteTask={() => {}}
 				onCreateTask={handleCreateTaskFromTimer}
-				isLoading={createTaskMutation.isPending}
+				isLoading={taskCreation.creatingTask}
 				zIndexBase={10000}
 			/>
 
@@ -961,6 +785,7 @@ function MyLogsTab() {
 				endedAt={manualEnd}
 				breakMinutes={manualBreakMinutes}
 				saving={manualLogMutation.isPending}
+				retroactiveLogDays={teamQuery.data?.retroactive_log_days ?? null}
 				onClose={() => {
 					if (manualLogMutation.isPending) return;
 					setManualOpen(false);

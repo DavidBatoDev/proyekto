@@ -9,10 +9,13 @@ import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
+  addDays,
   BillingPeriod,
   billingPeriodsForRange,
   configForCadence,
+  parseIsoDate,
   PayPeriodConfig,
+  toIsoDate,
 } from './billing-period';
 import {
   ContractClause,
@@ -21,10 +24,13 @@ import {
 } from './contract-clause-template';
 import { computeContractTerm } from './contract-term';
 import {
+  AmendContractDto,
   BillingMode,
+  BillingTiming,
   ContractStatus,
   CreateContractDto,
   InvoiceCadence,
+  ProviderKind,
   SignContractDto,
   UnsignContractDto,
   UpdateContractDto,
@@ -38,6 +44,13 @@ export interface ContractRow {
   contract_number: string | null;
   status: ContractStatus;
 
+  /**
+   * Which identity signs THIS contract. 'agency' pulls the provider block from
+   * the project's primary team; 'individual' pulls it from the consultant's own
+   * profile. Per-contract rather than per-team, because a consultant can run
+   * most work through the agency and still take one engagement personally.
+   */
+  provider_kind: ProviderKind;
   provider_name: string | null;
   provider_address: string | null;
   provider_tin: string | null;
@@ -51,6 +64,8 @@ export interface ContractRow {
 
   currency: string;
   billing_mode: BillingMode;
+  /** 'arrears' bills a closed period; 'advance' bills the period ahead. */
+  billing_timing: BillingTiming;
   recurring_fee: number | null;
   client_hourly_rate: number | null;
   included_hours: number | null;
@@ -69,6 +84,10 @@ export interface ContractRow {
   contract_end_date: string | null;
   auto_renew: boolean;
   notice_days: number | null;
+  /** The version this one amends. Null on an original. */
+  supersedes_contract_id: string | null;
+  /** First day the amended terms apply. */
+  amendment_effective_date: string | null;
 
   clauses: ContractClause[];
   services: ContractService[];
@@ -97,6 +116,16 @@ export interface ContractRow {
 /** A contract plus the billing schedule derived from its terms. */
 export interface ContractWithSchedule extends ContractRow {
   periods: BillingPeriod[];
+}
+
+/** The project's primary team, as far as contracts care about it. */
+interface PrimaryTeamRow {
+  name: string | null;
+  legal_name: string | null;
+  billing_address: string | null;
+  tax_id: string | null;
+  billing_email: string | null;
+  pay_period_config: PayPeriodConfig | null;
 }
 
 const EDITABLE_STATUSES: ContractStatus[] = ['draft', 'sent'];
@@ -232,6 +261,11 @@ export class ContractsService {
       );
     }
 
+    this.assertBillingTimingAllowed(
+      dto.billing_timing ?? existing.billing_timing,
+      dto.billing_mode ?? existing.billing_mode,
+    );
+
     const patch: Record<string, unknown> = {
       ...this.scalarPatch(dto),
       ...this.termPatch(dto, existing),
@@ -262,6 +296,203 @@ export class ContractsService {
   }
 
   /**
+   * Change the terms of a contract that is already signed.
+   *
+   * A signed contract is immutable, and future invoices don't exist as rows —
+   * the scheduler re-derives them from the contract every run. So changing
+   * "this and every future invoice" is not an invoice edit at all: it creates
+   * version + 1 of the agreement, effective from a chosen date, which both
+   * parties must re-sign. Until they do, the current version keeps governing.
+   */
+  async amendContract(
+    callerId: string,
+    contractId: string,
+    dto: AmendContractDto,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+
+    if (dto.scope === 'this') {
+      throw new BadRequestException(
+        'Changing a single invoice is an invoice edit, not a contract change — open that invoice in the editor instead.',
+      );
+    }
+    if (existing.status !== 'signed' && existing.status !== 'active') {
+      throw new BadRequestException(
+        'Only a signed contract needs amending. Edit this one directly.',
+      );
+    }
+    if (!existing.service_start_date || !existing.service_end_date) {
+      throw new BadRequestException(
+        'This contract has no service window to amend.',
+      );
+    }
+
+    this.assertBillingTimingAllowed(
+      dto.billing_timing ?? existing.billing_timing,
+      dto.billing_mode ?? existing.billing_mode,
+    );
+
+    const effectiveFrom =
+      dto.scope === 'all'
+        ? existing.service_start_date
+        : (dto.effective_from?.slice(0, 10) ??
+          (await this.currentPeriodStart(existing)));
+
+    await this.assertNoIssuedInvoicesFrom(contractId, effectiveFrom);
+
+    // 'following' splits the engagement: the old version stops the day before
+    // the new one starts. 'all' replaces it outright, so its dates stand.
+    if (dto.scope === 'following') {
+      const truncatedEnd = toIsoDate(
+        addDays(parseIsoDate(effectiveFrom), -1),
+      );
+      if (truncatedEnd < existing.service_start_date) {
+        throw new BadRequestException(
+          'The new terms would start before the contract does. Use "the whole engagement" instead.',
+        );
+      }
+      const { error: truncateError } = await this.supabase
+        .from('contracts')
+        .update({
+          service_end_date: truncatedEnd,
+          contract_end_date: truncatedEnd,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contractId);
+      if (truncateError) throw new BadRequestException(truncateError.message);
+    }
+
+    const successor = await this.insertAmendedVersion(
+      existing,
+      dto,
+      effectiveFrom,
+      callerId,
+    );
+
+    // The predecessor's future DRAFT invoices belong to terms that no longer
+    // apply. They are deleted so the new version re-drafts them; without this
+    // the same calendar period could be billed once by each version, because
+    // uq_invoices_scheduled_period is keyed on contract_id.
+    await this.dropFutureDrafts(contractId, effectiveFrom);
+
+    return this.withSchedule(successor);
+  }
+
+  /** The start of the billing period containing today. */
+  private async currentPeriodStart(contract: ContractRow): Promise<string> {
+    const periods = await this.resolvePeriods(contract);
+    const today = new Date().toISOString().slice(0, 10);
+    const current = periods.find(
+      (p) => p.periodStart <= today && today <= p.periodEnd,
+    );
+    return current?.periodStart ?? today;
+  }
+
+  /**
+   * Refuse to amend over an invoice the client has already been sent.
+   *
+   * Advance billing makes this reachable in ordinary use: a prepaid contract
+   * can have issued an invoice for a period that has not started yet, and
+   * silently changing the terms underneath it would mean the client holds an
+   * invoice that no longer matches the agreement.
+   */
+  private async assertNoIssuedInvoicesFrom(
+    contractId: string,
+    effectiveFrom: string,
+  ): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('invoices')
+      .select('number, period_start, status')
+      .eq('contract_id', contractId)
+      .gte('period_start', effectiveFrom)
+      .neq('status', 'draft');
+    if (error) throw new BadRequestException(error.message);
+
+    const issued = (data ?? []) as Array<{ number: string }>;
+    if (issued.length > 0) {
+      const numbers = issued.map((i) => i.number).join(', ');
+      throw new BadRequestException(
+        `Invoice${issued.length === 1 ? '' : 's'} ${numbers} already went to the client for a period on or after ${effectiveFrom}. Void or credit ${issued.length === 1 ? 'it' : 'them'} before amending from that date.`,
+      );
+    }
+  }
+
+  private async dropFutureDrafts(
+    contractId: string,
+    effectiveFrom: string,
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from('invoices')
+      .delete()
+      .eq('contract_id', contractId)
+      .eq('origin', 'scheduled')
+      .eq('status', 'draft')
+      .gte('period_start', effectiveFrom);
+    if (error) throw new BadRequestException(error.message);
+  }
+
+  /** Copy the contract forward, apply the patch, leave it unsigned. */
+  private async insertAmendedVersion(
+    existing: ContractRow,
+    dto: AmendContractDto,
+    effectiveFrom: string,
+    callerId: string,
+  ): Promise<ContractRow> {
+    const { scope: _scope, effective_from: _effectiveFrom, ...terms } = dto;
+    const patch = {
+      ...this.scalarPatch(terms as UpdateContractDto),
+      ...this.termPatch(
+        {
+          ...(terms as UpdateContractDto),
+          // 'following' restarts the clock at the split; 'all' keeps the
+          // original start so the amended terms cover the whole engagement.
+          service_start_date:
+            terms.service_start_date ??
+            (dto.scope === 'following'
+              ? effectiveFrom
+              : (existing.service_start_date ?? undefined)),
+        },
+        existing,
+      ),
+    };
+
+    const {
+      id: _id,
+      created_at: _createdAt,
+      updated_at: _updatedAt,
+      ...carried
+    } = existing;
+
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .insert({
+        ...carried,
+        ...patch,
+        version: await this.nextVersion(existing.project_id),
+        status: 'draft',
+        supersedes_contract_id: existing.id,
+        amendment_effective_date: effectiveFrom,
+        // A new agreement needs new signatures — that is the whole point.
+        signed_by_consultant_at: null,
+        signed_by_consultant_name: null,
+        signed_by_consultant_signature_url: null,
+        signed_by_client_at: null,
+        signed_by_client_name: null,
+        signed_by_client_signature_url: null,
+        created_by: callerId,
+      })
+      .select('*')
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(
+        error?.message ?? 'Failed to create the amended contract.',
+      );
+    }
+    return data as ContractRow;
+  }
+
+  /**
    * Stamps one party's signature. The contract only becomes `signed` once BOTH
    * parties have stamped — which is what the activation checklist gates on.
    */
@@ -271,8 +502,27 @@ export class ContractsService {
     dto: SignContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    const isClientParty = dto.party === 'client';
     await this.assertCanManageSignature(callerId, existing, dto.party);
+    return this.stampSignature(existing, dto, callerId);
+  }
+
+  /**
+   * Stamp a signature that has ALREADY been authorized.
+   *
+   * Split out of `signContract` so the public token-bearer path can reuse the
+   * exact same semantics — both-signed detection, the supersede step, the
+   * counterparty notification — without re-deriving them. The token IS the
+   * authorization there, so it must not call `assertCanManageSignature`; that
+   * is the only difference between the two entry points, and keeping one
+   * implementation is what stops them drifting.
+   */
+  private async stampSignature(
+    existing: ContractRow,
+    dto: SignContractDto,
+    actorId: string | null,
+  ): Promise<ContractWithSchedule> {
+    const contractId = existing.id;
+    const isClientParty = dto.party === 'client';
 
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
@@ -351,10 +601,24 @@ export class ContractsService {
     }
     const updated = data as ContractRow;
 
+    // A token-bearing signer has no account, so there is nobody to exclude
+    // from the notification — everyone on the project should hear about it.
     if (bothSigned) {
-      await this.notifyCounterparty(callerId, updated);
+      await this.notifyCounterparty(actorId ?? '', updated);
     }
     return this.withSchedule(updated);
+  }
+
+  /**
+   * Sign as the holder of a valid signature link. Authorization already
+   * happened when the token was resolved, so this deliberately skips
+   * `assertCanManageSignature` — see `stampSignature`.
+   */
+  async signAsTokenBearer(
+    contract: ContractRow,
+    dto: SignContractDto,
+  ): Promise<ContractWithSchedule> {
+    return this.stampSignature(contract, dto, null);
   }
 
   /**
@@ -494,6 +758,25 @@ export class ContractsService {
     }
   }
 
+  /**
+   * Advance billing is retainer-only: an hourly contract cannot be invoiced
+   * before its hours exist, let alone before they're approved.
+   *
+   * `contracts_advance_retainer_only_check` enforces the same thing in the DB,
+   * but a raw constraint name is not an error message — this exists so the
+   * consultant is told why, in their own vocabulary.
+   */
+  private assertBillingTimingAllowed(
+    timing: BillingTiming,
+    mode: BillingMode,
+  ): void {
+    if (timing === 'advance' && mode !== 'retainer') {
+      throw new BadRequestException(
+        'Invoicing in advance is only available on a recurring-retainer contract — hourly work has to be logged and approved before it can be billed.',
+      );
+    }
+  }
+
   /** Billing windows implied by a contract's terms. Empty when terms are incomplete. */
   async resolvePeriods(contract: ContractRow): Promise<BillingPeriod[]> {
     if (!contract.service_start_date || !contract.service_end_date) return [];
@@ -508,6 +791,7 @@ export class ContractsService {
       {
         invoiceOffsetDays: contract.invoice_offset_days,
         dueDays: contract.due_days,
+        billingTiming: contract.billing_timing,
       },
     );
   }
@@ -516,6 +800,17 @@ export class ContractsService {
   async getTeamPayPeriodConfig(
     projectId: string,
   ): Promise<PayPeriodConfig | null> {
+    const team = await this.getPrimaryTeam(projectId);
+    return team?.pay_period_config ?? null;
+  }
+
+  /**
+   * The team a project bills through — the source of both its pay cut-offs and
+   * its business identity on contracts and invoices.
+   */
+  private async getPrimaryTeam(
+    projectId: string,
+  ): Promise<PrimaryTeamRow | null> {
     const { data: project } = await this.supabase
       .from('projects')
       .select('primary_team_id')
@@ -527,19 +822,24 @@ export class ContractsService {
 
     const { data: team } = await this.supabase
       .from('teams')
-      .select('pay_period_config')
+      .select('name, legal_name, billing_address, tax_id, billing_email, pay_period_config')
       .eq('id', teamId)
       .maybeSingle();
-    return (
-      ((team as { pay_period_config: PayPeriodConfig | null } | null)
-        ?.pay_period_config as PayPeriodConfig | null) ?? null
-    );
+    return (team as PrimaryTeamRow | null) ?? null;
   }
 
   // ─── internals ─────────────────────────────────────────────────────────────
 
   private async withSchedule(row: ContractRow): Promise<ContractWithSchedule> {
     return { ...row, periods: await this.resolvePeriods(row) };
+  }
+
+  /**
+   * Raw row fetch for the signature-link service, which authorizes by token
+   * rather than by session and so cannot go through the usual `getContract`.
+   */
+  async getContractRowForLink(contractId: string): Promise<ContractRow> {
+    return this.getContractRow(contractId);
   }
 
   private async getContractRow(contractId: string): Promise<ContractRow> {
@@ -588,6 +888,7 @@ export class ContractsService {
       if (dto[key] !== undefined) patch[key as string] = dto[key];
     };
 
+    copy('provider_kind');
     copy('provider_name');
     copy('provider_address');
     copy('provider_tin');
@@ -599,6 +900,7 @@ export class ContractsService {
     copy('client_email');
     copy('client_user_id');
     copy('billing_mode');
+    copy('billing_timing');
     copy('recurring_fee');
     copy('client_hourly_rate');
     copy('included_hours');
@@ -670,17 +972,10 @@ export class ContractsService {
   ): Promise<Record<string, unknown>> {
     const seeded = this.scalarPatch(terms as UpdateContractDto);
 
-    const { data: creator } = await this.supabase
-      .from('profiles')
-      .select('display_name, first_name, last_name, email')
-      .eq('id', callerId)
-      .maybeSingle();
-    if (creator && seeded.provider_name === undefined) {
-      seeded.provider_name = this.profileLabel(creator);
-    }
-    if (creator && seeded.provider_email === undefined) {
-      seeded.provider_email =
-        (creator as { email: string | null }).email ?? null;
+    const kind: ProviderKind = terms.provider_kind ?? 'agency';
+    const provider = await this.resolveProviderBlock(callerId, projectId, kind);
+    for (const [key, value] of Object.entries(provider)) {
+      if (seeded[key] === undefined) seeded[key] = value;
     }
 
     const { data: project } = await this.supabase
@@ -713,6 +1008,122 @@ export class ContractsService {
       }
     }
     return seeded;
+  }
+
+  /**
+   * The four `provider_*` values for a given identity.
+   *
+   * The agency branch falls back FIELD BY FIELD to the personal profile rather
+   * than all-or-nothing: a team that has filled in only its legal name should
+   * still get a usable email, not a blank one. `profiles` carries no business
+   * address or TIN, so those stay null for an individual — correct, and the UI
+   * says so rather than leaving the reader to wonder why they're empty.
+   */
+  private async resolveProviderBlock(
+    callerId: string,
+    projectId: string,
+    kind: ProviderKind,
+    teamId?: string,
+  ): Promise<Record<string, unknown>> {
+    const { data: creator } = await this.supabase
+      .from('profiles')
+      .select('display_name, first_name, last_name, email')
+      .eq('id', callerId)
+      .maybeSingle();
+    const personalName = creator ? this.profileLabel(creator) : null;
+    const personalEmail = (creator as { email: string | null } | null)?.email ?? null;
+
+    if (kind === 'individual') {
+      return {
+        provider_kind: 'individual',
+        provider_name: personalName,
+        provider_address: null,
+        provider_tin: null,
+        provider_email: personalEmail,
+      };
+    }
+
+    const team = teamId
+      ? await this.getAttachedTeamIdentity(projectId, teamId)
+      : await this.getPrimaryTeam(projectId);
+    return {
+      provider_kind: 'agency',
+      provider_name: team?.legal_name || team?.name || personalName,
+      provider_address: team?.billing_address ?? null,
+      provider_tin: team?.tax_id ?? null,
+      provider_email: team?.billing_email || personalEmail,
+    };
+  }
+
+  /**
+   * A specific team's billing identity, but only if it is attached to this
+   * project.
+   *
+   * The membership check is the security boundary: `team_id` arrives from the
+   * client, and without it a project admin could read any team's legal name,
+   * billing address and tax id by guessing a UUID.
+   */
+  private async getAttachedTeamIdentity(
+    projectId: string,
+    teamId: string,
+  ): Promise<PrimaryTeamRow | null> {
+    const { data: attachment, error: attachmentError } = await this.supabase
+      .from('project_teams')
+      .select('team_id')
+      .eq('project_id', projectId)
+      .eq('team_id', teamId)
+      .maybeSingle();
+    if (attachmentError) throw new BadRequestException(attachmentError.message);
+    if (!attachment) {
+      throw new BadRequestException(
+        'That team is not attached to this project.',
+      );
+    }
+
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select(
+        'name, legal_name, billing_address, tax_id, billing_email, pay_period_config',
+      )
+      .eq('id', teamId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return (data as PrimaryTeamRow | null) ?? null;
+  }
+
+  /**
+   * Overwrite the provider block from the chosen identity. Destructive by
+   * design — see `ReseedProviderDto` — so it is a deliberate call, not a side
+   * effect of editing terms.
+   */
+  async reseedProvider(
+    callerId: string,
+    contractId: string,
+    kind: ProviderKind,
+    teamId?: string,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+    if (!EDITABLE_STATUSES.includes(existing.status)) {
+      throw new BadRequestException(
+        'This contract is no longer editable. Remove the signatures to change it.',
+      );
+    }
+
+    const patch = await this.resolveProviderBlock(
+      existing.created_by ?? callerId,
+      existing.project_id,
+      kind,
+      teamId,
+    );
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update(patch)
+      .eq('id', contractId)
+      .select('*')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return this.withSchedule(data as ContractRow);
   }
 
   private profileLabel(profile: unknown): string | null {

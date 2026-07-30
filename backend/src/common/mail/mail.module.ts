@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { MailHealthController } from './mail-health.controller';
 import { MailerService } from './mailer.service';
 
 /**
@@ -7,6 +8,7 @@ import { MailerService } from './mailer.service';
  */
 @Global()
 @Module({
+  controllers: [MailHealthController],
   providers: [MailerService],
   exports: [MailerService],
 })

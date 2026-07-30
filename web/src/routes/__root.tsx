@@ -6,6 +6,7 @@ import Header from "../components/layout/Header";
 import { MigrationHandler } from "../components/migration";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
+import { ConfirmProvider } from "../hooks/useConfirm";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
@@ -23,22 +24,24 @@ function RootLayout() {
 
 	return (
 		<ToastProvider>
-			<Header />
-			<Outlet />
-			<FloatingActiveTimer />
-			<MigrationHandler />
-			<TanStackDevtools
-				config={{
-					position: "bottom-right",
-				}}
-				plugins={[
-					{
-						name: "Tanstack Router",
-						render: <TanStackRouterDevtoolsPanel />,
-					},
-					TanStackQueryDevtools,
-				]}
-			/>
+			<ConfirmProvider>
+				<Header />
+				<Outlet />
+				<FloatingActiveTimer />
+				<MigrationHandler />
+				<TanStackDevtools
+					config={{
+						position: "bottom-right",
+					}}
+					plugins={[
+						{
+							name: "Tanstack Router",
+							render: <TanStackRouterDevtoolsPanel />,
+						},
+						TanStackQueryDevtools,
+					]}
+				/>
+			</ConfirmProvider>
 		</ToastProvider>
 	);
 }

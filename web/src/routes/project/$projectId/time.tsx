@@ -41,6 +41,7 @@ import {
 } from "@/components/team-time/TeamLogsStatusTabs";
 import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
 import {
+	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
 	ManualLogModal,
@@ -48,8 +49,11 @@ import {
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	fromLocalDateTimeInput,
+	seedManualLogRange,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
+import { useActiveTimer } from "@/components/team-time/useActiveTimer";
+import { useTimeTaskCreation } from "@/components/team-time/useTimeTaskCreation";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
@@ -297,12 +301,16 @@ function ProjectTimePage() {
 		enabled: tab === "team",
 	});
 
-	// Task options for the "change task" flow, scoped to this project.
+	// Task options for the timer picker and the "change task" flow.
+	// Project-scoped, so this no longer needs a primary team — a project with no
+	// attached team used to get an empty task list here.
+	const projectTasksKey = useMemo(
+		() => ["team-time", "project", projectId, "tasks"] as const,
+		[projectId],
+	);
 	const tasksQuery = useQuery({
-		queryKey: ["team-time", primaryTeamId, "project-tasks", projectId],
-		queryFn: () =>
-			teamTimeService.listTeamProjectTasks(primaryTeamId, projectId),
-		enabled: Boolean(primaryTeamId),
+		queryKey: projectTasksKey,
+		queryFn: () => teamTimeService.listProjectTasks(projectId),
 	});
 
 	const myRatesQuery = useQuery({
@@ -361,13 +369,13 @@ function ProjectTimePage() {
 		},
 	});
 
-	const stopMutation = useMutation({
-		mutationFn: (id: string) => teamTimeService.stopLog(id),
-		onSuccess: () => {
-			toast.success("Timer stopped");
-			void qc.invalidateQueries({ queryKey: ["team-time"] });
-		},
-		onError: (e: Error) => toast.error(e.message),
+	// Start/stop go through useActiveTimer rather than calling the service
+	// directly: it owns the ["team-time","running-log",userId] cache entry that
+	// the floating widget reads, so the widget reflects the change immediately
+	// instead of waiting out its 30s idle poll.
+	// useActiveTimer already toasts start/stop — only the picker close is ours.
+	const activeTimer = useActiveTimer({
+		onStarted: () => setTimerPickerOpen(false),
 	});
 
 	const deleteMutation = useMutation({
@@ -449,6 +457,18 @@ function ProjectTimePage() {
 	const [manualStart, setManualStart] = useState("");
 	const [manualEnd, setManualEnd] = useState("");
 	const [manualBreakMinutes, setManualBreakMinutes] = useState(0);
+	const [timerPickerOpen, setTimerPickerOpen] = useState(false);
+	const [timerTaskId, setTimerTaskId] = useState("");
+
+	// Inline epic/feature/task creation from inside the timer picker. Shared
+	// with the team Time page — it used to live only in that route file, which
+	// is why this page never had a picker.
+	const taskCreation = useTimeTaskCreation({
+		projectId,
+		tasks: tasksQuery.data ?? [],
+		invalidateKeys: [projectTasksKey as unknown as unknown[]],
+		onTaskCreated: (taskId) => setTimerTaskId(taskId),
+	});
 
 	const handleEdit = (log: TaskTimeLog) => {
 		setEditingLog(log);
@@ -469,12 +489,10 @@ function ProjectTimePage() {
 	};
 
 	const openManualForDay = (date: Date) => {
-		const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-			date.getDate(),
-		).padStart(2, "0")}`;
+		const { start, end } = seedManualLogRange(date);
 		setManualDateLabel(date.toLocaleDateString());
-		setManualStart(`${ymd}T09:00`);
-		setManualEnd(`${ymd}T10:00`);
+		setManualStart(start);
+		setManualEnd(end);
 		setManualBreakMinutes(0);
 		setManualTaskId("");
 		setManualOpen(true);
@@ -536,16 +554,16 @@ function ProjectTimePage() {
 
 	const rowPendingById = useMemo<Record<string, boolean>>(() => {
 		const map: Record<string, boolean> = {};
-		if (stopMutation.isPending && stopMutation.variables)
-			map[stopMutation.variables] = true;
+		if (activeTimer.isStopping && activeTimer.runningLogId)
+			map[activeTimer.runningLogId] = true;
 		if (editMutation.isPending && editMutation.variables)
 			map[editMutation.variables.id] = true;
 		if (taskChangeMutation.isPending && taskChangeMutation.variables)
 			map[taskChangeMutation.variables.id] = true;
 		return map;
 	}, [
-		stopMutation.isPending,
-		stopMutation.variables,
+		activeTimer.isStopping,
+		activeTimer.runningLogId,
 		editMutation.isPending,
 		editMutation.variables,
 		taskChangeMutation.isPending,
@@ -621,9 +639,7 @@ function ProjectTimePage() {
 								onReviewLogs={tab === "team" ? handleReviewLogs : undefined}
 								onPayMember={tab === "team" ? handlePayMember : undefined}
 								onStopLog={
-									tab === "mine"
-										? (log) => stopMutation.mutate(log.id)
-										: undefined
+									tab === "mine" ? () => activeTimer.stop() : undefined
 								}
 								onEditLog={tab === "mine" ? handleEdit : undefined}
 								onDeleteLog={
@@ -739,12 +755,19 @@ function ProjectTimePage() {
 										taskSyncById={{}}
 										rowPendingById={rowPendingById}
 										onOpenTaskModal={handleOpenTaskModal}
-										onStopLog={(id) => stopMutation.mutate(id)}
+										onStopLog={() => activeTimer.stop()}
 										onDeleteLog={handleDelete}
 										onEditLog={handleEdit}
 										onOpenTaskInRoadmap={handleOpenInRoadmap}
 										canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-										onOpenAddLog={() => openManualForDay(new Date())}
+										// "Start a timer" now actually starts a timer. It used to
+										// open the manual-log form, and this page had no start
+										// path at all.
+										onOpenAddLog={() => {
+											setTimerTaskId("");
+											setTimerPickerOpen(true);
+										}}
+										onOpenManualLog={() => openManualForDay(new Date())}
 									/>
 								)}
 							</>
@@ -798,6 +821,7 @@ function ProjectTimePage() {
 				endedAt={manualEnd}
 				breakMinutes={manualBreakMinutes}
 				saving={manualLogMutation.isPending}
+				retroactiveLogDays={teamQuery.data?.retroactive_log_days ?? null}
 				onClose={() => setManualOpen(false)}
 				onSave={() => {
 					const startedAt = fromLocalDateTimeInput(manualStart);
@@ -821,13 +845,46 @@ function ProjectTimePage() {
 				onChangeBreakMinutes={setManualBreakMinutes}
 			/>
 
-			{/* Change the task a log is attributed to. */}
-			<ChangeTaskModal
-				log={taskModalLog}
-				taskId={taskModalTaskId}
+			{/* Start a timer. Same four-column picker the team Time page uses —
+			    this page previously had no way to start one at all. */}
+			<AddLogModal
+				isOpen={timerPickerOpen}
+				projects={[
+					{ id: projectId, title: projectQuery.data?.title ?? "This project" },
+				]}
 				tasks={tasksQuery.data ?? []}
+				loadingTasks={tasksQuery.isFetching}
+				selectedProjectId={projectId}
+				selectedTaskId={timerTaskId}
+				saving={activeTimer.isStarting}
+				onClose={() => setTimerPickerOpen(false)}
+				onSave={() => activeTimer.start(projectId, timerTaskId || null)}
+				onChangeProjectId={() => {}}
+				onChangeTaskId={setTimerTaskId}
+				pendingEpics={taskCreation.pendingEpics}
+				pendingFeatures={taskCreation.pendingFeatures}
+				onCreateEpic={taskCreation.createEpic}
+				onCreateFeature={taskCreation.createFeature}
+				creatingEpic={taskCreation.creatingEpic}
+				creatingFeature={taskCreation.creatingFeature}
+			/>
+
+			{/* Change the task a log is attributed to — the same picker again,
+			    relabelled, instead of the hand-rolled <select> that used to live
+			    in this file. */}
+			<AddLogModal
+				isOpen={Boolean(taskModalLog)}
+				title="Change task"
+				description="Move this log to a different task."
+				saveLabel="Change task"
+				projects={[
+					{ id: projectId, title: projectQuery.data?.title ?? "This project" },
+				]}
+				tasks={tasksQuery.data ?? []}
+				loadingTasks={tasksQuery.isFetching}
+				selectedProjectId={projectId}
+				selectedTaskId={taskModalTaskId}
 				saving={taskChangeMutation.isPending}
-				onChangeTaskId={setTaskModalTaskId}
 				onClose={() => setTaskModalLog(null)}
 				onSave={() => {
 					if (!taskModalLog) return;
@@ -836,6 +893,8 @@ function ProjectTimePage() {
 						task_id: taskModalTaskId || null,
 					});
 				}}
+				onChangeProjectId={() => {}}
+				onChangeTaskId={setTaskModalTaskId}
 			/>
 
 			{payTarget && primaryTeamId && (
@@ -854,67 +913,6 @@ function ProjectTimePage() {
 					}}
 				/>
 			)}
-		</div>
-	);
-}
-
-function ChangeTaskModal({
-	log,
-	taskId,
-	tasks,
-	saving,
-	onChangeTaskId,
-	onClose,
-	onSave,
-}: {
-	log: TaskTimeLog | null;
-	taskId: string;
-	tasks: Array<{ id: string; title: string }>;
-	saving: boolean;
-	onChangeTaskId: (value: string) => void;
-	onClose: () => void;
-	onSave: () => void;
-}) {
-	if (!log) return null;
-	return (
-		<div className="fixed inset-0 z-100 flex items-center justify-center bg-black/40 p-4">
-			<div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl">
-				<h2 className="text-sm font-bold text-card-foreground">
-					Change the task for this log
-				</h2>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Moving a log to another task re-snapshots its rate.
-				</p>
-				<select
-					value={taskId}
-					onChange={(e) => onChangeTaskId(e.target.value)}
-					className="mt-4 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
-				>
-					<option value="">No task (general project time)</option>
-					{tasks.map((t) => (
-						<option key={t.id} value={t.id}>
-							{t.title}
-						</option>
-					))}
-				</select>
-				<div className="mt-5 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onClick={onSave}
-						disabled={saving}
-						className="app-cta rounded-lg px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-50"
-					>
-						{saving ? "Saving…" : "Save"}
-					</button>
-				</div>
-			</div>
 		</div>
 	);
 }

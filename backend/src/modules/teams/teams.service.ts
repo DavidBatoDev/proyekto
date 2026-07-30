@@ -39,6 +39,15 @@ export interface TeamRow {
   description: string | null;
   avatar_url: string | null;
   is_personal: boolean;
+  /**
+   * Billing identity — the service-provider block on contracts and invoices
+   * when a project bills through this team. Null until the owner fills it in;
+   * contract seeding falls back to the consultant's profile field by field.
+   */
+  legal_name: string | null;
+  billing_address: string | null;
+  tax_id: string | null;
+  billing_email: string | null;
   time_tracking_enabled: boolean;
   retroactive_log_days: number | null;
   default_currency: string;
@@ -338,6 +347,20 @@ export class TeamsService {
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
+
+    // Billing identity. '' clears the field rather than storing an empty
+    // string, so `legal_name || name` in the contract seeder falls through
+    // cleanly instead of printing a blank provider name.
+    for (const key of [
+      'legal_name',
+      'billing_address',
+      'tax_id',
+      'billing_email',
+    ] as const) {
+      const value = dto[key];
+      if (value !== undefined) patch[key] = value.trim() || null;
+    }
+
     if (dto.time_tracking_enabled !== undefined) {
       // Enabling time tracking requires the team owner to be a verified
       // consultant. Disabling is always allowed (owner-only above).

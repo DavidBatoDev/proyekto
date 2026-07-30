@@ -93,6 +93,22 @@ export interface InvoiceEmailDelivery {
 	to?: string;
 }
 
+/** Which of the three fallbacks supplied the address an invoice will go to. */
+export type InvoiceRecipientSource =
+	/** `bill_to.email`, snapshotted from the contract when the invoice was made. */
+	| "contract_snapshot"
+	/** The linked recipient account's profile email. */
+	| "recipient_account"
+	/** The project's client account. */
+	| "project_client"
+	/** Nothing resolved — the invoice cannot be sent. */
+	| "none";
+
+export interface InvoiceRecipient {
+	email: string | null;
+	source: InvoiceRecipientSource;
+}
+
 /** Result of an on-demand scheduled-invoice run. */
 export interface InvoiceRunResult {
 	scanned: number;
@@ -351,6 +367,23 @@ export const invoiceService = {
 				extractApiErrorMessage(
 					(err as { response?: { data?: unknown } }).response?.data,
 					"Failed to open the invoice PDF",
+				),
+			);
+		}
+	},
+
+	/** Where this invoice would be emailed, and which source supplied it. */
+	async getRecipient(invoiceId: string): Promise<InvoiceRecipient> {
+		try {
+			const { data } = await apiClient.get<{ data: InvoiceRecipient }>(
+				`/api/invoices/${invoiceId}/recipient`,
+			);
+			return data.data;
+		} catch (err) {
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to resolve the invoice recipient",
 				),
 			);
 		}

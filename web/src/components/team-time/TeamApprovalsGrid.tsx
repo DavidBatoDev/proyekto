@@ -1,12 +1,9 @@
-import { createPortal } from "react-dom";
 import {
-	memo,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type ReactNode,
-} from "react";
+	createColumnHelper,
+	flexRender,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import {
 	Check,
 	ClipboardCheck,
@@ -19,15 +16,18 @@ import {
 	X,
 } from "lucide-react";
 import {
-	createColumnHelper,
-	flexRender,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
+	memo,
+	type ReactNode,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { createPortal } from "react-dom";
 import type { TaskTimeLog } from "@/services/team-time.service";
+import { CellSelectionScoreboard } from "./CellSelectionScoreboard";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
 import { useTableCellSelection } from "./useTableCellSelection";
-import { CellSelectionScoreboard } from "./CellSelectionScoreboard";
 
 // Module-scope formatters: stable references shared across all cells.
 const FULL_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -103,7 +103,7 @@ function makeLocalDateKey(value: string): string {
  */
 // ─── live-updating leaf cells ────────────────────────────────────────
 //
-// Same pattern as TeamMyLogsGrid: each cell that needs the running
+// Each cell that needs the running
 // timer subscribes via useLiveNowMs. The grid's `columns` array no
 // longer depends on a tick prop, so the row model and the open
 // action-menu don't reconcile every second.
@@ -119,7 +119,7 @@ const LiveTimeOutCell = memo(function LiveTimeOutCell({
 	const nowDate = new Date(nowMs);
 	let earliestStart: Date | null = null;
 	let latestEnd: Date | null = null;
-	let hasValidNow = !Number.isNaN(nowDate.getTime());
+	const hasValidNow = !Number.isNaN(nowDate.getTime());
 
 	for (const log of safeLogs) {
 		const startedDate = new Date(log.started_at);
@@ -140,8 +140,8 @@ const LiveTimeOutCell = memo(function LiveTimeOutCell({
 	const hasValidEnd = Boolean(effectiveEnd);
 	const isMultiDay = Boolean(
 		earliestStart &&
-		effectiveEnd &&
-		earliestStart.toDateString() !== effectiveEnd.toDateString(),
+			effectiveEnd &&
+			earliestStart.toDateString() !== effectiveEnd.toDateString(),
 	);
 
 	let label: string;
@@ -151,7 +151,10 @@ const LiveTimeOutCell = memo(function LiveTimeOutCell({
 			: TIME_FORMATTER.format(effectiveEnd as Date);
 	} else if (!hasValidNow) {
 		label = "-";
-	} else if (earliestStart && earliestStart.toDateString() !== nowDate.toDateString()) {
+	} else if (
+		earliestStart &&
+		earliestStart.toDateString() !== nowDate.toDateString()
+	) {
 		label = SHORT_DATE_TIME_FORMATTER.format(nowDate);
 	} else {
 		label = TIME_FORMATTER.format(nowDate);
@@ -172,9 +175,7 @@ const LiveHoursCell = memo(function LiveHoursCell({
 		0,
 	);
 	const hours = (totalSeconds / 3600).toFixed(2);
-	return (
-		<span className="text-xs font-semibold text-gray-700">{hours}</span>
-	);
+	return <span className="text-xs font-semibold text-gray-700">{hours}</span>;
 });
 
 const LiveFeesCell = memo(function LiveFeesCell({
@@ -258,8 +259,7 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 					id: "set-paid",
 					label: "Set paid",
 					icon: <Coins className="h-3.5 w-3.5" />,
-					onSelect: () =>
-						logIds.forEach((id) => void onReviewLog(id, "paid")),
+					onSelect: () => logIds.forEach((id) => void onReviewLog(id, "paid")),
 					disabled: disableReview,
 					tone: "info",
 				},
@@ -543,7 +543,8 @@ export function TeamApprovalsGrid({
 	const activeDimensionIds = useMemo<GroupDimensionId[]>(() => {
 		const next: GroupDimensionId[] = [];
 		if (columnVisibility.date !== false) next.push("date");
-		if (showMemberColumn && columnVisibility.member !== false) next.push("member");
+		if (showMemberColumn && columnVisibility.member !== false)
+			next.push("member");
 		if (columnVisibility.project !== false) next.push("project");
 		if (columnVisibility.task_id !== false) next.push("task_id");
 		return next;
@@ -627,9 +628,7 @@ export function TeamApprovalsGrid({
 				groupLogs.map((log) => log.task_id || "no-task"),
 			);
 			const singleTaskId =
-				distinctTaskIds.size === 1
-					? (groupLogs[0].task_id ?? null)
-					: null;
+				distinctTaskIds.size === 1 ? (groupLogs[0].task_id ?? null) : null;
 			const taskTitle =
 				distinctTaskIds.size > 1
 					? `${distinctTaskIds.size} tasks`
@@ -668,7 +667,9 @@ export function TeamApprovalsGrid({
 				project_label:
 					distinctProjectIds.size > 1
 						? `${distinctProjectIds.size} projects`
-						: firstLog.project?.title || firstLog.project_id || "unknown-project",
+						: firstLog.project?.title ||
+							firstLog.project_id ||
+							"unknown-project",
 				task_id: singleTaskId,
 				task_title: taskTitle,
 				time_in: timeInLabel,
@@ -697,8 +698,7 @@ export function TeamApprovalsGrid({
 		eligibleLogIds.length > 0 &&
 		eligibleLogIds.every((id) => selectedLogIds.has(id));
 	const someEligibleSelected =
-		eligibleLogIds.some((id) => selectedLogIds.has(id)) &&
-		!allEligibleSelected;
+		eligibleLogIds.some((id) => selectedLogIds.has(id)) && !allEligibleSelected;
 
 	const columns = useMemo(
 		() => [
@@ -726,8 +726,7 @@ export function TeamApprovalsGrid({
 					const eligibleIds = row.eligibleLogIds;
 					const isEligible = eligibleIds.length > 0;
 					const isChecked =
-						isEligible &&
-						eligibleIds.every((id) => selectedLogIds.has(id));
+						isEligible && eligibleIds.every((id) => selectedLogIds.has(id));
 					const isIndeterminate =
 						isEligible &&
 						eligibleIds.some((id) => selectedLogIds.has(id)) &&
@@ -795,7 +794,8 @@ export function TeamApprovalsGrid({
 						<span
 							className={`block truncate ${row.task_title ? "" : "italic text-slate-400"}`}
 							title={
-								row.task_title ?? "General time — not linked to a specific task."
+								row.task_title ??
+								"General time — not linked to a specific task."
 							}
 						>
 							{row.task_title ?? "No task"}
@@ -806,9 +806,7 @@ export function TeamApprovalsGrid({
 			columnHelper.accessor("time_in", {
 				id: "time_in",
 				header: "Time-in",
-				cell: (info) => (
-					<span className="tabular-nums">{info.getValue()}</span>
-				),
+				cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
 			}),
 			columnHelper.display({
 				id: "time_out",
@@ -877,10 +875,7 @@ export function TeamApprovalsGrid({
 							rowId={row.id}
 							canApprove={canApprove}
 							disableReview={
-								row.is_running ||
-								row.is_self ||
-								isPending ||
-								isReviewSyncing
+								row.is_running || row.is_self || isPending || isReviewSyncing
 							}
 							canOpenInRoadmap={canOpenTaskInRoadmap(row.task_id)}
 							loading={isPending || isReviewSyncing}
@@ -965,14 +960,19 @@ export function TeamApprovalsGrid({
 	const onToggleSelectAllRef = useRef(onToggleSelectAll);
 	onToggleSelectAllRef.current = onToggleSelectAll;
 
-	const { selectedCells, isSelected, getCellDataProps } =
-		useTableCellSelection(orderedRowIds, orderedSelectableColIds, tableRef, {
+	const { selectedCells, isSelected, getCellDataProps } = useTableCellSelection(
+		orderedRowIds,
+		orderedSelectableColIds,
+		tableRef,
+		{
 			// Fires on every drag frame — auto-check eligible "select" column cells immediately
 			onLiveSelectionChange(cells) {
 				for (const key of cells) {
 					const [rowId, colId] = key.split(":");
 					if (colId !== "select") continue;
-					const row = rowsRef.current.find((candidate) => candidate.id === rowId);
+					const row = rowsRef.current.find(
+						(candidate) => candidate.id === rowId,
+					);
 					if (!row) continue;
 					for (const logId of row.eligibleLogIds) {
 						if (
@@ -988,7 +988,8 @@ export function TeamApprovalsGrid({
 			onClickOutside() {
 				onToggleSelectAllRef.current(false, []);
 			},
-		});
+		},
+	);
 
 	const rowIdToLogIds = useMemo(() => {
 		const next: Record<string, string[]> = {};
@@ -1036,224 +1037,226 @@ export function TeamApprovalsGrid({
 
 	return (
 		<>
-		{(selectedCells.size > 0 || selectedLogIds.size > 0) &&
-			createPortal(
-				<div className="fixed top-4 right-4 z-50 flex flex-row-reverse items-start gap-3">
-					{selectedCells.size > 0 && (
-						<CellSelectionScoreboard
-							selectedCells={selectedCells}
-							logs={logs}
-							rowIdToLogIds={rowIdToLogIds}
-							asPortal={false}
-						/>
-					)}
-					{selectedLogIds.size > 0 && onApproveSelected && (
-						<div className="min-w-40 rounded-xl border border-black bg-white shadow-lg p-3 space-y-3">
-							<div className="flex items-center justify-between border-b border-black pb-2">
-								<span className="text-[11px] font-bold text-black uppercase tracking-widest">
-									Approval
-								</span>
-								<span className="text-[10px] text-slate-500">
-									{selectedLogIds.size}{" "}
-									{selectedLogIds.size === 1 ? "row" : "rows"}
-								</span>
-							</div>
-							<div className="space-y-1.5">
-								<button
-									onClick={onApproveSelected}
-									disabled={approvingSelected}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
-								>
-									<Check className="h-3.5 w-3.5 shrink-0" />
-									Approve
-								</button>
-								<button
-									onClick={onRejectSelected}
-									disabled={approvingSelected}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
-								>
-									<X className="h-3.5 w-3.5 shrink-0" />
-									Reject
-								</button>
-								<button
-									onClick={onResetSelected}
-									disabled={approvingSelected}
-									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
-								>
-									<RotateCcw className="h-3.5 w-3.5 shrink-0" />
-									Reset
-								</button>
-							</div>
-						</div>
-					)}
-				</div>,
-				document.body,
-			)}
-		<div className="flex items-center justify-end pb-2">
-			<button
-				ref={columnsButtonRef}
-				type="button"
-				onClick={() => setColumnsMenuOpen((open) => !open)}
-				className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-			>
-				<Settings2 className="h-3.5 w-3.5" />
-				Edit columns
-			</button>
-			{columnsMenuOpen
-				? createPortal(
-						<div
-							ref={columnsMenuRef}
-							className="fixed z-70 min-w-[200px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
-							style={{
-								top: columnsMenuPosition.top,
-								left: columnsMenuPosition.left,
-								transform: columnsMenuPosition.openUpward
-									? "translate(-100%, -100%)"
-									: "translateX(-100%)",
-							}}
-						>
-							<div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-								Columns
-							</div>
-							<div className="space-y-1">
-								{columnOptions.map((option) => {
-									const column = table.getColumn(option.id);
-									const isVisible = column?.getIsVisible() ?? true;
-									const canHide = option.canHide !== false;
-									return (
-										<label
-											key={option.id}
-											className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs text-slate-700 ${
-												canHide ? "hover:bg-slate-50" : "opacity-60"
-											}`}
-										>
-											<span>{option.label}</span>
-											<input
-												type="checkbox"
-												checked={isVisible}
-												disabled={!canHide}
-												onChange={(event) =>
-													column?.toggleVisibility(event.currentTarget.checked)
-												}
-												className="h-3 w-3 rounded border-gray-300"
-											/>
-										</label>
-									);
-								})}
-							</div>
-						</div>,
-						document.body,
-					)
-				: null}
-		</div>
-		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-			<table
-				ref={tableRef}
-				className="w-full min-w-[1100px] table-fixed text-[11px] select-none"
-			>
-				<colgroup>
-					{table.getVisibleLeafColumns().map((col) => (
-						<col
-							key={col.id}
-							className={columnWidthClassById[col.id] ?? "w-auto"}
-						/>
-					))}
-				</colgroup>
-				<thead className="bg-slate-900 text-white">
-					{table.getHeaderGroups().map((headerGroup) => (
-						<tr key={headerGroup.id}>
-							{headerGroup.headers.map((header) => {
-								const isSticky = header.column.id === "select";
-								return (
-									<th
-										key={header.id}
-										className={`px-2 py-2.5 text-left text-sm font-bold border-r border-white/30 last:border-r-0 ${
-											isSticky ? "sticky left-0 z-20 bg-slate-900" : ""
-										}`}
-									>
-										{header.isPlaceholder
-											? null
-											: flexRender(
-													header.column.columnDef.header,
-													header.getContext(),
-												)}
-									</th>
-								);
-							})}
-						</tr>
-					))}
-				</thead>
-				<tbody>
-					{rows.length === 0 ? (
-						<tr className="border-t border-gray-200">
-							<td
-								colSpan={table.getVisibleLeafColumns().length}
-								className="px-6 py-20"
-							>
-								<div className="mx-auto flex max-w-sm flex-col items-center text-center">
-									<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-										<ClipboardCheck className="h-7 w-7 text-slate-500" />
-									</div>
-									<h3 className="text-base font-semibold text-slate-900">
-										Nothing to review
-									</h3>
-									<p className="mt-2 text-sm text-slate-500">
-										When this member logs time, the entries will appear here
-										for you to approve, reject, or send back to pending.
-									</p>
-									<p className="mt-3 text-sm text-slate-500">
-										Try adjusting the status or project filters above to look
-										at older logs.
-									</p>
+			{(selectedCells.size > 0 || selectedLogIds.size > 0) &&
+				createPortal(
+					<div className="fixed top-4 right-4 z-50 flex flex-row-reverse items-start gap-3">
+						{selectedCells.size > 0 && (
+							<CellSelectionScoreboard
+								selectedCells={selectedCells}
+								logs={logs}
+								rowIdToLogIds={rowIdToLogIds}
+								asPortal={false}
+							/>
+						)}
+						{selectedLogIds.size > 0 && onApproveSelected && (
+							<div className="min-w-40 rounded-xl border border-black bg-white shadow-lg p-3 space-y-3">
+								<div className="flex items-center justify-between border-b border-black pb-2">
+									<span className="text-[11px] font-bold text-black uppercase tracking-widest">
+										Approval
+									</span>
+									<span className="text-[10px] text-slate-500">
+										{selectedLogIds.size}{" "}
+										{selectedLogIds.size === 1 ? "row" : "rows"}
+									</span>
 								</div>
-							</td>
-						</tr>
-					) : (
-						table.getRowModel().rows.map((row) => {
-							const pending = row.original.logIds.some(
-								(id) => rowPendingById[id],
-							);
-							return (
-								<tr
-									key={row.id}
-									className={`border-t border-gray-200 ${
-										pending ? "bg-amber-50/40" : ""
-									}`}
-								>
-									{row.getVisibleCells().map((cell) => {
-										const colId = cell.column.id;
-										const isSticky = colId === "select";
-										const selectable = SELECTABLE_COLS.includes(colId);
-										const selected =
-											selectable && isSelected(row.original.id, colId);
+								<div className="space-y-1.5">
+									<button
+										onClick={onApproveSelected}
+										disabled={approvingSelected}
+										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+									>
+										<Check className="h-3.5 w-3.5 shrink-0" />
+										Approve
+									</button>
+									<button
+										onClick={onRejectSelected}
+										disabled={approvingSelected}
+										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
+									>
+										<X className="h-3.5 w-3.5 shrink-0" />
+										Reject
+									</button>
+									<button
+										onClick={onResetSelected}
+										disabled={approvingSelected}
+										className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+									>
+										<RotateCcw className="h-3.5 w-3.5 shrink-0" />
+										Reset
+									</button>
+								</div>
+							</div>
+						)}
+					</div>,
+					document.body,
+				)}
+			<div className="flex items-center justify-end pb-2">
+				<button
+					ref={columnsButtonRef}
+					type="button"
+					onClick={() => setColumnsMenuOpen((open) => !open)}
+					className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+				>
+					<Settings2 className="h-3.5 w-3.5" />
+					Edit columns
+				</button>
+				{columnsMenuOpen
+					? createPortal(
+							<div
+								ref={columnsMenuRef}
+								className="fixed z-70 min-w-[200px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+								style={{
+									top: columnsMenuPosition.top,
+									left: columnsMenuPosition.left,
+									transform: columnsMenuPosition.openUpward
+										? "translate(-100%, -100%)"
+										: "translateX(-100%)",
+								}}
+							>
+								<div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+									Columns
+								</div>
+								<div className="space-y-1">
+									{columnOptions.map((option) => {
+										const column = table.getColumn(option.id);
+										const isVisible = column?.getIsVisible() ?? true;
+										const canHide = option.canHide !== false;
 										return (
-											<td
-												key={cell.id}
-												className={`px-2 py-1.5 align-middle ${
-													isSticky
-														? `sticky left-0 z-10 ${pending ? "bg-amber-50" : "bg-white"}`
-														: selectable && selected
-															? "bg-blue-100"
-															: ""
-												} ${selectable ? "cursor-cell" : ""}`}
-												{...(selectable
-													? getCellDataProps(row.original.id, colId)
-													: {})}
+											<label
+												key={option.id}
+												className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs text-slate-700 ${
+													canHide ? "hover:bg-slate-50" : "opacity-60"
+												}`}
 											>
-												{flexRender(
-													cell.column.columnDef.cell,
-													cell.getContext(),
-												)}
-											</td>
+												<span>{option.label}</span>
+												<input
+													type="checkbox"
+													checked={isVisible}
+													disabled={!canHide}
+													onChange={(event) =>
+														column?.toggleVisibility(
+															event.currentTarget.checked,
+														)
+													}
+													className="h-3 w-3 rounded border-gray-300"
+												/>
+											</label>
 										);
 									})}
-								</tr>
-							);
-						})
-					)}
-				</tbody>
-			</table>
-		</div>
+								</div>
+							</div>,
+							document.body,
+						)
+					: null}
+			</div>
+			<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				<table
+					ref={tableRef}
+					className="w-full min-w-[1100px] table-fixed text-[11px] select-none"
+				>
+					<colgroup>
+						{table.getVisibleLeafColumns().map((col) => (
+							<col
+								key={col.id}
+								className={columnWidthClassById[col.id] ?? "w-auto"}
+							/>
+						))}
+					</colgroup>
+					<thead className="bg-slate-900 text-white">
+						{table.getHeaderGroups().map((headerGroup) => (
+							<tr key={headerGroup.id}>
+								{headerGroup.headers.map((header) => {
+									const isSticky = header.column.id === "select";
+									return (
+										<th
+											key={header.id}
+											className={`px-2 py-2.5 text-left text-sm font-bold border-r border-white/30 last:border-r-0 ${
+												isSticky ? "sticky left-0 z-20 bg-slate-900" : ""
+											}`}
+										>
+											{header.isPlaceholder
+												? null
+												: flexRender(
+														header.column.columnDef.header,
+														header.getContext(),
+													)}
+										</th>
+									);
+								})}
+							</tr>
+						))}
+					</thead>
+					<tbody>
+						{rows.length === 0 ? (
+							<tr className="border-t border-gray-200">
+								<td
+									colSpan={table.getVisibleLeafColumns().length}
+									className="px-6 py-20"
+								>
+									<div className="mx-auto flex max-w-sm flex-col items-center text-center">
+										<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+											<ClipboardCheck className="h-7 w-7 text-slate-500" />
+										</div>
+										<h3 className="text-base font-semibold text-slate-900">
+											Nothing to review
+										</h3>
+										<p className="mt-2 text-sm text-slate-500">
+											When this member logs time, the entries will appear here
+											for you to approve, reject, or send back to pending.
+										</p>
+										<p className="mt-3 text-sm text-slate-500">
+											Try adjusting the status or project filters above to look
+											at older logs.
+										</p>
+									</div>
+								</td>
+							</tr>
+						) : (
+							table.getRowModel().rows.map((row) => {
+								const pending = row.original.logIds.some(
+									(id) => rowPendingById[id],
+								);
+								return (
+									<tr
+										key={row.id}
+										className={`border-t border-gray-200 ${
+											pending ? "bg-amber-50/40" : ""
+										}`}
+									>
+										{row.getVisibleCells().map((cell) => {
+											const colId = cell.column.id;
+											const isSticky = colId === "select";
+											const selectable = SELECTABLE_COLS.includes(colId);
+											const selected =
+												selectable && isSelected(row.original.id, colId);
+											return (
+												<td
+													key={cell.id}
+													className={`px-2 py-1.5 align-middle ${
+														isSticky
+															? `sticky left-0 z-10 ${pending ? "bg-amber-50" : "bg-white"}`
+															: selectable && selected
+																? "bg-blue-100"
+																: ""
+													} ${selectable ? "cursor-cell" : ""}`}
+													{...(selectable
+														? getCellDataProps(row.original.id, colId)
+														: {})}
+												>
+													{flexRender(
+														cell.column.columnDef.cell,
+														cell.getContext(),
+													)}
+												</td>
+											);
+										})}
+									</tr>
+								);
+							})
+						)}
+					</tbody>
+				</table>
+			</div>
 		</>
 	);
 }

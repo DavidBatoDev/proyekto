@@ -249,21 +249,32 @@ export class InvoiceCompositionService {
 }
 
 /**
+ * Field names that must never ride along on a client-facing invoice line.
+ *
+ * Two families: what a member COSTS (`rate_snapshot`, `member_user_id`), and
+ * how the revenue is divided internally (`monthly_allocation`, `allocation`,
+ * `team_pool`). Both would disclose margin to the client if they escaped.
+ */
+const INTERNAL_LINE_FIELDS = new Set([
+  'rate_snapshot',
+  'member_user_id',
+  'currency_snapshot',
+  'monthly_allocation',
+  'allocation',
+  'team_pool',
+]);
+
+/**
  * Hard guard against the internal-cost leak this service exists to prevent.
  *
- * `rate_snapshot` is the member's cost rate. If it ever appears in a composed
- * line's metadata or description, an invoice would be about to disclose (or
- * bill at) what the team is paid. Fail loudly rather than send it.
+ * If any of the fields above appears in a composed line's metadata, an invoice
+ * would be about to disclose (or bill at) what the team is paid, or how the
+ * budget splits. Fail loudly rather than send it.
  */
 export function assertNoInternalRates(lines: ComposedLine[]): void {
   for (const line of lines) {
     const keys = Object.keys(line.metadata ?? {});
-    const leaked = keys.find(
-      (key) =>
-        key === 'rate_snapshot' ||
-        key === 'member_user_id' ||
-        key === 'currency_snapshot',
-    );
+    const leaked = keys.find((key) => INTERNAL_LINE_FIELDS.has(key));
     if (leaked) {
       throw new Error(
         `Invoice line "${line.description}" carries internal field "${leaked}". Client invoices must never expose member cost rates.`,

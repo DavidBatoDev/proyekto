@@ -24,6 +24,41 @@ export const fromLocalDateTimeInput = (value: string) => {
 	return parsed.toISOString();
 };
 
+/**
+ * Seed range for a manual log on a given day.
+ *
+ * Both time routes used to hardcode 09:00–10:00, which is wrong for anyone
+ * logging in the afternoon. For today, seed the hour that just ended (rounded
+ * to 15 minutes) — the overwhelmingly common case is "I just finished doing
+ * something". For a past day, fall back to a plausible mid-morning block.
+ */
+export const seedManualLogRange = (
+	date: Date,
+	now: Date = new Date(),
+): { start: string; end: string } => {
+	const ymd = (d: Date) =>
+		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+			d.getDate(),
+		).padStart(2, "0")}`;
+	const hm = (d: Date) =>
+		`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+	if (ymd(date) === ymd(now)) {
+		const end = new Date(now);
+		end.setMinutes(Math.floor(end.getMinutes() / 15) * 15, 0, 0);
+		const start = new Date(end.getTime() - 60 * 60_000);
+		// Rounding down can land both on the same instant just after midnight.
+		if (start.getTime() >= end.getTime()) {
+			return { start: `${ymd(date)}T09:00`, end: `${ymd(date)}T10:00` };
+		}
+		return {
+			start: `${ymd(start)}T${hm(start)}`,
+			end: `${ymd(end)}T${hm(end)}`,
+		};
+	}
+	return { start: `${ymd(date)}T09:00`, end: `${ymd(date)}T10:00` };
+};
+
 /** Break seconds banked on the row, ignoring any in-progress pause. */
 const bankedBreakSeconds = (log: TaskTimeLog) =>
 	Math.max(0, log.break_seconds ?? (log.break_minutes ?? 0) * 60);

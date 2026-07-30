@@ -17,7 +17,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AppDialog } from "@/components/common/AppDialog";
 import { CurrencySelect } from "@/components/common/CurrencySelect";
+import { Dropdown } from "@/components/common/Dropdown";
 import type {
 	ProjectTaskOption,
 	TeamLogProject,
@@ -27,6 +29,7 @@ import {
 	MemberRateTypeFields,
 	type RateTypeDraft,
 } from "./MemberRateTypeFields";
+import { toLocalDateTimeInput } from "./time-utils";
 
 const MODAL_BACKDROP_MOTION = {
 	initial: { opacity: 0 },
@@ -58,6 +61,12 @@ interface ManualLogModalProps {
 	endedAt: string;
 	breakMinutes?: number;
 	saving: boolean;
+	/**
+	 * Team's retroactive-logging window in days, from `teams.retroactive_log_days`.
+	 * The server rejects anything older; surfacing it here turns an opaque 400
+	 * into a bound the user can see before they type.
+	 */
+	retroactiveLogDays?: number | null;
 	onClose: () => void;
 	onSave: () => void;
 	onChangeProjectId: (value: string) => void;
@@ -67,10 +76,24 @@ interface ManualLogModalProps {
 	onChangeBreakMinutes?: (value: number) => void;
 }
 
+/** "1h 30m" — the net figure the server will actually store. */
+function formatDuration(totalMinutes: number): string {
+	const h = Math.floor(totalMinutes / 60);
+	const m = Math.round(totalMinutes % 60);
+	if (h <= 0) return `${m}m`;
+	if (m === 0) return `${h}h`;
+	return `${h}h ${m}m`;
+}
+
 /**
  * Add a manual, dated time log (e.g. a day you forgot to run the timer). Unlike
- * the timer flow this takes explicit start/end datetimes. The server enforces
- * the team's retroactive-logging window, so old dates are rejected there.
+ * the timer flow this takes explicit start/end datetimes.
+ *
+ * Two server rules are surfaced here rather than left to come back as opaque
+ * 400s: the team's retroactive-logging window (shown, and enforced as `min` on
+ * the inputs) and the fact that manual logs are hard-blocked by an hour cap
+ * where a running timer only warns — that one can only be evaluated
+ * server-side, so it still arrives as an error toast.
  */
 export function ManualLogModal({
 	isOpen,
@@ -84,6 +107,7 @@ export function ManualLogModal({
 	endedAt,
 	breakMinutes = 0,
 	saving,
+	retroactiveLogDays,
 	onClose,
 	onSave,
 	onChangeProjectId,
@@ -92,163 +116,191 @@ export function ManualLogModal({
 	onChangeEndedAt,
 	onChangeBreakMinutes,
 }: ManualLogModalProps) {
+	const startMs = startedAt ? new Date(startedAt).getTime() : Number.NaN;
+	const endMs = endedAt ? new Date(endedAt).getTime() : Number.NaN;
 	const validTimes =
-		Boolean(startedAt) &&
-		Boolean(endedAt) &&
-		new Date(endedAt).getTime() > new Date(startedAt).getTime();
-	const canSave = !saving && Boolean(selectedProjectId) && validTimes;
+		Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+	const grossMinutes = validTimes ? (endMs - startMs) / 60_000 : 0;
+	const netMinutes = Math.max(0, grossMinutes - breakMinutes);
+	// A break longer than the block itself would store zero — say so rather than
+	// letting the server silently record nothing.
+	const breakTooLong = validTimes && breakMinutes >= grossMinutes;
+	const canSave =
+		!saving && Boolean(selectedProjectId) && validTimes && !breakTooLong;
+
+	// Earliest datetime the server will accept, as a datetime-local `min`.
+	const minDateTime = useMemo(() => {
+		if (!retroactiveLogDays || retroactiveLogDays <= 0) return undefined;
+		const floor = new Date();
+		floor.setDate(floor.getDate() - retroactiveLogDays);
+		floor.setHours(0, 0, 0, 0);
+		return toLocalDateTimeInput(floor.toISOString());
+	}, [retroactiveLogDays]);
+
+	const projectOptions = useMemo(
+		() =>
+			projects.map((p) => ({
+				value: p.id,
+				label: p.title || "Untitled project",
+			})),
+		[projects],
+	);
+
+	const taskOptions = useMemo(
+		() => [
+			{
+				value: "",
+				label: loadingTasks ? "Loading tasks…" : "No task (general time)",
+			},
+			...tasks.map((t) => ({
+				value: t.id,
+				label: t.epic_title
+					? `${t.epic_title} › ${t.title || "Untitled task"}`
+					: t.title || "Untitled task",
+			})),
+		],
+		[tasks, loadingTasks],
+	);
+
 	return (
-		<AnimatePresence>
-			{isOpen && (
-				<motion.div
-					key="manual-log-modal"
-					className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[2px]"
-					onClick={onClose}
-					{...MODAL_BACKDROP_MOTION}
-				>
-					<motion.div
-						className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-						onClick={(e) => e.stopPropagation()}
-						{...MODAL_PANEL_MOTION}
+		<AppDialog
+			open={isOpen}
+			onClose={onClose}
+			busy={saving}
+			size="md"
+			title="Add past work"
+			description={`Log time you've already worked${dateLabel ? ` — ${dateLabel}` : ""}.`}
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onClose}
+						disabled={saving}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3.5 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
 					>
-						<div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-							<div>
-								<h3 className="text-base font-semibold text-slate-900">
-									Add a log
-								</h3>
-								<p className="mt-0.5 text-xs text-slate-500">{dateLabel}</p>
-							</div>
-							<button
-								type="button"
-								onClick={onClose}
-								className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-								aria-label="Close"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
+						<XCircle className="h-3.5 w-3.5" />
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={onSave}
+						disabled={!canSave}
+						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+					>
+						{saving ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Save className="h-3.5 w-3.5" />
+						)}
+						Add log
+					</button>
+				</>
+			}
+		>
+			<div className="space-y-4">
+				<div className="space-y-1.5">
+					<span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Project <span className="text-destructive">*</span>
+					</span>
+					<Dropdown
+						value={selectedProjectId}
+						options={projectOptions}
+						onChange={onChangeProjectId}
+						disabled={saving}
+						placeholder="Select a project…"
+					/>
+				</div>
 
-						<div className="space-y-3 px-5 py-4">
-							<div className="space-y-1.5">
-								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-									Project <span className="text-rose-500">*</span>
-								</label>
-								<select
-									value={selectedProjectId}
-									onChange={(e) => onChangeProjectId(e.target.value)}
-									disabled={saving}
-									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-								>
-									<option value="">Select a project…</option>
-									{projects.map((p) => (
-										<option key={p.id} value={p.id}>
-											{p.title || "Untitled project"}
-										</option>
-									))}
-								</select>
-							</div>
+				<div className="space-y-1.5">
+					<span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Task (optional)
+					</span>
+					<Dropdown
+						value={selectedTaskId}
+						options={taskOptions}
+						onChange={onChangeTaskId}
+						disabled={saving || !selectedProjectId || loadingTasks}
+					/>
+				</div>
 
-							<div className="space-y-1.5">
-								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-									Task (optional)
-								</label>
-								<select
-									value={selectedTaskId}
-									onChange={(e) => onChangeTaskId(e.target.value)}
-									disabled={saving || !selectedProjectId || loadingTasks}
-									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-								>
-									<option value="">
-										{loadingTasks ? "Loading tasks…" : "No task (general time)"}
-									</option>
-									{tasks.map((t) => (
-										<option key={t.id} value={t.id}>
-											{t.title || "Untitled task"}
-										</option>
-									))}
-								</select>
-							</div>
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<label className="space-y-1.5">
+						<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Start <span className="text-destructive">*</span>
+						</span>
+						<input
+							type="datetime-local"
+							value={startedAt}
+							min={minDateTime}
+							onChange={(e) => onChangeStartedAt(e.target.value)}
+							disabled={saving}
+							className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+						/>
+					</label>
+					<label className="space-y-1.5">
+						<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							End <span className="text-destructive">*</span>
+						</span>
+						<input
+							type="datetime-local"
+							value={endedAt}
+							min={startedAt || minDateTime}
+							onChange={(e) => onChangeEndedAt(e.target.value)}
+							disabled={saving}
+							className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+						/>
+					</label>
+				</div>
 
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-								<div className="space-y-1.5">
-									<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-										Start <span className="text-rose-500">*</span>
-									</label>
-									<input
-										type="datetime-local"
-										value={startedAt}
-										onChange={(e) => onChangeStartedAt(e.target.value)}
-										disabled={saving}
-										className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-									/>
-								</div>
-								<div className="space-y-1.5">
-									<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-										End <span className="text-rose-500">*</span>
-									</label>
-									<input
-										type="datetime-local"
-										value={endedAt}
-										onChange={(e) => onChangeEndedAt(e.target.value)}
-										disabled={saving}
-										className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-									/>
-								</div>
-							</div>
+				<label className="space-y-1.5">
+					<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Break (minutes)
+					</span>
+					<input
+						type="number"
+						min={0}
+						step={1}
+						value={breakMinutes}
+						onChange={(e) =>
+							onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
+						}
+						disabled={saving}
+						placeholder="0"
+						className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+					/>
+				</label>
 
-							<div className="space-y-1.5">
-								<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-									Break Time (minutes)
-								</label>
-								<input
-									type="number"
-									min={0}
-									step={1}
-									value={breakMinutes}
-									onChange={(e) =>
-										onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
-									}
-									disabled={saving}
-									placeholder="0"
-									className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-								/>
-							</div>
+				{/* The arithmetic the server does — previously invisible. */}
+				{validTimes && !breakTooLong && (
+					<div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+						{formatDuration(grossMinutes)}
+						{breakMinutes > 0 && <> minus {breakMinutes}m break</>} ={" "}
+						<span className="font-semibold text-foreground">
+							{formatDuration(netMinutes)}
+						</span>{" "}
+						logged
+					</div>
+				)}
 
-							{!validTimes && startedAt && endedAt && (
-								<p className="text-xs text-rose-500">
-									End time must be after start time.
-								</p>
-							)}
-						</div>
-
-						<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
-							<button
-								type="button"
-								onClick={onClose}
-								disabled={saving}
-								className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-							>
-								<XCircle className="h-3.5 w-3.5" />
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={onSave}
-								disabled={!canSave}
-								className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-							>
-								{saving ? (
-									<Loader2 className="h-3.5 w-3.5 animate-spin" />
-								) : (
-									<Save className="h-3.5 w-3.5" />
-								)}
-								Add log
-							</button>
-						</div>
-					</motion.div>
-				</motion.div>
-			)}
-		</AnimatePresence>
+				{!validTimes && startedAt && endedAt && (
+					<p className="text-xs text-destructive">
+						End time must be after start time.
+					</p>
+				)}
+				{breakTooLong && (
+					<p className="text-xs text-destructive">
+						The break is as long as the whole block — there would be no time
+						left to log.
+					</p>
+				)}
+				{retroactiveLogDays && retroactiveLogDays > 0 ? (
+					<p className="text-[11px] text-muted-foreground">
+						Your team allows logging up to {retroactiveLogDays} day
+						{retroactiveLogDays === 1 ? "" : "s"} back.
+					</p>
+				) : null}
+			</div>
+		</AppDialog>
 	);
 }
 
@@ -281,7 +333,9 @@ export function EditLogModal({
 }: EditLogModalProps) {
 	if (!isOpen) return null;
 
-	const isStartValid = Boolean(startedAt && !Number.isNaN(new Date(startedAt).getTime()));
+	const isStartValid = Boolean(
+		startedAt && !Number.isNaN(new Date(startedAt).getTime()),
+	);
 	const isEndValid = !endedAt || !Number.isNaN(new Date(endedAt).getTime());
 	const isTimeOrderValid =
 		!startedAt ||

@@ -142,6 +142,49 @@ export function SelectField({
 }
 
 /**
+ * A yes/no field, laid out to line up with the text and select fields beside it
+ * in a two-column form grid rather than as a bare checkbox floating mid-row.
+ */
+export function ToggleField({
+	label,
+	checked,
+	onChange,
+	disabled,
+	hint,
+	onLabel = "Yes",
+	offLabel = "No",
+}: {
+	label: string;
+	checked: boolean;
+	onChange: (checked: boolean) => void;
+	disabled?: boolean;
+	hint?: string;
+	onLabel?: string;
+	offLabel?: string;
+}) {
+	return (
+		<FieldLabel label={label} hint={hint}>
+			<label
+				className={`flex h-[38px] items-center gap-2.5 rounded-lg border border-input bg-card px-3 shadow-sm ${
+					disabled ? "opacity-70" : "cursor-pointer"
+				}`}
+			>
+				<input
+					type="checkbox"
+					checked={checked}
+					disabled={disabled}
+					onChange={(e) => onChange(e.target.checked)}
+					className="h-4 w-4 accent-primary disabled:cursor-default"
+				/>
+				<span className="text-sm text-card-foreground">
+					{checked ? onLabel : offLabel}
+				</span>
+			</label>
+		</FieldLabel>
+	);
+}
+
+/**
  * Passive status line for an auto-saving form — replaces the Save button on
  * surfaces that persist edits automatically. Stays out of the way when idle and
  * only speaks up while saving, once saved, or on failure.

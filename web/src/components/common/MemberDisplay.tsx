@@ -1,5 +1,9 @@
-import { User } from "lucide-react";
 import type { ReactNode } from "react";
+import {
+	Avatar,
+	type AvatarBadge,
+	displayNameOf,
+} from "@/components/common/Avatar";
 import type { ProfileSummary } from "@/services/teams.service";
 
 interface MemberDisplayProps {
@@ -9,11 +13,16 @@ interface MemberDisplayProps {
 	/** Optional rich subtitle (e.g. chips). Takes precedence over `subtitle`. */
 	subtitleSlot?: ReactNode;
 	size?: "sm" | "md";
+	/** Corner mark on the avatar — team logo, or an external marker. */
+	badge?: AvatarBadge | null;
 }
 
 /**
  * Compact "avatar + name + (subtitle)" row for team / project members.
  * Falls back to email or user_id when display_name is missing.
+ *
+ * The avatar itself lives in `Avatar` so the badge behaviour is shared with
+ * surfaces that render an avatar without this wrapper.
  */
 export function MemberDisplay({
 	user,
@@ -21,38 +30,23 @@ export function MemberDisplay({
 	subtitle,
 	subtitleSlot,
 	size = "md",
+	badge,
 }: MemberDisplayProps) {
 	const name = displayNameOf(user, fallbackId);
-	const initials = initialsOf(name);
-	const avatarSize = size === "sm" ? "h-7 w-7 text-[11px]" : "h-9 w-9 text-xs";
 	const nameClass =
 		size === "sm" ? "text-xs font-medium" : "text-sm font-medium";
 
 	return (
-		<div className="flex items-center gap-3 min-w-0">
-			<div
-				className={`flex shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 ${avatarSize}`}
-			>
-				{user?.avatar_url ? (
-					<img
-						src={user.avatar_url}
-						alt={name}
-						className="h-full w-full rounded-full object-cover"
-					/>
-				) : initials ? (
-					<span className="font-semibold uppercase">{initials}</span>
-				) : (
-					<User className="h-4 w-4" />
-				)}
-			</div>
+		<div className="flex min-w-0 items-center gap-3">
+			<Avatar user={user} fallbackId={fallbackId} size={size} badge={badge} />
 			<div className="min-w-0">
-				<p className={`${nameClass} truncate text-slate-900`}>{name}</p>
+				<p className={`${nameClass} truncate text-foreground`}>{name}</p>
 				{subtitleSlot ? (
 					<div className="mt-1 flex flex-wrap items-center gap-1.5">
 						{subtitleSlot}
 					</div>
 				) : subtitle ? (
-					<p className="mt-0.5 truncate text-xs uppercase tracking-wide text-slate-500">
+					<p className="mt-0.5 truncate text-xs uppercase tracking-wide text-muted-foreground">
 						{subtitle}
 					</p>
 				) : null}
@@ -61,26 +55,6 @@ export function MemberDisplay({
 	);
 }
 
-export function displayNameOf(
-	user: ProfileSummary | null | undefined,
-	fallbackId?: string,
-): string {
-	if (user?.display_name) return user.display_name;
-	const composed = [user?.first_name, user?.last_name]
-		.filter(Boolean)
-		.join(" ");
-	if (composed) return composed;
-	if (user?.email) return user.email;
-	if (fallbackId) return fallbackId.slice(0, 8);
-	return "Unknown";
-}
-
-function initialsOf(name: string): string {
-	return name
-		.split(/\s+/)
-		.filter(Boolean)
-		.slice(0, 2)
-		.map((part) => part[0])
-		.join("")
-		.toUpperCase();
-}
+// Re-exported from here for the call sites that already import it from this
+// module; the implementation lives in Avatar.tsx.
+export { displayNameOf };

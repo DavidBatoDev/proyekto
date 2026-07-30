@@ -8,9 +8,11 @@ import { invoiceHasClient, NO_CLIENT_HINT } from "@/lib/invoiceClient";
 import { contractService } from "@/services/contract.service";
 import {
 	type HoursDetailLevel,
+	type Invoice,
 	invoiceService,
 } from "@/services/invoice.service";
 import { projectService } from "@/services/project.service";
+import { ConfirmIssueInvoiceModal } from "./ConfirmIssueInvoiceModal";
 import { InvoicePreview, type InvoicePreviewParty } from "./InvoicePreview";
 
 interface LineDraft {
@@ -85,6 +87,9 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 	const [hoursDetail, setHoursDetail] = useState<HoursDetailLevel>("summary");
 	const [attachHours, setAttachHours] = useState(false);
 	const [seeded, setSeeded] = useState(false);
+	// The saved invoice awaiting send confirmation; set once the pre-issue save
+	// lands, cleared when the consultant confirms or backs out.
+	const [confirmIssue, setConfirmIssue] = useState<Invoice | null>(null);
 
 	// Seed after the queries resolve (existing invoice takes priority over
 	// contract/project defaults). Runs once.
@@ -194,19 +199,44 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 		onError: (err: Error) => toast.error(err.message),
 	});
 
-	const issueMutation = useMutation({
-		mutationFn: async () => {
-			// Persist edits first, then issue.
-			const saved = invoiceId
-				? await invoiceService.update(invoiceId, buildPayload())
-				: await invoiceService.create({
-						project_id: projectId,
-						...buildPayload(),
-					});
-			return invoiceService.issue(saved.id);
+	/**
+	 * Step one of issuing: persist the edits, then hand the SAVED invoice to the
+	 * confirmation. Saving first is what lets the confirmation preview the real
+	 * stored document — including server-side totals and any hours appended on
+	 * save — rather than a draft that may not survive the round trip.
+	 */
+	const prepareIssueMutation = useMutation({
+		mutationFn: async () =>
+			invoiceId
+				? invoiceService.update(invoiceId, buildPayload())
+				: invoiceService.create({ project_id: projectId, ...buildPayload() }),
+		onSuccess: (saved) => {
+			void qc.invalidateQueries({
+				queryKey: ["invoices", "project", projectId],
+			});
+			if (invoiceId)
+				void qc.invalidateQueries({ queryKey: ["invoice", saved.id] });
+			setConfirmIssue(saved);
 		},
-		onSuccess: () => {
-			toast.success("Invoice issued");
+		onError: (err: Error) => toast.error(err.message),
+	});
+
+	const issueMutation = useMutation({
+		mutationFn: (id: string) => invoiceService.issue(id),
+		onSuccess: (invoice) => {
+			// Mirrors payments.tsx: a failed send warns rather than succeeds, so
+			// nobody walks away thinking the client was emailed when they weren't.
+			const delivery = invoice.email_delivery;
+			if (delivery?.sent) {
+				toast.success(`Invoice issued and emailed to ${delivery.to}`);
+			} else {
+				toast.warning(
+					`Invoice issued, but not emailed — ${
+						delivery?.reason ?? "no client email on file."
+					} Use Re-send once that's fixed.`,
+				);
+			}
+			setConfirmIssue(null);
 			void qc.invalidateQueries({
 				queryKey: ["invoices", "project", projectId],
 			});
@@ -215,7 +245,10 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 				params: { projectId },
 			});
 		},
-		onError: (err: Error) => toast.error(err.message),
+		onError: (err: Error) => {
+			toast.error(err.message);
+			setConfirmIssue(null);
+		},
 	});
 
 	const pdfMutation = useMutation({
@@ -252,7 +285,10 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 
 	const isEditableDraft = !existing || existing.status === "draft";
 	const isBusy =
-		saveMutation.isPending || issueMutation.isPending || pdfMutation.isPending;
+		saveMutation.isPending ||
+		prepareIssueMutation.isPending ||
+		issueMutation.isPending ||
+		pdfMutation.isPending;
 
 	if (projectQuery.isPending || (invoiceId && existingQuery.isPending)) {
 		return (
@@ -293,13 +329,13 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 							</button>
 							<button
 								type="button"
-								onClick={() => issueMutation.mutate()}
+								onClick={() => prepareIssueMutation.mutate()}
 								disabled={isBusy || !canIssue}
 								title={canIssue ? undefined : NO_CLIENT_HINT}
 								className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<Send className="h-3.5 w-3.5" />
-								{issueMutation.isPending ? "Issuing…" : "Issue"}
+								{prepareIssueMutation.isPending ? "Saving…" : "Issue"}
 							</button>
 						</div>
 					</div>
@@ -509,6 +545,15 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 					/>
 				</div>
 			</div>
+
+			{confirmIssue && (
+				<ConfirmIssueInvoiceModal
+					invoice={confirmIssue}
+					isPending={issueMutation.isPending}
+					onCancel={() => setConfirmIssue(null)}
+					onConfirm={() => issueMutation.mutate(confirmIssue.id)}
+				/>
+			)}
 		</div>
 	);
 }

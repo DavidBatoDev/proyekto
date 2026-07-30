@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'crypto';
+import { MailerService } from '../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import {
   EmailVerificationConfirmDto,
@@ -27,6 +28,7 @@ export class EmailOtpService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly config: ConfigService,
+    private readonly mailer: MailerService,
   ) {}
 
   async requestEmailVerification(dto: EmailVerificationRequestDto) {
@@ -60,17 +62,19 @@ export class EmailOtpService {
       );
     }
 
-    try {
-      await this.sendGmailHtml({
-        to: email,
-        subject: `Verify Your Email - Code: ${code}`,
-        html: this.buildVerificationHtml(dto.firstName, code),
-      });
-    } catch (error) {
+    // MailerService reports rather than throws, because most senders must not
+    // fail their request over a mail outage. OTP is the exception: telling
+    // someone a code is on its way when it isn't strands them at the sign-up
+    // wall, so this path re-raises.
+    const delivery = await this.mailer.send({
+      to: email,
+      sender: 'accounts',
+      subject: `Verify Your Email - Code: ${code}`,
+      html: this.buildVerificationHtml(dto.firstName, code),
+    });
+    if (!delivery.sent) {
       this.logger.error(
-        `Failed to send verification email to ${email}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Failed to send verification email to ${email}: ${delivery.reason}`,
       );
       throw new InternalServerErrorException(
         'Failed to send verification email.',
@@ -193,17 +197,16 @@ export class EmailOtpService {
       throw new InternalServerErrorException('Could not create reset code.');
     }
 
-    try {
-      await this.sendGmailHtml({
-        to: email,
-        subject: `Reset Your Password - Code: ${code}`,
-        html: this.buildPasswordResetHtml(code),
-      });
-    } catch (error) {
+    // Re-raises for the same reason as the verification path above.
+    const delivery = await this.mailer.send({
+      to: email,
+      sender: 'accounts',
+      subject: `Reset Your Password - Code: ${code}`,
+      html: this.buildPasswordResetHtml(code),
+    });
+    if (!delivery.sent) {
       this.logger.error(
-        `Failed to send password reset email to ${email}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Failed to send password reset email to ${email}: ${delivery.reason}`,
       );
       throw new InternalServerErrorException('Failed to send reset code.');
     }
@@ -355,84 +358,6 @@ export class EmailOtpService {
         : [];
     const firstId = users[0]?.id;
     return typeof firstId === 'string' && firstId.length > 0 ? firstId : null;
-  }
-
-  private async fetchGmailAccessToken(): Promise<string> {
-    const clientId = this.config.getOrThrow<string>('GMAIL_CLIENT_ID');
-    const clientSecret = this.config.getOrThrow<string>('GMAIL_CLIENT_SECRET');
-    const refreshToken = this.config.getOrThrow<string>('GMAIL_REFRESH_TOKEN');
-
-    const tokenBody = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    });
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: tokenBody.toString(),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(
-        `Failed to exchange Gmail refresh token (status ${response.status}): ${text}`,
-      );
-    }
-
-    const json = (await response.json()) as { access_token?: string };
-    if (!json.access_token) {
-      throw new Error('Gmail token response missing access_token');
-    }
-
-    return json.access_token;
-  }
-
-  private async sendGmailHtml(params: {
-    to: string;
-    subject: string;
-    html: string;
-  }) {
-    const accessToken = await this.fetchGmailAccessToken();
-    const fromEmail = this.config.get<string>('GMAIL_FROM_EMAIL')?.trim();
-
-    const headers = [
-      fromEmail ? `From: Proyekto <${fromEmail}>` : null,
-      `To: ${params.to}`,
-      `Subject: ${params.subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset="UTF-8"',
-    ]
-      .filter(Boolean)
-      .join('\r\n');
-
-    const mime = `${headers}\r\n\r\n${params.html}`;
-    const raw = Buffer.from(mime)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    const response = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ raw }),
-      },
-    );
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(
-        `Gmail API send failed (status ${response.status}): ${text}`,
-      );
-    }
   }
 
   private buildVerificationHtml(firstName: string, code: string) {

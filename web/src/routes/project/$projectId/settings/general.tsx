@@ -738,69 +738,21 @@ function SettingsGeneralPage() {
 						Project access
 					</h2>
 					<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-						<header className="px-5 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+						<div className="flex items-center justify-between gap-3 px-5 py-4">
 							<p className="text-sm text-slate-600">
-								Team members with access to this project.
+								Members, roles, permissions and attached teams all live on the
+								Team page.
 							</p>
 							<Link
-								to="/project/$projectId/settings/permissions"
+								to="/project/$projectId/team"
 								params={{ projectId }}
-								className="px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-slate-100"
+								className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100"
 							>
-								Manage members
+								Manage people
 							</Link>
-						</header>
-
-						<div className="divide-y divide-gray-100">
-							{isLoading ? (
-								<div className="px-5 py-6 text-sm text-slate-500">
-									Loading members...
-								</div>
-							) : members.length === 0 ? (
-								<div className="px-5 py-6 text-sm text-slate-500">
-									No members found.
-								</div>
-							) : (
-								members.map((member) => {
-									const displayName =
-										member.user?.display_name ||
-										[member.user?.first_name, member.user?.last_name]
-											.filter(Boolean)
-											.join(" ") ||
-										member.user?.email ||
-										"Unknown";
-
-									const isCurrentOwner = member.user_id === project?.client_id;
-
-									return (
-										<div
-											key={member.id}
-											className="px-5 py-3.5 flex items-center justify-between gap-3"
-										>
-											<div className="min-w-0">
-												<p className="text-sm font-medium text-slate-900 truncate">
-													{displayName}
-													{isCurrentOwner ? (
-														<span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-															Owner
-														</span>
-													) : null}
-												</p>
-												<p className="text-xs text-slate-500 truncate">
-													{member.user?.email || "No email"}
-												</p>
-											</div>
-											<span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-												{member.position?.trim() || "Member"}
-											</span>
-										</div>
-									);
-								})
-							)}
 						</div>
 					</div>
 				</section>
-
 				{isOwner && (
 					<>
 						<section className="space-y-3">

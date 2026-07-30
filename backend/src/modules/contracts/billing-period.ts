@@ -6,6 +6,10 @@
  * client invoice for a period has to cover exactly the hours the team approved
  * and paid out for the same cut-off, otherwise billed and paid hours drift.
  *
+ * That mirror covers period BOUNDARIES and PAY DATES only — `log-period.ts`
+ * has no notion of invoice or due dates. So `billingTiming` (prepaid vs
+ * postpaid) is backend-only and needs no matching change on the web side.
+ *
  * Dates here are plain calendar dates (`YYYY-MM-DD`), never timestamps — a
  * billing period is a calendar concept and must not shift with the server's
  * timezone. All arithmetic goes through UTC-noon Date objects so a DST
@@ -153,9 +157,37 @@ export function normalizePayPeriodConfig(
   return DEFAULT_PAY_PERIOD_CONFIG;
 }
 
+/** When the invoice for a period is raised, relative to the period itself. */
+export type BillingTiming = 'arrears' | 'advance';
+
 interface ResolveOptions {
+  /**
+   * Lag days in arrears (after the period closes), LEAD days in advance
+   * (before it opens). The column name predates `billingTiming`.
+   */
   invoiceOffsetDays?: number;
   dueDays?: number;
+  /** Defaults to 'arrears' — the behaviour every contract had before this existed. */
+  billingTiming?: BillingTiming;
+}
+
+/**
+ * The day a period's invoice is raised.
+ *
+ * Arrears counts FORWARD from the period end (wait for the work, then bill);
+ * advance counts BACKWARD from the period start (bill for the month ahead).
+ * Both anchors matter — see the clamping in `billingPeriodsForRange`, which has
+ * to re-derive from whichever end the timing uses.
+ */
+function resolveInvoiceDate(
+  from: Date,
+  to: Date,
+  options: ResolveOptions,
+): Date {
+  const offset = options.invoiceOffsetDays ?? 0;
+  return options.billingTiming === 'advance'
+    ? addDays(from, -offset)
+    : addDays(to, offset);
 }
 
 function resolveOne(
@@ -181,7 +213,7 @@ function resolveOne(
     Math.min(Math.max(1, def.pay_day), payEom),
   );
 
-  const invoiceDate = addDays(to, options.invoiceOffsetDays ?? 0);
+  const invoiceDate = resolveInvoiceDate(from, to, options);
   const dueDate = addDays(invoiceDate, options.dueDays ?? 0);
   const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
 
@@ -267,9 +299,13 @@ export function billingPeriodsForRange(
     ) {
       return period;
     }
-    const invoiceDate = addDays(
+    // Re-derive from whichever end the timing anchors to. Deriving from the
+    // clamped END unconditionally (as this did before advance billing existed)
+    // would put a prepaid contract's first invoice after the period it covers.
+    const invoiceDate = resolveInvoiceDate(
+      parseIsoDate(clampedStart),
       parseIsoDate(clampedEnd),
-      options.invoiceOffsetDays ?? 0,
+      options,
     );
     return {
       ...period,
@@ -296,11 +332,16 @@ export function billingPeriodForDate(
 }
 
 /**
- * The most recent period that has fully CLOSED and whose invoice date has
- * arrived, given `today`. Returns null when nothing is billable yet.
+ * The most recent period the scheduler should bill, given `today`. Returns null
+ * when nothing is billable yet.
  *
- * This is what the scheduler bills: never an in-flight period, and never
- * before `invoice_offset_days` has elapsed.
+ * In ARREARS this is the last period that has fully closed AND whose invoice
+ * date has arrived — never an in-flight period, and never before
+ * `invoice_offset_days` has elapsed.
+ *
+ * In ADVANCE the whole point is to bill a period that has NOT happened, so the
+ * closed-period test is dropped and the invoice date alone decides. The date
+ * itself carries the lead time, so this still cannot run early.
  */
 export function lastBillablePeriod(
   config: PayPeriodConfig | null | undefined,
@@ -316,10 +357,12 @@ export function lastBillablePeriod(
     options,
   );
   const day = today.slice(0, 10);
-  const closed = periods.filter(
-    (p) => p.periodEnd < day && p.invoiceDate <= day,
+  const billable = periods.filter((p) =>
+    options.billingTiming === 'advance'
+      ? p.invoiceDate <= day
+      : p.periodEnd < day && p.invoiceDate <= day,
   );
-  return closed.length > 0 ? closed[closed.length - 1] : null;
+  return billable.length > 0 ? billable[billable.length - 1] : null;
 }
 
 /** The pay-period config a contract should bill against. */

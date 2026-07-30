@@ -5,6 +5,7 @@ import type {
 	InvoiceCadence,
 } from "@/lib/contract-term";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import type { SignatureLinkSummary } from "@/services/contract-signing.service";
 
 export type ContractStatus =
 	| "draft"
@@ -13,6 +14,29 @@ export type ContractStatus =
 	| "active"
 	| "ended"
 	| "cancelled";
+
+/**
+ * Whose identity signs a contract. Per-contract, not per-team: a consultant may
+ * run most work through the agency and still take one engagement personally.
+ */
+export type ProviderKind = "individual" | "agency";
+
+/**
+ * When the invoice for a period is raised. "advance" is the prepaid retainer —
+ * invoice on November 30 for December. Retainer-only: hourly work has to be
+ * logged and approved before it can be billed.
+ */
+export type BillingTiming = "arrears" | "advance";
+
+/**
+ * Which invoices a terms change applies to.
+ *
+ * Future invoices are never materialized — the scheduler re-derives them from
+ * the contract each run — so "following" and "all" are contract AMENDMENTS
+ * (a new version, re-signed), while "this" is a single-invoice edit that never
+ * reaches the contract at all.
+ */
+export type ContractEditScope = "this" | "following" | "all";
 
 export interface ContractClause {
 	key: string;
@@ -49,6 +73,8 @@ export interface Contract {
 	contract_number: string | null;
 	status: ContractStatus;
 
+	/** Whose identity signs: the consultant personally, or the project's team. */
+	provider_kind: ProviderKind;
 	provider_name: string | null;
 	provider_address: string | null;
 	provider_tin: string | null;
@@ -62,6 +88,7 @@ export interface Contract {
 
 	currency: string;
 	billing_mode: BillingMode;
+	billing_timing: BillingTiming;
 	recurring_fee: number | null;
 	/** CLIENT-facing rate. Never a team member's cost rate. */
 	client_hourly_rate: number | null;
@@ -109,6 +136,7 @@ export interface Contract {
 }
 
 export interface ContractTermsPayload {
+	provider_kind?: ProviderKind;
 	provider_name?: string;
 	provider_address?: string;
 	provider_tin?: string;
@@ -122,6 +150,7 @@ export interface ContractTermsPayload {
 
 	currency?: string;
 	billing_mode?: BillingMode;
+	billing_timing?: BillingTiming;
 	recurring_fee?: number | null;
 	client_hourly_rate?: number | null;
 	included_hours?: number | null;
@@ -143,12 +172,29 @@ export interface ContractTermsPayload {
 	services?: ContractService[];
 }
 
+/**
+ * How the team pool divides between members. "equal" derives each slice from
+ * the member count; "custom" uses the stored amounts — hours are never truly
+ * equal, so the consultant needs both.
+ */
+export type AllocationMode = "equal" | "custom";
+
+/** One member's slice of the team pool. INTERNAL — never shown to a client. */
+export interface ProjectMemberAllocation {
+	team_id: string;
+	user_id: string;
+	monthly_allocation: number | null;
+	currency?: string;
+}
+
 export interface ProjectEconomics {
 	project_id: string;
 	contract_id: string | null;
 	currency: string;
 	company_percent: number;
 	team_percent: number;
+	allocation_mode: AllocationMode;
+	allocations: ProjectMemberAllocation[];
 	metadata: Record<string, unknown>;
 	created_at: string;
 	updated_at: string;
@@ -194,6 +240,21 @@ export const DEFAULT_SIGNATURE_PLACEMENT: SignaturePlacement = {
 	offsetX: 0,
 	offsetY: 0,
 };
+
+/** Postgres numerics arrive as strings; the panel does arithmetic on them. */
+function normalizeEconomics(row: ProjectEconomics): ProjectEconomics {
+	return {
+		...row,
+		company_percent: Number(row.company_percent ?? 0),
+		team_percent: Number(row.team_percent ?? 0),
+		allocation_mode: row.allocation_mode ?? "equal",
+		allocations: (row.allocations ?? []).map((a) => ({
+			...a,
+			monthly_allocation:
+				a.monthly_allocation == null ? null : Number(a.monthly_allocation),
+		})),
+	};
+}
 
 function normalizeContract(contract: Contract): Contract {
 	return {
@@ -305,6 +366,94 @@ export const contractService = {
 	 * available after the contract is signed — unlike unsigning. Fields are
 	 * independent: send only what changed.
 	 */
+	/**
+	 * Change the terms of a SIGNED contract from a chosen date onward.
+	 *
+	 * Returns the new draft version. It does not take effect until both parties
+	 * sign it — the current version keeps governing in the meantime.
+	 */
+	async amend(
+		contractId: string,
+		scope: ContractEditScope,
+		payload: ContractTermsPayload & { effective_from?: string },
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.post<{ data: Contract }>(
+				`/api/contracts/${contractId}/amend`,
+				{ ...payload, scope },
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to amend the contract");
+		}
+	},
+
+	/** The live signing link for a contract, or null if none is outstanding. */
+	async getSignatureLink(
+		contractId: string,
+	): Promise<SignatureLinkSummary | null> {
+		try {
+			const { data } = await apiClient.get<{
+				data: SignatureLinkSummary | null;
+			}>(`/api/contracts/${contractId}/signature-link`);
+			return data.data ?? null;
+		} catch (err) {
+			fail(err, "Failed to load the signing link");
+		}
+	},
+
+	/** Mint a signing link. Revokes any outstanding one first. */
+	async createSignatureLink(
+		contractId: string,
+		options: {
+			expires_in_days?: number;
+			recipient_email?: string;
+			send_email?: boolean;
+		} = {},
+	): Promise<SignatureLinkSummary> {
+		try {
+			const { data } = await apiClient.post<{ data: SignatureLinkSummary }>(
+				`/api/contracts/${contractId}/signature-link`,
+				options,
+			);
+			return data.data;
+		} catch (err) {
+			fail(err, "Failed to create the signing link");
+		}
+	},
+
+	async revokeSignatureLink(contractId: string): Promise<void> {
+		try {
+			await apiClient.delete(`/api/contracts/${contractId}/signature-link`);
+		} catch (err) {
+			fail(err, "Failed to revoke the signing link");
+		}
+	},
+
+	/**
+	 * Overwrite the provider block from the chosen identity. Destructive — the
+	 * caller confirms first when any provider field was hand-edited.
+	 */
+	async reseedProvider(
+		contractId: string,
+		providerKind: ProviderKind,
+		/** Which attached team's billing identity to copy. Defaults to primary. */
+		teamId?: string,
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.post<{ data: Contract }>(
+				`/api/contracts/${contractId}/provider`,
+				{
+					provider_kind: providerKind,
+					...(teamId ? { team_id: teamId } : {}),
+				},
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to refill the service-provider details");
+		}
+	},
+
 	async setSignaturePlacement(
 		contractId: string,
 		party: "consultant" | "client",
@@ -353,11 +502,7 @@ export const contractService = {
 				`/api/projects/${projectId}/economics`,
 			);
 			if (!data.data) return null;
-			return {
-				...data.data,
-				company_percent: Number(data.data.company_percent ?? 0),
-				team_percent: Number(data.data.team_percent ?? 0),
-			};
+			return normalizeEconomics(data.data);
 		} catch (err) {
 			fail(err, "Failed to load the project budget split");
 		}
@@ -370,6 +515,12 @@ export const contractService = {
 			team_percent: number;
 			currency?: string;
 			hour_limits_ack?: boolean;
+			allocation_mode?: AllocationMode;
+			/**
+			 * The COMPLETE set of per-member slices. Omit to leave them alone; send
+			 * an array to replace them — anyone absent is dropped from the split.
+			 */
+			allocations?: ProjectMemberAllocation[];
 		},
 	): Promise<ProjectEconomics> {
 		try {
@@ -377,7 +528,7 @@ export const contractService = {
 				`/api/projects/${projectId}/economics`,
 				payload,
 			);
-			return data.data;
+			return normalizeEconomics(data.data);
 		} catch (err) {
 			fail(err, "Failed to save the project budget split");
 		}

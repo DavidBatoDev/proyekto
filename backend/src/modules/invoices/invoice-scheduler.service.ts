@@ -30,6 +30,20 @@ export interface InvoiceRunResult {
 }
 
 /**
+ * How far into the future a single catch-up run will draft advance (prepaid)
+ * invoices. Without a bound, one "Generate from contract" click on a 12-month
+ * prepaid retainer with a long lead time would draft most of the year at once.
+ */
+const ADVANCE_LOOKAHEAD_DAYS = 45;
+
+/**
+ * How far ahead of a contract's service start its first invoice may be raised.
+ * Matches `@Max(90)` on `invoice_offset_days`, and is what lets the contract
+ * scan reach a prepaid contract whose first invoice predates its start date.
+ */
+const MAX_ADVANCE_LEAD_DAYS = 90;
+
+/**
  * Creates the client invoice for each closed billing period.
  *
  * Triggered externally (Cloud Scheduler → `POST /api/invoices/cron/run`), the
@@ -105,12 +119,19 @@ export class InvoiceSchedulerService {
    * On-demand catch-up for ONE project, triggered by the consultant from the
    * Invoices page rather than by the cron.
    *
-   * Unlike the nightly run — which bills only the most recently closed period
-   * — this drafts every closed period the contract has not been billed for
+   * Unlike the nightly run — which bills only the most recently billable
+   * period — this drafts every period the contract has not been billed for
    * yet, so a project whose automation was off (or which was set up midway
    * through its term) can be brought current in one click. Duplicate
    * suppression is the same partial unique index, so pressing the button twice
    * is harmless.
+   *
+   * On an ARREARS contract "not billed yet" means every period that has closed.
+   * On an ADVANCE (prepaid) contract it necessarily includes periods that have
+   * not started — that is the point — so it is bounded by
+   * `ADVANCE_LOOKAHEAD_DAYS` instead. Without that bound, one click on a
+   * 12-month prepaid contract with a long lead would draft most of the year at
+   * once.
    *
    * Invoices are still created as DRAFTS; nothing reaches the client until the
    * consultant issues it.
@@ -148,16 +169,42 @@ export class InvoiceSchedulerService {
         ? await this.contracts.getTeamPayPeriodConfig(contract.project_id)
         : null;
 
-    const periods = billingPeriodsForRange(
+    const advance = contract.billing_timing === 'advance';
+    const lookaheadLimit = advance
+      ? addDaysIso(today, ADVANCE_LOOKAHEAD_DAYS)
+      : today;
+
+    const allPeriods = billingPeriodsForRange(
       configForCadence(contract.invoice_cadence, teamConfig),
       contract.service_start_date,
       contract.service_end_date,
       {
         invoiceOffsetDays: contract.invoice_offset_days,
         dueDays: contract.due_days,
+        billingTiming: contract.billing_timing,
       },
-      // Only periods that have actually closed — never bill the future.
-    ).filter((p) => p.periodEnd < today && p.invoiceDate <= today);
+    );
+    const periods = allPeriods.filter((p) =>
+      advance
+        ? // Prepaid: the invoice date has arrived, and the period starts inside
+          // the look-ahead window.
+          p.invoiceDate <= today && p.periodStart <= lookaheadLimit
+        : // Postpaid: only periods that have actually closed.
+          p.periodEnd < today && p.invoiceDate <= today,
+    );
+
+    // A silently truncated run reads as "everything is billed". Say what was
+    // held back so the consultant knows to come back for it.
+    if (advance) {
+      const deferred = allPeriods.filter(
+        (p) => p.invoiceDate <= today && p.periodStart > lookaheadLimit,
+      ).length;
+      if (deferred > 0) {
+        this.logger.log(
+          `Contract ${contract.id}: deferred ${deferred} advance period(s) beyond the ${ADVANCE_LOOKAHEAD_DAYS}-day look-ahead.`,
+        );
+      }
+    }
 
     const result: InvoiceRunResult = {
       scanned: periods.length,
@@ -223,6 +270,7 @@ export class InvoiceSchedulerService {
       {
         invoiceOffsetDays: contract.invoice_offset_days,
         dueDays: contract.due_days,
+        billingTiming: contract.billing_timing,
       },
     );
     if (!period) return false;
@@ -260,13 +308,22 @@ export class InvoiceSchedulerService {
     return true;
   }
 
-  /** Active projects whose contract's service window contains today. */
+  /**
+   * Active projects whose contract's service window is in play.
+   *
+   * The start-date filter reaches `MAX_ADVANCE_LEAD_DAYS` into the future
+   * rather than stopping at today: a prepaid contract's FIRST invoice is
+   * raised before its service starts, so a `service_start_date <= today` scan
+   * would never see it and the first period would silently go unbilled.
+   * Contracts that are not yet due are then filtered out by
+   * `lastBillablePeriod`, which enforces the real invoice date.
+   */
   private async findBillableContracts(today: string): Promise<ContractRow[]> {
     const { data, error } = await this.supabase
       .from('contracts')
       .select('*, project:projects!contracts_project_id_fkey(status)')
       .in('status', ['signed', 'active'])
-      .lte('service_start_date', today);
+      .lte('service_start_date', addDaysIso(today, MAX_ADVANCE_LEAD_DAYS));
     if (error) throw new Error(error.message);
 
     return (

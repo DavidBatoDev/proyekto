@@ -79,6 +79,7 @@ describe('ProjectsService (permissions)', () => {
       { provisionDefaultChannels: jest.fn().mockResolvedValue(undefined) } as any,
       { createContractInternal: jest.fn() } as any,
       { assertActivationReady: jest.fn() } as any,
+      { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
     );
   };
 

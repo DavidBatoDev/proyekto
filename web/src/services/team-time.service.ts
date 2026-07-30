@@ -437,6 +437,21 @@ export const teamTimeService = {
 		}
 	},
 
+	/**
+	 * Same tasks, without needing a team id. Used by the project Time page,
+	 * which has a project but no reason to resolve a team first.
+	 */
+	async listProjectTasks(projectId: string): Promise<ProjectTaskOption[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<ProjectTaskOption[]>>(
+				`/api/team-time/projects/${projectId}/tasks`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch project tasks");
+		}
+	},
+
 	async listTeamLogs(
 		teamId: string,
 		query?: ListLogsQuery,

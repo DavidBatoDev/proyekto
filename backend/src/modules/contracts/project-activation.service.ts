@@ -3,7 +3,11 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { ContractsService } from './contracts.service';
-import { UpdateProjectEconomicsDto } from './dto/contracts.dto';
+import {
+  AllocationMode,
+  ProjectMemberAllocationDto as ProjectMemberAllocationInput,
+  UpdateProjectEconomicsDto,
+} from './dto/contracts.dto';
 
 export interface ProjectEconomicsRow {
   project_id: string;
@@ -11,10 +15,26 @@ export interface ProjectEconomicsRow {
   currency: string;
   company_percent: number;
   team_percent: number;
+  /** 'equal' derives each slice on read; 'custom' uses the stored amounts. */
+  allocation_mode: AllocationMode;
   metadata: Record<string, unknown>;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** One member's slice of the team pool. INTERNAL — never reaches a client. */
+export interface ProjectMemberAllocationRow {
+  project_id: string;
+  team_id: string;
+  user_id: string;
+  monthly_allocation: number | null;
+  currency: string;
+}
+
+/** Economics plus the per-member split, as the Financials panel reads it. */
+export interface ProjectEconomicsWithAllocations extends ProjectEconomicsRow {
+  allocations: ProjectMemberAllocationRow[];
 }
 
 export type ChecklistSeverity = 'blocker' | 'warning';
@@ -67,16 +87,18 @@ export class ProjectActivationService {
   async getEconomics(
     callerId: string,
     projectId: string,
-  ): Promise<ProjectEconomicsRow | null> {
+  ): Promise<ProjectEconomicsWithAllocations | null> {
     await this.projectAuth.assertRole(callerId, projectId, 'admin');
-    return this.getEconomicsRow(projectId);
+    const row = await this.getEconomicsRow(projectId);
+    if (!row) return null;
+    return { ...row, allocations: await this.getAllocations(projectId) };
   }
 
   async upsertEconomics(
     callerId: string,
     projectId: string,
     dto: UpdateProjectEconomicsDto,
-  ): Promise<ProjectEconomicsRow> {
+  ): Promise<ProjectEconomicsWithAllocations> {
     await this.projectAuth.assertRole(callerId, projectId, 'admin');
 
     const company = Number(dto.company_percent);
@@ -96,17 +118,33 @@ export class ProjectActivationService {
       metadata.hour_limits_ack = dto.hour_limits_ack;
     }
 
+    const currency = (
+      dto.currency ??
+      contract?.currency ??
+      existing?.currency ??
+      'USD'
+    ).toUpperCase();
+
+    // Allocations first, percentages second: if the allocation write fails, the
+    // split the consultant already trusts is left exactly as it was rather than
+    // half-applied against a set of member amounts that never landed.
+    if (dto.allocations !== undefined) {
+      await this.replaceAllocations(
+        projectId,
+        currency,
+        callerId,
+        dto.allocations,
+      );
+    }
+
     const payload = {
       project_id: projectId,
       contract_id: contract?.id ?? existing?.contract_id ?? null,
-      currency: (
-        dto.currency ??
-        contract?.currency ??
-        existing?.currency ??
-        'USD'
-      ).toUpperCase(),
+      currency,
       company_percent: company,
       team_percent: team,
+      allocation_mode:
+        dto.allocation_mode ?? existing?.allocation_mode ?? 'equal',
       metadata,
       created_by: existing?.created_by ?? callerId,
       updated_at: new Date().toISOString(),
@@ -122,7 +160,72 @@ export class ProjectActivationService {
         error?.message ?? 'Failed to save the project budget split.',
       );
     }
-    return this.parseEconomics(data);
+    return {
+      ...this.parseEconomics(data),
+      allocations: await this.getAllocations(projectId),
+    };
+  }
+
+  /** Every stored per-member slice on the project. */
+  private async getAllocations(
+    projectId: string,
+  ): Promise<ProjectMemberAllocationRow[]> {
+    const { data, error } = await this.supabase
+      .from('project_member_allocations')
+      .select('project_id, team_id, user_id, monthly_allocation, currency')
+      .eq('project_id', projectId);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as ProjectMemberAllocationRow[]).map((row) => ({
+      ...row,
+      monthly_allocation:
+        row.monthly_allocation == null ? null : Number(row.monthly_allocation),
+    }));
+  }
+
+  /**
+   * Make the stored allocations match the payload exactly.
+   *
+   * Deletion is how "remove this member from the split" persists — an upsert
+   * alone would leave a removed member's slice behind, still drawing from the
+   * pool in every later calculation.
+   */
+  private async replaceAllocations(
+    projectId: string,
+    currency: string,
+    callerId: string,
+    allocations: ProjectMemberAllocationInput[],
+  ): Promise<void> {
+    if (allocations.length > 0) {
+      const rows = allocations.map((a) => ({
+        project_id: projectId,
+        team_id: a.team_id,
+        user_id: a.user_id,
+        monthly_allocation:
+          a.monthly_allocation == null ? null : Number(a.monthly_allocation),
+        currency,
+        created_by: callerId,
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await this.supabase
+        .from('project_member_allocations')
+        .upsert(rows, { onConflict: 'project_id,team_id,user_id' });
+      if (error) throw new BadRequestException(error.message);
+    }
+
+    const keep = new Set(allocations.map((a) => `${a.team_id}:${a.user_id}`));
+    const existingRows = await this.getAllocations(projectId);
+    const stale = existingRows.filter(
+      (row) => !keep.has(`${row.team_id}:${row.user_id}`),
+    );
+    for (const row of stale) {
+      const { error } = await this.supabase
+        .from('project_member_allocations')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('team_id', row.team_id)
+        .eq('user_id', row.user_id);
+      if (error) throw new BadRequestException(error.message);
+    }
   }
 
   async getChecklist(
@@ -161,7 +264,12 @@ export class ProjectActivationService {
   private async buildChecklist(
     projectId: string,
   ): Promise<ActivationChecklist> {
-    const contractPath = `/project/${projectId}/contract`;
+    // Deep links, not just page links: a checklist item that drops you on a
+    // six-step wizard and leaves you to find the right step is barely better
+    // than no link. `?step=` selects the section the item is actually about.
+    const contractPath = (step: string) =>
+      `/project/${projectId}/contract?step=${step}`;
+    const financialsPath = `/project/${projectId}/financials`;
     const timePath = `/project/${projectId}/settings/time`;
     const teamsPath = `/project/${projectId}/settings/teams`;
 
@@ -205,7 +313,7 @@ export class ProjectActivationService {
         : missingTerms.length > 0
           ? `Contract is missing: ${missingTerms.join(', ')}.`
           : null,
-      fixPath: contractPath,
+      fixPath: contractPath(contract ? 'signatures' : 'terms'),
     });
 
     // 2 — the revenue split.
@@ -224,7 +332,9 @@ export class ProjectActivationService {
       detail: splitOk
         ? null
         : 'Set what percentage of project revenue goes to the company and what goes to the team pool.',
-      fixPath: contractPath,
+      // Lives in Financials now, not on the contract — the split is internal
+      // and contracts get built on screen shares with the client.
+      fixPath: financialsPath,
     });
 
     // 3 — a team with curated members.
@@ -314,7 +424,7 @@ export class ProjectActivationService {
         clientIdentified || clientOnContract
           ? null
           : 'Add the client to the project, or fill in the client details on the contract.',
-      fixPath: contractPath,
+      fixPath: contractPath('parties'),
     });
 
     // 7 — currency consistency. A warning, not a blocker: payouts are already
@@ -355,6 +465,7 @@ export class ProjectActivationService {
       ...parsed,
       company_percent: Number(parsed.company_percent ?? 0),
       team_percent: Number(parsed.team_percent ?? 0),
+      allocation_mode: parsed.allocation_mode ?? 'equal',
       metadata: parsed.metadata ?? {},
     };
   }

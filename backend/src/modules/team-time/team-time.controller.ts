@@ -253,4 +253,19 @@ export class TeamTimeController {
   ) {
     return this.service.listProjectLogMembers(user.id, projectId);
   }
+
+  /**
+   * Timer-picker tasks, scoped to the project rather than a team.
+   *
+   * The team-scoped twin (`teams/:teamId/projects/:projectId/tasks`) exists for
+   * the team Time page; this one lets the project Time page render the same
+   * picker without first resolving a team it does not need.
+   */
+  @Get('projects/:projectId/tasks')
+  listProjectTasks(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listProjectTasks(user.id, projectId);
+  }
 }

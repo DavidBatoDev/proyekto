@@ -19,6 +19,7 @@ import {
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { ConfirmIssueInvoiceModal } from "@/components/invoices/ConfirmIssueInvoiceModal";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney } from "@/lib/contract-term";
 import { invoiceHasClient, NO_CLIENT_HINT } from "@/lib/invoiceClient";
@@ -51,6 +52,9 @@ function PaymentsPage() {
 	const toast = useToast();
 	const navigate = useNavigate();
 	const [confirmDelete, setConfirmDelete] = useState<Invoice | null>(null);
+	// Issuing is one-way and emails a real client, so it goes through a
+	// confirmation showing the resolved recipient and the rendered document.
+	const [confirmIssue, setConfirmIssue] = useState<Invoice | null>(null);
 
 	const invoicesQuery = useQuery({
 		queryKey: ["invoices", "project", projectId],
@@ -79,17 +83,26 @@ function PaymentsPage() {
 		mutationFn: (invoiceId: string) => invoiceService.issue(invoiceId),
 		onSuccess: (invoice) => {
 			// Issuing always succeeds; emailing is best-effort, so report both.
+			// A failed send is a WARNING, not a success: the invoice really was
+			// issued, but the client has not been told, and a green toast let
+			// consultants believe otherwise.
 			const delivery = invoice.email_delivery;
 			if (delivery?.sent) {
 				toast.success(`Invoice issued and emailed to ${delivery.to}`);
 			} else {
-				toast.success(
-					`Invoice issued. Not emailed — ${delivery?.reason ?? "no client email on file."}`,
+				toast.warning(
+					`Invoice issued, but not emailed — ${
+						delivery?.reason ?? "no client email on file."
+					} Use Re-send once that's fixed.`,
 				);
 			}
+			setConfirmIssue(null);
 			invalidate();
 		},
-		onError: (err) => toast.error((err as Error).message),
+		onError: (err) => {
+			toast.error((err as Error).message);
+			setConfirmIssue(null);
+		},
 	});
 
 	const resendMutation = useMutation({
@@ -191,7 +204,7 @@ function PaymentsPage() {
 			projectClientId: projectQuery.data?.client_id,
 			projectConsultantId: projectQuery.data?.consultant_id,
 		}),
-		onIssue: () => issueMutation.mutate(invoice.id),
+		onIssue: () => setConfirmIssue(invoice),
 		onResend: () => resendMutation.mutate(invoice.id),
 		onDelete: () => setConfirmDelete(invoice),
 		onPdf: () => pdfMutation.mutate(invoice.id),
@@ -318,6 +331,15 @@ function PaymentsPage() {
 					isDeleting={deleteMutation.isPending}
 					onCancel={() => setConfirmDelete(null)}
 					onConfirm={() => deleteMutation.mutate(confirmDelete.id)}
+				/>
+			)}
+
+			{confirmIssue && (
+				<ConfirmIssueInvoiceModal
+					invoice={confirmIssue}
+					isPending={issueMutation.isPending}
+					onCancel={() => setConfirmIssue(null)}
+					onConfirm={() => issueMutation.mutate(confirmIssue.id)}
 				/>
 			)}
 		</div>

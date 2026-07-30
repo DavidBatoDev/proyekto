@@ -141,14 +141,16 @@ export function ActivationGuide({
 								</p>
 							)}
 						</div>
-						{!item.ok && item.fixPath && (
-							<Link
-								to={item.fixPath}
-								onClick={() => onActivated?.()}
-								className="shrink-0 text-xs font-semibold text-primary hover:underline"
-							>
-								Fix
-							</Link>
+						{/* A completed item still gets a link — "done" is not "never look
+						    at this again", and the consultant needs a way back in to
+						    review or amend. Only the label changes. */}
+						{item.fixPath && (
+							<ChecklistLink
+								fixPath={item.fixPath}
+								label={item.ok ? "View" : "Fix"}
+								muted={item.ok}
+								onNavigate={() => onActivated?.()}
+							/>
 						)}
 					</li>
 				))}
@@ -170,5 +172,43 @@ export function ActivationGuide({
 						: "Activate project"}
 			</button>
 		</div>
+	);
+}
+
+/**
+ * The per-item deep link.
+ *
+ * `fixPath` arrives from the server as a single string that may carry a query
+ * (`/project/x/contract?step=signatures`). TanStack Router wants `to` and
+ * `search` separately — handing it the whole string makes it a literal path
+ * segment and the link 404s, so it is split here.
+ */
+function ChecklistLink({
+	fixPath,
+	label,
+	muted,
+	onNavigate,
+}: {
+	fixPath: string;
+	label: string;
+	muted?: boolean;
+	onNavigate?: () => void;
+}) {
+	const [to, query] = fixPath.split("?");
+	const search = query
+		? Object.fromEntries(new URLSearchParams(query).entries())
+		: undefined;
+
+	return (
+		<Link
+			to={to}
+			search={search}
+			onClick={onNavigate}
+			className={`shrink-0 text-xs font-semibold hover:underline ${
+				muted ? "text-muted-foreground" : "text-primary"
+			}`}
+		>
+			{label}
+		</Link>
 	);
 }

@@ -143,6 +143,17 @@ export interface ResolvedTeamRate {
   overtime_requires_approval: boolean;
 }
 
+/** A task as the timer picker sees it: flat, with its epic/feature titles. */
+export interface ProjectTaskOption {
+  id: string;
+  title: string;
+  work_type: TaskWorkType;
+  feature_id: string;
+  feature_title: string | null;
+  epic_id: string | null;
+  epic_title: string | null;
+}
+
 export interface TimeLogLimitContext {
   over_limit: boolean;
   limit_window: 'weekly' | 'monthly' | null;
@@ -963,30 +974,42 @@ export class TeamTimeService implements OnModuleInit {
     callerId: string,
     teamId: string,
     projectId: string,
-  ): Promise<
-    Array<{
-      id: string;
-      title: string;
-      work_type: TaskWorkType;
-      feature_id: string;
-      feature_title: string | null;
-      epic_id: string | null;
-      epic_title: string | null;
-    }>
-  > {
+  ): Promise<ProjectTaskOption[]> {
     await this.assertTeamMember(callerId, teamId);
     await this.assertTeamAttachedToProject(teamId, projectId);
+    return this.listProjectTasks(callerId, projectId);
+  }
+
+  /**
+   * The project's tasks, flattened with their epic/feature titles, for the
+   * timer picker.
+   *
+   * Project-scoped rather than team-scoped: the real gate is project `viewer`,
+   * and the team asserts on `listTeamProjectTasks` only exist because that
+   * route is nested under a team. Splitting them lets the project Time page
+   * render the same picker without inventing a team id.
+   */
+  async listProjectTasks(
+    callerId: string,
+    projectId: string,
+  ): Promise<ProjectTaskOption[]> {
     await this.projectAuth.assertRole(callerId, projectId, 'viewer');
-    const { data, error } = await this.supabase.from('roadmap_tasks').select(
-      `id, title, work_type, feature_id,
-         feature:roadmap_features!roadmap_tasks_feature_id_fkey(
+    const { data, error } = await this.supabase
+      .from('roadmap_tasks')
+      .select(
+        `id, title, work_type, feature_id,
+         feature:roadmap_features!roadmap_tasks_feature_id_fkey!inner(
            id, title, epic_id,
-           epic:roadmap_epics!roadmap_features_epic_id_fkey(
+           epic:roadmap_epics!roadmap_features_epic_id_fkey!inner(
              id, title,
-             roadmap:roadmaps!roadmap_epics_roadmap_id_fkey(project_id)
+             roadmap:roadmaps!roadmap_epics_roadmap_id_fkey!inner(project_id)
            )
          )`,
-    );
+      )
+      // Filter server-side. This used to select every roadmap_tasks row in the
+      // database and narrow by project in JS — a full-table read through the
+      // service-role client on every picker open.
+      .eq('feature.epic.roadmap.project_id', projectId);
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as unknown as Array<{
       id: string;
@@ -1004,17 +1027,21 @@ export class TeamTimeService implements OnModuleInit {
         } | null;
       } | null;
     }>;
-    return rows
-      .filter((r) => r.feature?.epic?.roadmap?.project_id === projectId)
-      .map((r) => ({
-        id: r.id,
-        title: r.title,
-        work_type: r.work_type ?? 'real_work',
-        feature_id: r.feature_id,
-        feature_title: r.feature?.title ?? null,
-        epic_id: r.feature?.epic?.id ?? null,
-        epic_title: r.feature?.epic?.title ?? null,
-      }));
+    return (
+      rows
+        // Belt and braces: the nested filter above is the real narrowing, but
+        // this keeps the contract exact if the embed ever stops being inner.
+        .filter((r) => r.feature?.epic?.roadmap?.project_id === projectId)
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          work_type: r.work_type ?? 'real_work',
+          feature_id: r.feature_id,
+          feature_title: r.feature?.title ?? null,
+          epic_id: r.feature?.epic?.id ?? null,
+          epic_title: r.feature?.epic?.title ?? null,
+        }))
+    );
   }
 
   private async attachReviewContext(log: TimeLogRow): Promise<TimeLogRow> {
