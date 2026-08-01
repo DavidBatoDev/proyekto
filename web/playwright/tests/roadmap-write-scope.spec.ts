@@ -289,21 +289,97 @@ test("Phase 0: every roadmap write path still resolves through the shared scope"
 			await call("feature.delete", "delete", `/api/features/${featureId}`),
 		);
 
-		// ── 8. The activity endpoint that will back the Logs page ────────────
+		// ── 8. The activity feed these writes just populated ─────────────────
 		const activity = await call(
 			"activity.list",
 			"get",
-			`/api/projects/${PROJECT_ID}/activity?limit=5`,
+			`/api/projects/${PROJECT_ID}/activity?limit=50`,
 		);
 		ok("activity.list", activity);
 		expect(
-			Array.isArray(activity.body),
-			`activity should return an array, got ${JSON.stringify(activity.body)?.slice(0, 200)}`,
+			Array.isArray(activity.body?.items),
+			`activity should return { items, next_cursor, can_view_sensitive }, got ${JSON.stringify(activity.body)?.slice(0, 200)}`,
 		).toBeTruthy();
+
+		const items: any[] = activity.body.items;
 		console.log(
-			`[activity] ${activity.body.length} row(s); actions: ` +
-				activity.body.map((r: any) => r.action).join(", "),
+			`[activity] ${items.length} row(s); actions: ` +
+				items.map((r) => r.action).join(", "),
 		);
+
+		// Every write above must be attributable to THIS run and THIS actor.
+		for (const action of [
+			"epic.created",
+			"epic.updated",
+			"epic_comment.created",
+			"feature.created",
+			"task.created",
+			"task.assigned",
+			"task_comment.created",
+			"milestone.created",
+		]) {
+			const hit = items.find(
+				(r) => r.action === action && r.actor?.id === selfId,
+			);
+			expect(hit, `feed should contain ${action} by this actor`).toBeTruthy();
+		}
+
+		// The ordering contract: (created_at DESC, seq DESC), monotonically
+		// non-increasing. A regression here means the feed is showing events
+		// out of chronological order.
+		for (let i = 1; i < items.length; i++) {
+			const prev = items[i - 1];
+			const cur = items[i];
+			const ordered =
+				prev.created_at > cur.created_at ||
+				(prev.created_at === cur.created_at && prev.seq > cur.seq);
+			expect(
+				ordered,
+				`row ${i} breaks (created_at DESC, seq DESC): ` +
+					`${prev.created_at}/${prev.seq} then ${cur.created_at}/${cur.seq}`,
+			).toBeTruthy();
+		}
+
+		// ── 9. Keyset paging over real HTTP ──────────────────────────────────
+		// This is the assertion that catches the OR-expansion pitfall in
+		// production shape: a degraded keyset re-serves rows it already gave.
+		const seen = new Set<string>();
+		let dupes = 0;
+		let cursor: string | null = null;
+		for (let page = 0; page < 4; page++) {
+			const url =
+				`/api/projects/${PROJECT_ID}/activity?limit=3` +
+				(cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+			const res = await call(`activity.page${page}`, "get", url);
+			ok(`activity.page${page}`, res);
+			for (const row of res.body.items as any[]) {
+				if (seen.has(row.id)) dupes++;
+				seen.add(row.id);
+			}
+			cursor = res.body.next_cursor;
+			if (!cursor) break;
+		}
+		expect(dupes, "keyset paging must not re-serve a row").toBe(0);
+		expect(seen.size, "paging should have walked several rows").toBeGreaterThan(3);
+
+		// ── 10. offset is gone; a stale client must fail loudly ──────────────
+		const stale = await call(
+			"activity.offset-rejected",
+			"get",
+			`/api/projects/${PROJECT_ID}/activity?offset=0`,
+		);
+		expect(
+			stale.status,
+			"?offset must 400 rather than silently falling back to offset paging",
+		).toBe(400);
+
+		// ── 11. A tampered cursor is a 400, never a 500 or a data leak ────────
+		const tampered = await call(
+			"activity.bad-cursor",
+			"get",
+			`/api/projects/${PROJECT_ID}/activity?cursor=not-a-real-cursor`,
+		);
+		expect(tampered.status, "a malformed cursor must be a 400").toBe(400);
 	} finally {
 		// Reverse-order cleanup; best-effort so one failure cannot leak the rest.
 		for (const item of created.reverse()) {
