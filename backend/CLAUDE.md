@@ -10,6 +10,7 @@ Local context for the backend unit. Cross-cutting rules live in the root CLAUDE.
 - npm run test:e2e - Jest via test/jest-e2e.json
 - npm run check:roadmap-ai-schema - validates the shared schema in schemas/ (run after any contract change)
 - npm run check:roadmap-templates
+- npm run check:activity-actions - guards the activity-log vocabulary: backend/web mirror parity, and that every action/entityType literal emitted anywhere under src/modules is declared
 - npm run build - nest build (push-tier only, per root Build and Push Policy)
 
 ## CRITICAL lint gotcha
