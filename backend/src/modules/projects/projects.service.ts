@@ -15,6 +15,8 @@ import {
   RedisDataCacheService,
 } from '../../common/cache/redis-data-cache.service';
 import { MailerService } from '../../common/mail/mailer.service';
+import { AuditService } from '../audit/audit.service';
+import { ACTIVITY_ACTIONS } from '../audit/activity-actions';
 import { buildInviteEmail } from './project-invite-email.template';
 import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
@@ -108,7 +110,34 @@ export class ProjectsService {
     private readonly contracts: ContractsService,
     private readonly activation: ProjectActivationService,
     private readonly mailer: MailerService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Membership/access activity. Fire-and-forget via AuditService, which
+   * buffers into the per-request flush.
+   *
+   * Deliberately narrow: ProjectAccessSyncService already emits
+   * `access.granted` / `access.revoked` for the underlying project_access
+   * rows, so these cover only the human-facing decisions that raw grant/revoke
+   * cannot express — who invited whom, who changed a role, who walked away.
+   */
+  private recordMemberActivity(
+    projectId: string,
+    actorId: string | null,
+    action: string,
+    metadata: Record<string, unknown> = {},
+    entityId?: string | null,
+  ): void {
+    this.audit.log({
+      projectId,
+      actorId,
+      action,
+      entityType: 'project_member',
+      entityId: entityId ?? null,
+      metadata,
+    });
+  }
 
   /**
    * Best-effort default-channel seeding for a freshly created project. Never
@@ -1228,6 +1257,15 @@ export class ProjectsService {
       newOwnerId,
     );
 
+    // Sensitive: the single highest-privilege change a project can undergo.
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.PROJECT_OWNER_TRANSFERRED,
+      { previous_owner_id: project.client_id, new_owner_id: newOwnerId },
+      newOwnerId,
+    );
+
     await this.emitNotification({
       user_id: newOwnerId,
       project_id: projectId,
@@ -1435,6 +1473,17 @@ export class ProjectsService {
       dto,
     )) as Record<string, unknown>;
 
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.MEMBER_INVITED,
+      {
+        email: (dto as { email?: string }).email ?? null,
+        role: (dto as { role?: string }).role ?? null,
+      },
+      (invite?.id as string | undefined) ?? null,
+    );
+
     const inviterProfile = await this.projectsRepo.getInviterProfile(callerId);
     const inviterName = inviterProfile.displayName || 'A team lead';
 
@@ -1596,6 +1645,13 @@ export class ProjectsService {
   ): Promise<void> {
     await this.assertProjectPermission(projectId, callerId, 'members.manage');
     await this.projectsRepo.cancelInvite(projectId, inviteId);
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.MEMBER_INVITE_REVOKED,
+      {},
+      inviteId,
+    );
     await this.invalidateDashboardCache();
   }
 
@@ -1738,6 +1794,17 @@ export class ProjectsService {
       memberId,
       dto,
     );
+    // Role changes are sensitive: they alter who can do what on the project.
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.MEMBER_ROLE_CHANGED,
+      {
+        role: (dto as { role?: string }).role ?? null,
+        member_id: memberId,
+      },
+      memberId,
+    );
     await this.invalidateDashboardCache();
     return updatedMember;
   }
@@ -1844,6 +1911,14 @@ export class ProjectsService {
     await this.projectsRepo.removeMember(projectId, member.id);
 
     await this.invalidateDashboardCache();
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.MEMBER_LEFT,
+      { unassigned_task_count: unassignedTaskCount },
+      (member as { id?: string })?.id ?? null,
+    );
+
     return { unassigned_task_count: unassignedTaskCount };
   }
 
@@ -2008,6 +2083,15 @@ export class ProjectsService {
       return fallbackResult;
     }
     const member = await this.projectsRepo.getMemberById(projectId, memberId);
+    // Sensitive: a per-member capability override changes what that person can
+    // do without any visible role change.
+    this.recordMemberActivity(
+      projectId,
+      callerId,
+      ACTIVITY_ACTIONS.MEMBER_PERMISSIONS_CHANGED,
+      { member_id: memberId, role },
+      memberId,
+    );
     await this.invalidateDashboardCache();
     return member;
   }

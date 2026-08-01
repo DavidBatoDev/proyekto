@@ -76,6 +76,7 @@ describe('ProjectsService listRoadmapLinkCandidates', () => {
       { createContractInternal: jest.fn() } as any,
       { assertActivationReady: jest.fn() } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
+      { log: jest.fn() } as any, // AuditService
     );
   };
 

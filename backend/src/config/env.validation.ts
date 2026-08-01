@@ -292,13 +292,13 @@ class EnvironmentVariables {
   @IsString()
   INVOICE_AUTOMATION_ENABLED?: string;
 
-  // ── Roadmap activity log — ships dark ───────────────────────────────────────
-  // Gates the WRITE path only. Unset/false = zero footprint: the recorder
-  // records nothing, so the per-request buffer stays empty and flush() returns
-  // immediately, leaving mutation latency byte-for-byte what it was before the
-  // feature. The pre-existing audit call sites (chat channels, project access,
-  // AI commit) are deliberately NOT gated — they logged before this flag and
-  // must keep logging.
+  // ── Roadmap activity log ────────────────────────────────────────────────────
+  // ON by default — leave unset in normal operation. This exists only as a kill
+  // switch: set it to 'false' (or '0') to stop the recorder in an environment
+  // without shipping a code revert. Disabling leaves the per-request buffer
+  // empty so flush() returns immediately and mutation latency is byte-for-byte
+  // what it was before the feature. The pre-existing audit call sites (chat
+  // channels, project access, AI commit) are not affected either way.
   @IsOptional()
   @IsString()
   ROADMAP_ACTIVITY_LOG_ENABLED?: string;

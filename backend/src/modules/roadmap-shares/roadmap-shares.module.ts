@@ -5,8 +5,13 @@ import {
   ROADMAP_SHARES_REPOSITORY,
 } from './roadmap-shares.service';
 import { RoadmapSharesRepositorySupabase } from './repositories/roadmap-shares.repository.supabase';
+import { RoadmapsModule } from '../roadmaps/roadmaps.module';
 
 @Module({
+  // For RoadmapAuthorizationService (share links are a roadmap-scoped
+  // capability) and RoadmapActivityService (share create/revoke are
+  // sensitive activity-log events).
+  imports: [RoadmapsModule],
   controllers: [RoadmapSharesController],
   providers: [
     RoadmapSharesService,

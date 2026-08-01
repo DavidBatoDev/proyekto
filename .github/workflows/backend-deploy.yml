@@ -159,17 +159,17 @@ jobs:
             echo "Knowledge ingest disabled (create KNOWLEDGE_INGEST_SECRET secret, then set the KNOWLEDGE_INGEST_ENABLED repo var to enable)."
           fi
 
-          # Roadmap activity log (project Logs page). Gated on the
-          # ROADMAP_ACTIVITY_LOG_ENABLED repo var. Enables the write-path
-          # recorder only — the schema, the per-request buffer, and the flush
-          # interceptor ship regardless and are inert while this is unset.
-          # No secret needed: the recorder writes through the existing
-          # service-role Supabase client.
+          # Roadmap activity log (project Logs page). ON BY DEFAULT — the repo
+          # var exists only as a kill switch, so unlike the flags above it is
+          # passed through verbatim rather than forced to "true". Set the
+          # ROADMAP_ACTIVITY_LOG_ENABLED repo var to "false" to stop the
+          # recorder without shipping a code revert. No secret needed: it
+          # writes through the existing service-role Supabase client.
           if [[ -n "${ROADMAP_ACTIVITY_LOG_ENABLED:-}" ]]; then
-            ENV_VARS="${ENV_VARS},ROADMAP_ACTIVITY_LOG_ENABLED=true"
-            echo "Roadmap activity log enabled for this deploy."
+            ENV_VARS="${ENV_VARS},ROADMAP_ACTIVITY_LOG_ENABLED=${ROADMAP_ACTIVITY_LOG_ENABLED}"
+            echo "Roadmap activity log override for this deploy: ${ROADMAP_ACTIVITY_LOG_ENABLED}."
           else
-            echo "Roadmap activity log disabled (set the ROADMAP_ACTIVITY_LOG_ENABLED repo var to enable; writes record nothing until then)."
+            echo "Roadmap activity log enabled (default; set the ROADMAP_ACTIVITY_LOG_ENABLED repo var to 'false' to disable)."
           fi
 
           # Google Calendar / Meet per-user OAuth (meeting scheduling Phase 5).

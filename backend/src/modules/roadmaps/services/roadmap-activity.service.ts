@@ -47,7 +47,7 @@ export interface ActivityEvent {
  *    is one row with item_count: 50, never 50 rows. This is also what keeps the
  *    volume estimate (~6k rows/month/project) honest.
  *
- * Recording is gated on ROADMAP_ACTIVITY_LOG_ENABLED so the feature ships dark.
+ * Recording is ON by default; see isEnabled() for the kill switch.
  */
 @Injectable()
 export class RoadmapActivityService {
@@ -56,9 +56,16 @@ export class RoadmapActivityService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * ON by default. ROADMAP_ACTIVITY_LOG_ENABLED is retained purely as a kill
+   * switch: set it to 'false'/'0' to stop recording in an environment without
+   * shipping a code revert. Anything else (including unset) records.
+   */
   isEnabled(): boolean {
     const flag = this.config.get<string>('ROADMAP_ACTIVITY_LOG_ENABLED');
-    return flag === 'true' || flag === '1';
+    if (flag === undefined || flag === null || flag === '') return true;
+    const normalized = String(flag).trim().toLowerCase();
+    return normalized !== 'false' && normalized !== '0';
   }
 
   /**

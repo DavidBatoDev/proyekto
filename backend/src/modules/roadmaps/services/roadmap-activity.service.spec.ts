@@ -1,15 +1,12 @@
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
-function build(enabled = true) {
+/** `flag` mirrors the raw env value; undefined = unset = the default. */
+function build(flag?: string) {
   const audit = { log: jest.fn() };
   const config = {
     get: (k: string) =>
-      k === 'ROADMAP_ACTIVITY_LOG_ENABLED'
-        ? enabled
-          ? 'true'
-          : 'false'
-        : undefined,
+      k === 'ROADMAP_ACTIVITY_LOG_ENABLED' ? flag : undefined,
   };
   const service = new RoadmapActivityService(audit as never, config as never);
   return { service, audit };
@@ -24,14 +21,30 @@ const ctx = {
 
 describe('RoadmapActivityService', () => {
   describe('gating', () => {
-    it('records nothing while the flag is off', () => {
-      const { service, audit } = build(false);
-      service.record(ctx, 'user-1', {
-        action: ACTIVITY_ACTIONS.EPIC_CREATED,
-        entityType: 'epic',
-      });
-      expect(audit.log).not.toHaveBeenCalled();
-    });
+    // Recording is ON by default; the env var is only a kill switch.
+    it.each([undefined, '', 'true', '1', 'anything'])(
+      'records by default when the flag is %p',
+      (flag) => {
+        const { service, audit } = build(flag as string | undefined);
+        service.record(ctx, 'user-1', {
+          action: ACTIVITY_ACTIONS.EPIC_CREATED,
+          entityType: 'epic',
+        });
+        expect(audit.log).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each(['false', 'FALSE', ' false ', '0'])(
+      'the %p kill switch stops recording',
+      (flag) => {
+        const { service, audit } = build(flag);
+        service.record(ctx, 'user-1', {
+          action: ACTIVITY_ACTIONS.EPIC_CREATED,
+          entityType: 'epic',
+        });
+        expect(audit.log).not.toHaveBeenCalled();
+      },
+    );
 
     it('records nothing for a personal roadmap (project_id is NOT NULL)', () => {
       const { service, audit } = build();

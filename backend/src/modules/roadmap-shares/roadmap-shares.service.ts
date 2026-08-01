@@ -7,6 +7,12 @@ import {
 } from '@nestjs/common';
 import type { IRoadmapSharesRepository } from './repositories/roadmap-shares.repository.interface';
 import { CreateShareDto, AddShareCommentDto } from './dto/roadmap-shares.dto';
+import {
+  RoadmapAuthorizationService,
+  type RoadmapWriteContext,
+} from '../roadmaps/services/roadmap-authorization.service';
+import { RoadmapActivityService } from '../roadmaps/services/roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../audit/activity-actions';
 
 export const ROADMAP_SHARES_REPOSITORY = Symbol('ROADMAP_SHARES_REPOSITORY');
 
@@ -15,6 +21,8 @@ export class RoadmapSharesService {
   constructor(
     @Inject(ROADMAP_SHARES_REPOSITORY)
     private readonly repo: IRoadmapSharesRepository,
+    private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly activity: RoadmapActivityService,
   ) {}
 
   async getShareByRoadmap(roadmapId: string) {
@@ -35,16 +43,64 @@ export class RoadmapSharesService {
     return this.repo.findSharedWithMe(userId);
   }
 
+  /**
+   * Mint (or replace) the public share link for a roadmap.
+   *
+   * Requires roadmap.edit. Previously this had NO authorization beyond the
+   * auth guard, so any authenticated user could publish a public link for any
+   * roadmap id they could guess — handing out read access to a roadmap they
+   * were never a member of.
+   */
   async create(roadmapId: string, dto: CreateShareDto, userId: string) {
-    return this.repo.create(roadmapId, dto, userId);
+    const ctx = await this.roadmapAuthz.assertRoadmapPermission(
+      roadmapId,
+      userId,
+      'roadmap.edit',
+    );
+    const share = await this.repo.create(roadmapId, dto, userId);
+    this.activity.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.ROADMAP_SHARE_CREATED,
+      entityType: 'roadmap_share',
+      entityId: (share as { id?: string })?.id ?? null,
+      metadata: {
+        // NEVER the token itself — an audit row is not a credential store.
+        access_level: (dto as { access_level?: string }).access_level ?? null,
+        expires_at: (dto as { expires_at?: string }).expires_at ?? null,
+      },
+    });
+    return share;
   }
 
+  /**
+   * Revoke the share link. The creator may always revoke their own; anyone
+   * with roadmap.edit may revoke the roadmap's link, so a link does not
+   * outlive its creator's involvement in the project.
+   */
   async remove(roadmapId: string, userId: string) {
     const share = await this.repo.findByRoadmap(roadmapId);
     if (!share) throw new NotFoundException('Share not found');
-    if (share.created_by !== userId)
-      throw new ForbiddenException('Not the owner');
-    return this.repo.remove(roadmapId, userId);
+
+    let ctx: RoadmapWriteContext | null = null;
+    try {
+      ctx = await this.roadmapAuthz.assertRoadmapPermission(
+        roadmapId,
+        userId,
+        'roadmap.edit',
+      );
+    } catch {
+      if (share.created_by !== userId) {
+        throw new ForbiddenException('Not the owner');
+      }
+    }
+
+    const removed = await this.repo.remove(roadmapId, userId);
+    this.activity.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.ROADMAP_SHARE_REVOKED,
+      entityType: 'roadmap_share',
+      entityId: (share as { id?: string })?.id ?? null,
+      metadata: { created_by: share.created_by ?? null },
+    });
+    return removed;
   }
 
   async addEpicComment(

@@ -104,6 +104,9 @@ import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
   ],
   exports: [
     RoadmapAuthorizationService,
+    // Consumed by RoadmapSharesModule so share links authorize and log through
+    // the same seam as every other roadmap write.
+    RoadmapActivityService,
     // Read + write surface services reused in-process by the MCP module. All
     // carry their own authorization (view for reads, edit/assign/comment for
     // writes).
