@@ -46,15 +46,52 @@ function compare(label, expected, actual) {
   return `${label} mismatch\n  expected=${JSON.stringify(expected)}\n  actual=${JSON.stringify(actual)}`;
 }
 
+/**
+ * Like compare(), but reports only the entries that differ.
+ *
+ * These lists are ~75 entries long; dumping both in full to show one typo
+ * buries the answer in noise, and a guard nobody can read is a guard nobody
+ * acts on.
+ */
+function compareEntries(label, expected, actual) {
+  const key = (pair) => (Array.isArray(pair) ? pair.join('=') : String(pair));
+  const expectedKeys = expected.map(key);
+  const actualKeys = actual.map(key);
+  if (JSON.stringify(expectedKeys) === JSON.stringify(actualKeys)) return null;
+
+  const missing = expectedKeys.filter((k) => !actualKeys.includes(k));
+  const extra = actualKeys.filter((k) => !expectedKeys.includes(k));
+
+  const lines = [`${label} mismatch (backend is the source of truth)`];
+  if (missing.length) lines.push(`  missing from web: ${missing.join(', ')}`);
+  if (extra.length) lines.push(`  unexpected in web: ${extra.join(', ')}`);
+  if (!missing.length && !extra.length) {
+    // Same members, different order — which still matters, because the
+    // ordering is part of what makes the mirror reviewable side by side.
+    const at = expectedKeys.findIndex((k, i) => k !== actualKeys[i]);
+    lines.push(
+      `  same entries, different order (first divergence at index ${at}: ` +
+        `expected ${expectedKeys[at]}, got ${actualKeys[at]})`,
+    );
+  }
+  return lines.join('\n');
+}
+
+// The two sides use different quote styles — backend is Prettier (single),
+// web is Biome (double) — so every extractor must accept both.
+const Q = `['"]`;
+
 /** `export const NAME = { KEY: 'value', ... } as const` -> [[KEY, value], ...] */
 function extractObjectConst(content, name, label) {
   const block = content.match(
     new RegExp(`export const ${name}\\s*=\\s*\\{([\\s\\S]*?)\\}\\s*as\\s+const`, 'm'),
   );
   if (!block) throw new Error(`Could not find object const ${name} in ${label}`);
-  const pairs = [...block[1].matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*:\s*'([^']+)'\s*,/gm)].map(
-    (m) => [m[1], m[2]],
+  const entryRe = new RegExp(
+    `^\\s*([A-Z][A-Z0-9_]*)\\s*:\\s*${Q}([^'"]+)${Q}\\s*,`,
+    'gm',
   );
+  const pairs = [...block[1].matchAll(entryRe)].map((m) => [m[1], m[2]]);
   if (pairs.length === 0) throw new Error(`${name} parsed to zero entries in ${label}`);
   return pairs;
 }
@@ -65,18 +102,21 @@ function extractArrayConst(content, name, label) {
     new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as\\s+const`, 'm'),
   );
   if (!block) throw new Error(`Could not find array const ${name} in ${label}`);
-  const values = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const values = [...block[1].matchAll(new RegExp(`${Q}([^'"]+)${Q}`, 'g'))].map(
+    (m) => m[1],
+  );
   if (values.length === 0) throw new Error(`${name} parsed to zero entries in ${label}`);
   return values;
 }
 
-/** Keys of the presentation registry: `'task.created': { ... }`. */
+/** Keys of the presentation registry: `"task.created": { ... }`. */
 function extractCopyKeys(content) {
   const block = content.match(
     /ACTIVITY_COPY\s*:\s*Record<[^>]*>\s*=\s*\{([\s\S]*?)\n\};/m,
   );
   if (!block) return null; // registry not written yet — skipped, not failed
-  return [...block[1].matchAll(/^\s*'([a-z_]+\.[a-z_]+)'\s*:/gm)].map((m) => m[1]);
+  const keyRe = new RegExp(`^\\s*${Q}([a-z_]+\\.[a-z_]+)${Q}\\s*:`, 'gm');
+  return [...block[1].matchAll(keyRe)].map((m) => m[1]);
 }
 
 function walkTsFiles(dir, out = []) {
@@ -133,10 +173,10 @@ function main() {
     const webEntityTypes = extractArrayConst(web, 'ACTIVITY_ENTITY_TYPES', 'web');
 
     // Compared in order, so a reordering or a value typo both fail.
-    const drift = compare('ACTIVITY_ACTIONS', backendActions, webActions);
+    const drift = compareEntries('ACTIVITY_ACTIONS', backendActions, webActions);
     if (drift) failures.push(drift);
 
-    const typeDrift = compare(
+    const typeDrift = compareEntries(
       'ACTIVITY_ENTITY_TYPES',
       backendEntityTypes,
       webEntityTypes,
@@ -146,7 +186,7 @@ function main() {
     // ── 3. every action has presentation copy ───────────────────────────────
     const copyKeys = extractCopyKeys(web);
     if (copyKeys) {
-      const copyDrift = compare(
+      const copyDrift = compareEntries(
         'ACTIVITY_COPY keys',
         backendActions.map(([, value]) => value).sort(),
         [...copyKeys].sort(),

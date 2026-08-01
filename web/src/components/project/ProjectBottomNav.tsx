@@ -20,7 +20,10 @@ import { useMemo, useState } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
-import type { ProjectPermissions } from "@/services/project.service";
+import {
+	hasNavGate,
+	type ProjectNavGate,
+} from "@/lib/projectPermissions";
 import { useUser } from "@/stores/authStore";
 
 interface ProjectBottomNavProps {
@@ -29,7 +32,6 @@ interface ProjectBottomNavProps {
 	roadmapId?: string;
 }
 
-type AccessGate = keyof ProjectPermissions["access"];
 
 export function ProjectBottomNav({
 	projectId,
@@ -51,7 +53,6 @@ export function ProjectBottomNav({
 	const permissionsQuery = useProjectMyPermissionsQuery(
 		isProjectActive ? projectId : "",
 	);
-	const access = permissionsQuery.data?.access;
 
 	const chatRoomsQuery = useQuery({
 		queryKey: chatKeys.rooms(projectId),
@@ -97,7 +98,7 @@ export function ProjectBottomNav({
 		isActive: boolean;
 		requiresProject: boolean;
 		hasUnread?: boolean;
-		access?: AccessGate;
+		gate?: ProjectNavGate;
 	}> = [
 		{
 			label: "Overview",
@@ -114,7 +115,7 @@ export function ProjectBottomNav({
 				: `/project/${projectId}/roadmap`,
 			isActive: currentPath.includes("/roadmap"),
 			requiresProject: false,
-			access: "roadmap",
+			gate: "access.roadmap",
 		},
 		{
 			label: "Work Items",
@@ -124,7 +125,7 @@ export function ProjectBottomNav({
 				: `/project/${projectId}/work-items`,
 			isActive: currentPath.includes("/work-items"),
 			requiresProject: false,
-			access: "work_items",
+			gate: "access.work_items",
 		},
 		{
 			label: "Chat",
@@ -133,7 +134,7 @@ export function ProjectBottomNav({
 			isActive: isChatRoute,
 			requiresProject: true,
 			hasUnread: hasUnreadChat && !isChatRoute,
-			access: "chat",
+			gate: "access.chat",
 		},
 		{
 			label: "Resources",
@@ -141,7 +142,7 @@ export function ProjectBottomNav({
 			to: `/project/${projectId}/resources`,
 			isActive: currentPath.startsWith(`/project/${projectId}/resources`),
 			requiresProject: true,
-			access: "resources",
+			gate: "access.resources",
 		},
 	];
 
@@ -151,48 +152,49 @@ export function ProjectBottomNav({
 		icon: typeof Map;
 		to: string;
 		isActive: boolean;
-		access?: AccessGate;
+		gate?: ProjectNavGate;
 	}> = [
 		{
 			label: "Team",
 			icon: Users,
 			to: `/project/${projectId}/team`,
 			isActive: currentPath.startsWith(`/project/${projectId}/team`),
-			access: "team",
+			gate: "access.team",
 		},
 		{
 			label: "Time",
 			icon: Clock,
 			to: `/project/${projectId}/time`,
 			isActive: currentPath.startsWith(`/project/${projectId}/time`),
-			access: "time",
+			gate: "access.time",
 		},
 		{
 			label: "Logs",
 			icon: ClipboardList,
 			to: `/project/${projectId}/logs`,
 			isActive: currentPath.startsWith(`/project/${projectId}/logs`),
+			gate: "logs.view",
 		},
 		{
 			label: "Contract",
 			icon: FileSignature,
 			to: `/project/${projectId}/contract`,
 			isActive: currentPath.startsWith(`/project/${projectId}/contract`),
-			access: "contract",
+			gate: "access.contract",
 		},
 		{
 			label: "Invoices",
 			icon: ReceiptText,
 			to: `/project/${projectId}/payments`,
 			isActive: currentPath.startsWith(`/project/${projectId}/payments`),
-			access: "invoices",
+			gate: "access.invoices",
 		},
 		{
 			label: "Financials",
 			icon: TrendingUp,
 			to: `/project/${projectId}/financials`,
 			isActive: currentPath.startsWith(`/project/${projectId}/financials`),
-			access: "financials",
+			gate: "access.financials",
 		},
 		{
 			label: "Settings",
@@ -202,15 +204,15 @@ export function ProjectBottomNav({
 		},
 	];
 
-	// Until permissions resolve, show everything — each route gates itself.
-	const allowed = (gate?: AccessGate) =>
-		!gate || !access || access[gate] === true;
+	// hasNavGate fails open until permissions resolve — each route gates itself.
+	const allowed = (gate?: ProjectNavGate) =>
+		hasNavGate(permissionsQuery.data, gate);
 
 	const visiblePrimary = primaryItems.filter(
 		(item) =>
-			(!item.requiresProject || isProjectActive) && allowed(item.access),
+			(!item.requiresProject || isProjectActive) && allowed(item.gate),
 	);
-	const visibleMore = moreItems.filter((item) => allowed(item.access));
+	const visibleMore = moreItems.filter((item) => allowed(item.gate));
 
 	const isMoreActive =
 		isProjectActive && visibleMore.some((item) => item.isActive);
