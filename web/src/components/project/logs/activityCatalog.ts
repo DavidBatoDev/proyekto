@@ -388,7 +388,15 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 	},
 	"milestone.updated": update("milestone"),
 	"milestone.deleted": remove("milestone"),
-	"milestone.reordered": reorder("milestone"),
+	// NOT `reorder()`: unlike the epic/feature/task bulk reorders, this moves a
+	// SINGLE milestone to a position and carries no item_count — rendering it
+	// as a count produced "reordered 0 milestones".
+	"milestone.reordered": {
+		icon: ArrowUpDown,
+		tone: "neutral",
+		verb: "moved",
+		object: (e) => named(e, "milestone"),
+	},
 
 	"task_comment.created": commentCreated("task"),
 	"task_comment.updated": commentEdited("task"),
