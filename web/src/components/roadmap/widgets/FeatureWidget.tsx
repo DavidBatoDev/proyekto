@@ -679,7 +679,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                 dangerouslySetInnerHTML={{ __html: feature.description }}
               />
               {hasOverflow && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-white to-white/0" />
+                <div
+                  data-description-overflow-fade
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-card via-card/80 to-transparent"
+                />
               )}
             </div>
           )}

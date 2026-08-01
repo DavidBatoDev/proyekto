@@ -22,6 +22,7 @@ vi.mock("../modals/TaskListModal", () => ({
 
 afterEach(() => {
 	cleanup();
+	vi.restoreAllMocks();
 });
 
 const makeTask = (overrides: Partial<RoadmapTask>): RoadmapTask => ({
@@ -98,6 +99,20 @@ describe("FeatureWidget canvas task list", () => {
 		);
 		expect(taskListShell?.className).toContain("top-1/2");
 		expect(taskListShell?.style.height).toContain("7rem");
+	});
+
+	it("fades overflowing descriptions into the themed card surface", () => {
+		vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(120);
+		vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(40);
+		const feature = makeFeature();
+		feature.description = "A longer feature description that needs a fade.";
+
+		const { container } = renderWidget({ feature });
+		const fade = container.querySelector("[data-description-overflow-fade]");
+
+		expect(fade?.className).toContain("from-card");
+		expect(fade?.className).toContain("to-transparent");
+		expect(fade?.className).not.toContain("from-white");
 	});
 
 	it("quick-completes a task without mounting the full sortable task row", () => {
