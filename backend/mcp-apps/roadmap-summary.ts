@@ -41,7 +41,6 @@ function statusTone(value: unknown): StatusTone {
     .trim()
     .toLowerCase()
     .replaceAll(/[-\s]+/g, '_');
-
   if (['completed', 'complete', 'done'].includes(normalized)) {
     return 'completed';
   }
@@ -55,25 +54,31 @@ function statusTone(value: unknown): StatusTone {
 }
 
 function statusLabel(value: unknown): string {
-  const raw = text(value, 'backlog').trim().replaceAll(/[-_]+/g, ' ');
-  return raw || 'backlog';
+  return text(value).trim().replaceAll(/[-_]+/g, ' ').toUpperCase();
 }
 
-function statusPill(value: unknown): HTMLSpanElement {
-  return element(
-    'span',
-    `status-pill status-${statusTone(value)}`,
-    statusLabel(value),
+function appendStatus(parent: HTMLElement, value: unknown): void {
+  const label = statusLabel(value);
+  if (!label) return;
+  parent.append(
+    element('span', `status status-${statusTone(value)}`, `[${label}]`),
   );
 }
 
-function metric(value: number, label: string): HTMLDivElement {
-  const node = element('div', 'metric');
-  node.append(
-    element('span', 'metric-value', String(value)),
-    element('span', 'metric-label', label),
-  );
-  return node;
+function appendLine(
+  parent: HTMLElement,
+  prefix: string,
+  title: string,
+  status: unknown,
+  kind: 'epic' | 'feature' | 'empty' | 'milestone',
+): void {
+  const line = element('div', 'ascii-line');
+  line.setAttribute('role', 'treeitem');
+  const body = element('span', 'line-body');
+  body.append(element('span', `${kind}-name`, title));
+  appendStatus(body, status);
+  line.append(element('span', 'ascii-prefix', prefix), body);
+  parent.append(line);
 }
 
 function formatDate(value: unknown): string {
@@ -91,133 +96,111 @@ function formatDate(value: unknown): string {
   }).format(parsed);
 }
 
-function createFeatureCard(
-  feature: Record<string, unknown>,
-  index: number,
-): HTMLDivElement {
-  const tone = statusTone(feature.status);
-  const card = element('div', `feature-card status-${tone}`);
-  card.setAttribute(
-    'aria-label',
-    `${text(feature.title, 'Untitled feature')}, ${statusLabel(feature.status)}`,
-  );
-  card.append(
-    element('span', 'feature-index', `Feature ${index + 1}`),
-    element('p', 'feature-title', text(feature.title, 'Untitled feature')),
-    statusPill(feature.status),
-  );
-  return card;
-}
-
-function createEpicLane(
-  epic: Record<string, unknown>,
-  epicIndex: number,
-): HTMLDivElement {
-  const lane = element('div', 'epic-lane');
-  const epicCard = element('article', 'epic-card');
-  const features = records(epic.features);
-
-  epicCard.append(
-    element('span', 'node-kind', `Epic ${epicIndex + 1}`),
-    element('h3', 'epic-title', text(epic.title, 'Untitled epic')),
-    statusPill(epic.status),
-  );
-
-  const connector = element('div', 'connector');
-  connector.setAttribute('aria-hidden', 'true');
-  const track = element('div', 'feature-track');
-
-  if (features.length === 0) {
-    track.append(
-      element(
-        'div',
-        'empty-track',
-        'No features have been planned for this epic yet.',
-      ),
-    );
-  } else {
-    features.forEach((feature, index) => {
-      track.append(createFeatureCard(feature, index));
-    });
+function summaryFromResult(
+  result: CallToolResult,
+): Record<string, unknown> | undefined {
+  if (isRecord(result.structuredContent)) return result.structuredContent;
+  const block = result.content?.find((item) => item.type === 'text');
+  if (!block || block.type !== 'text') return undefined;
+  try {
+    const parsed: unknown = JSON.parse(block.text);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
   }
-
-  lane.append(epicCard, connector, track);
-  return lane;
 }
 
-function createMilestones(value: unknown): HTMLElement | undefined {
-  const milestones = records(value);
-  if (milestones.length === 0) return undefined;
+function renderAsciiRoadmap(result: CallToolResult): boolean {
+  const summary = summaryFromResult(result);
+  if (!summary) return false;
 
-  const strip = element('section', 'milestones');
-  strip.setAttribute('aria-label', 'Roadmap milestones');
-  strip.append(element('span', 'milestones-label', 'Milestones'));
-
-  for (const milestone of milestones) {
-    const item = element('div', 'milestone');
-    item.append(
-      document.createTextNode(text(milestone.title, 'Untitled milestone')),
-    );
-    const date = formatDate(milestone.target_date);
-    if (date) item.append(element('span', 'milestone-date', date));
-    strip.append(item);
-  }
-
-  return strip;
-}
-
-function renderRoadmapBoard(result: CallToolResult): boolean {
-  if (!isRecord(result.structuredContent)) return false;
-  const summary = result.structuredContent;
   const epics = records(summary.epics);
   const features = epics.flatMap((epic) => records(epic.features));
-  const board = element('section', 'roadmap-board');
-  board.dataset.roadmapBoard = 'true';
-  board.setAttribute(
+  const milestones = records(summary.milestones);
+  const panel = element('section', 'ascii-roadmap');
+  panel.dataset.asciiRoadmap = 'true';
+  panel.setAttribute(
     'aria-label',
-    `${text(summary.title, 'Proyekto Roadmap')} visual roadmap`,
+    `${text(summary.title, 'Proyekto Roadmap')} ASCII roadmap`,
   );
 
-  const header = element('header', 'board-header');
-  const identity = element('div');
-  const titleRow = element('div', 'board-title-row');
-  titleRow.append(
-    element('h2', 'board-title', text(summary.title, 'Proyekto Roadmap')),
-    statusPill(summary.status),
+  const summaryRow = element('div', 'summary-row');
+  summaryRow.append(
+    element('h2', 'roadmap-title', text(summary.title, 'Proyekto Roadmap')),
   );
-  identity.append(titleRow);
+  appendStatus(summaryRow, summary.status);
+  panel.append(
+    summaryRow,
+    element(
+      'p',
+      'counts',
+      `EPICS: ${count(summary.epic_count, epics.length)}  |  FEATURES: ${count(summary.feature_count, features.length)}  |  TASKS: ${count(summary.task_count)}`,
+    ),
+  );
+
   const description = text(summary.description);
-  if (description) {
-    identity.append(element('p', 'board-description', description));
-  }
+  if (description) panel.append(element('p', 'description', description));
+  panel.append(element('div', 'divider'));
 
-  const metrics = element('div', 'metrics');
-  metrics.append(
-    metric(count(summary.epic_count, epics.length), 'Epics'),
-    metric(count(summary.feature_count, features.length), 'Features'),
-    metric(count(summary.task_count), 'Tasks'),
-  );
-  header.append(identity, metrics);
-  board.append(header);
-
-  const milestones = createMilestones(summary.milestones);
-  if (milestones) board.append(milestones);
-
-  const lanes = element('div', 'lanes');
+  const tree = element('div', 'tree');
+  tree.setAttribute('role', 'tree');
   if (epics.length === 0) {
-    lanes.append(
-      element(
-        'div',
-        'no-epics',
-        'No epics have been planned for this roadmap yet.',
-      ),
-    );
+    appendLine(tree, '\\-- ', '(no epics planned)', undefined, 'empty');
   } else {
-    epics.forEach((epic, index) => lanes.append(createEpicLane(epic, index)));
-  }
-  board.append(lanes);
+    epics.forEach((epic, epicIndex) => {
+      const epicIsLast = epicIndex === epics.length - 1;
+      appendLine(
+        tree,
+        epicIsLast ? '\\-- ' : '+-- ',
+        text(epic.title, 'Untitled epic'),
+        epic.status,
+        'epic',
+      );
 
-  visual.replaceChildren(board);
+      const epicFeatures = records(epic.features);
+      const stem = epicIsLast ? '    ' : '|   ';
+      if (epicFeatures.length === 0) {
+        appendLine(
+          tree,
+          `${stem}\\-- `,
+          '(no features planned)',
+          undefined,
+          'empty',
+        );
+        return;
+      }
+
+      epicFeatures.forEach((feature, featureIndex) => {
+        appendLine(
+          tree,
+          `${stem}${featureIndex === epicFeatures.length - 1 ? '\\-- ' : '+-- '}`,
+          text(feature.title, 'Untitled feature'),
+          feature.status,
+          'feature',
+        );
+      });
+    });
+  }
+  panel.append(tree);
+
+  if (milestones.length > 0) {
+    panel.append(element('h3', 'milestone-heading', 'MILESTONES'));
+    const milestoneTree = element('div', 'tree');
+    milestoneTree.setAttribute('role', 'tree');
+    milestones.forEach((milestone, index) => {
+      const date = formatDate(milestone.target_date);
+      appendLine(
+        milestoneTree,
+        index === milestones.length - 1 ? '\\-- ' : '+-- ',
+        `${text(milestone.title, 'Untitled milestone')}${date ? ` @ ${date}` : ''}`,
+        milestone.status,
+        'milestone',
+      );
+    });
+    panel.append(milestoneTree);
+  }
+
+  visual.replaceChildren(panel);
   visual.hidden = false;
   return true;
 }
@@ -229,74 +212,21 @@ function showError(message: string): void {
   error.hidden = false;
 }
 
-function visualAlt(result: CallToolResult): string {
-  if (!isRecord(result.structuredContent)) return 'Proyekto roadmap';
-  const metadata = result.structuredContent.visual;
-  return isRecord(metadata)
-    ? text(metadata.alt, 'Proyekto roadmap')
-    : 'Proyekto roadmap';
-}
-
-function renderSvg(result: CallToolResult): boolean {
-  const block = result.content?.find(
-    (item) =>
-      item.type === 'resource' &&
-      item.resource.mimeType === 'image/svg+xml' &&
-      'text' in item.resource,
-  );
-  if (!block || block.type !== 'resource' || !('text' in block.resource)) {
-    return false;
-  }
-
-  const parsed = new DOMParser().parseFromString(
-    block.resource.text,
-    'image/svg+xml',
-  );
-  const svg = parsed.documentElement;
-  if (svg.localName !== 'svg' || parsed.querySelector('parsererror')) {
-    return false;
-  }
-
-  const imported = document.importNode(svg, true);
-  imported.setAttribute('role', 'img');
-  imported.setAttribute('aria-label', visualAlt(result));
-  visual.replaceChildren(imported);
-  visual.hidden = false;
-  return true;
-}
-
-function renderPng(result: CallToolResult): boolean {
-  const block = result.content?.find(
-    (item) => item.type === 'image' && item.mimeType === 'image/png',
-  );
-  if (!block || block.type !== 'image') return false;
-
-  const image = document.createElement('img');
-  image.src = `data:${block.mimeType};base64,${block.data}`;
-  image.alt = visualAlt(result);
-  visual.replaceChildren(image);
-  visual.hidden = false;
-  return true;
-}
-
 function renderResult(result: CallToolResult): void {
   if (result.isError) {
     showError('The roadmap could not be loaded.');
     return;
   }
-
   error.hidden = true;
   visual.hidden = true;
-
-  if (!renderRoadmapBoard(result) && !renderSvg(result) && !renderPng(result)) {
-    showError('The roadmap data arrived, but no displayable visual was found.');
+  if (!renderAsciiRoadmap(result)) {
+    showError('The roadmap data arrived in an unsupported format.');
     return;
   }
-
   loading.hidden = true;
 }
 
-const app = new App({ name: 'Proyekto Roadmap', version: '1.1.0' });
+const app = new App({ name: 'Proyekto Roadmap', version: '1.2.0' });
 app.ontoolresult = renderResult;
 
 void app.connect().catch(() => {

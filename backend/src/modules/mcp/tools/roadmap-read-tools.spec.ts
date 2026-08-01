@@ -193,10 +193,10 @@ describe('MCP roadmap visual results', () => {
     expect(definitions.roadmap_get_summary._meta).toEqual(
       expect.objectContaining({
         ui: {
-          resourceUri: 'ui://proyekto/roadmap-summary-v2.html',
+          resourceUri: 'ui://proyekto/roadmap-summary-v3.html',
           visibility: ['model'],
         },
-        'ui/resourceUri': 'ui://proyekto/roadmap-summary-v2.html',
+        'ui/resourceUri': 'ui://proyekto/roadmap-summary-v3.html',
       }),
     );
   });
