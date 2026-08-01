@@ -292,6 +292,31 @@ class EnvironmentVariables {
   @IsString()
   INVOICE_AUTOMATION_ENABLED?: string;
 
+  // ── Roadmap activity log — ships dark ───────────────────────────────────────
+  // Gates the WRITE path only. Unset/false = zero footprint: the recorder
+  // records nothing, so the per-request buffer stays empty and flush() returns
+  // immediately, leaving mutation latency byte-for-byte what it was before the
+  // feature. The pre-existing audit call sites (chat channels, project access,
+  // AI commit) are deliberately NOT gated — they logged before this flag and
+  // must keep logging.
+  @IsOptional()
+  @IsString()
+  ROADMAP_ACTIVITY_LOG_ENABLED?: string;
+
+  // Upper bound on how long the end-of-request activity flush may hold the
+  // response open. The flush is a bounded await rather than a detached promise
+  // because Cloud Run can freeze instance CPU once the response is sent (see
+  // NotificationsService.sendPush for the same reasoning). Default 800ms.
+  @IsOptional()
+  @IsString()
+  ACTIVITY_FLUSH_TIMEOUT_MS?: string;
+
+  // Per-request event cap. Overflow is counted and warned, never silently
+  // dropped. Default 100 — far above any single request's real event count.
+  @IsOptional()
+  @IsString()
+  ACTIVITY_MAX_EVENTS_PER_REQUEST?: string;
+
   // ── Knowledge pipeline (roadmap AI RAG) — ships dark ────────────────────────
   // Gates the write-path outbox hooks and the ingest run itself. Unset/false =
   // zero footprint: no outbox rows are written and runIngest() short-circuits.

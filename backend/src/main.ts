@@ -11,6 +11,12 @@ import { CachePolicyInterceptor } from './common/interceptors/cache-policy.inter
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { RequestTimeoutInterceptor } from './common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { ActivityFlushInterceptor } from './common/interceptors/activity-flush.interceptor';
+import {
+  activityStorage,
+  createActivityBuffer,
+  DEFAULT_MAX_EVENTS_PER_REQUEST,
+} from './common/activity/activity-context';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -25,6 +31,20 @@ async function bootstrap() {
     compression({
       filter: (req, res) => req.path !== '/mcp' && compression.filter(req, res),
     }),
+  );
+
+  // Opens the per-request activity buffer. This MUST be middleware, not the
+  // flush interceptor: next.handle() returns a cold Observable that Nest
+  // subscribes to after intercept() returns, so wrapping it in
+  // activityStorage.run() would leave the route handler outside the context.
+  // Middleware is genuinely upstream of the handler. Costs one small object
+  // per request; nothing buffers unless a recorder actually writes.
+  const activityMaxEvents = config.get<number>(
+    'ACTIVITY_MAX_EVENTS_PER_REQUEST',
+    DEFAULT_MAX_EVENTS_PER_REQUEST,
+  );
+  app.use((_req, _res, next: () => void) =>
+    activityStorage.run(createActivityBuffer(Number(activityMaxEvents)), next),
   );
 
   // CORS
@@ -106,11 +126,16 @@ async function bootstrap() {
   // - timeout protection so hanging work doesn't consume all concurrency slots
   // - request timings to surface hotspots under load
   // - success response wrapper
+  // - activity flush is LAST so it sits innermost: the buffered rows go out
+  //   before ResponseInterceptor wraps the envelope, and inside the timeout
+  //   window. It needs AuditService, so it is resolved from the container
+  //   rather than constructed here.
   app.useGlobalInterceptors(
     new RequestTimeoutInterceptor(requestTimeoutMs),
     new RequestLoggingInterceptor(slowRequestThresholdMs),
     new CachePolicyInterceptor(reflector),
     new ResponseInterceptor(reflector),
+    app.get(ActivityFlushInterceptor),
   );
 
   // Let Cloud Run's SIGTERM drain in-flight requests via Nest's shutdown hooks.
