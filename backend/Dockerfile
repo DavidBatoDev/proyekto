@@ -8,8 +8,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY tsconfig.json tsconfig.build.json nest-cli.json vite.mcp-apps.config.mjs ./
 COPY scripts ./scripts
+COPY mcp-apps ./mcp-apps
 COPY src ./src
 
 RUN npm run build
