@@ -181,6 +181,7 @@ export interface RoadmapTask {
   // Full assignee profiles from the join table.
   assignees?: AssigneeProfile[];
   labels?: string[];
+  comment_count?: number;
 }
 
 export interface TaskActivityEntry {

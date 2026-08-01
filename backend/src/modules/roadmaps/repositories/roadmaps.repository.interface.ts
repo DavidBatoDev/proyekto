@@ -13,6 +13,7 @@ export type RoadmapContextSearchCandidateRecord = {
 
 export type FindFullRoadmapOptions = {
   includeTaskAssigneeProfile?: boolean;
+  includeTaskCommentCount?: boolean;
 };
 
 export interface IRoadmapsRepository {

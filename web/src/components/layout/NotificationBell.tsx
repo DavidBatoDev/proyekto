@@ -131,13 +131,13 @@ export function NotificationBell() {
 		<>
 			<button
 				type="button"
-				className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted"
+				className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 				aria-label="Notifications"
 				onClick={openNotifications}
 			>
 				<Badge
 					badgeContent={unreadCount > 99 ? "99+" : unreadCount}
-					color="error"
+					color="primary"
 				>
 					<Bell size={20} />
 				</Badge>
@@ -169,7 +169,7 @@ export function NotificationBell() {
 					<button
 						type="button"
 						onClick={() => markAllReadMutation.mutate()}
-						className="text-xs font-semibold text-[#ff9933] transition-opacity hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+						className="rounded-sm text-xs font-semibold text-primary transition-opacity hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60"
 						disabled={markAllReadMutation.isPending || unreadCount === 0}
 					>
 						Mark all read
@@ -240,7 +240,7 @@ export function NotificationBell() {
 									</p>
 								</div>
 								{!notification.is_read && (
-									<span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-[#ff9933] shadow-[0_0_10px_rgba(255,153,51,0.55)]" />
+									<span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/50" />
 								)}
 							</MenuItem>
 						);
@@ -251,7 +251,7 @@ export function NotificationBell() {
 				<div className="px-4 py-2">
 					<Link
 						to="/notifications"
-						className="text-sm font-medium text-[#ff9933] hover:underline"
+						className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 						onClick={closeNotifications}
 					>
 						View all notifications

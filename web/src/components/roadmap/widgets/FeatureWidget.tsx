@@ -47,7 +47,10 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   onDelete?: (featureId: string) => void;
   onClick?: (feature: RoadmapFeature) => void;
   onAddTask?: (featureId: string) => void;
-  onSelectTask?: (task: RoadmapTask) => void;
+  onSelectTask?: (
+    task: RoadmapTask,
+    initialTab?: "details" | "comments",
+  ) => void;
   onUpdateTask?: (task: RoadmapTask) => void;
   pulseTaskId?: string | null;
   pulseTaskToken?: number;
@@ -221,7 +224,7 @@ const CanvasTaskRow = memo(
     return (
       <div
         data-task-id={task.id}
-        className={`nodrag group flex items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
+        className={`nodrag group flex h-7 items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
           isRunning ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200" : ""
         } ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
         onClick={() => onClick?.(task)}
@@ -254,72 +257,84 @@ const CanvasTaskRow = memo(
           {task.title}
         </span>
 
-        {onUpdateStatus ? (
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              ref={statusTriggerRef}
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsStatusOpen((prev) => !prev);
-              }}
-              className="rounded-full transition-colors hover:bg-accent"
-            >
+        <div
+          data-task-row-controls
+          className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
+        >
+          <div className="relative flex min-w-0 justify-start">
+            {onUpdateStatus ? (
+              <>
+                <button
+                  type="button"
+                  ref={statusTriggerRef}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsStatusOpen((prev) => !prev);
+                  }}
+                  className="rounded-full transition-colors hover:bg-accent"
+                >
+                  <TaskStatusBadge
+                    status={task.status}
+                    className="text-[10px]"
+                    trailing={<ChevronDown className="h-2.5 w-2.5" />}
+                  />
+                </button>
+
+                {isStatusOpen &&
+                  createPortal(
+                    <div
+                      ref={statusMenuRef}
+                      className="fixed z-300 min-w-40 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
+                      style={{
+                        top: statusMenuPosition.top,
+                        left: statusMenuPosition.left,
+                      }}
+                    >
+                      {CANVAS_TASK_STATUS_OPTIONS.map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onUpdateStatus(task, status);
+                            setIsStatusOpen(false);
+                          }}
+                          className={`flex w-full items-center px-3 py-1.5 text-left transition-colors hover:bg-accent ${
+                            task.status === status ? "bg-muted font-semibold" : ""
+                          }`}
+                        >
+                          <TaskStatusBadge status={status} appearance="menu" />
+                        </button>
+                      ))}
+                    </div>,
+                    document.body,
+                  )}
+              </>
+            ) : (
               <TaskStatusBadge
                 status={task.status}
-                className="text-[10px]"
-                trailing={<ChevronDown className="h-2.5 w-2.5" />}
+                className="shrink-0 text-[10px]"
               />
-            </button>
-
-            {isStatusOpen &&
-              createPortal(
-                <div
-                  ref={statusMenuRef}
-                  className="fixed z-300 min-w-40 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
-                  style={{
-                    top: statusMenuPosition.top,
-                    left: statusMenuPosition.left,
-                  }}
-                >
-                  {CANVAS_TASK_STATUS_OPTIONS.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUpdateStatus(task, status);
-                        setIsStatusOpen(false);
-                      }}
-                      className={`flex w-full items-center px-3 py-1.5 text-left transition-colors hover:bg-accent ${
-                        task.status === status ? "bg-muted font-semibold" : ""
-                      }`}
-                    >
-                      <TaskStatusBadge status={status} appearance="menu" />
-                    </button>
-                  ))}
-                </div>,
-                document.body,
-              )}
+            )}
           </div>
-        ) : (
-          <TaskStatusBadge status={task.status} className="shrink-0 text-[10px]" />
-        )}
 
-        {/* Start/stop the timer without leaving the canvas. Stays visible
-            while this task is the one running. */}
-        {projectId ? (
+          {/* Fixed slots keep controls aligned when optional row data is absent. */}
           <span
-            className={`shrink-0 transition-opacity ${
+            className={`flex h-6 w-6 items-center justify-center transition-opacity ${
               isRunning ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
           >
-            <TaskTimerButton projectId={projectId} taskId={task.id} />
+            {projectId ? (
+              <TaskTimerButton projectId={projectId} taskId={task.id} />
+            ) : null}
           </span>
-        ) : null}
-
-        <EditingTaskAvatar editors={editors} />
-        <CanvasTaskAssignees task={task} />
+          <span className="flex h-6 w-6 items-center justify-center">
+            <EditingTaskAvatar editors={editors} />
+          </span>
+          <span className="flex h-6 w-14 items-center justify-end">
+            <CanvasTaskAssignees task={task} />
+          </span>
+        </div>
       </div>
     );
   },
@@ -347,7 +362,7 @@ function CanvasTaskList({
   onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-0 px-2 pb-1">
+    <div className="flex flex-col gap-0 px-2">
       {tasks.map((task) => (
         <CanvasTaskRow
           key={task.id}
@@ -395,6 +410,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
   const [hasOverflow, setHasOverflow] = useState(false);
   const [taskListHasScroll, setTaskListHasScroll] = useState(false);
+  const [taskListScrollTop, setTaskListScrollTop] = useState(0);
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
@@ -772,61 +788,126 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             return (
               <div
                 role="presentation"
-                className="absolute inset-y-3 left-[540px] flex w-[460px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                data-task-list-shell
+                className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
+                style={{
+                  height: `${(allTasks.length + 2) * 1.75}rem`,
+                  maxHeight: "calc(100% - 1.5rem)",
+                }}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                {/* Header */}
-                <button
-                  type="button"
-                  className="flex w-full shrink-0 items-center justify-between px-2.5 pt-2 pb-1 text-left transition-colors hover:bg-gray-50 cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsTaskListModalOpen(true);
-                  }}
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    Tasks - {allTasks.length}
-                  </span>
-                  <Maximize2 className="w-3 h-3 text-gray-500" />
-                </button>
-
-                {/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
                 <div
-                  role="presentation"
-                  ref={taskListRef}
-                  className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
-                  onClick={(e) => e.stopPropagation()}
+                  data-task-list-container
+                  className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
                 >
-                  <CanvasTaskList
-                    tasks={allTasks}
-                    pulseTaskId={pulseTaskId}
-                    pulseTaskToken={pulseTaskToken}
-                    runningTaskId={runningTaskId}
-                    taskEditorsByNodeId={taskEditorsByNodeId}
-                    onSelectTask={onSelectTask}
-                    onToggleComplete={onUpdateTask ? (task) => {
-                      safelyUpdateTask({
-                        ...task,
-                        status: task.status === "done" ? "todo" : "done",
-                      });
-                    } : undefined}
-                    onUpdateStatus={onUpdateTask ? (task, status) => {
-                      safelyUpdateTask({ ...task, status });
-                    } : undefined}
-                  />
+                  {/* Header */}
+                  <button
+                    type="button"
+                    className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTaskListModalOpen(true);
+                    }}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      Tasks - {allTasks.length}
+                    </span>
+                    <Maximize2 className="w-3 h-3 text-gray-500" />
+                  </button>
+
+                  {/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
+                  <div
+                    role="presentation"
+                    ref={taskListRef}
+                    className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+                    onClick={(e) => e.stopPropagation()}
+                    onScroll={(event) =>
+                      setTaskListScrollTop(event.currentTarget.scrollTop)
+                    }
+                  >
+                    <CanvasTaskList
+                      tasks={allTasks}
+                      pulseTaskId={pulseTaskId}
+                      pulseTaskToken={pulseTaskToken}
+                      runningTaskId={runningTaskId}
+                      taskEditorsByNodeId={taskEditorsByNodeId}
+                      onSelectTask={onSelectTask}
+                      onToggleComplete={onUpdateTask ? (task) => {
+                        safelyUpdateTask({
+                          ...task,
+                          status: task.status === "done" ? "todo" : "done",
+                        });
+                      } : undefined}
+                      onUpdateStatus={onUpdateTask ? (task, status) => {
+                        safelyUpdateTask({ ...task, status });
+                      } : undefined}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsTaskListModalOpen(true);
+                    }}
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                    Full task controls
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="flex w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setIsTaskListModalOpen(true);
-                  }}
-                >
-                  <Maximize2 className="h-3 w-3" />
-                  Full task controls
-                </button>
+
+                {onSelectTask && (
+                  <div
+                    data-task-comment-gutter
+                    className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
+                  >
+                    <div
+                      style={{ transform: `translateY(-${taskListScrollTop}px)` }}
+                    >
+                      {allTasks.map((task) => {
+                        const commentCount = Math.max(
+                          0,
+                          Math.floor(task.comment_count ?? 0),
+                        );
+
+                        return (
+                          <div
+                            key={task.id}
+                            className="flex h-7 items-center justify-start"
+                          >
+                            {commentCount > 0 && (
+                              <button
+                                type="button"
+                                className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onSelectTask(task, "comments");
+                                }}
+                                title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
+                                aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+                                >
+                                  <span className="relative z-10 flex items-center gap-0.5">
+                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
+                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
+                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
+                                  </span>
+                                </span>
+                                <span className="tabular-nums text-[11px] font-bold tracking-tight">
+                                  {commentCount > 99 ? "99+" : commentCount}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}

@@ -53,6 +53,8 @@ interface SidePanelProps {
 	isLoading?: boolean;
 	asModal?: boolean;
 	zIndexBase?: number;
+	initialTab?: "details" | "comments";
+	initialTabRequestToken?: number;
 }
 
 type TabType = "details" | "comments" | "history";
@@ -229,6 +231,8 @@ export const SidePanel = ({
 	isLoading = false,
 	asModal = false,
 	zIndexBase = 120,
+	initialTab = "details",
+	initialTabRequestToken = 0,
 }: SidePanelProps) => {
 	const user = useUser();
 	const profile = useProfile();
@@ -240,6 +244,7 @@ export const SidePanel = ({
 	const effectiveProjectId = projectId || roadmapProjectId;
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
+	const setTaskCommentCount = useRoadmapStore((s) => s.setTaskCommentCount);
 	const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
 	const [comments, setComments] = useState<Comment[]>([]);
 	const [isLoadingComments, setIsLoadingComments] = useState(false);
@@ -493,7 +498,16 @@ export const SidePanel = ({
 		return fieldsDiffer || checklistDiffers;
 	}, [editedTask, isCreateMode, newTaskData, descriptionDraft, checklistItems]);
 
-	// Auto-switch to comments tab when arriving via a notification deep-link
+	// Reset the panel destination when a task is opened from a dedicated action,
+	// such as the canvas row's comments bubble.
+	useEffect(() => {
+		if (!isOpen) return;
+		setActiveTab(isCreateMode ? "details" : initialTab);
+	}, [initialTab, initialTabRequestToken, isCreateMode, isOpen, task?.id]);
+
+	// Auto-switch to comments when arriving via a notification deep-link. This
+	// stays separate from the initial-tab reset so clearing a highlight does not
+	// move the user back to Details.
 	useEffect(() => {
 		if (isOpen && pendingCommentId && !isCreateMode) {
 			setActiveTab("comments");
@@ -508,7 +522,10 @@ export const SidePanel = ({
 			try {
 				setIsLoadingComments(true);
 				const fetched = await commentsService.getTaskComments(task.id);
-				if (!cancelled) setComments(fetched);
+				if (!cancelled) {
+					setComments(fetched);
+					setTaskCommentCount(task.id, fetched.length);
+				}
 			} catch (error) {
 				if (!cancelled) {
 					console.error("Failed to load task comments:", error);
@@ -522,7 +539,7 @@ export const SidePanel = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [activeTab, isCreateMode, isOpen, task?.id]);
+	}, [activeTab, isCreateMode, isOpen, setTaskCommentCount, task?.id]);
 
 	const handleAddComment = async (content: string) => {
 		if (!task?.id) return;
@@ -550,7 +567,9 @@ export const SidePanel = ({
 		};
 
 		// Optimistic: show the comment immediately, swap for the server copy.
+		const previousCount = Math.max(task.comment_count ?? 0, comments.length);
 		setComments((prev) => [...prev, optimisticComment]);
+		setTaskCommentCount(task.id, previousCount + 1);
 		try {
 			const created = await commentsService.addTaskComment(task.id, content);
 			setComments((prev) =>
@@ -558,6 +577,7 @@ export const SidePanel = ({
 			);
 		} catch (error) {
 			setComments((prev) => prev.filter((comment) => comment.id !== tempId));
+			setTaskCommentCount(task.id, previousCount);
 			throw error;
 		}
 	};
@@ -600,6 +620,10 @@ export const SidePanel = ({
 		if (!task?.id) return;
 		await commentsService.deleteTaskComment(task.id, commentId);
 		setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+		setTaskCommentCount(
+			task.id,
+			Math.max(0, (task.comment_count ?? comments.length) - 1),
+		);
 	};
 
 	useEffect(() => {

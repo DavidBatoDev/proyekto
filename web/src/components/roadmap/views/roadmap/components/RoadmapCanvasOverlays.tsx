@@ -18,6 +18,8 @@ interface RoadmapCanvasOverlaysProps {
 	sidePanelOpen: boolean;
 	selectedTaskId: string | null;
 	targetFeatureForTask: string | null;
+	taskPanelInitialTab?: "details" | "comments";
+	taskPanelOpenRequestToken?: number;
 	closeAddTaskPanel: () => void;
 	setSidePanelOpen: Dispatch<SetStateAction<boolean>>;
 	setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
@@ -49,6 +51,11 @@ interface RoadmapCanvasOverlaysProps {
 	handleTaskUpdate: (task: RoadmapTask) => Promise<void>;
 	handleTaskDelete: (taskId: string) => Promise<void>;
 	handleTaskCreate: (taskData: Partial<RoadmapTask>) => Promise<void>;
+	handleSelectTask?: (
+		task: { id: string },
+		initialTab?: "details" | "comments",
+	) => void;
+	handleCreateTaskFromFeature?: (featureId: string) => void;
 	handleCreateEpic: (data: {
 		title: string;
 		description: string;
@@ -92,6 +99,8 @@ export function RoadmapCanvasOverlays({
 	sidePanelOpen,
 	selectedTaskId,
 	targetFeatureForTask,
+	taskPanelInitialTab = "details",
+	taskPanelOpenRequestToken = 0,
 	closeAddTaskPanel,
 	setSidePanelOpen,
 	setSelectedTaskId,
@@ -123,6 +132,8 @@ export function RoadmapCanvasOverlays({
 	handleTaskUpdate,
 	handleTaskDelete,
 	handleTaskCreate,
+	handleSelectTask,
+	handleCreateTaskFromFeature,
 	handleCreateEpic,
 	handleUpdateEpicFromModal,
 	handleCreateFeature,
@@ -131,6 +142,20 @@ export function RoadmapCanvasOverlays({
 	handleConfirmDelete,
 }: RoadmapCanvasOverlaysProps) {
 	const navigateToNode = useRoadmapStore((s) => s.navigateToNode);
+	const selectTask =
+		handleSelectTask ??
+		((task: { id: string }) => {
+			setSelectedTaskId(task.id);
+			setTargetFeatureForTask(null);
+			setSidePanelOpen(true);
+		});
+	const createTaskFromFeature =
+		handleCreateTaskFromFeature ??
+		((featureId: string) => {
+			setTargetFeatureForTask(featureId);
+			setSelectedTaskId(null);
+			setSidePanelOpen(true);
+		});
 
 	return (
 		<>
@@ -138,6 +163,8 @@ export function RoadmapCanvasOverlays({
 				task={selectedTask || null}
 				isOpen={sidePanelOpen}
 				isCreating={!selectedTaskId && targetFeatureForTask !== null}
+				initialTab={taskPanelInitialTab}
+				initialTabRequestToken={taskPanelOpenRequestToken}
 				projectId={projectId}
 				onClose={() => {
 					setSidePanelOpen(false);
@@ -189,21 +216,11 @@ export function RoadmapCanvasOverlays({
 						: undefined
 				}
 				onAddTask={
-					editingEpicId
-						? (featureId) => {
-								setTargetFeatureForTask(featureId);
-								setSelectedTaskId(null);
-								setSidePanelOpen(true);
-							}
-						: undefined
+					editingEpicId ? createTaskFromFeature : undefined
 				}
 				onUpdateTask={handleTaskUpdate}
 				onDeleteTask={handleTaskDelete}
-				onSelectTask={(task) => {
-					setSelectedTaskId(task.id);
-					setTargetFeatureForTask(null);
-					setSidePanelOpen(true);
-				}}
+				onSelectTask={selectTask}
 				initialData={
 					editingEpicId
 						? (() => {
@@ -271,21 +288,11 @@ export function RoadmapCanvasOverlays({
 					setEditingFeatureEpicId(null);
 				}}
 				onAddTask={
-					editingFeatureId
-						? (featureId) => {
-								setTargetFeatureForTask(featureId);
-								setSelectedTaskId(null);
-								setSidePanelOpen(true);
-							}
-						: undefined
+					editingFeatureId ? createTaskFromFeature : undefined
 				}
 				onUpdateTask={handleTaskUpdate}
 				onDeleteTask={handleTaskDelete}
-				onSelectTask={(task) => {
-					setSelectedTaskId(task.id);
-					setTargetFeatureForTask(null);
-					setSidePanelOpen(true);
-				}}
+				onSelectTask={selectTask}
 				onSubmit={handleUpdateFeatureFromModal}
 				isLoading={isFeatureLoading}
 				isPendingCreate={isEditingFeaturePending}

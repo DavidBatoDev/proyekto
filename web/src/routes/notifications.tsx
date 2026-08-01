@@ -12,7 +12,6 @@ import {
 	Trash2,
 	XCircle,
 } from "lucide-react";
-import { useId } from "react";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
 import {
 	type NotificationItem,
@@ -80,40 +79,39 @@ function getNotificationIcon(item: NotificationItem) {
 		name === "project_invite_received" ||
 		name === "project_invite_responded"
 	) {
-		return <Briefcase className="w-5 h-5 text-blue-500" />;
+		return <Briefcase className="h-5 w-5 text-primary" />;
 	}
 	if (name === "marketplace_profile_live") {
-		return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+		return <CheckCircle2 className="h-5 w-5 text-success" />;
 	}
 	if (name === "task_assigned") {
-		return <Briefcase className="w-5 h-5 text-sky-600" />;
+		return <Briefcase className="h-5 w-5 text-info" />;
 	}
 	if (name === "time_log_approval_requested") {
-		return <Clock3 className="w-5 h-5 text-amber-600" />;
+		return <Clock3 className="h-5 w-5 text-warning" />;
 	}
 	if (name === "time_log_approved") {
-		return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+		return <CheckCircle2 className="h-5 w-5 text-success" />;
 	}
 	if (name === "time_log_rejected" || name === "time_log_day_rejected") {
-		return <XCircle className="w-5 h-5 text-rose-500" />;
+		return <XCircle className="h-5 w-5 text-destructive" />;
 	}
 	if (name === "time_log_comment_added") {
-		return <MessageCircle className="w-5 h-5 text-orange-500" />;
+		return <MessageCircle className="h-5 w-5 text-info" />;
 	}
 	if (
 		name === "task_comment_mention" ||
 		name === "feature_comment_mention" ||
 		name === "epic_comment_mention"
 	) {
-		return <MessageCircle className="w-5 h-5 text-violet-500" />;
+		return <MessageCircle className="h-5 w-5 text-primary" />;
 	}
-	return <Info className="w-5 h-5 text-gray-400" />;
+	return <Info className="h-5 w-5 text-muted-foreground" />;
 }
 
 function NotificationsPage() {
 	const queryClient = useQueryClient();
 	const profile = useAuthStore((state) => state.profile);
-	const backgroundGradientId = useId().replace(/:/g, "");
 
 	useNotificationsRealtime(profile?.id);
 
@@ -160,59 +158,39 @@ function NotificationsPage() {
 
 	return (
 		<div className="relative min-h-screen overflow-hidden bg-background pt-20 text-foreground">
-			{/* Animated Background */}
-			<div className="absolute inset-0 pointer-events-none">
-				<motion.svg
+			<div className="pointer-events-none absolute inset-0">
+				<motion.div
 					aria-hidden="true"
-					className="absolute top-0 left-0 w-full h-[400px] opacity-30"
-					viewBox="0 0 1440 320"
-					preserveAspectRatio="none"
+					className="absolute top-0 left-0 h-[400px] w-full bg-linear-to-r from-primary/15 via-info/10 to-transparent"
 					animate={{ y: [0, -15, 0] }}
 					transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-				>
-					<motion.path
-						d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,144C960,149,1056,139,1152,128C1248,117,1344,107,1392,101.3L1440,96L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"
-						fill={`url(#${backgroundGradientId})`}
-						fillOpacity="0.4"
-					/>
-					<defs>
-						<linearGradient
-							id={backgroundGradientId}
-							x1="0%"
-							y1="0%"
-							x2="100%"
-							y2="0%"
-						>
-							<stop offset="0%" stopColor="#3b82f6" />
-							<stop offset="100%" stopColor="#6366f1" />
-						</linearGradient>
-					</defs>
-				</motion.svg>
+				/>
 				<motion.div
-					className="absolute top-10 right-20 w-[300px] h-[300px] bg-blue-400 rounded-full blur-3xl opacity-20 mix-blend-multiply"
+					aria-hidden="true"
+					className="absolute top-10 right-20 h-[300px] w-[300px] rounded-full bg-primary/15 blur-3xl"
 					animate={{ scale: [1, 1.2, 1], x: [0, -20, 0], y: [0, 30, 0] }}
 					transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
 				/>
 			</div>
 
-			<div className="max-w-4xl mx-auto px-6 py-12 relative z-10 pb-24">
+			<div className="relative z-10 mx-auto max-w-4xl px-6 py-12 pb-24">
 				{/* Header Section */}
-				<div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+				<div className="mb-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
 					<div>
 						<div className="flex items-center gap-3">
 							<motion.div
 								initial={{ opacity: 0, scale: 0.8 }}
 								animate={{ opacity: 1, scale: 1 }}
 								transition={{ duration: 0.4 }}
-								className="w-12 h-12 bg-card rounded-2xl shadow-sm border border-border flex items-center justify-center mb-4"
+								className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card shadow-sm"
 							>
-								<Bell className="w-6 h-6 text-[#3b82f6]" />
+								<Bell className="h-6 w-6 text-primary" />
 							</motion.div>
 							<motion.h1
 								initial={{ opacity: 0, y: 20 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ duration: 0.5, delay: 0.1 }}
-								className="text-4xl font-extrabold text-foreground tracking-tight"
+								className="text-4xl font-extrabold tracking-tight text-foreground"
 							>
 								Notifications
 							</motion.h1>
@@ -221,7 +199,7 @@ function NotificationsPage() {
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.5, delay: 0.2 }}
-							className="text-lg text-muted-foreground mt-2"
+							className="mt-2 text-lg text-muted-foreground"
 						>
 							You have{" "}
 							{unreadCount > 0 ? (
@@ -244,7 +222,7 @@ function NotificationsPage() {
 							type="button"
 							onClick={() => markAllMutation.mutate()}
 							disabled={markAllMutation.isPending || unreadCount === 0}
-							className="px-5 py-2.5 rounded-xl border border-border bg-card shadow-sm text-sm font-semibold text-card-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+							className="flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-semibold text-card-foreground shadow-sm transition-all hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							<Check className="w-4 h-4" />
 							Mark all as read
@@ -259,9 +237,9 @@ function NotificationsPage() {
 							{SKELETON_NOTIFICATION_ROWS.map((rowId) => (
 								<div
 									key={rowId}
-									className="bg-card rounded-2xl border border-border p-6 shadow-sm animate-pulse flex gap-4"
+									className="flex animate-pulse gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm"
 								>
-									<div className="w-10 h-10 bg-muted rounded-full shrink-0" />
+									<div className="h-10 w-10 shrink-0 rounded-full bg-muted" />
 									<div className="flex-1 space-y-3 py-1">
 										<div className="h-4 bg-muted rounded-md w-1/4" />
 										<div className="h-3 bg-muted rounded-md w-1/2" />
@@ -273,9 +251,9 @@ function NotificationsPage() {
 						<motion.div
 							initial={{ opacity: 0, scale: 0.95 }}
 							animate={{ opacity: 1, scale: 1 }}
-							className="bg-card border border-border rounded-3xl p-16 text-center shadow-sm"
+							className="rounded-3xl border border-border bg-card p-16 text-center shadow-sm"
 						>
-							<div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
+							<div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
 								<Bell className="w-8 h-8 text-muted-foreground" />
 							</div>
 							<h2 className="text-xl font-bold text-card-foreground mb-2">
@@ -298,13 +276,13 @@ function NotificationsPage() {
 									className={`group relative rounded-2xl p-5 shadow-sm transition-all hover:shadow-md border ${
 										item.is_read
 											? "bg-card border-transparent hover:border-border"
-											: "bg-primary-light border-primary/20"
+											: "border-primary/25 bg-primary/10"
 									}`}
 								>
 									<div className="flex gap-4">
 										{/* Icon */}
 										<div
-											className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+											className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
 												item.is_read
 													? "bg-muted"
 													: "bg-card shadow-sm ring-1 ring-primary/20"
@@ -322,7 +300,7 @@ function NotificationsPage() {
 													{getNotificationTitle(item)}
 												</h2>
 												{!item.is_read && (
-													<span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-2 shadow-sm shadow-blue-500/50" />
+													<span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/50" />
 												)}
 											</div>
 
@@ -350,7 +328,7 @@ function NotificationsPage() {
 													type="button"
 													onClick={() => markReadMutation.mutate(item.id)}
 													disabled={markReadMutation.isPending}
-													className="p-2 sm:px-3 sm:py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary-light transition-colors shadow-sm"
+													className="rounded-lg border border-border bg-card p-2 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:py-1.5"
 													title="Mark as read"
 												>
 													<Check className="w-4 h-4 sm:hidden" />
@@ -361,7 +339,7 @@ function NotificationsPage() {
 												type="button"
 												onClick={() => removeMutation.mutate(item.id)}
 												disabled={removeMutation.isPending}
-												className="p-2 sm:px-3 sm:py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 transition-colors shadow-sm"
+												className="rounded-lg border border-border bg-card p-2 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:py-1.5"
 												title="Remove notification"
 											>
 												<Trash2 className="w-4 h-4 sm:hidden" />

@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
-import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import { FeatureWidget, type FeatureWidgetData } from "./FeatureWidget";
@@ -50,6 +50,7 @@ const makeFeature = (): RoadmapFeature => ({
 		makeTask({
 			id: "task-1",
 			title: "Design onboarding",
+			comment_count: 3,
 			assignees: [{ id: "user-1", display_name: "Ada Lovelace" }],
 		}),
 		makeTask({
@@ -57,6 +58,7 @@ const makeFeature = (): RoadmapFeature => ({
 			title: "Build welcome email",
 			status: "done",
 			position: 2000,
+			comment_count: 0,
 		}),
 	],
 });
@@ -76,13 +78,26 @@ function renderWidget(overrides: Partial<FeatureWidgetData> = {}) {
 
 describe("FeatureWidget canvas task list", () => {
 	it("renders lightweight inline task rows with task signals", () => {
-		renderWidget({ runningTaskId: "task-1" });
+		const { container } = renderWidget({ runningTaskId: "task-1" });
 
 		expect(screen.getByText("Design onboarding")).toBeTruthy();
 		expect(screen.getByText("Build welcome email")).toBeTruthy();
 		expect(screen.getByText("Todo")).toBeTruthy();
 		expect(screen.getByText("Done")).toBeTruthy();
 		expect(screen.getByTitle("Ada Lovelace")).toBeTruthy();
+
+		const controlGrids = container.querySelectorAll("[data-task-row-controls]");
+		expect(controlGrids).toHaveLength(2);
+		for (const controls of controlGrids) {
+			expect(controls.children).toHaveLength(4);
+			expect(controls.className).toContain("grid-cols-");
+		}
+
+		const taskListShell = container.querySelector<HTMLElement>(
+			"[data-task-list-shell]",
+		);
+		expect(taskListShell?.className).toContain("top-1/2");
+		expect(taskListShell?.style.height).toContain("7rem");
 	});
 
 	it("quick-completes a task without mounting the full sortable task row", () => {
@@ -112,6 +127,31 @@ describe("FeatureWidget canvas task list", () => {
 		);
 		expect(screen.getByRole("dialog").textContent).toContain(
 			"Full task controls for Onboarding",
+		);
+	});
+
+	it("shows nonzero comment counts outside the task container", () => {
+		const onSelectTask = vi.fn();
+		renderWidget({ onSelectTask });
+
+		const commentsButton = screen.getByRole("button", {
+			name: "Open 3 comments for Design onboarding",
+		});
+		expect(commentsButton.textContent).toBe("3");
+		expect(commentsButton.closest("[data-task-list-container]")).toBeNull();
+		expect(
+			commentsButton.closest("[data-task-comment-gutter]")?.className,
+		).toContain("-right-12");
+		expect(
+			screen.queryByRole("button", {
+				name: /comments for Build welcome email/i,
+			}),
+		).toBeNull();
+
+		fireEvent.click(commentsButton);
+		expect(onSelectTask).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "task-1" }),
+			"comments",
 		);
 	});
 });

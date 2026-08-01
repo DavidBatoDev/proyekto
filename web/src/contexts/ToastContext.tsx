@@ -1,199 +1,198 @@
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  type ReactNode,
+	createContext,
+	type ReactNode,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
 } from "react";
-import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
 import { setPermissionToastHandler } from "@/api/axios";
 
 type Severity = "success" | "error" | "warning" | "info";
 
 interface Toast {
-  id: number;
-  message: string;
-  severity: Severity;
-  duration: number;
+	id: number;
+	message: string;
+	severity: Severity;
+	duration: number;
 }
 
 interface ToastOptions {
-  message: string;
-  severity?: Severity;
-  duration?: number;
+	message: string;
+	severity?: Severity;
+	duration?: number;
 }
 
 interface ToastContextValue {
-  showToast: (options: ToastOptions) => void;
-  success: (message: string, duration?: number) => void;
-  error: (message: string, duration?: number) => void;
-  warning: (message: string, duration?: number) => void;
-  info: (message: string, duration?: number) => void;
+	showToast: (options: ToastOptions) => void;
+	success: (message: string, duration?: number) => void;
+	error: (message: string, duration?: number) => void;
+	warning: (message: string, duration?: number) => void;
+	info: (message: string, duration?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
-const STYLE: Record<
-  Severity,
-  { bar: string; icon: ReactNode; text: string; close: string }
-> = {
-  success: {
-    bar: "border-l-emerald-500",
-    icon: <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />,
-    text: "text-slate-800",
-    close: "text-slate-400 hover:text-slate-600",
-  },
-  error: {
-    bar: "border-l-red-500",
-    icon: <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />,
-    text: "text-slate-800",
-    close: "text-slate-400 hover:text-slate-600",
-  },
-  warning: {
-    bar: "border-l-amber-500",
-    icon: <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />,
-    text: "text-slate-800",
-    close: "text-slate-400 hover:text-slate-600",
-  },
-  info: {
-    bar: "border-l-blue-500",
-    icon: <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />,
-    text: "text-slate-800",
-    close: "text-slate-400 hover:text-slate-600",
-  },
+const STYLE: Record<Severity, { bar: string; icon: ReactNode }> = {
+	success: {
+		bar: "border-l-success",
+		icon: <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />,
+	},
+	error: {
+		bar: "border-l-destructive",
+		icon: <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />,
+	},
+	warning: {
+		bar: "border-l-warning",
+		icon: <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />,
+	},
+	info: {
+		bar: "border-l-info",
+		icon: <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />,
+	},
 };
 
 let nextId = 0;
 const MAX_TOASTS = 4;
 
 function ToastItem({
-  toast,
-  onDismiss,
+	toast,
+	onDismiss,
 }: {
-  toast: Toast;
-  onDismiss: (id: number) => void;
+	toast: Toast;
+	onDismiss: (id: number) => void;
 }) {
-  const [visible, setVisible] = useState(false);
-  const style = STYLE[toast.severity];
+	const [visible, setVisible] = useState(false);
+	const style = STYLE[toast.severity];
 
-  useEffect(() => {
-    const show = requestAnimationFrame(() => setVisible(true));
-    const hide = setTimeout(() => setVisible(false), toast.duration - 300);
-    const remove = setTimeout(() => onDismiss(toast.id), toast.duration);
-    return () => {
-      cancelAnimationFrame(show);
-      clearTimeout(hide);
-      clearTimeout(remove);
-    };
-  }, [toast.id, toast.duration, onDismiss]);
+	useEffect(() => {
+		const show = requestAnimationFrame(() => setVisible(true));
+		const hide = setTimeout(() => setVisible(false), toast.duration - 300);
+		const remove = setTimeout(() => onDismiss(toast.id), toast.duration);
+		return () => {
+			cancelAnimationFrame(show);
+			clearTimeout(hide);
+			clearTimeout(remove);
+		};
+	}, [toast.id, toast.duration, onDismiss]);
 
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(() => onDismiss(toast.id), 300);
-  };
+	const handleClose = () => {
+		setVisible(false);
+		setTimeout(() => onDismiss(toast.id), 300);
+	};
 
-  return (
-    <div
-      className={`
-        flex items-start gap-3 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-slate-200
+	return (
+		<div
+			role={
+				toast.severity === "error" || toast.severity === "warning"
+					? "alert"
+					: "status"
+			}
+			className={`
+        flex w-80 max-w-[calc(100vw-2rem)] items-start gap-3 rounded-xl border border-border bg-popover shadow-[var(--app-shadow-lg)]
         border-l-4 ${style.bar} px-4 py-3
         transition-all duration-300 ease-out
-        ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4"}
+        ${visible ? "translate-x-0 opacity-100" : "translate-x-4 opacity-0"}
       `}
-    >
-      {style.icon}
-      <p className={`flex-1 text-sm font-medium leading-snug ${style.text}`}>
-        {toast.message}
-      </p>
-      <button
-        onClick={handleClose}
-        className={`shrink-0 mt-0.5 transition-colors ${style.close}`}
-        aria-label="Dismiss"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
+		>
+			{style.icon}
+			<p className="flex-1 text-sm font-medium leading-snug text-popover-foreground">
+				{toast.message}
+			</p>
+			<button
+				type="button"
+				onClick={handleClose}
+				className="mt-0.5 shrink-0 rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-popover-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				aria-label="Dismiss"
+			>
+				<X className="h-3.5 w-3.5" />
+			</button>
+		</div>
+	);
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+	const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+	const dismiss = useCallback((id: number) => {
+		setToasts((prev) => prev.filter((t) => t.id !== id));
+	}, []);
 
-  const showToast = useCallback(
-    ({ message, severity = "info", duration = 5000 }: ToastOptions) => {
-      setToasts((prev) => {
-        // De-dupe: if an identical toast is already showing, don't stack another
-        // (guards against callers that fire the same error in a render/loop).
-        if (prev.some((t) => t.message === message && t.severity === severity)) {
-          return prev;
-        }
-        const next = [...prev, { id: ++nextId, message, severity, duration }];
-        // Cap the stack so a burst can never fill the screen — drop the oldest.
-        return next.length > MAX_TOASTS ? next.slice(next.length - MAX_TOASTS) : next;
-      });
-    },
-    [],
-  );
+	const showToast = useCallback(
+		({ message, severity = "info", duration = 5000 }: ToastOptions) => {
+			setToasts((prev) => {
+				// De-dupe: if an identical toast is already showing, don't stack another
+				// (guards against callers that fire the same error in a render/loop).
+				if (
+					prev.some((t) => t.message === message && t.severity === severity)
+				) {
+					return prev;
+				}
+				const next = [...prev, { id: ++nextId, message, severity, duration }];
+				// Cap the stack so a burst can never fill the screen — drop the oldest.
+				return next.length > MAX_TOASTS
+					? next.slice(next.length - MAX_TOASTS)
+					: next;
+			});
+		},
+		[],
+	);
 
-  const success = useCallback(
-    (message: string, duration = 5000) =>
-      showToast({ message, severity: "success", duration }),
-    [showToast],
-  );
-  const error = useCallback(
-    (message: string, duration = 5000) =>
-      showToast({ message, severity: "error", duration }),
-    [showToast],
-  );
+	const success = useCallback(
+		(message: string, duration = 5000) =>
+			showToast({ message, severity: "success", duration }),
+		[showToast],
+	);
+	const error = useCallback(
+		(message: string, duration = 5000) =>
+			showToast({ message, severity: "error", duration }),
+		[showToast],
+	);
 
-  // Bridge: register `error` as the global permission-toast handler so the
-  // axios 403 interceptor can fire toasts (it lives outside React).
-  useEffect(() => {
-    setPermissionToastHandler(error);
-    return () => setPermissionToastHandler(null);
-  }, [error]);
-  const warning = useCallback(
-    (message: string, duration = 5000) =>
-      showToast({ message, severity: "warning", duration }),
-    [showToast],
-  );
-  const info = useCallback(
-    (message: string, duration = 5000) =>
-      showToast({ message, severity: "info", duration }),
-    [showToast],
-  );
+	// Bridge: register `error` as the global permission-toast handler so the
+	// axios 403 interceptor can fire toasts (it lives outside React).
+	useEffect(() => {
+		setPermissionToastHandler(error);
+		return () => setPermissionToastHandler(null);
+	}, [error]);
+	const warning = useCallback(
+		(message: string, duration = 5000) =>
+			showToast({ message, severity: "warning", duration }),
+		[showToast],
+	);
+	const info = useCallback(
+		(message: string, duration = 5000) =>
+			showToast({ message, severity: "info", duration }),
+		[showToast],
+	);
 
-  // Stable identity so consumers that depend on the toast API in effect deps
-  // (e.g. /auth/verify) don't re-run on every toast → avoids a render loop.
-  const value = useMemo(
-    () => ({ showToast, success, error, warning, info }),
-    [showToast, success, error, warning, info],
-  );
+	// Stable identity so consumers that depend on the toast API in effect deps
+	// (e.g. /auth/verify) don't re-run on every toast → avoids a render loop.
+	const value = useMemo(
+		() => ({ showToast, success, error, warning, info }),
+		[showToast, success, error, warning, info],
+	);
 
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      <div className="fixed top-4 right-4 left-4 z-9999 flex flex-col items-end gap-2 pointer-events-none sm:left-auto">
-        {toasts.map((t) => (
-          <div key={t.id} className="pointer-events-auto">
-            <ToastItem toast={t} onDismiss={dismiss} />
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
+	return (
+		<ToastContext.Provider value={value}>
+			{children}
+			<div className="fixed top-4 right-4 left-4 z-9999 flex flex-col items-end gap-2 pointer-events-none sm:left-auto">
+				{toasts.map((t) => (
+					<div key={t.id} className="pointer-events-auto">
+						<ToastItem toast={t} onDismiss={dismiss} />
+					</div>
+				))}
+			</div>
+		</ToastContext.Provider>
+	);
 }
 
 export function useToast() {
-  const context = useContext(ToastContext);
-  if (context === undefined) {
-    throw new Error("useToast must be used within a ToastProvider");
-  }
-  return context;
+	const context = useContext(ToastContext);
+	if (context === undefined) {
+		throw new Error("useToast must be used within a ToastProvider");
+	}
+	return context;
 }

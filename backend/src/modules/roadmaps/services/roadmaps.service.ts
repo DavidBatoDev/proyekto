@@ -154,7 +154,9 @@ export class RoadmapsService {
   }
 
   async findFull(id: string, userId: string) {
-    const roadmap = await this.repo.findFull(id, userId);
+    const roadmap = await this.repo.findFull(id, userId, {
+      includeTaskCommentCount: true,
+    });
     if (!roadmap) throw new NotFoundException('Roadmap not found');
     return roadmap;
   }

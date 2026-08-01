@@ -166,7 +166,10 @@ interface RoadmapViewProps {
   onDeleteFeature: (featureId: string) => void;
   onSelectFeature?: (feature: RoadmapFeature) => void;
   onSelectEpic?: (epicId: string) => void;
-  onSelectTask?: (task: RoadmapTask) => void;
+  onSelectTask?: (
+    task: RoadmapTask,
+    initialTab?: "details" | "comments",
+  ) => void;
   onAddEpicBelow?: (epicId: string) => void;
   onAddFeature?: (epicId: string) => void;
   onAddTask?: (featureId: string) => void;

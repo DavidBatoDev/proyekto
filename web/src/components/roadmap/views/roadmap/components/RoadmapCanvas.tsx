@@ -59,6 +59,10 @@ const RoadmapCanvas = ({
   const user = useUser();
   const profile = useAuthStore((s) => s.profile);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
+  const [taskPanelInitialTab, setTaskPanelInitialTab] = useState<
+    "details" | "comments"
+  >("details");
+  const [taskPanelOpenRequestToken, setTaskPanelOpenRequestToken] = useState(0);
 
   const {
     collaborators,
@@ -269,7 +273,12 @@ const RoadmapCanvas = ({
   );
 
   const handleSelectTask = useCallback(
-    (task: { id: string }) => {
+    (
+      task: { id: string },
+      initialTab: "details" | "comments" = "details",
+    ) => {
+      setTaskPanelInitialTab(initialTab);
+      setTaskPanelOpenRequestToken((token) => token + 1);
       setSelectedTaskId(task.id);
       setTargetFeatureForTask(null);
       setSidePanelOpen(true);
@@ -279,6 +288,8 @@ const RoadmapCanvas = ({
 
   const handleCreateTaskFromFeature = useCallback(
     (featureId: string) => {
+      setTaskPanelInitialTab("details");
+      setTaskPanelOpenRequestToken((token) => token + 1);
       setTargetFeatureForTask(featureId);
       setSelectedTaskId(null);
       setSidePanelOpen(true);
@@ -439,16 +450,8 @@ const RoadmapCanvas = ({
             onDeleteFeature={handleDeleteFeature}
             onUpdateTask={onUpdateTask}
             onDeleteTask={onDeleteTask}
-            onSelectTask={(task) => {
-              setSelectedTaskId(task.id);
-              setTargetFeatureForTask(null);
-              setSidePanelOpen(true);
-            }}
-            onAddTask={(featureId) => {
-              setTargetFeatureForTask(featureId);
-              setSelectedTaskId(null);
-              setSidePanelOpen(true);
-            }}
+            onSelectTask={handleSelectTask}
+            onAddTask={handleCreateTaskFromFeature}
             scrollToFeatureId={scrollToFeatureId}
             onScrollToFeatureHandled={() => {
               setScrollToFeatureId(null);
@@ -500,6 +503,8 @@ const RoadmapCanvas = ({
             sidePanelOpen={sidePanelOpen}
             selectedTaskId={selectedTaskId}
             targetFeatureForTask={targetFeatureForTask}
+            taskPanelInitialTab={taskPanelInitialTab}
+            taskPanelOpenRequestToken={taskPanelOpenRequestToken}
             closeAddTaskPanel={closeAddTaskPanel}
             setSidePanelOpen={setSidePanelOpen}
             setSelectedTaskId={setSelectedTaskId}
@@ -531,6 +536,8 @@ const RoadmapCanvas = ({
             handleTaskUpdate={handleTaskUpdate}
             handleTaskDelete={handleTaskDelete}
             handleTaskCreate={handleTaskCreate}
+            handleSelectTask={handleSelectTask}
+            handleCreateTaskFromFeature={handleCreateTaskFromFeature}
             handleCreateEpic={handleCreateEpic}
             handleUpdateEpicFromModal={handleUpdateEpicFromModal}
             handleCreateFeature={handleCreateFeature}
