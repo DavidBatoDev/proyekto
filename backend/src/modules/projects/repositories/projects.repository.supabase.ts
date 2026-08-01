@@ -132,7 +132,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     return Array.from(deduped.values()).sort(
       (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     );
   }
 
@@ -283,12 +283,13 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     previousConsultantId: string | null,
     newConsultantId: string,
   ): Promise<Project> {
-    const { data: updatedProject, error: updateProjectError } = await this.supabase
-      .from('projects')
-      .update({ consultant_id: newConsultantId, status: 'active' })
-      .eq('id', projectId)
-      .select()
-      .single();
+    const { data: updatedProject, error: updateProjectError } =
+      await this.supabase
+        .from('projects')
+        .update({ consultant_id: newConsultantId, status: 'active' })
+        .eq('id', projectId)
+        .select()
+        .single();
 
     if (updateProjectError || !updatedProject) {
       throw new BadRequestException(
@@ -565,7 +566,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         .eq('id', projectId)
         .single();
       if (error || !data) return null;
-      const stored = data.role_permissions_json as Record<string, unknown> | null;
+      const stored = data.role_permissions_json as Record<
+        string,
+        unknown
+      > | null;
       return (stored?.[role] ?? null) as ProjectPermissions | null;
     } catch {
       return null;
@@ -850,11 +854,12 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       return 0;
     }
 
-    const { data: tasksToUnassign, error: taskSelectError } = await this.supabase
-      .from('roadmap_tasks')
-      .select('id')
-      .in('feature_id', featureIds)
-      .eq('assignee_id', userId);
+    const { data: tasksToUnassign, error: taskSelectError } =
+      await this.supabase
+        .from('roadmap_tasks')
+        .select('id')
+        .in('feature_id', featureIds)
+        .eq('assignee_id', userId);
 
     if (taskSelectError) {
       throw new BadRequestException(
@@ -913,8 +918,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       role: String(data.role),
       origin: (data.origin as string | null) ?? null,
       position: (data.position as string | null) ?? null,
-      capabilities:
-        (data.capabilities as Record<string, unknown> | null) ?? {},
+      capabilities: (data.capabilities as Record<string, unknown> | null) ?? {},
       permissions_json: null,
     };
   }
@@ -946,8 +950,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       role: String(data.role),
       origin: (data.origin as string | null) ?? null,
       position: (data.position as string | null) ?? null,
-      capabilities:
-        (data.capabilities as Record<string, unknown> | null) ?? {},
+      capabilities: (data.capabilities as Record<string, unknown> | null) ?? {},
       permissions_json: null,
     };
   }
