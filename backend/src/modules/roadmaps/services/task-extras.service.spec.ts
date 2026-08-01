@@ -22,7 +22,13 @@ describe('TaskExtrasService.addCommentToTasks', () => {
         overrides.resolveRoadmapId ?? jest.fn().mockResolvedValue(roadmapId),
       assertTaskCommentPermission:
         overrides.assertTaskCommentPermission ??
-        jest.fn().mockResolvedValue(undefined),
+        jest.fn().mockResolvedValue({
+          roadmapId,
+          projectId: null,
+          ownerId: userId,
+          permissions: null,
+          featureId: 'f-1',
+        }),
       resolveProjectId: jest.fn().mockResolvedValue(null),
     };
     const notifications = { createNotification: jest.fn() };

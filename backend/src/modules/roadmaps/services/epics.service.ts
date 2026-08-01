@@ -7,7 +7,10 @@ import {
   AddCommentDto,
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
-import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import {
+  RoadmapAuthorizationService,
+  type RoadmapWriteContext,
+} from './roadmap-authorization.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
@@ -54,9 +57,13 @@ export class EpicsService {
   async update(id: string, dto: UpdateEpicDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Epic not found');
-    await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
+    const ctx = await this.roadmapAuthz.assertEpicPermission(
+      id,
+      userId,
+      'roadmap.edit',
+    );
     const epic = await this.repo.update(id, dto);
-    this.notify(await this.roadmapAuthz.resolveRoadmapId({ epicId: id }), userId);
+    this.notify(ctx.roadmapId, userId);
     return epic;
   }
 
@@ -77,13 +84,20 @@ export class EpicsService {
   }
 
   async addComment(epicId: string, dto: AddCommentDto, userId: string) {
-    await this.roadmapAuthz.assertEpicCommentPermission(epicId, userId);
+    const ctx = await this.roadmapAuthz.assertEpicCommentPermission(
+      epicId,
+      userId,
+    );
     const comment = await this.repo.addComment(epicId, dto, userId);
 
     const commentId = (comment as { id?: string }).id;
-    void this.fireMentionNotifications(epicId, dto.content, userId, commentId).catch(
-      () => {},
-    );
+    void this.fireMentionNotifications(
+      epicId,
+      dto.content,
+      userId,
+      ctx,
+      commentId,
+    ).catch(() => {});
 
     return comment;
   }
@@ -92,6 +106,7 @@ export class EpicsService {
     epicId: string,
     html: string,
     authorId: string,
+    ctx: RoadmapWriteContext,
     commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
@@ -99,10 +114,9 @@ export class EpicsService {
     );
     if (!mentionedIds.length) return;
 
-    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ epicId });
-    const projectId = roadmapId
-      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
-      : null;
+    // Scope comes from the authz walk the caller already paid for.
+    const roadmapId = ctx?.roadmapId ?? null;
+    const projectId = ctx?.projectId ?? null;
     const linkUrl =
       projectId && roadmapId
         ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${epicId}${commentId ? `&commentId=${commentId}` : ''}`
@@ -146,10 +160,14 @@ export class EpicsService {
 
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Epic not found');
-    await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
-    // Resolve before deletion — the row is gone once removed.
-    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ epicId: id });
+    // The authz walk already resolved the owning roadmap, and it did so before
+    // the delete — no post-delete re-read needed.
+    const ctx = await this.roadmapAuthz.assertEpicPermission(
+      id,
+      userId,
+      'roadmap.edit',
+    );
     await this.repo.remove(id);
-    this.notify(roadmapId, userId);
+    this.notify(ctx.roadmapId, userId);
   }
 }

@@ -11,7 +11,10 @@ import {
   UpdateCommentDto,
   AddAttachmentDto,
 } from '../dto/roadmaps.dto';
-import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import {
+  RoadmapAuthorizationService,
+  type RoadmapWriteContext,
+} from './roadmap-authorization.service';
 import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
@@ -34,7 +37,10 @@ export class TaskExtrasService {
   }
 
   async addComment(taskId: string, dto: AddCommentDto, userId: string) {
-    await this.roadmapAuthz.assertTaskCommentPermission(taskId, userId);
+    const ctx = await this.roadmapAuthz.assertTaskCommentPermission(
+      taskId,
+      userId,
+    );
     const comment = await this.repo.addComment(taskId, dto, userId);
 
     // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
@@ -43,6 +49,7 @@ export class TaskExtrasService {
       taskId,
       dto.content,
       userId,
+      ctx,
       commentId,
     ).catch(() => {});
     if (commentId) {
@@ -135,6 +142,7 @@ export class TaskExtrasService {
     taskId: string,
     html: string,
     authorId: string,
+    ctx: RoadmapWriteContext,
     commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
@@ -142,10 +150,9 @@ export class TaskExtrasService {
     );
     if (!mentionedIds.length) return;
 
-    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ taskId });
-    const projectId = roadmapId
-      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
-      : null;
+    // Scope comes from the authz walk the caller already paid for.
+    const roadmapId = ctx?.roadmapId ?? null;
+    const projectId = ctx?.projectId ?? null;
     const linkUrl =
       projectId && roadmapId
         ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`

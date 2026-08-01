@@ -353,21 +353,25 @@ export class ProjectsService {
    * overrides actually gate access. The legacy `permissionToMinRole` map
    * is kept as a fail-safe for paths the resolver doesn't recognise but
    * is no longer the primary check.
+   *
+   * Returns the resolved permission set rather than discarding it, so callers
+   * that need a second capability check (or want to stamp an audit row) can
+   * answer it in memory instead of re-walking the resolver.
    */
   async assertProjectPermission(
     projectId: string,
     userId: string,
     permission: PermissionPath,
-  ): Promise<void> {
+  ): Promise<ProjectPermissions> {
     await this.getProjectOrThrow(projectId); // 404 surface stays the same
-    await this.authorization.assertPermission(userId, projectId, permission);
+    return this.authorization.assertPermission(userId, projectId, permission);
   }
 
   async assertProjectAnyPermission(
     projectId: string,
     userId: string,
     permissionsToCheck: Array<PermissionPath>,
-  ): Promise<void> {
+  ): Promise<ProjectPermissions> {
     await this.getProjectOrThrow(projectId);
     const perms = await this.authorization.resolvePermissions(
       userId,
@@ -390,6 +394,7 @@ export class ProjectsService {
         message: `Missing required permission: ${permissionsToCheck.join(' OR ')}.`,
       });
     }
+    return perms;
   }
 
   async listUserProjects(userId: string): Promise<Project[]> {
@@ -1371,7 +1376,6 @@ export class ProjectsService {
     await this.invalidateDashboardCache();
     return member;
   }
-
 
   /**
    * Email a project invitation. Best-effort: the invite row is already

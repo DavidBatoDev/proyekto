@@ -1,12 +1,9 @@
-import {
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectsService } from '../../projects/projects.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
+import type { ProjectPermissions } from '../../projects/permissions/project-permissions';
 
 /**
  * Roadmap-scoped capabilities the authorization walkers accept. A subset of the
@@ -22,6 +19,35 @@ export type RoadmapPermission =
   | 'roadmap.view_internal'
   | 'roadmap.comment'
   | 'roadmap.promote';
+
+/**
+ * Everything the parent-chain walk resolved on the way to a permission verdict.
+ *
+ * The walkers used to return `void`, so every caller that needed the owning
+ * roadmap (to address the realtime room) re-ran the exact same lookups right
+ * after the assert. Returning the scope instead deletes those duplicate
+ * round-trips and gives write services the project id they need to record
+ * activity without paying for it.
+ */
+export interface RoadmapWriteContext {
+  roadmapId: string;
+  /** null for a personal roadmap — there is no project to log or notify against. */
+  projectId: string | null;
+  ownerId: string | null;
+  /** Resolved permission set, or null for a personal roadmap (owner-only check). */
+  permissions: ProjectPermissions | null;
+}
+
+/** Task walks additionally resolve the parent feature. */
+export interface TaskWriteContext extends RoadmapWriteContext {
+  featureId: string;
+}
+
+/** Scope for the project-first entry points, which have no roadmap in hand. */
+export interface ProjectWriteContext {
+  projectId: string;
+  permissions: ProjectPermissions;
+}
 
 @Injectable()
 export class RoadmapAuthorizationService {
@@ -87,14 +113,41 @@ export class RoadmapAuthorizationService {
   }
 
   private async getFeatureIdByTaskId(taskId: string): Promise<string | null> {
+    const scope = await this.getTaskScope(taskId);
+    return scope?.featureId ?? null;
+  }
+
+  /**
+   * Resolve a task's parent feature AND roadmap in a single query.
+   * `roadmap_features.roadmap_id` is denormalized (the activity-cascade
+   * triggers rely on the same shortcut), so the task -> feature -> roadmap
+   * walk does not need two sequential round-trips.
+   */
+  private async getTaskScope(
+    taskId: string,
+  ): Promise<{ featureId: string; roadmapId: string | null } | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select('feature_id')
+      .select(
+        'feature_id, feature:roadmap_features!roadmap_tasks_feature_id_fkey(roadmap_id)',
+      )
       .eq('id', taskId)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    return (data?.feature_id as string | null | undefined) ?? null;
+
+    const featureId = (data?.feature_id as string | null | undefined) ?? null;
+    if (!featureId) return null;
+
+    // PostgREST types a to-one embed as an object, but the generated client
+    // widens it to a possible array — normalize both shapes.
+    const embedded = (data as { feature?: unknown } | null)?.feature;
+    const feature = (Array.isArray(embedded) ? embedded[0] : embedded) as
+      | { roadmap_id?: string | null }
+      | null
+      | undefined;
+
+    return { featureId, roadmapId: feature?.roadmap_id ?? null };
   }
 
   /**
@@ -123,8 +176,8 @@ export class RoadmapAuthorizationService {
     if (ref.epicId) return this.getRoadmapIdByEpicId(ref.epicId);
     if (ref.featureId) return this.getRoadmapIdByFeatureId(ref.featureId);
     if (ref.taskId) {
-      const featureId = await this.getFeatureIdByTaskId(ref.taskId);
-      return featureId ? this.getRoadmapIdByFeatureId(featureId) : null;
+      const scope = await this.getTaskScope(ref.taskId);
+      return scope?.roadmapId ?? null;
     }
     return null;
   }
@@ -137,6 +190,14 @@ export class RoadmapAuthorizationService {
    */
   async canViewRoadmap(roadmapId: string, userId: string): Promise<boolean> {
     const roadmap = await this.getRoadmapMeta(roadmapId);
+    return this.canViewResolvedRoadmap(roadmap, userId);
+  }
+
+  /** View check against already-loaded meta, so callers holding it don't re-read. */
+  private async canViewResolvedRoadmap(
+    roadmap: { project_id: string | null; owner_id: string | null } | null,
+    userId: string,
+  ): Promise<boolean> {
     if (!roadmap) return false;
     if (roadmap.owner_id === userId) return true;
     if (!roadmap.project_id) return false;
@@ -176,17 +237,29 @@ export class RoadmapAuthorizationService {
       taskId?: string | null;
     },
     userId: string,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.resolveRoadmapId(ref);
     if (!roadmapId) throw new NotFoundException('Not found');
-    await this.assertCanViewRoadmap(roadmapId, userId);
+
+    // Load meta once and reuse it for both the view verdict and the returned
+    // scope — assertCanViewRoadmap would read the same row a second time.
+    const meta = await this.getRoadmapMeta(roadmapId);
+    const ok = await this.canViewResolvedRoadmap(meta, userId);
+    if (!ok) throw new NotFoundException('Roadmap not found');
+
+    return {
+      roadmapId,
+      projectId: meta?.project_id ?? null,
+      ownerId: meta?.owner_id ?? null,
+      permissions: null,
+    };
   }
 
   async assertRoadmapPermission(
     roadmapId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmap = await this.getRoadmapMeta(roadmapId);
 
     if (!roadmap) {
@@ -201,72 +274,93 @@ export class RoadmapAuthorizationService {
           label: 'edit this roadmap',
         });
       }
-      return;
+      return {
+        roadmapId,
+        projectId: null,
+        ownerId: roadmap.owner_id,
+        permissions: null,
+      };
     }
 
-    await this.projectsService.assertProjectPermission(
+    const permissions = await this.projectsService.assertProjectPermission(
       roadmap.project_id,
       userId,
       permission,
     );
+
+    return {
+      roadmapId,
+      projectId: roadmap.project_id,
+      ownerId: roadmap.owner_id,
+      permissions,
+    };
   }
 
   async assertProjectRoadmapPermission(
     projectId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
-    await this.projectsService.assertProjectPermission(
+  ): Promise<ProjectWriteContext> {
+    const permissions = await this.projectsService.assertProjectPermission(
       projectId,
       userId,
       permission,
     );
+    return { projectId, permissions };
   }
 
   async assertMilestonePermission(
     milestoneId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.getRoadmapIdByMilestoneId(milestoneId);
     if (!roadmapId) throw new NotFoundException('Milestone not found');
-    await this.assertRoadmapPermission(roadmapId, userId, permission);
+    return this.assertRoadmapPermission(roadmapId, userId, permission);
   }
 
   async assertEpicPermission(
     epicId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.getRoadmapIdByEpicId(epicId);
     if (!roadmapId) throw new NotFoundException('Epic not found');
-    await this.assertRoadmapPermission(roadmapId, userId, permission);
+    return this.assertRoadmapPermission(roadmapId, userId, permission);
   }
 
   async assertFeaturePermission(
     featureId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.getRoadmapIdByFeatureId(featureId);
     if (!roadmapId) throw new NotFoundException('Feature not found');
-    await this.assertRoadmapPermission(roadmapId, userId, permission);
+    return this.assertRoadmapPermission(roadmapId, userId, permission);
   }
 
   async assertTaskPermission(
     taskId: string,
     userId: string,
     permission: RoadmapPermission,
-  ): Promise<void> {
-    const featureId = await this.getFeatureIdByTaskId(taskId);
-    if (!featureId) throw new NotFoundException('Task not found');
-    await this.assertFeaturePermission(featureId, userId, permission);
+  ): Promise<TaskWriteContext> {
+    // One query resolves both parents (see getTaskScope), so this walk costs
+    // two round-trips instead of the three the feature-delegating form took.
+    const scope = await this.getTaskScope(taskId);
+    if (!scope) throw new NotFoundException('Task not found');
+    if (!scope.roadmapId) throw new NotFoundException('Feature not found');
+    const ctx = await this.assertRoadmapPermission(
+      scope.roadmapId,
+      userId,
+      permission,
+    );
+    return { ...ctx, featureId: scope.featureId };
   }
 
   async assertRoadmapCommentPermission(
     roadmapId: string,
     userId: string,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmap = await this.getRoadmapMeta(roadmapId);
 
     if (!roadmap) {
@@ -281,50 +375,69 @@ export class RoadmapAuthorizationService {
           label: 'edit this roadmap',
         });
       }
-      return;
+      return {
+        roadmapId,
+        projectId: null,
+        ownerId: roadmap.owner_id,
+        permissions: null,
+      };
     }
 
-    await this.projectsService.assertProjectAnyPermission(
+    const permissions = await this.projectsService.assertProjectAnyPermission(
       roadmap.project_id,
       userId,
       ['roadmap.comment', 'roadmap.edit'],
     );
+
+    return {
+      roadmapId,
+      projectId: roadmap.project_id,
+      ownerId: roadmap.owner_id,
+      permissions,
+    };
   }
 
   async assertProjectRoadmapCommentPermission(
     projectId: string,
     userId: string,
-  ): Promise<void> {
-    await this.projectsService.assertProjectAnyPermission(projectId, userId, [
-      'roadmap.comment',
-      'roadmap.edit',
-    ]);
+  ): Promise<ProjectWriteContext> {
+    const permissions = await this.projectsService.assertProjectAnyPermission(
+      projectId,
+      userId,
+      ['roadmap.comment', 'roadmap.edit'],
+    );
+    return { projectId, permissions };
   }
 
   async assertEpicCommentPermission(
     epicId: string,
     userId: string,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.getRoadmapIdByEpicId(epicId);
     if (!roadmapId) throw new NotFoundException('Epic not found');
-    await this.assertRoadmapCommentPermission(roadmapId, userId);
+    return this.assertRoadmapCommentPermission(roadmapId, userId);
   }
 
   async assertFeatureCommentPermission(
     featureId: string,
     userId: string,
-  ): Promise<void> {
+  ): Promise<RoadmapWriteContext> {
     const roadmapId = await this.getRoadmapIdByFeatureId(featureId);
     if (!roadmapId) throw new NotFoundException('Feature not found');
-    await this.assertRoadmapCommentPermission(roadmapId, userId);
+    return this.assertRoadmapCommentPermission(roadmapId, userId);
   }
 
   async assertTaskCommentPermission(
     taskId: string,
     userId: string,
-  ): Promise<void> {
-    const featureId = await this.getFeatureIdByTaskId(taskId);
-    if (!featureId) throw new NotFoundException('Task not found');
-    await this.assertFeatureCommentPermission(featureId, userId);
+  ): Promise<TaskWriteContext> {
+    const scope = await this.getTaskScope(taskId);
+    if (!scope) throw new NotFoundException('Task not found');
+    if (!scope.roadmapId) throw new NotFoundException('Feature not found');
+    const ctx = await this.assertRoadmapCommentPermission(
+      scope.roadmapId,
+      userId,
+    );
+    return { ...ctx, featureId: scope.featureId };
   }
 }

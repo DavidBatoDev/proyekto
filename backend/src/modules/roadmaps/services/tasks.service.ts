@@ -9,8 +9,13 @@ import {
   UpdateTaskDto,
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
-import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import {
+  RoadmapAuthorizationService,
+  type TaskWriteContext,
+} from './roadmap-authorization.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import { getPermission } from '../../projects/permissions/project-permissions';
+import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
 
@@ -46,17 +51,14 @@ export class TasksService {
   }
 
   async create(dto: CreateTaskDto, userId: string) {
-    await this.roadmapAuthz.assertFeaturePermission(
+    const ctx = await this.roadmapAuthz.assertFeaturePermission(
       dto.feature_id,
       userId,
       'roadmap.create_tasks',
     );
     const task = await this.repo.create(dto, userId);
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ featureId: dto.feature_id }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
     return task;
   }
 
@@ -81,6 +83,8 @@ export class TasksService {
       userId,
     );
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
+    // ensureTimerFeature just resolved (or created) the roadmap chain, so this
+    // is the one place a lookup is genuinely still needed.
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId }),
       userId,
@@ -91,12 +95,17 @@ export class TasksService {
   async update(id: string, dto: UpdateTaskDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
-    await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
+      id,
+      userId,
+      'roadmap.edit',
+    );
     // (Un)assigning members is a distinct capability: a per-user override can
     // grant task editing while withholding roadmap.assign. Only enforce it when
-    // the update actually touches an assignee field.
+    // the update actually touches an assignee field — and answer it from the
+    // permission set the walk above already resolved rather than re-walking.
     if (dto.assignee_ids !== undefined || dto.assignee_id !== undefined) {
-      await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.assign');
+      this.assertAssignCapability(ctx);
     }
     const task = await this.repo.update(id, dto, userId);
     // Notify only assignees that are newly added by this update.
@@ -107,11 +116,20 @@ export class TasksService {
     if (newlyAssigned.length) {
       await this.notifyTaskAssignees(task, newlyAssigned, userId);
     }
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ taskId: id }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
     return task;
+  }
+
+  /**
+   * In-memory `roadmap.assign` check against an already-resolved context.
+   * A personal roadmap has no permission set — reaching here means the owner
+   * check in the authz walk already passed, so assignment is allowed.
+   */
+  private assertAssignCapability(ctx: TaskWriteContext): void {
+    if (!ctx.permissions) return;
+    if (!getPermission(ctx.permissions, 'roadmap.assign')) {
+      throw new MissingPermissionException({ path: 'roadmap.assign' });
+    }
   }
 
   async getHistory(id: string, userId: string) {
@@ -120,35 +138,28 @@ export class TasksService {
   }
 
   async bulkReorder(featureId: string, dto: BulkReorderDto, userId: string) {
-    await this.roadmapAuthz.assertFeaturePermission(
+    const ctx = await this.roadmapAuthz.assertFeaturePermission(
       featureId,
       userId,
       'roadmap.edit_tasks',
     );
     const reordered = await this.repo.bulkReorder(featureId, dto);
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ featureId }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
     return reordered;
   }
 
   async remove(id: string, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
-    await this.roadmapAuthz.assertTaskPermission(
+    // The authz walk resolves the owning roadmap before the delete, so the
+    // notify target survives the row going away.
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
       id,
       userId,
       'roadmap.edit_tasks',
     );
-    // The parent feature outlives the task — resolve via it (no post-delete read).
-    const featureId =
-      typeof existing.feature_id === 'string' ? existing.feature_id : null;
     await this.repo.remove(id);
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ featureId }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
   }
 
   private async ensureTimerFeature(

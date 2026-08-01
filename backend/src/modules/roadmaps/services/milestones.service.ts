@@ -48,48 +48,40 @@ export class MilestonesService {
   async update(id: string, dto: UpdateMilestoneDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Milestone not found');
-    await this.roadmapAuthz.assertMilestonePermission(
+    const ctx = await this.roadmapAuthz.assertMilestonePermission(
       id,
       userId,
       'roadmap.edit',
     );
     const milestone = await this.repo.update(id, dto);
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ milestoneId: id }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
     return milestone;
   }
 
   async reorder(id: string, dto: ReorderDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Milestone not found');
-    await this.roadmapAuthz.assertMilestonePermission(
+    const ctx = await this.roadmapAuthz.assertMilestonePermission(
       id,
       userId,
       'roadmap.edit',
     );
     const milestone = await this.repo.reorder(id, dto);
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ milestoneId: id }),
-      userId,
-    );
+    this.notify(ctx.roadmapId, userId);
     return milestone;
   }
 
   async remove(id: string, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Milestone not found');
-    await this.roadmapAuthz.assertMilestonePermission(
+    // The authz walk already resolved the owning roadmap, and it did so before
+    // the delete — no post-delete re-read needed.
+    const ctx = await this.roadmapAuthz.assertMilestonePermission(
       id,
       userId,
       'roadmap.edit',
     );
-    // Resolve before deletion — the row is gone once removed.
-    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({
-      milestoneId: id,
-    });
     await this.repo.remove(id);
-    this.notify(roadmapId, userId);
+    this.notify(ctx.roadmapId, userId);
   }
 }
