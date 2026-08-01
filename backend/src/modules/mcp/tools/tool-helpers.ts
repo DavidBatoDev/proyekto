@@ -17,6 +17,7 @@ import type { RoadmapAiSessionsService } from '../../roadmaps/services/roadmap-a
 import type { ChatService } from '../../chat/chat.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { McpScope } from '../mcp-scopes';
+import type { RoadmapVisual } from '../roadmap-visual';
 import { hasScope } from '../mcp-scopes';
 
 /** The identity + grants resolved by McpAuthGuard for one request. */
@@ -101,14 +102,92 @@ export function ok(data: unknown) {
   };
 }
 
+interface VisualResultOptions {
+  enabled: boolean;
+  create: (data: unknown) => Promise<RoadmapVisual> | RoadmapVisual;
+}
+
+function structuredData(data: unknown): Record<string, unknown> {
+  return data !== null && typeof data === 'object' && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : { data };
+}
+
+async function okWithVisual(data: unknown, visual: VisualResultOptions) {
+  const json = {
+    type: 'text' as const,
+    text: JSON.stringify(data, null, 2),
+  };
+  if (!visual.enabled) return { content: [json] };
+
+  try {
+    const rendered = await visual.create(data);
+    return {
+      content: [
+        json,
+        {
+          type: 'resource' as const,
+          resource: {
+            uri: rendered.uri,
+            mimeType: 'image/svg+xml',
+            text: rendered.svg,
+          },
+          annotations: {
+            audience: ['user' as const],
+            priority: 0.8,
+          },
+        },
+        {
+          type: 'image' as const,
+          data: rendered.pngBase64,
+          mimeType: 'image/png',
+          annotations: {
+            audience: ['user' as const],
+            priority: 1,
+          },
+        },
+      ],
+      structuredContent: {
+        ...structuredData(data),
+        visual: {
+          svg_uri: rendered.uri,
+          svg_mime_type: 'image/svg+xml',
+          inline_mime_type: 'image/png',
+          alt: rendered.alt,
+        },
+      },
+    };
+  } catch {
+    const warning = {
+      code: 'VISUAL_RENDER_FAILED',
+      message:
+        'The roadmap data was returned, but its visual could not be generated.',
+    };
+    return {
+      content: [
+        json,
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ visual_warning: warning }),
+        },
+      ],
+      structuredContent: {
+        ...structuredData(data),
+        visual_warning: warning,
+      },
+    };
+  }
+}
+
 /**
  * Run a tool body and normalize any thrown error into a structured MCP error
  * result (isError:true) with a stable code — Nest HttpExceptions are mapped by
  * status so the host model sees FORBIDDEN/NOT_FOUND rather than a raw 500.
  */
-export async function runTool(fn: () => Promise<unknown>) {
+export async function runTool(fn: () => unknown, visual?: VisualResultOptions) {
   try {
-    return ok(await fn());
+    const data = await fn();
+    return visual ? okWithVisual(data, visual) : ok(data);
   } catch (err) {
     const { code, message } = normalizeError(err);
     return {

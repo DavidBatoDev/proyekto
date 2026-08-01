@@ -23,7 +23,7 @@ function depsWith(scopes: string[], services: Partial<McpToolDeps['s']> = {}) {
       roadmapAi: {
         getContextSummary: jest.fn(),
         searchContextNodes: jest.fn(),
-        listChangeHistory: jest.fn(async () => []),
+        listChangeHistory: jest.fn(() => Promise.resolve([])),
       },
       roadmaps: { findByProjectId: jest.fn(), findByUser: jest.fn() },
       maxPageSize: 100,
@@ -61,7 +61,7 @@ describe('MCP roadmap_list_changes', () => {
   });
 
   it('defaults to withholding the operations payload', async () => {
-    const listChangeHistory = jest.fn(async () => []);
+    const listChangeHistory = jest.fn(() => Promise.resolve([]));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
       roadmapAi: { listChangeHistory } as any,
@@ -78,7 +78,7 @@ describe('MCP roadmap_list_changes', () => {
   });
 
   it('passes include_operations and the before cursor through', async () => {
-    const listChangeHistory = jest.fn(async () => []);
+    const listChangeHistory = jest.fn(() => Promise.resolve([]));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
       roadmapAi: { listChangeHistory } as any,
@@ -100,7 +100,7 @@ describe('MCP roadmap_list_changes', () => {
   });
 
   it('clamps an oversized limit to the configured page ceiling', async () => {
-    const listChangeHistory = jest.fn(async () => []);
+    const listChangeHistory = jest.fn(() => Promise.resolve([]));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
       roadmapAi: { listChangeHistory } as any,
@@ -126,7 +126,9 @@ describe('MCP roadmap_list_changes', () => {
     };
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
-      roadmapAi: { listChangeHistory: jest.fn(async () => [row]) } as any,
+      roadmapAi: {
+        listChangeHistory: jest.fn(() => Promise.resolve([row])),
+      } as any,
     });
     registerRoadmapTools(server, deps);
 
@@ -152,5 +154,79 @@ describe('MCP roadmap_list_changes', () => {
 
     expect(isError(res)).toBe(true);
     expect(errorCode(res)).toBe('FORBIDDEN');
+  });
+});
+
+describe('MCP roadmap visual results', () => {
+  const summary = {
+    roadmap_id: '11111111-1111-1111-1111-111111111111',
+    title: 'Launch',
+    status: 'active',
+    revision_token: '2026-07-29T00:00:00.000Z',
+    epic_count: 1,
+    feature_count: 1,
+    task_count: 2,
+    epics: [
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        title: 'MVP',
+        status: 'in_progress',
+        feature_count: 1,
+        features: [
+          {
+            id: '33333333-3333-3333-3333-333333333333',
+            title: 'Sign in',
+            status: 'todo',
+          },
+        ],
+      },
+    ],
+    milestones: [],
+  };
+
+  it('returns mixed JSON, SVG, and PNG content by default', async () => {
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmapAi: {
+        getContextSummary: jest.fn(() => Promise.resolve(summary)),
+      } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_summary({
+      roadmap_id: summary.roadmap_id,
+    });
+
+    expect(res.content.map((item: any) => item.type)).toEqual([
+      'text',
+      'resource',
+      'image',
+    ]);
+    expect(payload(res)).toEqual(summary);
+    expect(res.content[1].resource.mimeType).toBe('image/svg+xml');
+    expect(res.content[1].resource.text).toContain('MVP');
+    expect(res.content[2].mimeType).toBe('image/png');
+    expect(
+      Buffer.from(res.content[2].data, 'base64').subarray(1, 4).toString(),
+    ).toBe('PNG');
+  });
+
+  it('returns the unchanged lean JSON result when visuals are disabled', async () => {
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmapAi: {
+        getContextSummary: jest.fn(() => Promise.resolve(summary)),
+      } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_summary({
+      roadmap_id: summary.roadmap_id,
+      include_visual: false,
+    });
+
+    expect(res.content).toHaveLength(1);
+    expect(res.content[0].type).toBe('text');
+    expect(payload(res)).toEqual(summary);
   });
 });

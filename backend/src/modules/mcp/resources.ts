@@ -7,6 +7,7 @@ import {
   requireScope,
   type McpToolDeps,
 } from './tools/tool-helpers';
+import { createRoadmapVisual, renderRoadmapSvg } from './roadmap-visual';
 
 /**
  * Addressable read resources — a convenience mirror of the read tools for hosts
@@ -78,6 +79,67 @@ export function registerResources(server: McpServer, deps: McpToolDeps) {
         uid,
       );
       return json(uri.href, summary);
+    },
+  );
+
+  server.registerResource(
+    'roadmap-visual-svg',
+    new ResourceTemplate('proyekto://roadmaps/{roadmapId}/visual.svg', {
+      list: undefined,
+    }),
+    {
+      title: 'Roadmap visual (SVG)',
+      description: 'A compact Proyekto roadmap diagram in scalable SVG format.',
+      mimeType: 'image/svg+xml',
+    },
+    async (uri, { roadmapId }) => {
+      requireScope(deps.caller, 'roadmaps:read');
+      const summary = await deps.s.roadmapAi.getContextSummary(
+        String(roadmapId),
+        {},
+        uid,
+      );
+      const visual = renderRoadmapSvg('summary', summary);
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'image/svg+xml',
+            text: visual.svg,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerResource(
+    'roadmap-visual-png',
+    new ResourceTemplate('proyekto://roadmaps/{roadmapId}/visual.png', {
+      list: undefined,
+    }),
+    {
+      title: 'Roadmap visual (PNG)',
+      description:
+        'A compact Proyekto roadmap diagram in a chat-compatible PNG format.',
+      mimeType: 'image/png',
+    },
+    async (uri, { roadmapId }) => {
+      requireScope(deps.caller, 'roadmaps:read');
+      const summary = await deps.s.roadmapAi.getContextSummary(
+        String(roadmapId),
+        {},
+        uid,
+      );
+      const visual = createRoadmapVisual('summary', summary, uri.href);
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'image/png',
+            blob: visual.pngBase64,
+          },
+        ],
+      };
     },
   );
 }

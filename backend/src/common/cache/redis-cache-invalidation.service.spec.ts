@@ -68,6 +68,7 @@ describe('RedisCacheInvalidationService', () => {
     );
     expect(cloudflarePurge.purgePaths).toHaveBeenCalledWith([
       '/api/roadmap-templates',
+      '/api/roadmap-templates/featured',
     ]);
   });
 
