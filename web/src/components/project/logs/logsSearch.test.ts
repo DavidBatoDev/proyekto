@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildLogsSearch,
 	hasActiveLogsFilters,
+	normalizeLogsSearch,
 	parseLogsSearch,
 	presetToFrom,
 } from "./logsSearch";
@@ -10,9 +11,9 @@ const UUID = "11111111-2222-3333-4444-555555555555";
 
 describe("parseLogsSearch", () => {
 	it("defaults to no filters", () => {
-		expect(parseLogsSearch({})).toEqual({
-			family: undefined,
-			actor: undefined,
+		expect(normalizeLogsSearch(parseLogsSearch({}))).toEqual({
+			family: [],
+			actor: [],
 			roadmap: undefined,
 			since: "all",
 		});
@@ -20,10 +21,12 @@ describe("parseLogsSearch", () => {
 
 	it("keeps valid values", () => {
 		expect(
-			parseLogsSearch({ family: "task", actor: UUID, since: "7d" }),
+			normalizeLogsSearch(
+				parseLogsSearch({ family: "task", actor: UUID, since: "7d" }),
+			),
 		).toEqual({
-			family: "task",
-			actor: UUID,
+			family: ["task"],
+			actor: [UUID],
 			roadmap: undefined,
 			since: "7d",
 		});
@@ -34,7 +37,16 @@ describe("parseLogsSearch", () => {
 	 * enum members with a 400. Dropping them means a hand-edited or stale URL
 	 * ignores a bad filter instead of turning the page into an error.
 	 */
-	it("drops an unknown family", () => {
+	it("keeps repeated values as a list", () => {
+		// The sidebar filters with checkboxes, so the URL carries repeats.
+		expect(parseLogsSearch({ family: ["task", "epic"] }).family).toEqual([
+			"task",
+			"epic",
+		]);
+	});
+
+	it("drops an unknown family but keeps the valid siblings", () => {
+		expect(parseLogsSearch({ family: ["task", "nope"] }).family).toEqual(["task"]);
 		expect(parseLogsSearch({ family: "nope" }).family).toBeUndefined();
 	});
 
@@ -44,7 +56,7 @@ describe("parseLogsSearch", () => {
 	});
 
 	it("clamps an unknown preset to all", () => {
-		expect(parseLogsSearch({ since: "forever" }).since).toBe("all");
+		expect(parseLogsSearch({ since: "forever" }).since).toBeUndefined();
 	});
 
 	it("ignores non-string values", () => {
@@ -54,20 +66,24 @@ describe("parseLogsSearch", () => {
 
 describe("buildLogsSearch", () => {
 	it("round-trips", () => {
-		const value = {
-			family: "epic",
-			actor: UUID,
-			roadmap: undefined,
-			since: "30d" as const,
-		};
-		expect(parseLogsSearch(buildLogsSearch(value))).toEqual(value);
+		const value = { family: ["epic"], actor: [UUID], since: "30d" as const };
+		const built = buildLogsSearch(value) as Record<string, unknown>;
+		expect(parseLogsSearch(built)).toEqual(value);
+	});
+
+	// TanStack Router serialises whatever validateSearch returns straight into
+	// the URL, so any default left in the object sticks there forever and makes
+	// "Reset" look broken.
+	it("omits every default from the parsed shape", () => {
+		expect(parseLogsSearch({})).toEqual({});
+		expect(parseLogsSearch({ since: "all", family: [] })).toEqual({});
 	});
 
 	it("omits defaults so the URL stays clean", () => {
 		expect(
 			buildLogsSearch({
-				family: undefined,
-				actor: undefined,
+				family: [],
+				actor: [],
 				roadmap: undefined,
 				since: "all",
 			}),

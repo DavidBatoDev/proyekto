@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsISO8601,
@@ -19,6 +20,18 @@ import {
 
 export const ACTIVITY_DEFAULT_LIMIT = 50;
 export const ACTIVITY_MAX_LIMIT = 100;
+
+/**
+ * Normalise a repeatable query param to an array.
+ *
+ * Express/qs yields a string for `?family=task` and an array for
+ * `?family=task&family=epic`; without this the single-value case would fail
+ * `@IsArray` and 400 a perfectly reasonable request.
+ */
+function toStringArray({ value }: { value: unknown }): unknown {
+  if (value === undefined || value === null) return value;
+  return Array.isArray(value) ? value : [value];
+}
 
 /**
  * Query for GET /projects/:projectId/activity.
@@ -42,10 +55,18 @@ export class ListProjectActivityQueryDto {
   @MaxLength(256)
   cursor?: string;
 
-  /** Action family, e.g. 'task' — ignored when `action` is given. */
+  /**
+   * Action families, e.g. ['task','epic'] — ignored when `action` is given.
+   *
+   * Accepts one value or many: the Logs sidebar filters with checkboxes, so
+   * `?family=task&family=epic` must mean OR, not "last one wins". A bare
+   * `?family=task` still works for a single-value caller.
+   */
   @IsOptional()
-  @IsIn(ACTION_FAMILIES as unknown as string[])
-  family?: string;
+  @Transform(toStringArray)
+  @IsArray()
+  @IsIn(ACTION_FAMILIES as unknown as string[], { each: true })
+  family?: string[];
 
   /** Exact action. Wins over `family`. */
   @IsOptional()
@@ -56,7 +77,13 @@ export class ListProjectActivityQueryDto {
   @IsIn(ACTIVITY_ENTITY_TYPES as unknown as string[])
   entity_type?: string;
 
-  @IsOptional() @IsUUID() actor_id?: string;
+  /** One or many actors, same OR semantics as `family`. */
+  @IsOptional()
+  @Transform(toStringArray)
+  @IsArray()
+  @IsUUID('all', { each: true })
+  actor_id?: string[];
+
   @IsOptional() @IsUUID() roadmap_id?: string;
   @IsOptional() @IsUUID() entity_id?: string;
 

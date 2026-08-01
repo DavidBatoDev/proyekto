@@ -10,11 +10,44 @@ export const DATE_PRESET_LABELS: Record<DatePreset, string> = {
 	"30d": "Last 30 days",
 };
 
+/**
+ * The SPARSE shape written to the URL.
+ *
+ * Every field is optional and omitted when it holds its default, because
+ * TanStack Router serialises whatever validateSearch returns — returning
+ * `{ actor: [], since: "all" }` would leave `?actor=[]&since=all` glued to the
+ * URL forever and make "Reset" look broken. Use `normalizeLogsSearch` to read
+ * it with defaults applied.
+ */
 export interface LogsSearch {
-	family?: string;
-	actor?: string;
+	/** Multi-select: OR within the list. Absent means "all". */
+	family?: string[];
+	actor?: string[];
+	roadmap?: string;
+	since?: DatePreset;
+}
+
+/** The DENSE shape components read. */
+export interface ResolvedLogsSearch {
+	family: string[];
+	actor: string[];
 	roadmap?: string;
 	since: DatePreset;
+}
+
+export function normalizeLogsSearch(value: LogsSearch): ResolvedLogsSearch {
+	return {
+		family: value.family ?? [],
+		actor: value.actor ?? [],
+		roadmap: value.roadmap,
+		since: value.since ?? "all",
+	};
+}
+
+/** URL params carry repeats or a single value; normalise both to a list. */
+function toList(value: unknown): string[] {
+	if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
+	return typeof value === "string" && value ? [value] : [];
 }
 
 const UUID_RE =
@@ -29,16 +62,11 @@ const UUID_RE =
  * an error instead of just ignoring a bad filter.
  */
 export function parseLogsSearch(search: Record<string, unknown>): LogsSearch {
-	const family =
-		typeof search.family === "string" &&
-		(ACTION_FAMILIES as readonly string[]).includes(search.family)
-			? search.family
-			: undefined;
+	const family = toList(search.family).filter((f) =>
+		(ACTION_FAMILIES as readonly string[]).includes(f),
+	);
 
-	const actor =
-		typeof search.actor === "string" && UUID_RE.test(search.actor)
-			? search.actor
-			: undefined;
+	const actor = toList(search.actor).filter((a) => UUID_RE.test(a));
 
 	const roadmap =
 		typeof search.roadmap === "string" && UUID_RE.test(search.roadmap)
@@ -51,22 +79,45 @@ export function parseLogsSearch(search: Record<string, unknown>): LogsSearch {
 			? (search.since as DatePreset)
 			: "all";
 
-	return { family, actor, roadmap, since };
+	// Omit defaults so they never reach the URL.
+	return {
+		...(family.length ? { family } : {}),
+		...(actor.length ? { actor } : {}),
+		...(roadmap ? { roadmap } : {}),
+		...(since !== "all" ? { since } : {}),
+	};
 }
 
 /** Inverse of parseLogsSearch — omits defaults so the URL stays clean. */
-export function buildLogsSearch(value: LogsSearch): Record<string, string> {
-	const out: Record<string, string> = {};
-	if (value.family) out.family = value.family;
-	if (value.actor) out.actor = value.actor;
-	if (value.roadmap) out.roadmap = value.roadmap;
-	if (value.since && value.since !== "all") out.since = value.since;
-	return out;
+export function buildLogsSearch(value: LogsSearch): LogsSearch {
+	const resolved = normalizeLogsSearch(value);
+	return {
+		...(resolved.family.length ? { family: resolved.family } : {}),
+		...(resolved.actor.length ? { actor: resolved.actor } : {}),
+		...(resolved.roadmap ? { roadmap: resolved.roadmap } : {}),
+		...(resolved.since !== "all" ? { since: resolved.since } : {}),
+	};
 }
 
+/** Toggle one value in a multi-select list. */
+export function toggleInList(list: string[], value: string): string[] {
+	return list.includes(value)
+		? list.filter((v) => v !== value)
+		: [...list, value];
+}
+
+/** Clears every filter. Spread over the current search to reset. */
+export const EMPTY_LOGS_SEARCH: LogsSearch = {
+	family: undefined,
+	actor: undefined,
+	roadmap: undefined,
+	since: undefined,
+};
+
 export function hasActiveLogsFilters(value: LogsSearch): boolean {
+	const r = normalizeLogsSearch(value);
 	return Boolean(
-		value.family || value.actor || value.roadmap || value.since !== "all",
+		r.family.length || r.actor.length || r.roadmap || r.since !== "all",
 	);
 }
 

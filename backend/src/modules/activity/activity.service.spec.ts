@@ -162,7 +162,7 @@ describe('ActivityService.list', () => {
   describe('filters', () => {
     it('expands a family to its exact action list', async () => {
       const { service, calls } = build();
-      await service.list(PROJECT, USER, { family: 'milestone' });
+      await service.list(PROJECT, USER, { family: ['milestone'] });
 
       const [[column, actions]] = opArgs(calls, 'in');
       expect(column).toBe('action');
@@ -174,11 +174,32 @@ describe('ActivityService.list', () => {
       );
     });
 
+    it('ORs several families together', async () => {
+      // What a checkbox sidebar means: task OR epic, not "last one wins".
+      const { service, calls } = build();
+      await service.list(PROJECT, USER, { family: ['task', 'epic'] });
+
+      const [[, actions]] = opArgs(calls, 'in');
+      expect(actions).toContain('task.created');
+      expect(actions).toContain('epic.created');
+      expect(
+        actions.every(
+          (a: string) => a.startsWith('task.') || a.startsWith('epic.'),
+        ),
+      ).toBe(true);
+    });
+
+    it('ORs several actors together', async () => {
+      const { service, calls } = build();
+      await service.list(PROJECT, USER, { actor_id: ['a-1', 'a-2'] });
+      expect(opArgs(calls, 'in')).toContainEqual(['actor_id', ['a-1', 'a-2']]);
+    });
+
     it('lets an exact action win over family', async () => {
       const { service, calls } = build();
       await service.list(PROJECT, USER, {
         action: 'task.created',
-        family: 'epic',
+        family: ['epic'],
       });
 
       expect(opArgs(calls, 'eq')).toContainEqual(['action', 'task.created']);
@@ -188,7 +209,7 @@ describe('ActivityService.list', () => {
     it('passes the scalar filters through', async () => {
       const { service, calls } = build();
       await service.list(PROJECT, USER, {
-        actor_id: 'a-1',
+        actor_id: ['a-1'],
         roadmap_id: 'rm-1',
         entity_type: 'task',
         entity_id: 'e-1',
@@ -196,7 +217,7 @@ describe('ActivityService.list', () => {
       });
 
       const eqs = opArgs(calls, 'eq');
-      expect(eqs).toContainEqual(['actor_id', 'a-1']);
+      expect(opArgs(calls, 'in')).toContainEqual(['actor_id', ['a-1']]);
       expect(eqs).toContainEqual(['roadmap_id', 'rm-1']);
       expect(eqs).toContainEqual(['entity_type', 'task']);
       expect(eqs).toContainEqual(['entity_id', 'e-1']);

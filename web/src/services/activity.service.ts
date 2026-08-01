@@ -29,8 +29,9 @@ export interface ActivityPage {
 }
 
 export interface ActivityFilters {
-	family?: string;
-	actor_id?: string;
+	/** OR within the list; empty means "all". */
+	family?: string[];
+	actor_id?: string[];
 	roadmap_id?: string;
 	from?: string;
 	to?: string;
@@ -45,19 +46,21 @@ export const activityService = {
 		projectId: string,
 		params: ActivityFilters & { cursor?: string; limit?: number } = {},
 	): Promise<ActivityPage> {
+		// Built by hand rather than via axios' object serializer: multi-value
+		// filters must go out as REPEATED keys (`family=task&family=epic`), which
+		// is what qs on the Express side parses back into an array. Axios'
+		// default bracket form would arrive as a differently-named param.
+		const query = new URLSearchParams();
+		query.set("limit", String(params.limit ?? 50));
+		if (params.cursor) query.set("cursor", params.cursor);
+		for (const family of params.family ?? []) query.append("family", family);
+		for (const actor of params.actor_id ?? []) query.append("actor_id", actor);
+		if (params.roadmap_id) query.set("roadmap_id", params.roadmap_id);
+		if (params.from) query.set("from", params.from);
+		if (params.to) query.set("to", params.to);
+
 		const res = await apiClient.get<{ data: ActivityPage }>(
-			`/api/projects/${projectId}/activity`,
-			{
-				params: {
-					limit: params.limit ?? 50,
-					...(params.cursor ? { cursor: params.cursor } : {}),
-					...(params.family ? { family: params.family } : {}),
-					...(params.actor_id ? { actor_id: params.actor_id } : {}),
-					...(params.roadmap_id ? { roadmap_id: params.roadmap_id } : {}),
-					...(params.from ? { from: params.from } : {}),
-					...(params.to ? { to: params.to } : {}),
-				},
-			},
+			`/api/projects/${projectId}/activity?${query.toString()}`,
 		);
 		return res.data.data;
 	},

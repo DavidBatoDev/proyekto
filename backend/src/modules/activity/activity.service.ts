@@ -86,15 +86,24 @@ export class ActivityService {
       .eq('project_id', projectId);
 
     if (!canViewSensitive) query = query.eq('is_sensitive', false);
-    if (q.actor_id) query = query.eq('actor_id', q.actor_id);
     if (q.roadmap_id) query = query.eq('roadmap_id', q.roadmap_id);
     if (q.entity_type) query = query.eq('entity_type', q.entity_type);
     if (q.entity_id) query = query.eq('entity_id', q.entity_id);
 
+    // Multi-value filters are OR within themselves, AND across each other —
+    // the semantics a checkbox sidebar implies.
+    if (q.actor_id?.length) query = query.in('actor_id', q.actor_id);
+
     // Exact action wins over family. `.in` over `.like('action','task.%')`:
     // exact, and no wildcard-escaping question.
-    if (q.action) query = query.eq('action', q.action);
-    else if (q.family) query = query.in('action', actionsInFamily(q.family));
+    if (q.action) {
+      query = query.eq('action', q.action);
+    } else if (q.family?.length) {
+      query = query.in(
+        'action',
+        q.family.flatMap((family) => actionsInFamily(family)),
+      );
+    }
 
     if (q.from) query = query.gte('created_at', q.from);
 
