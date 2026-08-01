@@ -86,6 +86,23 @@ export const ACTIVITY_ACTIONS = {
   PROJECT_CONSULTANT_ASSIGNED: 'project.consultant_assigned',
   PROJECT_CONSULTANT_REASSIGNED: 'project.consultant_reassigned',
 
+  // ── MCP connector writes ──────────────────────────────────────────────────
+  // Emitted by mcp/tools/{task,comment,chat}-write.tools.ts since the MCP
+  // server shipped, and predating this file — mcp.task_update already has rows
+  // in production. They are namespaced rather than folded into the task.* /
+  // *_comment.* families on purpose: "who did this" is a person for the
+  // latter and an AI connector for these, which is exactly the distinction an
+  // audit reader is looking for.
+  MCP_TASK_CREATE: 'mcp.task_create',
+  MCP_TASK_UPDATE: 'mcp.task_update',
+  MCP_TASK_ASSIGN: 'mcp.task_assign',
+  MCP_TASK_COMMENT_ADD: 'mcp.task_comment_add',
+  MCP_EPIC_COMMENT_ADD: 'mcp.epic_comment_add',
+  MCP_FEATURE_COMMENT_ADD: 'mcp.feature_comment_add',
+  MCP_CHAT_SEND_MESSAGE: 'mcp.chat_send_message',
+  MCP_CHAT_MESSAGE_EDIT: 'mcp.chat_message_edit',
+  MCP_CHAT_MESSAGE_UNSEND: 'mcp.chat_message_unsend',
+
   // ── Pre-existing (chat + access). DO NOT RENAME — rows exist. ─────────────
   ACCESS_GRANTED: 'access.granted',
   ACCESS_REVOKED: 'access.revoked',
@@ -115,6 +132,8 @@ export const ACTIVITY_ENTITY_TYPES = [
   'project_member',
   'project_access',
   'chat_channel',
+  // Emitted by mcp/tools/chat-write.tools.ts.
+  'chat_message',
 ] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 
