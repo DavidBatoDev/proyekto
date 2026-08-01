@@ -37,6 +37,8 @@ jobs:
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
       ROADMAP_ACTIVITY_LOG_ENABLED: ${{ vars.ROADMAP_ACTIVITY_LOG_ENABLED }}
+      ACTIVITY_FLUSH_TIMEOUT_MS: ${{ vars.ACTIVITY_FLUSH_TIMEOUT_MS }}
+      ACTIVITY_MAX_EVENTS_PER_REQUEST: ${{ vars.ACTIVITY_MAX_EVENTS_PER_REQUEST }}
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
       MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
       MCP_CHAT_WRITE_ENABLED: ${{ vars.MCP_CHAT_WRITE_ENABLED }}
@@ -170,6 +172,20 @@ jobs:
             echo "Roadmap activity log override for this deploy: ${ROADMAP_ACTIVITY_LOG_ENABLED}."
           else
             echo "Roadmap activity log enabled (default; set the ROADMAP_ACTIVITY_LOG_ENABLED repo var to 'false' to disable)."
+          fi
+
+          # Activity-log tuning knobs. Both have code defaults (800ms flush
+          # timeout, 100 events per request), so they are only forwarded when a
+          # repo var is actually set. Declared here because Cloud Run
+          # full-replaces env vars: a var validated in env.validation.ts but
+          # absent from this workflow can never take effect in prod.
+          if [[ -n "${ACTIVITY_FLUSH_TIMEOUT_MS:-}" ]]; then
+            ENV_VARS="${ENV_VARS},ACTIVITY_FLUSH_TIMEOUT_MS=${ACTIVITY_FLUSH_TIMEOUT_MS}"
+            echo "Activity flush timeout override: ${ACTIVITY_FLUSH_TIMEOUT_MS}ms."
+          fi
+          if [[ -n "${ACTIVITY_MAX_EVENTS_PER_REQUEST:-}" ]]; then
+            ENV_VARS="${ENV_VARS},ACTIVITY_MAX_EVENTS_PER_REQUEST=${ACTIVITY_MAX_EVENTS_PER_REQUEST}"
+            echo "Activity per-request event cap override: ${ACTIVITY_MAX_EVENTS_PER_REQUEST}."
           fi
 
           # Google Calendar / Meet per-user OAuth (meeting scheduling Phase 5).
