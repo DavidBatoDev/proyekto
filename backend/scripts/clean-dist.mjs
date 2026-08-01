@@ -8,6 +8,15 @@ const backendDir = resolve(scriptDir, '..');
 const distPath = resolve(backendDir, 'dist');
 const stalePrefix = 'dist.__stale__';
 
+// `--light`: used by `dev`/`start:debug`. Only clears Windows read-only
+// attributes on the existing dist/ tree (the original EPERM trigger for the
+// old Nest `deleteOutDir: true` path) WITHOUT renaming or deleting anything,
+// so dist/tsconfig.build.tsbuildinfo survives and `tsc --incremental` (via
+// `nest start --watch`) does a fast differential recompile instead of a full
+// cold rebuild on every dev-server restart. The full nuke-and-rebuild stays
+// reserved for `build`/`vercel-build`, where a clean compile is expected.
+const lightMode = process.argv.includes('--light');
+
 function clearReadOnly(targetPath) {
   if (process.platform !== 'win32') {
     return;
@@ -45,6 +54,12 @@ function scheduleDelete(targetPath) {
 
 if (process.platform === 'win32') {
   clearReadOnly(distPath);
+}
+
+if (lightMode) {
+  // Defensive-only: attributes cleared above. Never rename/delete dist/ so
+  // the incremental build cache (tsconfig.build.tsbuildinfo) stays intact.
+  process.exit(0);
 }
 
 try {

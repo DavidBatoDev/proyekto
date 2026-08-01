@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -10,6 +12,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { CronSecretGuard } from '../../common/guards/cron-secret.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { TeamTimeService } from './team-time.service';
@@ -29,13 +33,24 @@ import {
 export class TeamTimeController {
   constructor(private readonly service: TeamTimeService) {}
 
+  /**
+   * Scheduler-triggered (no user session): repair task_time_logs rows whose
+   * team_id is NULL. Auth is the shared cron secret; @Public skips the
+   * Supabase JWT guard, matching POST /api/invoices/cron/run (reuses
+   * MEETINGS_CRON_SECRET rather than minting a new one).
+   */
+  @Post('cron/heal-orphaned-logs')
+  @Public()
+  @UseGuards(CronSecretGuard)
+  @HttpCode(HttpStatus.OK)
+  healOrphanedLogs() {
+    return this.service.healOrphanedTeamIds();
+  }
+
   // ─── log mutations ───────────────────────────────────────────────────
 
   @Post('logs/start')
-  start(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: StartTimeLogDto,
-  ) {
+  start(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartTimeLogDto) {
     return this.service.startLog(user.id, dto);
   }
 
@@ -65,10 +80,7 @@ export class TeamTimeController {
   }
 
   @Post('logs/:logId/pause')
-  pause(
-    @Param('logId') logId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  pause(@Param('logId') logId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.pauseLog(user.id, logId);
   }
 
