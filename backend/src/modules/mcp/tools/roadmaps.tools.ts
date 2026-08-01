@@ -1,8 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { createRoadmapVisual, type RoadmapVisualKind } from '../roadmap-visual';
+import { ROADMAP_SUMMARY_APP_URI } from '../roadmap-app';
 import {
   clampLimit,
+  defineAppTool,
   defineTool,
   requireScope,
   runTool,
@@ -73,7 +75,7 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
       ),
   );
 
-  defineTool(
+  defineAppTool(
     server,
     'roadmap_get_summary',
     {
@@ -85,6 +87,12 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
         include_visual: z.boolean().optional(),
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
+      _meta: {
+        ui: {
+          resourceUri: ROADMAP_SUMMARY_APP_URI,
+          visibility: ['model'],
+        },
+      },
     },
     async ({ roadmap_id, include_visual }) =>
       runTool(

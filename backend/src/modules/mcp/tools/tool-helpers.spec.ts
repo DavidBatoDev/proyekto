@@ -143,6 +143,7 @@ describe('MCP tool helpers', () => {
       expect(create).not.toHaveBeenCalled();
       expect(res.content).toHaveLength(1);
       expect(res.content[0].type).toBe('text');
+      expect(res.structuredContent).toEqual({ ok: 1 });
     });
   });
 });

@@ -1,4 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "scripts", "dist", "dist.__stale__*", "**/*spec.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "scripts",
+    "mcp-apps",
+    "dist",
+    "dist.__stale__*",
+    "**/*spec.ts"
+  ]
 }

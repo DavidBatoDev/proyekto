@@ -4,16 +4,18 @@ import type { McpToolDeps } from './tool-helpers';
 /** Fake McpServer that captures each tool's handler by name. */
 function captureServer() {
   const handlers: Record<string, (args: any) => Promise<any>> = {};
+  const definitions: Record<string, any> = {};
   const server = {
     registerTool: (
       name: string,
-      _cfg: unknown,
+      cfg: unknown,
       cb: (a: any) => Promise<any>,
     ) => {
+      definitions[name] = cfg;
       handlers[name] = cb;
     },
   };
-  return { server: server as any, handlers };
+  return { server: server as any, handlers, definitions };
 }
 
 function depsWith(scopes: string[], services: Partial<McpToolDeps['s']> = {}) {
@@ -184,6 +186,21 @@ describe('MCP roadmap visual results', () => {
     milestones: [],
   };
 
+  it('links the summary tool to the roadmap MCP App', () => {
+    const { server, definitions } = captureServer();
+    registerRoadmapTools(server, depsWith(['roadmaps:read']));
+
+    expect(definitions.roadmap_get_summary._meta).toEqual(
+      expect.objectContaining({
+        ui: {
+          resourceUri: 'ui://proyekto/roadmap-summary.html',
+          visibility: ['model'],
+        },
+        'ui/resourceUri': 'ui://proyekto/roadmap-summary.html',
+      }),
+    );
+  });
+
   it('returns mixed JSON, SVG, and PNG content by default', async () => {
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
@@ -228,5 +245,6 @@ describe('MCP roadmap visual results', () => {
     expect(res.content).toHaveLength(1);
     expect(res.content[0].type).toBe('text');
     expect(payload(res)).toEqual(summary);
+    expect(res.structuredContent).toEqual(summary);
   });
 });

@@ -118,7 +118,12 @@ async function okWithVisual(data: unknown, visual: VisualResultOptions) {
     type: 'text' as const,
     text: JSON.stringify(data, null, 2),
   };
-  if (!visual.enabled) return { content: [json] };
+  if (!visual.enabled) {
+    return {
+      content: [json],
+      structuredContent: structuredData(data),
+    };
+  }
 
   try {
     const rendered = await visual.create(data);
@@ -242,6 +247,16 @@ interface McpToolDef {
   annotations?: Record<string, unknown>;
 }
 
+interface McpAppToolDef extends McpToolDef {
+  _meta: {
+    ui: {
+      resourceUri: string;
+      visibility?: Array<'model' | 'app'>;
+    };
+    [key: string]: unknown;
+  };
+}
+
 /**
  * Register a read tool. Thin wrapper over `server.registerTool` that erases its
  * callback-arg generic inference — the SDK infers handler arg types from the zod
@@ -262,6 +277,29 @@ export function defineTool(
       cb: (args: any) => Promise<unknown>,
     ) => void
   )(name, def, handler);
+}
+
+/** Register a tool whose result should render through a linked MCP App view. */
+export function defineAppTool(
+  server: McpServer,
+  name: string,
+  def: McpAppToolDef,
+  handler: (args: any) => Promise<unknown>,
+): void {
+  const normalized = {
+    ...def,
+    _meta: {
+      ...def._meta,
+      'ui/resourceUri': def._meta.ui.resourceUri,
+    },
+  };
+  (
+    server.registerTool as unknown as (
+      n: string,
+      d: McpAppToolDef,
+      cb: (args: any) => Promise<unknown>,
+    ) => void
+  )(name, normalized, handler);
 }
 
 /**

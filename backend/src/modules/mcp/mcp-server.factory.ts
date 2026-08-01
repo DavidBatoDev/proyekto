@@ -29,6 +29,7 @@ import { registerCommentWriteTools } from './tools/comment-write.tools';
 import { registerChatWriteTools } from './tools/chat-write.tools';
 import { registerAiSessionTools } from './tools/ai-sessions.tools';
 import { registerResources } from './resources';
+import { registerRoadmapApp } from './roadmap-app';
 import { registerPrompts } from './prompts';
 import type { McpCaller, McpServices } from './tools/tool-helpers';
 
@@ -115,6 +116,7 @@ export class McpServerFactory {
       registerChatWriteTools(server, deps);
     }
     registerResources(server, deps);
+    registerRoadmapApp(server);
     registerPrompts(server);
 
     return server;
