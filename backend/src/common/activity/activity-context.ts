@@ -20,6 +20,18 @@ export interface BufferedActivityEntry extends AuditEntry {
    * without a RETURNING read.
    */
   id: string;
+  /**
+   * When the action actually happened, stamped at buffer time rather than left
+   * to the column default.
+   *
+   * The flush is bounded (ACTIVITY_FLUSH_TIMEOUT_MS) so a slow insert can never
+   * hold a response open — but that means an insert CAN land after a later
+   * request's. Letting created_at default at insert time would then record the
+   * events out of order: observed in an e2e run where a 5.8s task-create
+   * flushed after the task-update that followed it. Stamping here keeps the
+   * timeline honest regardless of when the row lands.
+   */
+  occurredAt: string;
 }
 
 export interface ActivityBuffer {

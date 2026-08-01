@@ -13,6 +13,7 @@ function entry(action: string) {
     projectId: 'proj-1',
     action,
     entityType: 'task',
+    occurredAt: new Date().toISOString(),
   };
 }
 

@@ -65,7 +65,9 @@ export class AuditService {
   private toBufferedEntry(entry: AuditEntry): BufferedActivityEntry {
     // The id is minted here so the flush can insert with `return=minimal` and
     // still hand the knowledge outbox real row ids without a RETURNING read.
-    return { ...entry, id: randomUUID() };
+    // occurredAt is stamped here so a late-landing insert cannot reorder the
+    // timeline — see BufferedActivityEntry.
+    return { ...entry, id: randomUUID(), occurredAt: new Date().toISOString() };
   }
 
   /**
@@ -119,6 +121,7 @@ export class AuditService {
           entity_id: entry.entityId ?? null,
           roadmap_id: entry.roadmapId ?? null,
           is_sensitive: isSensitiveAction(entry.action),
+          created_at: entry.occurredAt,
           metadata: entry.metadata ?? {},
         })),
       );

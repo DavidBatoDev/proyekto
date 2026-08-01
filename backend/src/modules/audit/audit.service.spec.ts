@@ -68,6 +68,26 @@ describe('AuditService', () => {
       expect(buffer.entries).toHaveLength(0);
     });
 
+    it('stamps created_at at buffer time, not insert time', async () => {
+      const { supabase, inserts } = buildSupabase();
+      const service = new AuditService(supabase as never);
+      const buffer = createActivityBuffer();
+
+      const before = Date.now();
+      activityStorage.run(buffer, () => {
+        service.log({ ...base, action: 'task.created' });
+      });
+      // Simulate a slow flush: the row lands well after the event occurred.
+      await new Promise((r) => setTimeout(r, 30));
+      await service.flush(buffer);
+      const after = Date.now();
+
+      const stamped = Date.parse(inserts[0][0].created_at);
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      // The timestamp reflects when log() was called, not when insert ran.
+      expect(stamped).toBeLessThan(after - 20);
+    });
+
     it('mints a distinct client-side id per row', async () => {
       const { supabase, inserts } = buildSupabase();
       const service = new AuditService(supabase as never);
