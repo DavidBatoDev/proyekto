@@ -75,6 +75,21 @@ export class TasksController {
     return this.tasksService.bulkReorder(featureId, dto, user.id);
   }
 
+  @Patch('reorder-by-status')
+  bulkReorderByStatus(
+    @Body('roadmap_id') roadmapId: string,
+    @Body('status') status: string,
+    @Body() dto: BulkReorderDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tasksService.bulkReorderByStatus(
+      roadmapId,
+      status,
+      dto,
+      user.id,
+    );
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,

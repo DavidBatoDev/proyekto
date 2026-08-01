@@ -154,6 +154,9 @@ export class BulkReorderDto {
   @IsUUID() @IsOptional() roadmap_id?: string;
   @IsUUID() @IsOptional() epic_id?: string;
   @IsUUID() @IsOptional() feature_id?: string;
+  @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
+  @IsOptional()
+  status?: string;
   @IsArray() items: { id: string; position: number }[];
 }
 
@@ -303,6 +306,7 @@ export class UpdateTaskDto {
   @IsUUID('all', { each: true })
   assignee_ids?: string[];
   @IsNumber() @IsOptional() @Min(0) position?: number;
+  @IsNumber() @IsOptional() @Min(0) board_order?: number;
   @IsDateString() @IsOptional() due_date?: string | null;
   @IsDateString() @IsOptional() completed_at?: string;
   @IsIn(['real_work', 'training']) @IsOptional() work_type?:

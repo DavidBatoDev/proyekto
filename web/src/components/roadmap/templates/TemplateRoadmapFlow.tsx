@@ -98,6 +98,7 @@ export function buildTemplateRoadmapPreview(
 						status: "todo" as const,
 						priority: toTaskPriority(task.priority),
 						position: (taskIndex + 1) * 1000,
+						board_order: taskIndex,
 						due_date:
 							task.due_day_offset === undefined
 								? undefined

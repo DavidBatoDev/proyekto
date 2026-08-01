@@ -371,6 +371,7 @@ export interface UpdateTaskDto {
 	priority?: TaskPriority;
 	work_type?: TaskWorkType;
 	position?: number;
+	board_order?: number;
 	assignee_id?: string | null;
 	assignee_ids?: string[];
 	due_date?: string | null;
@@ -386,6 +387,11 @@ export interface AddTaskAttachmentDto {
 }
 
 export interface ReorderTaskDto {
+	task_id: string;
+	new_order_index: number;
+}
+
+export interface ReorderTaskByStatusDto {
 	task_id: string;
 	new_order_index: number;
 }
@@ -1005,6 +1011,32 @@ export const taskService = {
 			});
 		} catch (error) {
 			throw handleServiceError(error, `Reorder tasks in feature ${featureId}`);
+		}
+	},
+
+	/**
+	 * Reorder tasks within a Kanban status column, scoped to one roadmap
+	 */
+	async reorderByStatus(
+		roadmapId: string,
+		status: TaskStatus,
+		reorders: ReorderTaskByStatusDto[],
+	): Promise<void> {
+		try {
+			const items = reorders.map((item) => ({
+				id: item.task_id,
+				position: item.new_order_index,
+			}));
+			await apiClient.patch(`/api/tasks/reorder-by-status`, {
+				roadmap_id: roadmapId,
+				status,
+				items,
+			});
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Reorder tasks in column ${status} for roadmap ${roadmapId}`,
+			);
 		}
 	},
 

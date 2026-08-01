@@ -91,6 +91,7 @@ const epics: RoadmapEpic[] = [
 						status: "in_progress",
 						priority: "medium",
 						position: 1000,
+						board_order: 0,
 						created_at: "2026-01-01T00:00:00.000Z",
 						updated_at: "2026-01-01T00:00:00.000Z",
 					},

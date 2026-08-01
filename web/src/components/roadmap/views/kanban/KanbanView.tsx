@@ -11,7 +11,7 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -36,6 +36,12 @@ function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
 		const columnId = row.task.status as string;
 		if (!map[columnId]) map[columnId] = [];
 		map[columnId].push(row);
+	}
+	// Stable sort: ties (e.g. board_order collisions from AI-created tasks)
+	// keep their epic -> feature -> task traversal order instead of jumping
+	// around on every re-render.
+	for (const columnId of Object.keys(map)) {
+		map[columnId]?.sort((a, b) => a.task.board_order - b.task.board_order);
 	}
 	return map;
 }
@@ -63,16 +69,23 @@ function resolveContainer(
 
 export function KanbanView() {
 	const toast = useToast();
-	const { epics, milestones, boardFilters, updateTaskStatusIntent, setBoardFilters } =
-		useRoadmapStore(
-			useShallow((s) => ({
-				epics: s.epics,
-				milestones: s.milestones,
-				boardFilters: s.boardFilters,
-				updateTaskStatusIntent: s.updateTaskStatusIntent,
-				setBoardFilters: s.setBoardFilters,
-			})),
-		);
+	const {
+		epics,
+		milestones,
+		boardFilters,
+		reorderTasksInColumn,
+		moveTaskToColumn,
+		setBoardFilters,
+	} = useRoadmapStore(
+		useShallow((s) => ({
+			epics: s.epics,
+			milestones: s.milestones,
+			boardFilters: s.boardFilters,
+			reorderTasksInColumn: s.reorderTasksInColumn,
+			moveTaskToColumn: s.moveTaskToColumn,
+			setBoardFilters: s.setBoardFilters,
+		})),
+	);
 	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
 	// Ephemeral free-text search — intentionally NOT persisted.
 	const [searchQuery, setSearchQuery] = useState("");
@@ -84,19 +97,31 @@ export function KanbanView() {
 			const raw = sessionStorage.getItem(`wi_filters_${roadmapId}`);
 			setBoardFilters(
 				raw
-					? (JSON.parse(raw) as import("@/stores/roadmapStore").KanbanBoardFilters)
+					? (JSON.parse(
+							raw,
+						) as import("@/stores/roadmapStore").KanbanBoardFilters)
 					: { epicIds: [], featureIds: [], milestoneIds: [], assigneeIds: [] },
 			);
 		} catch {
-			setBoardFilters({ epicIds: [], featureIds: [], milestoneIds: [], assigneeIds: [] });
+			setBoardFilters({
+				epicIds: [],
+				featureIds: [],
+				milestoneIds: [],
+				assigneeIds: [],
+			});
 		}
-	// eslint-disable-next-line react-hooks/exhaustive-deps
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [roadmapId]);
 
 	// Persist filters whenever they change
 	useEffect(() => {
 		if (!roadmapId) return;
-		try { sessionStorage.setItem(`wi_filters_${roadmapId}`, JSON.stringify(boardFilters)); } catch {}
+		try {
+			sessionStorage.setItem(
+				`wi_filters_${roadmapId}`,
+				JSON.stringify(boardFilters),
+			);
+		} catch {}
 	}, [roadmapId, boardFilters]);
 
 	const allRows = useMemo(
@@ -104,7 +129,8 @@ export function KanbanView() {
 		[epics, milestones],
 	);
 	const filteredRows = useMemo(
-		() => applyBoardSearch(applyBoardFilters(allRows, boardFilters), searchQuery),
+		() =>
+			applyBoardSearch(applyBoardFilters(allRows, boardFilters), searchQuery),
 		[allRows, boardFilters, searchQuery],
 	);
 
@@ -148,10 +174,33 @@ export function KanbanView() {
 		if (!over) return;
 		const activeTaskId = String(active.id);
 		const overId = String(over.id);
+		if (activeTaskId === overId) return;
 
 		const fromColumn = findContainerForTask(columns, activeTaskId);
 		const toColumn = resolveContainer(columns, overId);
-		if (!fromColumn || !toColumn || fromColumn === toColumn) return;
+		if (!fromColumn || !toColumn) return;
+
+		if (fromColumn === toColumn) {
+			setColumns((prev) => {
+				const list = prev[fromColumn] ?? [];
+				const activeIndex = list.findIndex(
+					(row) => row.task.id === activeTaskId,
+				);
+				const overIndex = list.findIndex((row) => row.task.id === overId);
+				if (
+					activeIndex === -1 ||
+					overIndex === -1 ||
+					activeIndex === overIndex
+				) {
+					return prev;
+				}
+				return {
+					...prev,
+					[fromColumn]: arrayMove(list, activeIndex, overIndex),
+				};
+			});
+			return;
+		}
 
 		setColumns((prev) => {
 			const sourceList = prev[fromColumn] ?? [];
@@ -182,22 +231,41 @@ export function KanbanView() {
 		setActiveId(null);
 		if (!finalColumnId) return;
 
-		const finalColumn = DEFAULT_KANBAN_COLUMNS.find((c) => c.id === finalColumnId);
+		const finalColumn = DEFAULT_KANBAN_COLUMNS.find(
+			(c) => c.id === finalColumnId,
+		);
 		if (!finalColumn) return;
 
 		const originalRow = filteredRows.find((row) => row.task.id === taskId);
 		if (!originalRow) return;
 
-		if (originalRow.task.status === finalColumn.bucketStatus) return;
+		const orderedIds = (columns[finalColumnId] ?? []).map((row) => row.task.id);
 
-		void updateTaskStatusIntent(taskId, finalColumn.bucketStatus).catch(
-			(error) => {
-				toast.error(
-					error instanceof Error
-						? error.message
-						: "Failed to update task status",
-				);
-			},
+		const handleError = (error: unknown) => {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to update task order",
+			);
+		};
+
+		if (originalRow.task.status === finalColumn.bucketStatus) {
+			// Same column: only persist if the drag actually changed the order.
+			const currentOrder = (storeColumns[finalColumnId] ?? []).map(
+				(row) => row.task.id,
+			);
+			const orderChanged =
+				currentOrder.length !== orderedIds.length ||
+				currentOrder.some((id, index) => id !== orderedIds[index]);
+			if (!orderChanged) return;
+			void reorderTasksInColumn(
+				roadmapId,
+				finalColumn.bucketStatus,
+				orderedIds,
+			).catch(handleError);
+			return;
+		}
+
+		void moveTaskToColumn(taskId, finalColumn.bucketStatus, orderedIds).catch(
+			handleError,
 		);
 	};
 

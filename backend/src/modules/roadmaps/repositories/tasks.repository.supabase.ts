@@ -91,6 +91,34 @@ export class TasksRepositorySupabase implements ITasksRepository {
     return { added, removed };
   }
 
+  /** Appends to the end of a Kanban status column: resolves the task's
+   * roadmap via its feature, then finds the highest existing board_order for
+   * that (roadmap, status) pair. Used whenever a caller changes status
+   * without supplying a precise board_order (e.g. the mobile bucket drag). */
+  private async resolveNextBoardOrder(
+    featureId: string,
+    status: string,
+  ): Promise<number> {
+    const { data: feature, error: featureErr } = await this.db
+      .from('roadmap_features')
+      .select('roadmap_id')
+      .eq('id', featureId)
+      .single();
+    if (featureErr) throw new Error(featureErr.message);
+
+    const { data: rows, error } = await this.db
+      .from('roadmap_tasks')
+      .select('board_order, feature:roadmap_features!inner(roadmap_id)')
+      .eq('feature.roadmap_id', feature.roadmap_id as string)
+      .eq('status', status)
+      .order('board_order', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+
+    const maxOrder = (rows?.[0] as any)?.board_order as number | undefined;
+    return (maxOrder ?? -1) + 1;
+  }
+
   /** Bumps every existing task in the feature down by one position, highest
    * first so the (feature_id, position) unique constraint is never transiently
    * violated. Frees position 0 so a freshly created task lands at the top. */
@@ -114,7 +142,9 @@ export class TasksRepositorySupabase implements ITasksRepository {
   async findByFeature(featureId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(`*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
+      .select(
+        `*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`,
+      )
       .eq('feature_id', featureId)
       .order('position', { ascending: true });
     if (error) throw new Error(error.message);
@@ -146,7 +176,9 @@ export class TasksRepositorySupabase implements ITasksRepository {
   async findById(id: string): Promise<any | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(`*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
+      .select(
+        `*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`,
+      )
       .eq('id', id)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
@@ -192,6 +224,13 @@ export class TasksRepositorySupabase implements ITasksRepository {
       resolvedPosition = 0;
     }
 
+    // Kanban board_order is a separate axis (roadmap+status, not feature) —
+    // new tasks always append to the end of their destination column.
+    const resolvedBoardOrder = await this.resolveNextBoardOrder(
+      dto.feature_id,
+      dto.status ?? 'todo',
+    );
+
     const assigneeIds = this.resolveAssigneeIds(dto) ?? [];
     const primaryAssignee = assigneeIds[0] ?? null;
 
@@ -204,6 +243,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       assignee_id: primaryAssignee,
       due_date: dto.due_date,
       position: resolvedPosition,
+      board_order: resolvedBoardOrder,
       work_type: dto.work_type ?? 'real_work',
       checklist: dto.checklist ?? [],
     };
@@ -227,9 +267,22 @@ export class TasksRepositorySupabase implements ITasksRepository {
   }
 
   async update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any> {
+    // board_order needs the task's existing feature_id when the caller
+    // changes status without an explicit board_order (e.g. mobile bucket
+    // drag) — fetch existing eagerly in that case even if userId is absent.
+    const needsBoardOrderDefault =
+      dto.status !== undefined && dto.board_order === undefined;
     let existing: any = null;
-    if (userId) {
+    if (userId || needsBoardOrderDefault) {
       existing = await this.findById(id);
+    }
+
+    let resolvedBoardOrder: number | undefined = dto.board_order;
+    if (resolvedBoardOrder === undefined && dto.status !== undefined) {
+      resolvedBoardOrder = await this.resolveNextBoardOrder(
+        existing.feature_id as string,
+        dto.status,
+      );
     }
 
     const assigneeIds = this.resolveAssigneeIds(dto);
@@ -245,6 +298,9 @@ export class TasksRepositorySupabase implements ITasksRepository {
       ...(dto.status !== undefined && { status: dto.status }),
       ...(touchesAssignees && { assignee_id: primaryAssignee }),
       ...(dto.position !== undefined && { position: dto.position }),
+      ...(resolvedBoardOrder !== undefined && {
+        board_order: resolvedBoardOrder,
+      }),
       ...(dto.due_date !== undefined && { due_date: dto.due_date }),
       ...(dto.completed_at !== undefined && { completed_at: dto.completed_at }),
       ...(dto.work_type !== undefined && { work_type: dto.work_type }),
@@ -322,6 +378,57 @@ export class TasksRepositorySupabase implements ITasksRepository {
         .update({ position: item.position })
         .eq('id', item.id)
         .eq('feature_id', featureId),
+    );
+    for (const { error } of await Promise.all(phase2)) {
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  async bulkReorderByStatus(
+    roadmapId: string,
+    status: string,
+    dto: BulkReorderDto,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const TEMP_OFFSET = 1_000_000;
+
+    // No (roadmap_id, status) column pair to .eq() the writes against
+    // directly (roadmap_id lives on roadmap_features, not roadmap_tasks), so
+    // verify every item actually belongs to this roadmap+status before
+    // writing — defense against a spoofed id list. Unverified ids are
+    // silently dropped, mirroring how bulkReorder's per-row
+    // .eq('feature_id', featureId) scope filter silently no-ops on mismatch.
+    const ids = dto.items.map((item) => item.id);
+    const { data: rows, error: checkErr } = await this.db
+      .from('roadmap_tasks')
+      .select('id, feature:roadmap_features!inner(roadmap_id)')
+      .in('id', ids)
+      .eq('feature.roadmap_id', roadmapId)
+      .eq('status', status);
+    if (checkErr) throw new Error(checkErr.message);
+
+    const verifiedIds = new Set((rows ?? []).map((r: any) => r.id as string));
+    const items = dto.items.filter((item) => verifiedIds.has(item.id));
+
+    // Phase 1: shift all rows to unique temp board_order values so no
+    // transient collision is visible mid-reorder (no DB unique constraint
+    // enforces this, but readers sort by board_order at any moment).
+    const phase1 = items.map((item, idx) =>
+      this.db
+        .from('roadmap_tasks')
+        .update({ board_order: TEMP_OFFSET + idx, updated_at: now })
+        .eq('id', item.id),
+    );
+    for (const { error } of await Promise.all(phase1)) {
+      if (error) throw new Error(error.message);
+    }
+
+    // Phase 2: set final board_order values.
+    const phase2 = items.map((item) =>
+      this.db
+        .from('roadmap_tasks')
+        .update({ board_order: item.position })
+        .eq('id', item.id),
     );
     for (const { error } of await Promise.all(phase2)) {
       if (error) throw new Error(error.message);

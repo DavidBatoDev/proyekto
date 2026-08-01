@@ -25,6 +25,7 @@ const makeTask = (index: number): RoadmapTask => ({
 	status: "todo",
 	priority: "medium",
 	position: index * 1000,
+	board_order: index,
 	created_at: "2026-01-01T00:00:00.000Z",
 	updated_at: "2026-01-01T00:00:00.000Z",
 });
