@@ -152,25 +152,7 @@ export class AuditService {
     }
   }
 
-  /** Read the project timeline. Callers must gate on `logs.view` first. */
-  async list(
-    projectId: string,
-    opts: { limit?: number; offset?: number } = {},
-  ) {
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
-    const offset = Math.max(opts.offset ?? 0, 0);
-
-    const { data, error } = await this.supabase
-      .from('project_activity_log')
-      .select(
-        'id, project_id, actor_id, action, entity_type, entity_id, metadata, created_at, ' +
-          'actor:profiles!project_activity_log_actor_id_fkey(id, display_name, avatar_url)',
-      )
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  }
+  // Reads live in ActivityService (modules/activity). This service is a pure
+  // writer: the old OFFSET-paginated list() was replaced by a keyset-paginated
+  // reader that also enforces logs.view_sensitive.
 }

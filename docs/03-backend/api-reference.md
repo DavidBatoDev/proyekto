@@ -212,13 +212,26 @@ Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payou
 `POST /meetings/cron/reminders` is **Public +CronSecret** (the scheduler). Full docs:
 [Feature Domains → Meetings](../11-domains/README.md).
 
-## chat · `projects/:projectId/chat` / `chat` / `chat/dm` / `projects/:projectId/activity`
+## chat · `projects/:projectId/chat` / `chat` / `chat/dm`
 
 **`chat`** — project rooms/members, channel CRUD + members, room messages, send/
 react/unsend, mark-read. **`chat-rooms`** (base `chat`) — room-agnostic messages,
 search, library, star, edit/react/unsend. **`chat-dm`** (base `chat/dm`) — DM rooms,
-eligible members, resolve, messages, send/react/unsend. **`activity`** —
-`GET /projects/:projectId/activity`.
+eligible members, resolve, messages, send/react/unsend.
+
+## activity · `projects/:projectId/activity`
+
+`GET /projects/:projectId/activity` — the project activity timeline backing the
+Logs page. Gated on `logs.view`; rows flagged `is_sensitive` (access grants,
+share links, role changes) are filtered out unless the caller also holds
+`logs.view_sensitive`, which the response reports as `can_view_sensitive`.
+
+Keyset-paginated on `(created_at DESC, seq DESC)` — `created_at` is stamped at
+event time, so it is chronological even when a slow flush lands a row late.
+Returns `{ items, next_cursor, can_view_sensitive }`; pass `next_cursor` back as
+`?cursor=`. **There is no `offset`** — sending one is a 400. Filters: `limit`
+(1–100), `family`, `action`, `entity_type`, `actor_id`, `roadmap_id`,
+`entity_id`, `from`, `to`.
 
 ## notifications · `notifications`
 
@@ -246,7 +259,9 @@ contract). `POST /mobile-updates/bundles/presign` + `/bundles` are **+OtaPublish
 
 ## audit
 
-No HTTP routes — `AuditService` is consumed internally (e.g. by chat/activity).
+No HTTP routes — `AuditService` is a pure writer, consumed internally by the
+roadmap, projects, chat and MCP modules. Reads are served by the `activity`
+module above.
 
 ## mcp · `/mcp` · `/oauth` · `/api/mcp`
 

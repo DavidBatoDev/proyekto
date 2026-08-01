@@ -38,6 +38,7 @@ import { FinancialsModule } from './modules/financials/financials.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ActivityModule } from './modules/activity/activity.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { AppController } from './app.controller';
@@ -91,6 +92,7 @@ import { AppController } from './app.controller';
     RealtimePublisherModule,
     RealtimeModule,
     AuditModule,
+    ActivityModule,
     KnowledgeModule,
     McpModule,
   ],

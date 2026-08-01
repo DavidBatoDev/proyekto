@@ -241,19 +241,3 @@ export class ChannelMemberDto {
   @IsUUID()
   user_id: string;
 }
-
-/** Pagination for the project activity timeline. */
-export class ActivityQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(200)
-  limit?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number;
-}

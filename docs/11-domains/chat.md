@@ -46,7 +46,10 @@ Four controllers ([Backend → api reference](../03-backend/api-reference.md#cha
 - `chat` (base `projects/:projectId/chat`) — rooms, channel CRUD + members, messages.
 - `chat-rooms` (base `chat`) — room-agnostic messages, search, library, star, edit.
 - `chat-dm` (base `chat/dm`) — DM rooms, eligible members, resolve, send.
-- `activity` (base `projects/:projectId/activity`) — the activity timeline.
+
+The activity timeline (`projects/:projectId/activity`) used to be served from
+this module; it now lives in its own `activity` module. See
+[API Reference → activity](../03-backend/api-reference.md).
 
 ## Realtime
 

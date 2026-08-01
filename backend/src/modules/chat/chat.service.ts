@@ -1249,16 +1249,6 @@ export class ChatService {
     return { ok: true };
   }
 
-  /** Project activity timeline (dispute-resolution history). */
-  async listActivity(
-    projectId: string,
-    userId: string,
-    opts: { limit?: number; offset?: number },
-  ) {
-    await this.authorization.assertPermission(userId, projectId, 'logs.view');
-    return this.audit.list(projectId, opts);
-  }
-
   /**
    * Notify every project member's inbox that the channel list changed so their
    * sidebar/inbox refetches (a brand-new or renamed channel has no message
