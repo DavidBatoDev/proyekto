@@ -36,6 +36,7 @@ jobs:
       INVOICE_AUTOMATION_ENABLED: ${{ vars.INVOICE_AUTOMATION_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
+      ROADMAP_ACTIVITY_LOG_ENABLED: ${{ vars.ROADMAP_ACTIVITY_LOG_ENABLED }}
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
       MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
       MCP_CHAT_WRITE_ENABLED: ${{ vars.MCP_CHAT_WRITE_ENABLED }}
@@ -156,6 +157,19 @@ jobs:
             echo "Knowledge ingest enabled for this deploy."
           else
             echo "Knowledge ingest disabled (create KNOWLEDGE_INGEST_SECRET secret, then set the KNOWLEDGE_INGEST_ENABLED repo var to enable)."
+          fi
+
+          # Roadmap activity log (project Logs page). Gated on the
+          # ROADMAP_ACTIVITY_LOG_ENABLED repo var. Enables the write-path
+          # recorder only — the schema, the per-request buffer, and the flush
+          # interceptor ship regardless and are inert while this is unset.
+          # No secret needed: the recorder writes through the existing
+          # service-role Supabase client.
+          if [[ -n "${ROADMAP_ACTIVITY_LOG_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},ROADMAP_ACTIVITY_LOG_ENABLED=true"
+            echo "Roadmap activity log enabled for this deploy."
+          else
+            echo "Roadmap activity log disabled (set the ROADMAP_ACTIVITY_LOG_ENABLED repo var to enable; writes record nothing until then)."
           fi
 
           # Google Calendar / Meet per-user OAuth (meeting scheduling Phase 5).
