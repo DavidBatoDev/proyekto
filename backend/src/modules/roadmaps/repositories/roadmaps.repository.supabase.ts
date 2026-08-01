@@ -77,21 +77,10 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         assignees: this.flattenAssignees(feature),
         tasks: this.sortByPosition(
           Array.isArray(feature?.tasks) ? feature.tasks : [],
-        ).map((task: unknown) => {
-          const taskRecord =
-            task && typeof task === 'object'
-              ? (task as Record<string, unknown>)
-              : {};
-          const normalized: Record<string, unknown> = {
-            ...taskRecord,
-            assignees: this.flattenAssignees(taskRecord),
-          };
-          if (Array.isArray(taskRecord.comments)) {
-            normalized.comment_count = taskRecord.comments.length;
-            delete normalized.comments;
-          }
-          return normalized;
-        }),
+        ).map((task: any) => ({
+          ...task,
+          assignees: this.flattenAssignees(task),
+        })),
       }));
 
       return {
@@ -282,12 +271,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   ): Promise<any | null> {
     const includeTaskAssigneeProfile =
       options?.includeTaskAssigneeProfile !== false;
-    const taskCommentSelect = options?.includeTaskCommentCount
-      ? ', comments:task_comments(id)'
-      : '';
     const taskSelect = includeTaskAssigneeProfile
-      ? `tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))${taskCommentSelect})`
-      : `tasks:roadmap_tasks(*${taskCommentSelect})`;
+      ? `tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`
+      : 'tasks:roadmap_tasks(*)';
     const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`;
 
     // Widened to `string` so Supabase skips literal-type parsing of this

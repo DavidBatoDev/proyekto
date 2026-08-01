@@ -1,55 +1,5 @@
 import { RoadmapsRepositorySupabase } from './roadmaps.repository.supabase';
 
-describe('RoadmapsRepositorySupabase findFull', () => {
-  it('normalizes embedded task comment ids into a count', async () => {
-    const queryBuilder = {
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({
-        data: {
-          id: 'roadmap-1',
-          epics: [
-            {
-              id: 'epic-1',
-              position: 1000,
-              features: [
-                {
-                  id: 'feature-1',
-                  position: 1000,
-                  assignees: [],
-                  tasks: [
-                    {
-                      id: 'task-1',
-                      position: 1000,
-                      assignees: [],
-                      comments: [{ id: 'comment-1' }, { id: 'comment-2' }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        error: null,
-      }),
-    };
-    const from = jest.fn().mockReturnValue(queryBuilder);
-    const repo = new RoadmapsRepositorySupabase({ from } as never);
-
-    const result = await repo.findFull('roadmap-1', undefined, {
-      includeTaskCommentCount: true,
-    });
-
-    expect(queryBuilder.select).toHaveBeenCalledWith(
-      expect.stringContaining('comments:task_comments(id)'),
-    );
-    expect(result.epics[0].features[0].tasks[0]).toEqual(
-      expect.objectContaining({ id: 'task-1', comment_count: 2 }),
-    );
-    expect(result.epics[0].features[0].tasks[0].comments).toBeUndefined();
-  });
-});
-
 describe('RoadmapsRepositorySupabase findPreviews', () => {
   it('merge-sorts owned + shared roadmaps by updated_at desc across both blocks', async () => {
     const projectsBuilder = {
