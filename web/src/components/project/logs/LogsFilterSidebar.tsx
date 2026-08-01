@@ -99,7 +99,9 @@ export function LogsFilterSidebar({
 				</button>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto">
+			{/* hide-scrollbar keeps the rail scrollable without the chrome —
+			    same treatment as the app's main sidebar. */}
+			<div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
 				<FilterSection title="Timeline" defaultOpen>
 					<div className="flex flex-col gap-1">
 						{DATE_PRESETS.map((preset) => (
