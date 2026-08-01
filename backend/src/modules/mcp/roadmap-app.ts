@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-export const ROADMAP_SUMMARY_APP_URI = 'ui://proyekto/roadmap-summary-v3.html';
+export const ROADMAP_SUMMARY_APP_URI = 'ui://proyekto/roadmap-summary-v4.html';
 export const ROADMAP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
 
 type LoadRoadmapAppHtml = () => Promise<string>;
