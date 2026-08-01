@@ -11,25 +11,35 @@ import {
   RoadmapAuthorizationService,
   type RoadmapWriteContext,
 } from './roadmap-authorization.service';
-import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
 export const EPICS_REPOSITORY = Symbol('EPICS_REPOSITORY');
 const TEMP_EPIC_ID_PREFIX = 'temp-epic-';
+
+/** Fields whose changes are worth showing in the activity feed. */
+const EPIC_TRACKED_FIELDS = [
+  'title',
+  'description',
+  'status',
+  'priority',
+  'start_date',
+  'end_date',
+  'estimated_hours',
+];
 
 @Injectable()
 export class EpicsService {
   constructor(
     @Inject(EPICS_REPOSITORY) private readonly repo: IEpicsRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly realtime: RealtimePublisher,
+    private readonly effects: RoadmapWriteEffects,
+    private readonly activity: RoadmapActivityService,
     private readonly notificationsService: NotificationsService,
   ) {}
-
-  private notify(roadmapId: string | null, userId: string): void {
-    if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
-  }
 
   async findByRoadmap(roadmapId: string, userId: string) {
     await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
@@ -44,13 +54,18 @@ export class EpicsService {
   }
 
   async create(dto: CreateEpicDto, userId: string) {
-    await this.roadmapAuthz.assertRoadmapPermission(
+    const ctx = await this.roadmapAuthz.assertRoadmapPermission(
       dto.roadmap_id,
       userId,
       'roadmap.edit',
     );
     const epic = await this.repo.create(dto, userId);
-    this.notify(dto.roadmap_id, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.EPIC_CREATED,
+      entityType: 'epic',
+      entityId: (epic as { id?: string })?.id ?? null,
+      title: dto.title,
+    });
     return epic;
   }
 
@@ -63,18 +78,38 @@ export class EpicsService {
       'roadmap.edit',
     );
     const epic = await this.repo.update(id, dto);
-    this.notify(ctx.roadmapId, userId);
+
+    const changes = this.activity.diff(existing, epic, EPIC_TRACKED_FIELDS);
+    this.effects.emit(ctx, userId, {
+      action: this.activity.nodeUpdateAction('epic', {
+        statusChanged: changes.some((c) => c.field === 'status'),
+      }),
+      entityType: 'epic',
+      entityId: id,
+      title: (epic as { title?: string })?.title ?? existing.title,
+      metadata: { changes },
+    });
     return epic;
   }
 
   async bulkReorder(roadmapId: string, dto: BulkReorderDto, userId: string) {
-    await this.roadmapAuthz.assertRoadmapPermission(
+    const ctx = await this.roadmapAuthz.assertRoadmapPermission(
       roadmapId,
       userId,
       'roadmap.edit',
     );
     const reordered = await this.repo.bulkReorder(roadmapId, dto);
-    this.notify(roadmapId, userId);
+    // One row for the whole gesture, never one per moved item.
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.EPIC_REORDERED,
+      entityType: 'epic',
+      metadata: this.activity.reorderMetadata({
+        scopeType: 'roadmap',
+        scopeId: roadmapId,
+        itemCount: dto.items?.length ?? 0,
+        moved: dto.items?.map((i) => ({ id: i.id, position: i.position })),
+      }),
+    });
     return reordered;
   }
 
@@ -91,6 +126,17 @@ export class EpicsService {
     const comment = await this.repo.addComment(epicId, dto, userId);
 
     const commentId = (comment as { id?: string }).id;
+    // Comments do not move the canvas, so record without a realtime publish.
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.EPIC_COMMENT_CREATED,
+      entityType: 'epic_comment',
+      entityId: commentId ?? null,
+      metadata: {
+        ...this.activity.commentMetadata(commentId, dto.content),
+        parent: { type: 'epic', id: epicId },
+      },
+    });
+
     void this.fireMentionNotifications(
       epicId,
       dto.content,
@@ -139,6 +185,11 @@ export class EpicsService {
     );
   }
 
+  // NOTE: comment edit/delete are deliberately NOT logged. They carry no
+  // authorization walk today (only the repo's authorship check), so recording
+  // them would mean adding a full scope resolution — two queries — to a path
+  // that currently has none, on the rarest events in the feed. Comment
+  // CREATION, the event people actually look for, is covered.
   async updateComment(
     commentId: string,
     dto: UpdateCommentDto,
@@ -168,6 +219,12 @@ export class EpicsService {
       'roadmap.edit',
     );
     await this.repo.remove(id);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.EPIC_DELETED,
+      entityType: 'epic',
+      entityId: id,
+      // Captured before the delete — the row is gone, the name must survive.
+      title: (existing as { title?: string })?.title ?? null,
+    });
   }
 }

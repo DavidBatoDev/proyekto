@@ -6,21 +6,28 @@ import {
   ReorderDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
 export const MILESTONES_REPOSITORY = Symbol('MILESTONES_REPOSITORY');
+
+const MILESTONE_TRACKED_FIELDS = [
+  'title',
+  'description',
+  'target_date',
+  'status',
+  'color',
+];
 
 @Injectable()
 export class MilestonesService {
   constructor(
     @Inject(MILESTONES_REPOSITORY) private readonly repo: IMilestonesRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly realtime: RealtimePublisher,
+    private readonly effects: RoadmapWriteEffects,
+    private readonly activity: RoadmapActivityService,
   ) {}
-
-  private notify(roadmapId: string | null, userId: string): void {
-    if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
-  }
 
   async findByRoadmap(roadmapId: string, userId: string) {
     await this.roadmapAuthz.assertCanViewRoadmap(roadmapId, userId);
@@ -35,13 +42,19 @@ export class MilestonesService {
   }
 
   async create(roadmapId: string, dto: CreateMilestoneDto, userId: string) {
-    await this.roadmapAuthz.assertRoadmapPermission(
+    const ctx = await this.roadmapAuthz.assertRoadmapPermission(
       roadmapId,
       userId,
       'roadmap.edit',
     );
     const milestone = await this.repo.create(roadmapId, dto, userId);
-    this.notify(roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.MILESTONE_CREATED,
+      entityType: 'milestone',
+      entityId: (milestone as { id?: string })?.id ?? null,
+      title: dto.title,
+      metadata: { target_date: dto.target_date },
+    });
     return milestone;
   }
 
@@ -54,7 +67,19 @@ export class MilestonesService {
       'roadmap.edit',
     );
     const milestone = await this.repo.update(id, dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.MILESTONE_UPDATED,
+      entityType: 'milestone',
+      entityId: id,
+      title: (milestone as { title?: string })?.title ?? existing.title,
+      metadata: {
+        changes: this.activity.diff(
+          existing,
+          milestone,
+          MILESTONE_TRACKED_FIELDS,
+        ),
+      },
+    });
     return milestone;
   }
 
@@ -67,7 +92,13 @@ export class MilestonesService {
       'roadmap.edit',
     );
     const milestone = await this.repo.reorder(id, dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.MILESTONE_REORDERED,
+      entityType: 'milestone',
+      entityId: id,
+      title: (existing as { title?: string })?.title ?? null,
+      metadata: { position: dto.position },
+    });
     return milestone;
   }
 
@@ -82,6 +113,11 @@ export class MilestonesService {
       'roadmap.edit',
     );
     await this.repo.remove(id);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.MILESTONE_DELETED,
+      entityType: 'milestone',
+      entityId: id,
+      title: (existing as { title?: string })?.title ?? null,
+    });
   }
 }

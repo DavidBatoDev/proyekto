@@ -13,11 +13,23 @@ import {
   RoadmapAuthorizationService,
   type TaskWriteContext,
 } from './roadmap-authorization.service';
-import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { getPermission } from '../../projects/permissions/project-permissions';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
+
+const TASK_TRACKED_FIELDS = [
+  'title',
+  'description',
+  'status',
+  'priority',
+  'due_date',
+  'feature_id',
+  'work_type',
+];
 
 @Injectable()
 export class TasksService {
@@ -26,12 +38,9 @@ export class TasksService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly notifications: NotificationsService,
-    private readonly realtime: RealtimePublisher,
+    private readonly effects: RoadmapWriteEffects,
+    private readonly activity: RoadmapActivityService,
   ) {}
-
-  private notify(roadmapId: string | null, userId: string): void {
-    if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
-  }
 
   async findByFeature(featureId: string, userId: string) {
     await this.roadmapAuthz.assertViewPermission({ featureId }, userId);
@@ -58,7 +67,13 @@ export class TasksService {
     );
     const task = await this.repo.create(dto, userId);
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_CREATED,
+      entityType: 'task',
+      entityId: (task as { id?: string })?.id ?? null,
+      title: dto.title,
+      metadata: { parent: { type: 'feature', id: dto.feature_id } },
+    });
     return task;
   }
 
@@ -85,9 +100,25 @@ export class TasksService {
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
     // ensureTimerFeature just resolved (or created) the roadmap chain, so this
     // is the one place a lookup is genuinely still needed.
-    this.notify(
-      await this.roadmapAuthz.resolveRoadmapId({ featureId }),
+    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ featureId });
+    this.effects.emit(
+      {
+        roadmapId: roadmapId as string,
+        projectId: dto.project_id,
+        ownerId: null,
+        permissions: null,
+      },
       userId,
+      {
+        action: ACTIVITY_ACTIONS.TASK_CREATED,
+        entityType: 'task',
+        entityId: (task as { id?: string })?.id ?? null,
+        title: dto.title.trim(),
+        metadata: {
+          source: 'timer',
+          parent: { type: 'feature', id: featureId },
+        },
+      },
     );
     return task;
   }
@@ -110,13 +141,37 @@ export class TasksService {
     const task = await this.repo.update(id, dto, userId);
     // Notify only assignees that are newly added by this update.
     const previousAssignees = new Set(this.assigneeIdsOf(existing));
-    const newlyAssigned = this.assigneeIdsOf(task).filter(
+    const currentAssignees = this.assigneeIdsOf(task);
+    const newlyAssigned = currentAssignees.filter(
       (assigneeId) => !previousAssignees.has(assigneeId),
     );
     if (newlyAssigned.length) {
       await this.notifyTaskAssignees(task, newlyAssigned, userId);
     }
-    this.notify(ctx.roadmapId, userId);
+
+    // ONE row for the whole PATCH, action picked by precedence
+    // (assignment > status > move > generic) with the full diff attached.
+    const changes = this.activity.diff(existing, task, TASK_TRACKED_FIELDS);
+    const assigneesChanged =
+      currentAssignees.length !== previousAssignees.size ||
+      currentAssignees.some((a) => !previousAssignees.has(a));
+    this.effects.emit(ctx, userId, {
+      action: this.activity.taskUpdateAction({
+        assigneesChanged,
+        assigneesAdded: newlyAssigned.length,
+        statusChanged: changes.some((c) => c.field === 'status'),
+        featureChanged: changes.some((c) => c.field === 'feature_id'),
+      }),
+      entityType: 'task',
+      entityId: id,
+      title: (task as { title?: string })?.title ?? existing.title,
+      metadata: {
+        changes,
+        ...(assigneesChanged
+          ? { assignees: this.activity.assigneeSummary(currentAssignees) }
+          : {}),
+      },
+    });
     return task;
   }
 
@@ -144,7 +199,49 @@ export class TasksService {
       'roadmap.edit_tasks',
     );
     const reordered = await this.repo.bulkReorder(featureId, dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_REORDERED,
+      entityType: 'task',
+      metadata: this.activity.reorderMetadata({
+        scopeType: 'feature',
+        scopeId: featureId,
+        itemCount: dto.items?.length ?? 0,
+        moved: dto.items?.map((i) => ({ id: i.id, position: i.position })),
+      }),
+    });
+    return reordered;
+  }
+
+  async bulkReorderByStatus(
+    roadmapId: string,
+    status: string,
+    dto: BulkReorderDto,
+    userId: string,
+  ) {
+    const ctx = await this.roadmapAuthz.assertRoadmapPermission(
+      roadmapId,
+      userId,
+      'roadmap.edit_tasks',
+    );
+    const reordered = await this.repo.bulkReorderByStatus(
+      roadmapId,
+      status,
+      dto,
+    );
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_REORDERED,
+      entityType: 'task',
+      metadata: {
+        ...this.activity.reorderMetadata({
+          scopeType: 'roadmap',
+          scopeId: roadmapId,
+          itemCount: dto.items?.length ?? 0,
+          moved: dto.items?.map((i) => ({ id: i.id, position: i.position })),
+        }),
+        // Board reorders are scoped to one Kanban column.
+        board_status: status,
+      },
+    });
     return reordered;
   }
 
@@ -159,7 +256,12 @@ export class TasksService {
       'roadmap.edit_tasks',
     );
     await this.repo.remove(id);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_DELETED,
+      entityType: 'task',
+      entityId: id,
+      title: (existing as { title?: string })?.title ?? null,
+    });
   }
 
   private async ensureTimerFeature(

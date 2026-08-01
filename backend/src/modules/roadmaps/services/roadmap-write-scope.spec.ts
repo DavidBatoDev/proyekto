@@ -2,6 +2,8 @@ import { EpicsService } from './epics.service';
 import { FeaturesService } from './features.service';
 import { MilestonesService } from './milestones.service';
 import { TasksService } from './tasks.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 
 /**
@@ -49,8 +51,26 @@ describe('roadmap write services reuse the resolved authz scope', () => {
     };
   }
 
-  const realtime = () => ({ publishRoadmapChange: jest.fn() });
   const notifications = () => ({ createNotification: jest.fn() });
+
+  /**
+   * Build the REAL write-effects seam over a fake realtime publisher and a
+   * real (but flag-disabled) recorder. That keeps these assertions about
+   * realtime addressing while also proving the services drive the seam
+   * correctly — a stubbed `effects` would hide a mis-wiring.
+   */
+  function effectsSeam() {
+    const rt = { publishRoadmapChange: jest.fn() };
+    const activity = new RoadmapActivityService(
+      { log: jest.fn() } as never,
+      { get: () => 'false' } as never, // ROADMAP_ACTIVITY_LOG_ENABLED off
+    );
+    return {
+      rt,
+      activity,
+      effects: new RoadmapWriteEffects(rt as never, activity),
+    };
+  }
 
   describe('EpicsService', () => {
     function build(authz = buildAuthz()) {
@@ -61,11 +81,12 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         bulkReorder: jest.fn().mockResolvedValue([]),
         remove: jest.fn().mockResolvedValue(undefined),
       };
-      const rt = realtime();
+      const { rt, effects, activity } = effectsSeam();
       const service = new EpicsService(
         repo as never,
         authz as never,
-        rt as never,
+        effects,
+        activity,
         notifications() as never,
       );
       return { service, repo, rt, authz };
@@ -101,11 +122,12 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         unlinkMilestone: jest.fn().mockResolvedValue({}),
         remove: jest.fn().mockResolvedValue(undefined),
       };
-      const rt = realtime();
+      const { rt, effects, activity } = effectsSeam();
       const service = new FeaturesService(
         repo as never,
         authz as never,
-        rt as never,
+        effects,
+        activity,
         notifications() as never,
       );
       return { service, rt, authz };
@@ -150,11 +172,12 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         reorder: jest.fn().mockResolvedValue({ id: 'm-1' }),
         remove: jest.fn().mockResolvedValue(undefined),
       };
-      const rt = realtime();
+      const { rt, effects, activity } = effectsSeam();
       const service = new MilestonesService(
         repo as never,
         authz as never,
-        rt as never,
+        effects,
+        activity,
       );
       return { service, rt, authz };
     }
@@ -193,13 +216,14 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         bulkReorder: jest.fn().mockResolvedValue([]),
         remove: jest.fn().mockResolvedValue(undefined),
       };
-      const rt = realtime();
+      const { rt, effects, activity } = effectsSeam();
       const service = new TasksService(
         repo as never,
         authz as never,
         {} as never,
         notifications() as never,
-        rt as never,
+        effects,
+        activity,
       );
       return { service, rt, authz };
     }

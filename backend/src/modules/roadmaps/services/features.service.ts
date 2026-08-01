@@ -13,24 +13,34 @@ import {
   RoadmapAuthorizationService,
   type RoadmapWriteContext,
 } from './roadmap-authorization.service';
-import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
 export const FEATURES_REPOSITORY = Symbol('FEATURES_REPOSITORY');
+
+const FEATURE_TRACKED_FIELDS = [
+  'title',
+  'description',
+  'status',
+  'epic_id',
+  'is_deliverable',
+  'start_date',
+  'end_date',
+  'estimated_hours',
+];
 
 @Injectable()
 export class FeaturesService {
   constructor(
     @Inject(FEATURES_REPOSITORY) private readonly repo: IFeaturesRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
-    private readonly realtime: RealtimePublisher,
+    private readonly effects: RoadmapWriteEffects,
+    private readonly activity: RoadmapActivityService,
     private readonly notificationsService: NotificationsService,
   ) {}
-
-  private notify(roadmapId: string | null, userId: string): void {
-    if (roadmapId) this.realtime.publishRoadmapChange(roadmapId, userId);
-  }
 
   async findByEpic(epicId: string, userId: string) {
     await this.roadmapAuthz.assertViewPermission({ epicId }, userId);
@@ -56,7 +66,13 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const feature = await this.repo.create(dto, userId);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_CREATED,
+      entityType: 'feature',
+      entityId: (feature as { id?: string })?.id ?? null,
+      title: dto.title,
+      metadata: { parent: { type: 'epic', id: dto.epic_id } },
+    });
     return feature;
   }
 
@@ -76,7 +92,22 @@ export class FeaturesService {
       );
     }
     const feature = await this.repo.update(id, dto);
-    this.notify(ctx.roadmapId, userId);
+
+    const changes = this.activity.diff(
+      existing,
+      feature,
+      FEATURE_TRACKED_FIELDS,
+    );
+    this.effects.emit(ctx, userId, {
+      action: this.activity.nodeUpdateAction('feature', {
+        statusChanged: changes.some((c) => c.field === 'status'),
+        parentChanged: changes.some((c) => c.field === 'epic_id'),
+      }),
+      entityType: 'feature',
+      entityId: id,
+      title: (feature as { title?: string })?.title ?? existing.title,
+      metadata: { changes },
+    });
     return feature;
   }
 
@@ -87,7 +118,16 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const reordered = await this.repo.bulkReorder(epicId, dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_REORDERED,
+      entityType: 'feature',
+      metadata: this.activity.reorderMetadata({
+        scopeType: 'epic',
+        scopeId: epicId,
+        itemCount: dto.items?.length ?? 0,
+        moved: dto.items?.map((i) => ({ id: i.id, position: i.position })),
+      }),
+    });
     return reordered;
   }
 
@@ -104,6 +144,16 @@ export class FeaturesService {
     const comment = await this.repo.addComment(featureId, dto, userId);
 
     const commentId = (comment as { id?: string }).id;
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_COMMENT_CREATED,
+      entityType: 'feature_comment',
+      entityId: commentId ?? null,
+      metadata: {
+        ...this.activity.commentMetadata(commentId, dto.content),
+        parent: { type: 'feature', id: featureId },
+      },
+    });
+
     void this.fireMentionNotifications(
       featureId,
       dto.content,
@@ -171,7 +221,12 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const linked = await this.repo.linkMilestone(dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_MILESTONE_LINKED,
+      entityType: 'feature',
+      entityId: dto.feature_id,
+      metadata: { milestone_id: dto.milestone_id },
+    });
     return linked;
   }
 
@@ -182,7 +237,12 @@ export class FeaturesService {
       'roadmap.edit',
     );
     const unlinked = await this.repo.unlinkMilestone(dto);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_MILESTONE_UNLINKED,
+      entityType: 'feature',
+      entityId: dto.feature_id,
+      metadata: { milestone_id: dto.milestone_id },
+    });
     return unlinked;
   }
 
@@ -197,6 +257,11 @@ export class FeaturesService {
       'roadmap.edit',
     );
     await this.repo.remove(id);
-    this.notify(ctx.roadmapId, userId);
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.FEATURE_DELETED,
+      entityType: 'feature',
+      entityId: id,
+      title: (existing as { title?: string })?.title ?? null,
+    });
   }
 }

@@ -33,11 +33,18 @@ describe('TaskExtrasService.addCommentToTasks', () => {
     };
     const notifications = { createNotification: jest.fn() };
     const knowledgeOutbox = { enqueue: jest.fn() };
+    const effects = { emit: jest.fn(), record: jest.fn(), touch: jest.fn() };
+    const activity = {
+      commentMetadata: jest.fn().mockReturnValue({}),
+      reorderMetadata: jest.fn().mockReturnValue({}),
+    };
     const service = new TaskExtrasService(
       repo as never,
       roadmapAuthz as never,
       notifications as never,
       knowledgeOutbox as never,
+      effects as never,
+      activity as never,
     );
     return { service, repo, roadmapAuthz, knowledgeOutbox };
   }

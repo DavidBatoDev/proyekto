@@ -18,6 +18,9 @@ import {
 import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { extractMentionedUserIds } from '../utils/mention-parser';
+import { RoadmapWriteEffects } from './roadmap-write-effects.service';
+import { RoadmapActivityService } from './roadmap-activity.service';
+import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
 
 export const TASK_EXTRAS_REPOSITORY = Symbol('TASK_EXTRAS_REPOSITORY');
 
@@ -29,6 +32,8 @@ export class TaskExtrasService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly notificationsService: NotificationsService,
     private readonly knowledgeOutbox: KnowledgeOutboxService,
+    private readonly effects: RoadmapWriteEffects,
+    private readonly activity: RoadmapActivityService,
   ) {}
 
   async findComments(taskId: string, userId: string) {
@@ -45,6 +50,15 @@ export class TaskExtrasService {
 
     // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
     const commentId = (comment as { id?: string }).id;
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_COMMENT_CREATED,
+      entityType: 'task_comment',
+      entityId: commentId ?? null,
+      metadata: {
+        ...this.activity.commentMetadata(commentId, dto.content),
+        parent: { type: 'task', id: taskId },
+      },
+    });
     void this.fireMentionNotifications(
       taskId,
       dto.content,
@@ -205,14 +219,25 @@ export class TaskExtrasService {
   }
 
   async addAttachment(taskId: string, dto: AddAttachmentDto, userId: string) {
-    await this.roadmapAuthz.assertTaskPermission(
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
       taskId,
       userId,
       'roadmap.edit',
     );
-    return this.repo.addAttachment(taskId, dto, userId);
+    const attachment = await this.repo.addAttachment(taskId, dto, userId);
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_ATTACHMENT_ADDED,
+      entityType: 'task_attachment',
+      entityId: (attachment as { id?: string })?.id ?? null,
+      title: (dto as { file_name?: string }).file_name ?? null,
+      metadata: { parent: { type: 'task', id: taskId } },
+    });
+    return attachment;
   }
 
+  // Not logged: no authorization walk today, so there is no resolved scope to
+  // attribute it to without adding queries to a path that has none — same call
+  // as the comment edit/delete paths.
   async deleteAttachment(attachmentId: string, userId: string) {
     return this.repo.deleteAttachment(attachmentId, userId);
   }
@@ -223,12 +248,23 @@ export class TaskExtrasService {
   }
 
   async addDependency(taskId: string, blockingTaskId: string, userId: string) {
-    await this.roadmapAuthz.assertTaskPermission(
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
       taskId,
       userId,
       'roadmap.edit',
     );
-    return this.repo.addDependency(taskId, blockingTaskId, userId);
+    const dependency = await this.repo.addDependency(
+      taskId,
+      blockingTaskId,
+      userId,
+    );
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_DEPENDENCY_ADDED,
+      entityType: 'task_dependency',
+      entityId: (dependency as { id?: string })?.id ?? null,
+      metadata: { blocked: { id: taskId }, blocking: { id: blockingTaskId } },
+    });
+    return dependency;
   }
 
   async removeDependency(taskId: string, dependencyId: string, userId: string) {
@@ -243,11 +279,21 @@ export class TaskExtrasService {
     ) {
       throw new NotFoundException('Dependency not found');
     }
-    await this.roadmapAuthz.assertTaskPermission(
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
       taskId,
       userId,
       'roadmap.edit',
     );
-    return this.repo.removeDependency(dependencyId);
+    const removed = await this.repo.removeDependency(dependencyId);
+    this.effects.record(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_DEPENDENCY_REMOVED,
+      entityType: 'task_dependency',
+      entityId: dependencyId,
+      metadata: {
+        blocked: { id: dependency.blocked_task_id },
+        blocking: { id: dependency.blocking_task_id },
+      },
+    });
+    return removed;
   }
 }
