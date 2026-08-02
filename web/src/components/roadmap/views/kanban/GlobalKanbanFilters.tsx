@@ -8,7 +8,7 @@ import {
 	useState,
 } from "react";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
-import type { GlobalBoardFilters } from "./GlobalKanbanView";
+import type { GlobalBoardFilters } from "./globalBoardFilters";
 
 interface PillOption {
 	id: string;
@@ -133,57 +133,31 @@ function FilterRow({
 	options,
 	selectedId,
 	onSelect,
+	allowAll = true,
 }: {
 	tagLabel: string;
 	options: PillOption[];
 	selectedId: string | null;
 	onSelect: (id: string | null) => void;
+	// Projects opts out: the board is always scoped to exactly one project.
+	allowAll?: boolean;
 }) {
-	const [query, setQuery] = useState("");
-	const q = query.trim().toLowerCase();
-	// Keep the currently-selected option visible even if it doesn't match the
-	// query, so an active selection never disappears while searching.
-	const visibleOptions = q
-		? options.filter(
-				(o) => o.label.toLowerCase().includes(q) || o.id === selectedId,
-			)
-		: options;
-
 	return (
 		<div className="flex items-center gap-2.5 min-w-0 flex-1 relative z-1">
 			<span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border bg-white text-black border-black">
 				{tagLabel}
 			</span>
-			{options.length > 1 && (
-				<div className="relative shrink-0 w-36">
-					<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-					<input
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder={`Search ${tagLabel.toLowerCase()}`}
-						className="w-full pl-8 pr-7 py-1 text-xs border border-input bg-background text-foreground placeholder:text-muted-foreground rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
-					/>
-					{query && (
-						<button
-							type="button"
-							onClick={() => setQuery("")}
-							className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-							aria-label="Clear search"
-						>
-							<X className="w-3.5 h-3.5" />
-						</button>
-					)}
-				</div>
-			)}
 			<ScrollRow>
-				<button
-					type="button"
-					onClick={() => onSelect(null)}
-					className={pillClass(selectedId === null)}
-				>
-					All
-				</button>
-				{visibleOptions.map((option) => (
+				{allowAll && (
+					<button
+						type="button"
+						onClick={() => onSelect(null)}
+						className={pillClass(selectedId === null)}
+					>
+						All
+					</button>
+				)}
+				{options.map((option) => (
 					<button
 						key={option.id}
 						type="button"
@@ -193,9 +167,9 @@ function FilterRow({
 						{option.label}
 					</button>
 				))}
-				{q && visibleOptions.length === 0 && (
+				{!allowAll && options.length === 0 && (
 					<span className="shrink-0 text-xs text-slate-400 italic px-1">
-						No matches
+						No projects
 					</span>
 				)}
 			</ScrollRow>
@@ -435,8 +409,8 @@ export function GlobalKanbanFilters({
 				: [...filters.assigneeIds, id],
 		});
 
+	// The project scope is mandatory, so it never counts as a "clearable" filter.
 	const hasAny =
-		!!filters.projectId ||
 		!!filters.epicId ||
 		!!filters.featureId ||
 		filters.assigneeIds.length > 0 ||
@@ -451,6 +425,7 @@ export function GlobalKanbanFilters({
 						options={projectOptions}
 						selectedId={filters.projectId}
 						onSelect={selectProject}
+						allowAll={false}
 					/>
 				</div>
 				<div className="relative pl-8 flex items-center min-w-0">
@@ -504,7 +479,7 @@ export function GlobalKanbanFilters({
 						onClick={() => {
 							onSearchChange("");
 							onChange({
-								projectId: null,
+								projectId: filters.projectId,
 								epicId: null,
 								featureId: null,
 								assigneeIds: [],
