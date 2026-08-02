@@ -1,4 +1,11 @@
-import { Building2, ChevronRight, Eye, Pencil, User } from "lucide-react";
+import {
+	Building2,
+	ChevronRight,
+	Eye,
+	Pencil,
+	User,
+	Users,
+} from "lucide-react";
 import type { AvatarBadge } from "@/components/common/Avatar";
 import { MemberDisplay } from "@/components/common/MemberDisplay";
 import {
@@ -21,11 +28,14 @@ import type { PersonAccess } from "./useProjectPeople";
 export function PersonRow({
 	person,
 	badgeTeam,
+	originLabel,
 	onOpen,
 }: {
 	person: PersonAccess;
 	/** Team whose logo marks this person as internal, if any. */
 	badgeTeam?: Team | null;
+	/** Where this person's access comes from — shown as a trailing badge. */
+	originLabel?: string;
 	onOpen: (person: PersonAccess) => void;
 }) {
 	const badge: AvatarBadge | null = person.isExternal
@@ -73,6 +83,14 @@ export function PersonRow({
 									iconClassName="text-muted-foreground"
 								>
 									You
+								</SemanticBadge>
+							)}
+							{originLabel && (
+								<SemanticBadge
+									icon={Users}
+									iconClassName="text-muted-foreground"
+								>
+									{originLabel}
 								</SemanticBadge>
 							)}
 						</>

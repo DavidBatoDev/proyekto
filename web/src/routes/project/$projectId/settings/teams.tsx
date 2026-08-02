@@ -1,13 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 /**
- * Redirect. Attached teams are collapsible groups inside the project's single
- * People page now, so there is no separate teams surface to land on.
+ * Redirect. Attached teams have their own dedicated management page now,
+ * under the Team section rather than Settings.
  */
 export const Route = createFileRoute("/project/$projectId/settings/teams")({
 	beforeLoad: ({ params }) => {
 		throw redirect({
-			to: "/project/$projectId/team",
+			to: "/project/$projectId/team/teams",
 			params: { projectId: params.projectId },
 			search: {},
 		});
