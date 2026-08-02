@@ -1,10 +1,6 @@
 /**
- * Project member permissions — the members table, the per-member/per-role
- * capability editor, and the capability catalog.
- *
- * This lived at `/project/:id/settings/permissions` and was one of four places
- * that rendered a member list. It now backs tabs on the Team page; the old
- * route redirects here.
+ * The per-member/per-role permission-matrix editor, mounted by
+ * `/project/:id/team/permissions` whenever `?memberId=` or `?role=` is set.
  */
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -50,14 +46,9 @@ const DIRECT_ORIGIN_LABELS: Record<string, string> = {
 	legacy: "Direct · Legacy",
 };
 
-// Top-level dispatcher.
-//   ?memberId=… or ?role=…   → per-target editor
-//   ?tab=catalog              → reference catalogue
-//   default                   → team-permissions list (per-member overview)
-//
-// Only `ProjectPermissionsEditor` is exported now. The member table this file
-// used to expose was a second roster; the People page is the roster, and the
-// capability reference moved to `PermissionCatalogDialog`.
+// Only `ProjectPermissionsEditor` is exported. The member table this file
+// used to expose was a second roster; the Members page is the roster, and the
+// capability reference lives on its own Permissions Catalog page.
 
 /**
  * Human-readable label for a `project_access.origin` value. Resolves
@@ -649,7 +640,7 @@ export function ProjectPermissionsEditor({
 							"Member permissions updated (prerequisites auto-granted).",
 						);
 						await navigate({
-							to: "/project/$projectId/team",
+							to: "/project/$projectId/team/permissions",
 							params: { projectId },
 						});
 						return;
@@ -659,7 +650,7 @@ export function ProjectPermissionsEditor({
 				toast.success("Member permissions updated.");
 			}
 			await navigate({
-				to: "/project/$projectId/team",
+				to: "/project/$projectId/team/permissions",
 				params: { projectId },
 			});
 		} catch (e) {
@@ -727,12 +718,12 @@ export function ProjectPermissionsEditor({
 			{/* Page header */}
 			<div className="mb-6">
 				<Link
-					to="/project/$projectId/team"
+					to="/project/$projectId/team/permissions"
 					params={{ projectId }}
 					className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" />
-					Back to Team
+					Back to Permissions
 				</Link>
 				<h2 className="text-xl font-semibold text-slate-900">{pageTitle}</h2>
 				<p className="mt-0.5 text-sm text-slate-500">{pageSubtitle}</p>
