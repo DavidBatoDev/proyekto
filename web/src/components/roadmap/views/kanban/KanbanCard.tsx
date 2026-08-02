@@ -1,7 +1,12 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarDays, Layers3, ListTree } from "lucide-react";
-import { type CSSProperties, forwardRef, type HTMLAttributes } from "react";
+import {
+	type CSSProperties,
+	forwardRef,
+	type HTMLAttributes,
+	memo,
+} from "react";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { KanbanTaskContext } from "./types";
 
@@ -138,29 +143,25 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 	},
 );
 
-export function KanbanCard({
+export const KanbanCard = memo(function KanbanCard({
 	row,
 	overlay = false,
 	onCardClick,
 }: KanbanCardProps) {
 	const openTaskDetail = useRoadmapStore((s) => s.openTaskDetail);
 
-	const {
-		attributes,
-		listeners,
-		setNodeRef,
-		transform,
-		transition,
-		isDragging,
-	} = useSortable({
-		id: row.task.id,
-		data: { type: "task", status: row.task.status },
-		disabled: overlay,
-	});
+	const { attributes, listeners, setNodeRef, transform, isDragging } =
+		useSortable({
+			id: row.task.id,
+			data: { type: "task", status: row.task.status },
+			disabled: overlay,
+		});
 
 	const style: CSSProperties = {
 		transform: CSS.Translate.toString(transform),
-		transition,
+		// No reorder animation: other cards snap straight to their new slot
+		// instead of sliding, so there's nothing for dropped frames to stutter.
+		transition: "none",
 	};
 
 	if (overlay) {
@@ -178,4 +179,4 @@ export function KanbanCard({
 			onClick={() => (onCardClick ?? openTaskDetail)(row.task.id)}
 		/>
 	);
-}
+});

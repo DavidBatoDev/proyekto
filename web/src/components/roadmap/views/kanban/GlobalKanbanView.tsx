@@ -12,7 +12,7 @@ import {
 	useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { taskService } from "@/services/roadmap.service";
@@ -133,6 +133,31 @@ function resolveContainer(
 	return findContainerForTask(columns, overId);
 }
 
+// There's no cross-roadmap position field to sort by here, so `columns`
+// order is client-side/session-only. Merge instead of overwrite so a
+// just-completed drag's order survives the post-drop recompute: keep each
+// column's existing row order for rows still present, and only splice in
+// rows that are genuinely new to that column.
+function reconcileColumns(prev: ColumnMap, next: ColumnMap): ColumnMap {
+	const result: ColumnMap = {};
+	for (const columnId of Object.keys(next)) {
+		const nextById = new Map(
+			(next[columnId] ?? []).map((row) => [row.task.id, row]),
+		);
+		const kept: KanbanTaskContext[] = [];
+		for (const row of prev[columnId] ?? []) {
+			const fresh = nextById.get(row.task.id);
+			if (fresh) {
+				kept.push(fresh);
+				nextById.delete(row.task.id);
+			}
+		}
+		kept.push(...nextById.values());
+		result[columnId] = kept;
+	}
+	return result;
+}
+
 interface GlobalKanbanViewProps {
 	roadmaps: FullRoadmapWithProject[];
 	onActiveRoadmapChange?: (roadmap: FullRoadmapWithProject | null) => void;
@@ -207,7 +232,8 @@ export function GlobalKanbanView({
 	const [columns, setColumns] = useState<ColumnMap>(storeColumns);
 
 	useEffect(() => {
-		if (activeId === null) setColumns(storeColumns);
+		if (activeId !== null) return;
+		setColumns((prev) => reconcileColumns(prev, storeColumns));
 	}, [storeColumns, activeId]);
 
 	const activeRow = useMemo<KanbanTaskContext | null>(() => {
@@ -315,11 +341,14 @@ export function GlobalKanbanView({
 		setColumns(storeColumns);
 	};
 
-	const handleCardClick = (taskId: string) => {
-		const row = allRows.find((r) => r.task.id === taskId);
-		if (!row) return;
-		onTaskClick?.(row);
-	};
+	const handleCardClick = useCallback(
+		(taskId: string) => {
+			const row = allRows.find((r) => r.task.id === taskId);
+			if (!row) return;
+			onTaskClick?.(row);
+		},
+		[allRows, onTaskClick],
+	);
 
 	return (
 		<div className="flex flex-col h-full bg-background text-foreground">
