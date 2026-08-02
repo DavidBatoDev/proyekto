@@ -3,7 +3,7 @@ import {
 	SortableContext,
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { KanbanCard } from "./KanbanCard";
 import type { KanbanColumnDef, KanbanTaskContext } from "./types";
 
@@ -13,7 +13,11 @@ interface KanbanColumnProps {
 	onCardClick?: (taskId: string) => void;
 }
 
-export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
+export const KanbanColumn = memo(function KanbanColumn({
+	column,
+	rows,
+	onCardClick,
+}: KanbanColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
 		id: column.id,
 		data: { type: "column", columnId: column.id, status: column.bucketStatus },
@@ -55,4 +59,4 @@ export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
 			</SortableContext>
 		</div>
 	);
-}
+});

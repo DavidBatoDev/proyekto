@@ -2309,10 +2309,18 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 		);
 
 		set((state) => ({
-			epics: patchTaskById(state.epics, taskId, (task) => ({
-				...task,
-				status: targetStatus,
-				board_order: orderById.get(taskId) ?? task.board_order,
+			epics: state.epics.map((epic) => ({
+				...epic,
+				features: (epic.features ?? []).map((feature) => ({
+					...feature,
+					tasks: (feature.tasks ?? []).map((task) => {
+						const nextOrder = orderById.get(task.id);
+						if (nextOrder === undefined) return task;
+						return task.id === taskId
+							? { ...task, status: targetStatus, board_order: nextOrder }
+							: { ...task, board_order: nextOrder };
+					}),
+				})),
 			})),
 		}));
 
