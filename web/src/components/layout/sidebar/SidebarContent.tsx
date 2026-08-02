@@ -27,6 +27,8 @@ import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
 import { TeamSidebarGroup } from "./TeamSidebarGroup";
 
 const TEAMS_OPEN_KEY = "dashboard_sidebar_open_team";
+/** Sentinel for "the user deliberately collapsed every team this session". */
+const TEAMS_OPEN_NONE = "__none__";
 
 const PRIMARY_NAV_ICONS = {
 	dashboard: LayoutDashboard,
@@ -35,10 +37,17 @@ const PRIMARY_NAV_ICONS = {
 	meetings: CalendarDays,
 } as const;
 
-function loadOpenTeam(): string | null {
+/**
+ * Returns `null` when the session has no recorded choice yet (so the caller
+ * may fall back to a default team), or `{ teamId }` for an explicit one -
+ * where `teamId: null` means "collapsed on purpose".
+ */
+function loadOpenTeam(): { teamId: string | null } | null {
 	if (typeof window === "undefined") return null;
 	try {
-		return sessionStorage.getItem(TEAMS_OPEN_KEY);
+		const raw = sessionStorage.getItem(TEAMS_OPEN_KEY);
+		if (raw === null) return null;
+		return { teamId: raw === TEAMS_OPEN_NONE ? null : raw };
 	} catch {
 		return null;
 	}
@@ -47,8 +56,7 @@ function loadOpenTeam(): string | null {
 function saveOpenTeam(id: string | null) {
 	if (typeof window === "undefined") return;
 	try {
-		if (id) sessionStorage.setItem(TEAMS_OPEN_KEY, id);
-		else sessionStorage.removeItem(TEAMS_OPEN_KEY);
+		sessionStorage.setItem(TEAMS_OPEN_KEY, id ?? TEAMS_OPEN_NONE);
 	} catch {
 		/* non-fatal */
 	}
@@ -118,8 +126,10 @@ export function SidebarContent() {
 		return match?.[1] ?? null;
 	})();
 
-	const [openTeamId, setOpenTeamId] = useState<string | null>(
-		() => loadOpenTeam() ?? activeTeamId,
+	// Read once on mount: `null` here means "no choice recorded this session".
+	const [storedOpenTeam] = useState(loadOpenTeam);
+	const [openTeamId, setOpenTeamId] = useState<string | null>(() =>
+		storedOpenTeam ? storedOpenTeam.teamId : activeTeamId,
 	);
 	const persistDefaultsMutation = useMutation({
 		mutationFn: (lastTeamId: string | null) =>
@@ -127,7 +137,12 @@ export function SidebarContent() {
 	});
 	const lastPersistedTeamIdRef = useRef<string | null>(null);
 
-	const lastSyncedActiveTeamId = useRef<string | null>(null);
+	// Seeded with the current route's team when the session already holds a
+	// choice, so remounting on the same page never undoes a collapse; an
+	// actual navigation to a team still opens that team's group.
+	const lastSyncedActiveTeamId = useRef<string | null>(
+		storedOpenTeam ? activeTeamId : null,
+	);
 	useEffect(() => {
 		if (activeTeamId && activeTeamId !== lastSyncedActiveTeamId.current) {
 			lastSyncedActiveTeamId.current = activeTeamId;
@@ -140,8 +155,15 @@ export function SidebarContent() {
 		}
 	}, [activeTeamId, persistDefaultsMutation]);
 
+	// Auto-open the preferred team once per mount, and only while the user has
+	// made no choice of their own. Re-running it after a collapse (which sets
+	// `openTeamId` to null) would instantly re-open the group, making it
+	// impossible to close.
+	const hasAppliedDefaultOpenRef = useRef(storedOpenTeam !== null);
 	useEffect(() => {
-		if (activeTeamId || openTeamId || teams.length === 0) return;
+		if (hasAppliedDefaultOpenRef.current || teams.length === 0) return;
+		hasAppliedDefaultOpenRef.current = true;
+		if (activeTeamId || openTeamId) return;
 		const preferred =
 			(preferredTeamId &&
 				teams.find((team) => team.id === preferredTeamId)?.id) ??
