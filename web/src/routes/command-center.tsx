@@ -129,7 +129,7 @@ function CommandCenterPage() {
 									Command Center
 								</h1>
 								<p className="text-[11px] text-slate-400">
-									Board view of every task across all projects
+									Board view of every task in the selected project
 								</p>
 							</div>
 						</div>

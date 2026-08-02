@@ -18,23 +18,17 @@ import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { taskService } from "@/services/roadmap.service";
 import type { TaskStatus } from "@/types/roadmap";
 import { GlobalKanbanFilters } from "./GlobalKanbanFilters";
+import {
+	applyFilters,
+	applySearch,
+	GLOBAL_FILTERS_KEY,
+	type GlobalBoardFilters,
+	loadGlobalFilters,
+	resolveFilters,
+} from "./globalBoardFilters";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
-
-export interface GlobalBoardFilters {
-	projectId: string | null;
-	epicId: string | null;
-	featureId: string | null;
-	assigneeIds: string[];
-}
-
-const EMPTY_FILTERS: GlobalBoardFilters = {
-	projectId: null,
-	epicId: null,
-	featureId: null,
-	assigneeIds: [],
-};
 
 type ColumnMap = Record<string, KanbanTaskContext[]>;
 
@@ -67,38 +61,6 @@ function buildAllRows(roadmaps: FullRoadmapWithProject[]): KanbanTaskContext[] {
 		}
 	}
 	return result;
-}
-
-function applyFilters(
-	rows: KanbanTaskContext[],
-	filters: GlobalBoardFilters,
-): KanbanTaskContext[] {
-	return rows.filter((row) => {
-		if (filters.projectId && row.project?.id !== filters.projectId)
-			return false;
-		if (filters.epicId && row.epic.id !== filters.epicId) return false;
-		if (filters.featureId && row.feature.id !== filters.featureId) return false;
-		if (filters.assigneeIds.length) {
-			const aid = row.task.assignee_id ?? null;
-			if (!aid || !filters.assigneeIds.includes(aid)) return false;
-		}
-		return true;
-	});
-}
-
-// Free-text search over task cards: matches the task title and its parent
-// feature title. (Epic searching lives on the left filter row instead.)
-function applySearch(
-	rows: KanbanTaskContext[],
-	query: string,
-): KanbanTaskContext[] {
-	const q = query.trim().toLowerCase();
-	if (!q) return rows;
-	return rows.filter(
-		(row) =>
-			row.task.title.toLowerCase().includes(q) ||
-			row.feature.title.toLowerCase().includes(q),
-	);
 }
 
 function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
@@ -139,16 +101,6 @@ interface GlobalKanbanViewProps {
 	onTaskClick?: (row: KanbanTaskContext) => void;
 }
 
-const GLOBAL_FILTERS_KEY = "wi_global_filters";
-
-function loadGlobalFilters(): GlobalBoardFilters {
-	try {
-		const raw = sessionStorage.getItem(GLOBAL_FILTERS_KEY);
-		if (raw) return { ...EMPTY_FILTERS, ...(JSON.parse(raw) as Partial<GlobalBoardFilters>) };
-	} catch {}
-	return { ...EMPTY_FILTERS };
-}
-
 export function GlobalKanbanView({
 	roadmaps,
 	onActiveRoadmapChange,
@@ -160,9 +112,20 @@ export function GlobalKanbanView({
 	// isn't mysteriously filtered on the next visit.
 	const [searchQuery, setSearchQuery] = useState("");
 
+	const effectiveFilters = useMemo<GlobalBoardFilters>(
+		() => resolveFilters(filters, roadmaps),
+		[filters, roadmaps],
+	);
+	const effectiveProjectId = effectiveFilters.projectId;
+
 	useEffect(() => {
-		try { sessionStorage.setItem(GLOBAL_FILTERS_KEY, JSON.stringify(filters)); } catch {}
-	}, [filters]);
+		try {
+			sessionStorage.setItem(
+				GLOBAL_FILTERS_KEY,
+				JSON.stringify(effectiveFilters),
+			);
+		} catch {}
+	}, [effectiveFilters]);
 
 	useEffect(() => {
 		if (!onActiveRoadmapChange) return;
@@ -170,11 +133,11 @@ export function GlobalKanbanView({
 			onActiveRoadmapChange(roadmaps[0]);
 			return;
 		}
-		const active = filters.projectId
-			? (roadmaps.find((r) => r.project?.id === filters.projectId) ?? null)
+		const active = effectiveProjectId
+			? (roadmaps.find((r) => r.project?.id === effectiveProjectId) ?? null)
 			: null;
 		onActiveRoadmapChange(active);
-	}, [filters.projectId, roadmaps, onActiveRoadmapChange]);
+	}, [effectiveProjectId, roadmaps, onActiveRoadmapChange]);
 
 	const [localRows, setLocalRows] = useState<KanbanTaskContext[]>([]);
 	const allRows = useMemo(() => buildAllRows(roadmaps), [roadmaps]);
@@ -196,8 +159,8 @@ export function GlobalKanbanView({
 	}, [allRows]);
 
 	const filteredRows = useMemo(
-		() => applySearch(applyFilters(localRows, filters), searchQuery),
-		[localRows, filters, searchQuery],
+		() => applySearch(applyFilters(localRows, effectiveFilters), searchQuery),
+		[localRows, effectiveFilters, searchQuery],
 	);
 
 	const storeColumns = useMemo(
@@ -305,7 +268,9 @@ export function GlobalKanbanView({
 					),
 				);
 				toast.error(
-					error instanceof Error ? error.message : "Failed to update task status",
+					error instanceof Error
+						? error.message
+						: "Failed to update task status",
 				);
 			});
 	};
@@ -325,7 +290,7 @@ export function GlobalKanbanView({
 		<div className="flex flex-col h-full bg-background text-foreground">
 			<GlobalKanbanFilters
 				roadmaps={roadmaps}
-				filters={filters}
+				filters={effectiveFilters}
 				onChange={setFilters}
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
