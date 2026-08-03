@@ -1,6 +1,6 @@
 # Routing & Personas
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -21,7 +21,7 @@ each route's `beforeLoad`.
 | `project/` | `$projectId` layout + tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
-| `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps) |
+| `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps). **Missing:** `notifications` — the email-preferences API is live with no UI, see [Notifications → known gap](../11-domains/notifications-and-push.md#known-gap-no-settings-ui) |
 | `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
 Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,

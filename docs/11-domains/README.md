@@ -1,6 +1,6 @@
 # Feature Domains
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
@@ -13,7 +13,7 @@ does, its data model, its HTTP surface, and where the code lives.
 | --- | --- |
 | [meetings/](./meetings/README.md) | Meeting scheduling — calendar, RRULE recurrence, timezones, reminders (a full sub-set) |
 | [chat.md](./chat.md) | Project channels, DMs, reactions, stars, the activity feed |
-| [notifications-and-push.md](./notifications-and-push.md) | In-app notifications and the FCM push fan-out |
+| [notifications-and-push.md](./notifications-and-push.md) | In-app notifications, the FCM push fan-out, and deferred mention email (no settings UI yet) |
 | [payments-payouts-invoices.md](./payments-payouts-invoices.md) | The money domain — live payouts + invoices, and the retired escrow |
 | [marketplace-and-applications.md](./marketplace-and-applications.md) | Consultant applications/vetting and freelancer discovery/hiring |
 | [teams-and-time.md](./teams-and-time.md) | Reusable teams, project curation → access, billable time logs |
