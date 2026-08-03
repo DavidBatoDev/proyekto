@@ -100,6 +100,60 @@ describe('notification email registry', () => {
     expect(email?.html).toContain('&lt;script&gt;');
   });
 
+  describe('chat_dm_received', () => {
+    const dmCtx = {
+      ...ctx,
+      content: {
+        actor_name: 'Ada Lovelace',
+        excerpt: 'are you free at 3?',
+        message: 'Ada Lovelace sent you a message',
+      },
+      linkUrl: '/inbox?r=room-1',
+    };
+
+    it('reads as a message, not a mention', () => {
+      const email = renderNotificationEmail('chat_dm_received', dmCtx);
+
+      expect(email?.subject).toBe('Ada Lovelace sent you a message');
+      expect(email?.html).toContain('New direct message');
+      expect(email?.html).toContain('Open conversation');
+      expect(email?.html).toContain('are you free at 3?');
+    });
+
+    it('never claims the reader was mentioned', () => {
+      // The footer sits directly beside the unsubscribe link — the one place the
+      // email has to be straight about why it arrived.
+      const email = renderNotificationEmail('chat_dm_received', dmCtx);
+
+      expect(email?.html).toContain('unread direct message');
+      expect(email?.html).not.toContain('you were mentioned');
+    });
+
+    it('preserves the ?r= query string in the deep link', () => {
+      const email = renderNotificationEmail('chat_dm_received', dmCtx);
+
+      expect(email?.html).toContain('https://www.proyekto.test/inbox?r=room-1');
+    });
+
+    it('degrades to "Someone" with a bare content blob', () => {
+      const email = renderNotificationEmail('chat_dm_received', {
+        ...dmCtx,
+        content: {},
+      });
+
+      expect(email?.subject).toBe('Someone sent you a message');
+      expect(email?.html).not.toContain('undefined');
+    });
+
+    it('omits the "in <context>" clause entirely', () => {
+      // The DM producer sets no context_title on purpose; with one the copy
+      // would read "sent you a message in a direct message".
+      const email = renderNotificationEmail('chat_dm_received', dmCtx);
+
+      expect(email?.html).not.toContain(' in a direct message');
+    });
+  });
+
   it('includes the unsubscribe link, and omits it when absent', () => {
     expect(
       renderNotificationEmail('task_comment_mention', ctx)?.html,

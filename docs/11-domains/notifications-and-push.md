@@ -3,7 +3,8 @@
 > **Last updated:** 2026-08-04 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
-(immediate) and **email** (deferred, mentions only). The `notifications` module owns
+(immediate) and **email** (deferred, for mentions and direct messages). The
+`notifications` module owns
 the in-app inbox and the email dispatcher; the `push` module owns device tokens and
 FCM dispatch. Notifications are **best-effort** — a failed notification or email
 never blocks the action that triggered it.
@@ -55,8 +56,9 @@ Capacitor/FCM wiring.
 
 ## Email channel
 
-**Live for the four mention types since 2026-08-04.** Getting mentioned in a task,
-feature or epic comment, or in chat, can produce an email. Nothing else emails.
+**Live since 2026-08-04** for the four mention types and for direct messages. Being
+mentioned in a task, feature or epic comment or in chat, or receiving a DM, can
+produce an email. Nothing else emails.
 
 Delivery is **deferred and conditional**, the Trello/Slack model: the email is queued
 with a delay and sent only if the recipient still has not seen the notification. Read
@@ -79,8 +81,10 @@ effect immediately with no deploy. Turning email off entirely is one statement:
 UPDATE notification_types SET email_eligible = false;
 ```
 
-Per-type policy also lives there: `email_delay_seconds` (600 today) and
-`email_default_enabled` (whether users are opted in by default).
+Per-type policy also lives there: `email_delay_seconds` (600 for mentions, **1800 for
+DMs** — threads are bursty and usually answered within minutes, so a ten-minute fuse
+would mail people mid-conversation) and `email_default_enabled` (whether users are
+opted in by default).
 
 ### How a mention becomes an email
 
@@ -130,6 +134,42 @@ Two behaviours worth knowing:
   independent switches, and the answer when they disagree is silence, not a blank
   email. A guard test asserts the registry matches the intended set.
 
+### Direct messages
+
+A plain DM used to notify nobody: `sendDmMessage` published a realtime event and, with
+no `@mention` in the message, `fireMentionNotifications` returned immediately. If your
+app was not open you never learned the message existed.
+
+`chat_dm_received` now fires from `ChatService.notifyDmRecipients`, with three rules:
+
+- **Awaited, not detached.** Unlike the mention and realtime fan-outs beside it, this
+  one is `await`ed (bounded by `DM_NOTIFY_DEADLINE_MS`, 2.5s). For a plain DM the
+  notification row is the only delivery signal, and Cloud Run throttles CPU once the
+  response flushes — a detached tail can be frozen, silently dropping the notification.
+- **Mention wins.** A recipient already being notified about the same message via
+  `chat_mention` gets no second notification. Compared locally, which is exact for DMs:
+  a DM room's members are permanently `{sender, recipient}`, so the membership filter
+  the mention path applies is a no-op.
+- **One live notification per (user, room).** A twenty-message burst produces one bell
+  row, one push and one email candidate — not twenty.
+
+That last rule needs care. "Live" means unread **and newer than the recipient's
+`last_read_at` for the room**. The staleness half is what lets it RE-ARM: nothing marks
+a notification read when you read the room, so without it a user who reads DMs in the
+room but never opens the bell would be notified about a conversation exactly once, ever
+— and that is the normal case, not an edge case. The probe is backed by
+`idx_notifications_unread_by_room` and is deliberately type-free, since an unread
+`chat_mention` for the same room has already told the user to look.
+
+Consequence of insert-if-absent (required, because the outbox has
+`UNIQUE (notification_id)` and is fed by an insert trigger — updating in place would
+enqueue email once per room forever): the excerpt and `message_id` freeze at the first
+unread message of a burst. Copy is count-agnostic for that reason, and the email quotes
+the first unread message rather than the latest.
+
+Known wart: reading a DM in the room does **not** clear its bell badge. The bell is a
+deliberately independent inbox you clear yourself.
+
 ### Unsubscribe and preferences
 
 - `POST /api/notifications/unsubscribe?token=…&scope=…` — one-click (RFC 8058),
@@ -146,25 +186,19 @@ unsubscribe button only when both are present.
 > global `ValidationPipe`'s `forbidNonWhitelisted` would reject the undeclared field —
 > 400-ing every real click. That failure is invisible outside a real inbox.
 
-### Known gap: no settings UI
+### Settings UI
 
-**There is no web surface for notification email preferences.** The API is live and
-the unsubscribe link in each email works, so nobody is trapped — but a user cannot
-see or manage per-type toggles inside the app. The only way to opt out today is the
-footer link in an email they have already received.
-
-What is missing:
-
-- `web/src/routes/settings/notifications.tsx` — a settings page reading
-  `GET /api/notifications/preferences` and writing `PUT`, mirroring the existing
-  appearance-preferences page (`settings/appearance.tsx` +
-  `PUT /api/users/me/preferences/appearance`).
-- `web/src/routes/unsubscribe.tsx` — a human-facing landing page for footer link
-  clicks, offering per-type granularity instead of a blunt opt-out.
-- New page paths must be added to `Header.tsx`'s `validPaths`.
-
-This is the first thing to build before adding more emailable types: each new type
-widens what users receive without giving them anywhere to turn it down.
+- **`/settings/notifications`** (`web/src/routes/settings/notifications.tsx`) — a
+  master email switch plus one toggle per emailable type, read from
+  `GET /api/notifications/preferences` and saved with `PUT`. Toggles are optimistic
+  with rollback. Turning the master switch off disables the per-type rows rather than
+  hiding them, so the state stays legible.
+- **`/unsubscribe`** (`web/src/routes/unsubscribe.tsx`) — the human-facing landing for
+  footer-link clicks. Public and session-free, because it has to work from whatever
+  device opened the mail. Distinct from the one-click header target, which mail clients
+  POST silently and which renders nothing.
+- Type labels live in `TYPE_COPY` on the settings page and fall back to the raw type
+  name, so a type added server-side still renders rather than vanishing from the list.
 
 ### Operational notes
 
@@ -189,7 +223,7 @@ domain event  ─►  NotificationsService.createNotification(...)  ─►  noti
                         │  (best-effort)
                         ├─►  PushModule  ─►  FCM  ─►  device_tokens  ─►  device
                         └─►  AFTER INSERT trigger  ─►  email outbox  ─►  cron  ─►  inbox
-                                                        (mentions only, delayed)
+                                            (mentions + DMs, delayed)
 ```
 
 ## Code locations

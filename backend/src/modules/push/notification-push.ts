@@ -12,6 +12,7 @@ const NOTIFICATION_TITLES: Record<string, string> = {
   project_invite_responded: 'Invitation update',
   milestone_completed: 'Milestone completed',
   chat_mention: 'New mention',
+  chat_dm_received: 'New message',
   team_invite_received: 'Team invitation',
   task_assigned: 'Task assigned',
   task_comment_mention: 'You were mentioned',

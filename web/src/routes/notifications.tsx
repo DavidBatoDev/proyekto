@@ -46,6 +46,9 @@ function getNotificationTitle(item: NotificationItem) {
 	if (name === "time_log_pending") return "Time log reset to pending";
 	if (name === "time_log_day_rejected") return "Daily logs rejected";
 	if (name === "time_log_comment_added") return "Time log comment";
+	if (name === "chat_dm_received") return "New message";
+	// chat_mention was never mapped here — it rendered as a bare "Notification".
+	if (name === "chat_mention") return "Mention";
 	if (name === "task_comment_mention") return "Mentioned in task";
 	if (name === "feature_comment_mention") return "Mentioned in feature";
 	if (name === "epic_comment_mention") return "Mentioned in epic";
@@ -102,7 +105,9 @@ function getNotificationIcon(item: NotificationItem) {
 	if (
 		name === "task_comment_mention" ||
 		name === "feature_comment_mention" ||
-		name === "epic_comment_mention"
+		name === "epic_comment_mention" ||
+		name === "chat_mention" ||
+		name === "chat_dm_received"
 	) {
 		return <MessageCircle className="h-5 w-5 text-primary" />;
 	}

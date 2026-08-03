@@ -30,10 +30,10 @@ describe('notification email switch parity', () => {
     expect(migration).not.toMatch(/SET\s+email_eligible\s*=\s*true/i);
   });
 
-  it('renders exactly the four mention types in this phase', () => {
-    // DM email arrives in phase 2 with its own type and flag; anything else
-    // showing up here means scope crept without a decision.
+  it('renders exactly the four mention types plus DMs', () => {
+    // Anything else showing up here means scope crept without a decision.
     expect([...EMAILABLE_NOTIFICATION_TYPES].sort()).toEqual([
+      'chat_dm_received',
       'chat_mention',
       'epic_comment_mention',
       'feature_comment_mention',

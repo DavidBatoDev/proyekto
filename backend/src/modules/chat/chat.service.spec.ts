@@ -84,6 +84,7 @@ describe('ChatService', () => {
       removeParticipant: jest.fn().mockResolvedValue(undefined),
       isRoomParticipant: jest.fn().mockResolvedValue(true),
       listRoomParticipantUserIds: jest.fn().mockResolvedValue([]),
+      listRoomParticipantReadState: jest.fn().mockResolvedValue([]),
       listRoomsForProject: jest.fn().mockResolvedValue([]),
       listDmRoomsForUser: jest.fn().mockResolvedValue([]),
       listRoomMessages: jest.fn().mockResolvedValue([]),
@@ -134,6 +135,8 @@ describe('ChatService', () => {
     ({
       createNotification: jest.fn().mockResolvedValue({ id: 'notif-1' }),
       resolveActorName: jest.fn().mockResolvedValue('Ada Lovelace'),
+      // Default: no live notification, so a DM notifies.
+      findLiveChatRoomNotification: jest.fn().mockResolvedValue(null),
       ...overrides,
     }) as unknown as import('../notifications/notifications.service').NotificationsService;
 
@@ -981,5 +984,233 @@ describe('ChatService', () => {
 
     const ok = result.messages.find((m) => m.id === 'm-ok')!;
     expect(ok.content).toBe('visible');
+  });
+
+  // ── DM received notifications ──────────────────────────────────────────────
+  describe('DM received notifications', () => {
+    const dmRoom = () => buildRoom({ id: 'room-dm', type: 'dm' });
+
+    /** Sender + one recipient, with the recipient's read pointer. */
+    const participants = (lastReadAt: string | null = null) => [
+      { user_id: 'actor-1', last_read_at: null },
+      { user_id: 'rec-1', last_read_at: lastReadAt },
+    ];
+
+    const sendDm = async (
+      notifications: ReturnType<typeof buildNotifications>,
+      opts: {
+        readState?: { user_id: string; last_read_at: string | null }[];
+        content?: string;
+        mentions?: {
+          user_id: string;
+          name: string;
+          offset: number;
+          length: number;
+        }[];
+      } = {},
+    ) => {
+      const repo = buildRepo({
+        findRoomForParticipant: jest.fn().mockResolvedValue(dmRoom()),
+        listRoomParticipantUserIds: jest
+          .fn()
+          .mockResolvedValue(['actor-1', 'rec-1']),
+        listRoomParticipantReadState: jest
+          .fn()
+          .mockResolvedValue(opts.readState ?? participants()),
+      });
+      await makeService(repo, {}, notifications).sendDmMessage('actor-1', {
+        room_id: 'room-dm',
+        content: opts.content ?? 'hello there',
+        mentions: opts.mentions,
+      });
+      return repo;
+    };
+
+    const dmCalls = (createNotification: jest.Mock) =>
+      createNotification.mock.calls.filter(
+        (c) => c[0].type_name === 'chat_dm_received',
+      );
+
+    it('notifies the recipient and nobody else', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(buildNotifications({ createNotification }));
+
+      const calls = dmCalls(createNotification);
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0]).toMatchObject({
+        user_id: 'rec-1',
+        actor_id: 'actor-1',
+        type_name: 'chat_dm_received',
+        link_url: '/inbox?r=room-dm',
+      });
+    });
+
+    it('is awaited, not fired detached', async () => {
+      // Regression guard for the bounded-await decision. Cloud Run throttles CPU
+      // once the response flushes, so a detached tail can be frozen and the DM
+      // would silently never notify. Note the deliberate absence of
+      // `await flush()` here — the mention tests above NEED it, this must not.
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(buildNotifications({ createNotification }));
+
+      expect(dmCalls(createNotification)).toHaveLength(1);
+    });
+
+    it('carries the ids the email worker depends on, and no context_title', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(buildNotifications({ createNotification }));
+
+      const content = dmCalls(createNotification)[0][0].content as Record<
+        string,
+        unknown
+      >;
+      // Without message_id the worker's seen_in_app gate silently disables
+      // itself and mails people who already read the DM.
+      expect(content.room_id).toBe('room-dm');
+      expect(content.message_id).toBe('msg-1');
+      expect(content.actor_name).toBe('Ada Lovelace');
+      // Derived from the PERSISTED message, not the DTO — the repo mock returns
+      // 'hello', and snapshotting what was actually stored is the correct
+      // behaviour.
+      expect(content.excerpt).toBe('hello');
+      expect(content.message).toBe('Ada Lovelace sent you a message');
+      // Would render "sent you a message in a direct message".
+      expect(content).not.toHaveProperty('context_title');
+    });
+
+    it('says attachment when the message has no text', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      const repo = buildRepo({
+        findRoomForParticipant: jest.fn().mockResolvedValue(dmRoom()),
+        listRoomParticipantReadState: jest
+          .fn()
+          .mockResolvedValue(participants()),
+        createMessage: jest.fn().mockResolvedValue({
+          id: 'msg-1',
+          room_id: 'room-dm',
+          project_id: null,
+          sender_id: 'actor-1',
+          content: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      await makeService(
+        repo,
+        {},
+        buildNotifications({ createNotification }),
+      ).sendDmMessage('actor-1', {
+        room_id: 'room-dm',
+        attachments: [
+          {
+            url: 'https://cdn.proyekto.tech/chat_attachments/actor-1/a.png',
+            name: 'a.png',
+            content_type: 'image/png',
+            size: 10,
+          },
+        ],
+      });
+
+      const content = dmCalls(createNotification)[0][0].content as Record<
+        string,
+        unknown
+      >;
+      expect(content.message).toBe('Ada Lovelace sent you an attachment');
+      expect(content).not.toHaveProperty('excerpt');
+    });
+
+    it('mention wins — a mentioned recipient gets no DM notification', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(buildNotifications({ createNotification }), {
+        mentions: [{ user_id: 'rec-1', name: 'Rec', offset: 0, length: 3 }],
+      });
+      await flush();
+
+      expect(dmCalls(createNotification)).toHaveLength(0);
+      expect(
+        createNotification.mock.calls.filter(
+          (c) => c[0].type_name === 'chat_mention',
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('mention wins for the @everyone sentinel too', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(buildNotifications({ createNotification }), {
+        mentions: [
+          { user_id: 'everyone', name: 'everyone', offset: 0, length: 8 },
+        ],
+      });
+      await flush();
+
+      expect(dmCalls(createNotification)).toHaveLength(0);
+    });
+
+    it('does not stack — a live notification suppresses the next message', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      await sendDm(
+        buildNotifications({
+          createNotification,
+          findLiveChatRoomNotification: jest
+            .fn()
+            .mockResolvedValue({ id: 'n0' }),
+        }),
+      );
+
+      expect(dmCalls(createNotification)).toHaveLength(0);
+    });
+
+    it('re-arms once the recipient has read the room', async () => {
+      // The most important test here. Nothing marks a notification read when you
+      // read the room, so if the probe ignored last_read_at a conversation would
+      // notify exactly once, ever.
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      const findLive = jest.fn().mockResolvedValue(null);
+      const readAt = new Date().toISOString();
+      await sendDm(
+        buildNotifications({
+          createNotification,
+          findLiveChatRoomNotification: findLive,
+        }),
+        { readState: participants(readAt) },
+      );
+
+      // The read pointer must reach the probe, or staleness cannot be evaluated.
+      expect(findLive).toHaveBeenCalledWith('rec-1', 'room-dm', readAt);
+      expect(dmCalls(createNotification)).toHaveLength(1);
+    });
+
+    it('never notifies on a channel message', async () => {
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      const repo = buildRepo({
+        findRoomForParticipant: jest.fn().mockResolvedValue(
+          buildRoom({
+            id: 'room-chan',
+            project_id: 'project-1',
+            type: 'channel',
+          }),
+        ),
+      });
+      await makeService(
+        repo,
+        {},
+        buildNotifications({ createNotification }),
+      ).sendChannelMessage('project-1', 'actor-1', {
+        room_id: 'room-chan',
+        content: 'hi',
+      });
+      await flush();
+
+      expect(dmCalls(createNotification)).toHaveLength(0);
+    });
+
+    it('still sends the message when the notification path throws', async () => {
+      const createNotification = jest
+        .fn()
+        .mockRejectedValue(new Error('notifications down'));
+      await expect(
+        sendDm(buildNotifications({ createNotification })),
+      ).resolves.toBeDefined();
+    });
   });
 });

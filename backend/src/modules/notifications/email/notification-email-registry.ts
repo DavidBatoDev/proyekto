@@ -115,6 +115,14 @@ function buildMentionStyleEmail(
 const MENTION_FOOTER =
   'You received this email because you were mentioned on Proyekto.';
 
+/**
+ * DMs need their own footer. Reusing MENTION_FOOTER would tell the reader they
+ * were mentioned when they were not — sitting directly beside the unsubscribe
+ * link, which is the one place the email has to be straight with them.
+ */
+const DM_FOOTER =
+  'You received this email because you have an unread direct message on Proyekto.';
+
 const REGISTRY: Record<string, Renderer> = {
   task_comment_mention: (ctx) =>
     buildMentionStyleEmail(ctx, {
@@ -162,6 +170,17 @@ const REGISTRY: Record<string, Renderer> = {
           : `${actor} mentioned you in chat`,
       ctaLabel: 'Open chat',
       footerNote: MENTION_FOOTER,
+    }),
+
+  chat_dm_received: (ctx) =>
+    buildMentionStyleEmail(ctx, {
+      action: 'sent you a message',
+      title: 'New direct message',
+      // Ignores `context` deliberately — the DM producer sets no context_title,
+      // because "sent you a message in a direct message" reads badly.
+      subjectFor: (actor) => `${actor} sent you a message`,
+      ctaLabel: 'Open conversation',
+      footerNote: DM_FOOTER,
     }),
 };
 

@@ -171,6 +171,68 @@ describe('NotificationEmailWorkerService', () => {
     expect(updates.some((u) => u.values.skip_reason === reason)).toBe(true);
   });
 
+  it('skips a DM already read in the room, not just in the bell', async () => {
+    // CHAT_SOURCED_TYPES has held chat_dm_received since phase 1 but nothing
+    // exercised it. The bell is not marked read when you read a room, so
+    // is_read alone would mail someone who already saw the message.
+    const sent = new Date(Date.now() - 60_000).toISOString();
+    const read = new Date().toISOString();
+    const { service, mailer, updates } = build({
+      ...HAPPY,
+      __claim: [
+        {
+          ...ROW,
+          type_name: 'chat_dm_received',
+          payload: {
+            content: {
+              actor_name: 'Ada',
+              room_id: 'room-1',
+              message_id: 'msg-1',
+            },
+            link_url: '/inbox?r=room-1',
+          },
+        },
+      ],
+      chat_room_participants: { last_read_at: read },
+      chat_room_messages: { created_at: sent },
+    });
+
+    await service.runDispatch();
+
+    expect(mailer.send).not.toHaveBeenCalled();
+    expect(updates.some((u) => u.values.skip_reason === 'seen_in_app')).toBe(
+      true,
+    );
+  });
+
+  it('sends a DM the recipient has not caught up on', async () => {
+    const sent = new Date().toISOString();
+    const read = new Date(Date.now() - 60_000).toISOString();
+    const { service, mailer } = build({
+      ...HAPPY,
+      __claim: [
+        {
+          ...ROW,
+          type_name: 'chat_dm_received',
+          payload: {
+            content: {
+              actor_name: 'Ada',
+              room_id: 'room-1',
+              message_id: 'msg-1',
+            },
+            link_url: '/inbox?r=room-1',
+          },
+        },
+      ],
+      chat_room_participants: { last_read_at: read },
+      chat_room_messages: { created_at: sent },
+    });
+
+    await service.runDispatch();
+
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+  });
+
   it('skips a type this build cannot render, even if the DB says eligible', async () => {
     // The database flag and the registry are independent switches; the answer
     // when they disagree is silence, not a blank email.

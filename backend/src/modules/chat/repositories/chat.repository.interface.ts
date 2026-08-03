@@ -129,8 +129,13 @@ export type ChatMemberCandidate = {
 
 export interface ChatRepository {
   isProjectMember(projectId: string, userId: string): Promise<boolean>;
-  resolveProjectRole(projectId: string, userId: string): Promise<ChatRole | null>;
-  listProjectMemberCandidates(projectId: string): Promise<ChatMemberCandidate[]>;
+  resolveProjectRole(
+    projectId: string,
+    userId: string,
+  ): Promise<ChatRole | null>;
+  listProjectMemberCandidates(
+    projectId: string,
+  ): Promise<ChatMemberCandidate[]>;
   listProjectParticipantUserIds(projectId: string): Promise<string[]>;
   usersShareAnyProject(userA: string, userB: string): Promise<boolean>;
   findRoomById(roomId: string): Promise<ChatRoom | null>;
@@ -143,10 +148,7 @@ export interface ChatRepository {
     roomId: string,
     userId: string,
   ): Promise<ChatRoom | null>;
-  findChannelBySlug(
-    projectId: string,
-    slug: string,
-  ): Promise<ChatRoom | null>;
+  findChannelBySlug(projectId: string, slug: string): Promise<ChatRoom | null>;
   findDmBySlug(slug: string): Promise<ChatRoom | null>;
   upsertChannel(params: {
     projectId: string;
@@ -173,14 +175,22 @@ export interface ChatRepository {
   ): Promise<ChatRoomWithLastMessage[]>;
   /** Participants of a single room (for the channel member list). */
   listRoomParticipants(roomId: string): Promise<ChatParticipant[]>;
-  upsertDm(params: {
-    slug: string;
-  }): Promise<ChatRoom>;
+  upsertDm(params: { slug: string }): Promise<ChatRoom>;
   upsertParticipants(roomId: string, userIds: string[]): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
   /** All user ids participating in a room (for realtime inbox fan-out). */
   listRoomParticipantUserIds(roomId: string): Promise<string[]>;
+  /**
+   * Participants plus their read pointers, in one query.
+   *
+   * Deliberately leaner than `listRoomParticipants`, which joins `profiles` —
+   * the DM notify path needs only ids and `last_read_at`, and it runs on an
+   * awaited send.
+   */
+  listRoomParticipantReadState(
+    roomId: string,
+  ): Promise<{ user_id: string; last_read_at: string | null }[]>;
   listRoomsForProject(
     projectId: string,
     userId: string,

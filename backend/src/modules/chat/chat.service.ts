@@ -39,6 +39,15 @@ import { MENTION_EXCERPT_MAX_CHARS } from '../notifications/notification-content
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
 const EVERYONE_MENTION_ID = 'everyone';
 
+/**
+ * Ceiling on the DM notification work that a send will wait for.
+ *
+ * The notify path is awaited (see `notifyDmRecipients` for why), so it needs a
+ * bound. Generous enough for a probe plus an insert plus the push inside
+ * `createNotification` (itself capped at PUSH_SEND_TIMEOUT_MS, default 1500ms).
+ */
+const DM_NOTIFY_DEADLINE_MS = 2_500;
+
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 
 type SystemRoomSpec = {
@@ -149,7 +158,9 @@ export class ChatService {
         const linkUrl =
           room.type === 'channel' && room.project_id
             ? `/project/${room.project_id}/chat/${room.id}`
-            : '/inbox';
+            : // `r` (not `room`) is the search param /inbox validates; without
+              // it the link lands on the inbox list rather than the thread.
+              `/inbox?r=${room.id}`;
 
         // Snapshot what a human-facing message needs, once for the whole
         // fan-out: the actor is the same person for every recipient, and the
@@ -186,6 +197,91 @@ export class ChatService {
         // notifications are non-critical
       }
     })();
+  }
+
+  /**
+   * Notify the other side of a DM that a message arrived.
+   *
+   * AWAITED by the caller, unlike the mention and realtime fan-outs above. For a
+   * plain DM this notification row is the ONLY delivery signal — there is no
+   * mention row, and the email outbox is fed by an AFTER INSERT trigger on
+   * `notifications`, so no row means no email either. Cloud Run runs with CPU
+   * throttling and `--min-instances=0`, so a detached tail can be frozen the
+   * instant the response flushes; the failure mode would be a DM that silently
+   * never notifies anyone. (Note the bounded await inside `createNotification`
+   * does not help if its caller is detached — the freeze happens above it.)
+   *
+   * Affordable because the common case is cheap: messages 2..N of a burst
+   * short-circuit at the dedup probe, and the participant read-state query
+   * replaces the one `fanoutChat` was already making.
+   */
+  private async notifyDmRecipients(params: {
+    room: ChatRoom;
+    message: ChatMessage;
+    senderId: string;
+    mentions: ChatMention[];
+    participants: { user_id: string; last_read_at: string | null }[];
+  }): Promise<void> {
+    const { room, message, senderId, mentions, participants } = params;
+
+    const recipients = participants.filter((p) => p.user_id !== senderId);
+    if (recipients.length === 0) return;
+
+    const hasBody = (message.content ?? '').trim().length > 0;
+    const actorName = await this.notifications.resolveActorName(senderId);
+    const actorLabel = actorName ?? 'Someone';
+    // Count-agnostic on purpose: the row is created once per read-cycle and is
+    // never refreshed, so it must not claim a number it cannot keep accurate.
+    const summary = hasBody
+      ? `${actorLabel} sent you a message`
+      : `${actorLabel} sent you an attachment`;
+    const excerpt = truncatePromptText(
+      (message.content ?? '').trim(),
+      MENTION_EXCERPT_MAX_CHARS,
+    );
+
+    await Promise.allSettled(
+      recipients.map(async (recipient) => {
+        // Mention wins: `fireMentionNotifications` is already notifying this
+        // person about this exact message. Comparing locally is exact for a DM —
+        // that method filters mentions through the room's member set, and a DM
+        // room's members are permanently {sender, recipient}, so the filter is a
+        // no-op and the resolved target set can only equal this one.
+        const alreadyMentioned = mentions.some(
+          (m) =>
+            m.user_id === recipient.user_id ||
+            m.user_id === EVERYONE_MENTION_ID,
+        );
+        if (alreadyMentioned) return;
+
+        const live = await this.notifications.findLiveChatRoomNotification(
+          recipient.user_id,
+          room.id,
+          recipient.last_read_at,
+        );
+        if (live) return;
+
+        await this.notifications.createNotification({
+          user_id: recipient.user_id,
+          actor_id: senderId,
+          type_name: 'chat_dm_received',
+          content: {
+            message: summary,
+            // Both ids are load-bearing downstream: `room_id` is the dedup key,
+            // and without `message_id` the email worker's `seen_in_app` gate
+            // silently disables itself and mails people who already read the DM.
+            room_id: room.id,
+            message_id: message.id,
+            ...(actorName ? { actor_name: actorName } : {}),
+            ...(excerpt ? { excerpt } : {}),
+            // Deliberately no `context_title`: the email renderer appends
+            // " in <context>", which would read "sent you a message in a
+            // direct message".
+          },
+          link_url: `/inbox?r=${room.id}`,
+        });
+      }),
+    );
   }
 
   /**
@@ -816,6 +912,36 @@ export class ChatService {
 
     this.fanoutChat(room.id, null, 'message');
     this.fireMentionNotifications(room, message, senderId, mentions);
+
+    // Awaited, but never allowed to hang a send: past the deadline we degrade to
+    // exactly the old behaviour (realtime only) rather than making the sender
+    // wait on the notification path.
+    try {
+      const participants = await this.chatRepo.listRoomParticipantReadState(
+        room.id,
+      );
+      // The timer is cleared when the work wins, so a fast send does not leave a
+      // 2.5s handle dangling behind every DM.
+      let deadline: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          this.notifyDmRecipients({
+            room,
+            message,
+            senderId,
+            mentions,
+            participants,
+          }),
+          new Promise<void>((resolve) => {
+            deadline = setTimeout(resolve, DM_NOTIFY_DEADLINE_MS);
+          }),
+        ]);
+      } finally {
+        if (deadline) clearTimeout(deadline);
+      }
+    } catch {
+      // Notifications are non-critical; the message is already committed.
+    }
 
     return {
       room,

@@ -47,6 +47,54 @@ export class NotificationsService {
     return name && name.trim().length > 0 ? name.trim() : null;
   }
 
+  /**
+   * Is there already a LIVE notification for this user about this chat room?
+   *
+   * "Live" means unread AND newer than the user's read pointer for the room.
+   * Both halves matter:
+   *
+   * - unread alone would let one notification stand in for a whole burst, which
+   *   is the point — twenty messages should not mean twenty bell rows;
+   * - the `sinceIso` comparison is what lets it RE-ARM. Nothing marks a
+   *   notification read when you read the room, so without it a user who reads
+   *   DMs in the room but never opens the bell would be notified about a given
+   *   conversation exactly once, ever. That is the normal case, not an edge
+   *   case: it looks fine in testing (you click the bell) and fails silently in
+   *   production.
+   *
+   * Not filtered by type on purpose — an unread `chat_mention` for the same room
+   * has already told the user to go look. Only chat notifications carry
+   * `content.room_id`, so the room key alone is unambiguous.
+   *
+   * Backed by `idx_notifications_unread_by_room`.
+   */
+  async findLiveChatRoomNotification(
+    userId: string,
+    roomId: string,
+    sinceIso: string | null,
+  ): Promise<{ id: string } | null> {
+    let query = this.supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_read', false)
+      .eq('content->>room_id', roomId);
+
+    if (sinceIso) query = query.gt('created_at', sinceIso);
+
+    const { data, error } = await query.limit(1).maybeSingle();
+
+    // Fail OPEN: if the probe errors we would rather send a duplicate
+    // notification than silently drop a message someone is waiting for.
+    if (error) {
+      this.logger.warn(
+        `dedupe probe failed for room ${roomId}: ${error.message}`,
+      );
+      return null;
+    }
+    return (data as { id: string } | null) ?? null;
+  }
+
   async listForUser(userId: string, query: NotificationsQueryDto) {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;

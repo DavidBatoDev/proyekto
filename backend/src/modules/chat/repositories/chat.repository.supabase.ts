@@ -124,7 +124,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
   private pickSingle<T>(value: T | T[] | null | undefined): T | null {
     if (!value) return null;
-    return Array.isArray(value) ? value[0] ?? null : value;
+    return Array.isArray(value) ? (value[0] ?? null) : value;
   }
 
   private normalizeRole(params: {
@@ -143,7 +143,9 @@ export class SupabaseChatRepository implements ChatRepository {
     return 'freelancer';
   }
 
-  private async getProjectRoleData(projectId: string): Promise<ProjectRoleData | null> {
+  private async getProjectRoleData(
+    projectId: string,
+  ): Promise<ProjectRoleData | null> {
     const { data, error } = await this.supabase
       .from('projects')
       .select('client_id, consultant_id')
@@ -242,8 +244,10 @@ export class SupabaseChatRepository implements ChatRepository {
       .eq('project_id', projectId)
       .not('user_id', 'is', null);
 
-    const [{ data: projectData, error: projectError }, { data: memberRows, error: membersError }] =
-      await Promise.all([projectQuery, membersQuery]);
+    const [
+      { data: projectData, error: projectError },
+      { data: memberRows, error: membersError },
+    ] = await Promise.all([projectQuery, membersQuery]);
 
     if (projectError || !projectData) {
       throw new Error(projectError?.message || 'Project not found');
@@ -326,7 +330,9 @@ export class SupabaseChatRepository implements ChatRepository {
 
   async listProjectParticipantUserIds(projectId: string): Promise<string[]> {
     const candidates = await this.listProjectMemberCandidates(projectId);
-    return Array.from(new Set(candidates.map((candidate) => candidate.user_id)));
+    return Array.from(
+      new Set(candidates.map((candidate) => candidate.user_id)),
+    );
   }
 
   async usersShareAnyProject(userA: string, userB: string): Promise<boolean> {
@@ -396,15 +402,15 @@ export class SupabaseChatRepository implements ChatRepository {
   ): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_room_participants')
-      .select(
-        `room:chat_rooms!inner(${ROOM_COLUMNS})`,
-      )
+      .select(`room:chat_rooms!inner(${ROOM_COLUMNS})`)
       .eq('room_id', roomId)
       .eq('user_id', userId)
       .maybeSingle();
 
     if (error || !data) return null;
-    return this.pickSingle((data as { room: ChatRoom | ChatRoom[] | null }).room);
+    return this.pickSingle(
+      (data as { room: ChatRoom | ChatRoom[] | null }).room,
+    );
   }
 
   async findChannelBySlug(
@@ -480,7 +486,8 @@ export class SupabaseChatRepository implements ChatRepository {
   ): Promise<ChatRoom> {
     const update: Record<string, unknown> = {};
     if (typeof patch.name === 'string') update.name = patch.name;
-    if (typeof patch.is_private === 'boolean') update.is_private = patch.is_private;
+    if (typeof patch.is_private === 'boolean')
+      update.is_private = patch.is_private;
     if (typeof patch.is_archived === 'boolean') {
       update.is_archived = patch.is_archived;
       update.archived_at = patch.is_archived ? new Date().toISOString() : null;
@@ -638,33 +645,46 @@ export class SupabaseChatRepository implements ChatRepository {
     return Array.from(new Set(data.map((row) => row.user_id as string)));
   }
 
+  async listRoomParticipantReadState(
+    roomId: string,
+  ): Promise<{ user_id: string; last_read_at: string | null }[]> {
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .select('user_id, last_read_at')
+      .eq('room_id', roomId);
+
+    if (error || !data) return [];
+    return data.map((row) => ({
+      user_id: row.user_id as string,
+      last_read_at: (row.last_read_at as string | null) ?? null,
+    }));
+  }
+
   private async hydrateRooms(
     roomIds: string[],
     viewerUserId: string,
   ): Promise<ChatRoomWithLastMessage[]> {
     if (roomIds.length === 0) return [];
 
-    const [roomsResult, messagesResult, roomParticipantsResult] = await Promise.all([
-      this.supabase
-        .from('chat_rooms')
-        .select(ROOM_COLUMNS)
-        .in('id', roomIds),
-      // One row per room (the newest) via DISTINCT ON inside
-      // chat_latest_messages_by_room -- avoids pulling every message in every
-      // room just to find the last one. See migration 20260617140000.
-      this.supabase.rpc('chat_latest_messages_by_room', {
-        p_room_ids: roomIds,
-      }),
-      this.supabase
-        .from('chat_room_participants')
-        .select(
-          `
+    const [roomsResult, messagesResult, roomParticipantsResult] =
+      await Promise.all([
+        this.supabase.from('chat_rooms').select(ROOM_COLUMNS).in('id', roomIds),
+        // One row per room (the newest) via DISTINCT ON inside
+        // chat_latest_messages_by_room -- avoids pulling every message in every
+        // room just to find the last one. See migration 20260617140000.
+        this.supabase.rpc('chat_latest_messages_by_room', {
+          p_room_ids: roomIds,
+        }),
+        this.supabase
+          .from('chat_room_participants')
+          .select(
+            `
           room_id, user_id, joined_at, last_read_at,
           user:profiles!chat_room_participants_user_id_fkey(id, display_name, avatar_url, email)
         `,
-        )
-        .in('room_id', roomIds),
-    ]);
+          )
+          .in('room_id', roomIds),
+      ]);
 
     void viewerUserId;
 
@@ -682,7 +702,8 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     const participantsByRoom = new Map<string, ChatParticipant[]>();
-    for (const row of (roomParticipantsResult.data || []) as RawParticipantRow[]) {
+    for (const row of (roomParticipantsResult.data ||
+      []) as RawParticipantRow[]) {
       const list = participantsByRoom.get(row.room_id) ?? [];
       list.push({
         room_id: row.room_id,
@@ -705,12 +726,13 @@ export class SupabaseChatRepository implements ChatRepository {
     projectId: string,
     userId: string,
   ): Promise<ChatRoomWithLastMessage[]> {
-    const { data: participantRows, error: participantsError } = await this.supabase
-      .from('chat_room_participants')
-      .select('room_id, chat_rooms!inner(project_id, type)')
-      .eq('user_id', userId)
-      .eq('chat_rooms.project_id', projectId)
-      .eq('chat_rooms.type', 'channel');
+    const { data: participantRows, error: participantsError } =
+      await this.supabase
+        .from('chat_room_participants')
+        .select('room_id, chat_rooms!inner(project_id, type)')
+        .eq('user_id', userId)
+        .eq('chat_rooms.project_id', projectId)
+        .eq('chat_rooms.type', 'channel');
 
     if (participantsError) {
       throw new Error(participantsError.message);
@@ -728,11 +750,12 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async listDmRoomsForUser(userId: string): Promise<ChatRoomWithLastMessage[]> {
-    const { data: participantRows, error: participantsError } = await this.supabase
-      .from('chat_room_participants')
-      .select('room_id, chat_rooms!inner(type)')
-      .eq('user_id', userId)
-      .eq('chat_rooms.type', 'dm');
+    const { data: participantRows, error: participantsError } =
+      await this.supabase
+        .from('chat_room_participants')
+        .select('room_id, chat_rooms!inner(type)')
+        .eq('user_id', userId)
+        .eq('chat_rooms.type', 'dm');
 
     if (participantsError) {
       throw new Error(participantsError.message);
@@ -805,11 +828,14 @@ export class SupabaseChatRepository implements ChatRepository {
     query: string;
     limit: number;
   }): Promise<ChatMessageSearchHit[]> {
-    const { data, error } = await this.supabase.rpc('chat_search_room_messages', {
-      p_room_id: params.roomId,
-      p_query: params.query,
-      p_limit: params.limit,
-    });
+    const { data, error } = await this.supabase.rpc(
+      'chat_search_room_messages',
+      {
+        p_room_id: params.roomId,
+        p_query: params.query,
+        p_limit: params.limit,
+      },
+    );
     if (error) throw new Error(error.message);
     return (data || []) as ChatMessageSearchHit[];
   }
@@ -955,7 +981,10 @@ export class SupabaseChatRepository implements ChatRepository {
         project_id: message.project_id,
         user_id: params.userId,
         emoji: params.emoji,
-      } satisfies Omit<ChatMessageReaction, 'id' | 'created_at' | 'updated_at'>);
+      } satisfies Omit<
+        ChatMessageReaction,
+        'id' | 'created_at' | 'updated_at'
+      >);
 
     if (insertError) throw new Error(insertError.message);
   }
@@ -1062,7 +1091,10 @@ export class SupabaseChatRepository implements ChatRepository {
         ? existing.last_read_at
         : null;
 
-    if (existingReadAt && new Date(existingReadAt).getTime() >= new Date(readAt).getTime()) {
+    if (
+      existingReadAt &&
+      new Date(existingReadAt).getTime() >= new Date(readAt).getTime()
+    ) {
       return existingReadAt;
     }
 

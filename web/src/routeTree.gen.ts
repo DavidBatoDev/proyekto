@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkItemsRouteImport } from './routes/work-items'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as ProjectPostingRouteImport } from './routes/project-posting'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
@@ -26,6 +27,7 @@ import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-temp
 import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TeamsTeamIdRouteImport } from './routes/teams/$teamId'
+import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
@@ -107,6 +109,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
   path: '/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectPostingRoute = ProjectPostingRouteImport.update({
   id: '/project-posting',
   path: '/project-posting',
@@ -180,6 +187,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const TeamsTeamIdRoute = TeamsTeamIdRouteImport.update({
   id: '/teams/$teamId',
   path: '/teams/$teamId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
+  id: '/settings/notifications',
+  path: '/settings/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
@@ -573,6 +585,7 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
@@ -598,6 +611,7 @@ export interface FileRoutesByFullPath {
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
@@ -660,6 +674,7 @@ export interface FileRoutesByTo {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
@@ -685,6 +700,7 @@ export interface FileRoutesByTo {
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
@@ -748,6 +764,7 @@ export interface FileRoutesById {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
@@ -773,6 +790,7 @@ export interface FileRoutesById {
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant/': typeof ConsultantIndexRoute
@@ -839,6 +857,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/unsubscribe'
     | '/welcome'
     | '/work-items'
     | '/admin/applications'
@@ -864,6 +883,7 @@ export interface FileRouteTypes {
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/settings/mcp-tokens'
+    | '/settings/notifications'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
@@ -926,6 +946,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/unsubscribe'
     | '/welcome'
     | '/work-items'
     | '/admin/applications'
@@ -951,6 +972,7 @@ export interface FileRouteTypes {
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/settings/mcp-tokens'
+    | '/settings/notifications'
     | '/admin'
     | '/consultant'
     | '/roadmap-templates'
@@ -1013,6 +1035,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/unsubscribe'
     | '/welcome'
     | '/work-items'
     | '/admin/applications'
@@ -1038,6 +1061,7 @@ export interface FileRouteTypes {
     | '/roadmap/shared-with-me'
     | '/settings/appearance'
     | '/settings/mcp-tokens'
+    | '/settings/notifications'
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant/'
@@ -1103,6 +1127,7 @@ export interface RootRouteChildren {
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   ProjectPostingRoute: typeof ProjectPostingRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
   WorkItemsRoute: typeof WorkItemsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
@@ -1123,6 +1148,7 @@ export interface RootRouteChildren {
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
+  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
@@ -1149,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/welcome'
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project-posting': {
@@ -1254,6 +1287,13 @@ declare module '@tanstack/react-router' {
       path: '/teams/$teamId'
       fullPath: '/teams/$teamId'
       preLoaderRoute: typeof TeamsTeamIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/notifications': {
+      id: '/settings/notifications'
+      path: '/settings/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof SettingsNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/mcp-tokens': {
@@ -1929,6 +1969,7 @@ const rootRouteChildren: RootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   ProjectPostingRoute: ProjectPostingRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,
   WorkItemsRoute: WorkItemsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
@@ -1949,6 +1990,7 @@ const rootRouteChildren: RootRouteChildren = {
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsMcpTokensRoute: SettingsMcpTokensRoute,
+  SettingsNotificationsRoute: SettingsNotificationsRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,

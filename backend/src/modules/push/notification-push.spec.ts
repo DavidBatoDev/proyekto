@@ -61,6 +61,32 @@ describe('buildPushMessage', () => {
     expect(msg.data).toMatchObject({ task_id: 't-1' });
   });
 
+  it('titles a DM and keeps its ids actionable', () => {
+    const msg = buildPushMessage({
+      notificationId: 'n-1',
+      typeName: 'chat_dm_received',
+      content: {
+        message: 'Ada sent you a message',
+        room_id: 'room-1',
+        message_id: 'msg-1',
+        excerpt: 'are you free at 3?',
+        actor_name: 'Ada',
+      },
+      linkUrl: '/inbox?r=room-1',
+    });
+
+    expect(msg.title).toBe('New message');
+    // The body deliberately carries no message text — nothing should leak to a
+    // lock screen. The excerpt is email-only.
+    expect(msg.body).toBe('Ada sent you a message');
+    expect(msg.data).not.toHaveProperty('excerpt');
+    expect(msg.data).toMatchObject({
+      room_id: 'room-1',
+      message_id: 'msg-1',
+      link_url: '/inbox?r=room-1',
+    });
+  });
+
   it('drops non-scalar content values', () => {
     const msg = buildPushMessage({
       ...base,
