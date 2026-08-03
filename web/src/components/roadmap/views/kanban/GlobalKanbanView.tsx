@@ -26,11 +26,16 @@ import {
 	loadGlobalFilters,
 	resolveFilters,
 } from "./globalBoardFilters";
+import {
+	findGlobalTaskColumn,
+	type GlobalKanbanColumnMap,
+	groupGlobalRowsByStatus,
+	moveGlobalTaskForDrag,
+	roadmapTaskIds,
+} from "./globalKanbanOrdering";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
-
-type ColumnMap = Record<string, KanbanTaskContext[]>;
 
 function buildAllRows(roadmaps: FullRoadmapWithProject[]): KanbanTaskContext[] {
 	const result: KanbanTaskContext[] = [];
@@ -63,45 +68,14 @@ function buildAllRows(roadmaps: FullRoadmapWithProject[]): KanbanTaskContext[] {
 	return result;
 }
 
-function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
-	const map: ColumnMap = {};
-	for (const col of DEFAULT_KANBAN_COLUMNS) map[col.id] = [];
-	for (const row of rows) {
-		const bucket = map[row.task.status];
-		if (bucket) bucket.push(row);
-	}
-	return map;
-}
-
-function findContainerForTask(
-	columns: ColumnMap,
-	taskId: string,
-): TaskStatus | null {
-	for (const col of DEFAULT_KANBAN_COLUMNS) {
-		if (columns[col.id]?.some((r) => r.task.id === taskId)) {
-			return col.id as TaskStatus;
-		}
-	}
-	return null;
-}
-
-function resolveContainer(
-	columns: ColumnMap,
-	overId: string | null,
-): TaskStatus | null {
-	if (!overId) return null;
-	if (DEFAULT_KANBAN_COLUMNS.some((c) => c.id === overId))
-		return overId as TaskStatus;
-	return findContainerForTask(columns, overId);
-}
-
-// There's no cross-roadmap position field to sort by here, so `columns`
-// order is client-side/session-only. Merge instead of overwrite so a
-// just-completed drag's order survives the post-drop recompute: keep each
-// column's existing row order for rows still present, and only splice in
-// rows that are genuinely new to that column.
-function reconcileColumns(prev: ColumnMap, next: ColumnMap): ColumnMap {
-	const result: ColumnMap = {};
+// Board order is persisted per roadmap, not across roadmaps. Preserve the
+// aggregate order already established by a drag while fresh row objects arrive,
+// and append only genuinely new rows.
+function reconcileColumns(
+	prev: GlobalKanbanColumnMap,
+	next: GlobalKanbanColumnMap,
+): GlobalKanbanColumnMap {
+	const result: GlobalKanbanColumnMap = {};
 	for (const columnId of Object.keys(next)) {
 		const nextById = new Map(
 			(next[columnId] ?? []).map((row) => [row.task.id, row]),
@@ -189,10 +163,10 @@ export function GlobalKanbanView({
 	);
 
 	const storeColumns = useMemo(
-		() => groupByStatus(filteredRows),
+		() => groupGlobalRowsByStatus(filteredRows),
 		[filteredRows],
 	);
-	const [columns, setColumns] = useState<ColumnMap>(storeColumns);
+	const [columns, setColumns] = useState<GlobalKanbanColumnMap>(storeColumns);
 
 	useEffect(() => {
 		if (activeId !== null) return;
@@ -227,43 +201,78 @@ export function GlobalKanbanView({
 		if (!over) return;
 		const activeTaskId = String(active.id);
 		const overId = String(over.id);
-		const fromColumn = findContainerForTask(columns, activeTaskId);
-		const toColumn = resolveContainer(columns, overId);
-		if (!fromColumn || !toColumn || fromColumn === toColumn) return;
-
-		setColumns((prev) => {
-			const sourceList = prev[fromColumn] ?? [];
-			const destList = prev[toColumn] ?? [];
-			const movingIndex = sourceList.findIndex(
-				(r) => r.task.id === activeTaskId,
-			);
-			if (movingIndex === -1) return prev;
-			const moving = sourceList[movingIndex];
-			const overIndex = destList.findIndex((r) => r.task.id === overId);
-			const insertAt = overIndex === -1 ? destList.length : overIndex;
-			return {
-				...prev,
-				[fromColumn]: sourceList.filter((_, i) => i !== movingIndex),
-				[toColumn]: [
-					...destList.slice(0, insertAt),
-					moving,
-					...destList.slice(insertAt),
-				],
-			};
-		});
+		setColumns((prev) => moveGlobalTaskForDrag(prev, activeTaskId, overId));
 	};
 
 	const handleDragEnd = (event: DragEndEvent) => {
 		const { active } = event;
 		const taskId = String(active.id);
-		const finalColumn = findContainerForTask(columns, taskId);
+		const finalColumn = findGlobalTaskColumn(columns, taskId);
 		setActiveId(null);
 		if (!finalColumn) return;
 
 		// Use localRows (current displayed state) — not allRows (server state) — so
 		// we don't silently skip a drag whose target matches the server's stale status.
 		const currentRow = localRows.find((r) => r.task.id === taskId);
-		if (!currentRow || currentRow.task.status === finalColumn) return;
+		const roadmapId = currentRow?.roadmapId;
+		if (!currentRow || !roadmapId) return;
+
+		const orderedIds = roadmapTaskIds(columns[finalColumn] ?? [], roadmapId);
+		const previousBoardOrderById = new Map(
+			localRows
+				.filter((row) => row.roadmapId === roadmapId)
+				.map((row) => [row.task.id, row.task.board_order]),
+		);
+		const nextBoardOrderById = new Map(
+			orderedIds.map((id, index) => [id, index]),
+		);
+
+		if (currentRow.task.status === finalColumn) {
+			const currentOrder = roadmapTaskIds(
+				storeColumns[finalColumn] ?? [],
+				roadmapId,
+			);
+			const orderChanged =
+				currentOrder.length !== orderedIds.length ||
+				currentOrder.some((id, index) => id !== orderedIds[index]);
+			if (!orderChanged) return;
+
+			setLocalRows((prev) =>
+				prev.map((row) => {
+					const boardOrder = nextBoardOrderById.get(row.task.id);
+					return boardOrder === undefined
+						? row
+						: { ...row, task: { ...row.task, board_order: boardOrder } };
+				}),
+			);
+
+			void taskService
+				.reorderByStatus(
+					roadmapId,
+					finalColumn,
+					orderedIds.map((id, index) => ({
+						task_id: id,
+						new_order_index: index,
+					})),
+				)
+				.catch((error) => {
+					setLocalRows((prev) =>
+						prev.map((row) => {
+							const boardOrder = previousBoardOrderById.get(row.task.id);
+							return boardOrder === undefined
+								? row
+								: { ...row, task: { ...row.task, board_order: boardOrder } };
+						}),
+					);
+					setColumns(storeColumns);
+					toast.error(
+						error instanceof Error
+							? error.message
+							: "Failed to update task order",
+					);
+				});
+			return;
+		}
 
 		const previousStatus = currentRow.task.status;
 
@@ -272,31 +281,68 @@ export function GlobalKanbanView({
 		pendingUpdates.current.set(taskId, finalColumn);
 
 		setLocalRows((prev) =>
-			prev.map((r) =>
-				r.task.id === taskId
-					? { ...r, task: { ...r.task, status: finalColumn } }
-					: r,
-			),
+			prev.map((row) => {
+				const boardOrder = nextBoardOrderById.get(row.task.id);
+				if (row.task.id === taskId) {
+					return {
+						...row,
+						task: {
+							...row.task,
+							status: finalColumn,
+							board_order: boardOrder ?? row.task.board_order,
+						},
+					};
+				}
+				return boardOrder === undefined
+					? row
+					: { ...row, task: { ...row.task, board_order: boardOrder } };
+			}),
 		);
 
-		taskService
-			.update(taskId, { status: finalColumn })
+		const safeBoardOrder = orderedIds.length * 1000 + 5000;
+		void taskService
+			.update(taskId, {
+				status: finalColumn,
+				board_order: safeBoardOrder,
+			})
+			.then(() =>
+				taskService.reorderByStatus(
+					roadmapId,
+					finalColumn,
+					orderedIds.map((id, index) => ({
+						task_id: id,
+						new_order_index: index,
+					})),
+				),
+			)
 			.then(() => {
 				pendingUpdates.current.delete(taskId);
 			})
 			.catch((error) => {
 				pendingUpdates.current.delete(taskId);
 				setLocalRows((prev) =>
-					prev.map((r) =>
-						r.task.id === taskId
-							? { ...r, task: { ...r.task, status: previousStatus } }
-							: r,
-					),
+					prev.map((row) => {
+						const boardOrder = previousBoardOrderById.get(row.task.id);
+						if (row.task.id === taskId) {
+							return {
+								...row,
+								task: {
+									...row.task,
+									status: previousStatus,
+									board_order: boardOrder ?? row.task.board_order,
+								},
+							};
+						}
+						return boardOrder === undefined
+							? row
+							: { ...row, task: { ...row.task, board_order: boardOrder } };
+					}),
 				);
+				setColumns(storeColumns);
 				toast.error(
 					error instanceof Error
 						? error.message
-						: "Failed to update task status",
+						: "Failed to update task status and order",
 				);
 			});
 	};
