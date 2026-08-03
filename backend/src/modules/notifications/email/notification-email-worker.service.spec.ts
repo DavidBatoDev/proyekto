@@ -233,6 +233,72 @@ describe('NotificationEmailWorkerService', () => {
     expect(mailer.send).toHaveBeenCalledTimes(1);
   });
 
+  describe('recipients with no account', () => {
+    /** An outbox row addressed by email — nobody has signed up yet. */
+    const strangerRow = (payload: Record<string, unknown> = {}) => ({
+      ...ROW,
+      notification_id: null,
+      user_id: null,
+      to_email: 'stranger@example.test',
+      type_name: 'task_comment_mention',
+      payload: { content: { actor_name: 'Ada' }, ...payload },
+    });
+
+    it('still gives them a working unsubscribe link', async () => {
+      // The blocker this branch exists for: with no user_id there is no
+      // settings row, so before this the mail went out with no opt-out link and
+      // no List-Unsubscribe header at all.
+      const { service, mailer } = build({
+        ...HAPPY,
+        __claim: [strangerRow({ unsubscribe_token: 'tok-stranger' })],
+        notification_email_settings: null,
+      });
+
+      await service.runDispatch();
+
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+      const sent = mailer.send.mock.calls[0][0];
+      expect(sent.to).toBe('stranger@example.test');
+      expect(sent.headers['List-Unsubscribe']).toContain('scope=address');
+      expect(sent.headers['List-Unsubscribe-Post']).toBe(
+        'List-Unsubscribe=One-Click',
+      );
+    });
+
+    it('refuses to mail them at all when no token is present', async () => {
+      // Fail closed: better an undelivered notification than mailing someone
+      // who then has no way to make it stop.
+      const { service, mailer, updates } = build({
+        ...HAPPY,
+        __claim: [strangerRow()],
+        notification_email_settings: null,
+      });
+
+      await service.runDispatch();
+
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(
+        updates.some((u) => u.values.skip_reason === 'no_unsubscribe_token'),
+      ).toBe(true);
+    });
+
+    it('spaces repeat sends by address, not just by user', async () => {
+      const justNow = new Date(Date.now() - 60_000).toISOString();
+      const { service, mailer, updates } = build({
+        ...HAPPY,
+        __claim: [strangerRow({ unsubscribe_token: 'tok-stranger' })],
+        notification_email_settings: null,
+        notification_email_outbox: { processed_at: justNow },
+      });
+
+      const result = await service.runDispatch();
+
+      expect(result.deferred).toBe(1);
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(updates.some((u) => u.values.send_after)).toBe(true);
+    });
+  });
+
   it('skips a type this build cannot render, even if the DB says eligible', async () => {
     // The database flag and the registry are independent switches; the answer
     // when they disagree is silence, not a blank email.

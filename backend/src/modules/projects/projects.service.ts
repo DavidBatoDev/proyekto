@@ -1459,11 +1459,19 @@ export class ProjectsService {
         : undefined,
     });
   }
+  /**
+   * `options.sendEmail` defaults to true so the Team-page flow is unchanged.
+   * The mention-invite path passes false: it sends its own, differently-worded
+   * email to someone who has never heard of Proyekto, and two messages from an
+   * unfamiliar domain reads as spam.
+   */
   async inviteByEmail(
     projectId: string,
     callerId: string,
     dto: InviteProjectByEmailDto,
+    options: { sendEmail?: boolean } = {},
   ): Promise<unknown> {
+    const shouldSendEmail = options.sendEmail !== false;
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
 
@@ -1497,17 +1505,19 @@ export class ProjectsService {
       invite.invited_position.trim().length > 0
         ? invite.invited_position.trim()
         : null;
-    const emailDelivery = await this.sendInviteEmail({
-      to: dto.email.trim(),
-      inviterName,
-      projectName:
-        typeof project.title === 'string' && project.title.trim()
-          ? project.title.trim()
-          : 'a project',
-      invitedPosition,
-      inviteMessage: inviteNote,
-      inviterAvatarUrl: inviterProfile.avatarUrl,
-    });
+    const emailDelivery = shouldSendEmail
+      ? await this.sendInviteEmail({
+          to: dto.email.trim(),
+          inviterName,
+          projectName:
+            typeof project.title === 'string' && project.title.trim()
+              ? project.title.trim()
+              : 'a project',
+          invitedPosition,
+          inviteMessage: inviteNote,
+          inviterAvatarUrl: inviterProfile.avatarUrl,
+        })
+      : { sent: false, reason: 'Suppressed by caller.' };
     const projectTitle =
       typeof project.title === 'string' && project.title.trim().length > 0
         ? project.title.trim()

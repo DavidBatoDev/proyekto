@@ -154,6 +154,61 @@ describe('notification email registry', () => {
     });
   });
 
+  describe('roadmap_mention_invite (recipient has no account)', () => {
+    const inviteCtx = {
+      ...ctx,
+      content: {
+        actor_name: 'Ada Lovelace',
+        context_title: 'Redesign the onboarding',
+        // The producer omits `excerpt` deliberately. Present here to prove the
+        // renderer would quote it if it ever arrived, so the guarantee has to
+        // come from the producer AND be asserted below.
+        excerpt: 'the client hated the third screen',
+      },
+      linkUrl:
+        '/auth/signup?redirect=%2Ffreelancer%2Finvites&email=alice%40example.com',
+    };
+
+    it('sends them to signup, not to a comment they cannot open', () => {
+      const email = renderNotificationEmail('roadmap_mention_invite', {
+        ...inviteCtx,
+        content: { actor_name: 'Ada Lovelace' },
+      });
+
+      expect(email?.html).toContain('Create your account');
+      expect(email?.html).toContain(
+        'https://www.proyekto.test/auth/signup?redirect=%2Ffreelancer%2Finvites&amp;email=alice%40example.com',
+      );
+      // A roadmap deep link would 403 until they accept the invite.
+      expect(email?.html).not.toContain('/project/');
+    });
+
+    it('orients someone who has never heard of Proyekto', () => {
+      const email = renderNotificationEmail('roadmap_mention_invite', {
+        ...inviteCtx,
+        content: { actor_name: 'Ada Lovelace' },
+      });
+
+      expect(email?.html).toContain('Proyekto is where teams plan');
+      expect(email?.html).toContain('unsubscribe below');
+      // The mention footer would claim they were "mentioned on Proyekto",
+      // implying an account they do not have.
+      expect(email?.html).not.toContain('you were mentioned on Proyekto');
+    });
+
+    it('leaks no comment text when the producer omits the excerpt', () => {
+      // Pins the privacy decision: an address that has proven nothing — and may
+      // be a typo — must not receive a slice of a private project thread.
+      const email = renderNotificationEmail('roadmap_mention_invite', {
+        ...inviteCtx,
+        content: { actor_name: 'Ada Lovelace', context_title: 'Redesign' },
+      });
+
+      expect(email?.html).not.toContain('the client hated the third screen');
+      expect(email?.html).not.toContain('white-space:pre-wrap');
+    });
+  });
+
   it('includes the unsubscribe link, and omits it when absent', () => {
     expect(
       renderNotificationEmail('task_comment_mention', ctx)?.html,

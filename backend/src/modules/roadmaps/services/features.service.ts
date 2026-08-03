@@ -15,7 +15,11 @@ import {
 } from './roadmap-authorization.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { htmlToText } from '../../../common/utils/html-to-text.util';
-import { extractMentionedUserIds } from '../utils/mention-parser';
+import {
+  extractMentionedEmails,
+  extractMentionedUserIds,
+} from '../utils/mention-parser';
+import { RoadmapMentionInviteService } from './roadmap-mention-invite.service';
 import { MENTION_EXCERPT_MAX_CHARS } from '../../notifications/notification-content';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
@@ -42,6 +46,7 @@ export class FeaturesService {
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
     private readonly notificationsService: NotificationsService,
+    private readonly mentionInvites: RoadmapMentionInviteService,
   ) {}
 
   async findByEpic(epicId: string, userId: string) {
@@ -177,7 +182,10 @@ export class FeaturesService {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
     );
-    if (!mentionedIds.length) return;
+    // NOT `!mentionedIds.length` alone: a comment that names only an email
+    // address has zero user ids, and that is the commonest case here.
+    const mentionedEmails = extractMentionedEmails(html);
+    if (!mentionedIds.length && !mentionedEmails.length) return;
 
     // Scope comes from the authz walk the caller already paid for.
     const roadmapId = ctx?.roadmapId ?? null;
@@ -192,12 +200,6 @@ export class FeaturesService {
     // roadmap. Fail closed when the scope is unknown rather than notifying the
     // raw list.
     if (!roadmapId) return;
-    const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
-      roadmapId,
-      mentionedIds,
-    );
-    if (!targets.length) return;
-
     // Snapshot what a human-facing message needs. The excerpt is captured here
     // rather than re-read later because the comment may be edited or deleted
     // before the notification is acted on. `htmlToText` strips every tag, so
@@ -205,6 +207,31 @@ export class FeaturesService {
     const actorName =
       await this.notificationsService.resolveActorName(authorId);
     const excerpt = htmlToText(html, MENTION_EXCERPT_MAX_CHARS);
+
+    // Fired BEFORE the `targets` check below on purpose: a comment that names
+    // only an email address resolves to zero user targets, and that is exactly
+    // the case this feature exists for.
+    void this.mentionInvites
+      .inviteMentionedEmails({
+        html,
+        authorId,
+        projectId,
+        roadmapId,
+        sourceType: 'feature_comment',
+        sourceId: commentId ?? null,
+        entityId: featureId,
+        linkUrl,
+        entityTitle: null,
+        actorName,
+        excerpt,
+      })
+      .catch(() => {});
+
+    const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
+      roadmapId,
+      mentionedIds,
+    );
+    if (!targets.length) return;
 
     await Promise.allSettled(
       targets.map((userId) =>

@@ -43,6 +43,11 @@ interface OutboxRow {
     link_url?: string | null;
     project_id?: string | null;
     actor_id?: string | null;
+    /**
+     * Only on rows addressed to someone with no account. Their opt-out cannot
+     * live in notification_email_settings, which is keyed on user_id.
+     */
+    unsubscribe_token?: string;
   } | null;
 }
 
@@ -195,9 +200,20 @@ export class NotificationEmailWorkerService {
       this.config.get<string>('APP_URL') ??
       this.config.get<string>('CLIENT_URL') ??
       'http://localhost:3000';
+    // A recipient with no account has no settings row to hold a token, so the
+    // outbox row carries its own. Without this branch a stranger receives mail
+    // with no unsubscribe link and no List-Unsubscribe header — the one case
+    // where an opt-out is not optional.
     const unsubscribeUrl = settings
       ? this.unsubscribeUrl(settings.unsubscribe_token, row.type_name)
-      : null;
+      : row.payload?.unsubscribe_token
+        ? this.unsubscribeUrl(row.payload.unsubscribe_token, 'address')
+        : null;
+
+    if (!row.user_id && !unsubscribeUrl) {
+      // Fail closed rather than mail someone who then cannot make it stop.
+      return this.resolve(row.id, 'skipped', 'no_unsubscribe_token');
+    }
 
     const email = renderNotificationEmail(row.type_name, {
       content: row.payload?.content ?? {},
@@ -210,7 +226,10 @@ export class NotificationEmailWorkerService {
 
     // 7. Rate: one email per user per interval. Defer rather than drop, so a
     //    burst of mentions arrives spread out instead of vanishing.
-    const deferUntil = await this.minIntervalDeferral(row.user_id);
+    const deferUntil = await this.minIntervalDeferral(
+      row.user_id,
+      recipient.email,
+    );
     if (deferUntil) {
       await this.db
         .from('notification_email_outbox')
@@ -362,21 +381,32 @@ export class NotificationEmailWorkerService {
   }
 
   /**
-   * When the user was mailed too recently, the timestamp to defer to; null when
-   * it is fine to send now.
+   * When this recipient was mailed too recently, the timestamp to defer to;
+   * null when it is fine to send now.
+   *
+   * Keyed on the user when there is one, and otherwise on the ADDRESS. Without
+   * the address branch a recipient with no account gets no spacing at all — ten
+   * mentions of the same stranger would send ten emails back to back, which is
+   * precisely the person least able to tolerate it.
    */
   private async minIntervalDeferral(
     userId: string | null,
+    toEmail: string | null,
   ): Promise<Date | null> {
-    if (!userId) return null;
     const minutes = MIN_INTERVAL_MINUTES;
     if (minutes <= 0) return null;
+    if (!userId && !toEmail) return null;
 
-    const { data } = await this.db
+    let query = this.db
       .from('notification_email_outbox')
       .select('processed_at')
-      .eq('user_id', userId)
-      .eq('status', 'sent')
+      .eq('status', 'sent');
+
+    query = userId
+      ? query.eq('user_id', userId)
+      : query.eq('to_email', (toEmail as string).toLowerCase());
+
+    const { data } = await query
       .order('processed_at', { ascending: false })
       .limit(1)
       .maybeSingle();

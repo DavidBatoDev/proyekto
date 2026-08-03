@@ -103,6 +103,32 @@ export class NotificationPreferencesService {
    * regardless, so a token probe cannot distinguish valid from invalid.
    */
   async unsubscribeByToken(token: string, scope?: string): Promise<void> {
+    // A recipient with no account cannot have a settings row, so their token
+    // lives on the pending-mention record and its only meaningful action is to
+    // suppress the address outright. Checked first: these are the people with
+    // the least patience for an opt-out that does not work.
+    if (scope === 'address') {
+      const { data: pending } = await this.db
+        .from('pending_mention_invites')
+        .select('invitee_email')
+        .eq('unsubscribe_token', token)
+        .maybeSingle();
+
+      const email = (pending as { invitee_email?: string } | null)
+        ?.invitee_email;
+      if (!email) return;
+
+      await this.db.from('email_suppressions').upsert(
+        {
+          email: email.toLowerCase(),
+          reason: 'manual',
+          detail: 'unsubscribed from a mention invite',
+        },
+        { onConflict: 'email' },
+      );
+      return;
+    }
+
     const { data } = await this.db
       .from('notification_email_settings')
       .select('user_id')

@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
@@ -68,6 +69,14 @@ export class EpicsController {
     return this.epicsService.findComments(id, user.id);
   }
 
+  /**
+   * Throttled because a comment can now invite strangers by email. The DB-level
+   * per-actor cap is the real control; this is the coarse backstop in front of
+   * it. `@UseGuards(ThrottlerGuard)` is required — no APP_GUARD binds the
+   * throttler globally, so `@Throttle` alone is inert.
+   */
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post(':id/comments')
   addComment(
     @Param('id') id: string,

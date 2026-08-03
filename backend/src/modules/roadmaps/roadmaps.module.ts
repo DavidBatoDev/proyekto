@@ -55,6 +55,7 @@ import { TaskExtrasRepositorySupabase } from './repositories/task-extras.reposit
 import { RoadmapPatchRepositorySupabase } from './repositories/roadmap-patch.repository.supabase';
 import { RoadmapJsonPatchProcessor } from './patch/roadmap-json-patch.processor';
 import { RoadmapAuthorizationService } from './services/roadmap-authorization.service';
+import { RoadmapMentionInviteService } from './services/roadmap-mention-invite.service';
 import { RoadmapActivityService } from './services/roadmap-activity.service';
 import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
 
@@ -89,6 +90,7 @@ import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
     },
     RoadmapJsonPatchProcessor,
     RoadmapAuthorizationService,
+    RoadmapMentionInviteService,
     RoadmapActivityService,
     RoadmapWriteEffects,
     MilestonesService,

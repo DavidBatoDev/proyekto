@@ -88,6 +88,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         effects,
         activity,
         notifications() as never,
+        { inviteMentionedEmails: jest.fn() } as never,
       );
       return { service, repo, rt, authz };
     }
@@ -129,6 +130,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         effects,
         activity,
         notifications() as never,
+        { inviteMentionedEmails: jest.fn() } as never,
       );
       return { service, rt, authz };
     }

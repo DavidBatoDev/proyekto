@@ -18,7 +18,11 @@ import {
 import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { htmlToText } from '../../../common/utils/html-to-text.util';
-import { extractMentionedUserIds } from '../utils/mention-parser';
+import {
+  extractMentionedEmails,
+  extractMentionedUserIds,
+} from '../utils/mention-parser';
+import { RoadmapMentionInviteService } from './roadmap-mention-invite.service';
 import { MENTION_EXCERPT_MAX_CHARS } from '../../notifications/notification-content';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
@@ -33,6 +37,7 @@ export class TaskExtrasService {
     private readonly repo: ITaskExtrasRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly notificationsService: NotificationsService,
+    private readonly mentionInvites: RoadmapMentionInviteService,
     private readonly knowledgeOutbox: KnowledgeOutboxService,
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
@@ -164,7 +169,10 @@ export class TaskExtrasService {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
     );
-    if (!mentionedIds.length) return;
+    // NOT `!mentionedIds.length` alone: a comment that names only an email
+    // address has zero user ids, and that is the commonest case here.
+    const mentionedEmails = extractMentionedEmails(html);
+    if (!mentionedIds.length && !mentionedEmails.length) return;
 
     // Scope comes from the authz walk the caller already paid for.
     const roadmapId = ctx?.roadmapId ?? null;
@@ -175,11 +183,11 @@ export class TaskExtrasService {
     // roadmap. Fail closed when the scope is unknown rather than notifying the
     // raw list.
     if (!roadmapId) return;
-    const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
-      roadmapId,
-      mentionedIds,
-    );
-    if (!targets.length) return;
+
+    const linkUrl =
+      projectId && roadmapId
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`
+        : null;
 
     // Snapshot what a human-facing message needs. The excerpt is captured here
     // rather than re-read later because the comment may be edited or deleted
@@ -188,10 +196,31 @@ export class TaskExtrasService {
     const actorName =
       await this.notificationsService.resolveActorName(authorId);
     const excerpt = htmlToText(html, MENTION_EXCERPT_MAX_CHARS);
-    const linkUrl =
-      projectId && roadmapId
-        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`
-        : null;
+
+    // Fired BEFORE the `targets` check below on purpose: a comment that names
+    // only an email address resolves to zero user targets, and that is exactly
+    // the case this feature exists for.
+    void this.mentionInvites
+      .inviteMentionedEmails({
+        html,
+        authorId,
+        projectId,
+        roadmapId,
+        sourceType: 'task_comment',
+        sourceId: commentId ?? null,
+        entityId: taskId,
+        linkUrl,
+        entityTitle: null,
+        actorName,
+        excerpt,
+      })
+      .catch(() => {});
+
+    const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
+      roadmapId,
+      mentionedIds,
+    );
+    if (!targets.length) return;
 
     await Promise.allSettled(
       targets.map((userId) =>

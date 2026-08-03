@@ -69,6 +69,11 @@ function buildMentionStyleEmail(
     action: string;
     /** Heading inside the dark header band. */
     title: string;
+    /**
+     * Optional orienting line above the body, pre-escaped. Used when the reader
+     * may never have heard of Proyekto.
+     */
+    introHtml?: string;
     subjectFor: (actor: string, context: string | null) => string;
     ctaLabel: string;
     footerNote: string;
@@ -83,7 +88,10 @@ function buildMentionStyleEmail(
   const lead = `<strong>${escapeHtml(actor)}</strong> ${escapeHtml(copy.action)}${where}.`;
 
   const bodyHtml = [
+    copy.introHtml ? renderParagraph(copy.introHtml) : null,
     renderParagraph(lead),
+    // Callers that must not disclose the source text pass no excerpt at all;
+    // see the roadmap_mention_invite entry.
     excerpt ? renderQuoteBlock(excerpt) : null,
   ]
     .filter((block): block is string => block !== null)
@@ -170,6 +178,37 @@ const REGISTRY: Record<string, Renderer> = {
           : `${actor} mentioned you in chat`,
       ctaLabel: 'Open chat',
       footerNote: MENTION_FOOTER,
+    }),
+
+  /**
+   * The only email in this registry sent to someone who has NO account.
+   *
+   * Two things are deliberately different, and both should survive review:
+   *
+   * 1. **No excerpt.** `buildMentionStyleEmail` quotes the source text when
+   *    `content.excerpt` is present; the producer deliberately omits it here.
+   *    Mailing 280 characters of a private project comment to an address that
+   *    has proven nothing — and which may simply be a typo — is not a trade
+   *    worth making for a slightly warmer email. The excerpt is kept on the
+   *    pending row and shown in-app after they sign up and accept.
+   * 2. **The CTA points at signup, not the comment.** `project_access.user_id`
+   *    is NOT NULL, so there is nothing to grant them yet; a deep link would
+   *    land on a login wall. `redirect=/freelancer/invites` also lights up the
+   *    existing "You've been invited" banner on the signup form for free.
+   */
+  roadmap_mention_invite: (ctx) =>
+    buildMentionStyleEmail(ctx, {
+      action: 'mentioned you in a comment',
+      title: 'You were mentioned',
+      introHtml:
+        'Proyekto is where teams plan and deliver project work. Someone has invited you to join a project.',
+      subjectFor: (actor, context) =>
+        context
+          ? `${actor} mentioned you in ${context}`
+          : `${actor} mentioned you on Proyekto`,
+      ctaLabel: 'Create your account',
+      footerNote:
+        'You received this email because someone invited you to a project on Proyekto. If it was not meant for you, unsubscribe below and we will not email you again.',
     }),
 
   chat_dm_received: (ctx) =>

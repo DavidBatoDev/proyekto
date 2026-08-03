@@ -51,6 +51,7 @@ describe('TaskExtrasService.addCommentToTasks', () => {
       repo as never,
       roadmapAuthz as never,
       notifications as never,
+      { inviteMentionedEmails: jest.fn().mockResolvedValue(undefined) } as never,
       knowledgeOutbox as never,
       effects as never,
       activity as never,
@@ -191,6 +192,7 @@ describe('TaskExtrasService mention scoping', () => {
       repo as never,
       roadmapAuthz as never,
       notifications as never,
+      { inviteMentionedEmails: jest.fn().mockResolvedValue(undefined) } as never,
       { enqueue: jest.fn() } as never,
       { emit: jest.fn(), record: jest.fn(), touch: jest.fn() } as never,
       {
