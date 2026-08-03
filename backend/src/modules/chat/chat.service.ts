@@ -40,13 +40,15 @@ import { MENTION_EXCERPT_MAX_CHARS } from '../notifications/notification-content
 const EVERYONE_MENTION_ID = 'everyone';
 
 /**
- * Ceiling on the DM notification work that a send will wait for.
+ * Ceiling on the notification work a message send will wait for.
  *
- * The notify path is awaited (see `notifyDmRecipients` for why), so it needs a
- * bound. Generous enough for a probe plus an insert plus the push inside
- * `createNotification` (itself capped at PUSH_SEND_TIMEOUT_MS, default 1500ms).
+ * Notification fan-out is awaited rather than detached (see
+ * `fireMentionNotifications` for why), so it needs a bound. Generous enough for
+ * a probe, an insert, and the push inside `createNotification` — itself capped
+ * at PUSH_SEND_TIMEOUT_MS, default 1500ms — while recipients are processed
+ * concurrently.
  */
-const DM_NOTIFY_DEADLINE_MS = 2_500;
+const NOTIFY_DEADLINE_MS = 2_500;
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 
@@ -110,93 +112,130 @@ export class ChatService {
   }
 
   /**
-   * Best-effort, non-blocking mention pings (mirrors the task-comment mention
-   * flow). Expands @everyone to all room members, filters individual mentions to
-   * real members, drops the sender, and creates a `chat_mention` notification per
-   * recipient. Runs detached so it never adds latency to send.
+   * Mention pings (mirrors the task-comment mention flow). Expands @everyone to
+   * all room members, filters individual mentions to real members, drops the
+   * sender, and creates a `chat_mention` notification per recipient.
+   *
+   * AWAITED by its callers, via `runNotifyWork`. It used to run detached, which
+   * was a silent-loss bug: Cloud Run throttles CPU once the response flushes and
+   * scales to zero, so the tail could be frozen and killed — and a lost mention
+   * notification means no bell row, no push, AND no email, since the email
+   * outbox is fed by an AFTER INSERT trigger on `notifications`. There is no
+   * other trace that the mention happened.
+   *
+   * Cheap enough to await: the per-recipient work runs concurrently under
+   * `Promise.allSettled`, each `createNotification` bounds its own push at
+   * PUSH_SEND_TIMEOUT_MS, and the largest project has single-digit members — so
+   * the cost is roughly one push timeout, not one per recipient.
    */
-  private fireMentionNotifications(
+  private async fireMentionNotifications(
     room: ChatRoom,
     message: ChatMessage,
     senderId: string,
     mentions: ChatMention[],
-  ): void {
+  ): Promise<void> {
     if (!mentions.length) return;
 
-    void (async () => {
-      try {
-        const wantsEveryone = mentions.some(
-          (m) => m.user_id === EVERYONE_MENTION_ID,
-        );
-        const individualIds = mentions
-          .map((m) => m.user_id)
-          .filter((id) => id !== EVERYONE_MENTION_ID);
-        if (!wantsEveryone && individualIds.length === 0) return;
+    try {
+      const wantsEveryone = mentions.some(
+        (m) => m.user_id === EVERYONE_MENTION_ID,
+      );
+      const individualIds = mentions
+        .map((m) => m.user_id)
+        .filter((id) => id !== EVERYONE_MENTION_ID);
+      if (!wantsEveryone && individualIds.length === 0) return;
 
-        // Resolve who actually belongs to this room so a crafted payload can't
-        // ping outsiders. Channels span the whole project; DMs the two members.
-        const memberIds =
-          room.type === 'channel' && room.project_id
-            ? await this.chatRepo.listProjectParticipantUserIds(room.project_id)
-            : await this.chatRepo.listRoomParticipantUserIds(room.id);
-        const memberSet = new Set(memberIds);
+      // Resolve who actually belongs to this room so a crafted payload can't
+      // ping outsiders. Channels span the whole project; DMs the two members.
+      const memberIds =
+        room.type === 'channel' && room.project_id
+          ? await this.chatRepo.listProjectParticipantUserIds(room.project_id)
+          : await this.chatRepo.listRoomParticipantUserIds(room.id);
+      const memberSet = new Set(memberIds);
 
-        const targets = new Set<string>();
-        if (wantsEveryone) {
-          for (const id of memberIds) targets.add(id);
-        }
-        for (const id of individualIds) {
-          if (memberSet.has(id)) targets.add(id);
-        }
-        targets.delete(senderId);
-        if (targets.size === 0) return;
-
-        const roomLabel =
-          room.type === 'channel'
-            ? `#${room.name || room.slug}`
-            : 'a direct message';
-        const linkUrl =
-          room.type === 'channel' && room.project_id
-            ? `/project/${room.project_id}/chat/${room.id}`
-            : // `r` (not `room`) is the search param /inbox validates; without
-              // it the link lands on the inbox list rather than the thread.
-              `/inbox?r=${room.id}`;
-
-        // Snapshot what a human-facing message needs, once for the whole
-        // fan-out: the actor is the same person for every recipient, and the
-        // message body may be edited or unsent before the notification is
-        // acted on.
-        const actorName = await this.notifications.resolveActorName(senderId);
-        // Plain text, not HTML — truncate only. Running it through htmlToText
-        // would decode entities a user typed literally ("&amp;" -> "&").
-        const excerpt = truncatePromptText(
-          (message.content ?? '').trim(),
-          MENTION_EXCERPT_MAX_CHARS,
-        );
-
-        await Promise.allSettled(
-          Array.from(targets).map((userId) =>
-            this.notifications.createNotification({
-              user_id: userId,
-              actor_id: senderId,
-              project_id: room.project_id || undefined,
-              type_name: 'chat_mention',
-              content: {
-                message: `You were mentioned in ${roomLabel}`,
-                room_id: room.id,
-                message_id: message.id,
-                ...(actorName ? { actor_name: actorName } : {}),
-                ...(excerpt ? { excerpt } : {}),
-                ...(roomLabel ? { context_title: roomLabel } : {}),
-              },
-              link_url: linkUrl,
-            }),
-          ),
-        );
-      } catch {
-        // notifications are non-critical
+      const targets = new Set<string>();
+      if (wantsEveryone) {
+        for (const id of memberIds) targets.add(id);
       }
-    })();
+      for (const id of individualIds) {
+        if (memberSet.has(id)) targets.add(id);
+      }
+      targets.delete(senderId);
+      if (targets.size === 0) return;
+
+      const roomLabel =
+        room.type === 'channel'
+          ? `#${room.name || room.slug}`
+          : 'a direct message';
+      const linkUrl =
+        room.type === 'channel' && room.project_id
+          ? `/project/${room.project_id}/chat/${room.id}`
+          : // `r` (not `room`) is the search param /inbox validates; without
+            // it the link lands on the inbox list rather than the thread.
+            `/inbox?r=${room.id}`;
+
+      // Snapshot what a human-facing message needs, once for the whole
+      // fan-out: the actor is the same person for every recipient, and the
+      // message body may be edited or unsent before the notification is
+      // acted on.
+      const actorName = await this.notifications.resolveActorName(senderId);
+      // Plain text, not HTML — truncate only. Running it through htmlToText
+      // would decode entities a user typed literally ("&amp;" -> "&").
+      const excerpt = truncatePromptText(
+        (message.content ?? '').trim(),
+        MENTION_EXCERPT_MAX_CHARS,
+      );
+
+      await Promise.allSettled(
+        Array.from(targets).map((userId) =>
+          this.notifications.createNotification({
+            user_id: userId,
+            actor_id: senderId,
+            project_id: room.project_id || undefined,
+            type_name: 'chat_mention',
+            content: {
+              message: `You were mentioned in ${roomLabel}`,
+              room_id: room.id,
+              message_id: message.id,
+              ...(actorName ? { actor_name: actorName } : {}),
+              ...(excerpt ? { excerpt } : {}),
+              ...(roomLabel ? { context_title: roomLabel } : {}),
+            },
+            link_url: linkUrl,
+          }),
+        ),
+      );
+    } catch {
+      // notifications are non-critical
+    }
+  }
+
+  /**
+   * Await best-effort notification work, without ever letting it hang a send.
+   *
+   * Two properties, both deliberate. It is AWAITED, so the work cannot be
+   * frozen by Cloud Run's post-response CPU throttling — the failure this
+   * replaced was a notification that silently never happened. And it is BOUNDED,
+   * so a slow database or push provider degrades to exactly the old behaviour
+   * (message delivered, notification skipped) instead of making the sender wait.
+   *
+   * The timer is cleared when the work wins, so a fast send leaves no handle
+   * behind.
+   */
+  private async runNotifyWork(work: Promise<unknown>): Promise<void> {
+    let deadline: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        work,
+        new Promise<void>((resolve) => {
+          deadline = setTimeout(resolve, NOTIFY_DEADLINE_MS);
+        }),
+      ]);
+    } catch {
+      // Notifications are non-critical; the message is already committed.
+    } finally {
+      if (deadline) clearTimeout(deadline);
+    }
   }
 
   /**
@@ -829,8 +868,13 @@ export class ChatService {
       replyToId: dto.reply_to_id ?? null,
     });
 
+    // fanoutChat stays detached: losing a realtime publish only costs live
+    // delivery, which TanStack Query heals on the next refetch, and it fires on
+    // every message. A lost mention notification heals nothing.
     this.fanoutChat(room.id, projectId, 'message');
-    this.fireMentionNotifications(room, message, senderId, mentions);
+    await this.runNotifyWork(
+      this.fireMentionNotifications(room, message, senderId, mentions),
+    );
     this.knowledgeOutbox.enqueue({
       sourceType: 'chat_message',
       sourceId: message.id,
@@ -911,20 +955,17 @@ export class ChatService {
     });
 
     this.fanoutChat(room.id, null, 'message');
-    this.fireMentionNotifications(room, message, senderId, mentions);
 
-    // Awaited, but never allowed to hang a send: past the deadline we degrade to
-    // exactly the old behaviour (realtime only) rather than making the sender
-    // wait on the notification path.
-    try {
-      const participants = await this.chatRepo.listRoomParticipantReadState(
-        room.id,
-      );
-      // The timer is cleared when the work wins, so a fast send does not leave a
-      // 2.5s handle dangling behind every DM.
-      let deadline: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
+    // Mentions and the DM notification share one deadline and run concurrently:
+    // "mention wins" is decided from the local mentions array, not from what
+    // landed in the database, so neither has to observe the other.
+    await this.runNotifyWork(
+      (async () => {
+        const participants = await this.chatRepo.listRoomParticipantReadState(
+          room.id,
+        );
+        await Promise.all([
+          this.fireMentionNotifications(room, message, senderId, mentions),
           this.notifyDmRecipients({
             room,
             message,
@@ -932,16 +973,9 @@ export class ChatService {
             mentions,
             participants,
           }),
-          new Promise<void>((resolve) => {
-            deadline = setTimeout(resolve, DM_NOTIFY_DEADLINE_MS);
-          }),
         ]);
-      } finally {
-        if (deadline) clearTimeout(deadline);
-      }
-    } catch {
-      // Notifications are non-critical; the message is already committed.
-    }
+      })(),
+    );
 
     return {
       room,

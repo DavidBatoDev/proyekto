@@ -142,10 +142,15 @@ app was not open you never learned the message existed.
 
 `chat_dm_received` now fires from `ChatService.notifyDmRecipients`, with three rules:
 
-- **Awaited, not detached.** Unlike the mention and realtime fan-outs beside it, this
-  one is `await`ed (bounded by `DM_NOTIFY_DEADLINE_MS`, 2.5s). For a plain DM the
-  notification row is the only delivery signal, and Cloud Run throttles CPU once the
-  response flushes — a detached tail can be frozen, silently dropping the notification.
+- **Awaited, not detached** — as is the mention fan-out beside it. Both run through
+  `runNotifyWork`, bounded at `NOTIFY_DEADLINE_MS` (2.5s). A notification row is the
+  only delivery signal there is: no row means no bell entry, no push, and no email,
+  since the outbox is fed by an insert trigger. Cloud Run throttles CPU once the
+  response flushes and scales to zero, so a detached tail can be frozen and killed —
+  which is what used to happen to channel mentions. Past the deadline both degrade to
+  the old behaviour (message delivered, notification skipped) rather than hanging a send.
+  `fanoutChat` stays detached on purpose: losing a realtime publish costs only live
+  delivery, which the next refetch heals, and it fires on every message.
 - **Mention wins.** A recipient already being notified about the same message via
   `chat_mention` gets no second notification. Compared locally, which is exact for DMs:
   a DM room's members are permanently `{sender, recipient}`, so the membership filter

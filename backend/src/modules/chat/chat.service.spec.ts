@@ -694,6 +694,61 @@ describe('ChatService', () => {
     );
   });
 
+  it('fires channel mention notifications before the send resolves', async () => {
+    // Regression guard. This used to run detached, which meant Cloud Run could
+    // freeze the tail once the response flushed and lose the notification
+    // outright — no bell row, no push, and no email either, since the outbox is
+    // fed by an AFTER INSERT trigger on notifications. Note the deliberate
+    // absence of `await flush()`: the assertion must hold on resolve alone.
+    const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
+      listProjectParticipantUserIds: jest
+        .fn()
+        .mockResolvedValue(['actor-1', 'm2']),
+    });
+
+    await makeService(
+      repo,
+      {},
+      buildNotifications({ createNotification }),
+    ).sendChannelMessage('project-1', 'actor-1', {
+      room_id: 'room-chan',
+      content: 'hi @M Two',
+      mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
+    });
+
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'm2', type_name: 'chat_mention' }),
+    );
+  });
+
+  it('still delivers the message when mention notifications fail', async () => {
+    // Awaiting must not make notifications load-bearing for the send.
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
+      listProjectParticipantUserIds: jest
+        .fn()
+        .mockResolvedValue(['actor-1', 'm2']),
+    });
+
+    await expect(
+      makeService(
+        repo,
+        {},
+        buildNotifications({
+          createNotification: jest
+            .fn()
+            .mockRejectedValue(new Error('notifications down')),
+        }),
+      ).sendChannelMessage('project-1', 'actor-1', {
+        room_id: 'room-chan',
+        content: 'hi @M Two',
+        mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it('@everyone expands to every project member except the sender', async () => {
     const repo = buildRepo({
       findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
