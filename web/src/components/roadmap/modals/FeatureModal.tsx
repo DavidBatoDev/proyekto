@@ -27,6 +27,7 @@ import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { useToast } from "@/hooks/useToast";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
@@ -95,6 +96,7 @@ export const FeatureModal = ({
 		})),
 	);
 	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? null);
+	const { mentionUsers, canInviteByEmail } = useMentionUsers(projectId);
 	const currentMilestoneId = useMemo(() => {
 		if (!initialData?.id) return null;
 		const match = milestones.find((m) =>
@@ -899,6 +901,8 @@ export const FeatureModal = ({
 			label: "Comments",
 			content: featureId ? (
 				<CommentsSection
+					mentionUsers={mentionUsers}
+					canInviteByEmail={canInviteByEmail}
 					comments={comments}
 					onAddComment={handleAddComment}
 					onUpdateComment={isReadOnlyPending ? undefined : handleUpdateComment}

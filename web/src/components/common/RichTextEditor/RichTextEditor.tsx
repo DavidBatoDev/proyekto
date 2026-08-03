@@ -1,323 +1,348 @@
-import { useRef, useEffect, useState, useCallback } from "react";
-import type { RichTextEditorProps, MentionUser } from "./types";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import type { RichTextEditorProps } from "./types";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { MentionDropdown } from "./MentionDropdown";
 import {
-  executeCommand,
-  getActiveFormats,
-  insertLink,
-  insertImage,
-  cleanHTML,
+	buildMentionCandidates,
+	matchMentionQuery,
+	type MentionTarget,
+} from "./mentionCandidates";
+import {
+	executeCommand,
+	getActiveFormats,
+	insertLink,
+	insertImage,
+	cleanHTML,
 } from "./utils/formatting";
 
 const DEFAULT_TOOLS = [
-  "textFormat",
-  "bold",
-  "italic",
-  "more",
-  "separator",
-  "bulletList",
-  "numberedList",
-  "separator",
-  "link",
-  "image",
+	"textFormat",
+	"bold",
+	"italic",
+	"more",
+	"separator",
+	"bulletList",
+	"numberedList",
+	"separator",
+	"link",
+	"image",
 ] as const;
 
 interface MentionState {
-  active: boolean;
-  query: string;
-  anchorNode: Node | null;
-  anchorOffset: number;
-  position: { top: number; left: number };
-  activeIndex: number;
+	active: boolean;
+	query: string;
+	anchorNode: Node | null;
+	anchorOffset: number;
+	position: { top: number; left: number };
+	activeIndex: number;
 }
 
 const INITIAL_MENTION: MentionState = {
-  active: false,
-  query: "",
-  anchorNode: null,
-  anchorOffset: 0,
-  position: { top: 0, left: 0 },
-  activeIndex: 0,
+	active: false,
+	query: "",
+	anchorNode: null,
+	anchorOffset: 0,
+	position: { top: 0, left: 0 },
+	activeIndex: 0,
 };
 
 export function RichTextEditor({
-  value,
-  onChange,
-  placeholder = "Start typing...",
-  tools = [...DEFAULT_TOOLS],
-  minHeight = "150px",
-  maxHeight = "400px",
-  className = "",
-  disabled = false,
-  autoFocus = false,
-  mentionUsers,
-  compact = false,
+	value,
+	onChange,
+	placeholder = "Start typing...",
+	tools = [...DEFAULT_TOOLS],
+	minHeight = "150px",
+	maxHeight = "400px",
+	className = "",
+	disabled = false,
+	autoFocus = false,
+	mentionUsers,
+	canInviteByEmail = false,
+	compact = false,
 }: RichTextEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
-  const isUpdatingRef = useRef(false);
-  const [mention, setMention] = useState<MentionState>(INITIAL_MENTION);
+	const editorRef = useRef<HTMLDivElement>(null);
+	const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
+	const isUpdatingRef = useRef(false);
+	const [mention, setMention] = useState<MentionState>(INITIAL_MENTION);
 
-  // Initialize content
-  useEffect(() => {
-    if (editorRef.current && !isUpdatingRef.current) {
-      if (editorRef.current.innerHTML !== value) {
-        editorRef.current.innerHTML = value;
-      }
-    }
-  }, [value]);
+	// Initialize content
+	useEffect(() => {
+		if (editorRef.current && !isUpdatingRef.current) {
+			if (editorRef.current.innerHTML !== value) {
+				editorRef.current.innerHTML = value;
+			}
+		}
+	}, [value]);
 
-  // Auto focus
-  useEffect(() => {
-    if (autoFocus && editorRef.current) {
-      editorRef.current.focus();
-    }
-  }, [autoFocus]);
+	// Auto focus
+	useEffect(() => {
+		if (autoFocus && editorRef.current) {
+			editorRef.current.focus();
+		}
+	}, [autoFocus]);
 
-  // Update active formats on selection change
-  useEffect(() => {
-    const updateFormats = () => {
-      setActiveFormats(getActiveFormats());
-    };
-    document.addEventListener("selectionchange", updateFormats);
-    return () => document.removeEventListener("selectionchange", updateFormats);
-  }, []);
+	// Update active formats on selection change
+	useEffect(() => {
+		const updateFormats = () => {
+			setActiveFormats(getActiveFormats());
+		};
+		document.addEventListener("selectionchange", updateFormats);
+		return () => document.removeEventListener("selectionchange", updateFormats);
+	}, []);
 
-  const handleInput = useCallback(() => {
-    if (editorRef.current && !isUpdatingRef.current) {
-      isUpdatingRef.current = true;
-      const html = cleanHTML(editorRef.current.innerHTML);
-      onChange(html);
-      setTimeout(() => {
-        isUpdatingRef.current = false;
-      }, 0);
-    }
-  }, [onChange]);
+	const handleInput = useCallback(() => {
+		if (editorRef.current && !isUpdatingRef.current) {
+			isUpdatingRef.current = true;
+			const html = cleanHTML(editorRef.current.innerHTML);
+			onChange(html);
+			setTimeout(() => {
+				isUpdatingRef.current = false;
+			}, 0);
+		}
+	}, [onChange]);
 
-  const closeMention = useCallback(() => {
-    setMention(INITIAL_MENTION);
-  }, []);
+	const closeMention = useCallback(() => {
+		setMention(INITIAL_MENTION);
+	}, []);
 
-  const insertMention = useCallback(
-    (user: MentionUser) => {
-      if (!mention.anchorNode || !editorRef.current) {
-        closeMention();
-        return;
-      }
+	const insertMention = useCallback(
+		(target: MentionTarget) => {
+			if (!mention.anchorNode || !editorRef.current) {
+				closeMention();
+				return;
+			}
 
-      const sel = window.getSelection();
-      if (!sel) {
-        closeMention();
-        return;
-      }
+			const sel = window.getSelection();
+			if (!sel) {
+				closeMention();
+				return;
+			}
 
-      // Select from the @ sign to current cursor
-      const range = document.createRange();
-      range.setStart(mention.anchorNode, mention.anchorOffset);
-      const cursorRange = sel.getRangeAt(0);
-      range.setEnd(cursorRange.endContainer, cursorRange.endOffset);
+			// Select from the @ sign to current cursor
+			const range = document.createRange();
+			range.setStart(mention.anchorNode, mention.anchorOffset);
+			const cursorRange = sel.getRangeAt(0);
+			range.setEnd(cursorRange.endContainer, cursorRange.endOffset);
 
-      // Delete the @query text
-      range.deleteContents();
+			// Delete the @query text
+			range.deleteContents();
 
-      // Insert the mention span
-      const span = document.createElement("span");
-      span.className = "mention";
-      span.setAttribute("data-user-id", user.id);
-      span.contentEditable = "false";
-      span.textContent = `@${user.display_name}`;
-      range.insertNode(span);
+			// Insert the mention span.
+			//
+			// The two kinds carry DIFFERENT attributes and must never be conflated:
+			// `data-user-id` is read by extractMentionedUserIds and compared against
+			// uuid columns, so an address there would throw 22P02 or silently match
+			// nothing. Email mentions get their own attribute and their own extractor.
+			const span = document.createElement("span");
+			span.contentEditable = "false";
+			if (target.kind === "user") {
+				span.className = "mention";
+				span.setAttribute("data-user-id", target.user.id);
+				span.textContent = `@${target.user.display_name}`;
+			} else {
+				span.className = "mention mention-invite";
+				span.setAttribute("data-invite-email", target.email);
+				// The full address, not a shortened form: "@alice" would be ambiguous
+				// with a real member called alice, and the author should see exactly
+				// who is about to be emailed.
+				span.textContent = `@${target.email}`;
+			}
+			range.insertNode(span);
 
-      // Insert a trailing space after the mention
-      const space = document.createTextNode(" ");
-      span.after(space);
+			// Insert a trailing space after the mention
+			const space = document.createTextNode(" ");
+			span.after(space);
 
-      // Move cursor after the space
-      const newRange = document.createRange();
-      newRange.setStartAfter(space);
-      newRange.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(newRange);
+			// Move cursor after the space
+			const newRange = document.createRange();
+			newRange.setStartAfter(space);
+			newRange.collapse(true);
+			sel.removeAllRanges();
+			sel.addRange(newRange);
 
-      closeMention();
-      editorRef.current.focus();
-      handleInput();
-    },
-    [mention, closeMention, handleInput],
-  );
+			closeMention();
+			editorRef.current.focus();
+			handleInput();
+		},
+		[mention, closeMention, handleInput],
+	);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (mention.active) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          const filtered = (mentionUsers ?? []).filter((u) =>
-            u.display_name.toLowerCase().includes(mention.query.toLowerCase()),
-          );
-          setMention((prev) => ({
-            ...prev,
-            activeIndex: Math.min(prev.activeIndex + 1, filtered.length - 1),
-          }));
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setMention((prev) => ({
-            ...prev,
-            activeIndex: Math.max(prev.activeIndex - 1, 0),
-          }));
-          return;
-        }
-        if (e.key === "Enter" || e.key === "Tab") {
-          e.preventDefault();
-          const filtered = (mentionUsers ?? []).filter((u) =>
-            u.display_name.toLowerCase().includes(mention.query.toLowerCase()),
-          );
-          const selected = filtered[mention.activeIndex];
-          if (selected) insertMention(selected);
-          return;
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeMention();
-          return;
-        }
-        if (e.key === " " || e.key === "Backspace") {
-          // If they backspace past the @, close mention
-          if (e.key === "Backspace" && mention.query === "") {
-            closeMention();
-          }
-        }
-      }
-    },
-    [mention, mentionUsers, insertMention, closeMention],
-  );
+	// ONE list. Keyboard navigation and the dropdown must index into the same
+	// array — computing the filter separately per consumer is how Enter ends up
+	// selecting a different entry than the one highlighted.
+	const mentionCandidates = useMemo(
+		() =>
+			buildMentionCandidates(
+				mentionUsers,
+				mention.query,
+				Boolean(canInviteByEmail),
+			),
+		[mentionUsers, mention.query, canInviteByEmail],
+	);
 
-  const handleInputWithMention = useCallback(
-    (_e: React.FormEvent<HTMLDivElement>) => {
-      handleInput();
+	const handleKeyDown = useCallback(
+		(e: React.KeyboardEvent<HTMLDivElement>) => {
+			if (mention.active) {
+				if (e.key === "ArrowDown") {
+					e.preventDefault();
+					setMention((prev) => ({
+						...prev,
+						activeIndex: Math.min(
+							prev.activeIndex + 1,
+							mentionCandidates.length - 1,
+						),
+					}));
+					return;
+				}
+				if (e.key === "ArrowUp") {
+					e.preventDefault();
+					setMention((prev) => ({
+						...prev,
+						activeIndex: Math.max(prev.activeIndex - 1, 0),
+					}));
+					return;
+				}
+				if (e.key === "Enter" || e.key === "Tab") {
+					e.preventDefault();
+					const selected = mentionCandidates[mention.activeIndex];
+					if (selected) insertMention(selected);
+					return;
+				}
+				if (e.key === "Escape") {
+					e.preventDefault();
+					closeMention();
+					return;
+				}
+				if (e.key === " " || e.key === "Backspace") {
+					// If they backspace past the @, close mention
+					if (e.key === "Backspace" && mention.query === "") {
+						closeMention();
+					}
+				}
+			}
+		},
+		[mention, mentionCandidates, insertMention, closeMention],
+	);
 
-      if (!mentionUsers?.length) return;
+	const handleInputWithMention = useCallback(
+		(_e: React.FormEvent<HTMLDivElement>) => {
+			handleInput();
 
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+			// Not `!mentionUsers?.length`: an admin in a project with no other
+			// members must still be able to invite someone by address.
+			if (!mentionUsers?.length && !canInviteByEmail) return;
 
-      const range = sel.getRangeAt(0);
-      const node = range.startContainer;
-      const offset = range.startOffset;
+			const sel = window.getSelection();
+			if (!sel || sel.rangeCount === 0) return;
 
-      if (node.nodeType !== Node.TEXT_NODE) {
-        if (mention.active) closeMention();
-        return;
-      }
+			const range = sel.getRangeAt(0);
+			const node = range.startContainer;
+			const offset = range.startOffset;
 
-      const text = node.textContent ?? "";
-      const beforeCursor = text.slice(0, offset);
-      // Find the last @ that starts a word
-      const atMatch = beforeCursor.match(/@(\w*)$/);
+			if (node.nodeType !== Node.TEXT_NODE) {
+				if (mention.active) closeMention();
+				return;
+			}
 
-      if (atMatch) {
-        const query = atMatch[1];
-        const atOffset = offset - atMatch[0].length;
+			const text = node.textContent ?? "";
+			const beforeCursor = text.slice(0, offset);
+			const atMatch = matchMentionQuery(beforeCursor);
 
-        // Get pixel position of the @ character
-        const atRange = document.createRange();
-        atRange.setStart(node, atOffset);
-        atRange.setEnd(node, atOffset + 1);
-        const rect = atRange.getBoundingClientRect();
+			if (atMatch) {
+				const { query, atOffset } = atMatch;
 
-        setMention({
-          active: true,
-          query,
-          anchorNode: node,
-          anchorOffset: atOffset,
-          position: { top: rect.bottom + 4, left: rect.left },
-          activeIndex: 0,
-        });
-      } else {
-        if (mention.active) closeMention();
-      }
-    },
-    [handleInput, mentionUsers, mention.active, closeMention],
-  );
+				// Get pixel position of the @ character
+				const atRange = document.createRange();
+				atRange.setStart(node, atOffset);
+				atRange.setEnd(node, atOffset + 1);
+				const rect = atRange.getBoundingClientRect();
 
-  const handleCommand = useCallback(
-    (command: string, commandValue?: string) => {
-      if (!editorRef.current) return;
-      editorRef.current.focus();
-      switch (command) {
-        case "createLink":
-          if (commandValue) insertLink(commandValue);
-          break;
-        case "insertImage":
-          if (commandValue) insertImage(commandValue);
-          break;
-        default:
-          executeCommand(command as any, commandValue);
-      }
-      handleInput();
-      setActiveFormats(getActiveFormats());
-    },
-    [handleInput],
-  );
+				setMention({
+					active: true,
+					query,
+					anchorNode: node,
+					anchorOffset: atOffset,
+					position: { top: rect.bottom + 4, left: rect.left },
+					activeIndex: 0,
+				});
+			} else {
+				if (mention.active) closeMention();
+			}
+		},
+		[handleInput, mentionUsers, canInviteByEmail, mention.active, closeMention],
+	);
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData("text/plain");
-    document.execCommand("insertText", false, text);
-  }, []);
+	const handleCommand = useCallback(
+		(command: string, commandValue?: string) => {
+			if (!editorRef.current) return;
+			editorRef.current.focus();
+			switch (command) {
+				case "createLink":
+					if (commandValue) insertLink(commandValue);
+					break;
+				case "insertImage":
+					if (commandValue) insertImage(commandValue);
+					break;
+				default:
+					executeCommand(command as any, commandValue);
+			}
+			handleInput();
+			setActiveFormats(getActiveFormats());
+		},
+		[handleInput],
+	);
 
-  const filteredMentionUsers = mentionUsers?.filter((u) =>
-    u.display_name.toLowerCase().includes(mention.query.toLowerCase()),
-  ) ?? [];
+	const handlePaste = useCallback((e: React.ClipboardEvent) => {
+		e.preventDefault();
+		const text = e.clipboardData.getData("text/plain");
+		document.execCommand("insertText", false, text);
+	}, []);
 
-  return (
-    <div
-      className={`border border-gray-200 rounded-lg overflow-hidden bg-white ${className}`}
-    >
-      <RichTextToolbar
-        tools={tools}
-        onCommand={handleCommand}
-        activeFormats={activeFormats}
-        compact={compact}
-      />
-      <div
-        ref={editorRef}
-        contentEditable={!disabled}
-        onInput={handleInputWithMention}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onBlur={() => {
-          // Delay to allow mention click to register
-          setTimeout(() => {
-            if (mention.active) closeMention();
-          }, 150);
-        }}
-        className={`px-4 py-3 outline-none prose prose-sm max-w-none ${maxHeight === "none" ? "" : "overflow-y-auto"}`}
-        style={{
-          minHeight,
-          maxHeight: maxHeight === "none" ? undefined : maxHeight,
-        }}
-        data-placeholder={placeholder}
-        suppressContentEditableWarning
-      />
+	return (
+		<div
+			className={`border border-gray-200 rounded-lg overflow-hidden bg-white ${className}`}
+		>
+			<RichTextToolbar
+				tools={tools}
+				onCommand={handleCommand}
+				activeFormats={activeFormats}
+				compact={compact}
+			/>
+			<div
+				ref={editorRef}
+				contentEditable={!disabled}
+				onInput={handleInputWithMention}
+				onKeyDown={handleKeyDown}
+				onPaste={handlePaste}
+				onBlur={() => {
+					// Delay to allow mention click to register
+					setTimeout(() => {
+						if (mention.active) closeMention();
+					}, 150);
+				}}
+				className={`px-4 py-3 outline-none prose prose-sm max-w-none ${maxHeight === "none" ? "" : "overflow-y-auto"}`}
+				style={{
+					minHeight,
+					maxHeight: maxHeight === "none" ? undefined : maxHeight,
+				}}
+				data-placeholder={placeholder}
+				suppressContentEditableWarning
+			/>
 
-      {mention.active && filteredMentionUsers.length > 0 && (
-        <MentionDropdown
-          users={filteredMentionUsers}
-          query={mention.query}
-          position={mention.position}
-          onSelect={insertMention}
-          onClose={closeMention}
-          activeIndex={mention.activeIndex}
-          onActiveIndexChange={(idx) =>
-            setMention((prev) => ({ ...prev, activeIndex: idx }))
-          }
-        />
-      )}
+			{mention.active && mentionCandidates.length > 0 && (
+				<MentionDropdown
+					candidates={mentionCandidates}
+					position={mention.position}
+					onSelect={insertMention}
+					onClose={closeMention}
+					activeIndex={mention.activeIndex}
+					onActiveIndexChange={(idx) =>
+						setMention((prev) => ({ ...prev, activeIndex: idx }))
+					}
+				/>
+			)}
 
-      <style>{`
+			<style>{`
         [contenteditable]:empty:before {
           content: attr(data-placeholder);
           color: #9ca3af;
@@ -414,6 +439,6 @@ export function RichTextEditor({
           padding: 0;
         }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }
