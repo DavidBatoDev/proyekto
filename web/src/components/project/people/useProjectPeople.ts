@@ -69,6 +69,8 @@ export interface ProjectPeople {
 	/** People with no team-derived grant — the client, direct invites. */
 	direct: PersonAccess[];
 	teamNameById: Record<string, string>;
+	/** Full team records — rows need the logo, not just the name. */
+	teamById: Record<string, Team>;
 	summary: PeopleSummary;
 	canManageMembers: boolean;
 	canManageTeams: boolean;
@@ -256,6 +258,7 @@ export function useProjectPeople(
 		groups,
 		direct,
 		teamNameById,
+		teamById,
 		summary,
 		canManageMembers,
 		canManageTeams,

@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Loader2, ShieldCheck } from "lucide-react";
 import { AppSectionHeader } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
-import { PersonRow } from "./PersonRow";
+import { PersonRow, primaryTeamFor, teamOriginFor } from "./PersonRow";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
 
 // Mirrors ROLE_DISPLAY in ProjectPermissions.tsx — kept local rather than
@@ -105,7 +105,8 @@ export function PermissionsLanding({ projectId }: { projectId: string }) {
 							<PersonRow
 								key={person.key}
 								person={person}
-								originLabel={originLabelFor(person, people.teamNameById)}
+								badgeTeam={primaryTeamFor(person, people.teamById)}
+								origin={teamOriginFor(person, people.teamById)}
 								onOpen={openMember}
 							/>
 						))}
@@ -114,13 +115,4 @@ export function PermissionsLanding({ projectId }: { projectId: string }) {
 			)}
 		</div>
 	);
-}
-
-function originLabelFor(
-	person: { teamIds: string[] },
-	teamNameById: Record<string, string>,
-): string | undefined {
-	if (person.teamIds.length === 0) return undefined;
-	const names = person.teamIds.map((id) => teamNameById[id] ?? "Team");
-	return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
 }

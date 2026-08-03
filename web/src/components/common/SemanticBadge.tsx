@@ -21,6 +21,11 @@ interface BadgeProps {
 	className?: string;
 	appearance?: "badge" | "menu";
 	trailing?: ReactNode;
+	/**
+	 * Rendered in place of the icon — for badges that lead with an image, like a
+	 * team logo. The icon stays required as the fallback when there is none.
+	 */
+	leading?: ReactNode;
 }
 
 export function SemanticBadge({
@@ -30,6 +35,7 @@ export function SemanticBadge({
 	className,
 	appearance = "badge",
 	trailing,
+	leading,
 }: BadgeProps) {
 	return (
 		<span
@@ -42,7 +48,9 @@ export function SemanticBadge({
 				className,
 			)}
 		>
-			<Icon className={cn("h-3.5 w-3.5 shrink-0", iconClassName)} />
+			{leading ?? (
+				<Icon className={cn("h-3.5 w-3.5 shrink-0", iconClassName)} />
+			)}
 			<span className="truncate">{children}</span>
 			{trailing}
 		</span>
@@ -109,7 +117,11 @@ const TASK_STATUS_CONFIG: Record<
 		icon: CircleCheck,
 		iconClassName: "text-success",
 	},
-	blocked: { label: "Blocked", icon: CircleX, iconClassName: "text-destructive" },
+	blocked: {
+		label: "Blocked",
+		icon: CircleX,
+		iconClassName: "text-destructive",
+	},
 	canceled: {
 		label: "Canceled",
 		icon: CircleX,

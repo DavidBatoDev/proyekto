@@ -9,7 +9,7 @@ import { displayNameOf } from "@/components/common/MemberDisplay";
 import { InviteToProjectModal } from "@/components/project/team/InviteToProjectModal";
 import { useUser } from "@/stores/authStore";
 import { PeopleAccessSummary, type PeopleFilter } from "./PeopleAccessSummary";
-import { PersonRow } from "./PersonRow";
+import { PersonRow, primaryTeamFor, teamOriginFor } from "./PersonRow";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
 
 /**
@@ -113,7 +113,10 @@ export function TeamMembersPage({
 							<PersonRow
 								key={person.key}
 								person={person}
-								originLabel={originLabelFor(person, people.teamNameById)}
+								badgeTeam={primaryTeamFor(person, people.teamById)}
+								origin={
+									teamOriginFor(person, people.teamById) ?? { label: "Direct" }
+								}
 								onOpen={onOpenPerson}
 							/>
 						))}
@@ -137,13 +140,4 @@ export function TeamMembersPage({
 			)}
 		</div>
 	);
-}
-
-function originLabelFor(
-	person: PersonAccess,
-	teamNameById: Record<string, string>,
-): string {
-	if (person.teamIds.length === 0) return "Direct";
-	const names = person.teamIds.map((id) => teamNameById[id] ?? "Team");
-	return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
 }

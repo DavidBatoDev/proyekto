@@ -25,17 +25,24 @@ import type { PersonAccess } from "./useProjectPeople";
  * The whole row is the click target: it opens the access drawer. That is the
  * single most common thing anyone wants from a roster.
  */
+/** Where a person's access comes from, as the row shows it. */
+export interface PersonOrigin {
+	label: string;
+	/** The team's logo, when the origin is a team that has one. */
+	avatarUrl?: string | null;
+}
+
 export function PersonRow({
 	person,
 	badgeTeam,
-	originLabel,
+	origin,
 	onOpen,
 }: {
 	person: PersonAccess;
 	/** Team whose logo marks this person as internal, if any. */
 	badgeTeam?: Team | null;
 	/** Where this person's access comes from — shown as a trailing badge. */
-	originLabel?: string;
+	origin?: PersonOrigin;
 	onOpen: (person: PersonAccess) => void;
 }) {
 	const badge: AvatarBadge | null = person.isExternal
@@ -85,12 +92,21 @@ export function PersonRow({
 									You
 								</SemanticBadge>
 							)}
-							{originLabel && (
+							{origin && (
 								<SemanticBadge
 									icon={Users}
 									iconClassName="text-muted-foreground"
+									leading={
+										origin.avatarUrl ? (
+											<img
+												src={origin.avatarUrl}
+												alt=""
+												className="h-4 w-4 shrink-0 rounded-[4px] object-cover ring-1 ring-border"
+											/>
+										) : undefined
+									}
 								>
-									{originLabel}
+									{origin.label}
 								</SemanticBadge>
 							)}
 						</>
@@ -103,4 +119,36 @@ export function PersonRow({
 			<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 		</button>
 	);
+}
+
+/**
+ * The team a person's access comes through. On a flat roster nobody sits under
+ * a team heading, so this is what tells the row — chip and avatar badge alike —
+ * which logo to wear. Null when the access is direct.
+ */
+export function primaryTeamFor(
+	person: { teamIds: string[] },
+	teamById: Record<string, Team>,
+): Team | null {
+	if (person.teamIds.length === 0) return null;
+	return teamById[person.teamIds[0]] ?? null;
+}
+
+/**
+ * That team as a badge — logo included, so the chip reads the same way a team
+ * does on the Teams page. Undefined when the access is direct; callers decide
+ * whether that deserves its own label.
+ */
+export function teamOriginFor(
+	person: { teamIds: string[] },
+	teamById: Record<string, Team>,
+): PersonOrigin | undefined {
+	if (person.teamIds.length === 0) return undefined;
+	const first = primaryTeamFor(person, teamById);
+	const name = first?.name ?? "Team";
+	const extra = person.teamIds.length - 1;
+	return {
+		label: extra > 0 ? `${name} +${extra}` : name,
+		avatarUrl: first?.avatar_url ?? null,
+	};
 }
