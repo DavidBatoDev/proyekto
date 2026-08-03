@@ -25,6 +25,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode, RefObject } from "react";
 import type { RoadmapEpic } from "@/types/roadmap";
+import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import {
 	type ExplorerSearchResult,
 	RoadmapStructureHeader,
@@ -43,6 +44,7 @@ const clampWidth = (v: number) =>
 	Math.min(Math.max(v, PANEL_MIN_WIDTH), PANEL_MAX_WIDTH);
 
 interface MilestonesLeftPanelProps {
+	projectId?: string | null;
 	leftHeaderRef: RefObject<HTMLDivElement | null>;
 	sortedEpics: RoadmapEpic[];
 	collapsed: Set<string>;
@@ -118,6 +120,7 @@ type SortableMilestoneFeatureRowProps = {
 	taskCount: number;
 	canDrag: boolean;
 	onSetFeatureRowRef: (node: HTMLDivElement | null) => void;
+	projectId?: string | null;
 };
 
 const SortableMilestoneFeatureRow = ({
@@ -125,6 +128,7 @@ const SortableMilestoneFeatureRow = ({
 	taskCount,
 	canDrag,
 	onSetFeatureRowRef,
+	projectId,
 }: SortableMilestoneFeatureRowProps) => {
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
 		useSortable({ id: feature.id });
@@ -134,6 +138,8 @@ const SortableMilestoneFeatureRow = ({
 		transition,
 		opacity: isDragging ? 0.72 : 1,
 	};
+
+	const firstTaskId = feature.tasks?.[0]?.id;
 
 	return (
 		<div
@@ -164,7 +170,16 @@ const SortableMilestoneFeatureRow = ({
 					<span className="min-w-0 flex-1 truncate text-left">{feature.title}</span>
 				</Tooltip>
 				{taskCount > 0 && (
-					<span className="pr-6 text-[10px] font-normal text-gray-500">{taskCount}</span>
+					<span className="pr-1 text-[10px] font-normal text-gray-500">{taskCount}</span>
+				)}
+				{projectId && firstTaskId && (
+					<div
+						onClick={(event) => event.stopPropagation()}
+						onMouseDown={(event) => event.stopPropagation()}
+						className="shrink-0"
+					>
+						<TaskTimerButton projectId={projectId} taskId={firstTaskId} size="sm" />
+					</div>
 				)}
 			</div>
 		</div>
@@ -172,6 +187,7 @@ const SortableMilestoneFeatureRow = ({
 };
 
 export const MilestonesLeftPanel = ({
+	projectId,
 	leftHeaderRef,
 	sortedEpics,
 	collapsed,
@@ -436,6 +452,7 @@ export const MilestonesLeftPanel = ({
 																taskCount={feature.tasks?.length ?? 0}
 																canDrag={canReorderFeatures}
 																onSetFeatureRowRef={setFeatureRowRef(feature.id)}
+																projectId={projectId}
 															/>
 														))}
 													</SortableContext>

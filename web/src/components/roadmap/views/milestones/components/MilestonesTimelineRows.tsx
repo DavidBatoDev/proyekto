@@ -6,6 +6,7 @@ import {
 	type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
+import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import { calculateFeatureProgressFromTasks } from "../../../shared/featureProgress";
 import {
 	EPIC_LINE_HEIGHT,
@@ -70,6 +71,7 @@ type DrawDragState = {
 };
 
 interface MilestonesTimelineRowsProps {
+	projectId?: string | null;
 	sortedEpics: RoadmapEpic[];
 	collapsed: Set<string>;
 	totalWidth: number;
@@ -92,6 +94,7 @@ interface MilestonesTimelineRowsProps {
 }
 
 export const MilestonesTimelineRows = ({
+	projectId,
 	sortedEpics,
 	collapsed,
 	totalWidth,
@@ -832,6 +835,19 @@ export const MilestonesTimelineRows = ({
 														</span>
 													)}
 												</div>
+
+												{projectId && feature.tasks?.[0]?.id && (
+													<div
+														onMouseDown={(e) => e.stopPropagation()}
+														onClick={(e) => e.stopPropagation()}
+														className="absolute top-1/2 -translate-y-1/2 z-30 pointer-events-auto"
+														style={{
+															left: Math.max(0, barLeft) + barWidth + (labelFitsInside ? 4 : 80),
+														}}
+													>
+														<TaskTimerButton projectId={projectId} taskId={feature.tasks[0].id} size="sm" />
+													</div>
+												)}
 
 												{!labelFitsInside && (
 													<span

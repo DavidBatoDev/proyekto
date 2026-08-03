@@ -981,6 +981,7 @@ export const MilestonesView = ({
       >
         <div className="flex min-w-0 min-h-full">
           <MilestonesLeftPanel
+            projectId={_roadmap?.project_id ?? null}
             leftHeaderRef={leftHeaderRef}
             sortedEpics={sortedEpics}
             collapsed={collapsed}
@@ -1070,6 +1071,7 @@ export const MilestonesView = ({
                 />
 
                 <MilestonesTimelineRows
+                  projectId={_roadmap?.project_id ?? null}
                   sortedEpics={sortedEpics}
                   collapsed={collapsed}
                   totalWidth={totalWidth}
