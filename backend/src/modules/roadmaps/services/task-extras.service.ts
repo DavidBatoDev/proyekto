@@ -17,7 +17,9 @@ import {
 } from './roadmap-authorization.service';
 import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { htmlToText } from '../../../common/utils/html-to-text.util';
 import { extractMentionedUserIds } from '../utils/mention-parser';
+import { MENTION_EXCERPT_MAX_CHARS } from '../../notifications/notification-content';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
@@ -167,13 +169,32 @@ export class TaskExtrasService {
     // Scope comes from the authz walk the caller already paid for.
     const roadmapId = ctx?.roadmapId ?? null;
     const projectId = ctx?.projectId ?? null;
+
+    // The ids above are `data-user-id` attributes lifted out of client-supplied
+    // HTML, so they are untrusted: notify only people who can actually see this
+    // roadmap. Fail closed when the scope is unknown rather than notifying the
+    // raw list.
+    if (!roadmapId) return;
+    const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
+      roadmapId,
+      mentionedIds,
+    );
+    if (!targets.length) return;
+
+    // Snapshot what a human-facing message needs. The excerpt is captured here
+    // rather than re-read later because the comment may be edited or deleted
+    // before the notification is acted on. `htmlToText` strips every tag, so
+    // nothing renderable survives into a downstream email body.
+    const actorName =
+      await this.notificationsService.resolveActorName(authorId);
+    const excerpt = htmlToText(html, MENTION_EXCERPT_MAX_CHARS);
     const linkUrl =
       projectId && roadmapId
         ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`
         : null;
 
     await Promise.allSettled(
-      mentionedIds.map((userId) =>
+      targets.map((userId) =>
         this.notificationsService.createNotification({
           user_id: userId,
           actor_id: authorId,
@@ -183,6 +204,8 @@ export class TaskExtrasService {
           content: {
             task_id: taskId,
             message: 'You were mentioned in a task comment.',
+            ...(actorName ? { actor_name: actorName } : {}),
+            ...(excerpt ? { excerpt } : {}),
           },
         }),
       ),

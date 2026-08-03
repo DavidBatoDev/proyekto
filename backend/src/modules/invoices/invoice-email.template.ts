@@ -1,3 +1,4 @@
+import { escapeHtml as esc } from '../../common/mail/templates/escape';
 import type { InvoiceWithLines } from './invoices.service';
 
 /**
@@ -82,15 +83,6 @@ export function buildInvoiceEmailHtml(input: {
     </table>
   </body>
 </html>`;
-}
-
-function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function formatMoney(amount: number, currency: string): string {

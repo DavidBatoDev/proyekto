@@ -133,6 +133,7 @@ describe('ChatService', () => {
   const buildNotifications = (overrides = {}) =>
     ({
       createNotification: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+      resolveActorName: jest.fn().mockResolvedValue('Ada Lovelace'),
       ...overrides,
     }) as unknown as import('../notifications/notifications.service').NotificationsService;
 
@@ -320,15 +321,13 @@ describe('ChatService', () => {
     );
     const repo = buildRepo({
       upsertChannel,
-      hydrateRoomsByIds: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            ...buildRoom({ id: 'room-new' }),
-            last_message: null,
-            participants: [],
-          },
-        ]),
+      hydrateRoomsByIds: jest.fn().mockResolvedValue([
+        {
+          ...buildRoom({ id: 'room-new' }),
+          last_message: null,
+          participants: [],
+        },
+      ]),
     });
     const service = makeService(repo, { assertPermission });
 
@@ -778,16 +777,14 @@ describe('ChatService', () => {
         height: null,
       },
     ]);
-    const listRoomLinks = jest
-      .fn()
-      .mockResolvedValue([
-        {
-          message_id: 'm3',
-          sender_id: 'u1',
-          created_at: 't',
-          url: 'https://x.dev',
-        },
-      ]);
+    const listRoomLinks = jest.fn().mockResolvedValue([
+      {
+        message_id: 'm3',
+        sender_id: 'u1',
+        created_at: 't',
+        url: 'https://x.dev',
+      },
+    ]);
     const repo = accessibleDmRepo({ listRoomAttachments, listRoomLinks });
 
     const result = await makeService(repo).getRoomLibrary('room-1', 'viewer-1');

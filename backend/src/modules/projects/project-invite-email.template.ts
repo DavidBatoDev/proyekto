@@ -9,6 +9,8 @@
  * Mirrors `modules/invoices/invoice-email.template.ts`.
  */
 
+import { escapeHtml } from '../../common/mail/templates/escape';
+
 export interface InviteEmailInput {
   inviterName: string;
   projectName: string;
@@ -170,13 +172,4 @@ export function buildInviteEmail(input: InviteEmailInput): InviteEmailBody {
 </html>`.trim();
 
   return { subject, html, text: textLines.join('\n') };
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

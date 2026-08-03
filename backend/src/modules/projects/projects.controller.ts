@@ -13,6 +13,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
@@ -262,7 +263,18 @@ export class ProjectsController {
     return this.projectsService.addMember(id, user.id, dto);
   }
 
+  /**
+   * Invite someone by email address.
+   *
+   * Throttled because this is the one authenticated route that sends mail to an
+   * arbitrary, caller-supplied address — a project admin can otherwise pump
+   * unlimited invites through our Gmail sender, which costs us domain
+   * reputation, not just quota. `@UseGuards(ThrottlerGuard)` is required: no
+   * `APP_GUARD` binds the throttler globally, so `@Throttle` alone does nothing.
+   */
   @Post(':id/invites')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   inviteByEmail(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,

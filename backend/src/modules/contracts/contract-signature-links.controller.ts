@@ -10,7 +10,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
 import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -46,15 +46,23 @@ export class ContractSignatureLinksController {
   @Get('sign/:token')
   @Public()
   @SetCachePolicy(CACHE_POLICY_PRESETS.NO_STORE)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   getByToken(@Param('token') token: string) {
     return this.links.getByToken(token);
   }
 
-  /** Stamp the client signature. Tightly throttled — it is an unauthenticated write. */
+  /**
+   * Stamp the client signature. Tightly throttled — it is an unauthenticated write.
+   *
+   * `@UseGuards(ThrottlerGuard)` is load-bearing and must stay: no `APP_GUARD`
+   * binds the throttler globally, so `@Throttle` on its own is inert and these
+   * two routes were effectively unlimited.
+   */
   @Post('sign/:token')
   @Public()
   @SetCachePolicy(CACHE_POLICY_PRESETS.NO_STORE)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   signByToken(
     @Param('token') token: string,

@@ -1,3 +1,4 @@
+import { PRESENTATION_ONLY_CONTENT_KEYS } from '../notifications/notification-content';
 import type { PushMessage } from './push.service';
 
 /**
@@ -56,9 +57,11 @@ export function buildPushMessage(input: BuildPushInput): PushMessage {
   if (input.projectId) data.project_id = input.projectId;
 
   // Pass scalar ids from content (task_id, message_id, invoice_id, ...) through
-  // so the app can act on the tap. Skip the long `message` and any non-scalars.
+  // so the app can act on the tap. Skip non-scalars and the presentation-only
+  // keys: they exist to render an email body, are not actionable on tap, and
+  // `excerpt` in particular is long enough to waste the 4KB FCM payload budget.
   for (const [key, value] of Object.entries(content)) {
-    if (key === 'message') continue;
+    if (PRESENTATION_ONLY_CONTENT_KEYS.has(key)) continue;
     if (typeof value === 'string' || typeof value === 'number') {
       data[key] = String(value);
     }

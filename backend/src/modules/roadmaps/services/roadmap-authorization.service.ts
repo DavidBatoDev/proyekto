@@ -214,6 +214,52 @@ export class RoadmapAuthorizationService {
   }
 
   /**
+   * Narrow a set of user ids to those who can actually VIEW the roadmap.
+   *
+   * Mention targets arrive as client-supplied `data-user-id` attributes inside
+   * comment HTML, so they are untrusted input: without this filter a crafted
+   * comment notifies any user id the author cares to type, whether or not that
+   * person can see the roadmap. Chat already does the equivalent check against
+   * room membership (see ChatService.fireMentionNotifications) — this is the
+   * roadmap-side counterpart.
+   *
+   * One meta read plus one bulk probe, regardless of how many ids come in.
+   */
+  async filterUsersWhoCanViewRoadmap(
+    roadmapId: string,
+    userIds: string[],
+  ): Promise<string[]> {
+    const unique = Array.from(new Set(userIds));
+    if (unique.length === 0) return [];
+
+    const roadmap = await this.getRoadmapMeta(roadmapId);
+    if (!roadmap) return [];
+
+    const allowed = new Set<string>();
+    // The owner always qualifies, including on a personal roadmap that has no
+    // project_access rows at all.
+    if (roadmap.owner_id && unique.includes(roadmap.owner_id)) {
+      allowed.add(roadmap.owner_id);
+    }
+    if (!roadmap.project_id) return Array.from(allowed);
+
+    const { data, error } = await this.db
+      .from('project_access')
+      .select('user_id')
+      .eq('project_id', roadmap.project_id)
+      .in('user_id', unique);
+
+    // Fail closed: a probe error must not turn into "notify everyone".
+    if (error) return Array.from(allowed);
+
+    for (const row of data ?? []) {
+      const id = (row as { user_id?: string | null }).user_id;
+      if (id) allowed.add(id);
+    }
+    return Array.from(allowed);
+  }
+
+  /**
    * Assert VIEW-level access to a roadmap. 404 on denial so we never leak the
    * existence of a roadmap the caller cannot see. Use for read endpoints.
    */

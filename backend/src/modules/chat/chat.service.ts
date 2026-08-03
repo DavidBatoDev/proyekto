@@ -33,6 +33,8 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { KnowledgeOutboxService } from '../knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { truncatePromptText } from '../../common/utils/html-to-text.util';
+import { MENTION_EXCERPT_MAX_CHARS } from '../notifications/notification-content';
 
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
 const EVERYONE_MENTION_ID = 'everyone';
@@ -149,6 +151,18 @@ export class ChatService {
             ? `/project/${room.project_id}/chat/${room.id}`
             : '/inbox';
 
+        // Snapshot what a human-facing message needs, once for the whole
+        // fan-out: the actor is the same person for every recipient, and the
+        // message body may be edited or unsent before the notification is
+        // acted on.
+        const actorName = await this.notifications.resolveActorName(senderId);
+        // Plain text, not HTML — truncate only. Running it through htmlToText
+        // would decode entities a user typed literally ("&amp;" -> "&").
+        const excerpt = truncatePromptText(
+          (message.content ?? '').trim(),
+          MENTION_EXCERPT_MAX_CHARS,
+        );
+
         await Promise.allSettled(
           Array.from(targets).map((userId) =>
             this.notifications.createNotification({
@@ -160,6 +174,9 @@ export class ChatService {
                 message: `You were mentioned in ${roomLabel}`,
                 room_id: room.id,
                 message_id: message.id,
+                ...(actorName ? { actor_name: actorName } : {}),
+                ...(excerpt ? { excerpt } : {}),
+                ...(roomLabel ? { context_title: roomLabel } : {}),
               },
               link_url: linkUrl,
             }),

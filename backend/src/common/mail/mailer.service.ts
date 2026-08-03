@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MAIL_TRANSPORT, type MailTransport } from './transport/mail-transport';
 import {
   type MailSender,
   resolveAllSenders,
@@ -63,53 +64,39 @@ export interface MailDiagnostics {
 }
 
 /**
- * Outbound transactional email over the Gmail API.
+ * Outbound transactional email.
  *
  * Delivery is best-effort by design: the caller's write has already been
- * committed by the time we get here, so a missing credential or a Gmail
+ * committed by the time we get here, so a missing credential or a provider
  * outage must never fail the request. Every path returns a
  * `{ sent, reason }` the caller can surface instead of throwing.
  *
  * Callers that MUST NOT report success on a failed send (the OTP paths) check
  * `result.sent` and throw themselves — do not make this service throw.
  *
- * This is the single seam for outbound mail: swapping Gmail for an ESP means
- * replacing `deliver()` and `accessToken()` here, and nothing at any call site.
+ * This is the single seam for outbound mail. It owns everything
+ * provider-agnostic — sender identity, MIME assembly, header hygiene — and
+ * delegates the last step to a `MailTransport`, so swapping Gmail for an ESP is
+ * a new transport plus an env var and nothing at any call site.
  */
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
 
-  /**
-   * Cached OAuth access token. Gmail issues these with a 3600s life and every
-   * send previously burned a second round trip minting a fresh one.
-   */
-  private tokenCache: { token: string; expiresAtMs: number } | null = null;
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
+  ) {}
 
-  constructor(private readonly config: ConfigService) {}
-
-  /** True when Gmail OAuth credentials are present. */
+  /** True when the active transport's credentials are present. */
   isConfigured(): boolean {
-    return Boolean(
-      this.credential('GMAIL_CLIENT_ID', 'GOOGLE_CLIENT_ID') &&
-      this.credential('GMAIL_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET') &&
-      this.credential('GMAIL_REFRESH_TOKEN', 'GOOGLE_REFRESH_TOKEN'),
-    );
+    return this.transport.isConfigured();
   }
 
   async send(input: SendMailInput): Promise<SendMailResult> {
-    const clientId = this.credential('GMAIL_CLIENT_ID', 'GOOGLE_CLIENT_ID');
-    const clientSecret = this.credential(
-      'GMAIL_CLIENT_SECRET',
-      'GOOGLE_CLIENT_SECRET',
-    );
-    const refreshToken = this.credential(
-      'GMAIL_REFRESH_TOKEN',
-      'GOOGLE_REFRESH_TOKEN',
-    );
-    if (!clientId || !clientSecret || !refreshToken) {
+    if (!this.transport.isConfigured()) {
       this.logger.warn(
-        'MailerService: Gmail credentials not configured (set GMAIL_* or GOOGLE_* env vars)',
+        `MailerService: ${this.transport.name} transport is not configured`,
       );
       return {
         sent: false,
@@ -118,147 +105,44 @@ export class MailerService {
       };
     }
 
-    try {
-      const accessToken = await this.accessToken(
-        clientId,
-        clientSecret,
-        refreshToken,
+    const result = await this.transport.deliver({
+      raw: this.buildRaw(input),
+      to: input.to,
+      subject: input.subject,
+    });
+
+    if (!result.sent) {
+      this.logger.warn(
+        `MailerService: failed for ${input.to}: ${result.reason ?? 'unknown error'}`,
       );
-      const raw = this.buildRaw(input);
-      const res = await fetch(
-        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ raw }),
-        },
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        // 401 means the cached token went stale early (revoked, or the mailbox
-        // changed password). Drop it so the next send re-mints instead of
-        // replaying a dead token until the cache expires on its own.
-        if (res.status === 401) this.tokenCache = null;
-        this.logger.warn(
-          `MailerService: Gmail API error for ${input.to}: ${err}`,
-        );
-        return {
-          sent: false,
-          reason: `Gmail rejected the message (${res.status}).`,
-          to: input.to,
-        };
-      }
-      const { id } = (await res.json()) as { id: string };
-      this.logger.log(
-        `MailerService: sent to ${input.to} as ${input.sender ?? 'noreply'} (messageId=${id})`,
-      );
-      return { sent: true, messageId: id, to: input.to };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`MailerService: failed for ${input.to}: ${message}`);
-      return { sent: false, reason: `Email send failed: ${message}`, to: input.to };
+      return { sent: false, reason: result.reason, to: input.to };
     }
+
+    this.logger.log(
+      `MailerService: sent to ${input.to} as ${input.sender ?? 'noreply'} (messageId=${result.messageId})`,
+    );
+    return { sent: true, messageId: result.messageId, to: input.to };
   }
 
   /**
-   * Credential + token health, for `GET /api/health/mail`.
+   * Credential + transport health, for `GET /api/health/mail`.
    *
-   * Refreshes the token but never sends, so it is safe to poll. Returns
+   * Re-checks provider auth but never sends, so it is safe to poll. Returns
    * booleans and addresses only — never a credential value.
    */
   async diagnostics(): Promise<MailDiagnostics> {
-    const clientId = this.credential('GMAIL_CLIENT_ID', 'GOOGLE_CLIENT_ID');
-    const clientSecret = this.credential(
-      'GMAIL_CLIENT_SECRET',
-      'GOOGLE_CLIENT_SECRET',
-    );
-    const refreshToken = this.credential(
-      'GMAIL_REFRESH_TOKEN',
-      'GOOGLE_REFRESH_TOKEN',
-    );
-    const credentials = {
-      client_id: Boolean(clientId),
-      client_secret: Boolean(clientSecret),
-      refresh_token: Boolean(refreshToken),
+    const health = await this.transport.diagnostics();
+    return {
+      configured: health.configured,
+      credentials: {
+        client_id: health.credentials.client_id ?? false,
+        client_secret: health.credentials.client_secret ?? false,
+        refresh_token: health.credentials.refresh_token ?? false,
+      },
+      token: health.auth,
+      senders: resolveAllSenders(this.config),
+      checked_at: new Date().toISOString(),
     };
-    const senders = resolveAllSenders(this.config);
-    const checked_at = new Date().toISOString();
-
-    if (!clientId || !clientSecret || !refreshToken) {
-      return {
-        configured: false,
-        credentials,
-        token: {
-          ok: false,
-          error: 'Gmail OAuth credentials are not configured.',
-          hint: 'Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET and GMAIL_REFRESH_TOKEN.',
-        },
-        senders,
-        checked_at,
-      };
-    }
-
-    try {
-      // Bypass the cache — a cached token would report healthy for up to an
-      // hour after the refresh token was revoked, which is the exact failure
-      // this endpoint exists to catch.
-      this.tokenCache = null;
-      await this.accessToken(clientId, clientSecret, refreshToken);
-      return { configured: true, credentials, token: { ok: true }, senders, checked_at };
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      return {
-        configured: true,
-        credentials,
-        token: { ok: false, error, hint: hintFor(error) },
-        senders,
-        checked_at,
-      };
-    }
-  }
-
-  private credential(primary: string, fallback: string): string | undefined {
-    return (
-      this.config.get<string>(primary) ?? this.config.get<string>(fallback)
-    );
-  }
-
-  private async accessToken(
-    clientId: string,
-    clientSecret: string,
-    refreshToken: string,
-  ): Promise<string> {
-    const now = Date.now();
-    if (this.tokenCache && this.tokenCache.expiresAtMs > now) {
-      return this.tokenCache.token;
-    }
-
-    const body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    });
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    });
-    if (!res.ok) {
-      throw new Error(`Gmail token refresh failed: ${await res.text()}`);
-    }
-    const { access_token, expires_in } = (await res.json()) as {
-      access_token: string;
-      expires_in?: number;
-    };
-    // 60s safety margin so a token can't expire mid-flight between the cache
-    // check and Gmail receiving the request.
-    const lifetimeMs = Math.max(0, ((expires_in ?? 3600) - 60) * 1000);
-    this.tokenCache = { token: access_token, expiresAtMs: now + lifetimeMs };
-    return access_token;
   }
 
   /**
@@ -358,21 +242,6 @@ export class MailerService {
     parts.push(`--${mixedBoundary}--`, '');
     return base64url(parts.join('\r\n'));
   }
-}
-
-/**
- * Turn a raw OAuth error into something actionable in the health endpoint.
- * `invalid_grant` is by far the common one and its cause is almost always the
- * consent screen sitting in Testing mode, which expires tokens after ~7 days.
- */
-function hintFor(error: string): string {
-  if (error.includes('invalid_grant')) {
-    return 'The refresh token is expired or revoked. Publish the OAuth consent screen (Testing mode expires tokens after ~7 days), re-mint GMAIL_REFRESH_TOKEN, and update the secret. See docs/12-runbooks/google-oauth-email.md.';
-  }
-  if (error.includes('invalid_client')) {
-    return 'GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET do not match the OAuth client that issued the refresh token.';
-  }
-  return 'See docs/12-runbooks/google-oauth-email.md.';
 }
 
 /** Header values must never carry a newline — that is header injection. */

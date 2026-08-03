@@ -25,6 +25,28 @@ export class NotificationsService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Display name for a notification actor, for callers that want to snapshot it
+   * into `content` (e.g. `"Ada mentioned you"`).
+   *
+   * Lives here rather than in each caller because the actor is the *same* person
+   * for every recipient of one event: resolving it once per event beats resolving
+   * it once per notification. Returns null rather than throwing — a missing name
+   * degrades the copy, it must never fail the action that triggered it.
+   */
+  async resolveActorName(actorId: string | null | undefined) {
+    if (!actorId) return null;
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', actorId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    const name = (data as { display_name?: string | null }).display_name;
+    return name && name.trim().length > 0 ? name.trim() : null;
+  }
+
   async listForUser(userId: string, query: NotificationsQueryDto) {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
