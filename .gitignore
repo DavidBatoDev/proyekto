@@ -31,7 +31,12 @@ mcp.json
 
 # Downloaded Google OAuth client JSON — carries the client secret in plaintext.
 # Use it with `node scripts/gmail_auth.mjs --secrets <file>` and then delete it.
+# Renaming the download is common, so cover the names people actually use:
+# `client_secret*.json` only matches the default one.
 client_secret*.json
+keys.json
+credentials.json
+/*oauth*.json
 
 # Playwright
 node_modules/

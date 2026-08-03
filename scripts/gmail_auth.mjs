@@ -9,6 +9,23 @@
  *
  *   node scripts/gmail_auth.mjs --secrets ~/Downloads/client_secret_*.json
  *   node scripts/gmail_auth.mjs                 # reads GMAIL_CLIENT_ID/_SECRET
+ *   node scripts/gmail_auth.mjs --secrets <json> --env-only
+ *                                               # print the two ID/secret lines
+ *                                               # and stop — no consent flow, so
+ *                                               # the existing refresh token
+ *                                               # keeps working
+ *   node scripts/gmail_auth.mjs --secrets <json> --env-only --write-env
+ *                                               # same, but written straight into
+ *                                               # backend/.env — the values never
+ *                                               # reach the terminal
+ *   node scripts/gmail_auth.mjs --secrets <json> --write-env
+ *                                               # full consent flow, all three
+ *                                               # values written to backend/.env
+ *   node scripts/gmail_auth.mjs --check         # test what is in backend/.env
+ *                                               # against Google; sends nothing
+ *
+ * `--env <path>` targets a different env file (default `backend/.env`). Every
+ * write leaves a `<path>.bak` alongside it.
  *
  * It opens the Google consent screen, catches the redirect on
  * http://localhost:8765 (which must be an Authorized redirect URI on the OAuth
@@ -34,6 +51,53 @@ const SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? undefined : process.argv[i + 1];
+}
+
+function flag(name) {
+  return process.argv.includes(`--${name}`);
+}
+
+/**
+ * `.env` values are quoted: a client secret is base64-ish and a refresh token
+ * can carry a `/`, neither of which every dotenv parser tolerates bare.
+ */
+function envLine(key, value) {
+  return `${key}="${value}"`;
+}
+
+/** Never print a credential — say how long it was and move on. */
+function masked(value) {
+  return `<${value.length} chars>`;
+}
+
+/**
+ * Rewrite keys in place in a `.env`, preserving comments, ordering and every
+ * unrelated line. Existing keys are replaced; missing ones are appended.
+ *
+ * This exists so credentials can go from the downloaded JSON into `.env`
+ * without ever passing through a terminal, a clipboard, or a transcript.
+ */
+function updateEnvFile(envPath, updates) {
+  if (!fs.existsSync(envPath)) {
+    throw new Error(`${envPath} does not exist.`);
+  }
+  const original = fs.readFileSync(envPath, 'utf8');
+  fs.writeFileSync(`${envPath}.bak`, original);
+
+  const eol = original.includes('\r\n') ? '\r\n' : '\n';
+  const lines = original.split(/\r?\n/);
+  const written = [];
+
+  for (const [key, value] of Object.entries(updates)) {
+    const i = lines.findIndex((l) => new RegExp(`^\\s*${key}\\s*=`).test(l));
+    const line = envLine(key, value);
+    if (i === -1) lines.push(line);
+    else lines[i] = line;
+    written.push(`${key} ${masked(value)} ${i === -1 ? '(appended)' : `(line ${i + 1})`}`);
+  }
+
+  fs.writeFileSync(envPath, lines.join(eol));
+  return written;
 }
 
 function loadCredentials() {
@@ -79,9 +143,119 @@ function openBrowser(url) {
   }
 }
 
+/**
+ * Does what is currently in `.env` actually work? Refreshes the token and probes
+ * the Gmail API read-only — it never sends a message, and never prints a value.
+ */
+async function check(envPath) {
+  const env = {};
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+    if (m) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
+  }
+  const clientId = env.GMAIL_CLIENT_ID ?? env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GMAIL_CLIENT_SECRET ?? env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = env.GMAIL_REFRESH_TOKEN ?? env.GOOGLE_REFRESH_TOKEN;
+
+  console.log(`\n  Checking ${envPath}`);
+  console.log(`    client_id     : ${clientId ? masked(clientId) : 'MISSING'}`);
+  console.log(`    client_secret : ${clientSecret ? masked(clientSecret) : 'MISSING'}`);
+  console.log(`    refresh_token : ${refreshToken ? masked(refreshToken) : 'MISSING'}`);
+  if (!clientId || !clientSecret || !refreshToken) {
+    console.log('\n  Incomplete credentials — nothing to test.\n');
+    process.exitCode = 1;
+    return;
+  }
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }).toString(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    console.log(`\n  TOKEN REFRESH FAILED (${res.status})`);
+    console.log('  ' + body.replace(/\n\s*/g, ' '));
+    if (body.includes('invalid_client')) {
+      console.log(
+        '\n  => client_id and client_secret do not match. The secret was most\n' +
+          '     likely rotated in Google Cloud Console. Re-download the client\n' +
+          '     JSON and re-run with --secrets <file> --env-only --write-env.\n',
+      );
+    } else if (body.includes('invalid_grant')) {
+      console.log(
+        '\n  => the refresh token is expired or revoked. Re-run this script\n' +
+          '     without --env-only to mint a new one.\n',
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+  const tok = await res.json();
+  console.log(`\n  token refresh : OK (expires_in=${tok.expires_in})`);
+  console.log(`  granted scope : ${tok.scope}`);
+
+  const probe = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/profile',
+    { headers: { Authorization: `Bearer ${tok.access_token}` } },
+  );
+  if (probe.ok) {
+    const p = await probe.json();
+    console.log(`  gmail mailbox : ${p.emailAddress}`);
+    console.log('\n  Credentials are healthy.\n');
+  } else {
+    // gmail.send alone cannot read the profile — a 403 here is expected and
+    // is NOT a failure. Anything else is.
+    const body = await probe.text();
+    console.log(`  gmail probe   : ${probe.status}`);
+    console.log(
+      probe.status === 403
+        ? '\n  Healthy — 403 on profile is expected with the gmail.send scope.\n'
+        : `\n  Unexpected Gmail response: ${body.slice(0, 200)}\n`,
+    );
+    if (probe.status !== 403) process.exitCode = 1;
+  }
+}
+
 async function main() {
+  const writeEnv = flag('write-env');
+  const envPath = arg('env') ?? 'backend/.env';
+
+  if (flag('check')) {
+    await check(envPath);
+    return;
+  }
+
   const { clientId, clientSecret, projectId, redirectUris } =
     loadCredentials();
+
+  if (flag('env-only')) {
+    if (writeEnv) {
+      const written = updateEnvFile(envPath, {
+        GMAIL_CLIENT_ID: clientId,
+        GMAIL_CLIENT_SECRET: clientSecret,
+      });
+      console.log(`\n  Wrote to ${envPath} (backup at ${envPath}.bak):`);
+      for (const w of written) console.log('    ' + w);
+      console.log('\n  GMAIL_REFRESH_TOKEN left untouched.');
+      console.log('  Verify with:  node scripts/gmail_auth.mjs --check\n');
+      return;
+    }
+    console.log('\n  Paste into backend/.env (GMAIL_REFRESH_TOKEN unchanged):\n');
+    console.log('  ' + envLine('GMAIL_CLIENT_ID', clientId));
+    console.log('  ' + envLine('GMAIL_CLIENT_SECRET', clientSecret));
+    console.log(
+      '\n  These belong to a different OAuth client than the one that issued your\n' +
+        '  current refresh token? Then re-run without --env-only to mint a matching\n' +
+        '  one — a mismatched pair fails with invalid_client.\n',
+    );
+    return;
+  }
 
   if (redirectUris.length && !redirectUris.includes(REDIRECT_URI)) {
     console.error(
@@ -177,11 +351,27 @@ async function main() {
     );
   }
 
-  console.log('\n  GMAIL_REFRESH_TOKEN=' + token.refresh_token + '\n');
-  console.log('  Next:');
-  console.log('    1. Put it in backend/.env (quoted).');
+  if (writeEnv) {
+    const written = updateEnvFile(envPath, {
+      GMAIL_CLIENT_ID: clientId,
+      GMAIL_CLIENT_SECRET: clientSecret,
+      GMAIL_REFRESH_TOKEN: token.refresh_token,
+    });
+    console.log(`\n  Wrote to ${envPath} (backup at ${envPath}.bak):`);
+    for (const w of written) console.log('    ' + w);
+    console.log('\n  Verify with:  node scripts/gmail_auth.mjs --check');
+    console.log('\n  Next:');
+    console.log('    1. Done — the three GMAIL_* lines are already updated.');
+  } else {
+    console.log('\n  Paste this whole block into backend/.env:\n');
+    console.log('  ' + envLine('GMAIL_CLIENT_ID', clientId));
+    console.log('  ' + envLine('GMAIL_CLIENT_SECRET', clientSecret));
+    console.log('  ' + envLine('GMAIL_REFRESH_TOKEN', token.refresh_token));
+    console.log('\n  Next:');
+    console.log('    1. Replace the three GMAIL_* lines in backend/.env with the above.');
+  }
   console.log(
-    '    2. Update the GMAIL_REFRESH_TOKEN secret in Secret Manager, in the',
+    '    2. Update the matching GMAIL_* secrets in Secret Manager, in the',
   );
   console.log('       project Cloud Run deploys from, then redeploy the backend.');
   console.log('    3. Check GET /api/health/mail reports token.ok = true.');
