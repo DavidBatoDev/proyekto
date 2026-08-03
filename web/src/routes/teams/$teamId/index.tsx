@@ -1,6 +1,16 @@
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+	createFileRoute,
+	Link,
+	redirect,
+	useNavigate,
+} from "@tanstack/react-router";
+import {
+	useMutation,
+	useQueries,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	Check,
 	ChevronRight,
@@ -14,7 +24,10 @@ import {
 	Users,
 	X,
 } from "lucide-react";
-import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import {
+	AppSectionHeader,
+	AppSurfaceCard,
+} from "@/components/common/AppPrimitives";
 import {
 	PositionBadge,
 	ProjectStatusBadge,
@@ -82,7 +95,10 @@ function CardActionMenu({
 	useEffect(() => {
 		if (!open) return;
 		const handler = (e: MouseEvent) => {
-			if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+			if (
+				wrapperRef.current &&
+				!wrapperRef.current.contains(e.target as Node)
+			) {
 				setOpen(false);
 				setStatusOpen(false);
 			}
@@ -92,11 +108,20 @@ function CardActionMenu({
 	}, [open]);
 
 	const statusMutation = useMutation({
-		mutationFn: (status: string) => projectService.update(projectId, {
-			status: status as "draft" | "active" | "bidding" | "paused" | "completed" | "archived",
-		}),
+		mutationFn: (status: string) =>
+			projectService.update(projectId, {
+				status: status as
+					| "draft"
+					| "active"
+					| "bidding"
+					| "paused"
+					| "completed"
+					| "archived",
+			}),
 		onSuccess: () => {
-			void queryClient.invalidateQueries({ queryKey: ["teams", "projects", teamId] });
+			void queryClient.invalidateQueries({
+				queryKey: ["teams", "projects", teamId],
+			});
 			toast.success("Status updated");
 			setOpen(false);
 			setStatusOpen(false);
@@ -134,7 +159,10 @@ function CardActionMenu({
 						onClick={(e) => {
 							e.preventDefault();
 							e.stopPropagation();
-							void navigate({ to: "/project/$projectId/roadmap", params: { projectId } });
+							void navigate({
+								to: "/project/$projectId/roadmap",
+								params: { projectId },
+							});
 						}}
 					>
 						Go to Project
@@ -190,12 +218,16 @@ function CardActionMenu({
 	);
 }
 
-function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: number }) {
-	const initial = (
-		member.user?.display_name ||
+function MemberAvatar({
+	member,
+	size = 6,
+}: {
+	member: ProjectTeamMember;
+	size?: number;
+}) {
+	const initial = (member.user?.display_name ||
 		member.user?.first_name ||
-		"?"
-	)[0].toUpperCase();
+		"?")[0].toUpperCase();
 	const sizeClass = `h-${size} w-${size}`;
 	return member.user?.avatar_url ? (
 		<img
@@ -204,7 +236,9 @@ function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: 
 			className={`${sizeClass} rounded-full object-cover`}
 		/>
 	) : (
-		<span className={`flex ${sizeClass} items-center justify-center rounded-full bg-slate-400 text-[9px] font-bold text-white`}>
+		<span
+			className={`flex ${sizeClass} items-center justify-center rounded-full bg-slate-400 text-[9px] font-bold text-white`}
+		>
 			{initial}
 		</span>
 	);
@@ -234,59 +268,70 @@ function CompactProjectCard({
 	const displayedMembers = members.slice(0, 9);
 	const extraCount = Math.max(0, members.length - 9);
 
-	const avatarStrip = displayedMembers.length > 0 ? (
-		<div className="flex items-center justify-end">
+	const avatarStrip =
+		displayedMembers.length > 0 ? (
+			<div className="flex items-center justify-end">
 				<div className="group/avatars relative">
-				<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-border bg-popover py-2 text-popover-foreground shadow-xl group-hover/avatars:block">
-					<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Team members ({members.length})
-					</p>
-					<ul className="max-h-52 overflow-y-auto">
-						{members.map((m) => (
-							<li key={m.user_id} className="flex items-center gap-2 px-3 py-1">
-								<div className="shrink-0 overflow-hidden rounded-full border border-border">
-									<MemberAvatar member={m} size={5} />
-								</div>
-								<span className="truncate text-[11px] text-popover-foreground">
-									{m.user?.display_name ||
-										[m.user?.first_name, m.user?.last_name]
-											.filter(Boolean)
-											.join(" ") ||
-										"Unknown"}
-								</span>
-							</li>
+					<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-border bg-popover py-2 text-popover-foreground shadow-xl group-hover/avatars:block">
+						<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+							Team members ({members.length})
+						</p>
+						<ul className="max-h-52 overflow-y-auto">
+							{members.map((m) => (
+								<li
+									key={m.user_id}
+									className="flex items-center gap-2 px-3 py-1"
+								>
+									<div className="shrink-0 overflow-hidden rounded-full border border-border">
+										<MemberAvatar member={m} size={5} />
+									</div>
+									<span className="truncate text-[11px] text-popover-foreground">
+										{m.user?.display_name ||
+											[m.user?.first_name, m.user?.last_name]
+												.filter(Boolean)
+												.join(" ") ||
+											"Unknown"}
+									</span>
+								</li>
+							))}
+						</ul>
+					</div>
+					<div className="flex items-center">
+						{displayedMembers.map((m, i) => (
+							<div
+								key={m.user_id}
+								className="shrink-0 overflow-hidden rounded-full border-2 border-(--app-surface-strong)"
+								style={{
+									marginLeft: i === 0 ? 0 : -6,
+									zIndex: displayedMembers.length - i,
+								}}
+							>
+								<MemberAvatar member={m} size={6} />
+							</div>
 						))}
-					</ul>
-				</div>
-				<div className="flex items-center">
-					{displayedMembers.map((m, i) => (
-						<div
-							key={m.user_id}
-							className="shrink-0 overflow-hidden rounded-full border-2 border-(--app-surface-strong)"
-							style={{ marginLeft: i === 0 ? 0 : -6, zIndex: displayedMembers.length - i }}
-						>
-							<MemberAvatar member={m} size={6} />
-						</div>
-					))}
-					{extraCount > 0 && (
-						<div
-							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-(--app-surface-strong) bg-muted px-1 text-[9px] font-bold text-muted-foreground"
-							style={{ marginLeft: -6, zIndex: 0 }}
-						>
-							+{extraCount}
-						</div>
-					)}
+						{extraCount > 0 && (
+							<div
+								className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-(--app-surface-strong) bg-muted px-1 text-[9px] font-bold text-muted-foreground"
+								style={{ marginLeft: -6, zIndex: 0 }}
+							>
+								+{extraCount}
+							</div>
+						)}
+					</div>
 				</div>
 			</div>
-		</div>
-	) : null;
+		) : null;
 
 	if (isLocked) {
 		return (
-			<div className="flex h-full cursor-not-allowed select-none flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground opacity-60 shadow-sm grayscale">
+			<div className="flex h-36 cursor-not-allowed select-none flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground opacity-60 shadow-sm grayscale">
 				{bannerUrl && (
-					<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
-						<img src={bannerUrl} alt="" className="h-full w-full object-cover" />
+					<div className="relative h-1/5 w-full shrink-0 overflow-hidden rounded-t-xl">
+						<img
+							src={bannerUrl}
+							alt=""
+							className="h-full w-full object-cover"
+						/>
 						<div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
 					</div>
 				)}
@@ -298,9 +343,14 @@ function CompactProjectCard({
 						</span>
 					</div>
 					<div className="min-w-0">
-						<h4 className="truncate text-sm font-semibold text-card-foreground">{title}</h4>
+						<h4 className="truncate text-sm font-semibold text-card-foreground">
+							{title}
+						</h4>
 						<p className="truncate text-[11px] text-muted-foreground">
-							<span className="font-medium text-card-foreground/80">Client:</span> {client}
+							<span className="font-medium text-card-foreground/80">
+								Client:
+							</span>{" "}
+							{client}
 						</p>
 					</div>
 				</div>
@@ -312,7 +362,7 @@ function CompactProjectCard({
 		<Link
 			to="/project/$projectId/roadmap"
 			params={{ projectId }}
-			className="group relative flex h-full flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
+			className="group relative flex h-36 flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
 		>
 			<CardActionMenu
 				projectId={projectId}
@@ -321,10 +371,16 @@ function CompactProjectCard({
 				currentStatus={status}
 			/>
 			{bannerUrl && (
-				<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
-					<img src={bannerUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-					<div className="absolute inset-0 bg-linear-to-t from-black/65 via-black/30 to-black/10" />
-					<div className="absolute bottom-2 left-3">
+				<div className="relative h-1/5 w-full shrink-0 overflow-hidden rounded-t-xl">
+					<img
+						src={bannerUrl}
+						alt=""
+						className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+					/>
+					{/* No scrim over the image — the badge carries its own
+					    background, and at this height a gradient would swallow
+					    the whole cover. */}
+					<div className="absolute bottom-1 left-2">
 						<ProjectStatusBadge status={status} />
 					</div>
 				</div>
@@ -336,9 +392,12 @@ function CompactProjectCard({
 					</div>
 				)}
 				<div className="min-w-0">
-					<h4 className="truncate text-sm font-semibold text-card-foreground">{title}</h4>
+					<h4 className="truncate text-sm font-semibold text-card-foreground">
+						{title}
+					</h4>
 					<p className="truncate text-[11px] text-muted-foreground">
-						<span className="font-medium text-card-foreground/80">Client:</span> {client}
+						<span className="font-medium text-card-foreground/80">Client:</span>{" "}
+						{client}
 					</p>
 				</div>
 				{avatarStrip ? <div className="mt-auto pt-1">{avatarStrip}</div> : null}
@@ -372,7 +431,21 @@ function TeamDetailPage() {
 		queryKey: ["teams", "projects", teamId],
 		queryFn: () => listTeamProjects(teamId),
 	});
-	const attachedProjects = projectsQuery.data ?? [];
+	// Alphabetical by title so the grid is scannable — the API returns
+	// attachment order. Rows whose project failed to resolve carry no title,
+	// so they sort last (they render as nothing anyway).
+	const attachedProjects = useMemo(() => {
+		return [...(projectsQuery.data ?? [])].sort((a, b) => {
+			const titleA = a.project?.title?.trim() ?? "";
+			const titleB = b.project?.title?.trim() ?? "";
+			if (!titleA) return titleB ? 1 : 0;
+			if (!titleB) return -1;
+			return titleA.localeCompare(titleB, undefined, {
+				sensitivity: "base",
+				numeric: true,
+			});
+		});
+	}, [projectsQuery.data]);
 
 	const projectMemberQueries = useQueries({
 		queries: attachedProjects.map((row) => ({
@@ -403,7 +476,7 @@ function TeamDetailPage() {
 	});
 	const pendingInvites = (invitesQuery.data ?? []).filter(
 		(i) => i.status === "pending",
-	)
+	);
 
 	if (teamQuery.isLoading) {
 		return (
@@ -413,7 +486,7 @@ function TeamDetailPage() {
 					Loading team…
 				</div>
 			</DashboardShell>
-		)
+		);
 	}
 	if (teamQuery.error) {
 		return (
@@ -422,7 +495,7 @@ function TeamDetailPage() {
 					{(teamQuery.error as Error).message}
 				</AppSurfaceCard>
 			</DashboardShell>
-		)
+		);
 	}
 	if (!team) return null;
 
@@ -453,7 +526,10 @@ function TeamDetailPage() {
 							No projects attached to this team yet.
 						</AppSurfaceCard>
 					) : (
-						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+						// Cards are a fixed h-36 so a cover banner (h-1/5 of the card)
+						// and no banner come out the same height; auto-rows-fr keeps
+						// the rows themselves uniform.
+						<div className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{attachedProjects.map((row) => {
 								if (!row.project) return null;
 								const statusKey = (row.project.status || "").toLowerCase();
@@ -518,10 +594,18 @@ function TeamDetailPage() {
 							<table className="w-full">
 								<thead>
 									<tr className="border-b border-slate-200 bg-slate-50">
-										<th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Member</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Position</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Joined</th>
+										<th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+											Member
+										</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+											Position
+										</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+											Role
+										</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+											Joined
+										</th>
 										<th className="px-4 py-3" />
 									</tr>
 								</thead>
@@ -557,7 +641,7 @@ function TeamDetailPage() {
 				/>
 			)}
 		</DashboardShell>
-	)
+	);
 }
 
 function MemberRow({
@@ -592,7 +676,7 @@ function MemberRow({
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "members", teamId],
-			})
+			});
 			setConfirmOpen(false);
 			toast.success("Member removed");
 		},
@@ -610,11 +694,9 @@ function MemberRow({
 				year: "numeric",
 			})
 		: "—";
-	const avatarInitial = (
-		member.user?.display_name ||
+	const avatarInitial = (member.user?.display_name ||
 		member.user?.first_name ||
-		"?"
-	)[0].toUpperCase();
+		"?")[0].toUpperCase();
 
 	return (
 		<>
@@ -721,7 +803,11 @@ function MemberRow({
 								</p>
 							</div>
 							<div className="px-5 py-4 text-sm text-slate-600">
-								Remove <span className="font-semibold text-slate-900">{displayName}</span> from this team?
+								Remove{" "}
+								<span className="font-semibold text-slate-900">
+									{displayName}
+								</span>{" "}
+								from this team?
 							</div>
 							<div className="flex items-center justify-end gap-2 border-t border-rose-100 bg-rose-50/40 px-5 py-4">
 								<button
@@ -751,7 +837,7 @@ function MemberRow({
 				</ModalPortal>
 			)}
 		</>
-	)
+	);
 }
 
 function EditMemberModal({
@@ -770,7 +856,7 @@ function EditMemberModal({
 	const [position, setPosition] = useState(member.position ?? "");
 	const [role, setRole] = useState<"admin" | "member">(
 		member.role === "admin" ? "admin" : "member",
-	)
+	);
 
 	const mutation = useMutation({
 		mutationFn: () => {
@@ -778,14 +864,14 @@ function EditMemberModal({
 			// position to avoid an unnecessary 403 on the role check.
 			const patch: { position: string; role?: "admin" | "member" } = {
 				position: position.trim(),
-			}
+			};
 			if (!isOwnerRow) patch.role = role;
 			return updateTeamMember(teamId, member.user_id, patch);
 		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "members", teamId],
-			})
+			});
 			toast.success("Member updated");
 			onClose();
 		},
@@ -794,85 +880,85 @@ function EditMemberModal({
 
 	return (
 		<ModalPortal>
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
-			onClick={onClose}
-		>
 			<div
-				className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-				onClick={(e) => e.stopPropagation()}
+				className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+				onClick={onClose}
 			>
-				<div className="mb-1 flex items-center gap-2">
-					<Pencil className="h-5 w-5 text-slate-700" />
-					<h2 className="text-lg font-semibold text-slate-900">
-						Edit member
-					</h2>
-				</div>
-				<p className="mt-1 text-sm text-slate-600">
-					Update this person's title and role within the team.
-				</p>
-				<form
-					className="mt-5 space-y-4"
-					onSubmit={(e) => {
-						e.preventDefault();
-						mutation.mutate();
-					}}
+				<div
+					className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+					onClick={(e) => e.stopPropagation()}
 				>
-					<label className="block">
-						<span className="text-sm font-medium text-slate-700">
-							Position
-						</span>
-						<input
-							autoFocus
-							type="text"
-							value={position}
-							onChange={(e) => setPosition(e.target.value)}
-							maxLength={120}
-							placeholder="e.g. Engineering Lead, Designer"
-							className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-						/>
-					</label>
-					{!isOwnerRow && (
+					<div className="mb-1 flex items-center gap-2">
+						<Pencil className="h-5 w-5 text-slate-700" />
+						<h2 className="text-lg font-semibold text-slate-900">
+							Edit member
+						</h2>
+					</div>
+					<p className="mt-1 text-sm text-slate-600">
+						Update this person's title and role within the team.
+					</p>
+					<form
+						className="mt-5 space-y-4"
+						onSubmit={(e) => {
+							e.preventDefault();
+							mutation.mutate();
+						}}
+					>
 						<label className="block">
 							<span className="text-sm font-medium text-slate-700">
-								Access level
+								Position
 							</span>
-							<select
-								value={role}
-								onChange={(e) =>
-									setRole(e.target.value as "admin" | "member")
-								}
+							<input
+								autoFocus
+								type="text"
+								value={position}
+								onChange={(e) => setPosition(e.target.value)}
+								maxLength={120}
+								placeholder="e.g. Engineering Lead, Designer"
 								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-							>
-								<option value="member">Member</option>
-								<option value="admin">Admin</option>
-							</select>
+							/>
 						</label>
-					)}
-					<div className="flex justify-end gap-2 pt-2">
-						<button
-							type="button"
-							onClick={onClose}
-							className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={mutation.isPending}
-							className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-						>
-							{mutation.isPending && (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							)}
-							Save
-						</button>
-					</div>
-				</form>
+						{!isOwnerRow && (
+							<label className="block">
+								<span className="text-sm font-medium text-slate-700">
+									Access level
+								</span>
+								<select
+									value={role}
+									onChange={(e) =>
+										setRole(e.target.value as "admin" | "member")
+									}
+									className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+								>
+									<option value="member">Member</option>
+									<option value="admin">Admin</option>
+								</select>
+							</label>
+						)}
+						<div className="flex justify-end gap-2 pt-2">
+							<button
+								type="button"
+								onClick={onClose}
+								className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+							>
+								Cancel
+							</button>
+							<button
+								type="submit"
+								disabled={mutation.isPending}
+								className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+							>
+								{mutation.isPending && (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								)}
+								Save
+							</button>
+						</div>
+					</form>
+				</div>
 			</div>
-		</div>
 		</ModalPortal>
-	)
+	);
 }
 
 function PendingInviteRow({
@@ -892,7 +978,7 @@ function PendingInviteRow({
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "invites", teamId],
-			})
+			});
 			toast.success("Invite cancelled");
 		},
 		onError: (err) => toast.error((err as Error).message),
@@ -905,7 +991,7 @@ function PendingInviteRow({
 		[invite.invitee?.first_name, invite.invitee?.last_name]
 			.filter(Boolean)
 			.join(" ") ||
-		null
+		null;
 
 	const metaParts: string[] = [];
 	if (invite.position) metaParts.push(invite.position);
@@ -968,7 +1054,7 @@ function PendingInviteRow({
 				)}
 			</td>
 		</tr>
-	)
+	);
 }
 
 function InviteMemberModal({
@@ -996,7 +1082,7 @@ function InviteMemberModal({
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "invites", teamId],
-			})
+			});
 			toast.success(`Invite sent to ${email.trim()}`);
 			onClose();
 		},
@@ -1005,112 +1091,112 @@ function InviteMemberModal({
 
 	return (
 		<ModalPortal>
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
-			onClick={onClose}
-		>
 			<div
-				className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-				onClick={(e) => e.stopPropagation()}
+				className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+				onClick={onClose}
 			>
-				<div className="mb-1 flex items-center gap-2">
-					<Users className="h-5 w-5 text-slate-700" />
-					<h2 className="text-lg font-semibold text-slate-900">
-						Invite team member
-					</h2>
-				</div>
-				<p className="mt-1 text-sm text-slate-600">
-					Send an invite by email. They'll get a notification with an option
-					to accept or decline. People who don't have an account yet will get
-					reconciled automatically when they sign up.
-				</p>
-				<form
-					className="mt-5 space-y-4"
-					onSubmit={(e) => {
-						e.preventDefault();
-						if (!email.trim()) return;
-						mutation.mutate();
-					}}
+				<div
+					className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+					onClick={(e) => e.stopPropagation()}
 				>
-					<label className="block">
-						<span className="text-sm font-medium text-slate-700">
-							Email address
-						</span>
-						<input
-							autoFocus
-							type="email"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							placeholder="someone@example.com"
-							className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-						/>
-					</label>
-					<div className="grid grid-cols-2 gap-3">
+					<div className="mb-1 flex items-center gap-2">
+						<Users className="h-5 w-5 text-slate-700" />
+						<h2 className="text-lg font-semibold text-slate-900">
+							Invite team member
+						</h2>
+					</div>
+					<p className="mt-1 text-sm text-slate-600">
+						Send an invite by email. They'll get a notification with an option
+						to accept or decline. People who don't have an account yet will get
+						reconciled automatically when they sign up.
+					</p>
+					<form
+						className="mt-5 space-y-4"
+						onSubmit={(e) => {
+							e.preventDefault();
+							if (!email.trim()) return;
+							mutation.mutate();
+						}}
+					>
 						<label className="block">
 							<span className="text-sm font-medium text-slate-700">
-								Access level
-							</span>
-							<select
-								value={role}
-								onChange={(e) => setRole(e.target.value as TeamRole)}
-								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-							>
-								<option value="member">Member</option>
-								<option value="admin">Admin</option>
-							</select>
-						</label>
-						<label className="block">
-							<span className="text-sm font-medium text-slate-700">
-								Project role label
+								Email address
 							</span>
 							<input
-								type="text"
-								value={position}
-								onChange={(e) => setPosition(e.target.value)}
-								maxLength={120}
-								placeholder="e.g. Consultant, Developer, Client collaborator"
+								autoFocus
+								type="email"
+								value={email}
+								onChange={(e) => setEmail(e.target.value)}
+								placeholder="someone@example.com"
 								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
 							/>
-							<span className="mt-1 block text-[11px] text-slate-500">
-								Optional label used for filtering and clarity across projects.
-							</span>
 						</label>
-					</div>
-					<label className="block">
-						<span className="text-sm font-medium text-slate-700">
-							Message (optional)
-						</span>
-						<textarea
-							value={message}
-							onChange={(e) => setMessage(e.target.value)}
-							maxLength={500}
-							rows={3}
-							placeholder="Hey — I'd love to have you on this team."
-							className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-						/>
-					</label>
-					<div className="flex justify-end gap-2 pt-2">
-						<button
-							type="button"
-							onClick={onClose}
-							className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={!email.trim() || mutation.isPending}
-							className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-						>
-							{mutation.isPending && (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							)}
-							Send invite
-						</button>
-					</div>
-				</form>
+						<div className="grid grid-cols-2 gap-3">
+							<label className="block">
+								<span className="text-sm font-medium text-slate-700">
+									Access level
+								</span>
+								<select
+									value={role}
+									onChange={(e) => setRole(e.target.value as TeamRole)}
+									className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+								>
+									<option value="member">Member</option>
+									<option value="admin">Admin</option>
+								</select>
+							</label>
+							<label className="block">
+								<span className="text-sm font-medium text-slate-700">
+									Project role label
+								</span>
+								<input
+									type="text"
+									value={position}
+									onChange={(e) => setPosition(e.target.value)}
+									maxLength={120}
+									placeholder="e.g. Consultant, Developer, Client collaborator"
+									className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+								/>
+								<span className="mt-1 block text-[11px] text-slate-500">
+									Optional label used for filtering and clarity across projects.
+								</span>
+							</label>
+						</div>
+						<label className="block">
+							<span className="text-sm font-medium text-slate-700">
+								Message (optional)
+							</span>
+							<textarea
+								value={message}
+								onChange={(e) => setMessage(e.target.value)}
+								maxLength={500}
+								rows={3}
+								placeholder="Hey — I'd love to have you on this team."
+								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+							/>
+						</label>
+						<div className="flex justify-end gap-2 pt-2">
+							<button
+								type="button"
+								onClick={onClose}
+								className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+							>
+								Cancel
+							</button>
+							<button
+								type="submit"
+								disabled={!email.trim() || mutation.isPending}
+								className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+							>
+								{mutation.isPending && (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								)}
+								Send invite
+							</button>
+						</div>
+					</form>
+				</div>
 			</div>
-		</div>
 		</ModalPortal>
-	)
+	);
 }
