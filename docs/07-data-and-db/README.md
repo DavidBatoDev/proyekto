@@ -1,6 +1,6 @@
 # Data & Database
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-03 · **Status:** current
 
 The Supabase Postgres 15 database — its current schema (generated from the live
 migrations, not stale dumps), how migrations are authored and applied, the identity
@@ -31,5 +31,5 @@ model, and the RLS/security posture. The schema is **migration-driven**:
 ## Code locations
 
 - **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (196 files)
-- **Edge functions:** [`supabase/functions/`](../../supabase/functions/) (Deno — signup/reset email)
+- **Edge functions:** none — the 4 Deno functions were dead code and were removed 2026-08-03; email is [`backend/src/common/mail/`](../../backend/src/common/mail/)
 - **Repositories** (the only code that reads/writes tables): `backend/src/modules/**/repositories/`

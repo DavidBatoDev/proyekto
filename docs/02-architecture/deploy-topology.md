@@ -1,6 +1,6 @@
 # Deploy Topology
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-03 · **Status:** current
 
 Where every unit runs, how it ships, and what it needs at runtime. The short
 version: **backend and agent are Docker images on Google Cloud Run**, **web is a
@@ -33,7 +33,7 @@ own GitHub Actions workflow, triggered by pushes to its folder.
 
   ┌────────────────────── Supabase (managed) ───────────────────┐
   │  Postgres 15  ref byvbnkpiselvvulsvxgo  region Singapore     │  migrations via CLI / MCP
-  │  edge functions (Deno)  · Auth (JWT)                         │
+  │  Auth (JWT)  · no edge functions                             │
   └──────────────────────────────────────────────────────────────┘
 ```
 

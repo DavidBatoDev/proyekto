@@ -18,7 +18,7 @@ Proyekto is a monorepo with six deployable units. Each unit has its own CLAUDE.m
 - backend/ - NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Cloud Run as a Docker image (container starts backend/src/server.ts; backend/src/lambda.ts is an orphaned Vercel adapter, not deployed). 26 feature modules under backend/src/modules/ as of 2026-07 - the list drifts; `ls backend/src/modules` is the source of truth. See backend/CLAUDE.md.
 - agent/ - Python 3.12 FastAPI AI agent powering roadmap AI. Entry: agent/run.py -> app.main:app (port 8010). The single brain is the v2 tool-calling loop in agent/app/core/v2/ over the OpenAI Responses API (OPENAI_MODEL_V2). Session state via Upstash Redis. Deployed to Cloud Run (Docker built from repo root). See agent/CLAUDE.md.
 - realtime/ - Cloudflare Worker + Durable Objects carrying collaborative realtime (roadmap canvas + chat), replacing Supabase Realtime. Shipped dormant behind transport flags. Buckets: R2 proyekto-media / proyekto-private. See realtime/CLAUDE.md.
-- supabase/ - migrations/ (source of truth for DB schema) and edge functions/. See supabase/CLAUDE.md.
+- supabase/ - migrations/ (source of truth for DB schema). No edge functions: the 4 that existed were dead code and were removed 2026-08-03; outbound email is the backend's MailerService. See supabase/CLAUDE.md.
 - infra/ - Terraform (Supabase buckets, Cloudflare, GCP). Committed .tfstate - hands off. See infra/CLAUDE.md.
 - scripts/ - Node .mjs benchmarks, validators, and the wrapper for agent Python tests.
 - schemas/roadmap-ai-operations.json - shared contract between backend and agent for roadmap-edit operations.

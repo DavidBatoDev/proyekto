@@ -1,6 +1,6 @@
 # System Overview
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-03 · **Status:** current
 
 Proyekto is a **six-unit system**: a React web app (also packaged as a mobile app),
 a NestJS API, a Python AI agent, a Cloudflare realtime Worker, a Supabase Postgres
@@ -20,7 +20,7 @@ touch; everything else is a backend service it talks to over HTTP or WebSocket.
 | **backend** | NestJS 11 (TypeScript) | `backend/src/server.ts` → `main.ts` | Cloud Run (`api.proyekto.tech`) |
 | **agent** | Python 3.12 FastAPI, LangChain/LangGraph + OpenAI Responses API | `agent/run.py` → `app.main:app` | Cloud Run |
 | **realtime** | Cloudflare Worker + Durable Objects (SQLite-backed), R2 bindings | `realtime/src/index.ts` | Cloudflare Workers (`proyekto-realtime`) |
-| **supabase** | Postgres 15 migrations + Deno edge functions | `supabase/migrations/`, `supabase/functions/` | Supabase (managed, Singapore) |
+| **supabase** | Postgres 15 migrations (no edge functions) | `supabase/migrations/` | Supabase (managed, Singapore) |
 | **infra** | Terraform (Supabase provisioning + Cloudflare) | `infra/environments/{dev,prod}/` | n/a (provisioning) |
 
 Two shared backing services sit behind these: **Upstash Redis** (agent session
@@ -77,7 +77,7 @@ buckets `proyekto-media` and `proyekto-private`). Deep dives:
 | [`backend/`](../../backend/) | NestJS API; feature modules under `backend/src/modules/` |
 | [`agent/`](../../agent/) | Python FastAPI AI agent; v2 loop under `agent/app/core/v2/` |
 | [`realtime/`](../../realtime/) | Cloudflare Worker + Durable Objects |
-| [`supabase/`](../../supabase/) | Migrations (schema source of truth) + edge functions |
+| [`supabase/`](../../supabase/) | Migrations (schema source of truth) |
 | [`infra/`](../../infra/) | Terraform for Supabase + Cloudflare |
 | [`scripts/`](../../scripts/) | Node benchmarks, agent test wrapper, storage migration |
 | [`schemas/`](../../schemas/) | Shared backend↔agent contract (`roadmap-ai-operations.json`) |

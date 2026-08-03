@@ -1,6 +1,6 @@
 # Runbooks & Ops
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-03 · **Status:** current
 
 Operational procedures — the step-by-step guides for when you're rotating a secret,
 validating the cache, vetting an applicant, or running a benchmark. Each is
@@ -10,7 +10,7 @@ self-contained and points back into the relevant section for the "why".
 
 | Doc | What's in it |
 | --- | --- |
-| [google-oauth-email.md](./google-oauth-email.md) | Keeping the Gmail refresh token healthy; recovering from `EMAIL_AUTH_INVALID` |
+| [google-oauth-email.md](./google-oauth-email.md) | Keeping the Gmail credentials healthy; telling `invalid_client` from `invalid_grant` and recovering |
 | [cloudflare-cache.md](./cloudflare-cache.md) | Validating cache/no-store, 304s, edge purge; kill switches & rollback |
 | [admin-vetting-playbook.md](./admin-vetting-playbook.md) | Admin review of a consultant application over the `user_*` identity data |
 | [benchmarks-and-canary.md](./benchmarks-and-canary.md) | Perf benchmarks, the agent canary, the shared-contract check |
@@ -28,5 +28,5 @@ Some operational content lives with its subject:
 ## Code locations
 
 - **Scripts:** [`scripts/`](../../scripts/)
-- **Edge functions:** [`supabase/functions/`](../../supabase/functions/)
+- **Outbound email:** [`backend/src/common/mail/`](../../backend/src/common/mail/)
 - **Backend cache:** [`backend/src/common/cache/`](../../backend/src/common/cache/)

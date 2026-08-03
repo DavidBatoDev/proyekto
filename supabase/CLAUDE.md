@@ -21,4 +21,11 @@ File storage still physically lives on the OLD Mumbai project until the R2 migra
 
 ## Edge functions
 
-functions/ holds 4 Deno functions (reset-password, send-password-reset-email, send-invite-email, send-signup-email). Deploy via the Supabase MCP deploy_edge_function tool (ask-gated).
+There are none, deliberately. functions/ held 4 Deno functions (reset-password,
+send-password-reset-email, send-invite-email, send-signup-email) that were dead code:
+nothing invoked them, and outbound email had already moved to the backend's
+MailerService (backend/src/common/mail/). Sources and deployments were removed
+2026-08-03; recover from git history if a future function needs a starting point.
+
+Email now lives entirely in the backend - see backend/src/modules/auth/email-otp.service.ts
+(verification + password reset) and projects.service.ts (invites).
