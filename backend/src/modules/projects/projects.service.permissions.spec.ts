@@ -49,6 +49,7 @@ describe('ProjectsService (permissions)', () => {
   const buildService = (
     repoOverrides: Partial<ProjectsRepository>,
     authorizationOverrides: Partial<typeof defaultAuthorization> = {},
+    supabaseStub: unknown = { from: jest.fn() },
   ) => {
     const repo = repoOverrides as ProjectsRepository;
     const authorization = {
@@ -72,7 +73,7 @@ describe('ProjectsService (permissions)', () => {
       authorization as any,
       projectTeams,
       accessSync,
-      { from: jest.fn() } as any,
+      supabaseStub as any,
       dataCache as any,
       cacheInvalidation as any,
       { get: jest.fn() } as any,
@@ -469,5 +470,117 @@ describe('ProjectsService (permissions)', () => {
       'member-2',
     );
   });
-});
 
+  // ── mention-by-email availability ─────────────────────────────────────────
+  describe('mentions.invite_by_email', () => {
+    /** Supabase stub serving one notification_types row. */
+    const flagDb = (emailEligible: boolean, error = false) => {
+      const from = jest.fn(() => ({
+        select: jest.fn(() => ({
+          eq: jest.fn(() => ({
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: error ? null : { email_eligible: emailEligible },
+              error: error ? { message: 'boom' } : null,
+            }),
+          })),
+        })),
+      }));
+      return { from };
+    };
+
+    const permissionsFor = async (
+      role: string,
+      opts: { flag?: boolean; flagError?: boolean; origin?: string | null } = {},
+    ) => {
+      const db = flagDb(opts.flag ?? true, opts.flagError);
+      const service = buildService(
+        {
+          findById: jest.fn().mockResolvedValue(buildProject()),
+          getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+            id: 'm-1',
+            user_id: 'user-1',
+            role,
+            origin: opts.origin ?? null,
+            position: null,
+            capabilities: {},
+          }),
+        },
+        {},
+        db,
+      );
+      const perms = await service.getMyPermissions('project-1', 'user-1');
+      return { perms, db };
+    };
+
+    it('is true only for admin-or-stronger with the flag on', async () => {
+      const { perms } = await permissionsFor('admin', { flag: true });
+
+      expect(perms.mentions.invite_by_email).toBe(true);
+    });
+
+    it('is true for an owner', async () => {
+      const { perms } = await permissionsFor('owner', { flag: true });
+
+      expect(perms.mentions.invite_by_email).toBe(true);
+    });
+
+    it('is false below admin even with the flag on', async () => {
+      for (const role of ['viewer', 'commenter', 'editor']) {
+        const { perms } = await permissionsFor(role, { flag: true });
+        expect(perms.mentions.invite_by_email).toBe(false);
+      }
+    });
+
+    it('is false for an admin when the flag is off', async () => {
+      const { perms } = await permissionsFor('admin', { flag: false });
+
+      expect(perms.mentions.invite_by_email).toBe(false);
+    });
+
+    it('is false for a consultant-origin editor, who holds members.manage', async () => {
+      // The trap this guards. ORIGIN_DELTAS grants `members.manage` to consultant
+      // and client origins REGARDLESS of role, so using that as the predicate
+      // would offer the affordance to someone assertRole('admin') then refuses —
+      // a UI that promises what the server declines.
+      const { perms } = await permissionsFor('editor', {
+        flag: true,
+        origin: 'consultant',
+      });
+
+      expect(perms.members.manage).toBe(true);
+      expect(perms.mentions.invite_by_email).toBe(false);
+    });
+
+    it('fails closed when the flag cannot be read', async () => {
+      const { perms } = await permissionsFor('admin', { flagError: true });
+
+      expect(perms.mentions.invite_by_email).toBe(false);
+    });
+
+    it('does not re-read the flag on every call', async () => {
+      const db = flagDb(true);
+      const service = buildService(
+        {
+          findById: jest.fn().mockResolvedValue(buildProject()),
+          getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+            id: 'm-1',
+            user_id: 'user-1',
+            role: 'admin',
+            origin: null,
+            position: null,
+            capabilities: {},
+          }),
+        },
+        {},
+        db,
+      );
+
+      await service.getMyPermissions('project-1', 'user-1');
+      await service.getMyPermissions('project-1', 'user-1');
+      await service.getMyPermissions('project-1', 'user-1');
+
+      // Memoised: this endpoint is hit per project view.
+      expect(db.from).toHaveBeenCalledTimes(1);
+    });
+  });
+});

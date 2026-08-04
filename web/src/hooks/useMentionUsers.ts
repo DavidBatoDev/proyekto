@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import type { MentionUser } from "@/components/common/RichTextEditor/types";
-import { useProjectMembersQuery } from "./useProjectQueries";
+import {
+	useProjectMembersQuery,
+	useProjectMyPermissionsQuery,
+} from "./useProjectQueries";
 
 /**
  * Mention candidates for a project's comment boxes.
@@ -12,15 +15,23 @@ import { useProjectMembersQuery } from "./useProjectQueries";
  * shared across every comment box on the page, rather than re-fetched per
  * panel.
  *
- * `canInviteByEmail` gates only the affordance. The server re-checks that the
- * author is a project admin before creating an invite, so a stale or spoofed
- * `true` here buys nothing.
+ * `canInviteByEmail` gates only the affordance, and comes straight from the
+ * permissions payload — one boolean the server computed from the caller's role
+ * AND whether the feature is on, so a single database flip moves the server
+ * behaviour and this affordance together. The write path re-checks the role
+ * regardless, so a stale or spoofed `true` here buys nothing.
  */
 export function useMentionUsers(projectId?: string | null): {
 	mentionUsers: MentionUser[];
 	canInviteByEmail: boolean;
 } {
 	const { data: members } = useProjectMembersQuery(projectId ?? "");
+	const { data: permissions } = useProjectMyPermissionsQuery(projectId ?? "");
+
+	// Server-computed: admin-or-stronger AND the feature switched on. Optional
+	// chained so an older cached payload — or a failed fetch — degrades to "no
+	// affordance" rather than offering an invite the server would refuse.
+	const canInviteByEmail = Boolean(permissions?.mentions?.invite_by_email);
 
 	return useMemo(() => {
 		const list = (members ?? []) as {
@@ -37,15 +48,6 @@ export function useMentionUsers(projectId?: string | null): {
 				avatar_url: m.user?.avatar_url ?? null,
 			}));
 
-		return {
-			mentionUsers,
-			// Hardcoded false until activation, on purpose. Showing "Invite
-			// <address>" while the server flag is off would render an affordance
-			// that silently does nothing — worse than not offering it. Wiring this
-			// to the real value (project admin AND the server flag, surfaced on the
-			// permissions payload) is part of turning the feature on, so that one
-			// lever moves both sides at once.
-			canInviteByEmail: false,
-		};
-	}, [members]);
+		return { mentionUsers, canInviteByEmail };
+	}, [members, canInviteByEmail]);
 }

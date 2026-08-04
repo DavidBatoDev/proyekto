@@ -51,6 +51,7 @@ export function SignupForm(_props: SignupFormProps) {
 		redirect?: string;
 		intent?: "client" | "freelancer";
 		lane?: OnboardingLane;
+		email?: string;
 	};
 	const toast = useToast();
 	const queryClient = useQueryClient();
@@ -101,7 +102,12 @@ export function SignupForm(_props: SignupFormProps) {
 		getStored("signup_firstName"),
 	);
 	const [lastName, setLastName] = useState(() => getStored("signup_lastName"));
-	const [email, setEmail] = useState(() => getStored("signup_email"));
+	// Prefilled from the invite link when present, but stored state wins so a
+	// part-finished signup is not clobbered on reload. Prefill only — never
+	// read-only, or someone who wants to use a different address is stranded.
+	const [email, setEmail] = useState(
+		() => getStored("signup_email") || search.email || "",
+	);
 	const [password, setPassword] = useState(() => getStored("signup_password"));
 	const [confirmPassword, setConfirmPassword] = useState(() =>
 		getStored("signup_confirmPassword"),

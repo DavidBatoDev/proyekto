@@ -58,7 +58,8 @@ Capacitor/FCM wiring.
 
 **Live since 2026-08-04** for the four mention types and for direct messages. Being
 mentioned in a task, feature or epic comment or in chat, or receiving a DM, can
-produce an email. Nothing else emails.
+produce an email. A fifth type, `roadmap_mention_invite`, exists for people with no
+account and ships switched off — see [Mentioning someone with no account](#mentioning-someone-with-no-account).
 
 Delivery is **deferred and conditional**, the Trello/Slack model: the email is queued
 with a delay and sent only if the recipient still has not seen the notification. Read
@@ -174,6 +175,88 @@ the first unread message rather than the latest.
 
 Known wart: reading a DM in the room does **not** clear its bell badge. The bell is a
 deliberately independent inbox you clear yourself.
+
+### Mentioning someone with no account
+
+A project admin can type an email address into a roadmap comment's @mention picker.
+That person is invited to the project and emailed once, and when they sign up the
+mention is waiting for them in their bell.
+
+`pending_mention_invites` holds the waiting mention: the address (stored lowercased so
+the reconciler's lookup is a plain indexed equality), the project, the comment it came
+from, a snapshotted actor name and excerpt, its own `unsubscribe_token`, and a 90-day
+`expires_at`. It is a separate table from `project_invites` because that one allows a
+single row per email per project — but a person may be named in five comments before
+they ever sign up, and each is a separate thing to show them. RLS is on with **no
+policies**: the rows say "this address was named in this private project", which is
+precisely the disclosure the feature has to contain.
+
+**The email carries no excerpt.** `buildMentionStyleEmail` would quote it and the
+producer omits it deliberately: sending 280 characters of a private project thread to
+an address that has proven nothing — and which may simply be a typo — is not worth a
+slightly warmer email. The excerpt stays on the row and appears in the in-app
+notification after signup, inside the trust boundary. A registry test pins this. The
+CTA points at signup rather than the comment, because `project_access.user_id` is NOT
+NULL so there is nothing to grant them yet and a deep link would hit a login wall.
+
+**Reconciliation** is a third `AFTER INSERT ON profiles` trigger,
+`handle_profile_mention_invites_reconciliation`. Unlike its two neighbours it has **no
+freshness window** — a mention may be weeks old by the time someone signs up, which is
+the entire point; `expires_at` is the bound instead. All three reconcilers are now
+self-guarding: `handle_new_user` wraps the profile insert, the wallet and the
+email-confirm in one PL/pgSQL block with its own handler, so anything a reconciler
+threw used to roll all of it back and leave an auth user with no profile.
+
+**What bounds abuse.** An admin can otherwise make Proyekto mail any address they type,
+from our domain, with text they wrote — so: project-admin only, five addresses per
+comment, twenty per author per rolling day, suppression checked at both enqueue and
+send, per-address send spacing, and the per-run ceiling. There is also an empty
+recipient-domain clamp in the service kept as an incident lever.
+
+Their unsubscribe uses the `address` scope, which writes an `email_suppressions` row
+rather than a settings row — a recipient with no account has no settings row to hold a
+preference. The worker **refuses to send at all** to an account-less recipient it cannot
+give an opt-out to.
+
+**The switch.** `notification_types.email_eligible` for `roadmap_mention_invite` gates
+both halves: `RoadmapMentionInviteService` reads it before creating anything, and
+`ProjectsService.getMyPermissions` folds it into `mentions.invite_by_email` on the
+permissions payload so the client affordance appears and disappears with it. One
+UPDATE moves both, with no deploy.
+
+That permission is computed from a **role comparison**, not from `members.manage` —
+`ORIGIN_DELTAS` grants `members.manage` to consultant and client origins regardless of
+role, so an editor-role consultant holds it while `assertRole('admin')` would refuse
+them. Using it would have offered an affordance the server then declined.
+
+### Watching it
+
+There is no admin surface; these are the queries.
+
+```sql
+-- invites created, per author per day
+select invited_by, date_trunc('day', created_at) as day, count(*)
+  from pending_mention_invites group by 1, 2 order by 2 desc;
+
+-- what the dispatcher decided
+select status, skip_reason, count(*) from notification_email_outbox
+ where type_name = 'roadmap_mention_invite' group by 1, 2;
+
+-- did anyone actually arrive? if this stays 0, the feature does not work
+select count(*) from pending_mention_invites where status = 'reconciled';
+```
+
+Rollback is the flag, but note it only stops NEW rows — anything already queued still
+sends on the next dispatch run:
+
+```sql
+update notification_types set email_eligible = false
+ where name = 'roadmap_mention_invite';
+
+update notification_email_outbox set status = 'skipped',
+       skip_reason = 'rolled_back', processed_at = now()
+ where type_name = 'roadmap_mention_invite' and status = 'pending';
+```
 
 ### Unsubscribe and preferences
 

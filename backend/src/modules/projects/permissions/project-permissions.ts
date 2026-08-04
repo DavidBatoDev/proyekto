@@ -14,12 +14,37 @@
 
 import type { ProjectShareOrigin } from '../authorization/project-authorization.service';
 
-export type ProjectRole =
-  | 'viewer'
-  | 'commenter'
-  | 'editor'
-  | 'admin'
-  | 'owner';
+export type ProjectRole = 'viewer' | 'commenter' | 'editor' | 'admin' | 'owner';
+
+/** Weakest to strongest. */
+const ROLE_ORDER: readonly ProjectRole[] = [
+  'viewer',
+  'commenter',
+  'editor',
+  'admin',
+  'owner',
+];
+
+/**
+ * True when `actual` is at least as strong as `required`.
+ *
+ * Lives here, beside the `ProjectRole` union, because this module has no service
+ * dependencies — `ProjectAuthorizationService` (which owns the equivalent check
+ * used for enforcement) imports `ProjectsService`, so importing its `PROJECT_ROLES`
+ * back into the service layer would be a module cycle.
+ *
+ * NOTE: this is deliberately NOT `permissions.members.manage`. That looks like the
+ * same predicate and is not: `ORIGIN_DELTAS` grants `members.manage` to consultant
+ * and client origins *regardless of role*, so an editor-role consultant has it
+ * while `assertRole('admin')` would refuse them. Anything that must agree with
+ * enforcement has to compare roles.
+ */
+export function roleSatisfies(
+  actual: ProjectRole,
+  required: ProjectRole,
+): boolean {
+  return ROLE_ORDER.indexOf(actual) >= ROLE_ORDER.indexOf(required);
+}
 
 // ─── Permission paths ──────────────────────────────────────────────────────
 
@@ -92,6 +117,22 @@ export type ProjectPermissions = {
     /** See every member's time on the project, not just your own. */
     view_team_logs: boolean;
   };
+  /**
+   * Feature availability, NOT a per-member capability — and deliberately absent
+   * from `PermissionPath`/`PERMISSION_PATHS`.
+   *
+   * Everything in the path machinery can be granted or revoked per member by an
+   * admin (see `members.edit_permissions` and `diffCapabilities`). This flag is
+   * different in kind: it answers "is this feature switched on, and is this
+   * caller senior enough", and an admin handing it to a viewer would be
+   * meaningless. Keeping it out of the paths also means `allTrue()` cannot
+   * fabricate it for an owner — `ProjectsService.getMyPermissions` is the only
+   * thing that ever sets it true.
+   */
+  mentions: {
+    /** Can this caller invite someone by @mentioning an email address? */
+    invite_by_email: boolean;
+  };
 };
 
 export type PermissionPath =
@@ -147,23 +188,54 @@ export type PermissionPath =
 
 // Runtime list — handy for iteration in dep validation and the UI.
 export const PERMISSION_PATHS: readonly PermissionPath[] = [
-  'access.roadmap', 'access.work_items', 'access.team',
-  'access.chat', 'access.resources', 'access.project_settings',
-  'access.time', 'access.contract', 'access.invoices', 'access.financials',
-  'roadmap.view', 'roadmap.edit', 'roadmap.comment', 'roadmap.promote',
-  'roadmap.assign', 'roadmap.edit_metadata', 'roadmap.view_internal',
-  'roadmap.create_tasks', 'roadmap.edit_tasks', 'roadmap.share',
-  'roadmap.export', 'roadmap.dev_mode',
-  'members.view', 'members.manage', 'members.edit_permissions',
+  'access.roadmap',
+  'access.work_items',
+  'access.team',
+  'access.chat',
+  'access.resources',
+  'access.project_settings',
+  'access.time',
+  'access.contract',
+  'access.invoices',
+  'access.financials',
+  'roadmap.view',
+  'roadmap.edit',
+  'roadmap.comment',
+  'roadmap.promote',
+  'roadmap.assign',
+  'roadmap.edit_metadata',
+  'roadmap.view_internal',
+  'roadmap.create_tasks',
+  'roadmap.edit_tasks',
+  'roadmap.share',
+  'roadmap.export',
+  'roadmap.dev_mode',
+  'members.view',
+  'members.manage',
+  'members.edit_permissions',
   'members.edit_position',
-  'teams.view', 'teams.manage',
-  'project.settings', 'project.edit_content', 'project.view_internal_content',
-  'chat.view_channels', 'chat.send_messages', 'chat.create_channels',
-  'chat.manage_channels', 'chat.view_internal_channels',
-  'chat.mention_members', 'chat.share_files', 'chat.start_dm', 'chat.send_dm',
-  'chat.message_clients', 'chat.message_consultants', 'chat.message_freelancers',
-  'resources.view', 'resources.upload', 'resources.delete',
-  'logs.view', 'logs.view_sensitive',
+  'teams.view',
+  'teams.manage',
+  'project.settings',
+  'project.edit_content',
+  'project.view_internal_content',
+  'chat.view_channels',
+  'chat.send_messages',
+  'chat.create_channels',
+  'chat.manage_channels',
+  'chat.view_internal_channels',
+  'chat.mention_members',
+  'chat.share_files',
+  'chat.start_dm',
+  'chat.send_dm',
+  'chat.message_clients',
+  'chat.message_consultants',
+  'chat.message_freelancers',
+  'resources.view',
+  'resources.upload',
+  'resources.delete',
+  'logs.view',
+  'logs.view_sensitive',
   'time.view_team_logs',
 ] as const;
 
@@ -193,36 +265,66 @@ export function setPermission(
 function allFalse(): ProjectPermissions {
   return {
     access: {
-      roadmap: false, work_items: false, team: false,
-      chat: false, resources: false, project_settings: false,
-      time: false, contract: false, invoices: false, financials: false,
+      roadmap: false,
+      work_items: false,
+      team: false,
+      chat: false,
+      resources: false,
+      project_settings: false,
+      time: false,
+      contract: false,
+      invoices: false,
+      financials: false,
     },
     roadmap: {
-      view: false, edit: false, comment: false, promote: false,
-      assign: false, edit_metadata: false, view_internal: false,
-      create_tasks: false, edit_tasks: false, share: false,
-      export: false, dev_mode: false,
+      view: false,
+      edit: false,
+      comment: false,
+      promote: false,
+      assign: false,
+      edit_metadata: false,
+      view_internal: false,
+      create_tasks: false,
+      edit_tasks: false,
+      share: false,
+      export: false,
+      dev_mode: false,
     },
     members: {
-      view: false, manage: false, edit_permissions: false,
+      view: false,
+      manage: false,
+      edit_permissions: false,
       edit_position: false,
     },
     teams: {
-      view: false, manage: false,
+      view: false,
+      manage: false,
     },
     project: {
-      settings: false, edit_content: false, view_internal_content: false,
+      settings: false,
+      edit_content: false,
+      view_internal_content: false,
     },
     chat: {
-      view_channels: false, send_messages: false, create_channels: false,
-      manage_channels: false, view_internal_channels: false,
-      mention_members: false, share_files: false, start_dm: false,
-      send_dm: false, message_clients: false, message_consultants: false,
+      view_channels: false,
+      send_messages: false,
+      create_channels: false,
+      manage_channels: false,
+      view_internal_channels: false,
+      mention_members: false,
+      share_files: false,
+      start_dm: false,
+      send_dm: false,
+      message_clients: false,
+      message_consultants: false,
       message_freelancers: false,
     },
     resources: { view: false, upload: false, delete: false },
     logs: { view: false, view_sensitive: false },
     time: { view_team_logs: false },
+    // Not reachable via setPermission, so allTrue() leaves it false. Resolved
+    // only in ProjectsService.getMyPermissions.
+    mentions: { invite_by_email: false },
   };
 }
 
@@ -472,17 +574,13 @@ export type DependencyViolation = {
  */
 export function validateDependencies(
   perms: ProjectPermissions,
-):
-  | { ok: true }
-  | { ok: false; missing: DependencyViolation[] } {
+): { ok: true } | { ok: false; missing: DependencyViolation[] } {
   const missing: DependencyViolation[] = [];
   for (const [path, requires] of Object.entries(PERMISSION_DEPENDENCIES)) {
     if (!requires) continue;
     const granted = getPermission(perms, path as PermissionPath);
     if (!granted) continue;
-    const unmet = requires.filter(
-      (req) => !getPermission(perms, req),
-    );
+    const unmet = requires.filter((req) => !getPermission(perms, req));
     if (unmet.length > 0) {
       missing.push({ path: path as PermissionPath, requires: unmet });
     }

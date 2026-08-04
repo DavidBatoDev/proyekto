@@ -63,6 +63,7 @@ import {
   diffCapabilities,
   getPermission as getResolvedPermission,
   resolvePermissions,
+  roleSatisfies,
   setPermission,
   validateDependencies,
 } from './permissions/project-permissions';
@@ -90,8 +91,19 @@ type RoadmapForProjectConversion = {
   project_id: string | null;
 };
 
+/**
+ * How long the mention-invite feature flag is cached in-process. Short enough
+ * that activation shows up promptly, long enough that a per-project-view
+ * endpoint is not re-reading it constantly.
+ */
+const MENTION_INVITE_FLAG_TTL_MS = 60_000;
+
 @Injectable()
 export class ProjectsService {
+  /** See isMentionInviteEnabled(). */
+  private mentionInviteFlag: { value: boolean; expiresAt: number } | null =
+    null;
+
   private readonly logger = new Logger(ProjectsService.name);
 
   constructor(
@@ -1967,11 +1979,59 @@ export class ProjectsService {
         message: 'You are not a member of this project.',
       });
     }
-    return resolvePermissions(
+
+    const permissions = resolvePermissions(
       (target.role as ProjectRole) ?? 'viewer',
       (target.origin as ProjectShareOrigin | null) ?? null,
       target.capabilities ?? null,
     );
+
+    // Feature availability, folded in after resolution because the resolver is a
+    // pure function of role/origin/capabilities and knows nothing about which
+    // features are switched on.
+    //
+    // Both halves are decided here so the client reads one boolean and cannot
+    // combine them wrongly. The ROLE comparison — not `members.manage` — is what
+    // makes this agree with enforcement: RoadmapMentionInviteService gates on
+    // assertRole('admin'), while ORIGIN_DELTAS hands `members.manage` to
+    // consultant and client origins regardless of role.
+    permissions.mentions.invite_by_email =
+      roleSatisfies((target.role as ProjectRole) ?? 'viewer', 'admin') &&
+      (await this.isMentionInviteEnabled());
+
+    return permissions;
+  }
+
+  /**
+   * Is mention-by-email switched on? Reads the same
+   * `notification_types.email_eligible` row the write path gates on, so a single
+   * UPDATE moves the server behaviour and the client affordance together.
+   *
+   * Memoised briefly: this endpoint is called per project view, while the value
+   * changes roughly once in the feature's lifetime.
+   */
+  private async isMentionInviteEnabled(): Promise<boolean> {
+    const now = Date.now();
+    if (this.mentionInviteFlag && this.mentionInviteFlag.expiresAt > now) {
+      return this.mentionInviteFlag.value;
+    }
+
+    const { data, error } = await this.supabase
+      .from('notification_types')
+      .select('email_eligible')
+      .eq('name', 'roadmap_mention_invite')
+      .maybeSingle();
+
+    // Fail closed: an unreadable flag must not light up an affordance whose
+    // whole purpose is mailing people who have no account.
+    const value =
+      !error &&
+      Boolean((data as { email_eligible?: boolean } | null)?.email_eligible);
+    this.mentionInviteFlag = {
+      value,
+      expiresAt: now + MENTION_INVITE_FLAG_TTL_MS,
+    };
+    return value;
   }
 
   async updateMemberPermissions(

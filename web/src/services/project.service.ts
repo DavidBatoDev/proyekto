@@ -206,6 +206,15 @@ export interface ProjectPermissions {
 	time: {
 		view_team_logs: boolean;
 	};
+	/**
+	 * Feature availability rather than a per-member capability, and computed
+	 * server-side from BOTH "is this caller admin-or-stronger" and "is the feature
+	 * switched on" — so the client reads one boolean and cannot combine them
+	 * wrongly. Optional because an older cached payload will not carry it.
+	 */
+	mentions?: {
+		invite_by_email: boolean;
+	};
 }
 
 export interface ProjectResourceLink {
