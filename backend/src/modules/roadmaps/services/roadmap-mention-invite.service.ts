@@ -10,11 +10,25 @@ import { extractMentionedEmails } from '../utils/mention-parser';
 const MAX_INVITES_PER_ACTOR_PER_DAY = 20;
 
 /**
- * First-bake safety valve: while non-empty, only these recipient domains are
- * reachable. A constant rather than an env var deliberately — it is meant to be
- * DELETED in a follow-up once the feature is trusted, not configured forever.
+ * Recipient-domain clamp. EMPTY means every domain is reachable, which is the
+ * intended product behaviour.
+ *
+ * It was briefly populated as a first-bake safety valve, and deliberately
+ * emptied: once `gmail.com` had to be on the list for real testing, the clamp
+ * stopped blocking anything meaningful — most addresses, and most typos, are
+ * gmail. A control that looks protective while letting nearly everything
+ * through is worse than no control, because it invites trusting it.
+ *
+ * What actually bounds the blast radius is elsewhere and unaffected: the
+ * project-admin gate, five addresses per comment, twenty per author per day,
+ * the suppression list checked at both enqueue and send, per-address send
+ * spacing, and the per-run ceiling.
+ *
+ * Kept as an incident lever rather than deleted: if mention invites ever need
+ * clamping in a hurry, adding one domain here is a smaller, more reviewable
+ * change than reintroducing the mechanism under pressure.
  */
-const RECIPIENT_DOMAIN_ALLOWLIST: readonly string[] = ['devcon.ph'];
+const RECIPIENT_DOMAIN_ALLOWLIST: readonly string[] = [];
 
 /**
  * How long the email waits. Much shorter than the 10 minutes a normal
@@ -136,7 +150,15 @@ export class RoadmapMentionInviteService {
   ): Promise<void> {
     const { authorId, projectId, roadmapId } = input;
 
-    if (!this.allowedByDomainPolicy(email)) return;
+    if (!this.allowedByDomainPolicy(email)) {
+      // Logged, not silent. A blocked address is indistinguishable from a
+      // broken feature otherwise — the invite simply never appears and nothing
+      // says why, which is exactly the confusion a bake period cannot afford.
+      this.logger.warn(
+        `mention invite blocked by the recipient-domain allowlist: ${email}`,
+      );
+      return;
+    }
 
     // Already a member of Proyekto? Then this is not an invite at all — the
     // normal mention path should have caught them, and re-inviting an existing
