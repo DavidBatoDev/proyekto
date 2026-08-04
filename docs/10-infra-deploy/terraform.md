@@ -1,10 +1,12 @@
 # Terraform
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 Terraform in [`infra/`](../../infra/) provisions the **Supabase** project settings and
-the **Cloudflare** edge for the API. It deliberately does **not** manage the database
-schema (that's Supabase CLI migrations) or auth providers (Supabase dashboard).
+the **Cloudflare** zone config — the API edge plus the apex→www redirect. It
+deliberately does **not** manage the database schema (that's Supabase CLI
+migrations), auth providers (Supabase dashboard), or the `www.proyekto.tech` Worker
+domain binding (Cloudflare dashboard).
 
 > **⚠️ `infra/README.md` is partly stale.** It names dev ref `ftuiloyegcipkupbtias`
 > (Mumbai) and prod ref `dlfsqsjzqiuoaekzvhrd` (Sydney) — both superseded by the live
@@ -19,7 +21,7 @@ schema (that's Supabase CLI migrations) or auth providers (Supabase dashboard).
 infra/
   modules/        reusable Supabase Terraform modules
   environments/   dev/ and prod/ configs
-  cloudflare/     DNS + cache rules for api.proyekto.tech
+  cloudflare/     DNS + cache rules for api.proyekto.tech, apex->www redirect
   shared/         shared provider config
   scripts/        deploy helpers (e.g. deploy-to-prod.ps1)
 ```
@@ -27,11 +29,20 @@ infra/
 ## What Terraform manages
 
 - **Supabase:** project settings and (legacy) storage bucket provisioning.
-- **Cloudflare:** the edge for `api.proyekto.tech` — proxied DNS + cache rules (see
-  [cloudflare.md](./cloudflare.md)).
+- **Cloudflare:** the edge for `api.proyekto.tech` — proxied DNS + cache rules — and
+  `cloudflare_ruleset.apex_redirect`, the `http_request_dynamic_redirect` ruleset
+  sending `proyekto.tech` → `https://www.proyekto.tech` with a **308** (added
+  2026-08-04, replacing the redirect Vercel used to emit). See
+  [cloudflare.md](./cloudflare.md).
 
-**Not** managed by Terraform: the database schema (Supabase CLI / MCP migrations) and
-auth providers (dashboard).
+**Not** managed by Terraform: the database schema (Supabase CLI / MCP migrations),
+auth providers (dashboard), the Cloudflare Workers themselves (`proyekto-web` and
+`proyekto-realtime` deploy via Wrangler in GitHub Actions), and the
+`www.proyekto.tech` custom-domain binding (Cloudflare dashboard).
+
+> The Cloudflare Terraform token needs `Single Redirect:Edit` for the apex ruleset —
+> the permission Cloudflare's docs call `Dynamic URL Redirects`. See
+> [`infra/cloudflare/README.md`](../../infra/cloudflare/README.md).
 
 ## Applying
 

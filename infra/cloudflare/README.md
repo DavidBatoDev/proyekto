@@ -1,10 +1,11 @@
-# Cloudflare Free Edge Setup (API)
+# Cloudflare Free Edge Setup (API + apex redirect)
 
-This Terraform package configures `api.proyekto.tech` behind Cloudflare and applies cache rules aligned with our cache-first API policy.
+This Terraform package configures `api.proyekto.tech` behind Cloudflare, applies cache rules aligned with our cache-first API policy, and owns the apex -> www redirect.
 
 ## What this manages
 
 - Proxied API DNS record (`api.proyekto.tech`)
+- An apex redirect ruleset (`http_request_dynamic_redirect`, `cloudflare_ruleset.apex_redirect`): `proyekto.tech` -> `https://www.proyekto.tech`, status `var.apex_redirect_status_code` (**308**), path concatenated and query preserved. Added 2026-08-04 with the web move off Vercel — Vercel used to emit this 308, so without it the bare apex would break. Output: `apex_redirect_ruleset_id`.
 - A single Cache Rules ruleset (`http_request_cache_settings`) with 5 rules:
   1. Bypass non-`GET/HEAD`
   2. Bypass when `Authorization` or `Cookie` exists
@@ -32,6 +33,7 @@ Create a Cloudflare API token with zone-scoped permissions:
 - `Zone:Read`
 - `DNS:Edit`
 - `Cache Rules:Edit`
+- `Single Redirect:Edit` — required by `cloudflare_ruleset.apex_redirect`. Naming gotcha: Cloudflare's **docs** call this permission `Dynamic URL Redirects`, but the **dashboard** token dropdown labels it `Single Redirect`. Same permission; search the dropdown for "Redirect". Without it, `terraform apply` fails authorization on the redirect ruleset only.
 
 For backend runtime edge purge (separate token, stored in GCP Secret Manager as `CLOUDFLARE_PURGE_API_TOKEN`), use least privilege:
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 How Proyekto is put together across its six deployable units, where each one runs,
 and how a request flows across service boundaries. Start here for the big picture,
@@ -15,7 +15,7 @@ then drop into a per-unit section ([Backend](../03-backend/README.md),
 | Doc | What's in it |
 | --- | --- |
 | [system-overview.md](./system-overview.md) | The six deployable units, the edges that connect them, and the repo layout |
-| [deploy-topology.md](./deploy-topology.md) | Where each unit is hosted (Cloud Run / Vercel / Cloudflare / Supabase), how it ships, domains, config |
+| [deploy-topology.md](./deploy-topology.md) | Where each unit is hosted (Cloud Run / Cloudflare / Supabase), how it ships, domains, config |
 | [cross-service-flows.md](./cross-service-flows.md) | End-to-end request lifecycles: roadmap AI edit, meetings, realtime/chat |
 
 ## Glossary
@@ -30,7 +30,7 @@ then drop into a per-unit section ([Backend](../03-backend/README.md),
 
 ## Code locations
 
-- **CI/CD:** [`.github/workflows/`](../../.github/workflows/) — `backend-deploy.yml`, `agent-deploy.yml`, `realtime-deploy.yml`, `android-release.yml`, `mobile-ota-deploy.yml`
+- **CI/CD:** [`.github/workflows/`](../../.github/workflows/) — six workflows: `backend-deploy.yml`, `agent-deploy.yml`, `web-deploy.yml`, `realtime-deploy.yml`, `android-release.yml`, `mobile-ota-deploy.yml`
 - **Container builds:** [`backend/Dockerfile`](../../backend/Dockerfile), [`agent/Dockerfile`](../../agent/Dockerfile)
-- **Worker config:** [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
+- **Worker config:** [`realtime/wrangler.toml`](../../realtime/wrangler.toml), [`web/wrangler.toml`](../../web/wrangler.toml)
 - **Shared contract:** [`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json)

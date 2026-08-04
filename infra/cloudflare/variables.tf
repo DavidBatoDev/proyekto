@@ -1,5 +1,5 @@
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token with Zone:Read, DNS:Edit, and Cache Rules:Edit permissions."
+  description = "Cloudflare API token with Zone:Read, DNS:Edit, Cache Rules:Edit, and Single Redirect:Edit permissions. The last one is required by cloudflare_ruleset.apex_redirect; Cloudflare's API docs call that permission 'Dynamic URL Redirects', but the dashboard dropdown labels it 'Single Redirect'."
   type        = string
   sensitive   = true
 }

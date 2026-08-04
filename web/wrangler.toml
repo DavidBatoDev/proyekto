@@ -7,9 +7,18 @@
 # request that doesn't match a file in dist/ gets index.html (200), so
 # TanStack Router's client-side routes resolve on hard refresh / deep link.
 #
-# Dark land: no [[routes]] yet — deploys only to the workers.dev preview URL.
-# The www.proyekto.tech custom domain binding is added as its own explicitly
-# confirmed cutover step (see the migration plan), not bundled with this land.
+# There is deliberately no [[routes]] block, and its absence is NOT an
+# oversight: www.proyekto.tech is bound as a Custom Domain in the Cloudflare
+# dashboard (Workers -> proyekto-web -> Domains), because that is the only path
+# that REPLACES the pre-existing DNS record in one step. Terraform's
+# cloudflare_workers_custom_domain has no override flag and the "Add Domain"
+# API refuses while a conflicting record exists, so binding from config would
+# have meant deleting the record first and leaving www as NXDOMAIN in between.
+#
+# Verified by deliberate test on 2026-08-04: running `wrangler deploy` with no
+# `routes` here does NOT strip the dashboard-bound domain. Adding a [[routes]]
+# block later would additionally require widening the CI token to DNS:Edit +
+# SSL:Edit, which it does not currently need.
 
 name = "proyekto-web"
 compatibility_date = "2026-08-04"

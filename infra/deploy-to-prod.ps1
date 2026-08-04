@@ -122,8 +122,8 @@ Write-Host "   3. Check RLS policies: https://supabase.com/dashboard/project/dlf
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "   1. Configure production .env files (api/.env.production, web/.env.production)" -ForegroundColor White
-Write-Host "   2. Deploy API to Vercel/Cloud Run" -ForegroundColor White
-Write-Host "   3. Deploy frontend to Vercel" -ForegroundColor White
+Write-Host "   2. Deploy the backend: push backend/** to main (.github/workflows/backend-deploy.yml -> Cloud Run)" -ForegroundColor White
+Write-Host "   3. Deploy the frontend: push web/** to main (.github/workflows/web-deploy.yml -> Cloudflare Worker proyekto-web)" -ForegroundColor White
 Write-Host ""
 
 Set-Location ../../..

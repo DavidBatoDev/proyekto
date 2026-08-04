@@ -23,8 +23,8 @@ Determine changed units via `git diff --name-only` against the push base, then r
 ## CI / deploy gotchas
 
 - **Cloud Run secrets are FULL-REPLACED on every deploy**: a new env var must be added to the SECRETS/env list in `.github/workflows/backend-deploy.yml` (or agent-deploy.yml) or it silently vanishes on the next deploy. Also register backend vars in `backend/src/config/env.validation.ts`.
-- **Pushing web/ changes to main = deploying web**: the web app deploys via Vercel git integration on push. There is no separate web release step.
-- backend/, agent/, realtime/ deploy via their GitHub Actions workflows on push to main (path-filtered). Realtime is NEVER deployed locally.
+- **Pushing web/ changes to main = deploying web**: `.github/workflows/web-deploy.yml` builds and ships `web/dist` to the Cloudflare Worker `proyekto-web` (www.proyekto.tech). The build runs `vite build && tsc`, so a type error fails the deploy - typecheck locally first. Never `wrangler deploy` web from a session.
+- web/, backend/, agent/, realtime/ all deploy via their GitHub Actions workflows on push to main (path-filtered) - six workflows total. Realtime is NEVER deployed locally.
 - Mobile OTA publishing is gated on the repo variable OTA_PUBLISH_ENABLED; Android store builds happen only on v*.*.* tags.
 - Deploys of dormant/flag-gated features are safe by design - but confirm the flag really is off before pushing anything that changes flag defaults.
 

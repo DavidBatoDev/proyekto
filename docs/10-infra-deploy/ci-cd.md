@@ -1,12 +1,12 @@
 # CI/CD
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
-Each deployable unit ships from its **own GitHub Actions workflow**, triggered by
-pushes to that unit's folder on `main`. Backend and agent go to Cloud Run, the
-realtime Worker to Cloudflare, and the mobile pipelines produce OTA bundles and
-signed Android artifacts. The web app is the exception — it deploys via Vercel's Git
-integration, not Actions.
+Every deployable unit ships from its **own GitHub Actions workflow**, triggered by
+pushes to that unit's folder on `main`. Backend and agent go to Cloud Run, the web
+SPA and the realtime Worker go to Cloudflare, and the mobile pipelines produce OTA
+bundles and signed Android artifacts. There are **six** workflows — web joined the
+set on 2026-08-04 when it moved off Vercel's Git integration.
 
 ## The workflows
 
@@ -14,11 +14,13 @@ integration, not Actions.
 | --- | --- | --- |
 | `backend-deploy.yml` | push `main` on `backend/**` (+ manual) | Backend Docker image → **Cloud Run** (`api.proyekto.tech`) |
 | `agent-deploy.yml` | push `main` on `agent/**` (+ manual) | Agent Docker image → **Cloud Run** |
+| `web-deploy.yml` | push `main` on `web/**` (+ manual) | `dist/` → **Cloudflare Workers static assets** (`proyekto-web` → `www.proyekto.tech`) |
 | `realtime-deploy.yml` | push `main` on `realtime/**` (+ manual) | `proyekto-realtime` → **Cloudflare Workers** |
 | `mobile-ota-deploy.yml` | push `main` on `web/**` (gated) | Web bundle → **R2** + backend OTA registry |
 | `android-release.yml` | tag `v*.*.*` (+ manual) | Signed **APK + AAB** → GitHub Releases |
 
-(There is **no** web-deploy workflow — Vercel builds from Git directly.)
+Note that a `web/**` push fans out to two workflows: `web-deploy.yml` (always) and
+`mobile-ota-deploy.yml` (only when `OTA_PUBLISH_ENABLED` is set).
 
 ## Auth model
 
@@ -26,8 +28,9 @@ Cloud Run workflows authenticate to GCP with **Workload Identity Federation** �
 service-account keys. The workflow exchanges the GitHub OIDC token
 (`permissions: id-token: write`) for GCP credentials via
 `google-github-actions/auth@v2`, using the `GCP_WORKLOAD_IDENTITY_PROVIDER` and
-`GCP_DEPLOYER_SA` repo variables. Cloudflare deploys use `CLOUDFLARE_API_TOKEN` +
-`CLOUDFLARE_ACCOUNT_ID` secrets. See [gcp-cloud-run.md](./gcp-cloud-run.md).
+`GCP_DEPLOYER_SA` repo variables. Both Cloudflare deploys — web and realtime — use
+the **same** `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets; web needed no
+new credentials. See [gcp-cloud-run.md](./gcp-cloud-run.md).
 
 ## Backend & agent (Cloud Run)
 
@@ -43,6 +46,19 @@ Both build a Docker image, push to Artifact Registry, and `gcloud run deploy`:
   `--max-instances=3 --concurrency=10`.
 
 Each ends with a health check (`GET /` for backend, `GET /health` for agent).
+
+## Web (Cloudflare static assets)
+
+`web-deploy.yml` runs `npm ci` + `npm run build` (`vite build && tsc` — type errors
+fail the deploy), then `cloudflare/wrangler-action@v3` with `wranglerVersion`
+pinned to `3.114.17` (the same pin as `realtime-deploy.yml`, so both Cloudflare
+deploys stay reproducible together). It finishes with a curl smoke test that
+retries the workers.dev preview URL until `index.html` comes back.
+
+No runtime env config exists on Cloudflare: `web/wrangler.toml` is assets-only (no
+`main` script), and every `VITE_*` value is baked into the bundle at build time by
+Vite from the committed `web/.env.production`. The build just moved from Vercel to
+Actions, reading the same file.
 
 ## Realtime (Cloudflare)
 
@@ -68,4 +84,4 @@ For the full hosting picture (domains, regions, runtime flags), see
 ## Code locations
 
 - [`.github/workflows/`](../../.github/workflows/) — all workflows
-- [`backend/Dockerfile`](../../backend/Dockerfile), [`agent/Dockerfile`](../../agent/Dockerfile), [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
+- [`backend/Dockerfile`](../../backend/Dockerfile), [`agent/Dockerfile`](../../agent/Dockerfile), [`realtime/wrangler.toml`](../../realtime/wrangler.toml), [`web/wrangler.toml`](../../web/wrangler.toml)

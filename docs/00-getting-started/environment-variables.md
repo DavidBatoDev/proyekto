@@ -1,6 +1,6 @@
 # Environment Variables
 
-> **Last updated:** 2026-07-28 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
@@ -51,8 +51,19 @@ Full table: [Agent → setup & deploy](../05-agent-ai/setup-and-deploy.md#config
 | `VITE_REALTIME_URL` | Realtime Worker (unset → falls back to Supabase Realtime) |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Supabase (client-side, RLS-bound) |
 | `VITE_UPLOAD_WORKER_URL` | R2 upload Worker |
+| `VITE_THEME_SYSTEM_ENABLED` | Semantic theme runtime — code default is **on** (`!== "false"`) |
+| `VITE_STOCK_PHOTOS_ENABLED` | Curated stock-photo thumbnails — code default is **off** (`=== "true"`) |
 
 Only public values — no secrets. See [Web → state & services](../04-web/README.md).
+
+> **Build-time, not runtime.** Every `VITE_*` value is baked into the bundle by Vite
+> when `npm run build` runs in `web-deploy.yml`, reading the committed
+> `web/.env.production`. Cloudflare holds **no** web env config — the `proyekto-web`
+> Worker only serves static files. The three vars added on 2026-08-04
+> (`VITE_UPLOAD_WORKER_URL`, `VITE_THEME_SYSTEM_ENABLED=true`,
+> `VITE_STOCK_PHOTOS_ENABLED=false`) were never set on Vercel either; they were
+> pinned explicitly to make the values visible in the repo, and match the in-code
+> defaults they previously fell through to (no behaviour change).
 
 ## Realtime Worker (secrets via `wrangler secret put`)
 
@@ -75,25 +86,25 @@ persistent user environment variables (never in a repo file):
 | --- | --- | --- |
 | `SUPABASE_ACCESS_TOKEN` | `supabase` MCP server (`Authorization: Bearer`) | [Supabase account tokens](https://supabase.com/dashboard/account/tokens) |
 | `GITHUB_PERSONAL_ACCESS_TOKEN` | `github` MCP server (`api.githubcopilot.com/mcp/`) | `gh auth token`, or a fine-grained PAT |
-| `VERCEL_TOKEN` | `vercel` CLI (`vercel --token $VERCEL_TOKEN`) | [Vercel account tokens](https://vercel.com/account/settings/tokens) |
 
 ```powershell
 # PowerShell, persistent for the current user — restart Claude Code afterwards
 [Environment]::SetEnvironmentVariable('SUPABASE_ACCESS_TOKEN', 'sbp_…', 'User')
 [Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN', (gh auth token).Trim(), 'User')
-[Environment]::SetEnvironmentVariable('VERCEL_TOKEN', '…', 'User')
 ```
 
-The `vercel` and `cloudflare-*` MCP servers authenticate over **OAuth**, not a
-token header — run `/mcp` in an interactive Claude Code session to authorize
-them. A Vercel API token only helps the CLI, not `mcp.vercel.com`.
+The `cloudflare-*` MCP servers authenticate over **OAuth**, not a token header —
+run `/mcp` in an interactive Claude Code session to authorize them.
+
+> `VERCEL_TOKEN` used to be listed here. Vercel was removed from the stack on
+> 2026-08-04 (web moved to Cloudflare Workers), so it is dead — unset it.
 
 ## Where values live in production
 
 | Unit | Source |
 | --- | --- |
 | Backend / agent | GCP **Secret Manager** (`--set-secrets`) + plain `--set-env-vars` |
-| Web | `web/.env.production` (baked into the Vite build) |
+| Web | `web/.env.production` (baked into the Vite build in `web-deploy.yml`; no runtime config on Cloudflare) |
 | Realtime | `wrangler secret put` + `wrangler.toml` vars |
 | Edge functions | Supabase project secrets |
 

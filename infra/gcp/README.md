@@ -116,7 +116,7 @@ Copy the printed `projects/.../providers/github-provider` value — it's `GCP_WO
 
 ## 5. Secret Manager
 
-Create one secret per env var the backend needs. Values map 1:1 to what's currently in Vercel's env config and [backend/src/config/env.validation.ts](../../backend/src/config/env.validation.ts).
+Create one secret per env var the backend needs. The authoritative list is [backend/src/config/env.validation.ts](../../backend/src/config/env.validation.ts) plus the SECRETS list in [.github/workflows/backend-deploy.yml](../../.github/workflows/backend-deploy.yml). (This used to say the values map 1:1 to Vercel's env config — the Vercel project was deleted 2026-08-04 and never hosted the backend anyway.)
 
 ```bash
 # Required
@@ -297,7 +297,7 @@ Then update the web client's API base URL to `https://api.proyekto.tech/api` (th
 
 **What's still left at the apex**
 
-`proyekto.tech` itself is not touched by any of this — point it at your web host (Vercel, Cloud Run web service, wherever the frontend ends up) with whatever A/AAAA records that host gives you. The `api` CNAME and apex records coexist independently.
+`proyekto.tech` itself is not touched by any of this. As of 2026-08-04 the apex is a Cloudflare dynamic-redirect ruleset (`cloudflare_ruleset.apex_redirect` in [infra/cloudflare/main.tf](../cloudflare/main.tf)) returning a 308 to `https://www.proyekto.tech`, which is served by the `proyekto-web` Cloudflare Worker. The `api` CNAME and the apex records coexist independently.
 
 ### Staging service (separate revision, $0 at min=0)
 
@@ -332,5 +332,5 @@ gcloud run services update-traffic "$SERVICE_NAME" \
   --to-revisions=<previous-revision-name>=100
 ```
 
-If the issue is platform-wide rather than a bad revision, flip the web client's API base URL back to the Vercel deployment (which stays live until Phase 3 cleanup per the migration plan).
+If the issue is platform-wide rather than a bad revision, there is **no alternate API host to fail back to** — Cloud Run is the only backend deployment. (An earlier version of this doc said to point the web client back at Vercel; the Vercel project was deleted on 2026-08-04, so that rollback no longer exists.) Roll back by revision traffic-split above, or by redeploying a known-good image tag.
 

@@ -1,10 +1,11 @@
 # Infrastructure & Deployment
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 Where everything runs and how it ships: GitHub Actions pipelines, Cloud Run for the
-backend + agent, Terraform for provisioning, and Cloudflare for the API edge. Each
-deployable unit deploys independently from its own workflow.
+backend + agent, Terraform for provisioning, and Cloudflare for the web SPA, the
+realtime Worker, and the API edge. Each deployable unit deploys independently from
+its own workflow — six of them.
 
 > If you only read one page, read [ci-cd.md](./ci-cd.md). For the full hosting map,
 > see [Architecture → deploy topology](../02-architecture/deploy-topology.md).
@@ -16,7 +17,7 @@ deployable unit deploys independently from its own workflow.
 | [ci-cd.md](./ci-cd.md) | The GitHub Actions workflows — triggers, targets, keyless auth |
 | [gcp-cloud-run.md](./gcp-cloud-run.md) | Backend + agent on Cloud Run, GCP coordinates, WIF, secrets |
 | [terraform.md](./terraform.md) | Terraform-managed Supabase + Cloudflare provisioning |
-| [cloudflare.md](./cloudflare.md) | The cache-first API edge, rollout, validation, rollback |
+| [cloudflare.md](./cloudflare.md) | The cache-first API edge, the `proyekto-web` SPA Worker, the apex→www redirect, rollout, validation, rollback |
 
 ## Glossary
 
@@ -33,4 +34,4 @@ deployable unit deploys independently from its own workflow.
 - **Workflows:** [`.github/workflows/`](../../.github/workflows/)
 - **Terraform:** [`infra/`](../../infra/)
 - **Container builds:** [`backend/Dockerfile`](../../backend/Dockerfile), [`agent/Dockerfile`](../../agent/Dockerfile)
-- **Worker:** [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
+- **Workers:** [`realtime/wrangler.toml`](../../realtime/wrangler.toml), [`web/wrangler.toml`](../../web/wrangler.toml)

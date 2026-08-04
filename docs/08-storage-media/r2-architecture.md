@@ -1,6 +1,6 @@
 # R2 Architecture
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-04 · **Status:** current
 
 All file storage is on **Cloudflare R2** — two buckets, a public CDN domain, and a
 deliberate upload path. Reads are simple (public assets serve over
@@ -82,7 +82,8 @@ test file to the still-deployed `POST /api/uploads/file`:
 
 To switch **Worker → backend**: repoint `upload()` in `web/src/services/upload.service.ts`
 at `${API_BASE_URL}/uploads/file` and read `body.data.publicUrl` (backend wraps
-responses); push to `main` (Vercel redeploys). To switch back, repoint at
+responses); push to `main` (`web-deploy.yml` rebuilds and redeploys the
+`proyekto-web` Worker). To switch back, repoint at
 `${UPLOAD_WORKER_URL}/uploads` and read `body.publicUrl`. Keep the bucket/size/MIME
 rules in sync between `realtime/src/index.ts` and `uploads.controller.ts` — both exist
 so either path enforces the same limits.
