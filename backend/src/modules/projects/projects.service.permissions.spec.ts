@@ -25,7 +25,7 @@ describe('ProjectsService (permissions)', () => {
   const dataCache = {
     getAuthTtlSeconds: jest.fn().mockReturnValue(45),
     getDashboardTtlSeconds: jest.fn().mockReturnValue(45),
-    rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
+    rememberJson: jest.fn((_key: string, _ttl: number, loader: any) =>
       loader(),
     ),
   };
@@ -46,10 +46,29 @@ describe('ProjectsService (permissions)', () => {
     revoke: jest.fn(),
   };
 
+  /**
+   * A chainable no-op Supabase stub: every table reads back empty.
+   *
+   * `{ from: jest.fn() }` returned undefined, so any code path that grew a new
+   * query — the invite path picked up a suppression-list check — died on
+   * `.select` of undefined rather than failing on the behaviour under test.
+   * Tests that care about a specific table pass their own stub.
+   */
+  const inertSupabase = () => ({
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+        })),
+      })),
+      insert: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })),
+  });
+
   const buildService = (
     repoOverrides: Partial<ProjectsRepository>,
     authorizationOverrides: Partial<typeof defaultAuthorization> = {},
-    supabaseStub: unknown = { from: jest.fn() },
+    supabaseStub: unknown = inertSupabase(),
   ) => {
     const repo = repoOverrides as ProjectsRepository;
     const authorization = {
@@ -77,7 +96,9 @@ describe('ProjectsService (permissions)', () => {
       dataCache as any,
       cacheInvalidation as any,
       { get: jest.fn() } as any,
-      { provisionDefaultChannels: jest.fn().mockResolvedValue(undefined) } as any,
+      {
+        provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
+      } as any,
       { createContractInternal: jest.fn() } as any,
       { assertActivationReady: jest.fn() } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
@@ -200,7 +221,9 @@ describe('ProjectsService (permissions)', () => {
     const service = buildService(repo, {
       assertPermission: jest
         .fn()
-        .mockRejectedValue(new ForbiddenException('Missing required permission')),
+        .mockRejectedValue(
+          new ForbiddenException('Missing required permission'),
+        ),
     });
 
     await expect(
@@ -215,7 +238,9 @@ describe('ProjectsService (permissions)', () => {
 
   it('allows permission updates when caller has members.edit_permissions', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: undefined })),
+      findById: jest
+        .fn()
+        .mockResolvedValue(buildProject({ consultant_id: undefined })),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
@@ -353,7 +378,9 @@ describe('ProjectsService (permissions)', () => {
 
   it('rejects consultant reassignment when caller is not project owner or consultant', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject({ client_id: 'owner-1' })),
+      findById: jest
+        .fn()
+        .mockResolvedValue(buildProject({ client_id: 'owner-1' })),
     };
     const service = buildService(repo);
 
@@ -375,18 +402,20 @@ describe('ProjectsService (permissions)', () => {
 
   it('allows consultant (owner role) to reassign consultant', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(
-        buildProject({ client_id: 'owner-1', consultant_id: 'consultant-1' }),
-      ),
+      findById: jest
+        .fn()
+        .mockResolvedValue(
+          buildProject({ client_id: 'owner-1', consultant_id: 'consultant-1' }),
+        ),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
         id: 'member-row-2',
         user_id: 'member-2',
         role: 'member',
       }),
       isConsultantVerified: jest.fn().mockResolvedValue(true),
-      reassignConsultant: jest.fn().mockResolvedValue(
-        buildProject({ consultant_id: 'member-2' }),
-      ),
+      reassignConsultant: jest
+        .fn()
+        .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -432,7 +461,9 @@ describe('ProjectsService (permissions)', () => {
 
   it('rejects consultant reassignment when selected member is already consultant', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+      findById: jest
+        .fn()
+        .mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -445,22 +476,28 @@ describe('ProjectsService (permissions)', () => {
 
   it('reassigns consultant when owner selects a verified project member', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+      findById: jest
+        .fn()
+        .mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
         id: 'member-row-2',
         user_id: 'member-2',
         role: 'member',
       }),
       isConsultantVerified: jest.fn().mockResolvedValue(true),
-      reassignConsultant: jest.fn().mockResolvedValue(
-        buildProject({ consultant_id: 'member-2' }),
-      ),
+      reassignConsultant: jest
+        .fn()
+        .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),
     };
     const service = buildService(repo, ownerAuth());
 
-    const updated = await service.reassignProjectConsultant('project-1', 'client-1', {
-      new_consultant_id: 'member-2',
-    });
+    const updated = await service.reassignProjectConsultant(
+      'project-1',
+      'client-1',
+      {
+        new_consultant_id: 'member-2',
+      },
+    );
 
     expect(updated.consultant_id).toBe('member-2');
     expect(repo.reassignConsultant).toHaveBeenCalledWith(
@@ -490,7 +527,11 @@ describe('ProjectsService (permissions)', () => {
 
     const permissionsFor = async (
       role: string,
-      opts: { flag?: boolean; flagError?: boolean; origin?: string | null } = {},
+      opts: {
+        flag?: boolean;
+        flagError?: boolean;
+        origin?: string | null;
+      } = {},
     ) => {
       const db = flagDb(opts.flag ?? true, opts.flagError);
       const service = buildService(

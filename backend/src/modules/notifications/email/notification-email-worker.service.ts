@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { MailerService } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { isEmailSuppressed } from './email-suppression';
 import { renderNotificationEmail } from './notification-email-registry';
 
 /** Keep a run comfortably inside the platform request timeout. */
@@ -173,12 +174,9 @@ export class NotificationEmailWorkerService {
     if (!recipient) return this.resolve(row.id, 'skipped', 'no_address');
 
     // 4. Addresses we must not touch.
-    const { data: suppression } = await this.db
-      .from('email_suppressions')
-      .select('email')
-      .eq('email', recipient.email.toLowerCase())
-      .maybeSingle();
-    if (suppression) return this.resolve(row.id, 'skipped', 'suppressed');
+    if (await isEmailSuppressed(this.db, recipient.email)) {
+      return this.resolve(row.id, 'skipped', 'suppressed');
+    }
 
     // 5. Preferences. Absent rows mean "use the type default", so a user who
     //    never touched settings is governed by email_default_enabled.

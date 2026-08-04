@@ -17,6 +17,7 @@ import {
 import { MailerService } from '../../common/mail/mailer.service';
 import { AuditService } from '../audit/audit.service';
 import { ACTIVITY_ACTIONS } from '../audit/activity-actions';
+import { isEmailSuppressed } from '../notifications/email/email-suppression';
 import { INVITES_PATH } from './invites-path';
 import { buildInviteEmail } from './project-invite-email.template';
 import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
@@ -1444,6 +1445,29 @@ export class ProjectsService {
     inviteMessage?: string | null;
     inviteId?: string | null;
   }): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
+    // Suppression stops the EMAIL, not the invitation.
+    //
+    // This is deliberately different from the mention-invite path, which skips
+    // the whole thing: there, an unsubscribed stranger is being pulled into a
+    // project they have never heard of, so creating rows for them is the wrong
+    // move. Here an admin has deliberately invited a specific person, who may
+    // well already have an account — the invite is legitimate and waits for
+    // them at /invites. What they opted out of is being mailed about it.
+    //
+    // The caller reports this back to the admin (`email_delivery`), so the UI
+    // can tell them to pass the link on another way rather than leaving them to
+    // assume it arrived.
+    if (await isEmailSuppressed(this.supabase, payload.to)) {
+      this.logger.log(
+        `invite email suppressed for ${payload.to}: address is on the suppression list`,
+      );
+      return {
+        sent: false,
+        reason:
+          'the recipient has unsubscribed from Proyekto emails — share the invite link with them directly',
+      };
+    }
+
     // CLIENT_URL is the fallback, not a literal: it is the one base URL
     // env.validation.ts guarantees and the deploy always ships. Defaulting
     // straight to localhost put a dead link in every production invite.

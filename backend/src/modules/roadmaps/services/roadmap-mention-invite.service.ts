@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { isEmailSuppressed } from '../../notifications/email/email-suppression';
 import { ProjectAuthorizationService } from '../../projects/authorization/project-authorization.service';
 import { INVITES_PATH } from '../../projects/invites-path';
 import { ProjectsService } from '../../projects/projects.service';
@@ -172,13 +173,10 @@ export class RoadmapMentionInviteService {
     if (existingProfile) return;
 
     // Suppressed addresses are checked here as well as at send time, so we
-    // never create rows we would only skip later.
-    const { data: suppressed } = await this.db
-      .from('email_suppressions')
-      .select('email')
-      .eq('email', email)
-      .maybeSingle();
-    if (suppressed) return;
+    // never create rows we would only skip later. Unlike the Team-page invite,
+    // this skips the INVITE too: an unsubscribed stranger is being pulled into
+    // a project they have never heard of, so there is nothing worth recording.
+    if (await isEmailSuppressed(this.db, email)) return;
 
     if (await this.overActorCap(authorId)) {
       this.logger.warn(
