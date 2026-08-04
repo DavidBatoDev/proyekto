@@ -29,6 +29,7 @@ const Header = () => {
 		"/consultant-pool",
 		"/direct-contacts",
 		"/unsubscribe",
+		"/invites",
 	];
 
 	if (!validPaths.some((path) => currentPath.startsWith(path))) {

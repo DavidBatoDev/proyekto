@@ -17,6 +17,7 @@ import {
 import { MailerService } from '../../common/mail/mailer.service';
 import { AuditService } from '../audit/audit.service';
 import { ACTIVITY_ACTIONS } from '../audit/activity-actions';
+import { INVITES_PATH } from './invites-path';
 import { buildInviteEmail } from './project-invite-email.template';
 import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
@@ -1441,6 +1442,7 @@ export class ProjectsService {
     projectName: string;
     invitedPosition?: string | null;
     inviteMessage?: string | null;
+    inviteId?: string | null;
   }): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
     // CLIENT_URL is the fallback, not a literal: it is the one base URL
     // env.validation.ts guarantees and the deploy always ships. Defaulting
@@ -1452,7 +1454,11 @@ export class ProjectsService {
     const { subject, html, text } = buildInviteEmail({
       inviterName: payload.inviterName,
       projectName: payload.projectName,
-      inviteLink: `${appUrl}/freelancer/invites`,
+      // Deep-linked when we know which invite this is, so a reader with several
+      // pending invites is not left to guess which one the email meant.
+      inviteLink: payload.inviteId
+        ? `${appUrl}${INVITES_PATH}?inviteId=${encodeURIComponent(payload.inviteId)}`
+        : `${appUrl}${INVITES_PATH}`,
       invitedPosition: payload.invitedPosition,
       inviteMessage: payload.inviteMessage,
     });
@@ -1525,6 +1531,7 @@ export class ProjectsService {
               : 'a project',
           invitedPosition,
           inviteMessage: inviteNote,
+          inviteId: (invite?.id as string | undefined) ?? null,
         })
       : { sent: false, reason: 'Suppressed by caller.' };
     const projectTitle =
@@ -1552,7 +1559,7 @@ export class ProjectsService {
           project_title: projectTitle,
           note: inviteNote,
         },
-        link_url: '/freelancer/invites',
+        link_url: `${INVITES_PATH}?inviteId=${encodeURIComponent(String(invite.id))}`,
       });
     }
 

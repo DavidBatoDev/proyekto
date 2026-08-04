@@ -40,7 +40,7 @@ exports[`branded email templates buildInviteEmail escapes markup in every caller
             <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">&lt;iframe src=&quot;evil&quot;&gt;&lt;/iframe&gt;</p>
             <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
             <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/freelancer/invites" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
+              <a href="https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
             </div>
               </td>
             </tr>
@@ -97,7 +97,7 @@ exports[`branded email templates buildInviteEmail renders a full invitation: htm
             <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">Would love your help on the punch-card pipeline.</p>
             <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
             <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/freelancer/invites" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
+              <a href="https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
             </div>
               </td>
             </tr>
@@ -126,7 +126,7 @@ Role: Lead Engineer
 
 If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
 
-Open your invitation: https://app.proyekto.test/freelancer/invites
+Open your invitation: https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
 
 You received this email because someone invited you to a project on Proyekto."
 `;
@@ -166,7 +166,7 @@ exports[`branded email templates buildInviteEmail renders a minimal invitation (
             </table>
             <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
             <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/freelancer/invites" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
+              <a href="https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">Open invitation</a>
             </div>
               </td>
             </tr>
@@ -192,7 +192,7 @@ Project: Analytical Engine
 
 If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
 
-Open your invitation: https://app.proyekto.test/freelancer/invites
+Open your invitation: https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
 
 You received this email because someone invited you to a project on Proyekto."
 `;

@@ -19,7 +19,7 @@ describe('branded email templates', () => {
       const body = buildInviteEmail({
         inviterName: 'Ada Lovelace',
         projectName: 'Analytical Engine',
-        inviteLink: 'https://app.proyekto.test/freelancer/invites',
+        inviteLink: 'https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d',
         invitedPosition: 'Lead Engineer',
         inviteMessage: 'Would love your help on the punch-card pipeline.',
       });
@@ -33,7 +33,7 @@ describe('branded email templates', () => {
       const body = buildInviteEmail({
         inviterName: 'Ada Lovelace',
         projectName: 'Analytical Engine',
-        inviteLink: 'https://app.proyekto.test/freelancer/invites',
+        inviteLink: 'https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d',
       });
 
       expect(body.subject).toMatchSnapshot('subject');
@@ -45,7 +45,7 @@ describe('branded email templates', () => {
       const body = buildInviteEmail({
         inviterName: '<script>alert(1)</script>',
         projectName: '<img src=x onerror=alert(2)>',
-        inviteLink: 'https://app.proyekto.test/freelancer/invites',
+        inviteLink: 'https://app.proyekto.test/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d',
         invitedPosition: '"><b>bold</b>',
         inviteMessage: '<iframe src="evil"></iframe>',
       });

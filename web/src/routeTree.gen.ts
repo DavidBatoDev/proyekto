@@ -16,6 +16,7 @@ import { Route as ProjectPostingRouteImport } from './routes/project-posting'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MeetingsRouteImport } from './routes/meetings'
+import { Route as InvitesRouteImport } from './routes/invites'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CommandCenterRouteImport } from './routes/command-center'
@@ -132,6 +133,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const MeetingsRoute = MeetingsRouteImport.update({
   id: '/meetings',
   path: '/meetings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesRoute = InvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InboxRoute = InboxRouteImport.update({
@@ -581,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/invites': typeof InvitesRoute
   '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -670,6 +677,7 @@ export interface FileRoutesByTo {
   '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/invites': typeof InvitesRoute
   '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -760,6 +768,7 @@ export interface FileRoutesById {
   '/command-center': typeof CommandCenterRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/invites': typeof InvitesRoute
   '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -853,6 +862,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/dashboard'
     | '/inbox'
+    | '/invites'
     | '/meetings'
     | '/notifications'
     | '/onboarding'
@@ -942,6 +952,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/dashboard'
     | '/inbox'
+    | '/invites'
     | '/meetings'
     | '/notifications'
     | '/onboarding'
@@ -1031,6 +1042,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/dashboard'
     | '/inbox'
+    | '/invites'
     | '/meetings'
     | '/notifications'
     | '/onboarding'
@@ -1123,6 +1135,7 @@ export interface RootRouteChildren {
   CommandCenterRoute: typeof CommandCenterRoute
   DashboardRoute: typeof DashboardRoute
   InboxRoute: typeof InboxRoute
+  InvitesRoute: typeof InvitesRoute
   MeetingsRoute: typeof MeetingsRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -1210,6 +1223,13 @@ declare module '@tanstack/react-router' {
       path: '/meetings'
       fullPath: '/meetings'
       preLoaderRoute: typeof MeetingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invites': {
+      id: '/invites'
+      path: '/invites'
+      fullPath: '/invites'
+      preLoaderRoute: typeof InvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inbox': {
@@ -1965,6 +1985,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommandCenterRoute: CommandCenterRoute,
   DashboardRoute: DashboardRoute,
   InboxRoute: InboxRoute,
+  InvitesRoute: InvitesRoute,
   MeetingsRoute: MeetingsRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,

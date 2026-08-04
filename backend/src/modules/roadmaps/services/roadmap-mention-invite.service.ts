@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectAuthorizationService } from '../../projects/authorization/project-authorization.service';
+import { INVITES_PATH } from '../../projects/invites-path';
 import { ProjectsService } from '../../projects/projects.service';
 import { extractMentionedEmails } from '../utils/mention-parser';
 
@@ -231,7 +232,7 @@ export class RoadmapMentionInviteService {
           // Snapshotted for the IN-APP notification after signup. It must not
           // reach the pre-signup email; see the registry entry.
           excerpt: input.excerpt,
-          link_url: input.linkUrl ?? '/freelancer/invites',
+          link_url: input.linkUrl ?? INVITES_PATH,
           project_invite_id: projectInviteId,
         },
         {
@@ -261,7 +262,7 @@ export class RoadmapMentionInviteService {
         // Signup, not the comment: they have no project access yet, so a deep
         // link would land on a login wall. `redirect` also lights up the
         // existing "You've been invited" banner on the signup form.
-        link_url: `/auth/signup?redirect=%2Ffreelancer%2Finvites&email=${encodeURIComponent(email)}`,
+        link_url: `/auth/signup?redirect=${encodeURIComponent(INVITES_PATH)}&email=${encodeURIComponent(email)}`,
         content: {
           actor_name: input.actorName,
           context_title: input.entityTitle,

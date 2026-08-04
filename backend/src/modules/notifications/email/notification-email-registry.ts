@@ -210,7 +210,7 @@ const REGISTRY: Record<string, Renderer> = {
    *    pending row and shown in-app after they sign up and accept.
    * 2. **The CTA points at signup, not the comment.** `project_access.user_id`
    *    is NOT NULL, so there is nothing to grant them yet; a deep link would
-   *    land on a login wall. `redirect=/freelancer/invites` also lights up the
+   *    land on a login wall. `redirect=/invites` also lights up the
    *    existing "You've been invited" banner on the signup form for free.
    */
   roadmap_mention_invite: (ctx) =>

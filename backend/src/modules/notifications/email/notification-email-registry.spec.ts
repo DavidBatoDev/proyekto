@@ -166,7 +166,7 @@ describe('notification email registry', () => {
         excerpt: 'the client hated the third screen',
       },
       linkUrl:
-        '/auth/signup?redirect=%2Ffreelancer%2Finvites&email=alice%40example.com',
+        '/auth/signup?redirect=%2Finvites&email=alice%40example.com',
     };
 
     it('sends them to signup, not to a comment they cannot open', () => {
@@ -177,7 +177,7 @@ describe('notification email registry', () => {
 
       expect(email?.html).toContain('Create your account');
       expect(email?.html).toContain(
-        'https://www.proyekto.test/auth/signup?redirect=%2Ffreelancer%2Finvites&amp;email=alice%40example.com',
+        'https://www.proyekto.test/auth/signup?redirect=%2Finvites&amp;email=alice%40example.com',
       );
       // A roadmap deep link would 403 until they accept the invite.
       expect(email?.html).not.toContain('/project/');
