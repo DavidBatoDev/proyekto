@@ -12,6 +12,12 @@ import {
   MailerService,
   type SendMailResult,
 } from '../../common/mail/mailer.service';
+import { escapeHtml } from '../../common/mail/templates/escape';
+import {
+  renderEmailLayout,
+  renderParagraph,
+} from '../../common/mail/templates/layout';
+import { renderTextEmail } from '../../common/mail/templates/text';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { UploadsService } from '../uploads/uploads.controller';
@@ -186,7 +192,9 @@ export class ContractSignatureLinksService {
       );
     }
     if (contract.signed_by_client_at) {
-      throw new BadRequestException('The client has already signed this contract.');
+      throw new BadRequestException(
+        'The client has already signed this contract.',
+      );
     }
     if (!contract.service_start_date || !contract.service_end_date) {
       throw new BadRequestException(
@@ -383,12 +391,16 @@ export class ContractSignatureLinksService {
     if (buffer.byteLength > 5 * 1024 * 1024) {
       throw new BadRequestException('The signature image is too large.');
     }
-    const result = await this.uploads.uploadFile(contractId, 'contract_signatures', {
-      originalname: 'signature.png',
-      mimetype: 'image/png',
-      size: buffer.byteLength,
-      buffer,
-    });
+    const result = await this.uploads.uploadFile(
+      contractId,
+      'contract_signatures',
+      {
+        originalname: 'signature.png',
+        mimetype: 'image/png',
+        size: buffer.byteLength,
+        buffer,
+      },
+    );
     return (result as { publicUrl: string }).publicUrl;
   }
 
@@ -484,7 +496,8 @@ export class ContractSignatureLinksService {
       signed_by_client_signature_offset_y:
         contract.signed_by_client_signature_offset_y,
       periods: await this.contracts.resolvePeriods(contract),
-      project_title: (project as { title: string | null } | null)?.title ?? null,
+      project_title:
+        (project as { title: string | null } | null)?.title ?? null,
       expires_at: link.expires_at,
       already_signed: Boolean(contract.signed_by_client_at),
     };
@@ -503,19 +516,42 @@ export class ContractSignatureLinksService {
     summary: SignatureLinkSummary,
   ): Promise<SendMailResult> {
     const provider = contract.provider_name?.trim() || 'Your service provider';
+    const contact = contract.client_contact_name?.trim();
+    const expires = new Date(summary.expires_at).toDateString();
+    const footerNote = `You received this email because ${provider} sent you a service agreement to sign on Proyekto.`;
+
     const result = await this.mailer.send({
       to,
       sender: 'billing',
       onBehalfOf: contract.provider_name,
       replyTo: contract.provider_email ?? undefined,
       subject: `${provider} sent you a service agreement to sign`,
-      html: `
-          <p>Hello${contract.client_contact_name ? ` ${contract.client_contact_name}` : ''},</p>
-          <p>${provider} has sent you a service agreement to review and sign.</p>
-          <p><a href="${summary.url}">Open and sign the agreement</a></p>
-          <p>This link works once and expires on
-             ${new Date(summary.expires_at).toDateString()}.</p>
-        `,
+      html: renderEmailLayout({
+        preheader: `${provider} sent you a service agreement to review and sign.`,
+        title: 'A service agreement to sign',
+        greeting: contact ? `Hi ${contact},` : null,
+        bodyHtml: [
+          renderParagraph(
+            `<strong>${escapeHtml(provider)}</strong> has sent you a service agreement to review and sign.`,
+          ),
+          renderParagraph(
+            `This link works once and expires on ${escapeHtml(expires)}.`,
+          ),
+        ].join('\n'),
+        cta: { label: 'Open and sign the agreement', href: summary.url },
+        footerNote,
+      }),
+      text: renderTextEmail([
+        contact ? `Hi ${contact},` : null,
+        '',
+        `${provider} has sent you a service agreement to review and sign.`,
+        '',
+        `Open and sign the agreement: ${summary.url}`,
+        '',
+        `This link works once and expires on ${expires}.`,
+        '',
+        footerNote,
+      ]),
     });
     if (!result.sent) {
       this.logger.warn(
@@ -537,18 +573,38 @@ export class ContractSignatureLinksService {
     to: string,
   ): Promise<SendMailResult> {
     const provider = contract.provider_name?.trim() || 'Your service provider';
+    const contact = contract.client_contact_name?.trim();
+    const footerNote = `You received this email because ${provider} sent you a service agreement to sign on Proyekto.`;
+
     const result = await this.mailer.send({
       to,
       sender: 'billing',
       onBehalfOf: contract.provider_name,
       replyTo: contract.provider_email ?? undefined,
       subject: `The signing link from ${provider} has been withdrawn`,
-      html: `
-          <p>Hello${contract.client_contact_name ? ` ${contract.client_contact_name}` : ''},</p>
-          <p>The link ${provider} sent you to sign the service agreement has
-             been withdrawn and no longer works.</p>
-          <p>If you were expecting to sign, contact ${provider} for a new link.</p>
-        `,
+      html: renderEmailLayout({
+        preheader: `The signing link ${provider} sent you no longer works.`,
+        title: 'That signing link no longer works',
+        greeting: contact ? `Hi ${contact},` : null,
+        bodyHtml: [
+          renderParagraph(
+            `The link <strong>${escapeHtml(provider)}</strong> sent you to sign the service agreement has been withdrawn and no longer works.`,
+          ),
+          renderParagraph(
+            `If you were expecting to sign, contact ${escapeHtml(provider)} for a new link.`,
+          ),
+        ].join('\n'),
+        footerNote,
+      }),
+      text: renderTextEmail([
+        contact ? `Hi ${contact},` : null,
+        '',
+        `The link ${provider} sent you to sign the service agreement has been withdrawn and no longer works.`,
+        '',
+        `If you were expecting to sign, contact ${provider} for a new link.`,
+        '',
+        footerNote,
+      ]),
     });
     if (!result.sent) {
       this.logger.warn(

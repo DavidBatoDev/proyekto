@@ -42,17 +42,34 @@ describe('notification email switch parity', () => {
     ]);
   });
 
-  it('never marks roadmap_mention_invite email_eligible', () => {
+  it('keeps roadmap_mention_invite out of the enqueue trigger', () => {
     // This type's notification is created AT signup, and its pre-signup email is
-    // sent directly by the backend. Making it eligible would email the person
-    // ten minutes after they signed up, about the mention they signed up for.
-    const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
-    for (const file of files) {
-      const sql = readFileSync(join(migrationsDir, file), 'utf8');
-      if (!sql.includes('roadmap_mention_invite')) continue;
-      expect(sql).not.toMatch(
-        /email_eligible\s*=\s*true[\s\S]{0,200}roadmap_mention_invite/i,
-      );
-    }
+    // sent directly by the backend. If the trigger also enqueued for it, someone
+    // would receive the invite, sign up because of it, then get a second email
+    // ten minutes later about the mention they had just acted on.
+    //
+    // This used to be guarded by asserting no migration ever set the type
+    // email_eligible. That guard died with activation: the column is overloaded
+    // — for this one type it is the FEATURE switch, read by
+    // RoadmapMentionInviteService and getMyPermissions, so it has to be true.
+    // The real invariant is the trigger's exclusion, so pin that instead.
+    const files = readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
+
+    // Latest-function-body rule: only the newest definition is live.
+    const newest = files
+      .filter((f) =>
+        readFileSync(join(migrationsDir, f), 'utf8').includes(
+          'FUNCTION public.enqueue_notification_email()',
+        ),
+      )
+      .pop();
+
+    expect(newest).toBeDefined();
+    const sql = readFileSync(join(migrationsDir, newest as string), 'utf8');
+    expect(sql).toMatch(
+      /v_type\.name\s*=\s*'roadmap_mention_invite'[\s\S]{0,80}RETURN NEW/i,
+    );
   });
 });

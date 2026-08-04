@@ -1441,7 +1441,6 @@ export class ProjectsService {
     projectName: string;
     invitedPosition?: string | null;
     inviteMessage?: string | null;
-    inviterAvatarUrl?: string | null;
   }): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
     // CLIENT_URL is the fallback, not a literal: it is the one base URL
     // env.validation.ts guarantees and the deploy always ships. Defaulting
@@ -1456,7 +1455,6 @@ export class ProjectsService {
       inviteLink: `${appUrl}/freelancer/invites`,
       invitedPosition: payload.invitedPosition,
       inviteMessage: payload.inviteMessage,
-      inviterAvatarUrl: payload.inviterAvatarUrl,
     });
 
     const unsubscribe = this.config.get<string>('MAIL_FROM_SUPPORT')?.trim();
@@ -1527,7 +1525,6 @@ export class ProjectsService {
               : 'a project',
           invitedPosition,
           inviteMessage: inviteNote,
-          inviterAvatarUrl: inviterProfile.avatarUrl,
         })
       : { sent: false, reason: 'Suppressed by caller.' };
     const projectTitle =

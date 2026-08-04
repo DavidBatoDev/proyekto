@@ -9,6 +9,12 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'crypto';
 import { MailerService } from '../../common/mail/mailer.service';
+import {
+  renderCodeBlock,
+  renderEmailLayout,
+  renderParagraph,
+} from '../../common/mail/templates/layout';
+import { renderTextEmail } from '../../common/mail/templates/text';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import {
   EmailVerificationConfirmDto,
@@ -66,11 +72,13 @@ export class EmailOtpService {
     // fail their request over a mail outage. OTP is the exception: telling
     // someone a code is on its way when it isn't strands them at the sign-up
     // wall, so this path re-raises.
+    const verification = this.buildVerificationEmail(dto.firstName, code);
     const delivery = await this.mailer.send({
       to: email,
       sender: 'accounts',
       subject: `Verify Your Email - Code: ${code}`,
-      html: this.buildVerificationHtml(dto.firstName, code),
+      html: verification.html,
+      text: verification.text,
     });
     if (!delivery.sent) {
       this.logger.error(
@@ -198,11 +206,13 @@ export class EmailOtpService {
     }
 
     // Re-raises for the same reason as the verification path above.
+    const reset = this.buildPasswordResetEmail(code);
     const delivery = await this.mailer.send({
       to: email,
       sender: 'accounts',
       subject: `Reset Your Password - Code: ${code}`,
-      html: this.buildPasswordResetHtml(code),
+      html: reset.html,
+      text: reset.text,
     });
     if (!delivery.sent) {
       this.logger.error(
@@ -360,27 +370,71 @@ export class EmailOtpService {
     return typeof firstId === 'string' && firstId.length > 0 ? firstId : null;
   }
 
-  private buildVerificationHtml(firstName: string, code: string) {
-    const safeFirstName = firstName?.trim() || 'there';
-    return `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;">
-        <h2 style="margin:0 0 16px;">Verify Your Email</h2>
-        <p style="margin:0 0 12px;">Hi ${safeFirstName},</p>
-        <p style="margin:0 0 16px;">Use this 6-digit code to verify your Proyekto account:</p>
-        <p style="font-size:32px;font-weight:700;letter-spacing:4px;margin:0 0 16px;">${code}</p>
-        <p style="margin:0;color:#6B7280;">This code expires in ${OTP_TTL_MINUTES} minutes.</p>
-      </div>
-    `;
+  /**
+   * The two code emails.
+   *
+   * No CTA by design: a one-time code email that also contains a button is the
+   * exact shape of a credential-phishing message, and there is nothing to click
+   * here anyway — the reader types the code into the tab they already have open.
+   *
+   * `firstName` reaches the layout as `greeting`, which escapes it. It used to
+   * be interpolated into the HTML raw.
+   */
+  private buildVerificationEmail(firstName: string, code: string) {
+    const trimmed = firstName?.trim() ?? '';
+    return {
+      html: renderEmailLayout({
+        preheader: `Your Proyekto verification code is ${code}.`,
+        title: 'Verify your email',
+        greeting: trimmed.length > 0 ? `Hi ${trimmed},` : null,
+        bodyHtml: [
+          renderParagraph(
+            'Use this 6-digit code to verify your Proyekto account:',
+          ),
+          renderCodeBlock(code),
+          renderParagraph(
+            `This code expires in ${OTP_TTL_MINUTES} minutes. If you did not create a Proyekto account, you can ignore this email.`,
+          ),
+        ].join('\n'),
+        footerNote:
+          'You received this email because someone used this address to sign up for Proyekto.',
+      }),
+      text: renderTextEmail([
+        trimmed.length > 0 ? `Hi ${trimmed},` : null,
+        '',
+        'Use this 6-digit code to verify your Proyekto account:',
+        code,
+        '',
+        `This code expires in ${OTP_TTL_MINUTES} minutes.`,
+        'If you did not create a Proyekto account, you can ignore this email.',
+      ]),
+    };
   }
 
-  private buildPasswordResetHtml(code: string) {
-    return `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;">
-        <h2 style="margin:0 0 16px;">Reset Your Password</h2>
-        <p style="margin:0 0 16px;">Use this 6-digit code to reset your Proyekto password:</p>
-        <p style="font-size:32px;font-weight:700;letter-spacing:4px;margin:0 0 16px;">${code}</p>
-        <p style="margin:0;color:#6B7280;">This code expires in ${OTP_TTL_MINUTES} minutes.</p>
-      </div>
-    `;
+  private buildPasswordResetEmail(code: string) {
+    return {
+      html: renderEmailLayout({
+        preheader: `Your Proyekto password reset code is ${code}.`,
+        title: 'Reset your password',
+        bodyHtml: [
+          renderParagraph(
+            'Use this 6-digit code to reset your Proyekto password:',
+          ),
+          renderCodeBlock(code),
+          renderParagraph(
+            `This code expires in ${OTP_TTL_MINUTES} minutes. If you did not ask to reset your password, you can ignore this email — your password will not change.`,
+          ),
+        ].join('\n'),
+        footerNote:
+          'You received this email because a password reset was requested for this address on Proyekto.',
+      }),
+      text: renderTextEmail([
+        'Use this 6-digit code to reset your Proyekto password:',
+        code,
+        '',
+        `This code expires in ${OTP_TTL_MINUTES} minutes.`,
+        'If you did not ask to reset your password, you can ignore this email — your password will not change.',
+      ]),
+    };
   }
 }

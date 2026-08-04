@@ -59,6 +59,21 @@ function absolute(appUrl: string, linkUrl: string | null): string {
 }
 
 /**
+ * `'Hi David,'` from whatever the profile holds, or nothing.
+ *
+ * First name only — a greeting that reads "Hi David Bato-bato," is worse than
+ * no greeting. Returns null rather than falling back to "Hi there," because a
+ * generic greeting adds a line without adding anything.
+ */
+function firstNameGreeting(recipientName: string | null): string | null {
+  const first = (recipientName ?? '').trim().split(/\s+/)[0] ?? '';
+  // Guard against a name column holding an address — "Hi jasmin@gmail.com,"
+  // reads like a mail-merge failure.
+  if (!first || first.length > 40 || first.includes('@')) return null;
+  return `Hi ${first},`;
+}
+
+/**
  * The shared shape of every mention/message email: who did what, where, an
  * optional quote of what they said, and one button back into the app.
  */
@@ -67,7 +82,7 @@ function buildMentionStyleEmail(
   copy: {
     /** e.g. `'mentioned you in a comment'` — completes "<Actor> ...". */
     action: string;
-    /** Heading inside the dark header band. */
+    /** The centred headline. */
     title: string;
     /**
      * Optional orienting line above the body, pre-escaped. Used when the reader
@@ -102,7 +117,9 @@ function buildMentionStyleEmail(
     html: renderEmailLayout({
       preheader: excerpt ?? `${actor} ${copy.action}`,
       title: copy.title,
-      subtitleHtml: `${escapeHtml(actor)} ${escapeHtml(copy.action)}${where}`,
+      // The lead below already says who did what; the old layout repeated it in
+      // a header band, which read as padding once the band was gone.
+      greeting: firstNameGreeting(ctx.recipientName),
       bodyHtml,
       cta: { label: copy.ctaLabel, href },
       footerNote: copy.footerNote,

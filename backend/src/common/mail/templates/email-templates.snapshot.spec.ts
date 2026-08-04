@@ -4,10 +4,11 @@ import { buildInviteEmail } from '../../../modules/projects/project-invite-email
 /**
  * Byte-for-byte guard on the two branded email bodies.
  *
- * These snapshots are seeded from the output BEFORE the shared-layout
- * extraction, so they encode the look as it shipped. Extracting a common layout
- * is meant to be a pure refactor: if a snapshot moves, the layout is wrong, not
- * the template. Do not re-record to make a diff go away — read the diff.
+ * Re-recorded when both templates were folded into the shared layout, so they
+ * now encode the unified design rather than the two near-copies that preceded
+ * it. From here they are a refactor guard again: if a snapshot moves, the
+ * layout changed, and the diff is the thing to read — do not re-record to make
+ * it go away.
  *
  * They also pin the escaping, which is the security-relevant half: every input
  * below carries markup that must come out inert.
@@ -21,7 +22,6 @@ describe('branded email templates', () => {
         inviteLink: 'https://app.proyekto.test/freelancer/invites',
         invitedPosition: 'Lead Engineer',
         inviteMessage: 'Would love your help on the punch-card pipeline.',
-        inviterAvatarUrl: 'https://cdn.proyekto.test/avatars/ada.png',
       });
 
       expect(body.subject).toMatchSnapshot('subject');
@@ -48,8 +48,6 @@ describe('branded email templates', () => {
         inviteLink: 'https://app.proyekto.test/freelancer/invites',
         invitedPosition: '"><b>bold</b>',
         inviteMessage: '<iframe src="evil"></iframe>',
-        // Non-http scheme: must not be embedded at all.
-        inviterAvatarUrl: 'javascript:alert(3)',
       });
 
       // The property is that no LIVE markup survives. The payload text may
@@ -61,8 +59,6 @@ describe('branded email templates', () => {
       expect(body.html).not.toContain('<iframe');
       expect(body.html).toContain('&lt;script&gt;');
       expect(body.html).toContain('&lt;img src=x');
-      // A non-http avatar scheme is dropped entirely rather than escaped.
-      expect(body.html).not.toContain('javascript:');
       expect(body.html).toMatchSnapshot('html');
     });
   });

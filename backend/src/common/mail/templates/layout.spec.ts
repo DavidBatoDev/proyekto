@@ -1,5 +1,11 @@
 import { escapeHtml, safeHttpUrl } from './escape';
-import { renderEmailLayout, renderParagraph, renderQuoteBlock } from './layout';
+import {
+  renderCodeBlock,
+  renderDetailRows,
+  renderEmailLayout,
+  renderParagraph,
+  renderQuoteBlock,
+} from './layout';
 import { renderTextEmail } from './text';
 
 describe('escapeHtml', () => {
@@ -47,21 +53,40 @@ describe('renderEmailLayout', () => {
     expect(html).toMatchSnapshot();
   });
 
-  it('renders a CTA with a copy-paste fallback link', () => {
+  it('renders the CTA as one button and nothing else', () => {
     const html = renderEmailLayout({
       ...base,
       cta: { label: 'View comment', href: 'https://app.proyekto.test/c/1' },
     });
 
     expect(html).toContain('View comment');
-    // Both the button and the visible fallback URL.
-    expect(html.match(/https:\/\/app\.proyekto\.test\/c\/1/g)).toHaveLength(3);
+    // Exactly once: the button. The old layout also printed the raw URL under
+    // it behind "Button not working?", which was the bulk of the visual noise.
+    expect(html.match(/https:\/\/app\.proyekto\.test\/c\/1/g)).toHaveLength(1);
+    expect(html).not.toContain('Button not working?');
   });
 
   it('omits the CTA block entirely when there is no CTA', () => {
     const html = renderEmailLayout(base);
 
-    expect(html).not.toContain('Button not working?');
+    expect(html).not.toContain('<a href=');
+  });
+
+  it('renders a greeting only when given one', () => {
+    expect(renderEmailLayout(base)).not.toContain('Hi ');
+    expect(renderEmailLayout({ ...base, greeting: 'Hi David,' })).toContain(
+      'Hi David,',
+    );
+  });
+
+  it('escapes the greeting', () => {
+    const html = renderEmailLayout({
+      ...base,
+      greeting: '<script>alert(1)</script>',
+    });
+
+    expect(html).not.toContain('<script>alert(1)');
+    expect(html).toContain('&lt;script&gt;');
   });
 
   it('renders an unsubscribe link only when given one', () => {
@@ -108,6 +133,49 @@ describe('renderQuoteBlock', () => {
 
     expect(html).toContain('white-space:pre-wrap');
     expect(html).not.toContain('<br');
+  });
+});
+
+describe('renderDetailRows', () => {
+  it('renders one row per entry, borderless', () => {
+    const html = renderDetailRows([
+      { label: 'Amount due', value: 'USD 10.00' },
+      { label: 'Due date', value: '1 September 2026' },
+    ]);
+
+    expect(html.match(/<tr>/g)).toHaveLength(2);
+    expect(html).toContain('Amount due');
+    expect(html).toContain('1 September 2026');
+    // The panel around the figures is gone — no border, no fill.
+    expect(html).not.toContain('border:');
+    expect(html).not.toContain('background-color');
+  });
+
+  // These helpers take pre-escaped values so callers can pass markup like
+  // <strong>. That contract is the reason escaping lives at the call site.
+  it('does not double-escape values the caller already escaped', () => {
+    const html = renderDetailRows([
+      { label: 'Project', value: '&lt;script&gt;' },
+    ]);
+
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('&amp;lt;');
+  });
+});
+
+describe('renderCodeBlock', () => {
+  it('shows the code without making it a link', () => {
+    const html = renderCodeBlock('123456');
+
+    expect(html).toContain('123456');
+    // A one-time code styled as a button teaches people to click buttons in
+    // emails that ask for credentials.
+    expect(html).not.toContain('<a ');
+    expect(html).toContain('letter-spacing');
+  });
+
+  it('escapes the code', () => {
+    expect(renderCodeBlock('<b>1</b>')).not.toContain('<b>');
   });
 });
 
