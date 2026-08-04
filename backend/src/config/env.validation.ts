@@ -441,5 +441,35 @@ export function validateEnv(config: Record<string, unknown>) {
     throw new Error(errors.toString());
   }
 
+  assertProductionClientUrl(validatedConfig);
+
   return validatedConfig;
+}
+
+/**
+ * CLIENT_URL is the base for every link Proyekto puts in an email, the MCP
+ * consent redirect, and the Google Calendar OAuth callback. Its
+ * `http://localhost:3000` default is right on a dev box and silently
+ * catastrophic in production: nothing throws, nothing logs — it just bakes
+ * dead links into mail that has already left the building, and the failure
+ * surfaces days later as "the invite link goes to localhost".
+ *
+ * Failing boot is the cheap version of that failure. Cloud Run keeps serving
+ * the previous revision when a new one will not start, so a bad CLIENT_URL
+ * costs a failed rollout instead of a fortnight of broken invitations.
+ */
+function assertProductionClientUrl(config: EnvironmentVariables): void {
+  if (config.NODE_ENV !== Environment.Production) return;
+
+  const clientUrl = (config.CLIENT_URL ?? '').trim();
+  const isLoopback = /localhost|127\.0\.0\.1|\[::1\]/i.test(clientUrl);
+
+  if (!/^https:\/\//i.test(clientUrl) || isLoopback) {
+    throw new Error(
+      `CLIENT_URL must be the public https origin of the web app in production (got "${clientUrl}"). ` +
+        'It is the base for invitation and notification email links, the MCP consent redirect, ' +
+        'and the Google Calendar callback. Set the CLIENT_URL secret in Secret Manager — ' +
+        'e.g. https://www.proyekto.tech — then redeploy so the revision picks up the new version.',
+    );
+  }
 }
