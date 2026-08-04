@@ -9,3 +9,7 @@ output "api_dns_record_id" {
 output "api_cache_ruleset_id" {
   value = cloudflare_ruleset.api_cache_rules.id
 }
+
+output "apex_redirect_ruleset_id" {
+  value = cloudflare_ruleset.apex_redirect.id
+}

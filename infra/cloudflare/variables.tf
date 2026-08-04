@@ -15,6 +15,24 @@ variable "api_hostname" {
   default     = "api.proyekto.tech"
 }
 
+variable "apex_hostname" {
+  description = "Bare apex hostname. Redirect-only - nothing is ever served from it."
+  type        = string
+  default     = "proyekto.tech"
+}
+
+variable "web_hostname" {
+  description = "Canonical hostname serving the web SPA. The apex redirects here."
+  type        = string
+  default     = "www.proyekto.tech"
+}
+
+variable "apex_redirect_status_code" {
+  description = "Status code for the apex->www redirect. 308 matches the behaviour Vercel served before the Cloudflare cutover; it is permanent and browser-cached, so change it deliberately."
+  type        = number
+  default     = 308
+}
+
 variable "manage_api_dns_record" {
   description = "Whether Terraform should manage the API DNS record. Keep false when records already exist in Cloudflare."
   type        = bool

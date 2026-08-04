@@ -3,7 +3,8 @@ provider "cloudflare" {
 }
 
 locals {
-  api_host_expr = format("lower(http.host) eq \"%s\"", lower(var.api_hostname))
+  api_host_expr  = format("lower(http.host) eq \"%s\"", lower(var.api_hostname))
+  apex_host_expr = format("lower(http.host) eq \"%s\"", lower(var.apex_hostname))
 }
 
 resource "cloudflare_dns_record" "api" {
@@ -14,6 +15,45 @@ resource "cloudflare_dns_record" "api" {
   content = var.api_record_content
   ttl     = var.api_record_ttl
   proxied = var.api_record_proxied
+}
+
+# Apex -> www redirect.
+#
+# Until the web cutover this redirect was emitted by VERCEL, not Cloudflare
+# (verified: the 308 response carried an `x-vercel-id` header). Once Vercel is
+# decommissioned it would simply vanish and the bare apex would break, so it has
+# to be reproduced at the edge. Running it as a Cloudflare redirect rule also
+# means apex traffic is answered at the edge and never reaches an origin at all.
+#
+# 308 (not 307) reproduces the exact status Vercel served. It is PERMANENT and
+# browser-cached, so a wrong value here sticks with returning visitors - see
+# var.apex_redirect_status_code before changing it.
+resource "cloudflare_ruleset" "apex_redirect" {
+  zone_id     = var.zone_id
+  name        = "Proyekto Apex Redirect"
+  description = "Redirect the bare apex to the canonical www host, preserving path and query."
+  kind        = "zone"
+  phase       = "http_request_dynamic_redirect"
+
+  rules = [
+    {
+      ref         = "apex_to_www"
+      description = format("%s/* -> https://%s/* (preserves path + query).", var.apex_hostname, var.web_hostname)
+      expression  = format("(%s)", local.apex_host_expr)
+      action      = "redirect"
+      action_parameters = {
+        from_value = {
+          status_code = var.apex_redirect_status_code
+          target_url = {
+            # Path is concatenated; the query string rides along via
+            # preserve_query_string rather than being rebuilt here.
+            expression = format("concat(\"https://%s\", http.request.uri.path)", var.web_hostname)
+          }
+          preserve_query_string = true
+        }
+      }
+    }
+  ]
 }
 
 resource "cloudflare_ruleset" "api_cache_rules" {
