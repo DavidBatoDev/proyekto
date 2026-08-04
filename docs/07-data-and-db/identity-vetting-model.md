@@ -1,13 +1,12 @@
 # Identity & Vetting Model
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 Proyekto is a **managed** platform, not an open marketplace — before a user can
 manage projects as a Consultant or be hired as a Freelancer, the platform must know
 their full professional identity. That identity lives in `profiles` plus a set of
-**`user_*`** sub-entity tables. This model is **persona-agnostic**: it's the same
-permanent identity layer whether the user is currently acting as a Client or a
-Freelancer.
+**`user_*`** sub-entity tables. This is the permanent identity layer regardless of
+which responsibilities the user has on a project.
 
 > The `user_*` naming is deliberate and current. Earlier docs called these
 > `consultant_*` — that was never the real schema. The only `consultant_*` table is
@@ -15,8 +14,8 @@ Freelancer.
 
 ## The tables
 
-`profiles` is the core record (1:1 with `auth.users`, carrying `active_persona`,
-`headline`, verification flags, and guest fields). Everything else attaches to it:
+`profiles` is the core record (1:1 with `auth.users`, carrying `headline`,
+verification/discovery flags, and guest fields). Everything else attaches to it:
 
 | Table | Holds | Cardinality |
 | --- | --- | --- |
@@ -66,7 +65,7 @@ service layer; RLS is defense-in-depth.
 
 ## The vetting flow
 
-1. A user applies for the Consultant persona → a `consultant_applications` row
+1. A user applies to become a verified Consultant → a `consultant_applications` row
    (`application_status`) plus their `user_verifications` records.
 2. An admin reviews the full identity (all `user_*` tables) in the admin console and
    sets each required `user_verifications.status = 'verified'`.

@@ -148,12 +148,10 @@ describe('RoadmapAiProjectContextService', () => {
       {
         id: 'member-1',
         display_name: 'Morgan',
-        active_persona: 'freelancer',
       },
       {
         id: 'owner-1',
         display_name: 'Olivia',
-        active_persona: 'consultant',
       },
     ]);
     const teamsQuery = query([
@@ -211,13 +209,11 @@ describe('RoadmapAiProjectContextService', () => {
           id: 'owner-1',
           display_name: 'Olivia',
           role: 'admin',
-          persona: 'consultant',
         },
         {
           id: 'member-1',
           display_name: 'Morgan',
           role: 'editor',
-          persona: 'freelancer',
         },
       ],
       teams: ['Core', 'Design'],
@@ -402,7 +398,6 @@ describe('RoadmapAiProjectContextService', () => {
     const profileQuery = query({
       id: 'member-1',
       display_name: 'Morgan',
-      active_persona: 'freelancer',
       bio: '<p>Backend &amp; systems</p>',
     });
     const skillsQuery = query([
@@ -435,7 +430,6 @@ describe('RoadmapAiProjectContextService', () => {
       member: {
         id: 'member-1',
         display_name: 'Morgan',
-        persona: 'freelancer',
         bio: 'Backend & systems',
         skills: ['Postgres', 'TypeScript'],
         role: 'editor',
@@ -443,9 +437,7 @@ describe('RoadmapAiProjectContextService', () => {
         teams: ['Alpha', 'Beta'],
       },
     });
-    expect(profileQuery.select).toHaveBeenCalledWith(
-      'id, display_name, active_persona, bio',
-    );
+    expect(profileQuery.select).toHaveBeenCalledWith('id, display_name, bio');
     expect(skillsQuery.select).toHaveBeenCalledWith('skill:skills(name)');
   });
 

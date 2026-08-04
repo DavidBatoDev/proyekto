@@ -41,19 +41,17 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ) {}
 
   async getCreatorProfileForProjectCreation(userId: string): Promise<{
-    active_persona: string;
     is_consultant_verified: boolean;
   } | null> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('active_persona, is_consultant_verified')
+      .select('is_consultant_verified')
       .eq('id', userId)
       .single();
 
     if (error || !data) return null;
 
     return {
-      active_persona: String(data.active_persona ?? ''),
       is_consultant_verified: data.is_consultant_verified === true,
     };
   }

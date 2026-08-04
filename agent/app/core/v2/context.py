@@ -289,11 +289,8 @@ def _project_context_block(value: Any) -> str:
                 continue
             metadata: list[str] = []
             role = _project_context_text(member.get('role'), 60)
-            persona = _project_context_text(member.get('persona'), 60)
             if role:
                 metadata.append(role)
-            if persona:
-                metadata.append(persona)
             if member_id:
                 metadata.append(f'id: {member_id}')
             suffix = f' ({"; ".join(metadata)})' if metadata else ''

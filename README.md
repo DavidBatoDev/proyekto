@@ -16,7 +16,7 @@ Proyekto is built to bridge that gap by providing:
 
 ## How Proyekto Works
 
-Proyekto uses a persona-based model. A single user can operate in different roles across different projects.
+Proyekto uses contextual project roles. A single user can operate in different roles across different projects without switching their account into a global mode.
 
 - Client: Defines goals, approves direction, tracks project health
 - Consultant: Translates vision into execution plans and manages delivery
@@ -37,7 +37,7 @@ Each project acts as a structured container for delivery:
 ## Platform Principles
 
 - Delivery-first: planning and execution are first-class, not an afterthought
-- Role clarity: each persona has clear responsibilities and permissions
+- Role clarity: each participant has clear responsibilities and project-scoped permissions
 - Transparency: stakeholders see the right level of detail at the right time
 - Quality control: consultant vetting and admin governance support reliable outcomes
 

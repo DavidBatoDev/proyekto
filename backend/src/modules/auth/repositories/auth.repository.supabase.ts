@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AuthRepository } from './auth.repository.interface';
@@ -22,30 +22,11 @@ export class SupabaseAuthRepository implements AuthRepository {
     return data as Profile;
   }
 
-  async updateOnboarding(
-    userId: string,
-    dto: { active_persona: string; display_name: string },
-  ): Promise<Profile> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .update({
-        active_persona: dto.active_persona,
-        display_name: dto.display_name,
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data as Profile;
-  }
-
   async completeOnboarding(
     userId: string,
     dto: {
       lane: OnboardingLane;
       intent: { freelancer: boolean; client: boolean };
-      active_persona?: string;
     },
   ): Promise<Profile> {
     const { data: existingProfile, error: existingError } = await this.supabase
@@ -78,10 +59,6 @@ export class SupabaseAuthRepository implements AuthRepository {
       },
     };
 
-    if (dto.active_persona) {
-      updatePayload.active_persona = dto.active_persona;
-    }
-
     const { data, error } = await this.supabase
       .from('profiles')
       .update(updatePayload)
@@ -90,19 +67,6 @@ export class SupabaseAuthRepository implements AuthRepository {
       .single();
 
     if (error) throw new Error(error.message);
-    return data as Profile;
-  }
-
-  async switchPersona(userId: string, persona: string): Promise<Profile> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .update({ active_persona: persona })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new NotFoundException('Profile not found');
     return data as Profile;
   }
 

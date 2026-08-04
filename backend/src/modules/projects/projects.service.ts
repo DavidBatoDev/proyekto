@@ -835,11 +835,6 @@ export class ProjectsService {
     const creationMode = dto.creation_mode ?? 'client';
 
     if (creationMode === 'client') {
-      if (profile.active_persona !== 'client') {
-        throw new ForbiddenException(
-          'Client mode requires the client active persona.',
-        );
-      }
       const project = await this.projectsRepo.create(userId, {
         ...dto,
         creation_mode: 'client',

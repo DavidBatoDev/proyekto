@@ -109,8 +109,7 @@ export class MarketplaceService {
         let profilesQuery = this.supabase
           .from('profiles')
           .select('id, display_name, avatar_url, headline, is_email_verified')
-          .eq('is_public', true)
-          .eq('active_persona', 'freelancer');
+          .eq('is_public', true);
 
         if (query.search) {
           const escaped = query.search.replace(/[%_]/g, '');
@@ -246,7 +245,7 @@ export class MarketplaceService {
   async goLive(userId: string): Promise<{ is_public: boolean }> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .update({ is_public: true, active_persona: 'freelancer' })
+      .update({ is_public: true })
       .eq('id', userId)
       .select('is_public')
       .single();

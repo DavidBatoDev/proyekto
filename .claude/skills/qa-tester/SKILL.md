@@ -36,15 +36,15 @@ If the agent wrapper cannot find Python, set `AGENT_PYTHON_BIN=agent\venv\Script
 
 When driving the app through Playwright - especially the roadmap AI assistant - observe each response before acting: read what actually rendered, answer clarifying questions the assistant asks, and adapt the next step to the real state. Never fire blind scripted batteries of prompts or clicks.
 
-## User personas and access dimensions
+## User roles and access dimensions
 
 - **Client** - pays for the work; defines goals, approves direction, tracks progress.
-- **Consultant** - vetted project lead (gated by `profiles.is_consultant_verified`, not the active persona); builds the roadmap, assembles the team, owns delivery.
+- **Consultant** - vetted project lead (gated by `profiles.is_consultant_verified`); builds the roadmap, assembles the team, owns delivery.
 - **Freelancer** - delivers scoped tasks, logs billable time.
 - **Admin** - platform staff; vetting, governance.
 
 Additional dimensions e2e tests should cover where relevant:
-- One account can hold multiple personas, switched via `active_persona` - test persona switching, not just per-persona accounts.
+- Accounts have no global role mode. Test durable consultant/admin capabilities and project-scoped roles independently.
 - Per-project `share_role` ladder: owner > admin > editor > commenter > viewer.
 - Guest users (anonymous, pre-signup roadmap building, migration to a real account).
 

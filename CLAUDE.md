@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product Context
 
-Proyekto is a managed work-delivery platform for digital projects: Clients fund the work, vetted Consultants lead delivery (the platform's differentiator), Freelancers execute, Admins govern the platform. One account can hold many roles, switched via active_persona; consultant-only surfaces are gated by the durable profiles.is_consultant_verified flag (not the active persona). Per-project access uses the share_role ladder: owner > admin > editor > commenter > viewer. Anonymous guests can build a roadmap before signup and migrate it to a real account.
+Proyekto is a managed work-delivery platform for digital projects: Clients fund the work, vetted Consultants lead delivery (the platform's differentiator), Freelancers execute, Admins govern the platform. Accounts have no global role mode: consultant capability comes from the durable profiles.is_consultant_verified flag, platform administration from admin_profiles, and per-project access from the share_role ladder (owner > admin > editor > commenter > viewer). Anonymous guests can build a roadmap before signup and migrate it to a real account.
 
 Brand rule: the product is "Proyekto" in ALL user-facing copy - "Prodigy" and the prdigy/ folder name are legacy only.
 
@@ -68,7 +68,7 @@ When changing operation shapes, follow the /api-contract skill: update schemas/r
 Each feature module is self-contained (controllers/services/repositories/dto), wired in backend/src/app.module.ts. Repository pattern: interface + Supabase impl. Details and the critical lint gotcha: backend/CLAUDE.md.
 
 ### Web routing
-TanStack Router file-based routes under web/src/routes/, split per persona. routeTree.gen.ts is generated - never hand-edit (hook-blocked). Details: web/CLAUDE.md.
+TanStack Router file-based routes under web/src/routes/, grouped by product area. routeTree.gen.ts is generated - never hand-edit (hook-blocked). Details: web/CLAUDE.md.
 
 ## Claude Code Config Map
 

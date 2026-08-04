@@ -40,7 +40,6 @@ export interface RoadmapAiProjectContextMemberDto {
   id: string;
   display_name: string | null;
   role: string | null;
-  persona: string | null;
 }
 
 export interface RoadmapAiProjectContextDto {
@@ -118,7 +117,6 @@ export interface RoadmapAiProjectMemberDetailsResponseDto {
   member: {
     id: string;
     display_name: string | null;
-    persona: string | null;
     bio: string | null;
     skills: string[];
     role: string | null;

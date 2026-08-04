@@ -3,64 +3,53 @@
  */
 
 import type { Session, User } from "@supabase/supabase-js";
-import type { PersonaType, Profile, OnboardingIntent } from "./profile.types";
+import type { OnboardingIntent, Profile } from "./profile.types";
 
 // Re-export Supabase types
 export type { Session, User };
 
 // Auth response
 export interface AuthResponse {
-  user: User | null;
-  session: Session | null;
+	user: User | null;
+	session: Session | null;
 }
 
 // Auth error
 export interface AuthError {
-  message: string;
-  status?: number;
+	message: string;
+	status?: number;
 }
 
 // Auth state
 export interface AuthState {
-  user: User | null;
-  profile: Profile | null;
-  session: Session | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
+	user: User | null;
+	profile: Profile | null;
+	session: Session | null;
+	isLoading: boolean;
+	isAuthenticated: boolean;
 }
 
 // Login credentials
 export interface LoginCredentials {
-  email: string;
-  password: string;
+	email: string;
+	password: string;
 }
 
 // Signup credentials
 export interface SignupCredentials {
-  email: string;
-  password: string;
-  display_name?: string;
-}
-
-// Onboarding data
-export interface OnboardingData {
-  active_persona: PersonaType;
-  display_name?: string;
+	email: string;
+	password: string;
+	display_name?: string;
 }
 
 // Onboarding complete request
 export interface OnboardingCompleteRequest {
-  intent: OnboardingIntent;
-}
-
-// Persona switch data
-export interface PersonaSwitchData {
-  persona: PersonaType;
+	intent: OnboardingIntent;
 }
 
 // Profile update data
 export interface ProfileUpdateData {
-  display_name?: string;
-  avatar_url?: string;
-  bio?: string;
+	display_name?: string;
+	avatar_url?: string;
+	bio?: string;
 }

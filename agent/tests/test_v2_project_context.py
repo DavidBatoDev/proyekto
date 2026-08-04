@@ -178,7 +178,6 @@ def _compact_payload() -> dict:
                 'id': f'member-{index}',
                 'display_name': f'Person {index}',
                 'role': 'editor',
-                'persona': 'freelancer',
             }
             for index in range(1, 18)
         ],
@@ -258,7 +257,6 @@ class ProjectContextBlockTests(unittest.TestCase):
                 'id': 'i' * 200,
                 'display_name': 'n' * 300,
                 'role': 'r' * 200,
-                'persona': 'p' * 200,
             }
             for _ in range(20)
         ]

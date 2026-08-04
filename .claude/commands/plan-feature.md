@@ -11,6 +11,6 @@ Plan this feature: $ARGUMENTS
 4. Synthesize into an implementation plan:
    - Ordered checklist by dependency: schema/migration -> backend -> agent -> web (skip layers not touched), with the schemas/ contract step explicit if operation shapes change (/api-contract).
    - Flag-gated rollout stages (ship dark, activate in phases with telemetry) - name the flag(s).
-   - Authorization story: guards, RLS, share_role, persona gating.
+   - Authorization story: guards, RLS, share_role, durable capability gating.
    - Test plan pointer (/qa-tester) and docs impact (/docs-update).
 5. Present the plan and stop - do not start implementing without approval.

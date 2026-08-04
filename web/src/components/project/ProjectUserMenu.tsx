@@ -42,8 +42,8 @@ export default function ProjectUserMenu({ role }: ProjectUserMenuProps) {
 		return profile?.email?.split("@")[0] || "User";
 	};
 
-	const getPersonaLabel = (persona: string) =>
-		persona.charAt(0).toUpperCase() + persona.slice(1);
+	const formatRole = (value: string) =>
+		value.charAt(0).toUpperCase() + value.slice(1);
 
 	const handleLogout = async () => {
 		await signOut();
@@ -76,9 +76,7 @@ export default function ProjectUserMenu({ role }: ProjectUserMenuProps) {
 						{getDisplayName()}
 					</span>
 					<span className="text-[10px] text-slate-500">
-						{role
-							? getPersonaLabel(role.toLowerCase())
-							: getPersonaLabel(profile?.active_persona || "client")}
+						{role ? formatRole(role.toLowerCase()) : "Member"}
 					</span>
 				</div>
 

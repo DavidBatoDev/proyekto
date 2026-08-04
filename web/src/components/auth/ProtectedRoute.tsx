@@ -3,14 +3,12 @@
  * Use this to protect routes that require authentication
  */
 
-import { useAuthStore } from "../../stores/authStore";
-import type { PersonaType } from "../../types";
-import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
+import { useAuthStore } from "../../stores/authStore";
 
 interface ProtectedRouteProps {
 	children: React.ReactNode;
-	requiredPersona?: PersonaType[];
 	fallback?: React.ReactNode;
 	loadingFallback?: React.ReactNode;
 	redirectUnauthenticated?: boolean;
@@ -18,7 +16,6 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({
 	children,
-	requiredPersona,
 	fallback = <div>Please log in to access this page</div>,
 	loadingFallback = <div>Loading...</div>,
 	redirectUnauthenticated = true,
@@ -28,7 +25,6 @@ export function ProtectedRoute({
 	const redirectedRef = useRef(false);
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 	const isLoading = useAuthStore((state) => state.isLoading);
-	const profile = useAuthStore((state) => state.profile);
 
 	useEffect(() => {
 		navigateRef.current = navigate;
@@ -68,17 +64,6 @@ export function ProtectedRoute({
 		}
 
 		return <>{fallback}</>;
-	}
-
-	// Check persona requirements
-	if (requiredPersona && profile) {
-		if (!requiredPersona.includes(profile.active_persona)) {
-			return (
-				<div>
-					Access denied. Required persona: {requiredPersona.join(" or ")}
-				</div>
-			);
-		}
 	}
 
 	return <>{children}</>;

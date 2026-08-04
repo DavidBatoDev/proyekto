@@ -1,18 +1,7 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
 import type { AuthRepository } from './repositories/auth.repository.interface';
-import {
-  CompleteOnboardingDto,
-  OnboardingDto,
-  SwitchPersonaDto,
-  UpdateProfileDto,
-} from './dto/auth.dto';
+import { CompleteOnboardingDto, UpdateProfileDto } from './dto/auth.dto';
 import {
   EmailVerificationConfirmDto,
   EmailVerificationRequestDto,
@@ -60,35 +49,20 @@ export class AuthService {
     return { ...profile, missingFreelancerRequirements: missing };
   }
 
-  async onboarding(userId: string, dto: OnboardingDto): Promise<Profile> {
-    return this.authRepo.updateOnboarding(userId, {
-      active_persona: dto.active_persona,
-      display_name: dto.display_name,
-    });
-  }
-
   async completeOnboarding(
     userId: string,
     dto: CompleteOnboardingDto,
   ): Promise<CompleteOnboardingResult> {
-    // Lane-driven persona default. Client/Freelancer-lane users are clients
-    // out of the gate; consultant-lane users keep the freelancer default until
-    // their application is approved (which flips is_consultant_verified and
-    // unlocks the consultant persona via switchPersona).
-    const active_persona =
-      dto.lane === 'client_freelancer' ? 'client' : undefined;
-
     const profile = await this.authRepo.completeOnboarding(userId, {
       lane: dto.lane,
       intent: dto.intent,
-      active_persona,
     });
 
     // Lane-scoped provisioning: consultants get a personal team, clients
     // keep the personal workspace project. Either path is idempotent on
     // re-run. If provisioning throws, the onboarding state is already
     // persisted — surface the error so the client can retry without
-    // rolling back the persona/lane writes.
+    // rolling back the onboarding/lane writes.
     let personal_workspace_id: string | null = null;
     let personal_team_id: string | null = null;
 
@@ -110,34 +84,6 @@ export class AuthService {
     }
 
     return { profile, personal_workspace_id, personal_team_id };
-  }
-
-  async switchPersona(userId: string, dto: SwitchPersonaDto): Promise<Profile> {
-    const profile = await this.authRepo.getProfile(userId);
-    if (!profile) throw new NotFoundException('Profile not found');
-
-    if (dto.persona === 'consultant') {
-      if (!profile.is_consultant_verified) {
-        throw new ForbiddenException(
-          'Consultant verification required to switch to consultant persona',
-        );
-      }
-    }
-
-    if (dto.persona === 'freelancer' && !profile.is_consultant_verified) {
-      // Verified consultants have been vetted at a higher standard than the
-      // freelancer eligibility bar, so they may switch freely. Non-consultants
-      // must still satisfy the quality bar before entering the marketplace.
-      const { eligible, missing } =
-        await this.freelancerEligibility.check(userId);
-      if (!eligible) {
-        throw new ForbiddenException(
-          `Complete your freelancer profile first. Missing: ${missing.join(', ')}`,
-        );
-      }
-    }
-
-    return this.authRepo.switchPersona(userId, dto.persona);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<Profile> {

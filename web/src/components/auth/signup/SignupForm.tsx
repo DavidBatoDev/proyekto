@@ -313,7 +313,7 @@ export function SignupForm(_props: SignupFormProps) {
 			}
 
 			// Lane-aware completion. Server writes settings.onboarding.lane,
-			// sets active_persona, and provisions the personal workspace.
+			// stores onboarding intent and provisions the personal workspace.
 			const intent =
 				lane === "client_freelancer"
 					? {

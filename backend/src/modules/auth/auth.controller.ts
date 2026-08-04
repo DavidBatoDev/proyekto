@@ -6,12 +6,7 @@ import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
-import {
-  CompleteOnboardingDto,
-  OnboardingDto,
-  SwitchPersonaDto,
-  UpdateProfileDto,
-} from './dto/auth.dto';
+import { CompleteOnboardingDto, UpdateProfileDto } from './dto/auth.dto';
 import {
   EmailVerificationConfirmDto,
   EmailVerificationRequestDto,
@@ -54,28 +49,12 @@ export class AuthController {
     return this.authService.getProfile(user.id);
   }
 
-  @Post('onboarding')
-  onboarding(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: OnboardingDto,
-  ) {
-    return this.authService.onboarding(user.id, dto);
-  }
-
   @Patch('onboarding/complete')
   completeOnboarding(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CompleteOnboardingDto,
   ) {
     return this.authService.completeOnboarding(user.id, dto);
-  }
-
-  @Patch('persona')
-  switchPersona(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: SwitchPersonaDto,
-  ) {
-    return this.authService.switchPersona(user.id, dto);
   }
 
   @Patch('profile')

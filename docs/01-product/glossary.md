@@ -1,15 +1,15 @@
 # Glossary
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
 
 | Term | Meaning |
 | --- | --- |
-| **Persona** | The role an account is acting in — `client`, `freelancer`, `consultant`, or `admin`. One account, switchable per context. |
+| **Participant role** | A responsibility held in context, such as Client, Consultant, Freelancer, or Admin; it is not a global account mode. |
 | **Consultant layer** | Proyekto's defining idea: a vetted project lead between Client and Freelancers who owns delivery. |
-| **Verified consultant** | A user who passed vetting (a capability flag), gating consultant-only surfaces — distinct from the active persona. |
+| **Verified consultant** | A user who passed vetting; `profiles.is_consultant_verified` gates consultant-only surfaces. |
 | **Project** | The delivery container: roadmap + team + chat + meetings + billing. |
 | **Brief** | A project's structured intent (mission/vision, summary, custom fields) — `project_briefs`. |
 | **Roadmap** | The plan for a project — a tree of epics, features, and tasks. One per project. |

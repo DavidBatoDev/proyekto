@@ -9,15 +9,6 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class OnboardingDto {
-  @IsEnum(['client', 'freelancer'])
-  active_persona: 'client' | 'freelancer';
-
-  @IsString()
-  @MaxLength(100)
-  display_name: string;
-}
-
 class CompleteOnboardingIntentDto {
   @IsBoolean()
   freelancer: boolean;
@@ -36,11 +27,6 @@ export class CompleteOnboardingDto {
   @ValidateNested()
   @Type(() => CompleteOnboardingIntentDto)
   intent: CompleteOnboardingIntentDto;
-}
-
-export class SwitchPersonaDto {
-  @IsEnum(['client', 'freelancer', 'consultant'])
-  persona: 'client' | 'freelancer' | 'consultant';
 }
 
 export class UpdateProfileDto {

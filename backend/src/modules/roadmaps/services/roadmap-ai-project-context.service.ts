@@ -374,7 +374,7 @@ export class RoadmapAiProjectContextService {
     const [profileResult, skillsResult, curationResult] = await Promise.all([
       this.db
         .from('profiles')
-        .select('id, display_name, active_persona, bio')
+        .select('id, display_name, bio')
         .eq('id', memberId)
         .maybeSingle(),
       this.db
@@ -419,10 +419,6 @@ export class RoadmapAiProjectContextService {
         display_name: this.truncatedString(
           profile.display_name,
           DISPLAY_NAME_MAX_CHARS,
-        ),
-        persona: this.truncatedString(
-          profile.active_persona,
-          SHORT_LABEL_MAX_CHARS,
         ),
         bio: bio ? htmlToText(bio, MEMBER_BIO_MAX_CHARS) : null,
         skills,
@@ -537,7 +533,7 @@ export class RoadmapAiProjectContextService {
 
     const { data: profileData, error: profileError } = await this.db
       .from('profiles')
-      .select('id, display_name, active_persona')
+      .select('id, display_name')
       .in('id', memberIds);
     this.throwOnQueryError(profileError);
 
@@ -560,10 +556,6 @@ export class RoadmapAiProjectContextService {
         role:
           this.readTrimmedString(access?.role) ??
           (id === roadmapOwnerId ? 'roadmap_owner' : null),
-        persona: this.truncatedString(
-          profile?.active_persona,
-          SHORT_LABEL_MAX_CHARS,
-        ),
       };
     });
   }

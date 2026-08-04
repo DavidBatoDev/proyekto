@@ -14,11 +14,10 @@ export interface FreelancerEligibility {
 }
 
 /**
- * Freelancer-persona quality bar.
+ * Freelancer marketplace quality bar.
  *
- * The user can flip into the freelancer persona only when ALL four criteria
- * pass. Failure surfaces a `missing` array so the dashboard checklist UI
- * can show exactly what's left.
+ * Failure surfaces a `missing` array so the dashboard checklist UI can show
+ * exactly what's left.
  *
  * Criteria (see specs/platform-foundations/requirements.md):
  *   1. identity         — verified ID document or verifications row
@@ -26,8 +25,8 @@ export interface FreelancerEligibility {
  *   3. portfolio        — at least one user_portfolios row
  *   4. profile_basics   — headline + bio + country all non-null
  *
- * Run is cheap (4 small lookups). Re-evaluated on every profile fetch and
- * on every switchPersona('freelancer') call. Slice 3+ may materialize
+ * Run is cheap (4 small lookups) and re-evaluated on every profile fetch.
+ * A later slice may materialize
  * `freelancer_eligible` as a column with triggers if marketplace search
  * gets hot enough to need it indexed.
  */

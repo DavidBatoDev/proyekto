@@ -5,9 +5,6 @@
 
 import type { AppearancePreferencesV1 } from "@/theme/types";
 
-// Persona enum
-export type PersonaType = "client" | "freelancer" | "consultant" | "admin";
-
 // Onboarding intent type
 export interface OnboardingIntent {
 	freelancer: boolean;
@@ -36,7 +33,6 @@ export interface Profile {
 	banner_url: string | null;
 	is_consultant_verified: boolean;
 	is_public: boolean;
-	active_persona: PersonaType;
 	bio: string | null;
 	headline: string | null; // short professional tagline
 	first_name: string | null;
@@ -64,7 +60,6 @@ export interface ProfileInsert {
 	avatar_url?: string | null;
 	banner_url?: string | null;
 	is_consultant_verified?: boolean;
-	active_persona?: PersonaType;
 	bio?: string | null;
 	headline?: string | null;
 	first_name?: string | null;
@@ -87,7 +82,6 @@ export interface ProfileUpdate {
 	avatar_url?: string | null;
 	banner_url?: string | null;
 	is_consultant_verified?: boolean;
-	active_persona?: PersonaType;
 	bio?: string | null;
 	headline?: string | null;
 	first_name?: string | null;

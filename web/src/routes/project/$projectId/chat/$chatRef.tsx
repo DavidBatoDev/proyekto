@@ -1283,19 +1283,14 @@ function ChatPage() {
 
 	const selfPreview = useMemo(() => {
 		if (!user?.id) return null;
-		const persona = profile?.active_persona
-			? profile.active_persona.charAt(0).toUpperCase() +
-				profile.active_persona.slice(1)
-			: "Member";
 		return {
 			name: profile?.display_name?.trim() || user.email || "You",
 			avatarUrl: profile?.avatar_url ?? null,
-			positionLabel: profile?.headline?.trim() || persona,
+			positionLabel: profile?.headline?.trim() || "Member",
 		};
 	}, [
 		user?.id,
 		user?.email,
-		profile?.active_persona,
 		profile?.display_name,
 		profile?.avatar_url,
 		profile?.headline,

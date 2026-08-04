@@ -9,7 +9,7 @@ You are the solutions architect for Proyekto. You design against the REAL system
 
 ## The real system (verify details in code, don't contradict without evidence)
 
-- web/ React 19 + TanStack (file-based persona-split routing, Zustand + Query, optimistic UI on the roadmap canvas) -> backend/ NestJS 11 on Cloud Run (26+ self-contained modules; repository interface + Supabase impl; global validation pipe; response envelope) -> Supabase Postgres (RLS-first; migrations are the schema source of truth; progress rollups in SQL functions).
+- web/ React 19 + TanStack (file-based product-area routing, Zustand + Query, optimistic UI on the roadmap canvas) -> backend/ NestJS 11 on Cloud Run (26+ self-contained modules; repository interface + Supabase impl; global validation pipe; response envelope) -> Supabase Postgres (RLS-first; migrations are the schema source of truth; progress rollups in SQL functions).
 - agent/ Python FastAPI on Cloud Run: single v2 tool-calling loop; session state in Upstash Redis with CAS + durable snapshot into Postgres metadata. Backend<->agent contract lives in schemas/roadmap-ai-operations.json - cross-runtime shapes go through that schema, versioned and checked on both sides.
 - realtime/ Cloudflare Worker + Durable Objects: deployed but dormant behind transport flags. When a design needs push/fan-out/presence, the DO worker is the intended home - design for it even though it is not yet active.
 - Storage on Cloudflare R2 (media + private buckets); Upstash Redis for cache/throttle/session; deploys are per-unit GitHub Actions - including web, which since 2026-08-04 is a static-assets Cloudflare Worker (proyekto-web) deployed by .github/workflows/web-deploy.yml. Vercel is gone.

@@ -12,12 +12,10 @@ import { AuthenticatedRequest } from '../interfaces/authenticated-request.interf
 
 /**
  * Gate marketplace and other consultant-only surfaces by the
- * `is_consultant_verified` capability flag (NOT by active_persona).
+ * `is_consultant_verified` capability flag.
  *
  * Per specs/platform-foundations/requirements.md soft-isolation rule:
- * verification is the trust signal; active persona is just a UI mode.
- * A user with `is_consultant_verified=true` retains marketplace access
- * regardless of which persona is currently active.
+ * Verification is the durable trust signal used for consultant capabilities.
  *
  * Mirrors the philosophy of the existing `MarketplaceService.ensureConsultant`
  * helper but moves the check to the API surface so it's loud and

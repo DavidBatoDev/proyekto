@@ -1,6 +1,5 @@
 // Core entity types matching the Supabase database schema
 
-export type PersonaType = 'client' | 'freelancer' | 'consultant' | 'admin';
 export type ProjectStatus =
   | 'draft'
   | 'bidding'
@@ -123,7 +122,6 @@ export interface Profile {
   date_of_birth?: string;
   is_consultant_verified: boolean;
   is_email_verified: boolean;
-  active_persona: PersonaType;
   has_completed_onboarding: boolean;
   settings: Record<string, unknown>;
   is_guest: boolean;

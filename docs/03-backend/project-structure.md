@@ -1,6 +1,6 @@
 # Project Structure
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 Where everything lives under `backend/src/`. Two things to internalize: **global
 concerns sit in `config/` and `common/`**, and **every feature is a self-contained
@@ -42,8 +42,8 @@ per-module import. See [configuration.md](./configuration.md).
 
 ```
 common/
-  guards/         supabase-auth · admin · persona · cron-secret · consultant-only
-  decorators/     @CurrentUser · @Public · @Personas · @SetCachePolicy · @RawResponse
+  guards/         supabase-auth · admin · cron-secret · consultant-only
+  decorators/     @CurrentUser · @Public · @SetCachePolicy · @RawResponse
   interceptors/   request-timeout · request-logging · cache-policy · response
   filters/        http-exception.filter.ts  ({ error } envelope)
   cache/          redis-data-cache · cloudflare-cache-purge · redis-cache-invalidation

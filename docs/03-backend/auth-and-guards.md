@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -14,15 +14,12 @@ fallback to a Supabase call, and also accepts a guest-session header.
 | --- | --- | --- |
 | `SupabaseAuthGuard` | `supabase-auth.guard.ts` | A valid Supabase JWT **or** a valid `x-guest-user-id` header |
 | `AdminGuard` | `admin.guard.ts` | An active row in `admin_profiles` for the user |
-| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | `profiles.is_consultant_verified` (a capability flag, **not** active persona) |
+| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | `profiles.is_consultant_verified` (a durable capability flag) |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
-| `PersonaGuard` | `persona.guard.ts` | `profiles.active_persona` ∈ `@Personas(...)` — **defined but not used by any controller today** |
 | `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`), an OAuth 2.1 access token, **or** a Supabase session JWT — gates the `/mcp` endpoint |
 
-> **⚠️ Note:** the older docs claimed `PersonaGuard` gated many routes. It exists and
-> works, but **no controller currently applies it**; persona-scoped behavior is
-> enforced inside services. `ConsultantOnlyGuard` is what actually gates the
-> consultant-only marketplace routes. Two more guards come from outside `common/`:
+`ConsultantOnlyGuard` gates consultant-only marketplace routes. Two more guards
+come from outside `common/`:
 > `ThrottlerGuard` (`@nestjs/throttler`, on guest endpoints and on the MCP OAuth
 > `/oauth/token` · `/register` · `/revoke` endpoints) and `OtaPublishGuard`
 > (`mobile-updates/`, gates CI bundle registration).
@@ -109,7 +106,6 @@ by design — a public client is authenticated by PKCE.
 | --- | --- | --- |
 | `@CurrentUser()` | `current-user.decorator.ts` | Injects `request.user` (`AuthenticatedUser`) into a handler param |
 | `@Public()` | `public.decorator.ts` | Marks a route so `SupabaseAuthGuard` skips it |
-| `@Personas(...)` | `personas.decorator.ts` | Sets the personas `PersonaGuard` reads (`client\|freelancer\|consultant\|admin`) |
 | `@RawResponse()` | `raw-response.decorator.ts` | Return the payload verbatim (skip the `{ data }` envelope) |
 | `@SetCachePolicy(...)` | `cache-policy.decorator.ts` | Attach a `Cache-Control` preset for `CachePolicyInterceptor` |
 

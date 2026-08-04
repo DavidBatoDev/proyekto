@@ -1,10 +1,10 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
-and hires freelancers). The gate between them is verification — not persona.
+and hires freelancers). The gate between them is consultant verification.
 
 ## Applications
 
@@ -38,7 +38,7 @@ rate, and availability. Invites reuse `project_invites`.
 
 > **The verification gate:** the consultant-only routes are gated by
 > `ConsultantOnlyGuard`, which checks `profiles.is_consultant_verified` — a
-> **capability**, not the active persona. See
+> durable capability. See
 > [Backend → auth & guards](../03-backend/auth-and-guards.md) and
 > [Product → personas](../01-product/personas.md).
 

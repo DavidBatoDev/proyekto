@@ -9,29 +9,28 @@ export { ProtectedRoute } from "./components/auth/ProtectedRoute";
 
 // Auth API client
 export {
-  completeOnboarding,
-  getProfile,
-  switchPersona,
-  updateProfile,
+	completeOnboarding,
+	getProfile,
+	updateProfile,
 } from "./lib/auth-api";
 
 // Auth utilities
 export * from "./lib/auth-utils";
 // Supabase client and helpers
 export {
-  getAccessToken,
-  getCurrentProfile,
-  getCurrentUser,
-  supabase,
+	getAccessToken,
+	getCurrentProfile,
+	getCurrentUser,
+	supabase,
 } from "./lib/supabase";
 // Zustand store and selectors
 export {
-  useAuthStore,
-  useIsAuthenticated,
-  useIsLoading,
-  useProfile,
-  useSession,
-  useUser,
+	useAuthStore,
+	useIsAuthenticated,
+	useIsLoading,
+	useProfile,
+	useSession,
+	useUser,
 } from "./stores/authStore";
 // Types
 export * from "./types";

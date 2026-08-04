@@ -212,7 +212,6 @@ export interface FullProfile {
   date_of_birth: string | null;
   is_consultant_verified: boolean;
   is_public: boolean;
-  active_persona: string;
   created_at: string;
   updated_at: string;
   // vetting tables
