@@ -1,0 +1,67 @@
+name: Web — Deploy Static Assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: web-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        # vite build && tsc - type errors fail the build. Vite auto-loads
+        # web/.env.production for this mode; no extra env wiring needed here.
+        run: npm run build
+
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web
+          # Pin to the same version realtime-deploy.yml uses, so both
+          # Cloudflare deploys stay reproducible together.
+          wranglerVersion: "3.114.17"
+
+      - name: Smoke test (workers.dev preview)
+        run: |
+          URL="https://proyekto-web.lucky-mud-7121.workers.dev/"
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL" | grep -q 'Proyekto - Work Hub'; then
+              echo "Web Worker smoke check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "Web Worker did not serve the expected index.html within 5 attempts"
+          exit 1

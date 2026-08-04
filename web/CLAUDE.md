@@ -8,6 +8,7 @@ Local context for the web unit. Cross-cutting rules live in the root CLAUDE.md.
 - npm test - Vitest single run (co-located src/**/*.test.ts(x)); `vitest` for watch
 - npm run check / lint / format - Biome (tab indent, double quotes)
 - npm run build - vite build && tsc. tsc runs AFTER Vite; type errors fail the build even if Vite succeeds. Full builds only per the root Build and Push Policy.
+- NEVER run `wrangler deploy` from a session for web/ - deploys go exclusively through .github/workflows/web-deploy.yml (permissions deny it).
 
 ## Conventions
 
