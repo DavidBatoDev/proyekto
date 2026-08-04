@@ -10,7 +10,7 @@ import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provi
 // Tell the OTA updater the web bundle booted OK, so it commits the new bundle
 // instead of rolling back after appReadyTimeout. Fire as early as possible.
 // No-op/harmless on web (native bridge absent → rejects), so the browser build
-// and Vercel deploy are unaffected.
+// is unaffected regardless of where it is hosted.
 CapacitorUpdater.notifyAppReady().catch(() => {});
 
 // Android 15 draws edge-to-edge; this plugin pads the WebView below the status bar
