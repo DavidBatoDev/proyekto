@@ -164,6 +164,12 @@ export interface TeamInvite {
 	team?: { id: string; name: string; avatar_url: string | null } | null;
 	invited_by_profile?: ProfileSummary | null;
 	invitee?: ProfileSummary | null;
+	/**
+	 * Only present on the response to creating an invite. `sent: false` is not an
+	 * error — the invitation exists either way — so the caller must report it
+	 * rather than throw, or the inviter assumes the email arrived.
+	 */
+	email_delivery?: { sent: boolean; reason?: string };
 }
 
 export interface InviteTeamMemberInput {

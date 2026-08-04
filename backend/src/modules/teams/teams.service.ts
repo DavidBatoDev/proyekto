@@ -6,10 +6,18 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  MailerService,
+  type SendMailResult,
+} from '../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
-import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import { isEmailSuppressed } from '../notifications/email/email-suppression';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import { buildTeamInviteEmail } from './team-invite-email.template';
+import { TEAM_INVITES_PATH } from './team-invites-path';
 import {
   AddTeamMemberDto,
   CreateTeamDto,
@@ -129,6 +137,9 @@ export class TeamsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly notifications: NotificationsService,
+    // MailModule is @Global(), so TeamsModule needs no import for these.
+    private readonly mailer: MailerService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -167,13 +178,11 @@ export class TeamsService {
     if (!created) throw new Error('Personal team insert returned no row');
 
     // Owner gets a team_members row, mirroring createTeam().
-    const insertOwner = await this.supabase
-      .from('team_members')
-      .insert({
-        team_id: (created as TeamRow).id,
-        user_id: userId,
-        role: 'owner',
-      });
+    const insertOwner = await this.supabase.from('team_members').insert({
+      team_id: (created as TeamRow).id,
+      user_id: userId,
+      role: 'owner',
+    });
     if (insertOwner.error) {
       this.logger.error(
         `Personal team ${(created as TeamRow).id} created but owner team_members insert failed: ${insertOwner.error.message}`,
@@ -236,10 +245,7 @@ export class TeamsService {
       extras = (data ?? []) as TeamRow[];
     }
 
-    const teams: TeamRow[] = [
-      ...((owned.data ?? []) as TeamRow[]),
-      ...extras,
-    ];
+    const teams: TeamRow[] = [...((owned.data ?? []) as TeamRow[]), ...extras];
     if (teams.length === 0) return teams;
 
     // Fetch member previews for all visible teams in one batched query
@@ -257,10 +263,7 @@ export class TeamsService {
       .order('joined_at', { ascending: true });
     if (memErr) throw new Error(memErr.message);
 
-    const byTeam = new Map<
-      string,
-      Array<{ user: TeamMemberPreview | null }>
-    >();
+    const byTeam = new Map<string, Array<{ user: TeamMemberPreview | null }>>();
     const viewerByTeam = new Map<
       string,
       { role: 'owner' | 'admin' | 'member'; position: string | null }
@@ -323,13 +326,11 @@ export class TeamsService {
     }
     // Auto-add owner as a team_members row so triggers and RLS treat
     // the owner as a member without needing a separate flow.
-    const insertOwner = await this.supabase
-      .from('team_members')
-      .insert({
-        team_id: (data as TeamRow).id,
-        user_id: userId,
-        role: 'owner',
-      });
+    const insertOwner = await this.supabase.from('team_members').insert({
+      team_id: (data as TeamRow).id,
+      user_id: userId,
+      role: 'owner',
+    });
     if (insertOwner.error) throw new Error(insertOwner.error.message);
     return data as TeamRow;
   }
@@ -343,7 +344,9 @@ export class TeamsService {
     if (team.owner_id !== userId) {
       throw new ForbiddenException('Only the team owner can update the team');
     }
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
@@ -443,9 +446,7 @@ export class TeamsService {
           ? p.label.trim().slice(0, 60)
           : id;
       if (!intInRange(p.start_day, 1, 31)) {
-        throw new BadRequestException(
-          `Period "${id}" start_day must be 1–31`,
-        );
+        throw new BadRequestException(`Period "${id}" start_day must be 1–31`);
       }
       const endDay: number | 'EOM' =
         p.end_day === 'EOM' ? 'EOM' : (p.end_day as number);
@@ -666,17 +667,21 @@ export class TeamsService {
     const workspaceDefaults = {
       default_team_id:
         dto.default_team_id !== undefined
-          ? dto.default_team_id ?? null
-          : (currentDefaults.default_team_id as string | null | undefined) ?? null,
+          ? (dto.default_team_id ?? null)
+          : ((currentDefaults.default_team_id as string | null | undefined) ??
+            null),
       default_project_id:
         dto.default_project_id !== undefined
-          ? dto.default_project_id ?? null
-          : (currentDefaults.default_project_id as string | null | undefined) ??
-            null,
+          ? (dto.default_project_id ?? null)
+          : ((currentDefaults.default_project_id as
+              | string
+              | null
+              | undefined) ?? null),
       last_team_id:
         dto.last_team_id !== undefined
-          ? dto.last_team_id ?? null
-          : (currentDefaults.last_team_id as string | null | undefined) ?? null,
+          ? (dto.last_team_id ?? null)
+          : ((currentDefaults.last_team_id as string | null | undefined) ??
+            null),
     };
 
     const nextSettings = {
@@ -728,7 +733,11 @@ export class TeamsService {
   ): Promise<TeamMemberRow> {
     const team = await this.fetchTeamOrThrow(teamId);
     await this.assertCanManageMembers(team, callerId);
-    if (targetUserId === team.owner_id && dto.role && dto.role !== ('owner' as 'admin' | 'member')) {
+    if (
+      targetUserId === team.owner_id &&
+      dto.role &&
+      dto.role !== ('owner' as 'admin' | 'member')
+    ) {
       throw new ForbiddenException('Cannot change the role of the team owner');
     }
     const patch: Record<string, unknown> = {};
@@ -800,10 +809,7 @@ export class TeamsService {
     throw new ForbiddenException('You do not have access to this team');
   }
 
-  async assertCanManageMembers(
-    team: TeamRow,
-    userId: string,
-  ): Promise<void> {
+  async assertCanManageMembers(team: TeamRow, userId: string): Promise<void> {
     if (team.owner_id === userId) return;
     const { data, error } = await this.supabase
       .from('team_members')
@@ -855,7 +861,7 @@ export class TeamsService {
     teamId: string,
     callerId: string,
     dto: InviteTeamMemberDto,
-  ): Promise<TeamInviteRow> {
+  ): Promise<TeamInviteRow & { email_delivery: SendMailResult }> {
     const team = await this.fetchTeamOrThrow(teamId);
     await this.assertCanManageMembers(team, callerId);
 
@@ -945,14 +951,16 @@ export class TeamsService {
       row = data as Record<string, unknown>;
     }
 
+    // Hoisted out of the notification branch below: the email needs both, and
+    // it goes to everyone, not only to invitees who already have an account.
+    const inviterName = await this.getDisplayName(callerId);
+    const teamName = team.name || 'a team';
+
     // Notify if we resolved to an existing user.
     if (matchedUserId) {
-      const inviterName = await this.getDisplayName(callerId);
-      const teamName = team.name || 'a team';
       const positionText = role !== 'member' ? ` as ${role}` : '';
       const noteText = message ? ` Note: ${message}` : '';
-      const inviteMessage =
-        `${inviterName || 'A team owner'} invited you to join ${teamName}${positionText}.${noteText}`;
+      const inviteMessage = `${inviterName || 'A team owner'} invited you to join ${teamName}${positionText}.${noteText}`;
 
       try {
         await this.notifications.createNotification({
@@ -969,7 +977,7 @@ export class TeamsService {
             message: inviteMessage,
             note: message,
           },
-          link_url: '/teams/me/invites',
+          link_url: TEAM_INVITES_PATH,
         });
       } catch (err) {
         this.logger.warn(
@@ -980,7 +988,95 @@ export class TeamsService {
       }
     }
 
-    return row as unknown as TeamInviteRow;
+    // Everyone gets the email, with or without an account.
+    //
+    // For someone with no profile this is the ONLY signal they ever receive —
+    // the notification above cannot fire, because there is no user to attach it
+    // to. Without this the invite row sat there and the person was never told,
+    // and only learned of it if they happened to join Proyekto for some
+    // unrelated reason and `handle_profile_team_invites_reconciliation` fired.
+    //
+    // No outbox row is involved: `team_invite_received` stays
+    // `email_eligible = false`, so this direct send is the only email. Flipping
+    // that flag would produce a second one — the same trap roadmap_mention_invite
+    // hit, and the reason its trigger carries an explicit skip.
+    const emailDelivery = await this.sendTeamInviteEmail({
+      to: email,
+      inviterName: inviterName || 'A team owner',
+      teamName,
+      role,
+      position,
+      inviteMessage: message,
+      inviteId: (row.id as string | undefined) ?? null,
+    });
+
+    return {
+      ...(row as unknown as TeamInviteRow),
+      email_delivery: emailDelivery,
+    };
+  }
+
+  /**
+   * Email a team invitation. Best-effort: the invite row is already committed,
+   * so a mail failure is reported, never thrown. Mirrors
+   * `ProjectsService.sendInviteEmail`, including the suppression asymmetry.
+   */
+  private async sendTeamInviteEmail(payload: {
+    to: string;
+    inviterName: string;
+    teamName: string;
+    role?: string | null;
+    position?: string | null;
+    inviteMessage?: string | null;
+    inviteId?: string | null;
+  }): Promise<SendMailResult> {
+    // Suppression stops the EMAIL, not the INVITATION — the same call the
+    // Team-page project invite makes. Someone who unsubscribed has still been
+    // deliberately invited by a person, and the invite waits for them in-app;
+    // what they opted out of is being mailed about it. The caller reports this
+    // back so the admin can pass the link on another way.
+    if (await isEmailSuppressed(this.supabase, payload.to)) {
+      this.logger.log(
+        `team invite email suppressed for ${payload.to}: address is on the suppression list`,
+      );
+      return {
+        sent: false,
+        reason:
+          'the recipient has unsubscribed from Proyekto emails — share the invite link with them directly',
+      };
+    }
+
+    // APP_URL first, then CLIENT_URL — never a bare localhost default. The old
+    // `config.get('APP_URL', 'http://localhost:3000')` shape put a dead link in
+    // every production invite for months, because APP_URL is not set on Cloud Run.
+    const appUrl =
+      this.config.get<string>('APP_URL') ??
+      this.config.get<string>('CLIENT_URL', 'http://localhost:3000');
+
+    const { subject, html, text } = buildTeamInviteEmail({
+      inviterName: payload.inviterName,
+      teamName: payload.teamName,
+      // Deep-linked when we know which invite this is, so a reader holding
+      // several is not left to guess which one the email meant.
+      inviteLink: payload.inviteId
+        ? `${appUrl}${TEAM_INVITES_PATH}?inviteId=${encodeURIComponent(payload.inviteId)}`
+        : `${appUrl}${TEAM_INVITES_PATH}`,
+      role: payload.role,
+      position: payload.position,
+      inviteMessage: payload.inviteMessage,
+    });
+
+    const unsubscribe = this.config.get<string>('MAIL_FROM_SUPPORT')?.trim();
+    return this.mailer.send({
+      to: payload.to,
+      sender: 'noreply',
+      subject,
+      html,
+      text,
+      headers: unsubscribe
+        ? { 'List-Unsubscribe': `<mailto:${unsubscribe}?subject=unsubscribe>` }
+        : undefined,
+    });
   }
 
   async listInvitesForTeam(
@@ -1047,7 +1143,9 @@ export class TeamsService {
     if (fetchErr) throw new Error(fetchErr.message);
     if (!invite) throw new NotFoundException('Invite not found');
     if (invite.invitee_id !== userId) {
-      throw new ForbiddenException('Only the invitee can respond to this invite');
+      throw new ForbiddenException(
+        'Only the invitee can respond to this invite',
+      );
     }
     if (invite.status !== 'pending') {
       throw new BadRequestException(

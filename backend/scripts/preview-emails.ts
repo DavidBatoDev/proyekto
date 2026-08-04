@@ -19,6 +19,7 @@ import {
 import { buildInvoiceEmailHtml } from '../src/modules/invoices/invoice-email.template';
 import { renderNotificationEmail } from '../src/modules/notifications/email/notification-email-registry';
 import { buildInviteEmail } from '../src/modules/projects/project-invite-email.template';
+import { buildTeamInviteEmail } from '../src/modules/teams/team-invite-email.template';
 
 const OUT = join(__dirname, '..', 'tmp', 'email-preview');
 mkdirSync(OUT, { recursive: true });
@@ -60,9 +61,21 @@ write(
   buildInviteEmail({
     inviterName: 'David Bato-bato',
     projectName: 'Checkout rebuild',
-    inviteLink: `${APP}/freelancer/invites`,
+    inviteLink: `${APP}/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d`,
     invitedPosition: 'Senior Frontend Engineer',
     inviteMessage: 'Would love your help on the payment step.',
+  }).html,
+);
+
+write(
+  'team-invite',
+  buildTeamInviteEmail({
+    inviterName: 'David Bato-bato',
+    teamName: 'Prodigitality',
+    inviteLink: `${APP}/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d`,
+    role: 'admin',
+    position: 'Senior Frontend Engineer',
+    inviteMessage: 'Would love to have you on the team.',
   }).html,
 );
 

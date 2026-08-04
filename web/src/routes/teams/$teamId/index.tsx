@@ -1079,11 +1079,23 @@ function InviteMemberModal({
 				position: position.trim() || undefined,
 				message: message.trim() || undefined,
 			}),
-		onSuccess: () => {
+		onSuccess: (createdInvite) => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "invites", teamId],
 			});
-			toast.success(`Invite sent to ${email.trim()}`);
+			// The invite exists either way; only the email can fail. Saying
+			// "Invite sent" when it was suppressed would leave the inviter waiting
+			// on a reply that is never coming.
+			if (createdInvite.email_delivery?.sent === false) {
+				const reason = createdInvite.email_delivery.reason?.trim();
+				toast.warning(
+					reason && reason.length > 0
+						? `Invite created, but email was not delivered: ${reason}`
+						: "Invite created, but email was not delivered. Please share the invite link manually.",
+				);
+			} else {
+				toast.success(`Invite sent to ${email.trim()}`);
+			}
 			onClose();
 		},
 		onError: (err) => toast.error((err as Error).message),

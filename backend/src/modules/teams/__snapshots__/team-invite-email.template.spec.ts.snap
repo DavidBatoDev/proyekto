@@ -1,0 +1,207 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`buildTeamInviteEmail escapes markup in every caller-supplied field: html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You are invited to join a team</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">&lt;script&gt;alert(1)&lt;/script&gt; invited you to join &lt;img src=x onerror=alert(2)&gt; on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">You are invited to join a team</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>&lt;script&gt;alert(1)&lt;/script&gt;</strong> invited you to join <strong>&lt;img src=x onerror=alert(2)&gt;</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Team</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&lt;img src=x onerror=alert(2)&gt;</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Role</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&quot;&gt;&lt;b&gt;admin&lt;/b&gt;</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Position</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&quot;&gt;&lt;b&gt;bold&lt;/b&gt;</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">&lt;iframe src=&quot;evil&quot;&gt;&lt;/iframe&gt;</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildTeamInviteEmail renders a full invitation: html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You are invited to join a team</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Ada Lovelace invited you to join Analytical Engines Ltd on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">You are invited to join a team</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>Ada Lovelace</strong> invited you to join <strong>Analytical Engines Ltd</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Team</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Analytical Engines Ltd</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Role</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">admin</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Position</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Lead Engineer</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">Would love your help on the punch-card pipeline.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildTeamInviteEmail renders a full invitation: subject 1`] = `"Ada Lovelace invited you to join Analytical Engines Ltd"`;
+
+exports[`buildTeamInviteEmail renders a full invitation: text 1`] = `
+"Ada Lovelace invited you to join Analytical Engines Ltd on Proyekto.
+
+Team: Analytical Engines Ltd
+Role: admin
+Position: Lead Engineer
+
+"Would love your help on the punch-card pipeline."
+
+If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
+
+View your invitation: https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
+
+You received this email because someone invited you to a team on Proyekto."
+`;
+
+exports[`buildTeamInviteEmail renders a minimal invitation (no role, position or message): html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You are invited to join a team</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Ada Lovelace invited you to join Analytical Engines Ltd on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">You are invited to join a team</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>Ada Lovelace</strong> invited you to join <strong>Analytical Engines Ltd</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Team</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Analytical Engines Ltd</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildTeamInviteEmail renders a minimal invitation (no role, position or message): subject 1`] = `"Ada Lovelace invited you to join Analytical Engines Ltd"`;
+
+exports[`buildTeamInviteEmail renders a minimal invitation (no role, position or message): text 1`] = `
+"Ada Lovelace invited you to join Analytical Engines Ltd on Proyekto.
+
+Team: Analytical Engines Ltd
+
+If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
+
+View your invitation: https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
+
+You received this email because someone invited you to a team on Proyekto."
+`;
