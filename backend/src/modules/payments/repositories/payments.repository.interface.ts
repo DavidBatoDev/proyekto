@@ -16,7 +16,6 @@ export interface PaymentsRepository {
   ): Promise<PaymentCheckpoint>;
   markCheckpointComplete(id: string): Promise<PaymentCheckpoint>;
   fundEscrow(checkpointId: string, clientUserId: string): Promise<unknown>;
-  releaseMilestone(checkpointId: string): Promise<unknown>;
   refundEscrow(checkpointId: string): Promise<unknown>;
   getWallet(userId: string): Promise<Wallet | null>;
   getTransactions(

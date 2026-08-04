@@ -1,0 +1,32 @@
+-- Drop release_milestone(uuid): dead, and now misleadingly so.
+--
+-- The function distributed escrowed funds across platform, consultant and
+-- freelancer wallets. It cannot run and has not been able to for some time:
+-- its first statement selects from `payment_checkpoints`, and it also writes
+-- `transactions` — NEITHER TABLE EXISTS in this database. Any call raises
+-- "relation does not exist", wrapped by its own EXCEPTION handler into
+-- "Milestone release failed: ...".
+--
+-- Two independent reasons it was already broken, which is worth recording
+-- because either alone would have been enough:
+--
+--   1. The tables are gone (above).
+--   2. It resolved the platform-fee recipient with
+--      `WHERE active_persona = 'admin'`, and no profile has ever held that
+--      value — so it would have raised 'No admin user found for platform fees'
+--      even with the tables present. 20260804184706 then dropped the column
+--      outright, which is what surfaced this function in the first place.
+--
+-- Postgres does not validate plpgsql bodies at DROP COLUMN time, so removing
+-- active_persona left this sitting in the schema still referencing it. Dropping
+-- the function is the honest cleanup: leaving a money-moving function that
+-- cannot move money is worse than having no function, because the next reader
+-- has to work out which of its three dependencies is missing before concluding
+-- it never ran.
+--
+-- The backend and web call sites go in the same commit. `fund_escrow` and
+-- `refund_escrow` are dead for the same reason and are deliberately NOT touched
+-- here — removing the whole escrow surface is a product decision, not cleanup,
+-- and is worth doing as one reviewed change rather than piecemeal.
+
+DROP FUNCTION IF EXISTS public.release_milestone(uuid);

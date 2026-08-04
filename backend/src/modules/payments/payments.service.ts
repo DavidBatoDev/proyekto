@@ -30,10 +30,6 @@ export class PaymentsService {
     return this.paymentsRepo.fundEscrow(checkpointId, userId);
   }
 
-  async releaseMilestone(checkpointId: string) {
-    return this.paymentsRepo.releaseMilestone(checkpointId);
-  }
-
   async refundEscrow(checkpointId: string) {
     return this.paymentsRepo.refundEscrow(checkpointId);
   }

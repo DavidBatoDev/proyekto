@@ -68,14 +68,6 @@ export class SupabasePaymentsRepository implements PaymentsRepository {
     return data;
   }
 
-  async releaseMilestone(checkpointId: string): Promise<unknown> {
-    const { data, error } = await this.supabase.rpc('release_milestone', {
-      p_checkpoint_id: checkpointId,
-    });
-    if (error) throw new Error(error.message);
-    return data;
-  }
-
   async refundEscrow(checkpointId: string): Promise<unknown> {
     const { data, error } = await this.supabase.rpc('refund_escrow', {
       p_checkpoint_id: checkpointId,

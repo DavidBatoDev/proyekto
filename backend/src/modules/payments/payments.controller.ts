@@ -50,12 +50,6 @@ export class PaymentsController {
     return this.paymentsService.fundEscrow(id, user.id);
   }
 
-  @Post(':id/release')
-  @HttpCode(HttpStatus.OK)
-  releaseMilestone(@Param('id') id: string) {
-    return this.paymentsService.releaseMilestone(id);
-  }
-
   @Post(':id/refund')
   @HttpCode(HttpStatus.OK)
   refundEscrow(@Param('id') id: string) {
