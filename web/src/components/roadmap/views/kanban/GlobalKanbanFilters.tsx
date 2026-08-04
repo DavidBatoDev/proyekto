@@ -393,6 +393,7 @@ export function GlobalKanbanFilters({
 			epicId: null,
 			featureId: null,
 			assigneeIds: filters.assigneeIds,
+			statuses: filters.statuses,
 		});
 
 	const selectEpic = (id: string | null) =>
@@ -409,12 +410,25 @@ export function GlobalKanbanFilters({
 				: [...filters.assigneeIds, id],
 		});
 
+	const selectStatus = (id: string | null) =>
+		onChange({ ...filters, statuses: id ? [id] : [] });
+
 	// The project scope is mandatory, so it never counts as a "clearable" filter.
 	const hasAny =
 		!!filters.epicId ||
 		!!filters.featureId ||
 		filters.assigneeIds.length > 0 ||
+		(filters.statuses?.length ?? 0) > 0 ||
 		searchQuery.trim().length > 0;
+
+	const taskStatusOptions: PillOption[] = [
+		{ id: "todo", label: "To Do" },
+		{ id: "in_progress", label: "In Progress" },
+		{ id: "in_review", label: "In Review" },
+		{ id: "done", label: "Done" },
+		{ id: "blocked", label: "Blocked" },
+		{ id: "backlog", label: "Backlog" },
+	];
 
 	return (
 		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-border bg-card text-card-foreground">
@@ -444,6 +458,15 @@ export function GlobalKanbanFilters({
 						options={featureOptions}
 						selectedId={filters.featureId}
 						onSelect={selectFeature}
+					/>
+				</div>
+				<div className="relative pl-24 flex items-center min-w-0">
+					<div className="absolute left-20 top-[-23px] w-4 h-[36px] border-l-2 border-b-2 border-slate-300 rounded-bl-xl pointer-events-none" />
+					<FilterRow
+						tagLabel="Status"
+						options={taskStatusOptions}
+						selectedId={filters.statuses?.[0] ?? null}
+						onSelect={selectStatus}
 					/>
 				</div>
 			</div>
@@ -483,6 +506,7 @@ export function GlobalKanbanFilters({
 								epicId: null,
 								featureId: null,
 								assigneeIds: [],
+								statuses: [],
 							});
 						}}
 						className={`shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${

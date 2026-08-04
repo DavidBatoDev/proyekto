@@ -53,12 +53,13 @@ export function applyBoardFilters(
 	rows: KanbanTaskContext[],
 	filters: KanbanBoardFilters,
 ): KanbanTaskContext[] {
-	const { epicIds, featureIds, milestoneIds, assigneeIds } = filters;
+	const { epicIds, featureIds, milestoneIds, assigneeIds, statuses } = filters;
 	if (
 		!epicIds.length &&
 		!featureIds.length &&
 		!milestoneIds.length &&
-		!assigneeIds.length
+		!assigneeIds.length &&
+		(!statuses || !statuses.length)
 	) {
 		return rows;
 	}
@@ -72,6 +73,9 @@ export function applyBoardFilters(
 		if (assigneeIds.length) {
 			const assigneeId = row.task.assignee_id ?? null;
 			if (!assigneeId || !assigneeIds.includes(assigneeId)) return false;
+		}
+		if (statuses && statuses.length) {
+			if (!statuses.includes(row.task.status)) return false;
 		}
 		return true;
 	});

@@ -487,10 +487,29 @@ export function KanbanFilters({
 				: [...prev.assigneeIds, id],
 		}));
 
+	const selectedStatusId =
+		boardFilters.statuses.length === 1 ? boardFilters.statuses[0] : null;
+
+	const selectStatus = (id: string | null) =>
+		setBoardFilters((prev) => ({
+			...prev,
+			statuses: id ? [id] : [],
+		}));
+
+	const taskStatusOptions: PillOption[] = [
+		{ id: "todo", label: "To Do" },
+		{ id: "in_progress", label: "In Progress" },
+		{ id: "in_review", label: "In Review" },
+		{ id: "done", label: "Done" },
+		{ id: "blocked", label: "Blocked" },
+		{ id: "backlog", label: "Backlog" },
+	];
+
 	const activeFilterCount =
 		boardFilters.epicIds.length +
 		boardFilters.featureIds.length +
-		boardFilters.assigneeIds.length;
+		boardFilters.assigneeIds.length +
+		boardFilters.statuses.length;
 
 	const hasAny = activeFilterCount > 0 || searchQuery.trim().length > 0;
 
@@ -560,7 +579,7 @@ export function KanbanFilters({
 			<div className={`${showFilters ? "block" : "hidden"} md:block`}>
 				<div className="flex flex-col gap-2.5 px-3 pb-3 pt-1 md:grid md:grid-cols-10 md:gap-6 md:px-4 md:py-3">
 
-					{/* Left: Epics + Features */}
+					{/* Left: Epics + Features + Status */}
 					<div className="flex flex-col gap-2 md:col-span-7 md:pr-6 md:border-r md:border-slate-200 md:relative">
 						<div className="flex items-center min-w-0">
 							<FilterRow
@@ -579,6 +598,16 @@ export function KanbanFilters({
 								options={featureOptions}
 								selectedId={selectedFeatureId}
 								onSelect={selectFeature}
+							/>
+						</div>
+						<div className="relative pl-16 flex items-center min-w-0">
+							<div className="hidden md:block absolute left-12 top-[-23px] w-4 h-9 border-l-2 border-b-2 border-slate-300 rounded-bl-xl pointer-events-none" />
+							<FilterRow
+								tagLabel="Status"
+								tagColor="black"
+								options={taskStatusOptions}
+								selectedId={selectedStatusId}
+								onSelect={selectStatus}
 							/>
 						</div>
 					</div>

@@ -118,6 +118,7 @@ describe("resolveFilters", () => {
 			epicId: "e1",
 			featureId: "f1",
 			assigneeIds: ["u1"],
+			statuses: [],
 		};
 		expect(resolveFilters(filters, roadmaps)).toBe(filters);
 	});
@@ -128,12 +129,14 @@ describe("resolveFilters", () => {
 			epicId: "e1",
 			featureId: "f1",
 			assigneeIds: ["u1"],
+			statuses: [],
 		};
 		expect(resolveFilters(filters, roadmaps)).toEqual({
 			projectId: "p2",
 			epicId: null,
 			featureId: null,
 			assigneeIds: ["u1"],
+			statuses: [],
 		});
 	});
 
@@ -173,5 +176,19 @@ describe("applyFilters", () => {
 			assigneeIds: ["u1"],
 		});
 		expect(filtered.map((r) => r.task.id)).toEqual(["t3"]);
+	});
+
+	it("filters tasks by status", () => {
+		const testRows = [
+			{ ...row("t1"), task: { id: "t1", title: "t1", status: "todo" } },
+			{ ...row("t2"), task: { id: "t2", title: "t2", status: "in_progress" } },
+			{ ...row("t3"), task: { id: "t3", title: "t3", status: "done" } },
+		] as KanbanTaskContext[];
+
+		const filtered = applyFilters(testRows, {
+			...EMPTY_FILTERS,
+			statuses: ["in_progress"],
+		});
+		expect(filtered.map((r) => r.task.id)).toEqual(["t2"]);
 	});
 });

@@ -11,6 +11,7 @@ export interface GlobalBoardFilters {
 	epicId: string | null;
 	featureId: string | null;
 	assigneeIds: string[];
+	statuses: string[];
 }
 
 export const EMPTY_FILTERS: GlobalBoardFilters = {
@@ -18,6 +19,7 @@ export const EMPTY_FILTERS: GlobalBoardFilters = {
 	epicId: null,
 	featureId: null,
 	assigneeIds: [],
+	statuses: [],
 };
 
 export const GLOBAL_FILTERS_KEY = "wi_global_filters";
@@ -90,6 +92,9 @@ export function applyFilters(
 		if (filters.assigneeIds.length) {
 			const aid = row.task.assignee_id ?? null;
 			if (!aid || !filters.assigneeIds.includes(aid)) return false;
+		}
+		if (filters.statuses && filters.statuses.length > 0) {
+			if (!filters.statuses.includes(row.task.status)) return false;
 		}
 		return true;
 	});
