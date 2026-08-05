@@ -19,6 +19,8 @@ export interface FinanceProject {
 	consultant_id: string;
 	created_at: string;
 	revenue: number;
+	collected: number;
+	outstanding: number;
 	cost: number;
 	margin: number;
 	margin_percent: number | null;
@@ -29,6 +31,8 @@ export interface FinanceProject {
 export interface FinanceCurrencyTotals {
 	currency: string;
 	revenue: number;
+	collected: number;
+	outstanding: number;
 	cost: number;
 	margin: number;
 	margin_percent: number | null;

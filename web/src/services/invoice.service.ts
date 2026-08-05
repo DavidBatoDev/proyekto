@@ -1,7 +1,34 @@
 import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
-export type InvoiceStatus = "draft" | "issued" | "sent" | "paid" | "void";
+export type InvoiceStatus =
+	| "draft"
+	| "issued"
+	| "partially_paid"
+	| "paid"
+	| "void";
+
+export interface InvoicePayment {
+	id: string;
+	invoice_id: string;
+	amount: number;
+	payment_date: string;
+	payment_method: string | null;
+	reference: string | null;
+	note: string | null;
+	recorded_by: string | null;
+	reverses_payment_id: string | null;
+	reversal_reason: string | null;
+	created_at: string;
+}
+
+export interface InvoiceEvent {
+	id: string;
+	event_type: string;
+	actor_id: string | null;
+	data: Record<string, unknown>;
+	created_at: string;
+}
 
 export interface InvoiceLineItemInput {
 	description: string;
@@ -70,11 +97,21 @@ export interface Invoice {
 	sent_at: string | null;
 	paid_at: string | null;
 	voided_at: string | null;
+	void_reason: string | null;
+	voided_by: string | null;
+	replaces_invoice_id: string | null;
+	replaced_by_invoice_id: string | null;
 	pdf_path: string | null;
 	created_at: string;
 	updated_at: string;
 	line_items: InvoiceLineItem[];
 	documents: InvoiceDocument[];
+	payments: InvoicePayment[];
+	events: InvoiceEvent[];
+	amount_paid: number;
+	balance_due: number;
+	payment_count: number;
+	is_overdue: boolean;
 	/** Present on the issue/resend responses only. */
 	email_delivery?: InvoiceEmailDelivery;
 }
@@ -158,6 +195,13 @@ function normalizeInvoice(invoice: Invoice): Invoice {
 		...invoice,
 		subtotal: Number(invoice.subtotal ?? 0),
 		total: Number(invoice.total ?? 0),
+		amount_paid: Number(invoice.amount_paid ?? 0),
+		balance_due: Number(invoice.balance_due ?? invoice.total ?? 0),
+		payments: (invoice.payments ?? []).map((payment) => ({
+			...payment,
+			amount: Number(payment.amount ?? 0),
+		})),
+		events: invoice.events ?? [],
 		line_items: (invoice.line_items ?? []).map((line) => ({
 			...line,
 			quantity: Number(line.quantity ?? 0),
@@ -286,6 +330,51 @@ export const invoiceService = {
 					"Failed to re-send the invoice",
 				),
 			);
+		}
+	},
+
+	async recordPayment(
+		invoiceId: string,
+		payload: {
+			amount: number;
+			payment_date: string;
+			payment_method?: string;
+			reference?: string;
+			note?: string;
+		},
+	): Promise<Invoice> {
+		try {
+			const { data } = await apiClient.post<{ data: Invoice }>(
+				`/api/invoices/${invoiceId}/payments`,
+				payload,
+			);
+			return normalizeInvoice(data.data);
+		} catch (err) {
+			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to record payment"));
+		}
+	},
+
+	async reversePayment(invoiceId: string, paymentId: string, reason: string): Promise<Invoice> {
+		try {
+			const { data } = await apiClient.post<{ data: Invoice }>(
+				`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`,
+				{ reason },
+			);
+			return normalizeInvoice(data.data);
+		} catch (err) {
+			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to reverse payment"));
+		}
+	},
+
+	async voidAndReplace(invoiceId: string, reason: string): Promise<{ voided: Invoice; replacement: Invoice }> {
+		try {
+			const { data } = await apiClient.post<{ data: { voided: Invoice; replacement: Invoice } }>(
+				`/api/invoices/${invoiceId}/void-and-replace`,
+				{ reason },
+			);
+			return { voided: normalizeInvoice(data.data.voided), replacement: normalizeInvoice(data.data.replacement) };
+		} catch (err) {
+			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to void and replace invoice"));
 		}
 	},
 

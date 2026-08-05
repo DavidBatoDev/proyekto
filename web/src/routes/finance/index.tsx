@@ -1204,11 +1204,23 @@ function PortfolioOverview({
 								<CircleDollarSign className="h-5 w-5" />
 							</span>
 						</div>
-						<div className="mt-5 grid grid-cols-2 gap-4 border-t border-border/70 pt-4">
+						<div className="mt-5 grid grid-cols-2 gap-4 border-t border-border/70 pt-4 sm:grid-cols-4">
 							<div>
-								<p className="text-xs text-muted-foreground">Revenue</p>
+								<p className="text-xs text-muted-foreground">Billed</p>
 								<p className="mt-1 font-semibold text-foreground tabular-nums">
 									{formatCurrency(total.revenue, total.currency)}
+								</p>
+							</div>
+							<div>
+								<p className="text-xs text-muted-foreground">Collected</p>
+								<p className="mt-1 font-semibold text-foreground tabular-nums">
+									{formatCurrency(total.collected, total.currency)}
+								</p>
+							</div>
+							<div>
+								<p className="text-xs text-muted-foreground">Outstanding</p>
+								<p className="mt-1 font-semibold text-foreground tabular-nums">
+									{formatCurrency(total.outstanding, total.currency)}
 								</p>
 							</div>
 							<div>
