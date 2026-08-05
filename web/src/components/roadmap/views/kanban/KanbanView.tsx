@@ -14,7 +14,10 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useRoadmapStore } from "@/stores/roadmapStore";
+import {
+	type KanbanBoardFilters,
+	useRoadmapStore,
+} from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
@@ -28,6 +31,27 @@ import {
 } from "./selectors";
 
 type ColumnMap = Record<string, KanbanTaskContext[]>;
+
+function emptyBoardFilters(): KanbanBoardFilters {
+	return {
+		epicIds: [],
+		featureIds: [],
+		milestoneIds: [],
+		assigneeIds: [],
+	};
+}
+
+function loadBoardFilters(raw: string | null): KanbanBoardFilters {
+	if (!raw) return emptyBoardFilters();
+	const stored = JSON.parse(raw) as Partial<KanbanBoardFilters> | null;
+	if (!stored || typeof stored !== "object") return emptyBoardFilters();
+	return {
+		epicIds: stored.epicIds ?? [],
+		featureIds: stored.featureIds ?? [],
+		milestoneIds: stored.milestoneIds ?? [],
+		assigneeIds: stored.assigneeIds ?? [],
+	};
+}
 
 function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
 	const map: ColumnMap = {};
@@ -95,20 +119,9 @@ export function KanbanView() {
 		if (!roadmapId) return;
 		try {
 			const raw = sessionStorage.getItem(`wi_filters_${roadmapId}`);
-			setBoardFilters(
-				raw
-					? (JSON.parse(
-							raw,
-						) as import("@/stores/roadmapStore").KanbanBoardFilters)
-					: { epicIds: [], featureIds: [], milestoneIds: [], assigneeIds: [] },
-			);
+			setBoardFilters(loadBoardFilters(raw));
 		} catch {
-			setBoardFilters({
-				epicIds: [],
-				featureIds: [],
-				milestoneIds: [],
-				assigneeIds: [],
-			});
+			setBoardFilters(emptyBoardFilters());
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [roadmapId]);

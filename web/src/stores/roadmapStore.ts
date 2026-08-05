@@ -30,7 +30,6 @@ export interface KanbanBoardFilters {
 	featureIds: string[];
 	milestoneIds: string[];
 	assigneeIds: string[];
-	statuses: string[];
 }
 
 const EMPTY_BOARD_FILTERS: KanbanBoardFilters = {
@@ -38,7 +37,6 @@ const EMPTY_BOARD_FILTERS: KanbanBoardFilters = {
 	featureIds: [],
 	milestoneIds: [],
 	assigneeIds: [],
-	statuses: [],
 };
 
 interface RoadmapState {

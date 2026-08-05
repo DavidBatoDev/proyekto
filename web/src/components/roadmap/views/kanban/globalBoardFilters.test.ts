@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import {
 	applyFilters,
 	EMPTY_FILTERS,
 	type GlobalBoardFilters,
+	loadGlobalFilters,
 	pickDefaultProjectId,
 	resolveFilters,
 } from "./globalBoardFilters";
@@ -118,7 +119,6 @@ describe("resolveFilters", () => {
 			epicId: "e1",
 			featureId: "f1",
 			assigneeIds: ["u1"],
-			statuses: [],
 		};
 		expect(resolveFilters(filters, roadmaps)).toBe(filters);
 	});
@@ -129,14 +129,12 @@ describe("resolveFilters", () => {
 			epicId: "e1",
 			featureId: "f1",
 			assigneeIds: ["u1"],
-			statuses: [],
 		};
 		expect(resolveFilters(filters, roadmaps)).toEqual({
 			projectId: "p2",
 			epicId: null,
 			featureId: null,
 			assigneeIds: ["u1"],
-			statuses: [],
 		});
 	});
 
@@ -145,6 +143,18 @@ describe("resolveFilters", () => {
 			roadmap("r1", "2026-01-05T00:00:00Z", null),
 		]);
 		expect(resolved.projectId).toBeNull();
+	});
+});
+
+describe("loadGlobalFilters", () => {
+	it("drops the legacy persisted status filter", () => {
+		vi.stubGlobal("sessionStorage", {
+			getItem: () =>
+				JSON.stringify({ ...EMPTY_FILTERS, statuses: ["in_progress"] }),
+		});
+
+		expect(loadGlobalFilters()).toEqual(EMPTY_FILTERS);
+		vi.unstubAllGlobals();
 	});
 });
 
@@ -178,17 +188,4 @@ describe("applyFilters", () => {
 		expect(filtered.map((r) => r.task.id)).toEqual(["t3"]);
 	});
 
-	it("filters tasks by status", () => {
-		const testRows = [
-			{ ...row("t1"), task: { id: "t1", title: "t1", status: "todo" } },
-			{ ...row("t2"), task: { id: "t2", title: "t2", status: "in_progress" } },
-			{ ...row("t3"), task: { id: "t3", title: "t3", status: "done" } },
-		] as KanbanTaskContext[];
-
-		const filtered = applyFilters(testRows, {
-			...EMPTY_FILTERS,
-			statuses: ["in_progress"],
-		});
-		expect(filtered.map((r) => r.task.id)).toEqual(["t2"]);
-	});
 });

@@ -121,7 +121,7 @@ function ScrollRow({ children }: { children: ReactNode }) {
 	return (
 		<div
 			ref={ref}
-			className={`flex items-center gap-2 overflow-x-auto min-w-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${maskClass}`}
+			className={`flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${maskClass}`}
 		>
 			{children}
 		</div>
@@ -393,7 +393,6 @@ export function GlobalKanbanFilters({
 			epicId: null,
 			featureId: null,
 			assigneeIds: filters.assigneeIds,
-			statuses: filters.statuses,
 		});
 
 	const selectEpic = (id: string | null) =>
@@ -410,29 +409,16 @@ export function GlobalKanbanFilters({
 				: [...filters.assigneeIds, id],
 		});
 
-	const selectStatus = (id: string | null) =>
-		onChange({ ...filters, statuses: id ? [id] : [] });
-
 	// The project scope is mandatory, so it never counts as a "clearable" filter.
 	const hasAny =
 		!!filters.epicId ||
 		!!filters.featureId ||
 		filters.assigneeIds.length > 0 ||
-		(filters.statuses?.length ?? 0) > 0 ||
 		searchQuery.trim().length > 0;
 
-	const taskStatusOptions: PillOption[] = [
-		{ id: "todo", label: "To Do" },
-		{ id: "in_progress", label: "In Progress" },
-		{ id: "in_review", label: "In Review" },
-		{ id: "done", label: "Done" },
-		{ id: "blocked", label: "Blocked" },
-		{ id: "backlog", label: "Backlog" },
-	];
-
 	return (
-		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-border bg-card text-card-foreground">
-			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-border relative">
+		<div className="relative grid min-w-0 grid-cols-10 gap-6 px-4 py-3 border-b border-border bg-card text-card-foreground">
+			<div className="col-span-7 min-w-0 flex flex-col gap-2.5 pr-6 border-r border-border relative">
 				<div className="flex items-center min-w-0">
 					<FilterRow
 						tagLabel="Projects"
@@ -460,17 +446,8 @@ export function GlobalKanbanFilters({
 						onSelect={selectFeature}
 					/>
 				</div>
-				<div className="relative pl-24 flex items-center min-w-0">
-					<div className="absolute left-20 top-[-23px] w-4 h-[36px] border-l-2 border-b-2 border-slate-300 rounded-bl-xl pointer-events-none" />
-					<FilterRow
-						tagLabel="Status"
-						options={taskStatusOptions}
-						selectedId={filters.statuses?.[0] ?? null}
-						onSelect={selectStatus}
-					/>
-				</div>
 			</div>
-			<div className="col-span-3 flex flex-col gap-2.5">
+			<div className="col-span-3 min-w-0 flex flex-col gap-2.5">
 				<AssigneesDropdown
 					options={assigneeOptions}
 					selected={filters.assigneeIds}
@@ -502,12 +479,11 @@ export function GlobalKanbanFilters({
 						onClick={() => {
 							onSearchChange("");
 							onChange({
-								projectId: filters.projectId,
-								epicId: null,
-								featureId: null,
-								assigneeIds: [],
-								statuses: [],
-							});
+							projectId: filters.projectId,
+							epicId: null,
+							featureId: null,
+							assigneeIds: [],
+						});
 						}}
 						className={`shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${
 							hasAny ? "" : "invisible"
@@ -519,6 +495,14 @@ export function GlobalKanbanFilters({
 					</button>
 				</div>
 			</div>
+			<button
+				type="button"
+				className="absolute right-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 text-[11px] font-semibold text-slate-500 transition-colors hover:border-slate-500 hover:text-slate-700"
+				aria-label="How to scroll horizontally"
+				title="Horizontal scrolling: hold Shift while using the mouse wheel, or swipe sideways on a trackpad."
+			>
+				?
+			</button>
 		</div>
 	);
 }
