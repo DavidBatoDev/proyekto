@@ -4,12 +4,14 @@
  * currently drafts by hand in Google Docs, so a generated agreement reads the
  * same as the one the team already sends.
  *
- * `{{provider}}` / `{{client}}` are substituted at render time from the
- * contract's party fields; anything else is literal.
+ * Party variables are substituted at render time from the contract's party
+ * fields. `{{provider}}` / `{{client}}` remain supported aliases.
  */
 
 export interface ContractClause {
   key: string;
+  /** Optional parent clause key. Missing/null clauses are top-level sections. */
+  parent_key?: string | null;
   title: string;
   body: string;
   position: number;
@@ -91,12 +93,53 @@ export function defaultContractClauses(): ContractClause[] {
 /** Substitutes the party placeholders for rendering. */
 export function renderClauseBody(
   body: string,
-  parties: { provider?: string | null; client?: string | null },
+  parties: {
+    provider?: string | null;
+    client?: string | null;
+    providerName?: string | null;
+    providerAddress?: string | null;
+    providerEmail?: string | null;
+    providerTin?: string | null;
+    providerKind?: string | null;
+    clientName?: string | null;
+    clientContactName?: string | null;
+    clientAddress?: string | null;
+    clientEmail?: string | null;
+    clientTin?: string | null;
+  },
 ): string {
-  return body
-    .replace(
-      /\{\{provider\}\}/g,
-      parties.provider?.trim() || 'the service provider',
-    )
-    .replace(/\{\{client\}\}/g, parties.client?.trim() || 'the client');
+  const values: Record<string, string> = {
+    '{{provider}}':
+      parties.provider?.trim() ||
+      parties.providerName?.trim() ||
+      'the service provider',
+    '{{client}}':
+      parties.client?.trim() || parties.clientName?.trim() || 'the client',
+    '{{provider_name}}':
+      parties.providerName?.trim() ||
+      parties.provider?.trim() ||
+      'Service Provider',
+    '{{provider_address}}':
+      parties.providerAddress?.trim() || 'Service provider address',
+    '{{provider_email}}':
+      parties.providerEmail?.trim() || 'Service provider email',
+    '{{provider_tin}}': parties.providerTin?.trim() || 'Service provider TIN',
+    '{{provider_kind}}':
+      parties.providerKind?.trim() === 'agency'
+        ? 'Agency or company'
+        : parties.providerKind?.trim() === 'individual'
+          ? 'Individual contractor'
+          : 'Service provider type',
+    '{{client_name}}':
+      parties.clientName?.trim() || parties.client?.trim() || 'Client',
+    '{{client_contact_name}}':
+      parties.clientContactName?.trim() || 'Client contact person',
+    '{{client_address}}': parties.clientAddress?.trim() || 'Client address',
+    '{{client_email}}': parties.clientEmail?.trim() || 'Client email',
+    '{{client_tin}}': parties.clientTin?.trim() || 'Client TIN',
+  };
+  return Object.entries(values).reduce(
+    (rendered, [token, value]) => rendered.replaceAll(token, value),
+    body,
+  );
 }

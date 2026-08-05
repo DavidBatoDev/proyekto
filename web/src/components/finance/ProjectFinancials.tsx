@@ -1,72 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Loader2, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import {
 	AppSectionHeader,
 	AppStatCard,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import { BudgetSplitPanel } from "@/components/financials/BudgetSplitPanel";
 import {
 	MarginTrendChart,
 	RevenueCostChart,
 } from "@/components/financials/FinancialsCharts";
-import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { formatCurrency } from "@/lib/currency";
 import {
 	financialsService,
 	type ProjectFinancials,
 } from "@/services/financials.service";
-import { projectService } from "@/services/project.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/project/$projectId/financials")({
-	beforeLoad: () => {
-		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
-	},
-	component: FinancialsRoute,
-});
-
-// Margins are internal — `access.financials` defaults to owner/admin,
-// consultant-origin, and the client (who funds the work).
-function FinancialsRoute() {
-	const { projectId } = Route.useParams();
-	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<RequireProjectAccess projectId={projectId} access="financials">
-				<FinancialsPage />
-			</RequireProjectAccess>
-		</div>
-	);
-}
-
-function FinancialsPage() {
-	const { projectId } = Route.useParams();
-	const user = useUser();
-
+export function ProjectFinancials({ projectId }: { projectId: string }) {
 	const financialsQuery = useQuery({
 		queryKey: ["project", projectId, "financials"],
 		queryFn: () => financialsService.getProjectFinancials(projectId),
 	});
 	const fin = financialsQuery.data;
 
-	// Same predicate the backend enforces on the economics endpoints: the
-	// consultant of record, or someone holding the project-settings capability
-	// (owner/admin). Never a client-origin share.
-	const projectQuery = useQuery({
-		queryKey: ["project", projectId],
-		queryFn: () => projectService.get(projectId),
-	});
-	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
-	const canSeeInternal = Boolean(
-		(user?.id && projectQuery.data?.consultant_id === user.id) ||
-			permissionsQuery.data?.project?.settings === true,
-	);
-
 	return (
-		<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
+		<div className="w-full py-6">
 			<AppSurfaceCard strong className="mb-6 p-6">
 				<AppSectionHeader
 					kicker="Finance"
@@ -83,13 +41,9 @@ function FinancialsPage() {
 				<FinancialsBody fin={fin} />
 			) : null}
 
-			{/* Margin and per-member pay are internal even within Financials — this
-			    block is gated separately from the revenue view above. */}
-			{canSeeInternal && (
-				<div className="mt-6">
-					<BudgetSplitPanel projectId={projectId} />
-				</div>
-			)}
+			<div className="mt-6">
+				<BudgetSplitPanel projectId={projectId} />
+			</div>
 		</div>
 	);
 }

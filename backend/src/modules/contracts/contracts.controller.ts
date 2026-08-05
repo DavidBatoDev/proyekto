@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -58,6 +59,14 @@ export class ContractsController {
     @Body() dto: UpdateContractDto,
   ) {
     return this.contracts.updateContract(user.id, id, dto);
+  }
+
+  @Delete(':id')
+  delete(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.contracts.deleteContract(user.id, id);
   }
 
   @Post(':id/sign')

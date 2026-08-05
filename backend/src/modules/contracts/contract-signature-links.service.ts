@@ -19,7 +19,7 @@ import {
 } from '../../common/mail/templates/layout';
 import { renderTextEmail } from '../../common/mail/templates/text';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { UploadsService } from '../uploads/uploads.controller';
 import {
   ContractRow,
@@ -132,7 +132,7 @@ export class ContractSignatureLinksService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly contracts: ContractsService,
-    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
@@ -146,7 +146,7 @@ export class ContractSignatureLinksService {
     contractId: string,
   ): Promise<SignatureLinkSummary | null> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.projectAuth.assertRole(callerId, contract.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, contract.project_id);
 
     const row = await this.activeLinkRow(contractId);
     return row ? this.toSummary(row) : null;
@@ -184,7 +184,7 @@ export class ContractSignatureLinksService {
     dto: CreateSignatureLinkDto,
   ): Promise<SignatureLinkSummary> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.projectAuth.assertRole(callerId, contract.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, contract.project_id);
 
     if (contract.status === 'ended' || contract.status === 'cancelled') {
       throw new BadRequestException(
@@ -242,7 +242,7 @@ export class ContractSignatureLinksService {
 
   async revokeLink(callerId: string, contractId: string): Promise<void> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.projectAuth.assertRole(callerId, contract.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, contract.project_id);
 
     // Capture the recipient before revoking — afterwards the active-link query
     // returns nothing and we would have nobody to notify.

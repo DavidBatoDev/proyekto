@@ -82,9 +82,6 @@ function buildAdmin(): ProjectPermissions {
 	return applyPaths(buildEditor(), {
 		"access.project_settings": true,
 		"time.view_team_logs": true,
-		"access.contract": true,
-		"access.invoices": true,
-		"access.financials": true,
 		"roadmap.promote": true,
 		"roadmap.view_internal": true,
 		"roadmap.dev_mode": true,

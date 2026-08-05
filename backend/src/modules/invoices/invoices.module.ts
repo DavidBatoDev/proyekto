@@ -7,6 +7,7 @@ import { ProjectsModule } from '../projects/projects.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { UploadsModule } from '../uploads/uploads.module';
+import { FinanceModule } from '../finance/finance.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { UploadsModule } from '../uploads/uploads.module';
     NotificationsModule,
     ContractsModule,
     UploadsModule,
+    FinanceModule,
   ],
   controllers: [InvoicesController],
   providers: [

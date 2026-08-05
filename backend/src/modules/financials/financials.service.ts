@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 
 interface MonthBucket {
   month: string; // YYYY-MM
@@ -57,7 +57,7 @@ export interface ProjectFinancials {
 export class FinancialsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
   ) {}
 
   async getProjectFinancials(
@@ -65,7 +65,7 @@ export class FinancialsService {
     projectId: string,
     range?: { from?: string; to?: string },
   ): Promise<ProjectFinancials> {
-    await this.projectAuth.assertRole(callerId, projectId, 'admin');
+    await this.financeAccess.assertProject(callerId, projectId);
 
     const [project, economics, invoices, logs] = await Promise.all([
       this.getProject(projectId),

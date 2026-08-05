@@ -20,4 +20,17 @@ describe("dashboard primary navigation", () => {
 			false,
 		);
 	});
+
+	it("keeps consultant finance outside project routes", () => {
+		const finance = DASHBOARD_PRIMARY_NAV_ITEMS.find(
+			(item) => item.key === "finance",
+		);
+		if (!finance) throw new Error("Finance navigation is missing");
+
+		expect(finance.to).toBe("/finance");
+		expect(isDashboardPrimaryNavItemActive(finance, "/finance")).toBe(true);
+		expect(
+			isDashboardPrimaryNavItemActive(finance, "/finance/invoices/new"),
+		).toBe(true);
+	});
 });

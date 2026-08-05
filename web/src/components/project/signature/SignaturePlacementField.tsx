@@ -32,6 +32,7 @@ export function SignaturePlacementField({
 	busy,
 	onCommit,
 	className = "",
+	compact = false,
 }: {
 	imageUrl: string;
 	alt: string;
@@ -41,6 +42,7 @@ export function SignaturePlacementField({
 	/** Fires once per gesture, on release. */
 	onCommit: (placement: Partial<SignaturePlacement>) => void;
 	className?: string;
+	compact?: boolean;
 }) {
 	// Local copy so the overlay tracks the cursor; the server value lands on
 	// release and this re-syncs to it.
@@ -159,15 +161,22 @@ export function SignaturePlacementField({
 			</div>
 
 			{editable && (
-				<div className="mt-2 space-y-1.5">
+				<div className={compact ? "mt-1.5 space-y-1" : "mt-2 space-y-1.5"}>
 					<SignatureSizeControl
 						scale={placement.scale}
 						disabled={busy}
+						compact={compact}
 						onPreview={(scale) => setDraft((prev) => ({ ...prev, scale }))}
 						onCommit={(scale) => onCommit({ scale })}
 					/>
 					<div className="flex items-center justify-between gap-2">
-						<p className="text-[11px] text-muted-foreground">
+						<p
+							className={
+								compact
+									? "text-[10px] leading-3.5 text-muted-foreground"
+									: "text-[11px] text-muted-foreground"
+							}
+						>
 							Drag the signature onto the line — arrow keys nudge it.
 						</p>
 						{isPlaced && (
@@ -178,7 +187,7 @@ export function SignaturePlacementField({
 									onCommit(DEFAULT_SIGNATURE_PLACEMENT);
 								}}
 								disabled={busy}
-								className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
+								className={`shrink-0 rounded-md px-1.5 py-0.5 font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50 ${compact ? "text-[10px]" : "text-[11px]"}`}
 							>
 								Reset
 							</button>
@@ -201,6 +210,7 @@ export function SignatureSizeControl({
 	onPreview,
 	onCommit,
 	className = "",
+	compact = false,
 }: {
 	scale: number;
 	disabled?: boolean;
@@ -209,6 +219,7 @@ export function SignatureSizeControl({
 	/** Fires on release — the only point anything is persisted. */
 	onCommit: (scale: number) => void;
 	className?: string;
+	compact?: boolean;
 }) {
 	const [draft, setDraft] = useState(scale);
 	// Follow the server once a save lands (or another device changes it).
@@ -216,7 +227,9 @@ export function SignatureSizeControl({
 
 	return (
 		<div className={`flex items-center gap-2 ${className}`}>
-			<span className="text-[11px] font-medium text-muted-foreground">
+			<span
+				className={`${compact ? "text-[10px]" : "text-[11px]"} font-medium text-muted-foreground`}
+			>
 				Size
 			</span>
 			<input
@@ -236,7 +249,9 @@ export function SignatureSizeControl({
 				onKeyUp={() => onCommit(draft)}
 				className="h-1 flex-1 cursor-pointer accent-primary disabled:opacity-50"
 			/>
-			<span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+			<span
+				className={`w-9 text-right tabular-nums text-muted-foreground ${compact ? "text-[10px]" : "text-[11px]"}`}
+			>
 				{Math.round(draft * 100)}%
 			</span>
 		</div>

@@ -189,8 +189,9 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 			});
 			if (!invoiceId) {
 				void navigate({
-					to: "/project/$projectId/invoices/$invoiceId/edit",
-					params: { projectId, invoiceId: inv.id },
+					to: "/finance/invoices/$invoiceId/edit",
+					params: { invoiceId: inv.id },
+					search: { projectId },
 				});
 			} else {
 				void qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
@@ -241,8 +242,8 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 				queryKey: ["invoices", "project", projectId],
 			});
 			void navigate({
-				to: "/project/$projectId/payments",
-				params: { projectId },
+				to: "/finance",
+				search: { tab: "invoices", projectId },
 			});
 		},
 		onError: (err: Error) => {

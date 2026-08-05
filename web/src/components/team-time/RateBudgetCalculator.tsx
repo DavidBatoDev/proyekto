@@ -548,8 +548,8 @@ function MemberCard({
 					}
 					action={
 						<Link
-							to="/project/$projectId/financials"
-							params={{ projectId }}
+							to="/finance"
+							search={{ tab: "overview", projectId }}
 							className="text-[11px] font-semibold text-blue-600 hover:underline"
 						>
 							Edit split

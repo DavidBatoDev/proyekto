@@ -8,6 +8,7 @@ export const DASHBOARD_PRIMARY_NAV_ITEMS = [
 		match: "exact",
 	},
 	{ key: "meetings", to: "/meetings", label: "Meetings", match: "prefix" },
+	{ key: "finance", to: "/finance", label: "Finance", match: "prefix" },
 ] as const;
 
 export type DashboardPrimaryNavItem =

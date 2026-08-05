@@ -40,6 +40,8 @@ export type ContractEditScope = "this" | "following" | "all";
 
 export interface ContractClause {
 	key: string;
+	/** A nested clause's direct parent. Missing/null means a top-level clause. */
+	parent_key?: string | null;
 	title: string;
 	body: string;
 	position: number;
@@ -291,6 +293,17 @@ function normalizeContract(contract: Contract): Contract {
 }
 
 export const contractService = {
+	async getById(contractId: string): Promise<Contract> {
+		try {
+			const { data } = await apiClient.get<{ data: Contract }>(
+				`/api/contracts/${contractId}`,
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to load the contract");
+		}
+	},
+
 	async listByProject(projectId: string): Promise<Contract[]> {
 		try {
 			const { data } = await apiClient.get<{ data: Contract[] }>(
@@ -329,6 +342,14 @@ export const contractService = {
 			return normalizeContract(data.data);
 		} catch (err) {
 			fail(err, "Failed to save the contract");
+		}
+	},
+
+	async delete(contractId: string): Promise<void> {
+		try {
+			await apiClient.delete(`/api/contracts/${contractId}`);
+		} catch (err) {
+			fail(err, "Failed to delete the contract");
 		}
 	},
 

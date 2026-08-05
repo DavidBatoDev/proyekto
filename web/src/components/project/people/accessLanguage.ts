@@ -17,9 +17,6 @@ const SECTION_LABELS: Array<{ field: string; label: string }> = [
 	{ field: "chat", label: "Chat" },
 	{ field: "resources", label: "Resources" },
 	{ field: "time", label: "Time" },
-	{ field: "contract", label: "Contract" },
-	{ field: "invoices", label: "Invoices" },
-	{ field: "financials", label: "Financials" },
 	{ field: "project_settings", label: "Project settings" },
 ];
 

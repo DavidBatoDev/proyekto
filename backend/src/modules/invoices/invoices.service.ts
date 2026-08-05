@@ -4,11 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { MailerService } from '../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadsService } from '../uploads/uploads.controller';
 import {
@@ -147,13 +146,12 @@ interface ComposeLinesInput {
 export class InvoicesService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly notifications: NotificationsService,
     private readonly contracts: ContractsService,
     private readonly composition: InvoiceCompositionService,
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
-    private readonly config: ConfigService,
   ) {}
 
   async listProjectInvoices(
@@ -161,7 +159,7 @@ export class InvoicesService {
     projectId: string,
     query: InvoiceListQueryDto,
   ): Promise<{ items: InvoiceWithLines[]; total: number }> {
-    await this.projectAuth.assertRole(callerId, projectId, 'viewer');
+    await this.financeAccess.assertProject(callerId, projectId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
     const offset = (page - 1) * limit;
@@ -194,7 +192,7 @@ export class InvoicesService {
     callerId: string,
     dto: CreateInvoiceDto,
   ): Promise<InvoiceWithLines> {
-    await this.projectAuth.assertRole(callerId, dto.project_id, 'editor');
+    await this.financeAccess.assertProject(callerId, dto.project_id);
 
     // A live contract governs pricing whenever one exists — the client rate,
     // the parties on the document, and the payment terms all come from it.
@@ -321,7 +319,7 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
     return invoice;
   }
 
@@ -331,7 +329,7 @@ export class InvoicesService {
     dto: UpdateInvoiceDto,
   ): Promise<InvoiceWithLines> {
     const existing = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, existing.project_id, 'editor');
+    await this.financeAccess.assertProject(callerId, existing.project_id);
     if (existing.status === 'paid' || existing.status === 'void') {
       throw new BadRequestException(
         `Cannot edit an invoice that is ${existing.status}.`,
@@ -403,7 +401,7 @@ export class InvoicesService {
    */
   async deleteInvoice(callerId: string, invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -424,7 +422,7 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
 
     if (invoice.status !== 'draft' && invoice.status !== 'issued') {
       throw new BadRequestException(
@@ -465,7 +463,7 @@ export class InvoicesService {
             currency: invoice.currency,
             message: `Invoice ${invoice.number} has been issued.`,
           },
-          link_url: `/project/${invoice.project_id}/payments`,
+          link_url: `/project/${invoice.project_id}/overview`,
         });
       }
     } catch {
@@ -501,20 +499,16 @@ export class InvoicesService {
     // Render fresh rather than trusting a stale stored PDF, and store it via
     // the normal path so the document row and `pdf_path` are recorded too —
     // what the client received is then exactly what "Open" shows.
-    let pdf: Buffer | null = null;
+    let pdf: Buffer;
     try {
       pdf = (await this.renderAndStorePdf(invoice, callerId)).buffer;
     } catch {
-      // Send the email without the attachment rather than not at all.
-      pdf = null;
+      return {
+        sent: false,
+        reason: 'The invoice PDF could not be generated. Try sending it again.',
+      };
     }
 
-    // CLIENT_URL is the registered, always-present base URL (env.validation.ts
-    // defaults it). APP_URL is only read as an override — it is NOT declared
-    // there, so relying on it alone would put localhost links in client email.
-    const appUrl =
-      this.config.get<string>('APP_URL') ??
-      this.config.get<string>('CLIENT_URL', 'http://localhost:3000');
     const result = await this.mailer.send({
       to,
       sender: 'billing',
@@ -526,18 +520,15 @@ export class InvoicesService {
       subject: `Invoice ${invoice.number} from ${invoice.issued_by?.name ?? 'your service provider'}`,
       html: buildInvoiceEmailHtml({
         invoice,
-        link: `${appUrl}/project/${invoice.project_id}/payments`,
-        hasAttachment: Boolean(pdf),
+        hasAttachment: true,
       }),
-      attachments: pdf
-        ? [
-            {
-              filename: `${invoice.number}.pdf`,
-              contentType: 'application/pdf',
-              content: pdf,
-            },
-          ]
-        : undefined,
+      attachments: [
+        {
+          filename: `${invoice.number}.pdf`,
+          contentType: 'application/pdf',
+          content: pdf,
+        },
+      ],
     });
 
     if (result.sent) {
@@ -609,7 +600,7 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceRecipient> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
     return this.resolveRecipient(invoice);
   }
 
@@ -622,7 +613,7 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceEmailDelivery> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
     if (invoice.status === 'draft') {
       throw new BadRequestException(
         'This invoice is still a draft. Issue it to send it to the client.',
@@ -668,7 +659,7 @@ export class InvoicesService {
     generated_at: string;
   }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
     const stored = await this.renderAndStorePdf(invoice, callerId);
     // Drop the rendered bytes — this is an HTTP response, not a download.
     return {
@@ -788,7 +779,7 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<{ url: string; expires_in: number }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.projectAuth.assertRole(callerId, invoice.project_id, 'viewer');
+    await this.financeAccess.assertProject(callerId, invoice.project_id);
     if (!invoice.pdf_path) {
       throw new NotFoundException(
         'This invoice has no generated PDF yet. Generate it first.',

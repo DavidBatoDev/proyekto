@@ -25,6 +25,7 @@ import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-temp
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-templates/index'
+import { Route as FinanceIndexRouteImport } from './routes/finance/index'
 import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as TeamsTeamIdRouteImport } from './routes/teams/$teamId'
@@ -38,6 +39,7 @@ import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileI
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth/authorize'
 import { Route as FreelancerInvitesRouteImport } from './routes/freelancer/invites'
 import { Route as FreelancerGoLiveRouteImport } from './routes/freelancer/go-live'
+import { Route as FinanceContractIdRouteImport } from './routes/finance/$contractId'
 import { Route as ConsultantTemplatesRouteImport } from './routes/consultant/templates'
 import { Route as ConsultantMarketplaceRouteImport } from './routes/consultant/marketplace'
 import { Route as ConsultantBrowseRouteImport } from './routes/consultant/browse'
@@ -60,11 +62,9 @@ import { Route as ProjectProjectIdWorkItemsRouteImport } from './routes/project/
 import { Route as ProjectProjectIdTimeRouteImport } from './routes/project/$projectId/time'
 import { Route as ProjectProjectIdRoadmapRouteImport } from './routes/project/$projectId/roadmap'
 import { Route as ProjectProjectIdResourcesRouteImport } from './routes/project/$projectId/resources'
-import { Route as ProjectProjectIdPaymentsRouteImport } from './routes/project/$projectId/payments'
 import { Route as ProjectProjectIdOverviewRouteImport } from './routes/project/$projectId/overview'
 import { Route as ProjectProjectIdLogsRouteImport } from './routes/project/$projectId/logs'
-import { Route as ProjectProjectIdFinancialsRouteImport } from './routes/project/$projectId/financials'
-import { Route as ProjectProjectIdContractRouteImport } from './routes/project/$projectId/contract'
+import { Route as FinanceInvoicesNewRouteImport } from './routes/finance/invoices/new'
 import { Route as ContractSignTokenRouteImport } from './routes/contract/sign/$token'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
@@ -93,12 +93,11 @@ import { Route as ProjectProjectIdSettingsPermissionsRouteImport } from './route
 import { Route as ProjectProjectIdSettingsGeneralRouteImport } from './routes/project/$projectId/settings/general'
 import { Route as ProjectProjectIdRoadmapCreateRouteImport } from './routes/project/$projectId/roadmap/create'
 import { Route as ProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/project/$projectId/roadmap/$roadmapId'
-import { Route as ProjectProjectIdInvoicesNewRouteImport } from './routes/project/$projectId/invoices/new'
 import { Route as ProjectProjectIdChatChatRefRouteImport } from './routes/project/$projectId/chat/$chatRef'
+import { Route as FinanceInvoicesInvoiceIdEditRouteImport } from './routes/finance/invoices/$invoiceId/edit'
 import { Route as TeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/teams/$teamId/time/manage-rates/index'
 import { Route as TeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/teams/$teamId/time/manage-rates/$userId'
 import { Route as TeamsTeamIdTimeLogLogIdRouteImport } from './routes/teams/$teamId/time/log/$logId'
-import { Route as ProjectProjectIdInvoicesInvoiceIdEditRouteImport } from './routes/project/$projectId/invoices/$invoiceId/edit'
 
 const WorkItemsRoute = WorkItemsRouteImport.update({
   id: '/work-items',
@@ -180,6 +179,11 @@ const RoadmapTemplatesIndexRoute = RoadmapTemplatesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => RoadmapTemplatesRouteRoute,
 } as any)
+const FinanceIndexRoute = FinanceIndexRouteImport.update({
+  id: '/finance/',
+  path: '/finance/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsultantIndexRoute = ConsultantIndexRouteImport.update({
   id: '/consultant/',
   path: '/consultant/',
@@ -243,6 +247,11 @@ const FreelancerInvitesRoute = FreelancerInvitesRouteImport.update({
 const FreelancerGoLiveRoute = FreelancerGoLiveRouteImport.update({
   id: '/freelancer/go-live',
   path: '/freelancer/go-live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceContractIdRoute = FinanceContractIdRouteImport.update({
+  id: '/finance/$contractId',
+  path: '/finance/$contractId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsultantTemplatesRoute = ConsultantTemplatesRouteImport.update({
@@ -357,12 +366,6 @@ const ProjectProjectIdResourcesRoute =
     path: '/resources',
     getParentRoute: () => ProjectProjectIdRoute,
   } as any)
-const ProjectProjectIdPaymentsRoute =
-  ProjectProjectIdPaymentsRouteImport.update({
-    id: '/payments',
-    path: '/payments',
-    getParentRoute: () => ProjectProjectIdRoute,
-  } as any)
 const ProjectProjectIdOverviewRoute =
   ProjectProjectIdOverviewRouteImport.update({
     id: '/overview',
@@ -374,18 +377,11 @@ const ProjectProjectIdLogsRoute = ProjectProjectIdLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => ProjectProjectIdRoute,
 } as any)
-const ProjectProjectIdFinancialsRoute =
-  ProjectProjectIdFinancialsRouteImport.update({
-    id: '/financials',
-    path: '/financials',
-    getParentRoute: () => ProjectProjectIdRoute,
-  } as any)
-const ProjectProjectIdContractRoute =
-  ProjectProjectIdContractRouteImport.update({
-    id: '/contract',
-    path: '/contract',
-    getParentRoute: () => ProjectProjectIdRoute,
-  } as any)
+const FinanceInvoicesNewRoute = FinanceInvoicesNewRouteImport.update({
+  id: '/finance/invoices/new',
+  path: '/finance/invoices/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContractSignTokenRoute = ContractSignTokenRouteImport.update({
   id: '/contract/sign/$token',
   path: '/contract/sign/$token',
@@ -544,17 +540,17 @@ const ProjectProjectIdRoadmapRoadmapIdRoute =
     path: '/$roadmapId',
     getParentRoute: () => ProjectProjectIdRoadmapRoute,
   } as any)
-const ProjectProjectIdInvoicesNewRoute =
-  ProjectProjectIdInvoicesNewRouteImport.update({
-    id: '/invoices/new',
-    path: '/invoices/new',
-    getParentRoute: () => ProjectProjectIdRoute,
-  } as any)
 const ProjectProjectIdChatChatRefRoute =
   ProjectProjectIdChatChatRefRouteImport.update({
     id: '/chat/$chatRef',
     path: '/chat/$chatRef',
     getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
+const FinanceInvoicesInvoiceIdEditRoute =
+  FinanceInvoicesInvoiceIdEditRouteImport.update({
+    id: '/finance/invoices/$invoiceId/edit',
+    path: '/finance/invoices/$invoiceId/edit',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const TeamsTeamIdTimeManageRatesIndexRoute =
   TeamsTeamIdTimeManageRatesIndexRouteImport.update({
@@ -573,12 +569,6 @@ const TeamsTeamIdTimeLogLogIdRoute = TeamsTeamIdTimeLogLogIdRouteImport.update({
   path: '/log/$logId',
   getParentRoute: () => TeamsTeamIdTimeRouteRoute,
 } as any)
-const ProjectProjectIdInvoicesInvoiceIdEditRoute =
-  ProjectProjectIdInvoicesInvoiceIdEditRouteImport.update({
-    id: '/invoices/$invoiceId/edit',
-    path: '/invoices/$invoiceId/edit',
-    getParentRoute: () => ProjectProjectIdRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -609,6 +599,7 @@ export interface FileRoutesByFullPath {
   '/consultant/browse': typeof ConsultantBrowseRoute
   '/consultant/marketplace': typeof ConsultantMarketplaceRoute
   '/consultant/templates': typeof ConsultantTemplatesRoute
+  '/finance/$contractId': typeof FinanceContractIdRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -622,17 +613,16 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
+  '/finance': typeof FinanceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
-  '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
-  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
+  '/finance/invoices/new': typeof FinanceInvoicesNewRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
-  '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
   '/project/$projectId/resources': typeof ProjectProjectIdResourcesRoute
   '/project/$projectId/roadmap': typeof ProjectProjectIdRoadmapRouteWithChildren
   '/project/$projectId/time': typeof ProjectProjectIdTimeRoute
@@ -641,8 +631,8 @@ export interface FileRoutesByFullPath {
   '/teams/me/invites': typeof TeamsMeInvitesRoute
   '/project/roadmap': typeof ProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof TeamsTeamIdIndexRoute
+  '/finance/invoices/$invoiceId/edit': typeof FinanceInvoicesInvoiceIdEditRoute
   '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
-  '/project/$projectId/invoices/new': typeof ProjectProjectIdInvoicesNewRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -667,7 +657,6 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/team': typeof ProjectProjectIdTeamIndexRoute
   '/teams/$teamId/settings': typeof TeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time/': typeof TeamsTeamIdTimeIndexRoute
-  '/project/$projectId/invoices/$invoiceId/edit': typeof ProjectProjectIdInvoicesInvoiceIdEditRoute
   '/teams/$teamId/time/log/$logId': typeof TeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof TeamsTeamIdTimeManageRatesUserIdRoute
   '/teams/$teamId/time/manage-rates': typeof TeamsTeamIdTimeManageRatesIndexRoute
@@ -699,6 +688,7 @@ export interface FileRoutesByTo {
   '/consultant/browse': typeof ConsultantBrowseRoute
   '/consultant/marketplace': typeof ConsultantMarketplaceRoute
   '/consultant/templates': typeof ConsultantTemplatesRoute
+  '/finance/$contractId': typeof FinanceContractIdRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -711,16 +701,15 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
   '/consultant': typeof ConsultantIndexRoute
+  '/finance': typeof FinanceIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
-  '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
-  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
+  '/finance/invoices/new': typeof FinanceInvoicesNewRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
-  '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
   '/project/$projectId/resources': typeof ProjectProjectIdResourcesRoute
   '/project/$projectId/roadmap': typeof ProjectProjectIdRoadmapRouteWithChildren
   '/project/$projectId/time': typeof ProjectProjectIdTimeRoute
@@ -729,8 +718,8 @@ export interface FileRoutesByTo {
   '/teams/me/invites': typeof TeamsMeInvitesRoute
   '/project/roadmap': typeof ProjectRoadmapIndexRoute
   '/teams/$teamId': typeof TeamsTeamIdIndexRoute
+  '/finance/invoices/$invoiceId/edit': typeof FinanceInvoicesInvoiceIdEditRoute
   '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
-  '/project/$projectId/invoices/new': typeof ProjectProjectIdInvoicesNewRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -755,7 +744,6 @@ export interface FileRoutesByTo {
   '/project/$projectId/team': typeof ProjectProjectIdTeamIndexRoute
   '/teams/$teamId/settings': typeof TeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeIndexRoute
-  '/project/$projectId/invoices/$invoiceId/edit': typeof ProjectProjectIdInvoicesInvoiceIdEditRoute
   '/teams/$teamId/time/log/$logId': typeof TeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof TeamsTeamIdTimeManageRatesUserIdRoute
   '/teams/$teamId/time/manage-rates': typeof TeamsTeamIdTimeManageRatesIndexRoute
@@ -790,6 +778,7 @@ export interface FileRoutesById {
   '/consultant/browse': typeof ConsultantBrowseRoute
   '/consultant/marketplace': typeof ConsultantMarketplaceRoute
   '/consultant/templates': typeof ConsultantTemplatesRoute
+  '/finance/$contractId': typeof FinanceContractIdRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -803,17 +792,16 @@ export interface FileRoutesById {
   '/teams/$teamId': typeof TeamsTeamIdRouteWithChildren
   '/admin/': typeof AdminIndexRoute
   '/consultant/': typeof ConsultantIndexRoute
+  '/finance/': typeof FinanceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/teams/$teamId/time': typeof TeamsTeamIdTimeRouteRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
-  '/project/$projectId/contract': typeof ProjectProjectIdContractRoute
-  '/project/$projectId/financials': typeof ProjectProjectIdFinancialsRoute
+  '/finance/invoices/new': typeof FinanceInvoicesNewRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
-  '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
   '/project/$projectId/resources': typeof ProjectProjectIdResourcesRoute
   '/project/$projectId/roadmap': typeof ProjectProjectIdRoadmapRouteWithChildren
   '/project/$projectId/time': typeof ProjectProjectIdTimeRoute
@@ -822,8 +810,8 @@ export interface FileRoutesById {
   '/teams/me/invites': typeof TeamsMeInvitesRoute
   '/project/roadmap/': typeof ProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof TeamsTeamIdIndexRoute
+  '/finance/invoices/$invoiceId/edit': typeof FinanceInvoicesInvoiceIdEditRoute
   '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
-  '/project/$projectId/invoices/new': typeof ProjectProjectIdInvoicesNewRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -848,7 +836,6 @@ export interface FileRoutesById {
   '/project/$projectId/team/': typeof ProjectProjectIdTeamIndexRoute
   '/teams/$teamId/settings/': typeof TeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time/': typeof TeamsTeamIdTimeIndexRoute
-  '/project/$projectId/invoices/$invoiceId/edit': typeof ProjectProjectIdInvoicesInvoiceIdEditRoute
   '/teams/$teamId/time/log/$logId': typeof TeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof TeamsTeamIdTimeManageRatesUserIdRoute
   '/teams/$teamId/time/manage-rates/': typeof TeamsTeamIdTimeManageRatesIndexRoute
@@ -884,6 +871,7 @@ export interface FileRouteTypes {
     | '/consultant/browse'
     | '/consultant/marketplace'
     | '/consultant/templates'
+    | '/finance/$contractId'
     | '/freelancer/go-live'
     | '/freelancer/invites'
     | '/oauth/authorize'
@@ -897,17 +885,16 @@ export interface FileRouteTypes {
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant'
+    | '/finance'
     | '/roadmap-templates/'
     | '/teams'
     | '/teams/$teamId/time'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
-    | '/project/$projectId/contract'
-    | '/project/$projectId/financials'
+    | '/finance/invoices/new'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
-    | '/project/$projectId/payments'
     | '/project/$projectId/resources'
     | '/project/$projectId/roadmap'
     | '/project/$projectId/time'
@@ -916,8 +903,8 @@ export interface FileRouteTypes {
     | '/teams/me/invites'
     | '/project/roadmap'
     | '/teams/$teamId/'
+    | '/finance/invoices/$invoiceId/edit'
     | '/project/$projectId/chat/$chatRef'
-    | '/project/$projectId/invoices/new'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -942,7 +929,6 @@ export interface FileRouteTypes {
     | '/project/$projectId/team'
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time/'
-    | '/project/$projectId/invoices/$invoiceId/edit'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/teams/$teamId/time/manage-rates'
@@ -974,6 +960,7 @@ export interface FileRouteTypes {
     | '/consultant/browse'
     | '/consultant/marketplace'
     | '/consultant/templates'
+    | '/finance/$contractId'
     | '/freelancer/go-live'
     | '/freelancer/invites'
     | '/oauth/authorize'
@@ -986,16 +973,15 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/admin'
     | '/consultant'
+    | '/finance'
     | '/roadmap-templates'
     | '/teams'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
-    | '/project/$projectId/contract'
-    | '/project/$projectId/financials'
+    | '/finance/invoices/new'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
-    | '/project/$projectId/payments'
     | '/project/$projectId/resources'
     | '/project/$projectId/roadmap'
     | '/project/$projectId/time'
@@ -1004,8 +990,8 @@ export interface FileRouteTypes {
     | '/teams/me/invites'
     | '/project/roadmap'
     | '/teams/$teamId'
+    | '/finance/invoices/$invoiceId/edit'
     | '/project/$projectId/chat/$chatRef'
-    | '/project/$projectId/invoices/new'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1030,7 +1016,6 @@ export interface FileRouteTypes {
     | '/project/$projectId/team'
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time'
-    | '/project/$projectId/invoices/$invoiceId/edit'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/teams/$teamId/time/manage-rates'
@@ -1064,6 +1049,7 @@ export interface FileRouteTypes {
     | '/consultant/browse'
     | '/consultant/marketplace'
     | '/consultant/templates'
+    | '/finance/$contractId'
     | '/freelancer/go-live'
     | '/freelancer/invites'
     | '/oauth/authorize'
@@ -1077,17 +1063,16 @@ export interface FileRouteTypes {
     | '/teams/$teamId'
     | '/admin/'
     | '/consultant/'
+    | '/finance/'
     | '/roadmap-templates/'
     | '/teams/'
     | '/teams/$teamId/time'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
-    | '/project/$projectId/contract'
-    | '/project/$projectId/financials'
+    | '/finance/invoices/new'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
-    | '/project/$projectId/payments'
     | '/project/$projectId/resources'
     | '/project/$projectId/roadmap'
     | '/project/$projectId/time'
@@ -1096,8 +1081,8 @@ export interface FileRouteTypes {
     | '/teams/me/invites'
     | '/project/roadmap/'
     | '/teams/$teamId/'
+    | '/finance/invoices/$invoiceId/edit'
     | '/project/$projectId/chat/$chatRef'
-    | '/project/$projectId/invoices/new'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1122,7 +1107,6 @@ export interface FileRouteTypes {
     | '/project/$projectId/team/'
     | '/teams/$teamId/settings/'
     | '/teams/$teamId/time/'
-    | '/project/$projectId/invoices/$invoiceId/edit'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/teams/$teamId/time/manage-rates/'
@@ -1153,6 +1137,7 @@ export interface RootRouteChildren {
   ConsultantBrowseRoute: typeof ConsultantBrowseRoute
   ConsultantMarketplaceRoute: typeof ConsultantMarketplaceRoute
   ConsultantTemplatesRoute: typeof ConsultantTemplatesRoute
+  FinanceContractIdRoute: typeof FinanceContractIdRoute
   FreelancerGoLiveRoute: typeof FreelancerGoLiveRoute
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
@@ -1164,13 +1149,16 @@ export interface RootRouteChildren {
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   TeamsTeamIdRoute: typeof TeamsTeamIdRouteWithChildren
   ConsultantIndexRoute: typeof ConsultantIndexRoute
+  FinanceIndexRoute: typeof FinanceIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
   ContractSignTokenRoute: typeof ContractSignTokenRoute
+  FinanceInvoicesNewRoute: typeof FinanceInvoicesNewRoute
   RoadmapSharedTokenRoute: typeof RoadmapSharedTokenRoute
   TeamsMeInvitesRoute: typeof TeamsMeInvitesRoute
   ProjectRoadmapIndexRoute: typeof ProjectRoadmapIndexRoute
+  FinanceInvoicesInvoiceIdEditRoute: typeof FinanceInvoicesInvoiceIdEditRoute
   ProjectRoadmapConvertRoadmapIdRoute: typeof ProjectRoadmapConvertRoadmapIdRoute
 }
 
@@ -1288,6 +1276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RoadmapTemplatesIndexRouteImport
       parentRoute: typeof RoadmapTemplatesRouteRoute
     }
+    '/finance/': {
+      id: '/finance/'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof FinanceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/consultant/': {
       id: '/consultant/'
       path: '/consultant'
@@ -1377,6 +1372,13 @@ declare module '@tanstack/react-router' {
       path: '/freelancer/go-live'
       fullPath: '/freelancer/go-live'
       preLoaderRoute: typeof FreelancerGoLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/$contractId': {
+      id: '/finance/$contractId'
+      path: '/finance/$contractId'
+      fullPath: '/finance/$contractId'
+      preLoaderRoute: typeof FinanceContractIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/consultant/templates': {
@@ -1533,13 +1535,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdResourcesRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
-    '/project/$projectId/payments': {
-      id: '/project/$projectId/payments'
-      path: '/payments'
-      fullPath: '/project/$projectId/payments'
-      preLoaderRoute: typeof ProjectProjectIdPaymentsRouteImport
-      parentRoute: typeof ProjectProjectIdRoute
-    }
     '/project/$projectId/overview': {
       id: '/project/$projectId/overview'
       path: '/overview'
@@ -1554,19 +1549,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdLogsRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
-    '/project/$projectId/financials': {
-      id: '/project/$projectId/financials'
-      path: '/financials'
-      fullPath: '/project/$projectId/financials'
-      preLoaderRoute: typeof ProjectProjectIdFinancialsRouteImport
-      parentRoute: typeof ProjectProjectIdRoute
-    }
-    '/project/$projectId/contract': {
-      id: '/project/$projectId/contract'
-      path: '/contract'
-      fullPath: '/project/$projectId/contract'
-      preLoaderRoute: typeof ProjectProjectIdContractRouteImport
-      parentRoute: typeof ProjectProjectIdRoute
+    '/finance/invoices/new': {
+      id: '/finance/invoices/new'
+      path: '/finance/invoices/new'
+      fullPath: '/finance/invoices/new'
+      preLoaderRoute: typeof FinanceInvoicesNewRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/contract/sign/$token': {
       id: '/contract/sign/$token'
@@ -1764,19 +1752,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdRoadmapRoadmapIdRouteImport
       parentRoute: typeof ProjectProjectIdRoadmapRoute
     }
-    '/project/$projectId/invoices/new': {
-      id: '/project/$projectId/invoices/new'
-      path: '/invoices/new'
-      fullPath: '/project/$projectId/invoices/new'
-      preLoaderRoute: typeof ProjectProjectIdInvoicesNewRouteImport
-      parentRoute: typeof ProjectProjectIdRoute
-    }
     '/project/$projectId/chat/$chatRef': {
       id: '/project/$projectId/chat/$chatRef'
       path: '/chat/$chatRef'
       fullPath: '/project/$projectId/chat/$chatRef'
       preLoaderRoute: typeof ProjectProjectIdChatChatRefRouteImport
       parentRoute: typeof ProjectProjectIdRoute
+    }
+    '/finance/invoices/$invoiceId/edit': {
+      id: '/finance/invoices/$invoiceId/edit'
+      path: '/finance/invoices/$invoiceId/edit'
+      fullPath: '/finance/invoices/$invoiceId/edit'
+      preLoaderRoute: typeof FinanceInvoicesInvoiceIdEditRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/teams/$teamId/time/manage-rates/': {
       id: '/teams/$teamId/time/manage-rates/'
@@ -1798,13 +1786,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/teams/$teamId/time/log/$logId'
       preLoaderRoute: typeof TeamsTeamIdTimeLogLogIdRouteImport
       parentRoute: typeof TeamsTeamIdTimeRouteRoute
-    }
-    '/project/$projectId/invoices/$invoiceId/edit': {
-      id: '/project/$projectId/invoices/$invoiceId/edit'
-      path: '/invoices/$invoiceId/edit'
-      fullPath: '/project/$projectId/invoices/$invoiceId/edit'
-      preLoaderRoute: typeof ProjectProjectIdInvoicesInvoiceIdEditRouteImport
-      parentRoute: typeof ProjectProjectIdRoute
     }
   }
 }
@@ -1875,17 +1856,13 @@ const ProjectProjectIdWorkItemsRouteWithChildren =
   )
 
 interface ProjectProjectIdRouteChildren {
-  ProjectProjectIdContractRoute: typeof ProjectProjectIdContractRoute
-  ProjectProjectIdFinancialsRoute: typeof ProjectProjectIdFinancialsRoute
   ProjectProjectIdLogsRoute: typeof ProjectProjectIdLogsRoute
   ProjectProjectIdOverviewRoute: typeof ProjectProjectIdOverviewRoute
-  ProjectProjectIdPaymentsRoute: typeof ProjectProjectIdPaymentsRoute
   ProjectProjectIdResourcesRoute: typeof ProjectProjectIdResourcesRoute
   ProjectProjectIdRoadmapRoute: typeof ProjectProjectIdRoadmapRouteWithChildren
   ProjectProjectIdTimeRoute: typeof ProjectProjectIdTimeRoute
   ProjectProjectIdWorkItemsRoute: typeof ProjectProjectIdWorkItemsRouteWithChildren
   ProjectProjectIdChatChatRefRoute: typeof ProjectProjectIdChatChatRefRoute
-  ProjectProjectIdInvoicesNewRoute: typeof ProjectProjectIdInvoicesNewRoute
   ProjectProjectIdSettingsGeneralRoute: typeof ProjectProjectIdSettingsGeneralRoute
   ProjectProjectIdSettingsPermissionsRoute: typeof ProjectProjectIdSettingsPermissionsRoute
   ProjectProjectIdSettingsTeamRoute: typeof ProjectProjectIdSettingsTeamRoute
@@ -1897,21 +1874,16 @@ interface ProjectProjectIdRouteChildren {
   ProjectProjectIdTeamTeamsRoute: typeof ProjectProjectIdTeamTeamsRoute
   ProjectProjectIdSettingsIndexRoute: typeof ProjectProjectIdSettingsIndexRoute
   ProjectProjectIdTeamIndexRoute: typeof ProjectProjectIdTeamIndexRoute
-  ProjectProjectIdInvoicesInvoiceIdEditRoute: typeof ProjectProjectIdInvoicesInvoiceIdEditRoute
 }
 
 const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
-  ProjectProjectIdContractRoute: ProjectProjectIdContractRoute,
-  ProjectProjectIdFinancialsRoute: ProjectProjectIdFinancialsRoute,
   ProjectProjectIdLogsRoute: ProjectProjectIdLogsRoute,
   ProjectProjectIdOverviewRoute: ProjectProjectIdOverviewRoute,
-  ProjectProjectIdPaymentsRoute: ProjectProjectIdPaymentsRoute,
   ProjectProjectIdResourcesRoute: ProjectProjectIdResourcesRoute,
   ProjectProjectIdRoadmapRoute: ProjectProjectIdRoadmapRouteWithChildren,
   ProjectProjectIdTimeRoute: ProjectProjectIdTimeRoute,
   ProjectProjectIdWorkItemsRoute: ProjectProjectIdWorkItemsRouteWithChildren,
   ProjectProjectIdChatChatRefRoute: ProjectProjectIdChatChatRefRoute,
-  ProjectProjectIdInvoicesNewRoute: ProjectProjectIdInvoicesNewRoute,
   ProjectProjectIdSettingsGeneralRoute: ProjectProjectIdSettingsGeneralRoute,
   ProjectProjectIdSettingsPermissionsRoute:
     ProjectProjectIdSettingsPermissionsRoute,
@@ -1924,8 +1896,6 @@ const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
   ProjectProjectIdTeamTeamsRoute: ProjectProjectIdTeamTeamsRoute,
   ProjectProjectIdSettingsIndexRoute: ProjectProjectIdSettingsIndexRoute,
   ProjectProjectIdTeamIndexRoute: ProjectProjectIdTeamIndexRoute,
-  ProjectProjectIdInvoicesInvoiceIdEditRoute:
-    ProjectProjectIdInvoicesInvoiceIdEditRoute,
 }
 
 const ProjectProjectIdRouteWithChildren =
@@ -2003,6 +1973,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsultantBrowseRoute: ConsultantBrowseRoute,
   ConsultantMarketplaceRoute: ConsultantMarketplaceRoute,
   ConsultantTemplatesRoute: ConsultantTemplatesRoute,
+  FinanceContractIdRoute: FinanceContractIdRoute,
   FreelancerGoLiveRoute: FreelancerGoLiveRoute,
   FreelancerInvitesRoute: FreelancerInvitesRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
@@ -2014,13 +1985,16 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   TeamsTeamIdRoute: TeamsTeamIdRouteWithChildren,
   ConsultantIndexRoute: ConsultantIndexRoute,
+  FinanceIndexRoute: FinanceIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,
   ContractSignTokenRoute: ContractSignTokenRoute,
+  FinanceInvoicesNewRoute: FinanceInvoicesNewRoute,
   RoadmapSharedTokenRoute: RoadmapSharedTokenRoute,
   TeamsMeInvitesRoute: TeamsMeInvitesRoute,
   ProjectRoadmapIndexRoute: ProjectRoadmapIndexRoute,
+  FinanceInvoicesInvoiceIdEditRoute: FinanceInvoicesInvoiceIdEditRoute,
   ProjectRoadmapConvertRoadmapIdRoute: ProjectRoadmapConvertRoadmapIdRoute,
 }
 export const routeTree = rootRouteImport

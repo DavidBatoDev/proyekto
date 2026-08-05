@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
   addDays,
   BillingPeriod,
@@ -156,7 +156,7 @@ function clampSignatureOffset(value: number | undefined): number {
 export class ContractsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -164,7 +164,7 @@ export class ContractsService {
     callerId: string,
     projectId: string,
   ): Promise<ContractWithSchedule[]> {
-    await this.projectAuth.assertRole(callerId, projectId, 'viewer');
+    await this.financeAccess.assertProject(callerId, projectId);
     const { data, error } = await this.supabase
       .from('contracts')
       .select('*')
@@ -180,7 +180,7 @@ export class ContractsService {
     contractId: string,
   ): Promise<ContractWithSchedule> {
     const row = await this.getContractRow(contractId);
-    await this.projectAuth.assertRole(callerId, row.project_id, 'viewer');
+    await this.financeAccess.assertProject(callerId, row.project_id);
     return this.withSchedule(row);
   }
 
@@ -203,14 +203,12 @@ export class ContractsService {
     callerId: string,
     dto: CreateContractDto,
   ): Promise<ContractWithSchedule> {
-    await this.projectAuth.assertRole(callerId, dto.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, dto.project_id);
     return this.createContractInternal(callerId, dto);
   }
 
   /**
-   * Insert path shared by the API and by project creation (where the wizard
-   * submits commercial terms alongside the project). Skips the authorization
-   * check because the caller has already established it.
+   * Insert path used after the finance authorization check has succeeded.
    */
   async createContractInternal(
     callerId: string,
@@ -253,7 +251,7 @@ export class ContractsService {
     dto: UpdateContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, existing.project_id);
 
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
@@ -295,6 +293,21 @@ export class ContractsService {
     return this.withSchedule(data as ContractRow);
   }
 
+  /** Drafts have no legal force yet and may be discarded by the consultant. */
+  async deleteContract(callerId: string, contractId: string): Promise<void> {
+    const existing = await this.getContractRow(contractId);
+    await this.financeAccess.assertProject(callerId, existing.project_id);
+    if (existing.status !== 'draft') {
+      throw new BadRequestException('Only draft contracts can be deleted.');
+    }
+
+    const { error } = await this.supabase
+      .from('contracts')
+      .delete()
+      .eq('id', contractId);
+    if (error) throw new BadRequestException(error.message);
+  }
+
   /**
    * Change the terms of a contract that is already signed.
    *
@@ -310,7 +323,7 @@ export class ContractsService {
     dto: AmendContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, existing.project_id);
 
     if (dto.scope === 'this') {
       throw new BadRequestException(
@@ -344,9 +357,7 @@ export class ContractsService {
     // 'following' splits the engagement: the old version stops the day before
     // the new one starts. 'all' replaces it outright, so its dates stand.
     if (dto.scope === 'following') {
-      const truncatedEnd = toIsoDate(
-        addDays(parseIsoDate(effectiveFrom), -1),
-      );
+      const truncatedEnd = toIsoDate(addDays(parseIsoDate(effectiveFrom), -1));
       if (truncatedEnd < existing.service_start_date) {
         throw new BadRequestException(
           'The new terms would start before the contract does. Use "the whole engagement" instead.',
@@ -733,29 +744,16 @@ export class ContractsService {
   }
 
   /**
-   * A party may sign/unsign their own line: the client is authorized by
-   * identity (they may hold only a viewer role, or none yet if invited by
-   * email), the service-provider side by project `admin`.
+   * Authenticated signature management belongs to the consultant of record.
+   * Clients sign through ContractSignatureLinksService's public token flow.
    */
   private async assertCanManageSignature(
     callerId: string,
     existing: ContractRow,
     party: 'consultant' | 'client',
   ): Promise<void> {
-    if (party === 'client') {
-      const isRecordedClient =
-        existing.client_user_id === callerId ||
-        (await this.isProjectClient(callerId, existing.project_id));
-      if (!isRecordedClient) {
-        await this.projectAuth.assertRole(
-          callerId,
-          existing.project_id,
-          'admin',
-        );
-      }
-    } else {
-      await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
-    }
+    void party;
+    await this.financeAccess.assertProject(callerId, existing.project_id);
   }
 
   /**
@@ -822,7 +820,9 @@ export class ContractsService {
 
     const { data: team } = await this.supabase
       .from('teams')
-      .select('name, legal_name, billing_address, tax_id, billing_email, pay_period_config')
+      .select(
+        'name, legal_name, billing_address, tax_id, billing_email, pay_period_config',
+      )
       .eq('id', teamId)
       .maybeSingle();
     return (team as PrimaryTeamRow | null) ?? null;
@@ -863,18 +863,6 @@ export class ContractsService {
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as Array<{ version: number }>;
     return rows.length > 0 ? Number(rows[0].version) + 1 : 1;
-  }
-
-  private async isProjectClient(
-    userId: string,
-    projectId: string,
-  ): Promise<boolean> {
-    const { data } = await this.supabase
-      .from('projects')
-      .select('client_id')
-      .eq('id', projectId)
-      .maybeSingle();
-    return (data as { client_id: string | null } | null)?.client_id === userId;
   }
 
   /**
@@ -1031,7 +1019,8 @@ export class ContractsService {
       .eq('id', callerId)
       .maybeSingle();
     const personalName = creator ? this.profileLabel(creator) : null;
-    const personalEmail = (creator as { email: string | null } | null)?.email ?? null;
+    const personalEmail =
+      (creator as { email: string | null } | null)?.email ?? null;
 
     if (kind === 'individual') {
       return {
@@ -1103,7 +1092,7 @@ export class ContractsService {
     teamId?: string,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.projectAuth.assertRole(callerId, existing.project_id, 'admin');
+    await this.financeAccess.assertProject(callerId, existing.project_id);
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         'This contract is no longer editable. Remove the signatures to change it.',
@@ -1173,7 +1162,7 @@ export class ContractsService {
             project_title: row?.title ?? null,
             message: 'The service agreement is now fully signed.',
           },
-          link_url: `/project/${contract.project_id}/contract`,
+          link_url: `/finance/${contract.id}?section=signatures`,
         });
       } catch {
         // A notification failure must not undo a signature.

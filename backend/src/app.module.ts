@@ -35,6 +35,7 @@ import { MeetingsModule } from './modules/meetings/meetings.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { FinancialsModule } from './modules/financials/financials.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -89,6 +90,7 @@ import { AppController } from './app.controller';
     InvoicesModule,
     ContractsModule,
     FinancialsModule,
+    FinanceModule,
     RealtimePublisherModule,
     RealtimeModule,
     AuditModule,

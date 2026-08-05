@@ -6,22 +6,19 @@ import {
 	ChevronRight,
 	ClipboardList,
 	Clock,
-	FileSignature,
 	FolderKanban,
 	LayoutDashboard,
 	ListChecks,
 	Map,
 	MessageSquare,
-	ReceiptText,
 	Settings,
-	TrendingUp,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
+import { hasNavGate, type ProjectNavGate } from "@/lib/projectPermissions";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
-import { hasNavGate, type ProjectNavGate } from "@/lib/projectPermissions";
 import { type Project, projectService } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
@@ -192,27 +189,6 @@ export function ProjectSidebar({
 					to: `/project/${projectId}/logs`,
 					requiresProject: true,
 					gate: "logs.view",
-				},
-				{
-					label: "Contract",
-					icon: FileSignature,
-					to: `/project/${projectId}/contract`,
-					requiresProject: true,
-					gate: "access.contract",
-				},
-				{
-					label: "Invoices",
-					icon: ReceiptText,
-					to: `/project/${projectId}/payments`,
-					requiresProject: true,
-					gate: "access.invoices",
-				},
-				{
-					label: "Financials",
-					icon: TrendingUp,
-					to: `/project/${projectId}/financials`,
-					requiresProject: true,
-					gate: "access.financials",
 				},
 				// Settings stays ungated: its route body is open to every member
 				// (it also hosts "leave project").

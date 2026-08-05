@@ -101,8 +101,8 @@ function WorkItemsBoardPage() {
 				type="button"
 				onClick={() =>
 					navigate({
-						to: "/project/$projectId/payments",
-					  params: { projectId },
+						to: "/finance",
+						search: { tab: "invoices", projectId },
 					})
 				}
 				className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"

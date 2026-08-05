@@ -19,7 +19,7 @@ import { ContractsModule } from '../contracts/contracts.module';
     forwardRef(() => TeamsModule),
     ChatModule,
     // ContractsModule depends only on AuthorizationModule, so this direction is
-    // acyclic — the activation gate can live here without a forwardRef.
+    // acyclic — ProjectsService can use the activation gate without a forwardRef.
     ContractsModule,
   ],
   controllers: [ProjectsController],

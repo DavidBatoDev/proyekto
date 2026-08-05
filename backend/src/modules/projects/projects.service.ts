@@ -54,7 +54,6 @@ import {
   UpdateProjectResourceLinkDto,
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
-import { ContractsService } from '../contracts/contracts.service';
 import { ProjectActivationService } from '../contracts/project-activation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
@@ -121,7 +120,6 @@ export class ProjectsService {
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly config: ConfigService,
     private readonly chatService: ChatService,
-    private readonly contracts: ContractsService,
     private readonly activation: ProjectActivationService,
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
@@ -901,24 +899,6 @@ export class ProjectsService {
       } catch (err) {
         this.logger.error(
           `Failed to attach primary_team_id=${dto.primary_team_id} on project ${project.id} create (user ${userId}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-
-    // Commercial terms from the wizard's Step 3 become a draft contract.
-    // Non-fatal for the same reason as primary_team_id: the project exists and
-    // the consultant can complete the contract from the Contract tab.
-    if (dto.contract) {
-      try {
-        await this.contracts.createContractInternal(userId, {
-          project_id: project.id,
-          ...dto.contract,
-        });
-      } catch (err) {
-        this.logger.error(
-          `Failed to create draft contract on project ${project.id} create (user ${userId}): ${
             err instanceof Error ? err.message : String(err)
           }`,
         );

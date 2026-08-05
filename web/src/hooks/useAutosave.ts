@@ -21,7 +21,7 @@ export function useAutosave<T>(
 	opts: {
 		delay?: number;
 		enabled?: boolean;
-		onError?: (err: Error) => void;
+		onError?: (err: Error, failedValue: T) => void;
 	} = {},
 ): AutosaveStatus {
 	const { delay = 700, enabled = true } = opts;
@@ -62,6 +62,7 @@ export function useAutosave<T>(
 				if (mountedRef.current) setStatus("error");
 				onErrorRef.current?.(
 					err instanceof Error ? err : new Error("Auto-save failed"),
+					snapshot,
 				);
 			});
 	};

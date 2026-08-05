@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -20,17 +19,10 @@ import {
 	Step2 as SharedStep2,
 	StepIndicator,
 } from "@/components/project-brief";
-import {
-	type CommercialTerms,
-	CommercialTermsCard,
-	DEFAULT_COMMERCIAL_TERMS,
-	toContractPayload,
-} from "@/components/project-brief/CommercialTermsCard";
 import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
-import { getTeam } from "@/services/teams.service";
 import { useProfile } from "@/stores/authStore";
 import type { Roadmap } from "@/types/roadmap";
 
@@ -86,12 +78,6 @@ function ProjectPostingPage() {
 	// chosen" (the picker will default-select on load) or the explicit
 	// "No team" opt-out — we treat both the same at submit time.
 	const [primaryTeamId, setPrimaryTeamId] = useState<string | null>(null);
-	// Commercial terms (consultant mode, Step 3). Opt-in: unchecked by default so
-	// the wizard stays as short as it is today for anyone who doesn't want to set
-	// billing up front.
-	const [commercialTerms, setCommercialTerms] = useState<CommercialTerms>(
-		DEFAULT_COMMERCIAL_TERMS,
-	);
 	const fromRoadmap = Boolean(searchParams.roadmapId);
 	const [formData, setFormData] = useState<FormData>({
 		title: "",
@@ -142,12 +128,6 @@ function ProjectPostingPage() {
 
 	// The picked team's cut-off config drives the billing-period preview, so the
 	// schedule shown here matches the periods the team actually gets paid on.
-	const primaryTeamQuery = useQuery({
-		queryKey: ["teams", "detail", primaryTeamId],
-		queryFn: () => getTeam(primaryTeamId as string),
-		enabled: Boolean(primaryTeamId),
-	});
-
 	const isVerifiedConsultant = profile?.is_consultant_verified === true;
 	const effectiveIntent: ProjectCreationIntent =
 		isVerifiedConsultant && creationIntent === "consultant"
@@ -275,10 +255,6 @@ function ProjectPostingPage() {
 				primary_team_id:
 					effectiveIntent === "consultant" && primaryTeamId
 						? primaryTeamId
-						: undefined,
-				contract:
-					effectiveIntent === "consultant"
-						? toContractPayload(commercialTerms)
 						: undefined,
 			});
 
@@ -461,7 +437,6 @@ function ProjectPostingPage() {
 									<SharedStep2
 										formData={formData}
 										updateFormData={updateFormData}
-										creationMode={effectiveIntent}
 									/>
 								</motion.div>
 							)}
@@ -486,20 +461,6 @@ function ProjectPostingPage() {
 												<ProjectTeamPicker
 													value={primaryTeamId}
 													onChange={setPrimaryTeamId}
-												/>
-											</div>
-											<div className="mt-6">
-												<CommercialTermsCard
-													terms={commercialTerms}
-													onChange={(updates) =>
-														setCommercialTerms((prev) => ({
-															...prev,
-															...updates,
-														}))
-													}
-													payPeriodConfig={
-														primaryTeamQuery.data?.pay_period_config
-													}
 												/>
 											</div>
 										</>

@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import {
   billingPeriodsForRange,
   configForCadence,
@@ -17,7 +18,6 @@ import {
   type ContractRow,
 } from '../contracts/contracts.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
 
 export interface InvoiceRunResult {
@@ -68,7 +68,7 @@ export class InvoiceSchedulerService {
     private readonly invoices: InvoicesService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
-    private readonly projectAuth: ProjectAuthorizationService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
   ) {}
 
   async runDueInvoices(
@@ -141,7 +141,7 @@ export class InvoiceSchedulerService {
     projectId: string,
     today = new Date().toISOString().slice(0, 10),
   ): Promise<InvoiceRunResult> {
-    await this.projectAuth.assertRole(callerId, projectId, 'admin');
+    await this.financeAccess.assertProject(callerId, projectId);
 
     const { data, error } = await this.supabase
       .from('contracts')
@@ -383,7 +383,7 @@ export class InvoiceSchedulerService {
           period_end: periodEnd,
           message: `Invoice ${invoiceNumber} is drafted for ${periodStart} – ${periodEnd}. Review and send it.`,
         },
-        link_url: `/project/${contract.project_id}/payments`,
+        link_url: `/finance?tab=invoices&projectId=${contract.project_id}`,
       });
     } catch (err) {
       this.logger.warn(
@@ -427,7 +427,7 @@ export class InvoiceSchedulerService {
             service_end_date: row.service_end_date,
             message: `This contract's service period ends on ${row.service_end_date}. Renew or extend it if the work continues.`,
           },
-          link_url: `/project/${row.project_id}/contract`,
+          link_url: `/finance/${row.id}`,
         });
       } catch {
         // Advisory only.

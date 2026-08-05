@@ -17,10 +17,11 @@ import type { InvoiceWithLines } from './invoices.service';
  */
 export function buildInvoiceEmailHtml(input: {
   invoice: InvoiceWithLines;
-  link: string;
+  /** Accepted for backwards-compatible previews; client emails no longer link into finance. */
+  link?: string;
   hasAttachment: boolean;
 }): string {
-  const { invoice, link, hasAttachment } = input;
+  const { invoice, hasAttachment } = input;
   const provider = esc(invoice.issued_by?.name ?? 'Your service provider');
   const number = esc(invoice.number);
   const amount = esc(formatMoney(Number(invoice.total ?? 0), invoice.currency));
@@ -40,7 +41,7 @@ export function buildInvoiceEmailHtml(input: {
     renderParagraph(
       hasAttachment
         ? 'The full invoice is attached to this email as a PDF.'
-        : 'You can view and download the full invoice from your project.',
+        : 'Ask your service provider for a copy of the full invoice.',
     ),
     invoice.payment_method
       ? renderParagraph(
@@ -55,7 +56,7 @@ export function buildInvoiceEmailHtml(input: {
     preheader: `Invoice ${number} for ${amount}${due ? `, due ${due}` : ''}`,
     title: `Invoice ${number}`,
     bodyHtml,
-    cta: { label: 'View invoice', href: link },
+    cta: null,
     footerNote:
       'You received this email because an invoice was issued to you on Proyekto.',
   });

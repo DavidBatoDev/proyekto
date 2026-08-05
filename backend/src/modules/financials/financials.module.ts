@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AuthorizationModule } from '../projects/authorization/authorization.module';
+import { FinanceModule } from '../finance/finance.module';
 import { FinancialsController } from './financials.controller';
 import { FinancialsService } from './financials.service';
 
@@ -9,7 +9,7 @@ import { FinancialsService } from './financials.service';
  * the invoices/team-time/payouts modules (which would pull in a wider graph).
  */
 @Module({
-  imports: [AuthorizationModule],
+  imports: [FinanceModule],
   controllers: [FinancialsController],
   providers: [FinancialsService],
 })

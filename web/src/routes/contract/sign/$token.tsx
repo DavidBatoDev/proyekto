@@ -4,11 +4,18 @@ import {
 	CheckCircle2,
 	FileSignature,
 	Loader2,
+	Maximize2,
+	Minus,
+	Plus,
 	ShieldAlert,
 } from "lucide-react";
 import { useState } from "react";
-import { ContractDocumentPreview } from "@/components/project/ContractDocumentPreview";
+import {
+	type ContractCanvasStats,
+	ContractEditorCanvas,
+} from "@/components/finance/ContractEditorCanvas";
 import { SignaturePad } from "@/components/project/signature/SignaturePad";
+import { useConfirm } from "@/hooks/useConfirm";
 import { formatContractDate } from "@/lib/contract-term";
 import {
 	type ContractDocumentView,
@@ -33,6 +40,14 @@ function PublicSignPage() {
 	const { token } = Route.useParams();
 	const [signed, setSigned] = useState<ContractDocumentView | null>(null);
 	const [name, setName] = useState("");
+	const confirm = useConfirm();
+	const [zoom, setZoom] = useState(80);
+	const [fitSignal, setFitSignal] = useState(0);
+	const [canvasStats, setCanvasStats] = useState<ContractCanvasStats>({
+		currentPage: 1,
+		pageCount: 1,
+		wordCount: 0,
+	});
 
 	const contractQuery = useQuery({
 		queryKey: ["public-contract", token],
@@ -89,21 +104,89 @@ function PublicSignPage() {
 	const contract = signed ?? contractQuery.data;
 	if (!contract) return null;
 	const done = Boolean(signed);
+	const submitSignature = async (signaturePng?: string | null) => {
+		const confirmed = await confirm({
+			title: "Sign this agreement?",
+			message: (
+				<>
+					You are signing this agreement as <strong>{name.trim()}</strong>.
+					Your signature is recorded and this one-time link will no longer be
+					usable.
+				</>
+			),
+			confirmLabel: "Sign agreement",
+		});
+		if (confirmed) signMutation.mutate(signaturePng ?? undefined);
+	};
 
 	return (
 		<Shell>
-			<div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+			<div className="grid min-h-[calc(100dvh-4rem)] w-full grid-cols-1 overflow-hidden rounded-xl border border-border bg-card shadow-sm lg:h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,7fr)_minmax(20rem,3fr)]">
 				{/* The agreement */}
-				<div>
-					<ContractDocumentPreview
+				<div className="flex min-h-[68dvh] min-w-0 flex-col lg:min-h-0">
+					<div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+						<div className="flex min-w-0 items-center gap-2">
+							<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+								<FileSignature className="h-4 w-4" />
+							</span>
+							<div className="min-w-0">
+								<h1 className="truncate text-sm font-semibold text-foreground">
+									Service agreement
+								</h1>
+								<p className="truncate text-[11px] text-muted-foreground">
+									Review before signing
+								</p>
+							</div>
+						</div>
+						<div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+							<button
+								type="button"
+								onClick={() => setZoom((value) => Math.max(30, value - 10))}
+								className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+								aria-label="Zoom out"
+							>
+								<Minus className="h-3.5 w-3.5" />
+							</button>
+							<button
+								type="button"
+								onClick={() => setFitSignal((value) => value + 1)}
+								className="w-11 rounded py-1 text-center text-[11px] tabular-nums text-foreground hover:bg-muted"
+								aria-label="Fit document to canvas"
+							>
+								{zoom}%
+							</button>
+							<button
+								type="button"
+								onClick={() => setZoom((value) => Math.min(200, value + 10))}
+								className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+								aria-label="Zoom in"
+							>
+								<Plus className="h-3.5 w-3.5" />
+							</button>
+							<button
+								type="button"
+								onClick={() => setFitSignal((value) => value + 1)}
+								className="hidden rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground sm:inline-flex"
+								aria-label="Fit document"
+							>
+								<Maximize2 className="h-3.5 w-3.5" />
+							</button>
+						</div>
+					</div>
+					<div className="min-h-0 flex-1">
+						<ContractEditorCanvas
 						contract={contract}
 						parties={{
 							provider_name: contract.provider_name ?? "",
 							provider_address: contract.provider_address ?? "",
 							provider_email: contract.provider_email,
+							provider_tin: contract.provider_tin,
+							provider_kind: contract.provider_kind,
 							client_name: contract.client_name ?? "",
 							client_contact_name: contract.client_contact_name ?? "",
 							client_address: contract.client_address ?? "",
+							client_email: contract.client_email,
+							client_tin: contract.client_tin,
 						}}
 						terms={{
 							currency: contract.currency,
@@ -117,12 +200,23 @@ function PublicSignPage() {
 							auto_renew: contract.auto_renew,
 							notice_days: String(contract.notice_days ?? ""),
 						}}
+							editable={false}
+							selectable={false}
+							zoom={zoom}
+							onZoomChange={setZoom}
+							fitSignal={fitSignal}
+							onStatsChange={setCanvasStats}
 					/>
+					</div>
+					<footer className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-card px-3 text-[11px] text-muted-foreground">
+						<span>Page {canvasStats.currentPage} of {canvasStats.pageCount}</span>
+						<span>{canvasStats.wordCount} {canvasStats.wordCount === 1 ? "word" : "words"}</span>
+					</footer>
 				</div>
 
 				{/* Sign / thank-you */}
-				<div className="lg:sticky lg:top-6 lg:self-start">
-					<div className="rounded-2xl border border-border bg-card p-6">
+				<div className="border-t border-border bg-background lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
+					<div className="p-5 lg:p-6">
 						{done ? (
 							<>
 								<CheckCircle2 className="mb-3 h-8 w-8 text-emerald-500" />
@@ -172,9 +266,7 @@ function PublicSignPage() {
 									name={name}
 									onNameChange={setName}
 									deliver="data-url"
-									onSign={(signaturePng) =>
-										signMutation.mutate(signaturePng ?? undefined)
-									}
+									onSign={(signaturePng) => void submitSignature(signaturePng)}
 									isPending={signMutation.isPending}
 								/>
 

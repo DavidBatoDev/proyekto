@@ -57,9 +57,6 @@ export type ProjectPermissions = {
     resources: boolean;
     project_settings: boolean;
     time: boolean;
-    contract: boolean;
-    invoices: boolean;
-    financials: boolean;
   };
   roadmap: {
     view: boolean;
@@ -143,9 +140,6 @@ export type PermissionPath =
   | 'access.resources'
   | 'access.project_settings'
   | 'access.time'
-  | 'access.contract'
-  | 'access.invoices'
-  | 'access.financials'
   | 'roadmap.view'
   | 'roadmap.edit'
   | 'roadmap.comment'
@@ -195,9 +189,6 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'access.resources',
   'access.project_settings',
   'access.time',
-  'access.contract',
-  'access.invoices',
-  'access.financials',
   'roadmap.view',
   'roadmap.edit',
   'roadmap.comment',
@@ -272,9 +263,6 @@ function allFalse(): ProjectPermissions {
       resources: false,
       project_settings: false,
       time: false,
-      contract: false,
-      invoices: false,
-      financials: false,
     },
     roadmap: {
       view: false,
@@ -371,9 +359,6 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'access.time': true,
     // The money surfaces stay consultant-and-owner by default. The client
     // origin re-opens the billing three (contract/invoices/financials) below.
-    'access.contract': false,
-    'access.invoices': false,
-    'access.financials': false,
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
@@ -416,9 +401,6 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
   applyPaths(p, {
     'access.project_settings': true,
     'time.view_team_logs': true,
-    'access.contract': true,
-    'access.invoices': true,
-    'access.financials': true,
     'roadmap.promote': true,
     'roadmap.view_internal': true,
     'roadmap.dev_mode': true,
@@ -459,9 +441,6 @@ export const ORIGIN_DELTAS: Record<
     'chat.message_freelancers': false,
     // They fund the work, so the billing surfaces stay open to them — but
     // not Time, which is the delivery team's cost side.
-    'access.contract': true,
-    'access.invoices': true,
-    'access.financials': true,
   },
   // Consultants get the operator toolkit additively, regardless of role.
   consultant: {
@@ -469,9 +448,6 @@ export const ORIGIN_DELTAS: Record<
     'members.manage': true,
     'teams.manage': true,
     'time.view_team_logs': true,
-    'access.contract': true,
-    'access.invoices': true,
-    'access.financials': true,
   },
   // Pure invite — no extra capabilities beyond the role baseline.
   invited: {},

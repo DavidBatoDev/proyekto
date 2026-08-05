@@ -12,6 +12,7 @@ const Header = () => {
 		"/inbox",
 		"/command-center",
 		"/meetings",
+		"/finance",
 		"/teams",
 		"/project",
 		"/profile",

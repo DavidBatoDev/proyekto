@@ -104,9 +104,6 @@ const ACCESS_GATE_LABELS: Record<AccessGateKey, string> = {
 	resources: "Access Resources",
 	project_settings: "Access Project Settings",
 	time: "Access Time",
-	contract: "Access Contract",
-	invoices: "Access Invoices",
-	financials: "Access Financials",
 };
 
 const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
@@ -227,9 +224,6 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
 			resources: true,
 			project_settings: true,
 			time: true,
-			contract: true,
-			invoices: true,
-			financials: true,
 		},
 		roadmap: {
 			view: true,
@@ -284,9 +278,6 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
 			resources: true,
 			project_settings: false,
 			time: false,
-			contract: true,
-			invoices: true,
-			financials: true,
 		},
 		roadmap: {
 			view: true,
@@ -342,9 +333,6 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
 			resources: true,
 			project_settings: false,
 			time: true,
-			contract: false,
-			invoices: false,
-			financials: false,
 		},
 		roadmap: {
 			view: true,
@@ -433,7 +421,6 @@ export function ProjectPermissionsEditor({
 	const isMemberMode = !!memberId;
 	const isConsultantRole = role === "consultant";
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: isRoleMode/isMemberMode are derived from role and memberId, which are already dependencies.
 	useEffect(() => {
 		let cancelled = false;
 		const load = async () => {

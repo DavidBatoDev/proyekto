@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { FolderOpen, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
-import { getRoadmapsPreview, type RoadmapPreview } from "@/api/endpoints/roadmap";
+import {
+	getRoadmapsPreview,
+	type RoadmapPreview,
+} from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
@@ -82,7 +85,11 @@ export function DashboardWidgets({
 }) {
 	const user = useUser();
 	const { profile } = useAuthStore();
-	const projectsQueryKey = ["dashboard", "projects", user?.id ?? "anonymous"] as const;
+	const projectsQueryKey = [
+		"dashboard",
+		"projects",
+		user?.id ?? "anonymous",
+	] as const;
 	const projectsQuery = useQuery({
 		queryKey: projectsQueryKey,
 		queryFn: () => projectService.listDashboardProjects(),
@@ -161,52 +168,50 @@ export function DashboardWidgets({
 		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
 		const currentUserId = user?.id ?? null;
 
-		const flattened = validRoadmaps.flatMap(
-			(roadmap, roadmapIndex: number) =>
-				(roadmap.epics || []).flatMap((epic, epicIndex: number) =>
-					(epic.features || []).flatMap((feature, featureIndex: number) =>
-						(feature.tasks || [])
-							.filter(
-								(task) =>
-									String(task.status || "").toLowerCase() !== "done",
-							)
-							.map((task, taskIndex: number) => {
-								const taskStatus = String(task.status || "").toLowerCase();
-								const assigneeName =
-									task.assignee?.display_name ||
-									`${task.assignee?.first_name || ""} ${task.assignee?.last_name || ""}`.trim() ||
-									task.assignee?.email ||
-									(task.assignee_id ? "Assigned user" : "Unassigned");
-								const projectId = roadmap.project_id || null;
-								const projectTitle =
-									roadmap.project?.title ||
-									(projectId ? projectTitleById.get(projectId) : undefined) ||
-									roadmap.name ||
-									"Unlinked project";
+		const flattened = validRoadmaps.flatMap((roadmap, roadmapIndex: number) =>
+			(roadmap.epics || []).flatMap((epic, epicIndex: number) =>
+				(epic.features || []).flatMap((feature, featureIndex: number) =>
+					(feature.tasks || [])
+						.filter(
+							(task) => String(task.status || "").toLowerCase() !== "done",
+						)
+						.map((task, taskIndex: number) => {
+							const taskStatus = String(task.status || "").toLowerCase();
+							const assigneeName =
+								task.assignee?.display_name ||
+								`${task.assignee?.first_name || ""} ${task.assignee?.last_name || ""}`.trim() ||
+								task.assignee?.email ||
+								(task.assignee_id ? "Assigned user" : "Unassigned");
+							const projectId = roadmap.project_id || null;
+							const projectTitle =
+								roadmap.project?.title ||
+								(projectId ? projectTitleById.get(projectId) : undefined) ||
+								roadmap.name ||
+								"Unlinked project";
 
-								return {
-									id: `activity-${roadmap.id || roadmapIndex}-${feature.id || featureIndex}-${task.id || taskIndex}`,
-									taskId: String(
-										task.id ||
-											`${roadmapIndex}-${epicIndex}-${featureIndex}-${taskIndex}`,
-									),
-									taskTitle: task.title || "Task",
-									taskStatus,
-									assigneeId: task.assignee_id || null,
-									assigneeName,
-									assigneeAvatarUrl: task.assignee?.avatar_url || null,
-									projectId,
-									projectTitle,
-									roadmapName: roadmap.name || "Roadmap",
-									dueDate: task.due_date || null,
-									updatedAt: task.updated_at || roadmap.updated_at || null,
-									isAssignedToCurrentUser: Boolean(
-										currentUserId && task.assignee_id === currentUserId,
-									),
-								} satisfies ActivityItem;
-							}),
-					),
+							return {
+								id: `activity-${roadmap.id || roadmapIndex}-${feature.id || featureIndex}-${task.id || taskIndex}`,
+								taskId: String(
+									task.id ||
+										`${roadmapIndex}-${epicIndex}-${featureIndex}-${taskIndex}`,
+								),
+								taskTitle: task.title || "Task",
+								taskStatus,
+								assigneeId: task.assignee_id || null,
+								assigneeName,
+								assigneeAvatarUrl: task.assignee?.avatar_url || null,
+								projectId,
+								projectTitle,
+								roadmapName: roadmap.name || "Roadmap",
+								dueDate: task.due_date || null,
+								updatedAt: task.updated_at || roadmap.updated_at || null,
+								isAssignedToCurrentUser: Boolean(
+									currentUserId && task.assignee_id === currentUserId,
+								),
+							} satisfies ActivityItem;
+						}),
 				),
+			),
 		);
 
 		return flattened
@@ -243,7 +248,8 @@ export function DashboardWidgets({
 	const invoiceMetricValue =
 		dashboardSummaryQuery.data?.invoices.total_amount ?? 0;
 	const invoiceMetricLoading = dashboardSummaryQuery.isPending;
-	const invoiceMetricCount = dashboardSummaryQuery.data?.invoices.total_count ?? 0;
+	const invoiceMetricCount =
+		dashboardSummaryQuery.data?.invoices.total_count ?? 0;
 	const activityLoading = isMilestonesLoading;
 
 	const navigate = useNavigate();
@@ -289,8 +295,8 @@ export function DashboardWidgets({
 	const openFirstProjectInvoices = () => {
 		if (!invoiceTargetProject?.id) return;
 		navigate({
-			to: "/project/$projectId/payments",
-			params: { projectId: invoiceTargetProject.id },
+			to: "/finance",
+			search: { tab: "invoices", projectId: invoiceTargetProject.id },
 		});
 	};
 
@@ -307,7 +313,8 @@ export function DashboardWidgets({
 									Welcome back, {greetingName}
 								</h2>
 								<p className="mt-1 text-sm text-slate-600">
-									Here is a quick view of your project portfolio and delivery milestones.
+									Here is a quick view of your project portfolio and delivery
+									milestones.
 								</p>
 							</div>
 							<DashboardCreateActions />
@@ -399,7 +406,9 @@ export function DashboardWidgets({
 						</div>
 					</div>
 
-					{children ? <div className="space-y-6 sm:space-y-8">{children}</div> : null}
+					{children ? (
+						<div className="space-y-6 sm:space-y-8">{children}</div>
+					) : null}
 				</div>
 
 				<div className="xl:sticky xl:top-24 self-start space-y-4 min-w-0">

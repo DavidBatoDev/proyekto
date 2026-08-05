@@ -22,27 +22,6 @@ export interface CreateProjectData {
 	 * created. Omit (or set undefined) for "no team — attach later".
 	 */
 	primary_team_id?: string;
-	/**
-	 * Consultant-mode only: commercial terms from the wizard's Step 3. The
-	 * backend writes them as a DRAFT contract after the project insert (a failed
-	 * contract write does not roll back the project). Omit to finish the
-	 * contract later in the project's Contract tab.
-	 */
-	contract?: {
-		currency?: string;
-		billing_mode?: "retainer" | "time_based" | "hybrid";
-		recurring_fee?: number;
-		/** CLIENT-facing hourly rate — never a team member's cost rate. */
-		client_hourly_rate?: number;
-		included_hours?: number;
-		invoice_cadence?: "monthly" | "semi_monthly" | "custom";
-		invoice_offset_days?: number;
-		due_days?: number;
-		service_start_date?: string;
-		term_count?: number;
-		term_unit?: "month" | "year";
-		service_description?: string;
-	};
 }
 
 export interface CreateProjectFromRoadmapData {
@@ -147,9 +126,6 @@ export interface ProjectPermissions {
 		resources: boolean;
 		project_settings: boolean;
 		time: boolean;
-		contract: boolean;
-		invoices: boolean;
-		financials: boolean;
 	};
 	roadmap: {
 		view: boolean;

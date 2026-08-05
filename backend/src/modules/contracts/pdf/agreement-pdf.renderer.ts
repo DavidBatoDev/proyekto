@@ -13,10 +13,22 @@ export interface AgreementPdfInput {
   providerName?: string | null;
   providerAddress?: string | null;
   providerEmail?: string | null;
+  providerTin?: string | null;
+  providerKind?: string | null;
   clientName?: string | null;
+  clientContactName?: string | null;
+  clientAddress?: string | null;
+  clientEmail?: string | null;
+  clientTin?: string | null;
   contractNumber?: string | null;
   terms: Array<{ label: string; value: string }>;
-  clauses: Array<{ title: string; body: string }>;
+  clauses: Array<{
+    key?: string;
+    parent_key?: string | null;
+    title: string;
+    body: string;
+    position?: number;
+  }>;
   signedByConsultant?: {
     name: string;
     at: string;
@@ -58,6 +70,49 @@ function formatStamp(at: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+function outlinedClauses(clauses: AgreementPdfInput['clauses']): Array<{
+  clause: AgreementPdfInput['clauses'][number];
+  number: string;
+  depth: number;
+}> {
+  const ordered = [...clauses].sort(
+    (left, right) => (left.position ?? 0) - (right.position ?? 0),
+  );
+  const keys = new Set(
+    ordered.flatMap((clause) => (clause.key ? [clause.key] : [])),
+  );
+  const children = new Map<string | null, typeof ordered>();
+  const parentFor = (clause: (typeof ordered)[number]) =>
+    clause.parent_key && keys.has(clause.parent_key) ? clause.parent_key : null;
+
+  for (const clause of ordered) {
+    const parent = parentFor(clause);
+    const siblings = children.get(parent) ?? [];
+    siblings.push(clause);
+    children.set(parent, siblings);
+  }
+
+  const outline: Array<{
+    clause: (typeof ordered)[number];
+    number: string;
+    depth: number;
+  }> = [];
+  const visited = new Set<string>();
+  const visit = (parent: string | null, prefix: string, depth: number) => {
+    for (const [index, clause] of (children.get(parent) ?? []).entries()) {
+      const identity = clause.key ?? `legacy-${clause.title}-${index}`;
+      if (visited.has(identity)) continue;
+      const number = prefix ? `${prefix}.${index + 1}` : String(index + 1);
+      visited.add(identity);
+      outline.push({ clause, number, depth });
+      if (clause.key) visit(clause.key, number, depth + 1);
+    }
+  };
+
+  visit(null, '', 0);
+  return outline;
 }
 
 export function renderAgreementPdf(input: AgreementPdfInput): Promise<Buffer> {
@@ -165,28 +220,49 @@ function drawAgreement(
   }
 
   // ── Numbered clauses ──────────────────────────────────────────────────────
-  const parties = { provider: input.providerName, client: input.clientName };
-  input.clauses.forEach((clause, index) => {
+  const parties = {
+    provider: input.providerName,
+    client: input.clientName,
+    providerName: input.providerName,
+    providerAddress: input.providerAddress,
+    providerEmail: input.providerEmail,
+    providerTin: input.providerTin,
+    providerKind: input.providerKind,
+    clientName: input.clientName,
+    clientContactName: input.clientContactName,
+    clientAddress: input.clientAddress,
+    clientEmail: input.clientEmail,
+    clientTin: input.clientTin,
+  };
+  const clauseOutline = outlinedClauses(input.clauses);
+  clauseOutline.forEach(({ clause, number, depth }) => {
     doc.moveDown(1.2);
     const body = renderClauseBody(clause.body, parties);
+    const indent = depth * 18;
+    const clauseWidth = CONTENT_WIDTH - indent;
     const bodyHeight = doc
       .font('Helvetica')
       .fontSize(9)
-      .heightOfString(body, { width: CONTENT_WIDTH });
+      .heightOfString(body, { width: clauseWidth });
     ensureSpace(doc, bodyHeight + 34);
 
     doc
       .fillColor(HEADING)
       .font('Helvetica-Bold')
       .fontSize(11)
-      .text(`${index + 1}. ${clause.title}`, MARGIN, doc.y, {
-        width: CONTENT_WIDTH,
-      });
+      .text(
+        `${number}. ${renderClauseBody(clause.title, parties)}`,
+        MARGIN + indent,
+        doc.y,
+        {
+          width: clauseWidth,
+        },
+      );
     doc
       .fillColor(INK)
       .font('Helvetica')
       .fontSize(9)
-      .text(body, MARGIN, doc.y + 3, { width: CONTENT_WIDTH });
+      .text(body, MARGIN + indent, doc.y + 3, { width: clauseWidth });
   });
 
   // ── Signatures ────────────────────────────────────────────────────────────
@@ -196,7 +272,11 @@ function drawAgreement(
     .fillColor(HEADING)
     .font('Helvetica-Bold')
     .fontSize(11)
-    .text(`${input.clauses.length + 1}. Signature`, MARGIN, doc.y);
+    .text(
+      `${clauseOutline.filter((item) => item.depth === 0).length + 1}. Signature`,
+      MARGIN,
+      doc.y,
+    );
   doc.moveDown(0.6);
 
   const rowTop = doc.y;

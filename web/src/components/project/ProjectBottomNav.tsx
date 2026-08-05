@@ -5,25 +5,19 @@ import {
 	BookOpen,
 	ClipboardList,
 	Clock,
-	FileSignature,
 	LayoutDashboard,
 	ListChecks,
 	Map,
 	MessageSquare,
 	MoreHorizontal,
-	ReceiptText,
 	Settings,
-	TrendingUp,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
+import { hasNavGate, type ProjectNavGate } from "@/lib/projectPermissions";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
-import {
-	hasNavGate,
-	type ProjectNavGate,
-} from "@/lib/projectPermissions";
 import { useUser } from "@/stores/authStore";
 
 interface ProjectBottomNavProps {
@@ -31,7 +25,6 @@ interface ProjectBottomNavProps {
 	hasProject?: boolean;
 	roadmapId?: string;
 }
-
 
 export function ProjectBottomNav({
 	projectId,
@@ -176,27 +169,6 @@ export function ProjectBottomNav({
 			gate: "logs.view",
 		},
 		{
-			label: "Contract",
-			icon: FileSignature,
-			to: `/project/${projectId}/contract`,
-			isActive: currentPath.startsWith(`/project/${projectId}/contract`),
-			gate: "access.contract",
-		},
-		{
-			label: "Invoices",
-			icon: ReceiptText,
-			to: `/project/${projectId}/payments`,
-			isActive: currentPath.startsWith(`/project/${projectId}/payments`),
-			gate: "access.invoices",
-		},
-		{
-			label: "Financials",
-			icon: TrendingUp,
-			to: `/project/${projectId}/financials`,
-			isActive: currentPath.startsWith(`/project/${projectId}/financials`),
-			gate: "access.financials",
-		},
-		{
 			label: "Settings",
 			icon: Settings,
 			to: `/project/${projectId}/settings/general`,
@@ -209,8 +181,7 @@ export function ProjectBottomNav({
 		hasNavGate(permissionsQuery.data, gate);
 
 	const visiblePrimary = primaryItems.filter(
-		(item) =>
-			(!item.requiresProject || isProjectActive) && allowed(item.gate),
+		(item) => (!item.requiresProject || isProjectActive) && allowed(item.gate),
 	);
 	const visibleMore = moreItems.filter((item) => allowed(item.gate));
 

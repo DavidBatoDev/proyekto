@@ -1,23 +1,40 @@
 import {
+	closestCenter,
+	DndContext,
+	type DragEndEvent,
+	KeyboardSensor,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	arrayMove,
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
 	useMutation,
 	useQueries,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
 import {
-	CheckCircle2,
+	ArrowLeft,
 	FileSignature,
+	GripVertical,
 	Link2,
+	ListPlus,
 	Loader2,
-	PanelRightOpen,
+	Minus,
+	Plus,
+	Send,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import {
-	AppSectionHeader,
-	AppSurfaceCard,
-} from "@/components/common/AppPrimitives";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DateField } from "@/components/common/DateField";
 import { Dropdown } from "@/components/common/Dropdown";
 import {
@@ -27,22 +44,19 @@ import {
 	TextField,
 	ToggleField,
 } from "@/components/common/FormFields";
-import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import { ScopeDialog, type ScopeOption } from "@/components/common/ScopeDialog";
 import {
-	ActivationGuide,
-	checklistProgress,
-} from "@/components/project/ActivationGuide";
+	type ContractCanvasStats,
+	ContractEditorCanvas,
+} from "@/components/finance/ContractEditorCanvas";
 import { ClientSigningLinkModal } from "@/components/project/ClientSigningLinkModal";
-import {
-	ContractDocumentPreview,
-	type PreviewParties,
-	type PreviewTerms,
+import type {
+	PreviewParties,
+	PreviewTerms,
 } from "@/components/project/ContractDocumentPreview";
 import { SignaturePad } from "@/components/project/signature/SignaturePad";
 import { SignaturePlacementField } from "@/components/project/signature/SignaturePlacementField";
-import { useActivationChecklist } from "@/hooks/useActivationChecklist";
-import { useAutosave } from "@/hooks/useAutosave";
+import { type AutosaveStatus, useAutosave } from "@/hooks/useAutosave";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import {
@@ -65,121 +79,132 @@ import {
 } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
 import { getTeam, listProjectTeams } from "@/services/teams.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useUser } from "@/stores/authStore";
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
 	value: c.code,
 	label: c.label,
 }));
 
-/** localStorage key for the live-preview show/hide preference. */
-const PREVIEW_PREF_KEY = "contract-preview-visible";
-
-export const Route = createFileRoute("/project/$projectId/contract")({
-	/**
-	 * `?step=` lets the activation checklist deep-link to the section an item is
-	 * actually about. Unknown values fall through to the default step rather
-	 * than erroring — a stale bookmark should still open the page.
-	 */
-	validateSearch: (search: Record<string, unknown>): { step?: StepKey } => {
-		const step = search.step;
-		return typeof step === "string" && isStepKey(step) ? { step } : {};
-	},
-	beforeLoad: () => {
-		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
-	},
-	component: ProjectContractRoute,
-});
-
-function ProjectContractRoute() {
-	const { projectId } = Route.useParams();
-	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<RequireProjectAccess projectId={projectId} access="contract">
-				<ProjectContractPage />
-			</RequireProjectAccess>
-		</div>
-	);
-}
-
-function ProjectContractPage() {
-	const { projectId } = Route.useParams();
+/**
+ * `?step=` lets the activation checklist deep-link to the section an item is
+ * actually about. Unknown values fall through to the default step rather
+ * than erroring — a stale bookmark should still open the page.
+ */
+export function ProjectContract({
+	contractId,
+	initialStep,
+	onBack,
+	onOpenContract,
+}: {
+	contractId: string;
+	initialStep?: StepKey;
+	onBack: () => void;
+	onOpenContract?: (contractId: string) => void;
+}) {
 	const user = useUser();
 	const qc = useQueryClient();
 	const toast = useToast();
-
+	const confirm = useConfirm();
+	const contractQuery = useQuery({
+		queryKey: ["contract", contractId],
+		queryFn: () => contractService.getById(contractId),
+	});
+	const contract = contractQuery.data ?? null;
 	const projectQuery = useQuery({
-		queryKey: ["project", projectId],
-		queryFn: () => projectService.get(projectId),
+		queryKey: ["project", contract?.project_id],
+		queryFn: () => projectService.get(contract?.project_id as string),
+		enabled: Boolean(contract?.project_id),
 	});
 	const project = projectQuery.data;
-
-	// The consultant of record edits terms and sees economics. Everyone else
-	// (including the client) gets a read-only agreement plus the sign action.
 	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
-
-	const contractsQuery = useQuery({
-		queryKey: ["contracts", projectId],
-		queryFn: () => contractService.listByProject(projectId),
-	});
-	// Newest version governs; older versions are history.
-	const contract = contractsQuery.data?.[0] ?? null;
-
-	const checklistQuery = useActivationChecklist(projectId, {
-		enabled: isConsultant,
-	});
-
-	const { step: stepFromUrl } = Route.useSearch();
 	const [activeStep, setActiveStep] = useState<StepKey>(
-		stepFromUrl ?? "parties",
+		initialStep ?? "parties",
 	);
-
-	// The preview costs a fixed 440px, which is what squeezed the form fields.
-	// Remembered per browser so hiding it once sticks; defaults on, because a
-	// consultant who has never seen it shouldn't have to discover it.
-	const [previewOpen, setPreviewOpen] = useState(() => {
-		if (typeof localStorage === "undefined") return true;
-		return localStorage.getItem(PREVIEW_PREF_KEY) !== "hidden";
+	const [zoom, setZoom] = useState(80);
+	const [fitSignal, setFitSignal] = useState(0);
+	const [signingLinkOpen, setSigningLinkOpen] = useState(false);
+	const [canvasStats, setCanvasStats] = useState<ContractCanvasStats>({
+		currentPage: 1,
+		pageCount: 1,
+		wordCount: 0,
 	});
-	const setPreviewVisible = (visible: boolean) => {
-		setPreviewOpen(visible);
-		try {
-			localStorage.setItem(PREVIEW_PREF_KEY, visible ? "shown" : "hidden");
-		} catch {
-			// Private-mode / quota — the preference just won't persist.
-		}
-	};
-
-	// Live drafts fed up from the Parties/Terms editors so the right-side document
-	// preview updates as the consultant types. Seeded from the saved contract and
-	// re-seeded when the contract identity changes (a different version loads).
 	const [previewParties, setPreviewParties] = useState<PreviewParties>(() =>
 		partiesPreview(contract),
 	);
 	const [previewTerms, setPreviewTerms] = useState<PreviewTerms>(() =>
 		termsPreview(contract),
 	);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-seed only when a different contract loads, not on every field save (the editors keep the preview live in between).
+	const [documentClauses, setDocumentClauses] = useState<ContractClause[]>(
+		() => contract?.clauses ?? [],
+	);
+	const documentClausesRef = useRef(documentClauses);
+	const persistedClausesRef = useRef<ContractClause[]>([]);
+	const persistedClauseContractIdRef = useRef<string | null>(null);
+	documentClausesRef.current = documentClauses;
+
+	useEffect(() => {
+		if (initialStep) setActiveStep(initialStep);
+	}, [initialStep]);
 	useEffect(() => {
 		setPreviewParties(partiesPreview(contract));
 		setPreviewTerms(termsPreview(contract));
-	}, [contract?.id]);
+		setDocumentClauses(contract?.clauses ?? []);
+		if (contract && persistedClauseContractIdRef.current !== contract.id) {
+			persistedClauseContractIdRef.current = contract.id;
+			persistedClausesRef.current = contract.clauses;
+		}
+	}, [contract]);
 
-	const invalidateAll = () => {
-		void qc.invalidateQueries({ queryKey: ["contracts", projectId] });
-		void qc.invalidateQueries({ queryKey: ["project", projectId] });
+	const updateDocumentClauses = (clauses: ContractClause[]) => {
+		void qc.cancelQueries({ queryKey: ["contract", contractId] });
+		setDocumentClauses(clauses);
+		qc.setQueryData<Contract>(["contract", contractId], (current) =>
+			current ? { ...current, clauses } : current,
+		);
 	};
 
-	const createMutation = useMutation({
-		mutationFn: () => contractService.create(projectId, {}),
-		onSuccess: () => {
-			toast.success("Draft contract created");
-			invalidateAll();
+	const clausesSaveStatus = useAutosave(
+		documentClauses,
+		async (clauses) => {
+			if (!contract) return;
+			const saved = await contractService.update(contract.id, { clauses });
+			persistedClausesRef.current = saved.clauses;
+			qc.setQueryData<Contract>(["contract", contract.id], saved);
+			void qc.invalidateQueries({
+				queryKey: ["contracts", contract.project_id],
+			});
 		},
-		onError: (err: Error) => toast.error(err.message),
-	});
+		{
+			enabled: Boolean(
+				contract && isConsultant && isEditableStatus(contract.status),
+			),
+			onError: (error, failedClauses) => {
+				if (
+					JSON.stringify(documentClausesRef.current) ===
+					JSON.stringify(failedClauses)
+				) {
+					const rollback = persistedClausesRef.current;
+					setDocumentClauses(rollback);
+					qc.setQueryData<Contract>(["contract", contractId], (current) =>
+						current ? { ...current, clauses: rollback } : current,
+					);
+				}
+				toast.error(error.message);
+			},
+		},
+	);
 
+	const invalidateAll = () => {
+		void qc.invalidateQueries({ queryKey: ["contract", contractId] });
+		if (contract) {
+			void qc.invalidateQueries({
+				queryKey: ["contracts", contract.project_id],
+			});
+			void qc.invalidateQueries({ queryKey: ["project", contract.project_id] });
+		}
+		void qc.invalidateQueries({ queryKey: ["finance"] });
+	};
 	const signMutation = useMutation({
 		mutationFn: ({
 			party,
@@ -192,23 +217,13 @@ function ProjectContractPage() {
 			signatureUrl?: string | null;
 			placement?: SignaturePlacement;
 		}) =>
-			contractService.sign(
-				contract?.id as string,
-				party,
-				name,
-				signatureUrl,
-				placement,
-			),
+			contractService.sign(contractId, party, name, signatureUrl, placement),
 		onSuccess: () => {
 			toast.success("Signature recorded");
 			invalidateAll();
 		},
-		onError: (err: Error) => toast.error(err.message),
+		onError: (error: Error) => toast.error(error.message),
 	});
-
-	// Moving/resizing the overlay is cosmetic and stays available after
-	// signing, so it gets its own quiet mutation rather than forcing a
-	// remove-and-re-sign.
 	const placementMutation = useMutation({
 		mutationFn: ({
 			party,
@@ -216,196 +231,353 @@ function ProjectContractPage() {
 		}: {
 			party: "consultant" | "client";
 			placement: Partial<SignaturePlacement>;
-		}) =>
-			contractService.setSignaturePlacement(
-				contract?.id as string,
-				party,
-				placement,
-			),
-		onSuccess: () => invalidateAll(),
-		onError: (err: Error) => toast.error(err.message),
+		}) => contractService.setSignaturePlacement(contractId, party, placement),
+		onSuccess: invalidateAll,
+		onError: (error: Error) => toast.error(error.message),
 	});
-
 	const unsignMutation = useMutation({
 		mutationFn: ({ party }: { party: "consultant" | "client" }) =>
-			contractService.unsign(contract?.id as string, party),
+			contractService.unsign(contractId, party),
 		onSuccess: () => {
 			toast.success("Signature removed");
 			invalidateAll();
 		},
-		onError: (err: Error) => toast.error(err.message),
+		onError: (error: Error) => toast.error(error.message),
 	});
+	const deleteMutation = useMutation({
+		mutationFn: () => contractService.delete(contractId),
+		onSuccess: async () => {
+			toast.success("Draft contract deleted");
+			await Promise.all([
+				qc.invalidateQueries({
+					queryKey: ["finance", "contracts"],
+					refetchType: "all",
+				}),
+				qc.invalidateQueries({
+					queryKey: ["finance", "portfolio"],
+					refetchType: "all",
+				}),
+			]);
+			qc.removeQueries({ queryKey: ["contract", contractId] });
+			onBack();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const deleteDraft = async () => {
+		if (!contract) return;
+		const confirmed = await confirm({
+			title: "Delete this draft contract?",
+			message:
+				"This permanently removes the draft agreement. Sent and signed contracts cannot be deleted.",
+			confirmLabel: "Delete draft",
+			tone: "danger",
+		});
+		if (confirmed) deleteMutation.mutate();
+	};
 
-	if (projectQuery.isPending || contractsQuery.isPending) {
+	if (contractQuery.isPending || (contract && projectQuery.isPending)) {
 		return (
-			<div className="flex h-full items-center justify-center">
+			<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] items-center justify-center">
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
+	if (contractQuery.isError || !contract) {
+		return (
+			<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] items-center justify-center p-6">
+				<AppSurfaceCard className="max-w-md p-8 text-center">
+					<FileSignature className="mx-auto h-10 w-10 text-muted-foreground" />
+					<h1 className="mt-3 text-base font-semibold text-foreground">
+						Contract unavailable
+					</h1>
+					<p className="mt-1 text-sm text-muted-foreground">
+						It may have been removed, or you may no longer have access to its
+						project.
+					</p>
+					<button
+						type="button"
+						onClick={onBack}
+						className="mt-5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+					>
+						Back to contracts
+					</button>
+				</AppSurfaceCard>
+			</div>
+		);
+	}
+
+	const editable = isConsultant && isEditableStatus(contract.status);
+	const adjustZoom = (delta: number) =>
+		setZoom((current) => Math.max(30, Math.min(200, current + delta)));
 
 	return (
-		<div className="w-full">
-			<div className="mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8 2xl:max-w-[1680px]">
-				<AppSurfaceCard strong className="mb-6 p-6">
-					<AppSectionHeader
-						kicker="Finance"
-						title="Contract"
-						subtitle="What the client pays, for how long, and how the money splits between the company and the team."
-						rightSlot={
-							<div className="flex items-center gap-2">
-								{contract && !previewOpen && (
-									<button
-										type="button"
-										onClick={() => setPreviewVisible(true)}
-										className="hidden items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground lg:inline-flex"
-									>
-										<PanelRightOpen className="h-3.5 w-3.5" />
-										Show preview
-									</button>
-								)}
-								{contract ? (
-									<ContractStatusChip status={contract.status} />
-								) : null}
-							</div>
-						}
-					/>
-				</AppSurfaceCard>
-
-				{!contract ? (
-					<AppSurfaceCard className="p-8 text-center">
-						<FileSignature className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-						<p className="text-sm font-semibold text-foreground">
-							No contract yet
-						</p>
-						<p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-							A contract sets the recurring fee or client rate, the term, and
-							the billing schedule. The project can't be activated without one.
-						</p>
-						{isConsultant && (
-							<button
-								type="button"
-								onClick={() => createMutation.mutate()}
-								disabled={createMutation.isPending}
-								className="app-cta mt-5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-							>
-								{createMutation.isPending
-									? "Creating…"
-									: "Create draft contract"}
-							</button>
-						)}
-					</AppSurfaceCard>
-				) : (
-					<div
-						className={
-							previewOpen
-								? "grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,440px)]"
-								: "grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]"
-						}
+		<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] min-h-[520px] flex-col overflow-hidden bg-background">
+			<header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3 shadow-sm">
+				<div className="flex min-w-0 items-center gap-2">
+					<button
+						type="button"
+						onClick={onBack}
+						aria-label="Back to contracts"
+						className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
 					>
-						{/* Left: step rail + activation guide (kept beside the steps so
-						    it stays visible, not buried under the tall preview). */}
-						<div className="space-y-5 lg:sticky lg:top-6 lg:self-start">
-							<StepRail
-								steps={visibleSteps(isConsultant)}
-								activeStep={activeStep}
-								onSelect={setActiveStep}
-								contract={contract}
+						<ArrowLeft className="h-4 w-4" />
+					</button>
+					<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+						<FileSignature className="h-4 w-4" />
+					</span>
+					<div className="min-w-0">
+						<h1 className="truncate text-sm font-semibold text-foreground">
+							{contract.contract_number
+								? `Contract ${contract.contract_number}`
+								: `Service agreement · Version ${contract.version}`}
+						</h1>
+						<p className="truncate text-[11px] text-muted-foreground">
+							{project?.title ?? contract.client_name ?? "Project contract"}
+						</p>
+					</div>
+					<ContractStatusChip status={contract.status} />
+				</div>
+				<div className="flex shrink-0 items-center gap-1.5">
+					<Dropdown
+						value={activeStep}
+						onChange={(value) => setActiveStep(value as StepKey)}
+						options={STEP_META.map((step) => ({
+							value: step.key,
+							label: step.label,
+						}))}
+						ariaLabel="Contract section"
+						className="hidden w-40 lg:block"
+					/>
+					<div className="hidden items-center gap-0.5 rounded-md border border-border p-0.5 md:flex">
+						<ZoomButton label="Zoom out" onClick={() => adjustZoom(-10)}>
+							<Minus className="h-3.5 w-3.5" />
+						</ZoomButton>
+						<span className="w-10 text-center text-[11px] tabular-nums text-foreground">
+							{zoom}%
+						</span>
+						<ZoomButton label="Zoom in" onClick={() => adjustZoom(10)}>
+							<Plus className="h-3.5 w-3.5" />
+						</ZoomButton>
+					</div>
+					{isConsultant && !contract.signed_by_client_at && (
+						<button
+							type="button"
+							onClick={() => setSigningLinkOpen(true)}
+							className="hidden items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted sm:inline-flex"
+						>
+							<Send className="h-3.5 w-3.5" /> Send to client
+						</button>
+					)}
+					{isConsultant && contract.status === "draft" && (
+						<button
+							type="button"
+							onClick={() => void deleteDraft()}
+							disabled={deleteMutation.isPending}
+							className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+						>
+							{deleteMutation.isPending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<Trash2 className="h-3.5 w-3.5" />
+							)}
+							<span className="hidden sm:inline">Delete draft</span>
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={() => setActiveStep("signatures")}
+						className="app-cta rounded-md px-3 py-1.5 text-xs font-semibold text-white"
+					>
+						Signatures
+					</button>
+				</div>
+			</header>
+			<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+				<div className="min-w-0 overflow-hidden">
+					<ContractEditorCanvas
+						contract={{ ...contract, clauses: documentClauses }}
+						parties={previewParties}
+						terms={previewTerms}
+						activeSection={activeStep}
+						onSectionSelect={(section) => setActiveStep(section)}
+						editable={editable}
+						onClauseChange={(key, patch) =>
+							updateDocumentClauses(
+								documentClauses.map((clause) =>
+									clause.key === key ? { ...clause, ...patch } : clause,
+								),
+							)
+						}
+						zoom={zoom}
+						onZoomChange={setZoom}
+						fitSignal={fitSignal}
+						onStatsChange={setCanvasStats}
+					/>
+				</div>
+				<aside className="min-w-0 overflow-y-auto border-l border-border bg-background">
+					<div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+						<div className="min-w-0 flex-1">
+							<p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+								Inspector
+							</p>
+							<Dropdown
+								value={activeStep}
+								onChange={(value) => setActiveStep(value as StepKey)}
+								options={STEP_META.map((step) => ({
+									value: step.key,
+									label: step.label,
+								}))}
+								ariaLabel="Inspector section"
+								className="mt-1 w-full min-w-0"
 							/>
-							{isConsultant && checklistQuery.data && (
-								<div className="app-surface-card-strong rounded-2xl p-4">
-									<div className="mb-2 flex items-center justify-between">
-										<h3 className="text-sm font-semibold text-foreground">
-											Make it live
-										</h3>
-										<span className="text-xs font-semibold text-muted-foreground">
-											{checklistProgress(checklistQuery.data).done}/
-											{checklistProgress(checklistQuery.data).total}
-										</span>
-									</div>
-									<ActivationGuide
-										projectId={projectId}
-										checklist={checklistQuery.data}
-										isLoading={checklistQuery.isPending}
-										projectStatus={project?.status ?? null}
-										mode="compact"
-									/>
-								</div>
-							)}
 						</div>
-
-						{/* Center: active step */}
-						<div className="min-w-0">
-							{activeStep === "parties" && (
-								<PartiesSection
-									contract={contract}
-									editable={isConsultant}
-									onDraftChange={setPreviewParties}
-								/>
-							)}
-							{activeStep === "terms" && (
-								<TermsSection
-									contract={contract}
-									editable={isConsultant}
-									onDraftChange={setPreviewTerms}
-								/>
-							)}
-							{activeStep === "services" && (
-								<ServicesSection contract={contract} editable={isConsultant} />
-							)}
-							{activeStep === "agreement" && (
-								<AgreementSection contract={contract} editable={isConsultant} />
-							)}
-							{activeStep === "signatures" && (
-								<SignatureSection
-									contract={contract}
-									isConsultant={isConsultant}
-									canSignAsConsultant={isConsultant}
-									canSignAsClient={
-										Boolean(user?.id) &&
-										(contract.client_user_id === user?.id ||
-											project?.client_id === user?.id)
-									}
-									onSign={(party, name, signatureUrl, placement) =>
-										signMutation.mutate({
-											party,
-											name,
-											signatureUrl,
-											placement,
-										})
-									}
-									onUnsign={(party) => unsignMutation.mutate({ party })}
-									onPlacementChange={(party, placement) =>
-										placementMutation.mutate({ party, placement })
-									}
-									isPending={signMutation.isPending}
-									isUnsigning={unsignMutation.isPending}
-									isRescaling={placementMutation.isPending}
-								/>
-							)}
-						</div>
-
-						{/* Right: the live document preview gets the whole column. */}
-						{previewOpen && (
-							<div className="lg:sticky lg:top-6 lg:self-start">
-								<ContractDocumentPreview
-									contract={contract}
-									parties={previewParties}
-									terms={previewTerms}
-									onHide={() => setPreviewVisible(false)}
-								/>
-							</div>
+						{activeStep === "agreement" && editable && (
+							<AutosaveIndicator status={clausesSaveStatus} className="mt-0" />
 						)}
 					</div>
-				)}
+					<div className="p-3">
+						{activeStep === "parties" && (
+							<PartiesSection
+								contract={contract}
+								editable={isConsultant}
+								onDraftChange={setPreviewParties}
+							/>
+						)}
+						{activeStep === "terms" && (
+							<TermsSection
+								contract={contract}
+								editable={isConsultant}
+								onDraftChange={setPreviewTerms}
+								onAmended={(created) => onOpenContract?.(created.id)}
+							/>
+						)}
+						{activeStep === "services" && (
+							<ServicesSection contract={contract} editable={isConsultant} />
+						)}
+						{activeStep === "agreement" && (
+							<AgreementSection
+								contract={contract}
+								editable={isConsultant}
+								clauses={documentClauses}
+								onChange={updateDocumentClauses}
+								saveStatus={clausesSaveStatus}
+							/>
+						)}
+						{activeStep === "signatures" && (
+							<SignatureSection
+								contract={contract}
+								isConsultant={isConsultant}
+								canSignAsConsultant={isConsultant}
+								canSignAsClient={
+									Boolean(user?.id) &&
+									(contract.client_user_id === user?.id ||
+										project?.client_id === user?.id)
+								}
+								onSign={(party, name, signatureUrl, placement) =>
+									signMutation.mutate({
+										party,
+										name,
+										signatureUrl,
+										placement,
+									})
+								}
+								onUnsign={(party) => unsignMutation.mutate({ party })}
+								onPlacementChange={(party, placement) =>
+									placementMutation.mutate({ party, placement })
+								}
+								isPending={signMutation.isPending}
+								isUnsigning={unsignMutation.isPending}
+								isRescaling={placementMutation.isPending}
+							/>
+						)}
+					</div>
+				</aside>
 			</div>
+			<footer className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-card px-3 text-[11px] text-muted-foreground">
+				<div className="flex items-center gap-4 tabular-nums">
+					<span>
+						Page {canvasStats.currentPage} of {canvasStats.pageCount}
+					</span>
+					<span>
+						{canvasStats.wordCount}{" "}
+						{canvasStats.wordCount === 1 ? "word" : "words"}
+					</span>
+					<span className="hidden sm:inline">
+						{editable ? "Autosave on" : "Read only"}
+					</span>
+				</div>
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={() => setFitSignal((signal) => signal + 1)}
+						className="rounded px-2 py-1 font-medium hover:bg-muted hover:text-foreground"
+					>
+						Fit width
+					</button>
+					<ZoomButton label="Zoom out" onClick={() => adjustZoom(-10)}>
+						<Minus className="h-3.5 w-3.5" />
+					</ZoomButton>
+					<input
+						type="range"
+						min={30}
+						max={200}
+						step={10}
+						value={zoom}
+						onChange={(event) => setZoom(Number(event.target.value))}
+						aria-label="Document zoom"
+						className="h-1 w-24 accent-primary"
+					/>
+					<ZoomButton label="Zoom in" onClick={() => adjustZoom(10)}>
+						<Plus className="h-3.5 w-3.5" />
+					</ZoomButton>
+					<button
+						type="button"
+						onClick={() => setZoom(100)}
+						className="w-10 rounded py-1 text-center tabular-nums hover:bg-muted hover:text-foreground"
+					>
+						{zoom}%
+					</button>
+				</div>
+			</footer>
+			{signingLinkOpen && (
+				<ClientSigningLinkModal
+					contract={contract}
+					onClose={() => setSigningLinkOpen(false)}
+				/>
+			)}
 		</div>
 	);
 }
 
-/* ── Step rail ────────────────────────────────────────────────────────────── */
+function ZoomButton({
+	label,
+	onClick,
+	children,
+}: {
+	label: string;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			aria-label={label}
+			className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+		>
+			{children}
+		</button>
+	);
+}
 
-type StepKey = "parties" | "terms" | "services" | "agreement" | "signatures";
+/* ── Document sections ────────────────────────────────────────────────────── */
+
+export type StepKey =
+	| "parties"
+	| "terms"
+	| "services"
+	| "agreement"
+	| "signatures";
 
 const STEP_META: Array<{
 	key: StepKey;
@@ -418,117 +590,6 @@ const STEP_META: Array<{
 	{ key: "agreement", label: "Agreement" },
 	{ key: "signatures", label: "Signatures" },
 ];
-
-function visibleSteps(isConsultant: boolean) {
-	return STEP_META.filter((s) => isConsultant || !s.consultantOnly);
-}
-
-function isStepKey(value: string): value is StepKey {
-	return STEP_META.some((s) => s.key === value);
-}
-
-/**
- * Per-step completeness for the rail's done/todo dot. Derived from the contract
- * directly rather than the activation checklist, so each step
- * reflects its own data even for items the checklist doesn't track (services,
- * agreement). "optional" steps show a neutral dot when empty, not a red todo.
- */
-function stepStatus(
-	key: StepKey,
-	contract: Contract,
-): "done" | "todo" | "optional" {
-	switch (key) {
-		case "parties":
-			return contract.client_name || contract.client_email ? "done" : "todo";
-		case "terms": {
-			const hasDates =
-				Boolean(contract.service_start_date) &&
-				Boolean(contract.service_end_date);
-			const hasMoney =
-				Number(contract.recurring_fee) > 0 ||
-				Number(contract.client_hourly_rate) > 0;
-			return hasDates && hasMoney ? "done" : "todo";
-		}
-		case "services":
-			return contract.services.length > 0 ? "done" : "optional";
-		case "agreement":
-			return contract.clauses.length > 0 ? "done" : "optional";
-		case "signatures":
-			return contract.status === "signed" || contract.status === "active"
-				? "done"
-				: "todo";
-	}
-}
-
-function StepRail({
-	steps,
-	activeStep,
-	onSelect,
-	contract,
-}: {
-	steps: Array<{ key: StepKey; label: string }>;
-	activeStep: StepKey;
-	onSelect: (key: StepKey) => void;
-	contract: Contract;
-}) {
-	return (
-		<nav>
-			<ol className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-1">
-				{steps.map((step, index) => {
-					const status = stepStatus(step.key, contract);
-					const active = step.key === activeStep;
-					return (
-						<li key={step.key}>
-							<button
-								type="button"
-								onClick={() => onSelect(step.key)}
-								className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
-									active
-										? "bg-primary text-primary-foreground shadow-sm"
-										: "text-muted-foreground hover:bg-muted"
-								}`}
-							>
-								<StepDot status={status} active={active} index={index} />
-								{step.label}
-							</button>
-						</li>
-					);
-				})}
-			</ol>
-		</nav>
-	);
-}
-
-function StepDot({
-	status,
-	active,
-	index,
-}: {
-	status: "done" | "todo" | "optional";
-	active: boolean;
-	index: number;
-}) {
-	if (status === "done") {
-		return (
-			<CheckCircle2
-				className={`h-4 w-4 shrink-0 ${active ? "text-primary-foreground" : "text-emerald-500"}`}
-			/>
-		);
-	}
-	return (
-		<span
-			className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-				active
-					? "border-primary-foreground/60 text-primary-foreground"
-					: status === "optional"
-						? "border-border text-muted-foreground"
-						: "border-amber-400 text-amber-500"
-			}`}
-		>
-			{index + 1}
-		</span>
-	);
-}
 
 /* ── Field group ──────────────────────────────────────────────────────────── */
 
@@ -547,12 +608,10 @@ function FieldGroup({
 }) {
 	return (
 		<fieldset>
-			<legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+			<legend className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 				{title}
 			</legend>
-			<div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
-				{children}
-			</div>
+			<div className="grid grid-cols-1 gap-y-3">{children}</div>
 		</fieldset>
 	);
 }
@@ -565,9 +624,13 @@ function partiesPreview(contract: Contract | null): PreviewParties {
 		provider_name: contract?.provider_name ?? "",
 		provider_address: contract?.provider_address ?? "",
 		provider_email: contract?.provider_email ?? null,
+		provider_tin: contract?.provider_tin ?? null,
+		provider_kind: contract?.provider_kind ?? null,
 		client_name: contract?.client_name ?? "",
 		client_contact_name: contract?.client_contact_name ?? "",
 		client_address: contract?.client_address ?? "",
+		client_email: contract?.client_email ?? null,
+		client_tin: contract?.client_tin ?? null,
 	};
 }
 
@@ -678,16 +741,24 @@ function PartiesSection({
 			provider_name: draft.provider_name,
 			provider_address: draft.provider_address,
 			provider_email: contract.provider_email,
+			provider_tin: draft.provider_tin,
+			provider_kind: draft.provider_kind,
 			client_name: draft.client_name,
 			client_contact_name: draft.client_contact_name,
 			client_address: draft.client_address,
+			client_email: draft.client_email,
+			client_tin: draft.client_tin,
 		});
 	}, [
 		draft.provider_name,
 		draft.provider_address,
+		draft.provider_tin,
+		draft.provider_kind,
 		draft.client_name,
 		draft.client_contact_name,
 		draft.client_address,
+		draft.client_email,
+		draft.client_tin,
 		contract.provider_email,
 		onDraftChange,
 	]);
@@ -701,6 +772,7 @@ function PartiesSection({
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
+			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
 		},
 		{ enabled: !locked, onError: (err) => toast.error(err.message) },
 	);
@@ -722,6 +794,7 @@ function PartiesSection({
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
+			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
 			toast.success(
 				updated.provider_kind === "agency"
 					? "Filled in from your team's billing identity."
@@ -764,11 +837,11 @@ function PartiesSection({
 	};
 
 	return (
-		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">Parties</h2>
-			<div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2">
-				<div className="space-y-3">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		<section className="px-1 py-1 [&_.text-sm]:text-xs [&_.text-xs]:text-[11px] [&_input:not([type=checkbox])]:text-xs [&_button]:text-[11px]">
+			<h2 className="text-sm font-semibold text-foreground">Parties</h2>
+			<div className="mt-3 grid grid-cols-1 gap-4">
+				<div className="space-y-2.5">
+					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 						Service provider
 					</p>
 
@@ -854,8 +927,8 @@ function PartiesSection({
 						disabled={locked}
 					/>
 				</div>
-				<div className="space-y-3">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+				<div className="space-y-2.5">
+					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 						Client
 					</p>
 					<TextField
@@ -893,7 +966,7 @@ function PartiesSection({
 				</div>
 			</div>
 			{!locked && <AutosaveIndicator status={saveStatus} />}
-		</AppSurfaceCard>
+		</section>
 	);
 }
 
@@ -929,10 +1002,12 @@ function TermsSection({
 	contract,
 	editable,
 	onDraftChange,
+	onAmended,
 }: {
 	contract: Contract;
 	editable: boolean;
 	onDraftChange?: (terms: PreviewTerms) => void;
+	onAmended?: (contract: Contract) => void;
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
@@ -1007,6 +1082,7 @@ function TermsSection({
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
+			onAmended?.(created);
 		},
 		onError: (err) => {
 			toast.error((err as Error).message);
@@ -1039,6 +1115,7 @@ function TermsSection({
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
+			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
 			void qc.invalidateQueries({
 				queryKey: ["project", contract.project_id, "activation-checklist"],
 			});
@@ -1055,13 +1132,13 @@ function TermsSection({
 	const advanceBilling = draft.billing_timing === "advance";
 
 	return (
-		<AppSurfaceCard className="p-6">
+		<section className="px-1 py-1 [&_.text-sm]:text-xs [&_.text-xs]:text-[11px] [&_input:not([type=checkbox])]:text-xs [&_button]:text-[11px]">
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div>
-					<h2 className="text-lg font-semibold text-foreground">
+					<h2 className="text-sm font-semibold text-foreground">
 						Commercial terms
 					</h2>
-					<p className="mt-1 text-sm text-muted-foreground">
+					<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
 						These drive every client invoice. Rates here are what the{" "}
 						<span className="font-semibold">client</span> pays — team member
 						rates are separate and stay internal.
@@ -1071,7 +1148,7 @@ function TermsSection({
 					<button
 						type="button"
 						onClick={() => setAmending(true)}
-						className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+						className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-muted"
 					>
 						Amend terms
 					</button>
@@ -1079,8 +1156,8 @@ function TermsSection({
 			</div>
 
 			{amending && (
-				<div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
-					<p className="text-xs text-muted-foreground">
+				<div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+					<p className="text-[11px] leading-4 text-muted-foreground">
 						Editing an amendment. Nothing is saved until you choose which
 						invoices it applies to.
 					</p>
@@ -1107,7 +1184,7 @@ function TermsSection({
 				</div>
 			)}
 
-			<div className="mt-6 space-y-6">
+			<div className="mt-4 space-y-4">
 				<FieldGroup title="How the client is charged">
 					<SelectField
 						label="Charging model"
@@ -1322,7 +1399,7 @@ function TermsSection({
 					amendMutation.mutate(scope);
 				}}
 			/>
-		</AppSurfaceCard>
+		</section>
 	);
 }
 
@@ -1372,14 +1449,14 @@ function ProviderKindToggle({
 		{ kind: "agency", label: "Agency or company" },
 	];
 	return (
-		<div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
+		<div className="inline-flex rounded-md border border-border p-0.5 text-[11px] font-medium">
 			{options.map((o) => (
 				<button
 					key={o.kind}
 					type="button"
 					disabled={disabled || value === o.kind}
 					onClick={() => onChange(o.kind)}
-					className={`rounded-md px-2.5 py-1 transition ${
+					className={`rounded px-2 py-1 transition ${
 						value === o.kind
 							? "bg-primary text-primary-foreground"
 							: "text-muted-foreground hover:text-foreground disabled:opacity-50"
@@ -1423,7 +1500,7 @@ function TermLengthField({
 					disabled={disabled}
 					aria-label="Term length"
 					onChange={(e) => onCountChange(e.target.value)}
-					className="w-20 rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+					className="w-20 rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-card-foreground shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
 				/>
 				<div className="flex-1">
 					<Dropdown
@@ -1459,20 +1536,20 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 
 	if (periods.length === 0) {
 		return (
-			<div className="mt-6 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+			<div className="mt-4 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[11px] text-muted-foreground">
 				Set a service start date and term length to see the billing schedule.
 			</div>
 		);
 	}
 
 	return (
-		<div className="mt-6 overflow-hidden rounded-xl border border-border">
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border bg-muted/40 px-4 py-3">
+		<div className="mt-4 overflow-hidden rounded-lg border border-border">
+			<div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-3 py-2">
 				<div>
-					<p className="text-sm font-semibold text-foreground">
+					<p className="text-[11px] font-semibold text-foreground">
 						Billing schedule
 					</p>
-					<p className="mt-0.5 text-xs text-muted-foreground">
+					<p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
 						{formatContractDate(contract.service_start_date)} –{" "}
 						{formatContractDate(contract.service_end_date)}
 						{contract.contract_end_date &&
@@ -1484,19 +1561,19 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 							: ""}
 					</p>
 				</div>
-				<span className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+				<span className="rounded-full bg-card px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
 					{periods.length} invoice{periods.length === 1 ? "" : "s"}
 				</span>
 			</div>
 
 			<div className="overflow-x-auto">
-				<table className="w-full text-xs">
-					<thead className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+				<table className="w-full text-[11px]">
+					<thead className="text-left text-[9px] uppercase tracking-wide text-muted-foreground">
 						<tr className="border-b border-border">
-							<th className="px-4 py-2 font-semibold">#</th>
-							<th className="px-4 py-2 font-semibold">Period covered</th>
-							<th className="px-4 py-2 font-semibold">Invoice date</th>
-							<th className="px-4 py-2 font-semibold">Payment due</th>
+							<th className="px-2.5 py-1.5 font-semibold">#</th>
+							<th className="px-2.5 py-1.5 font-semibold">Period covered</th>
+							<th className="px-2.5 py-1.5 font-semibold">Invoice date</th>
+							<th className="px-2.5 py-1.5 font-semibold">Payment due</th>
 						</tr>
 					</thead>
 					<tbody className="divide-y divide-border">
@@ -1507,16 +1584,16 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 									key={period.id}
 									className={past ? "text-muted-foreground" : "text-foreground"}
 								>
-									<td className="px-4 py-2 tabular-nums text-muted-foreground">
+									<td className="px-2.5 py-1.5 tabular-nums text-muted-foreground">
 										{index + 1}
 									</td>
-									<td className="px-4 py-2 font-medium">
+									<td className="px-2.5 py-1.5 font-medium">
 										{formatPeriodRange(period)}
 									</td>
-									<td className="px-4 py-2 tabular-nums">
+									<td className="px-2.5 py-1.5 tabular-nums">
 										{formatContractDate(period.invoiceDate)}
 									</td>
-									<td className="px-4 py-2 tabular-nums">
+									<td className="px-2.5 py-1.5 tabular-nums">
 										{formatContractDate(period.dueDate)}
 									</td>
 								</tr>
@@ -1530,7 +1607,7 @@ function BillingSchedulePreview({ contract }: { contract: Contract }) {
 				<button
 					type="button"
 					onClick={() => setShowAll((v) => !v)}
-					className="w-full border-t border-border bg-muted/30 px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+					className="w-full border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
 				>
 					{showAll
 						? "Show fewer"
@@ -1585,6 +1662,7 @@ function ServicesSection({
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
+			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
 		},
 		{ enabled: !locked, onError: (err) => toast.error(err.message) },
 	);
@@ -1611,43 +1689,56 @@ function ServicesSection({
 		setServices((prev) => prev.filter((s) => s.id !== id));
 
 	return (
-		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">Services</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
+		<section className="px-1 py-1 [&_.text-sm]:text-xs [&_.text-xs]:text-[11px] [&_input:not([type=checkbox])]:text-xs [&_button]:text-[11px]">
+			<h2 className="text-sm font-semibold text-foreground">Services</h2>
+			<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
 				The billable services this contract covers. You can pick these directly
 				into an invoice instead of retyping each line.
 			</p>
 
-			<div className="mt-5 space-y-3">
+			<div className="mt-3 space-y-2.5">
 				{services.length === 0 && (
-					<p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+					<p className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-[11px] text-muted-foreground">
 						No services defined yet.
 					</p>
 				)}
-				{services.map((service) => (
+				{services.map((service, index) => (
 					<div
 						key={service.id}
-						className="rounded-xl border border-border bg-muted/30 p-4"
+						className="rounded-lg border border-border bg-muted/30 p-3"
 					>
-						<div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px_160px_auto]">
-							<FieldLabel
-								label="Service"
-								hint="What you're billing for. This becomes the invoice line's description."
-							>
-								<input
-									type="text"
-									value={service.name}
-									disabled={locked}
-									placeholder="e.g. Digital Marketing"
-									onChange={(e) =>
-										patchRow(service.id, { name: e.target.value })
-									}
-									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-								/>
-							</FieldLabel>
+						<div className="mb-2 flex items-center justify-between gap-2">
+							<p className="text-[11px] font-semibold text-foreground">
+								Service {index + 1}
+							</p>
+							{!locked && (
+								<button
+									type="button"
+									onClick={() => removeRow(service.id)}
+									className="rounded-md px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+								>
+									Remove
+								</button>
+							)}
+						</div>
+						<FieldLabel
+							label="Service"
+							hint="What you're billing for. This becomes the invoice line's description."
+						>
+							<input
+								type="text"
+								value={service.name}
+								disabled={locked}
+								placeholder="e.g. Digital Marketing"
+								onChange={(e) => patchRow(service.id, { name: e.target.value })}
+								className="min-w-0 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+							/>
+						</FieldLabel>
+						<div className="mt-2 flex flex-wrap gap-2">
 							<FieldLabel
 								label="Billed per"
 								hint="The unit the rate applies to — per hour, per month, or a one-off per project."
+								className="min-w-36 flex-1"
 							>
 								<select
 									value={service.unit ?? ""}
@@ -1655,7 +1746,7 @@ function ServicesSection({
 									onChange={(e) =>
 										patchRow(service.id, { unit: e.target.value })
 									}
-									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+									className="min-w-0 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
 								>
 									{SERVICE_UNIT_OPTIONS.map((option) => (
 										<option key={option.value} value={option.value}>
@@ -1667,6 +1758,7 @@ function ServicesSection({
 							<FieldLabel
 								label={`Rate (${currency})`}
 								hint="What the CLIENT pays per unit. Team member costs are separate and stay internal."
+								className="min-w-36 flex-1"
 							>
 								<input
 									type="number"
@@ -1678,24 +1770,15 @@ function ServicesSection({
 									onChange={(e) =>
 										patchRow(service.id, { unit_rate: Number(e.target.value) })
 									}
-									className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
+									className="min-w-0 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
 								/>
 							</FieldLabel>
-							{!locked && (
-								<button
-									type="button"
-									onClick={() => removeRow(service.id)}
-									className="h-fit self-end rounded-lg border border-border px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:border-destructive hover:text-destructive"
-								>
-									Remove
-								</button>
-							)}
 						</div>
 						<FieldLabel
 							label="Description"
 							optional
 							hint="Extra detail shown under the line on the invoice."
-							className="mt-3"
+							className="mt-2"
 						>
 							<input
 								type="text"
@@ -1713,85 +1796,344 @@ function ServicesSection({
 			</div>
 
 			{!locked && (
-				<div className="mt-4 flex items-center gap-3">
+				<div className="mt-3 flex items-center gap-2">
 					<button
 						type="button"
 						onClick={addRow}
-						className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+						className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground hover:bg-muted"
 					>
 						+ Add service
 					</button>
 					<AutosaveIndicator status={saveStatus} className="mt-0" />
 				</div>
 			)}
-		</AppSurfaceCard>
+		</section>
 	);
 }
 
 /* ── Agreement clauses ────────────────────────────────────────────────────── */
 
+const ROOT_CLAUSE_PARENT = "__root__";
+
+function clauseParent(
+	clause: ContractClause,
+	knownKeys: Set<string>,
+): string | null {
+	return clause.parent_key && knownKeys.has(clause.parent_key)
+		? clause.parent_key
+		: null;
+}
+
+function clauseSiblings(
+	clauses: ContractClause[],
+	parentKey: string | null,
+): ContractClause[] {
+	const knownKeys = new Set(clauses.map((clause) => clause.key));
+	return clauses
+		.filter((clause) => clauseParent(clause, knownKeys) === parentKey)
+		.sort((left, right) => left.position - right.position);
+}
+
+function flattenClauseTree(
+	clauses: ContractClause[],
+	overrides = new Map<string, ContractClause[]>(),
+): ContractClause[] {
+	const result: ContractClause[] = [];
+	const visited = new Set<string>();
+	const visit = (parentKey: string | null) => {
+		const siblings =
+			overrides.get(parentKey ?? ROOT_CLAUSE_PARENT) ??
+			clauseSiblings(clauses, parentKey);
+		for (const clause of siblings) {
+			if (visited.has(clause.key)) continue;
+			visited.add(clause.key);
+			result.push(clause);
+			visit(clause.key);
+		}
+	};
+	visit(null);
+	for (const clause of clauses) {
+		if (visited.has(clause.key)) continue;
+		visited.add(clause.key);
+		result.push({ ...clause, parent_key: null });
+		visit(clause.key);
+	}
+	return result.map((clause, position) => ({ ...clause, position }));
+}
+
+function clauseDescendantKeys(
+	clauses: ContractClause[],
+	key: string,
+): Set<string> {
+	const removed = new Set([key]);
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const clause of clauses) {
+			if (!clause.parent_key || !removed.has(clause.parent_key)) continue;
+			if (removed.has(clause.key)) continue;
+			removed.add(clause.key);
+			changed = true;
+		}
+	}
+	return removed;
+}
+
+function SortableClauseRow({
+	clause,
+	number,
+	depth,
+	locked,
+	onAddSubclause,
+	onDelete,
+	children,
+}: {
+	clause: ContractClause;
+	number: string;
+	depth: number;
+	locked: boolean;
+	onAddSubclause: (clause: ContractClause) => void;
+	onDelete: (clause: ContractClause) => void;
+	children?: React.ReactNode;
+}) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: clause.key, disabled: locked });
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={{
+				transform: CSS.Transform.toString(transform),
+				transition,
+			}}
+			className={isDragging ? "relative z-20 opacity-40" : "relative"}
+		>
+			<div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-2.5 py-1.5">
+				{!locked && (
+					<button
+						type="button"
+						aria-label={"Drag " + clause.title + " to reorder"}
+						className="shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+						{...attributes}
+						{...listeners}
+					>
+						<GripVertical className="h-3.5 w-3.5" />
+					</button>
+				)}
+				<span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded bg-background px-1 text-[10px] font-semibold text-muted-foreground">
+					{number}
+				</span>
+				<p className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+					{clause.title}
+				</p>
+				{!locked && (
+					<div className="flex shrink-0 items-center gap-0.5">
+						{depth === 0 && (
+							<button
+								type="button"
+								onClick={() => onAddSubclause(clause)}
+								aria-label={"Add a subclause to " + clause.title}
+								className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+							>
+								<ListPlus className="h-3 w-3" />
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={() => onDelete(clause)}
+							aria-label={"Delete " + clause.title}
+							className="rounded p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+						>
+							<Trash2 className="h-3 w-3" />
+						</button>
+					</div>
+				)}
+			</div>
+			{children}
+		</div>
+	);
+}
+
 function AgreementSection({
 	contract,
 	editable,
+	clauses,
+	onChange,
+	saveStatus,
 }: {
 	contract: Contract;
 	editable: boolean;
+	clauses: ContractClause[];
+	onChange: (clauses: ContractClause[]) => void;
+	saveStatus: AutosaveStatus;
 }) {
-	const qc = useQueryClient();
-	const toast = useToast();
-	const [clauses, setClauses] = useState<ContractClause[]>(contract.clauses);
-
 	const locked = !editable || !isEditableStatus(contract.status);
-
-	const saveStatus = useAutosave(
-		clauses,
-		async (rows) => {
-			await contractService.update(contract.id, { clauses: rows });
-			void qc.invalidateQueries({
-				queryKey: ["contracts", contract.project_id],
-			});
-		},
-		{ enabled: !locked, onError: (err) => toast.error(err.message) },
+	const confirm = useConfirm();
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
 	);
 
+	const removeClause = async (clause: ContractClause) => {
+		const removed = clauseDescendantKeys(clauses, clause.key);
+		const confirmed = await confirm({
+			title: `Delete “${clause.title}”?`,
+			message:
+				removed.size > 1
+					? "This also removes its nested clauses and cannot be undone."
+					: "This removes the clause from the agreement and cannot be undone.",
+			confirmLabel: "Delete clause",
+			tone: "danger",
+		});
+		if (!confirmed) return;
+
+		onChange(
+			flattenClauseTree(clauses.filter((item) => !removed.has(item.key))),
+		);
+	};
+
+	const addClause = (parent: ContractClause | null) => {
+		onChange(
+			flattenClauseTree([
+				...clauses,
+				{
+					key: "custom_" + crypto.randomUUID(),
+					parent_key: parent?.key ?? null,
+					title: parent ? "New subclause" : "New clause",
+					body: parent
+						? "Add the subclause text here."
+						: "Add the clause text here.",
+					position: clauses.length,
+				},
+			]),
+		);
+	};
+
+	const reorder = (event: DragEndEvent) => {
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+		const activeClause = clauses.find((clause) => clause.key === active.id);
+		const overClause = clauses.find((clause) => clause.key === over.id);
+		if (!activeClause || !overClause) return;
+
+		const knownKeys = new Set(clauses.map((clause) => clause.key));
+		const parent = clauseParent(activeClause, knownKeys);
+		if (parent !== clauseParent(overClause, knownKeys)) return;
+
+		const siblings = clauseSiblings(clauses, parent);
+		const oldIndex = siblings.findIndex(
+			(clause) => clause.key === activeClause.key,
+		);
+		const newIndex = siblings.findIndex(
+			(clause) => clause.key === overClause.key,
+		);
+		if (oldIndex < 0 || newIndex < 0) return;
+
+		onChange(
+			flattenClauseTree(
+				clauses,
+				new Map([
+					[
+						parent ?? ROOT_CLAUSE_PARENT,
+						arrayMove(siblings, oldIndex, newIndex),
+					],
+				]),
+			),
+		);
+	};
+
+	const ClauseList = ({
+		parentKey,
+		prefix,
+		depth,
+	}: {
+		parentKey: string | null;
+		prefix: string;
+		depth: number;
+	}) => {
+		const siblings = clauseSiblings(clauses, parentKey);
+		if (siblings.length === 0) return null;
+		return (
+			<SortableContext
+				items={siblings.map((clause) => clause.key)}
+				strategy={verticalListSortingStrategy}
+			>
+				<div
+					className={
+						depth === 0
+							? "space-y-1.5"
+							: "mt-1.5 space-y-1.5 border-l border-border/70 pl-3"
+					}
+				>
+					{siblings.map((clause, index) => {
+						const number = prefix
+							? prefix + "." + String(index + 1)
+							: String(index + 1);
+						return (
+							<SortableClauseRow
+								key={clause.key}
+								clause={clause}
+								number={number}
+								depth={depth}
+								locked={locked}
+								onAddSubclause={() => addClause(clause)}
+								onDelete={(item) => void removeClause(item)}
+							>
+								<ClauseList
+									parentKey={clause.key}
+									prefix={number}
+									depth={depth + 1}
+								/>
+							</SortableClauseRow>
+						);
+					})}
+				</div>
+			</SortableContext>
+		);
+	};
+
 	return (
-		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">
-				Service agreement
+		<section className="px-1 py-1 [&_.text-sm]:text-xs [&_.text-xs]:text-[11px] [&_button]:text-[11px]">
+			<h2 className="text-sm font-semibold text-foreground">
+				Agreement clauses
 			</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
-				Seeded from the standard template. {"{{provider}}"} and {"{{client}}"}{" "}
-				are replaced with the party names when the agreement is rendered.
+			<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+				{locked
+					? "This agreement is read-only."
+					: "Edit headings and paragraphs directly in the document. Party names are protected variables and stay linked to the Parties section."}
 			</p>
 
-			<div className="mt-5 space-y-4">
-				{clauses.map((clause, index) => (
-					<div
-						key={clause.key}
-						className="rounded-xl border border-border bg-muted/30 p-4"
-					>
-						<p className="text-sm font-semibold text-foreground">
-							{index + 1}. {clause.title}
-						</p>
-						<textarea
-							value={clause.body}
-							rows={3}
-							disabled={locked}
-							onChange={(e) =>
-								setClauses((prev) =>
-									prev.map((c) =>
-										c.key === clause.key ? { ...c, body: e.target.value } : c,
-									),
-								)
-							}
-							className="mt-2 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-70"
-						/>
-					</div>
-				))}
-			</div>
+			<DndContext
+				sensors={sensors}
+				collisionDetection={closestCenter}
+				onDragEnd={reorder}
+			>
+				<div className="mt-3">
+					<ClauseList parentKey={null} prefix="" depth={0} />
+				</div>
+			</DndContext>
 
-			{!locked && <AutosaveIndicator status={saveStatus} />}
-		</AppSurfaceCard>
+			{!locked && (
+				<div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+					<button
+						type="button"
+						onClick={() => addClause(null)}
+						className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground hover:bg-muted"
+					>
+						+ Add clause
+					</button>
+					<AutosaveIndicator status={saveStatus} className="mt-0" />
+				</div>
+			)}
+		</section>
 	);
 }
 
@@ -1838,9 +2180,9 @@ function SignatureSection({
 	);
 
 	return (
-		<AppSurfaceCard className="p-6">
-			<h2 className="text-lg font-semibold text-foreground">Signatures</h2>
-			<p className="mt-1 text-sm text-muted-foreground">
+		<section className="px-1 py-1">
+			<h2 className="text-sm font-semibold text-foreground">Signatures</h2>
+			<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
 				Type your full name and, if you like, draw your signature. The contract
 				becomes <span className="font-semibold">signed</span> only once both
 				parties have stamped it.
@@ -1852,20 +2194,20 @@ function SignatureSection({
 				<button
 					type="button"
 					onClick={() => setLinkOpen(true)}
-					className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+					className="mt-2 inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-muted"
 				>
-					<Link2 className="h-3.5 w-3.5" />
+					<Link2 className="h-3 w-3" />
 					Send to the client to sign
 				</button>
 			)}
 
 			{!termsReady && (
-				<p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+				<p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-4 text-amber-600">
 					Set the service start date and term before signing.
 				</p>
 			)}
 
-			<div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+			<div className="mt-3 grid grid-cols-1 gap-2.5">
 				<SignatureBlock
 					heading="For the service provider"
 					signedName={contract.signed_by_consultant_name}
@@ -1918,7 +2260,7 @@ function SignatureSection({
 					onClose={() => setLinkOpen(false)}
 				/>
 			)}
-		</AppSurfaceCard>
+		</section>
 	);
 }
 
@@ -1960,9 +2302,9 @@ function SignatureBlock({
 }) {
 	if (signedAt) {
 		return (
-			<div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+			<div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
 				<div className="flex items-start justify-between gap-2">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 						{heading}
 					</p>
 					{canManage && (
@@ -1970,7 +2312,7 @@ function SignatureBlock({
 							type="button"
 							onClick={onUnsign}
 							disabled={isUnsigning}
-							className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+							className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
 						>
 							{isUnsigning ? (
 								<Loader2 className="h-3 w-3 animate-spin" />
@@ -1988,28 +2330,24 @@ function SignatureBlock({
 						placement={placement}
 						editable={canManage}
 						busy={isRescaling}
+						compact
 						onCommit={onPlacementChange}
-						className="mt-2"
+						className="mt-1.5"
 					/>
 				)}
-				<p className="mt-2 text-sm font-semibold text-foreground">
+				<p className="mt-1.5 text-xs font-semibold text-foreground">
 					{signedName}
 				</p>
-				<p className="mt-0.5 text-xs text-muted-foreground">
+				<p className="mt-0.5 text-[10px] text-muted-foreground">
 					Signed {formatContractDate(signedAt.slice(0, 10))}
 				</p>
-				{canManage && (
-					<p className="mt-2 text-[11px] text-muted-foreground">
-						Remove to sign again.
-					</p>
-				)}
 			</div>
 		);
 	}
 
 	return (
-		<div className="rounded-xl border border-border bg-muted/30 p-4">
-			<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		<div className="rounded-lg border border-border bg-muted/30 p-3">
+			<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 				{heading}
 			</p>
 			{canSign ? (
@@ -2018,9 +2356,10 @@ function SignatureBlock({
 					onNameChange={onChange}
 					onSign={onSign}
 					isPending={isPending}
+					compact
 				/>
 			) : (
-				<p className="mt-2 text-sm italic text-muted-foreground">
+				<p className="mt-1.5 text-[11px] italic text-muted-foreground">
 					Awaiting signature
 				</p>
 			)}

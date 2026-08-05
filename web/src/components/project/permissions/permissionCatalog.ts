@@ -83,24 +83,6 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 				"Open Time",
 				"See time logs tracked on this project.",
 			),
-			p(
-				"access",
-				"contract",
-				"Open Contract",
-				"Open the project contract and its services.",
-			),
-			p(
-				"access",
-				"invoices",
-				"Open Invoices",
-				"Open project invoices and the invoice builder.",
-			),
-			p(
-				"access",
-				"financials",
-				"Open Financials",
-				"See project revenue, cost, and margin.",
-			),
 		],
 	},
 	{

@@ -1,6 +1,5 @@
 import {
   ArrayMinSize,
-  IsBoolean,
   IsDateString,
   IsArray,
   IsEmail,
@@ -161,52 +160,6 @@ type ProjectStatus =
   | 'completed'
   | 'archived';
 
-/**
- * Commercial terms captured in the creation wizard's Step 3 (consultant mode
- * only). Everything is optional — a consultant may skip terms entirely and
- * finish the contract later in the project's Contract tab; the project simply
- * stays in `draft` until the activation checklist passes.
- *
- * Mirrors the writable subset of ContractTermsDto. It is redeclared here rather
- * than imported so ProjectsModule keeps no compile-time dependency on the
- * contracts DTO surface, and so the wizard's field set can diverge from the
- * full contract editor's without loosening either one.
- */
-export class CreateProjectContractDto {
-  @IsString() @IsOptional() @MaxLength(8) currency?: string;
-
-  @IsIn(['retainer', 'time_based', 'hybrid'])
-  @IsOptional()
-  billing_mode?: 'retainer' | 'time_based' | 'hybrid';
-
-  @Type(() => Number) @IsOptional() @Min(0) recurring_fee?: number;
-  @Type(() => Number) @IsOptional() @Min(0) client_hourly_rate?: number;
-  @Type(() => Number) @IsOptional() @Min(0) included_hours?: number;
-
-  @IsIn(['monthly', 'semi_monthly', 'custom'])
-  @IsOptional()
-  invoice_cadence?: 'monthly' | 'semi_monthly' | 'custom';
-
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  invoice_offset_days?: number;
-  @Type(() => Number) @IsOptional() @IsInt() @Min(0) due_days?: number;
-
-  @IsDateString() @IsOptional() service_start_date?: string;
-
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  term_count?: number;
-
-  @IsIn(['month', 'year']) @IsOptional() term_unit?: 'month' | 'year';
-
-  @IsString() @IsOptional() @MaxLength(300) service_description?: string;
-}
-
 export class CreateProjectDto {
   @IsEnum(['client', 'consultant'])
   @IsOptional()
@@ -234,14 +187,6 @@ export class CreateProjectDto {
   // service attaches it as the primary team in a separate write so a
   // failed attach does not roll back the project itself.
   @IsUUID() @IsOptional() primary_team_id?: string;
-
-  // Consultant-mode only: commercial terms from Step 3. Written as a draft
-  // contract after the project insert, using the same non-fatal pattern as
-  // primary_team_id.
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => CreateProjectContractDto)
-  contract?: CreateProjectContractDto;
 }
 
 export class CreateProjectFromRoadmapDto {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../../common/mail/mail.module';
+import { FinanceModule } from '../finance/finance.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 import { UploadsModule } from '../uploads/uploads.module';
@@ -22,6 +23,7 @@ import { ProjectActivationService } from './project-activation.service';
 @Module({
   imports: [
     AuthorizationModule,
+    FinanceModule,
     NotificationsModule,
     UploadsModule,
     MailModule,

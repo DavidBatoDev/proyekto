@@ -1,5 +1,5 @@
 import { Maximize2, PanelRightClose, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
 	SIGNATURE_BASE_HEIGHT_PX,
@@ -12,6 +12,13 @@ import {
 	formatContractDate,
 	formatMoney,
 } from "@/lib/contract-term";
+import {
+	type ContractVariableDefinition,
+	type ContractVariableValues,
+	findContractVariables,
+	renderContractVariables,
+	resolveContractVariable,
+} from "@/lib/contract-variables";
 import type {
 	BillingTiming,
 	ContractClause,
@@ -65,10 +72,9 @@ export interface ContractDocumentView {
  */
 
 /** The subset of party fields the document shows, fed live from the editor. */
-export interface PreviewParties {
+export interface PreviewParties extends ContractVariableValues {
 	provider_name: string;
 	provider_address: string;
-	provider_email?: string | null;
 	client_name: string;
 	client_contact_name: string;
 	client_address: string;
@@ -88,10 +94,333 @@ export interface PreviewTerms {
 	notice_days: string;
 }
 
-function renderClause(body: string, provider: string, client: string): string {
-	return body
-		.replaceAll("{{provider}}", provider || "the Service Provider")
-		.replaceAll("{{client}}", client || "the Client");
+export type ContractDocumentSection =
+	| "parties"
+	| "terms"
+	| "services"
+	| "agreement"
+	| "signatures";
+
+export interface ContractClauseOutlineItem {
+	clause: ContractClause;
+	number: string;
+	depth: number;
+}
+
+/**
+ * Turns the stored flat JSON list into legal-style outline numbering. Existing
+ * clauses without a parent remain top-level, so older contracts need no data
+ * migration. Invalid/cyclic parent links fall back to top-level entries rather
+ * than disappearing from a signed document.
+ */
+export function contractClauseOutline(
+	clauses: ContractClause[],
+): ContractClauseOutlineItem[] {
+	const ordered = [...clauses].sort(
+		(left, right) => left.position - right.position,
+	);
+	const keys = new Set(ordered.map((clause) => clause.key));
+	const children = new Map<string | null, ContractClause[]>();
+	const parentFor = (clause: ContractClause) =>
+		clause.parent_key && keys.has(clause.parent_key) ? clause.parent_key : null;
+
+	for (const clause of ordered) {
+		const parent = parentFor(clause);
+		const siblings = children.get(parent) ?? [];
+		siblings.push(clause);
+		children.set(parent, siblings);
+	}
+
+	const outline: ContractClauseOutlineItem[] = [];
+	const visited = new Set<string>();
+	const visit = (parent: string | null, prefix: string, depth: number) => {
+		for (const [index, clause] of (children.get(parent) ?? []).entries()) {
+			if (visited.has(clause.key)) continue;
+			const number = prefix ? `${prefix}.${index + 1}` : String(index + 1);
+			visited.add(clause.key);
+			outline.push({ clause, number, depth });
+			visit(clause.key, number, depth + 1);
+		}
+	};
+
+	visit(null, "", 0);
+	// A circular parent reference has no root. Keep it visible rather than
+	// silently dropping legal text from the agreement.
+	for (const clause of ordered) {
+		if (visited.has(clause.key)) continue;
+		const number = String(
+			outline.filter((item) => item.depth === 0).length + 1,
+		);
+		visited.add(clause.key);
+		outline.push({ clause, number, depth: 0 });
+		visit(clause.key, number, 1);
+	}
+	return outline;
+}
+
+function renderClause(body: string, parties: ContractVariableValues): string {
+	return renderContractVariables(body, parties)
+		.map((part) => (typeof part === "string" ? part : part.label))
+		.join("");
+}
+
+/** Removes the display-only legal number added to an editable clause heading. */
+export function stripClauseNumberPrefix(title: string): string {
+	return title.replace(/^\d+(?:\.\d+)*\.\s*/, "");
+}
+
+function renderEditableClause(body: string, parties: PreviewParties) {
+	return renderContractVariables(body, parties).map((part) => {
+		if (typeof part === "string") return part;
+		return (
+			<span
+				key={part.key}
+				contentEditable={false}
+				data-contract-token={part.token}
+				className="mx-0.5 inline-flex rounded bg-blue-100 px-1 py-0.5 font-medium text-blue-800"
+			>
+				{part.label}
+			</span>
+		);
+	});
+}
+
+function serializeEditableClause(element: HTMLElement): string {
+	const readNode = (node: Node): string => {
+		if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+		if (!(node instanceof HTMLElement)) return "";
+		const token = node.dataset.contractToken;
+		if (token) return token;
+		if (node.tagName === "BR") return "\n";
+		const contents = Array.from(node.childNodes).map(readNode).join("");
+		return node.tagName === "DIV" ? `${contents}\n` : contents;
+	};
+	return Array.from(element.childNodes)
+		.map(readNode)
+		.join("")
+		.replace(/\n+$/, "");
+}
+
+interface ContractVariableMentionState {
+	query: string;
+	anchorNode: Text;
+	anchorOffset: number;
+	position: { left: number; top: number };
+	activeIndex: number;
+}
+
+function ContractEditableText({
+	value,
+	parties,
+	className,
+	singleLine = false,
+	clauseKey,
+	onCommit,
+	onFocus,
+}: {
+	value: string;
+	parties: PreviewParties;
+	className: string;
+	singleLine?: boolean;
+	clauseKey?: string;
+	onCommit: (value: string) => void;
+	onFocus?: () => void;
+}) {
+	const editorRef = useRef<HTMLElement>(null);
+	const [mention, setMention] = useState<ContractVariableMentionState | null>(
+		null,
+	);
+	const candidates = mention
+		? findContractVariables(mention.query, parties)
+		: [];
+
+	const closeMention = () => setMention(null);
+	const commit = () => {
+		if (editorRef.current) onCommit(serializeEditableClause(editorRef.current));
+	};
+	const insertMention = (variable: ContractVariableDefinition) => {
+		if (!mention || !editorRef.current) return closeMention();
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0) return closeMention();
+		const range = document.createRange();
+		range.setStart(mention.anchorNode, mention.anchorOffset);
+		const cursor = selection.getRangeAt(0);
+		range.setEnd(cursor.endContainer, cursor.endOffset);
+		range.deleteContents();
+
+		const token = document.createElement("span");
+		token.contentEditable = "false";
+		token.dataset.contractToken = variable.token;
+		token.className =
+			"mx-0.5 inline-flex rounded bg-blue-100 px-1 py-0.5 font-medium text-blue-800";
+		token.textContent =
+			resolveContractVariable(variable.token, parties) ?? variable.label;
+		range.insertNode(token);
+		const trailingSpace = document.createTextNode(" ");
+		token.after(trailingSpace);
+		const nextRange = document.createRange();
+		nextRange.setStartAfter(trailingSpace);
+		nextRange.collapse(true);
+		selection.removeAllRanges();
+		selection.addRange(nextRange);
+		closeMention();
+		editorRef.current.focus();
+	};
+
+	const inspectMention = () => {
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0) return closeMention();
+		const range = selection.getRangeAt(0);
+		if (range.startContainer.nodeType !== Node.TEXT_NODE) return closeMention();
+		const node = range.startContainer as Text;
+		const beforeCursor = (node.textContent ?? "").slice(0, range.startOffset);
+		const match = /(?:^|\s)@([\w -]*)$/.exec(beforeCursor);
+		if (!match) return closeMention();
+		const atOffset =
+			beforeCursor.length -
+			match[0].length +
+			(match[0].startsWith(" ") ? 1 : 0);
+		const atRange = document.createRange();
+		atRange.setStart(node, atOffset);
+		atRange.setEnd(node, atOffset + 1);
+		const rect = atRange.getBoundingClientRect();
+		setMention({
+			query: match[1],
+			anchorNode: node,
+			anchorOffset: atOffset,
+			position: { left: rect.left, top: rect.bottom + 4 },
+			activeIndex: 0,
+		});
+	};
+
+	return (
+		<>
+			<span
+				ref={editorRef}
+				contentEditable
+				suppressContentEditableWarning
+				data-contract-clause={clauseKey}
+				onFocus={onFocus}
+				onInput={inspectMention}
+				onKeyDown={(event) => {
+					if (mention) {
+						if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+							event.preventDefault();
+							setMention((current) =>
+								current
+									? {
+											...current,
+											activeIndex: Math.max(
+												0,
+												Math.min(
+													current.activeIndex +
+														(event.key === "ArrowDown" ? 1 : -1),
+													candidates.length - 1,
+												),
+											),
+										}
+									: current,
+							);
+							return;
+						}
+						if (event.key === "Enter" || event.key === "Tab") {
+							event.preventDefault();
+							const selected = candidates[mention.activeIndex];
+							if (selected) insertMention(selected);
+							return;
+						}
+						if (event.key === "Escape") {
+							event.preventDefault();
+							closeMention();
+							return;
+						}
+					}
+					if (singleLine && event.key === "Enter") {
+						event.preventDefault();
+						event.currentTarget.blur();
+					}
+				}}
+				onBlur={() => {
+					commit();
+					window.setTimeout(closeMention, 120);
+				}}
+				className={className}
+			>
+				{renderEditableClause(value, parties)}
+			</span>
+			{mention &&
+				candidates.length > 0 &&
+				createPortal(
+					<div
+						role="listbox"
+						className="fixed z-[100] min-w-64 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-xl"
+						style={mention.position}
+					>
+						{candidates.map((variable, index) => (
+							<button
+								key={variable.token}
+								type="button"
+								role="option"
+								aria-selected={index === mention.activeIndex}
+								onMouseDown={(event) => {
+									event.preventDefault();
+									insertMention(variable);
+								}}
+								className={`flex w-full items-center justify-between gap-5 px-3 py-2 text-left text-xs ${
+									index === mention.activeIndex
+										? "bg-muted text-foreground"
+										: "text-muted-foreground hover:bg-muted"
+								}`}
+							>
+								<span className="font-medium text-foreground">
+									{variable.label}
+								</span>
+								<span className="max-w-44 truncate text-[11px]">
+									{resolveContractVariable(variable.token, parties)}
+								</span>
+							</button>
+						))}
+					</div>,
+					document.body,
+				)}
+		</>
+	);
+}
+
+export interface ContractClauseFragment {
+	text: string;
+	start: number;
+	end: number;
+}
+
+/**
+ * Long legal paragraphs are divided into stable, word-bound fragments so the
+ * A4 paginator can move them independently instead of clipping an oversized
+ * clause. Short clauses remain a single directly editable block.
+ */
+export function splitContractClauseBody(
+	body: string,
+	maxCharacters = 900,
+): ContractClauseFragment[] {
+	if (body.length <= maxCharacters) {
+		return [{ text: body, start: 0, end: body.length }];
+	}
+
+	const fragments: ContractClauseFragment[] = [];
+	let start = 0;
+	while (start < body.length) {
+		let end = Math.min(body.length, start + maxCharacters);
+		if (end < body.length) {
+			const minimumBreak = start + Math.floor(maxCharacters * 0.55);
+			const newline = body.lastIndexOf("\n", end);
+			const whitespace = body.lastIndexOf(" ", end);
+			const candidate = Math.max(newline, whitespace);
+			if (candidate >= minimumBreak) end = candidate + 1;
+		}
+		fragments.push({ text: body.slice(start, end), start, end });
+		start = end;
+	}
+	return fragments.length > 0 ? fragments : [{ text: "", start: 0, end: 0 }];
 }
 
 function num(value: string): number {
@@ -114,10 +443,23 @@ export function ContractDocumentPreview({
 	parties,
 	terms,
 	onHide,
+	mode = "panel",
+	activeSection,
+	onSectionSelect,
+	editable = false,
+	onClauseChange,
 }: {
 	contract: ContractDocumentView;
 	parties: PreviewParties;
 	terms: PreviewTerms;
+	mode?: "panel" | "canvas";
+	activeSection?: ContractDocumentSection;
+	onSectionSelect?: (section: ContractDocumentSection) => void;
+	editable?: boolean;
+	onClauseChange?: (
+		key: string,
+		patch: Partial<Pick<ContractClause, "title" | "body">>,
+	) => void;
 	/**
 	 * Collapse the preview column entirely. The panel is a fixed 480px of a
 	 * 1440px page, which squeezed every form field beside it to ~310px — wide
@@ -129,11 +471,24 @@ export function ContractDocumentPreview({
 
 	return (
 		<>
-			<div className="overflow-hidden rounded-xl border border-border shadow-sm">
+			<div
+				className={`overflow-hidden border border-border shadow-sm ${
+					mode === "canvas" ? "rounded-2xl bg-muted/30" : "rounded-xl bg-card"
+				}`}
+			>
 				<div className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-2">
-					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Live preview
-					</p>
+					<div>
+						<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+							{mode === "canvas" ? "Document editor" : "Live preview"}
+						</p>
+						{mode === "canvas" && (
+							<p className="mt-0.5 text-[11px] text-muted-foreground">
+								{editable
+									? "Select a section to edit its details"
+									: "Select a section to review its details"}
+							</p>
+						)}
+					</div>
 					<div className="flex items-center gap-1">
 						<button
 							type="button"
@@ -155,14 +510,37 @@ export function ContractDocumentPreview({
 						)}
 					</div>
 				</div>
-				<div className="max-h-[75vh] overflow-y-auto">
-					<PaperDocument contract={contract} parties={parties} terms={terms} />
+				<div
+					className={
+						mode === "canvas"
+							? "max-h-[calc(100vh-13rem)] overflow-y-auto bg-muted/20 p-3 md:p-5"
+							: "max-h-[75vh] overflow-y-auto"
+					}
+				>
+					<div
+						className={
+							mode === "canvas"
+								? "mx-auto max-w-[760px] overflow-hidden rounded-sm shadow-lg ring-1 ring-black/5"
+								: undefined
+						}
+					>
+						<ContractPaperDocument
+							contract={contract}
+							parties={parties}
+							terms={terms}
+							large={mode === "canvas"}
+							activeSection={activeSection}
+							onSectionSelect={onSectionSelect}
+							editable={editable}
+							onClauseChange={onClauseChange}
+						/>
+					</div>
 				</div>
 			</div>
 
 			{expanded && (
 				<ExpandedPreview onClose={() => setExpanded(false)}>
-					<PaperDocument
+					<ContractPaperDocument
 						contract={contract}
 						parties={parties}
 						terms={terms}
@@ -232,19 +610,38 @@ function ExpandedPreview({
 	);
 }
 
-function PaperDocument({
+export function ContractPaperDocument({
 	contract,
 	parties,
 	terms,
 	large,
+	activeSection,
+	onSectionSelect,
+	editable,
+	onClauseChange,
+	blockIds,
 }: {
 	contract: ContractDocumentView;
 	parties: PreviewParties;
 	terms: PreviewTerms;
 	large?: boolean;
+	activeSection?: ContractDocumentSection;
+	onSectionSelect?: (section: ContractDocumentSection) => void;
+	editable?: boolean;
+	onClauseChange?: (
+		key: string,
+		patch: Partial<Pick<ContractClause, "title" | "body">>,
+	) => void;
+	/** Render only these measured document blocks. Used by the A4 paginator. */
+	blockIds?: ReadonlySet<string>;
 }) {
 	const provider = parties.provider_name.trim() || "Service Provider";
 	const client = parties.client_name.trim() || "Client";
+	const includesBlock = (id: string) => !blockIds || blockIds.has(id);
+	const clauseOutline = contractClauseOutline(contract.clauses);
+	const topLevelClauseCount = clauseOutline.filter(
+		(item) => item.depth === 0,
+	).length;
 
 	const termRows: Array<{ label: string; value: string }> = [
 		{ label: "Billing", value: billingLine(terms) },
@@ -288,132 +685,229 @@ function PaperDocument({
 
 	return (
 		<div
+			data-contract-paper
 			className={`bg-white text-slate-700 ${
 				large
-					? "px-8 py-8 text-sm leading-relaxed"
+					? "px-16 py-12 text-sm leading-relaxed"
 					: "px-5 py-5 text-[12px] leading-relaxed"
 			}`}
 		>
 			{/* Provider header */}
-			<div className="text-right">
-				<p
-					className={`font-bold uppercase tracking-wide text-slate-900 ${large ? "text-lg" : "text-sm"}`}
-				>
-					{provider}
-				</p>
-				{parties.provider_email && (
-					<p className={`text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}>
-						{parties.provider_email}
-					</p>
-				)}
-			</div>
+			{includesBlock("header") && (
+				<div data-contract-block="header">
+					<div className="text-right">
+						<p
+							className={`font-bold uppercase tracking-wide text-slate-900 ${large ? "text-lg" : "text-sm"}`}
+						>
+							{provider}
+						</p>
+						{parties.provider_email && (
+							<p
+								className={`text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+							>
+								{parties.provider_email}
+							</p>
+						)}
+					</div>
 
-			<h1
-				className={`mt-5 text-center font-bold text-[#1f3a93] ${large ? "text-2xl" : "text-lg"}`}
-			>
-				Service Agreement
-			</h1>
-			{contract.contract_number && (
-				<p
-					className={`mt-0.5 text-center text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
-				>
-					#{contract.contract_number}
-				</p>
+					<h1
+						className={`mt-5 text-center font-bold text-[#1f3a93] ${large ? "text-2xl" : "text-lg"}`}
+					>
+						Service Agreement
+					</h1>
+					{contract.contract_number && (
+						<p
+							className={`mt-0.5 text-center text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+						>
+							#{contract.contract_number}
+						</p>
+					)}
+				</div>
 			)}
 
 			{/* Parties */}
-			<div className="mt-5 grid grid-cols-2 gap-4">
-				<PartyBlock
-					heading="Service Provider"
-					name={provider}
-					address={parties.provider_address}
-					large={large}
-				/>
-				<PartyBlock
-					heading="Client"
-					name={client}
-					contact={parties.client_contact_name}
-					address={parties.client_address}
-					large={large}
-				/>
-			</div>
-
-			{/* Commercial terms */}
-			<Section title="Commercial Terms" large={large}>
-				<dl className="mt-1 space-y-1">
-					{termRows.map((row) => (
-						<div key={row.label} className="flex gap-3">
-							<dt
-								className={`shrink-0 text-slate-400 ${large ? "w-36" : "w-28"}`}
-							>
-								{row.label}
-							</dt>
-							<dd className="font-medium text-slate-800">{row.value}</dd>
-						</div>
-					))}
-				</dl>
-			</Section>
-
-			{/* Services */}
-			{contract.services.length > 0 && (
-				<Section title="Services" large={large}>
-					<ul className="mt-1 space-y-0.5">
-						{contract.services.map((service: ContractService) => (
-							<li key={service.id} className="flex justify-between gap-3">
-								<span className="text-slate-700">
-									{service.name || "Untitled service"}
-								</span>
-								<span className="tabular-nums text-slate-500">
-									{formatMoney(terms.currency, service.unit_rate)}
-									{service.unit ? ` / ${service.unit}` : ""}
-								</span>
-							</li>
-						))}
-					</ul>
-				</Section>
+			{includesBlock("parties") && (
+				<DocumentRegion
+					blockId="parties"
+					section="parties"
+					active={activeSection === "parties"}
+					onSelect={onSectionSelect}
+					editable={editable}
+				>
+					<div className="mt-5 grid grid-cols-2 gap-4">
+						<PartyBlock
+							heading="Service Provider"
+							name={provider}
+							address={parties.provider_address}
+							large={large}
+						/>
+						<PartyBlock
+							heading="Client"
+							name={client}
+							contact={parties.client_contact_name}
+							address={parties.client_address}
+							large={large}
+						/>
+					</div>
+				</DocumentRegion>
 			)}
 
-			{/* Numbered clauses */}
-			{contract.clauses.map((clause: ContractClause, index: number) => (
-				<Section
-					key={clause.key}
-					title={`${index + 1}. ${clause.title}`}
-					large={large}
+			{/* Commercial terms */}
+			{includesBlock("terms") && (
+				<DocumentRegion
+					blockId="terms"
+					section="terms"
+					active={activeSection === "terms"}
+					onSelect={onSectionSelect}
+					editable={editable}
 				>
-					<p className="mt-1 whitespace-pre-wrap text-slate-600">
-						{renderClause(clause.body, provider, client)}
-					</p>
-				</Section>
-			))}
+					<Section title="Commercial Terms" large={large}>
+						<dl className="mt-1 space-y-1">
+							{termRows.map((row) => (
+								<div key={row.label} className="flex gap-3">
+									<dt
+										className={`shrink-0 text-slate-400 ${large ? "w-36" : "w-28"}`}
+									>
+										{row.label}
+									</dt>
+									<dd className="font-medium text-slate-800">{row.value}</dd>
+								</div>
+							))}
+						</dl>
+					</Section>
+				</DocumentRegion>
+			)}
 
+			{/* Services */}
+			{contract.services.length > 0 && includesBlock("services") && (
+				<DocumentRegion
+					blockId="services"
+					section="services"
+					active={activeSection === "services"}
+					onSelect={onSectionSelect}
+					editable={editable}
+				>
+					<Section title="Services" large={large}>
+						<ul className="mt-1 space-y-0.5">
+							{contract.services.map((service: ContractService) => (
+								<li key={service.id} className="flex justify-between gap-3">
+									<span className="text-slate-700">
+										{service.name || "Untitled service"}
+									</span>
+									<span className="tabular-nums text-slate-500">
+										{formatMoney(terms.currency, service.unit_rate)}
+										{service.unit ? ` / ${service.unit}` : ""}
+									</span>
+								</li>
+							))}
+						</ul>
+					</Section>
+				</DocumentRegion>
+			)}
+
+			{/* Clauses are measured separately for pagination, but selected as one
+			    agreement region so the editor shows one outline instead of a stack of
+			    competing boxes. */}
+			{clauseOutline.some(({ clause }) =>
+				splitContractClauseBody(clause.body).some((_, index) =>
+					includesBlock(`clause:${clause.key}:${index}`),
+				),
+			) && (
+				<AgreementRegion
+					active={activeSection === "agreement"}
+					onSelect={onSectionSelect}
+					editable={editable}
+				>
+					{clauseOutline.flatMap(({ clause, number, depth }) =>
+						splitContractClauseBody(clause.body).map(
+							(fragment, fragmentIndex) => {
+								const blockId = `clause:${clause.key}:${fragmentIndex}`;
+								if (!includesBlock(blockId)) return null;
+								return (
+									<DocumentRegion
+										key={blockId}
+										blockId={blockId}
+										section="agreement"
+										active={false}
+										containMargins
+									>
+										<div className={depth > 0 ? "ml-6" : undefined}>
+											<Section
+												title={`${number}. ${clause.title}${fragmentIndex > 0 ? " (continued)" : ""}`}
+												large={large}
+												titleEditable={editable && fragmentIndex === 0}
+												titleParties={parties}
+												onTitleChange={(title) =>
+													onClauseChange?.(clause.key, {
+														title: stripClauseNumberPrefix(title),
+													})
+												}
+											>
+												{editable ? (
+													<ContractEditableText
+														value={fragment.text}
+														parties={parties}
+														clauseKey={clause.key}
+														onFocus={() => onSectionSelect?.("agreement")}
+														onCommit={(body) =>
+															onClauseChange?.(clause.key, {
+																body: `${clause.body.slice(0, fragment.start)}${body}${clause.body.slice(fragment.end)}`,
+															})
+														}
+														className="mt-1 block whitespace-pre-wrap text-slate-600 outline-none cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200"
+													/>
+												) : (
+													<p className="mt-1 whitespace-pre-wrap text-slate-600">
+														{renderClause(fragment.text, parties)}
+													</p>
+												)}
+											</Section>
+										</div>
+									</DocumentRegion>
+								);
+							},
+						),
+					)}
+				</AgreementRegion>
+			)}
 			{/* Signatures */}
-			<Section
-				title={`${contract.clauses.length + 1}. Signature`}
-				large={large}
-			>
-				<div className="mt-2 grid grid-cols-2 gap-4">
-					<SignatureColumn
-						heading={`For ${client}`}
-						name={contract.signed_by_client_name}
-						at={contract.signed_by_client_at}
-						imageUrl={contract.signed_by_client_signature_url}
-						imageScale={contract.signed_by_client_signature_scale}
-						imageOffsetX={contract.signed_by_client_signature_offset_x}
-						imageOffsetY={contract.signed_by_client_signature_offset_y}
+			{includesBlock("signatures") && (
+				<DocumentRegion
+					blockId="signatures"
+					section="signatures"
+					active={activeSection === "signatures"}
+					onSelect={onSectionSelect}
+					editable={editable}
+				>
+					<Section
+						title={`${topLevelClauseCount + 1}. Signature`}
 						large={large}
-					/>
-					<SignatureColumn
-						heading={`For ${provider}`}
-						name={contract.signed_by_consultant_name}
-						at={contract.signed_by_consultant_at}
-						imageUrl={contract.signed_by_consultant_signature_url}
-						imageScale={contract.signed_by_consultant_signature_scale}
-						imageOffsetX={contract.signed_by_consultant_signature_offset_x}
-						imageOffsetY={contract.signed_by_consultant_signature_offset_y}
-						large={large}
-					/>
-				</div>
-			</Section>
+					>
+						<div className="mt-2 grid grid-cols-2 gap-4">
+							<SignatureColumn
+								heading={`For ${client}`}
+								name={contract.signed_by_client_name}
+								at={contract.signed_by_client_at}
+								imageUrl={contract.signed_by_client_signature_url}
+								imageScale={contract.signed_by_client_signature_scale}
+								imageOffsetX={contract.signed_by_client_signature_offset_x}
+								imageOffsetY={contract.signed_by_client_signature_offset_y}
+								large={large}
+							/>
+							<SignatureColumn
+								heading={`For ${provider}`}
+								name={contract.signed_by_consultant_name}
+								at={contract.signed_by_consultant_at}
+								imageUrl={contract.signed_by_consultant_signature_url}
+								imageScale={contract.signed_by_consultant_signature_scale}
+								imageOffsetX={contract.signed_by_consultant_signature_offset_x}
+								imageOffsetY={contract.signed_by_consultant_signature_offset_y}
+								large={large}
+							/>
+						</div>
+					</Section>
+				</DocumentRegion>
+			)}
 		</div>
 	);
 }
@@ -451,19 +945,144 @@ function Section({
 	title,
 	large,
 	children,
+	titleEditable = false,
+	titleParties,
+	onTitleChange,
 }: {
 	title: string;
 	large?: boolean;
 	children: React.ReactNode;
+	titleEditable?: boolean;
+	titleParties?: PreviewParties;
+	onTitleChange?: (title: string) => void;
 }) {
 	return (
 		<div className="mt-4">
-			<p
-				className={`font-bold text-[#1f3a93] ${large ? "text-sm" : "text-[11px]"}`}
-			>
-				{title}
-			</p>
+			{titleEditable && titleParties ? (
+				<ContractEditableText
+					value={title}
+					parties={titleParties}
+					singleLine
+					onCommit={(value) => onTitleChange?.(value)}
+					className={`block font-bold text-[#1f3a93] outline-none ${large ? "text-sm" : "text-[11px]"} cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200`}
+				/>
+			) : (
+				<p
+					className={`font-bold text-[#1f3a93] ${large ? "text-sm" : "text-[11px]"}`}
+				>
+					{renderClause(title, titleParties ?? {})}
+				</p>
+			)}
 			{children}
+		</div>
+	);
+}
+
+function DocumentRegion({
+	blockId,
+	section,
+	active,
+	onSelect,
+	editable,
+	showStatus = true,
+	containMargins = false,
+	children,
+}: {
+	blockId?: string;
+	section: ContractDocumentSection;
+	active: boolean;
+	onSelect?: (section: ContractDocumentSection) => void;
+	editable?: boolean;
+	showStatus?: boolean;
+	/** Keep a child section's top margin inside this measured pagination block. */
+	containMargins?: boolean;
+	children: React.ReactNode;
+}) {
+	if (!onSelect) {
+		return blockId ? (
+			<div
+				data-contract-block={blockId}
+				className={containMargins ? "flow-root" : undefined}
+			>
+				{children}
+			</div>
+		) : (
+			children
+		);
+	}
+	return (
+		<div
+			data-contract-block={blockId}
+			role="button"
+			tabIndex={0}
+			aria-label={`${editable ? "Edit" : "View"} ${section} section`}
+			onClick={() => onSelect(section)}
+			onKeyDown={(event) => {
+				if (event.target !== event.currentTarget) return;
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onSelect(section);
+				}
+			}}
+			className={`group/region relative -mx-3 rounded-lg border px-3 py-1 outline-none transition ${
+				active
+					? "border-blue-300 bg-blue-50/60 ring-2 ring-blue-100"
+					: "border-transparent hover:border-blue-200 hover:bg-blue-50/30 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+			}`}
+		>
+			{active && showStatus && (
+				<span className="absolute right-2 top-1 z-10 rounded bg-blue-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+					{editable ? "Editing" : "Selected"}
+				</span>
+			)}
+			{children}
+		</div>
+	);
+}
+
+/**
+ * The agreement contains many independently paginated clause blocks. This
+ * wrapper deliberately has no border or padding in layout; its absolute
+ * overlay gives the whole visible agreement one selection outline without
+ * changing the measurements that decide where A4 page breaks land.
+ */
+function AgreementRegion({
+	active,
+	onSelect,
+	editable,
+	children,
+}: {
+	active: boolean;
+	onSelect?: (section: ContractDocumentSection) => void;
+	editable?: boolean;
+	children: React.ReactNode;
+}) {
+	if (!onSelect) return children;
+
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			aria-label={`${editable ? "Edit" : "View"} agreement section`}
+			onClick={() => onSelect("agreement")}
+			onKeyDown={(event) => {
+				if (event.target !== event.currentTarget) return;
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onSelect("agreement");
+				}
+			}}
+			className="group/agreement relative -mx-3 px-3 outline-none"
+		>
+			<span
+				aria-hidden="true"
+				className={`pointer-events-none absolute -inset-y-1 inset-x-0 rounded-lg border transition ${
+					active
+						? "border-slate-300"
+						: "border-transparent group-hover/agreement:border-slate-200 group-focus/agreement:border-slate-300"
+				}`}
+			/>
+			<div className="relative">{children}</div>
 		</div>
 	);
 }

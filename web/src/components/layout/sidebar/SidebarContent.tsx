@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
 	CalendarDays,
+	CircleDollarSign,
 	Inbox,
 	LayoutDashboard,
 	ListChecks,
@@ -17,12 +18,12 @@ import {
 	updateWorkspaceDefaults,
 } from "@/services/teams.service";
 import { useProfile, useUser } from "@/stores/authStore";
-import { ProjectSidebarLink } from "./ProjectSidebarLink";
-import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
 import {
 	DASHBOARD_PRIMARY_NAV_ITEMS,
 	isDashboardPrimaryNavItemActive,
 } from "./dashboardNavigation";
+import { ProjectSidebarLink } from "./ProjectSidebarLink";
+import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
 import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
 import { TeamSidebarGroup } from "./TeamSidebarGroup";
 
@@ -35,6 +36,7 @@ const PRIMARY_NAV_ICONS = {
 	inbox: Inbox,
 	"command-center": ListChecks,
 	meetings: CalendarDays,
+	finance: CircleDollarSign,
 } as const;
 
 /**
@@ -191,7 +193,11 @@ export function SidebarContent() {
 		<>
 			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
 				<div className="space-y-0.5">
-					{DASHBOARD_PRIMARY_NAV_ITEMS.map((item) => (
+					{DASHBOARD_PRIMARY_NAV_ITEMS.filter(
+						(item) =>
+							item.key !== "finance" ||
+							profile?.is_consultant_verified === true,
+					).map((item) => (
 						<SidebarNavLink
 							key={item.key}
 							to={item.to}

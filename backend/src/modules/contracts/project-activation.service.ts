@@ -264,12 +264,7 @@ export class ProjectActivationService {
   private async buildChecklist(
     projectId: string,
   ): Promise<ActivationChecklist> {
-    // Deep links, not just page links: a checklist item that drops you on a
-    // six-step wizard and leaves you to find the right step is barely better
-    // than no link. `?step=` selects the section the item is actually about.
-    const contractPath = (step: string) =>
-      `/project/${projectId}/contract?step=${step}`;
-    const financialsPath = `/project/${projectId}/financials`;
+    const financialsPath = `/finance?tab=overview&projectId=${projectId}`;
     const timePath = `/project/${projectId}/settings/time`;
     const teamsPath = `/project/${projectId}/settings/teams`;
 
@@ -279,6 +274,14 @@ export class ProjectActivationService {
       this.getCuratedMembers(projectId),
       this.getProject(projectId),
     ]);
+
+    // Existing agreements now have a focused document route. When there is no
+    // live agreement yet, the project-filtered list resolves its latest draft
+    // and carries the requested inspector section forward.
+    const contractPath = (section: string) =>
+      contract
+        ? `/finance/${contract.id}?section=${section}`
+        : `/finance?tab=contracts&projectId=${projectId}&step=${section}`;
 
     const items: ChecklistItem[] = [];
 

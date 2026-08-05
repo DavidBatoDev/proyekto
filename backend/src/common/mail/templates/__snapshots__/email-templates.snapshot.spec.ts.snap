@@ -238,10 +238,7 @@ exports[`branded email templates buildInvoiceEmailHtml escapes markup in the pro
                 <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">August 1, 2026 – August 31, 2026</td>
               </tr>
             </table>
-            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">You can view and download the full invoice from your project.</p>
-            <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/invoices/inv-1" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invoice</a>
-            </div>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Ask your service provider for a copy of the full invoice.</p>
               </td>
             </tr>
             <tr>
@@ -299,9 +296,6 @@ exports[`branded email templates buildInvoiceEmailHtml renders with an attachmen
               </tr>
             </table>
             <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">The full invoice is attached to this email as a PDF.</p>
-            <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/invoices/inv-1" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invoice</a>
-            </div>
               </td>
             </tr>
             <tr>
@@ -350,10 +344,7 @@ exports[`branded email templates buildInvoiceEmailHtml renders with no due date 
                 <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">USD 4,200.50</td>
               </tr>
             </table>
-            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">You can view and download the full invoice from your project.</p>
-            <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/invoices/inv-1" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invoice</a>
-            </div>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Ask your service provider for a copy of the full invoice.</p>
               </td>
             </tr>
             <tr>
@@ -410,10 +401,7 @@ exports[`branded email templates buildInvoiceEmailHtml renders without an attach
                 <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">August 1, 2026 – August 31, 2026</td>
               </tr>
             </table>
-            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">You can view and download the full invoice from your project.</p>
-            <div style="margin:28px 0 0;">
-              <a href="https://app.proyekto.test/invoices/inv-1" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invoice</a>
-            </div>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Ask your service provider for a copy of the full invoice.</p>
               </td>
             </tr>
             <tr>

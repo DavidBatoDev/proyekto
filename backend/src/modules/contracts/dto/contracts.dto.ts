@@ -52,6 +52,11 @@ export class ContractClauseDto {
   @MaxLength(80)
   key!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  parent_key?: string | null;
+
   @IsString()
   @MaxLength(200)
   title!: string;

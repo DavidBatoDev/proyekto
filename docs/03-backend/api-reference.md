@@ -201,7 +201,25 @@ Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payou
 ## invoices · `invoices`
 
 `GET /invoices/project/:projectId`, `POST /invoices`, `GET/PATCH /invoices/:id`,
-`POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.
+`POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`. Authenticated
+invoice operations are restricted to the verified consultant of record with a
+matching `project_access` row. Client delivery is by attached PDF; the in-app
+notification returns the client to the project overview.
+
+## finance · `finance`
+
+The consultant-only portfolio behind `/finance`:
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/finance/portfolio | +ConsultantOnly | Project, revenue, cost, and margin rollups grouped by currency |
+| GET | /api/finance/contracts | +ConsultantOnly | Filtered cross-project contract list |
+| GET | /api/finance/invoices | +ConsultantOnly | Filtered cross-project invoice list |
+
+All three endpoints return only projects where the caller is
+`projects.consultant_id` **and** has a `project_access` row. Filters cover search,
+project, project status, currency, date range, and the relevant contract or
+invoice status. Totals are never converted across currencies.
 
 ## meetings · `meetings`
 

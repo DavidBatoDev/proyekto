@@ -9,16 +9,12 @@ interface Step2Props {
 	formData: FormData;
 	updateFormData: (updates: Partial<FormData>) => void;
 	compact?: boolean; // For modal vs full-page styling
-	// Consultant mode sets real contract terms in Step 3, so the duration
-	// estimate here needs to be explicitly framed as *not* the billing term.
-	creationMode?: "client" | "consultant";
 }
 
 export function Step2({
 	formData,
 	updateFormData,
 	compact = false,
-	creationMode = "client",
 }: Step2Props) {
 	const skillsInputId = useId();
 	const [skillInput, setSkillInput] = useState("");
@@ -224,9 +220,6 @@ export function Step2({
 				>
 					Roughly how long the work should take. This is an estimate used for
 					matching — your billing term is set separately.
-					{creationMode === "consultant"
-						? " You'll set the contract term (recurring fee and number of months) in the next step."
-						: ""}
 				</p>
 				<div className={`grid grid-cols-2 ${gridGap}`}>
 					<TileOption

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
 	CalendarClock,
 	Download,
@@ -18,7 +18,6 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import { ConfirmIssueInvoiceModal } from "@/components/invoices/ConfirmIssueInvoiceModal";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney } from "@/lib/contract-term";
@@ -31,23 +30,7 @@ import {
 } from "@/services/invoice.service";
 import { projectService } from "@/services/project.service";
 
-export const Route = createFileRoute("/project/$projectId/payments")({
-	component: PaymentsRoute,
-});
-
-function PaymentsRoute() {
-	const { projectId } = Route.useParams();
-	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<RequireProjectAccess projectId={projectId} access="invoices">
-				<PaymentsPage />
-			</RequireProjectAccess>
-		</div>
-	);
-}
-
-function PaymentsPage() {
-	const { projectId } = Route.useParams();
+export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const qc = useQueryClient();
 	const toast = useToast();
 	const navigate = useNavigate();
@@ -218,7 +201,7 @@ function PaymentsPage() {
 
 	return (
 		<div className="w-full">
-			<div className="mx-auto w-full max-w-5xl px-5 py-6 md:px-8 md:py-8">
+			<div className="w-full py-6">
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Finance"
@@ -248,8 +231,8 @@ function PaymentsPage() {
 									type="button"
 									onClick={() =>
 										void navigate({
-											to: "/project/$projectId/invoices/new",
-											params: { projectId },
+											to: "/finance/invoices/new",
+											search: { projectId },
 										})
 									}
 									className="app-cta rounded-lg px-4 py-2.5 text-sm font-semibold text-white"
@@ -444,8 +427,9 @@ function InvoiceRow({
 						type="button"
 						onClick={() =>
 							void navigate({
-								to: "/project/$projectId/invoices/$invoiceId/edit",
-								params: { projectId, invoiceId: invoice.id },
+								to: "/finance/invoices/$invoiceId/edit",
+								params: { invoiceId: invoice.id },
+								search: { projectId },
 							})
 						}
 						disabled={isBusy}
