@@ -15,6 +15,7 @@ workspace.
 
 | Doc | What's in it |
 | --- | --- |
+| [invoice-lifecycle.md](./invoice-lifecycle.md) | Drafting, issuing, delivery, payments, corrections, and receivables reporting |
 | [personas.md](./personas.md) | Client, Consultant, Freelancer, Admin — contextual roles and their authorization sources |
 | [project-lifecycle.md](./project-lifecycle.md) | Idea → project → roadmap → team → delivery → billing → done |
 | [roadmap-and-milestones.md](./roadmap-and-milestones.md) | The Epic → Feature → Task model, the two views, date & progress rules |

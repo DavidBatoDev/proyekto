@@ -74,6 +74,8 @@ transition until the blockers clear.
 
 ## 6. Billing
 
+For the client-invoice lifecycle - draft, issue, payment recording, reversal, and void-and-replace corrections - see [Invoice lifecycle](./invoice-lifecycle.md).
+
 Progress turns into money through the **live** financial path:
 
 - **Invoices** (`invoices` + line items + server-rendered PDFs in the private R2
