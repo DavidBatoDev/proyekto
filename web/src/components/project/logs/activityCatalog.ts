@@ -4,6 +4,7 @@ import {
 	ArrowUpDown,
 	Bot,
 	CircleCheck,
+	Copy,
 	FolderTree,
 	GitCommitHorizontal,
 	Link2,
@@ -51,6 +52,7 @@ export const ACTIVITY_ACTIONS = {
 	EPIC_STATUS_CHANGED: "epic.status_changed",
 	EPIC_DELETED: "epic.deleted",
 	EPIC_REORDERED: "epic.reordered",
+	EPIC_DUPLICATED: "epic.duplicated",
 	FEATURE_CREATED: "feature.created",
 	FEATURE_UPDATED: "feature.updated",
 	FEATURE_STATUS_CHANGED: "feature.status_changed",
@@ -59,6 +61,7 @@ export const ACTIVITY_ACTIONS = {
 	FEATURE_REORDERED: "feature.reordered",
 	FEATURE_MILESTONE_LINKED: "feature.milestone_linked",
 	FEATURE_MILESTONE_UNLINKED: "feature.milestone_unlinked",
+	FEATURE_DUPLICATED: "feature.duplicated",
 	TASK_CREATED: "task.created",
 	TASK_UPDATED: "task.updated",
 	TASK_STATUS_CHANGED: "task.status_changed",
@@ -67,6 +70,7 @@ export const ACTIVITY_ACTIONS = {
 	TASK_MOVED: "task.moved",
 	TASK_DELETED: "task.deleted",
 	TASK_REORDERED: "task.reordered",
+	TASK_DUPLICATED: "task.duplicated",
 	MILESTONE_CREATED: "milestone.created",
 	MILESTONE_UPDATED: "milestone.updated",
 	MILESTONE_DELETED: "milestone.deleted",
@@ -251,6 +255,12 @@ const reorder = (noun: string): ActivityCopy => ({
 	verb: "reordered",
 	object: (e) => reordered(e, noun),
 });
+const duplicated = (noun: string): ActivityCopy => ({
+	icon: Copy,
+	tone: "create",
+	verb: "duplicated",
+	object: (e) => named(e, noun),
+});
 const commentCreated = (parent: string): ActivityCopy => ({
 	icon: MessageSquare,
 	tone: "neutral",
@@ -331,6 +341,7 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 	"epic.status_changed": statusChanged("epic"),
 	"epic.deleted": remove("epic"),
 	"epic.reordered": reorder("epic"),
+	"epic.duplicated": duplicated("epic"),
 
 	"feature.created": create("feature"),
 	"feature.updated": update("feature"),
@@ -355,6 +366,7 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 		verb: "unlinked",
 		object: (e) => `${named(e, "feature")} from a milestone`,
 	},
+	"feature.duplicated": duplicated("feature"),
 
 	"task.created": create("task"),
 	"task.updated": update("task"),
@@ -379,6 +391,7 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 	},
 	"task.deleted": remove("task"),
 	"task.reordered": reorder("task"),
+	"task.duplicated": duplicated("task"),
 
 	"milestone.created": {
 		icon: Milestone,

@@ -30,6 +30,7 @@ export const ACTIVITY_ACTIONS = {
   EPIC_STATUS_CHANGED: 'epic.status_changed',
   EPIC_DELETED: 'epic.deleted',
   EPIC_REORDERED: 'epic.reordered',
+  EPIC_DUPLICATED: 'epic.duplicated',
 
   // ── Feature ───────────────────────────────────────────────────────────────
   FEATURE_CREATED: 'feature.created',
@@ -40,6 +41,7 @@ export const ACTIVITY_ACTIONS = {
   FEATURE_REORDERED: 'feature.reordered',
   FEATURE_MILESTONE_LINKED: 'feature.milestone_linked',
   FEATURE_MILESTONE_UNLINKED: 'feature.milestone_unlinked',
+  FEATURE_DUPLICATED: 'feature.duplicated',
 
   // ── Task ──────────────────────────────────────────────────────────────────
   TASK_CREATED: 'task.created',
@@ -50,6 +52,7 @@ export const ACTIVITY_ACTIONS = {
   TASK_MOVED: 'task.moved',
   TASK_DELETED: 'task.deleted',
   TASK_REORDERED: 'task.reordered',
+  TASK_DUPLICATED: 'task.duplicated',
 
   // ── Milestone ─────────────────────────────────────────────────────────────
   MILESTONE_CREATED: 'milestone.created',

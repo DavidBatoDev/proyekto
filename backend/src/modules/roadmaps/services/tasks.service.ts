@@ -192,6 +192,66 @@ export class TasksService {
     return this.repo.getHistory(id);
   }
 
+  /**
+   * Clones a single task, inserted immediately after the source in the same
+   * feature. Trailing siblings are bumped via bulkReorder (same as the
+   * drag-reorder path) before creating the clone at the freed position;
+   * board_order always auto-appends to the end of its Kanban column
+   * regardless (see TasksRepositorySupabase.create), which is the desired
+   * default here too.
+   */
+  async duplicate(id: string, userId: string) {
+    const existing = await this.repo.findById(id);
+    if (!existing) throw new NotFoundException('Task not found');
+    const ctx = await this.roadmapAuthz.assertTaskPermission(
+      id,
+      userId,
+      'roadmap.create_tasks',
+    );
+
+    const insertPosition = (existing.position ?? 0) + 1;
+    const siblings = await this.repo.findByFeature(existing.feature_id);
+    const toShift = siblings.filter(
+      (task) => (task.position ?? 0) >= insertPosition,
+    );
+    if (toShift.length) {
+      await this.repo.bulkReorder(existing.feature_id, {
+        items: toShift.map((task) => ({
+          id: task.id,
+          position: (task.position as number) + 1,
+        })),
+      });
+    }
+
+    const clonedTask = await this.repo.create(
+      {
+        feature_id: existing.feature_id,
+        title: `${existing.title} (Copy)`,
+        description: existing.description ?? undefined,
+        priority: existing.priority ?? undefined,
+        status: existing.status ?? undefined,
+        due_date: existing.due_date ?? undefined,
+        position: insertPosition,
+        work_type: existing.work_type ?? undefined,
+        checklist: existing.checklist ?? undefined,
+      },
+      userId,
+    );
+
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.TASK_DUPLICATED,
+      entityType: 'task',
+      entityId: (clonedTask as { id?: string })?.id ?? null,
+      title: (clonedTask as { title?: string })?.title ?? null,
+      metadata: {
+        parent: { type: 'feature', id: existing.feature_id },
+        source_task_id: id,
+      },
+    });
+
+    return clonedTask;
+  }
+
   async bulkReorder(featureId: string, dto: BulkReorderDto, userId: string) {
     const ctx = await this.roadmapAuthz.assertFeaturePermission(
       featureId,

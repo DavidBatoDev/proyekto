@@ -775,6 +775,20 @@ export const epicService = {
 			throw handleServiceError(error, `Delete epic ${id}`);
 		}
 	},
+
+	/**
+	 * Duplicate an epic, deep-cloning its features and their tasks
+	 */
+	async duplicate(id: string): Promise<RoadmapEpic> {
+		try {
+			const response = await apiClient.post<ApiResponse<RoadmapEpic>>(
+				`/api/epics/${id}/duplicate`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Duplicate epic ${id}`);
+		}
+	},
 };
 
 // ============================================================================
@@ -900,6 +914,20 @@ export const featureService = {
 			await apiClient.delete(`/api/features/${id}`);
 		} catch (error) {
 			throw handleServiceError(error, `Delete feature ${id}`);
+		}
+	},
+
+	/**
+	 * Duplicate a feature, deep-cloning its tasks
+	 */
+	async duplicate(id: string): Promise<RoadmapFeature> {
+		try {
+			const response = await apiClient.post<ApiResponse<RoadmapFeature>>(
+				`/api/features/${id}/duplicate`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Duplicate feature ${id}`);
 		}
 	},
 };
@@ -1083,6 +1111,20 @@ export const taskService = {
 			await apiClient.delete(`/api/tasks/${id}`);
 		} catch (error) {
 			throw handleServiceError(error, `Delete task ${id}`);
+		}
+	},
+
+	/**
+	 * Duplicate a task
+	 */
+	async duplicate(id: string): Promise<RoadmapTask> {
+		try {
+			const response = await apiClient.post<ApiResponse<RoadmapTask>>(
+				`/api/tasks/${id}/duplicate`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Duplicate task ${id}`);
 		}
 	},
 

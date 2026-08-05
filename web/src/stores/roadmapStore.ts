@@ -121,6 +121,7 @@ interface RoadmapActions {
 	reorderEpicsInRoadmap: (orderedEpicIds: string[]) => Promise<void>;
 	previewEpicOrderInRoadmap: (orderedEpicIds: string[]) => void;
 	deleteEpic: (epicId: string) => Promise<void>;
+	duplicateEpic: (epicId: string) => Promise<void>;
 
 	// Feature CRUD
 	addFeature: (epicId: string, data: FeatureData) => Promise<void>;
@@ -134,6 +135,7 @@ interface RoadmapActions {
 		orderedFeatureIds: string[],
 	) => void;
 	deleteFeature: (featureId: string) => Promise<void>;
+	duplicateFeature: (featureId: string) => Promise<void>;
 	moveFeatureBetweenEpics: (
 		featureId: string,
 		targetEpicId: string,
@@ -149,6 +151,7 @@ interface RoadmapActions {
 		nextStatus: RoadmapTask["status"],
 	) => Promise<void>;
 	deleteTask: (taskId: string) => Promise<void>;
+	duplicateTask: (taskId: string) => Promise<void>;
 	reorderTasksInFeature: (
 		featureId: string,
 		orderedTaskIds: string[],
@@ -1238,6 +1241,45 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 		}
 	},
 
+	// The backend clones the epic (+ features + tasks) and returns the fully
+	// positioned subtree in one call, so this only needs to mirror the same
+	// sibling-shift the server already applied — no optimistic temp-id insert
+	// like addEpic, since there's nothing to guess before the request resolves.
+	duplicateEpic: async (epicId: string) => {
+		const sourceEpic = get().epics.find((epic) => epic.id === epicId);
+		if (!sourceEpic) return;
+
+		set({ isLoadingEpic: true });
+		try {
+			const newEpic = await epicService.duplicate(epicId);
+			const newPosition =
+				typeof newEpic.position === "number"
+					? newEpic.position
+					: Number(newEpic.position);
+
+			set((state) => ({
+				epics: [
+					...state.epics.map((epic) => {
+						const position =
+							typeof epic.position === "number"
+								? epic.position
+								: Number(epic.position);
+						if (!Number.isFinite(position) || position < newPosition) {
+							return epic;
+						}
+						return { ...epic, position: Math.floor(position) + 1 };
+					}),
+					newEpic,
+				],
+				isLoadingEpic: false,
+			}));
+		} catch (error) {
+			console.error("Failed to duplicate epic:", error);
+			set({ isLoadingEpic: false });
+			throw error;
+		}
+	},
+
 	// Feature CRUD
 	addFeature: async (epicId: string, data: FeatureData) => {
 		const { roadmap, epics } = get();
@@ -1701,6 +1743,45 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				tempToRealNodeId: rollbackTempToRealNodeId,
 				isLoadingFeature: false,
 			});
+			throw error;
+		}
+	},
+
+	duplicateFeature: async (featureId: string) => {
+		const sourceEpic = get().epics.find((epic) =>
+			(epic.features || []).some((feature) => feature.id === featureId),
+		);
+		if (!sourceEpic) return;
+		const epicId = sourceEpic.id;
+
+		set({ isLoadingFeature: true });
+		try {
+			const newFeature = await featureService.duplicate(featureId);
+			const newPosition =
+				typeof newFeature.position === "number"
+					? newFeature.position
+					: Number(newFeature.position);
+
+			set((state) => ({
+				epics: state.epics.map((epic) => {
+					if (epic.id !== epicId) return epic;
+					const shiftedFeatures = (epic.features || []).map((feature) => {
+						const position =
+							typeof feature.position === "number"
+								? feature.position
+								: Number(feature.position);
+						if (!Number.isFinite(position) || position < newPosition) {
+							return feature;
+						}
+						return { ...feature, position: Math.floor(position) + 1 };
+					});
+					return { ...epic, features: [...shiftedFeatures, newFeature] };
+				}),
+				isLoadingFeature: false,
+			}));
+		} catch (error) {
+			console.error("Failed to duplicate feature:", error);
+			set({ isLoadingFeature: false });
 			throw error;
 		}
 	},
@@ -2188,6 +2269,60 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				tempToRealNodeId: rollbackTempToRealNodeId,
 				isLoadingTask: false,
 			});
+			throw error;
+		}
+	},
+
+	duplicateTask: async (taskId: string) => {
+		const { epics } = get();
+		let ownerEpicId: string | null = null;
+		let ownerFeatureId: string | null = null;
+		for (const epic of epics) {
+			const feature = (epic.features || []).find((candidate) =>
+				(candidate.tasks || []).some((task) => task.id === taskId),
+			);
+			if (feature) {
+				ownerEpicId = epic.id;
+				ownerFeatureId = feature.id;
+				break;
+			}
+		}
+		if (!ownerEpicId || !ownerFeatureId) return;
+
+		set({ isLoadingTask: true });
+		try {
+			const newTask = await taskService.duplicate(taskId);
+			const newPosition =
+				typeof newTask.position === "number"
+					? newTask.position
+					: Number(newTask.position);
+
+			set((state) => ({
+				epics: state.epics.map((epic) => {
+					if (epic.id !== ownerEpicId) return epic;
+					return {
+						...epic,
+						features: (epic.features || []).map((feature) => {
+							if (feature.id !== ownerFeatureId) return feature;
+							const shiftedTasks = (feature.tasks || []).map((task) => {
+								const position =
+									typeof task.position === "number"
+										? task.position
+										: Number(task.position);
+								if (!Number.isFinite(position) || position < newPosition) {
+									return task;
+								}
+								return { ...task, position: Math.floor(position) + 1 };
+							});
+							return { ...feature, tasks: [...shiftedTasks, newTask] };
+						}),
+					};
+				}),
+				isLoadingTask: false,
+			}));
+		} catch (error) {
+			console.error("Failed to duplicate task:", error);
+			set({ isLoadingTask: false });
 			throw error;
 		}
 	},

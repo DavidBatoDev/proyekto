@@ -28,6 +28,11 @@ import {
 export class EpicsController {
   constructor(private readonly epicsService: EpicsService) {}
 
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.epicsService.duplicate(id, user.id);
+  }
+
   @Get('roadmap/:roadmapId')
   getByRoadmap(
     @Param('roadmapId') roadmapId: string,

@@ -11,6 +11,7 @@ import {
 	Plus,
 	Trash2,
 	Link2,
+	Copy,
 	History,
 	AlertCircle,
 } from "lucide-react";
@@ -46,6 +47,7 @@ interface SidePanelProps {
 	onClose: () => void;
 	onUpdateTask: (task: RoadmapTask) => void;
 	onDeleteTask: (taskId: string) => void;
+	onDuplicateTask?: (taskId: string) => void;
 	onCreateTask?: (taskData: Partial<RoadmapTask>) => void;
 	onSaved?: (task: RoadmapTask) => void;
 	projectId?: string;
@@ -224,6 +226,7 @@ export const SidePanel = ({
 	onClose,
 	onUpdateTask,
 	onDeleteTask,
+	onDuplicateTask,
 	onCreateTask,
 	onSaved,
 	projectId,
@@ -242,6 +245,11 @@ export const SidePanel = ({
 	// the store), but the timer needs one.
 	const roadmapProjectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
 	const effectiveProjectId = projectId || roadmapProjectId;
+	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+	const resolveCanonicalNodeId = useRoadmapStore(
+		(s) => s.resolveCanonicalNodeId,
+	);
+	const isOptimisticNodeId = useRoadmapStore((s) => s.isOptimisticNodeId);
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
 	const setTaskCommentCount = useRoadmapStore((s) => s.setTaskCommentCount);
@@ -263,6 +271,7 @@ export const SidePanel = ({
 	const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
 		useState(false);
 	const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+	const [isDuplicateConfirmOpen, setIsDuplicateConfirmOpen] = useState(false);
 
 	// Description editing state
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -914,6 +923,22 @@ export const SidePanel = ({
 			return;
 		}
 		closeImmediately();
+	};
+
+	const handleCopyTaskLink = () => {
+		if (!task) return;
+		const canonicalId = resolveCanonicalNodeId(task.id) ?? task.id;
+		if (isOptimisticNodeId(canonicalId)) {
+			toast.error("Still saving this task — try again in a moment.");
+			return;
+		}
+		if (!roadmapId || !effectiveProjectId) {
+			toast.error("Can't build a link outside a roadmap.");
+			return;
+		}
+		const url = `${window.location.origin}/project/${effectiveProjectId}/roadmap/${roadmapId}?nodeId=${canonicalId}&view=roadmapView`;
+		navigator.clipboard.writeText(url);
+		toast.success("Link copied to clipboard");
 	};
 
 	const handleSaveBeforeClose = () => {
@@ -1834,6 +1859,33 @@ export const SidePanel = ({
 							)}
 							{isLoading ? "Saving..." : "Save Changes"}
 						</Button>
+						{onDuplicateTask && (
+							<Button
+								onClick={() => {
+									if (!task || isReadOnlyPending) return;
+									setIsDuplicateConfirmOpen(true);
+								}}
+								variant="outlined"
+								colorScheme="secondary"
+								size="md"
+								disabled={isInteractionDisabled}
+								title="Duplicate task"
+							>
+								<Copy className="w-4 h-4" />
+							</Button>
+						)}
+						{roadmapId && effectiveProjectId && (
+							<Button
+								onClick={handleCopyTaskLink}
+								variant="outlined"
+								colorScheme="secondary"
+								size="md"
+								disabled={isInteractionDisabled}
+								title="Copy link"
+							>
+								<Link2 className="w-4 h-4" />
+							</Button>
+						)}
 						<Button
 							onClick={() => {
 								if (!task || isReadOnlyPending) return;
@@ -1962,6 +2014,60 @@ export const SidePanel = ({
 										className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
 									>
 										Delete
+									</button>
+								</div>
+							</motion.div>
+						</motion.div>
+					)}
+				</AnimatePresence>,
+				document.body,
+			)}
+
+			{createPortal(
+				<AnimatePresence>
+					{isOpen && isDuplicateConfirmOpen && task && (
+						<motion.div
+							className="fixed inset-0 flex items-center justify-center p-4"
+							style={{ zIndex: zIndexBase + 60 }}
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.18, ease: "easeOut" }}
+						>
+							<div
+								className="absolute inset-0 bg-black/40"
+								onClick={() => setIsDuplicateConfirmOpen(false)}
+							/>
+							<motion.div
+								className="relative z-10 w-full max-w-md mx-4 rounded-xl bg-white shadow-2xl p-6"
+								initial={{ opacity: 0, scale: 0.96, y: 8 }}
+								animate={{ opacity: 1, scale: 1, y: 0 }}
+								exit={{ opacity: 0, scale: 0.96, y: 8 }}
+								transition={{ duration: 0.18, ease: "easeOut" }}
+							>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Duplicate Task?
+								</h3>
+								<p className="text-sm text-gray-600 mt-2">
+									This will create a copy of "{task.title}".
+								</p>
+								<div className="mt-6 flex justify-end gap-3">
+									<button
+										type="button"
+										onClick={() => setIsDuplicateConfirmOpen(false)}
+										className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+									>
+										Cancel
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											setIsDuplicateConfirmOpen(false);
+											onDuplicateTask?.(task.id);
+										}}
+										className="px-4 py-2 text-sm rounded-md bg-primary text-white hover:bg-primary/90"
+									>
+										Duplicate
 									</button>
 								</div>
 							</motion.div>

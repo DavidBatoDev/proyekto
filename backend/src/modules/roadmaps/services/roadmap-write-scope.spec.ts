@@ -81,9 +81,19 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         bulkReorder: jest.fn().mockResolvedValue([]),
         remove: jest.fn().mockResolvedValue(undefined),
       };
+      const featuresRepo = {
+        findByEpic: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'f-1' }),
+      };
+      const tasksRepo = {
+        findByFeature: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 't-1' }),
+      };
       const { rt, effects, activity } = effectsSeam();
       const service = new EpicsService(
         repo as never,
+        featuresRepo as never,
+        tasksRepo as never,
         authz as never,
         effects,
         activity,
@@ -116,6 +126,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
     function build(authz = buildAuthz()) {
       const repo = {
         findById: jest.fn().mockResolvedValue({ id: 'f-1', epic_id: 'e-1' }),
+        findByEpic: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'f-1' }),
         update: jest.fn().mockResolvedValue({ id: 'f-1' }),
         bulkReorder: jest.fn().mockResolvedValue([]),
@@ -123,9 +134,14 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         unlinkMilestone: jest.fn().mockResolvedValue({}),
         remove: jest.fn().mockResolvedValue(undefined),
       };
+      const tasksRepo = {
+        findByFeature: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 't-1' }),
+      };
       const { rt, effects, activity } = effectsSeam();
       const service = new FeaturesService(
         repo as never,
+        tasksRepo as never,
         authz as never,
         effects,
         activity,

@@ -86,15 +86,20 @@ export function useRoadmapCanvasController({
 	const storeAddEpic = useRoadmapStore((state) => state.addEpic);
 	const storeUpdateEpic = useRoadmapStore((state) => state.updateEpic);
 	const storeDeleteEpic = useRoadmapStore((state) => state.deleteEpic);
+	const storeDuplicateEpic = useRoadmapStore((state) => state.duplicateEpic);
 	const storeAddFeature = useRoadmapStore((state) => state.addFeature);
 	const storeUpdateFeature = useRoadmapStore((state) => state.updateFeature);
 	const storeDeleteFeature = useRoadmapStore((state) => state.deleteFeature);
+	const storeDuplicateFeature = useRoadmapStore(
+		(state) => state.duplicateFeature,
+	);
 	const storeAddTask = useRoadmapStore((state) => state.addTask);
 	const storeUpdateTask = useRoadmapStore((state) => state.updateTask);
 	const storeUpdateTaskStatusIntent = useRoadmapStore(
 		(state) => state.updateTaskStatusIntent,
 	);
 	const storeDeleteTask = useRoadmapStore((state) => state.deleteTask);
+	const storeDuplicateTask = useRoadmapStore((state) => state.duplicateTask);
 	const tempToRealNodeId = useRoadmapStore((state) => state.tempToRealNodeId);
 	const storeIsOptimisticNodeId = useRoadmapStore(
 		(state) => state.isOptimisticNodeId,
@@ -174,12 +179,15 @@ export function useRoadmapCanvasController({
 	const onAddEpic = onAddEpicProp ?? storeAddEpic;
 	const onUpdateEpicBase = onUpdateEpicProp ?? storeUpdateEpic;
 	const onDeleteEpic = onDeleteEpicProp ?? storeDeleteEpic;
+	const onDuplicateEpic = storeDuplicateEpic;
 	const onAddFeature = onAddFeatureProp ?? storeAddFeature;
 	const onUpdateFeatureBase = onUpdateFeatureProp ?? storeUpdateFeature;
 	const onDeleteFeature = onDeleteFeatureProp ?? storeDeleteFeature;
+	const onDuplicateFeature = storeDuplicateFeature;
 	const onAddTask = onAddTaskProp ?? storeAddTask;
 	const onUpdateTaskBase = onUpdateTaskProp ?? storeUpdateTask;
 	const onDeleteTask = onDeleteTaskProp ?? storeDeleteTask;
+	const onDuplicateTask = storeDuplicateTask;
 	const focusNodeId = focusNodeIdProp ?? storeFocusNodeId;
 	const focusNodeOffsetX = focusNodeOffsetXProp ?? storeFocusNodeOffsetX;
 	const focusTaskId = focusTaskIdProp ?? storeFocusTaskId;
@@ -404,6 +412,11 @@ export function useRoadmapCanvasController({
 		string | null
 	>(null);
 	const [deleteConfirm, setDeleteConfirm] = useState<{
+		type: "epic" | "feature";
+		id: string;
+		label: string;
+	} | null>(null);
+	const [duplicateConfirm, setDuplicateConfirm] = useState<{
 		type: "epic" | "feature";
 		id: string;
 		label: string;
@@ -916,6 +929,71 @@ export function useRoadmapCanvasController({
 		[featureById],
 	);
 
+	const handleDuplicateEpic = useCallback(
+		(id: string) => {
+			const epic = epicById.get(id);
+			setDuplicateConfirm({
+				type: "epic",
+				id,
+				label: epic?.title ? `"${epic.title}"` : "this epic",
+			});
+		},
+		[epicById],
+	);
+
+	const handleDuplicateFeature = useCallback(
+		(featureId: string) => {
+			const feature = featureById.get(featureId)?.feature;
+			setDuplicateConfirm({
+				type: "feature",
+				id: featureId,
+				label: feature?.title ? `"${feature.title}"` : "this feature",
+			});
+		},
+		[featureById],
+	);
+
+	const handleConfirmDuplicate = useCallback(() => {
+		if (!duplicateConfirm) return;
+
+		const target = duplicateConfirm;
+		setDuplicateConfirm(null);
+
+		void (async () => {
+			try {
+				if (target.type === "epic") {
+					await onDuplicateEpic(target.id);
+					toast.success("Epic duplicated");
+					return;
+				}
+
+				await onDuplicateFeature(target.id);
+				toast.success("Feature duplicated");
+			} catch (error) {
+				toast.error(
+					getErrorMessage(
+						error,
+						target.type === "epic"
+							? "Failed to duplicate epic"
+							: "Failed to duplicate feature",
+					),
+				);
+			}
+		})();
+	}, [duplicateConfirm, onDuplicateEpic, onDuplicateFeature, toast]);
+
+	const handleDuplicateTask = useCallback(
+		async (id: string) => {
+			try {
+				await onDuplicateTask(id);
+				toast.success("Task duplicated");
+			} catch (error) {
+				toast.error(getErrorMessage(error, "Failed to duplicate task"));
+			}
+		},
+		[onDuplicateTask, toast],
+	);
+
 	const handleConfirmDelete = useCallback(() => {
 		if (!deleteConfirm) return;
 
@@ -1044,6 +1122,7 @@ export function useRoadmapCanvasController({
 		editingFeatureId,
 		editingFeatureEpicId,
 		deleteConfirm,
+		duplicateConfirm,
 		scrollToFeatureId,
 		isTaskLoading,
 		isEpicLoading,
@@ -1081,10 +1160,14 @@ export function useRoadmapCanvasController({
 		setEditingFeatureId,
 		setEditingFeatureEpicId,
 		setDeleteConfirm,
+		setDuplicateConfirm,
 		setScrollToFeatureId,
 		handleCloseEpicTab,
 		handleDeleteEpic,
+		handleDuplicateEpic,
 		handleDeleteFeature,
+		handleDuplicateFeature,
+		handleDuplicateTask,
 		handleCreateEpic,
 		handleUpdateEpicFromModal,
 		handleCreateFeature,
@@ -1094,6 +1177,7 @@ export function useRoadmapCanvasController({
 		handleOpenAddFeatureModal,
 		handleAddEpicBelow,
 		handleConfirmDelete,
+		handleConfirmDuplicate,
 		handleTaskCreate,
 		handleTaskUpdate,
 		handleTaskDelete,

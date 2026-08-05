@@ -1,939 +1,1015 @@
 import {
-  memo,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
+	memo,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type DragEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
-  Edit2,
-  Trash2,
-  CheckCircle2,
-  ChevronDown,
-  List,
-  Plus,
-  Calendar,
-  Maximize2,
+	Edit2,
+	Trash2,
+	CheckCircle2,
+	ChevronDown,
+	List,
+	Plus,
+	Calendar,
+	Maximize2,
+	Copy,
+	Link2,
 } from "lucide-react";
 import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useToast } from "@/hooks/useToast";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListModal } from "../modals/TaskListModal";
 import {
-  calculateFeatureProgressFromTasks,
-  getCompletedTaskCount,
+	calculateFeatureProgressFromTasks,
+	getCompletedTaskCount,
 } from "../shared/featureProgress";
 import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import {
-  EditingAvatars,
-  EditingTaskAvatar,
-  editingBorderColor,
+	EditingAvatars,
+	EditingTaskAvatar,
+	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
 
 export interface FeatureWidgetData extends Record<string, unknown> {
-  feature: RoadmapFeature;
-  showTaskCount?: boolean; // If true, show task count; if false, show full tasks
-  onEdit?: (feature: RoadmapFeature) => void;
-  onDelete?: (featureId: string) => void;
-  onClick?: (feature: RoadmapFeature) => void;
-  onAddTask?: (featureId: string) => void;
-  onSelectTask?: (
-    task: RoadmapTask,
-    initialTab?: "details" | "comments",
-  ) => void;
-  onUpdateTask?: (task: RoadmapTask) => void;
-  pulseTaskId?: string | null;
-  pulseTaskToken?: number;
-  pulseToken?: number;
-  runningTaskId?: string | null;
-  toolbarDraggingType?: ToolbarItemType | null;
-  performanceMode?: RoadmapPerformanceMode;
-  canEditRoadmap?: boolean;
-  /** Collaborators who currently have this feature's detail open. */
-  editors?: CollaboratorInfo[];
-  /** node-id → editors map; the task list looks up each task's own id. */
-  taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
+	feature: RoadmapFeature;
+	showTaskCount?: boolean; // If true, show task count; if false, show full tasks
+	onEdit?: (feature: RoadmapFeature) => void;
+	onDelete?: (featureId: string) => void;
+	onDuplicate?: (featureId: string) => void;
+	onClick?: (feature: RoadmapFeature) => void;
+	onAddTask?: (featureId: string) => void;
+	onSelectTask?: (
+		task: RoadmapTask,
+		initialTab?: "details" | "comments",
+	) => void;
+	onUpdateTask?: (task: RoadmapTask) => void;
+	pulseTaskId?: string | null;
+	pulseTaskToken?: number;
+	pulseToken?: number;
+	runningTaskId?: string | null;
+	toolbarDraggingType?: ToolbarItemType | null;
+	performanceMode?: RoadmapPerformanceMode;
+	canEditRoadmap?: boolean;
+	/** Collaborators who currently have this feature's detail open. */
+	editors?: CollaboratorInfo[];
+	/** node-id → editors map; the task list looks up each task's own id. */
+	taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
 
 const CANVAS_TASK_STATUS_OPTIONS: RoadmapTask["status"][] = [
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "blocked",
+	"todo",
+	"in_progress",
+	"in_review",
+	"done",
+	"blocked",
 ];
 
 const getAssigneeName = (
-  assignee: NonNullable<RoadmapTask["assignee"]>,
+	assignee: NonNullable<RoadmapTask["assignee"]>,
 ): string =>
-  assignee.display_name?.trim() ||
-  [assignee.first_name, assignee.last_name].filter(Boolean).join(" ").trim() ||
-  assignee.email ||
-  "Assignee";
+	assignee.display_name?.trim() ||
+	[assignee.first_name, assignee.last_name].filter(Boolean).join(" ").trim() ||
+	assignee.email ||
+	"Assignee";
 
 const getInitials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((part) => part[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "?";
+	name
+		.split(/\s+/)
+		.map((part) => part[0] ?? "")
+		.join("")
+		.slice(0, 2)
+		.toUpperCase() || "?";
 
 const getTaskAssignees = (
-  task: RoadmapTask,
+	task: RoadmapTask,
 ): NonNullable<RoadmapTask["assignee"]>[] => {
-  if (task.assignees?.length) return task.assignees;
-  return task.assignee ? [task.assignee] : [];
+	if (task.assignees?.length) return task.assignees;
+	return task.assignee ? [task.assignee] : [];
 };
 
 function CanvasTaskAssignees({ task }: { task: RoadmapTask }) {
-  const assignees = getTaskAssignees(task);
-  if (assignees.length === 0) return null;
+	const assignees = getTaskAssignees(task);
+	if (assignees.length === 0) return null;
 
-  return (
-    <span className="shrink-0 flex items-center">
-      {assignees.slice(0, 3).map((assignee, index) => {
-        const name = getAssigneeName(assignee);
-        return assignee.avatar_url ? (
-          <img
-            key={assignee.id}
-            src={assignee.avatar_url}
-            alt=""
-            draggable={false}
-            title={name}
-            className={`w-5 h-5 rounded-full object-cover ring-1 ring-white shadow-sm ${
-              index > 0 ? "-ml-1.5" : ""
-            }`}
-          />
-        ) : (
-          <span
-            key={assignee.id}
-            title={name}
-            className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-1 ring-white shadow-sm ${
-              index > 0 ? "-ml-1.5" : ""
-            }`}
-          >
-            {getInitials(name)}
-          </span>
-        );
-      })}
-      {assignees.length > 3 && (
-        <span className="-ml-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-gray-100 text-gray-600 ring-1 ring-white shadow-sm">
-          +{assignees.length - 3}
-        </span>
-      )}
-    </span>
-  );
+	return (
+		<span className="shrink-0 flex items-center">
+			{assignees.slice(0, 3).map((assignee, index) => {
+				const name = getAssigneeName(assignee);
+				return assignee.avatar_url ? (
+					<img
+						key={assignee.id}
+						src={assignee.avatar_url}
+						alt=""
+						draggable={false}
+						title={name}
+						className={`w-5 h-5 rounded-full object-cover ring-1 ring-white shadow-sm ${
+							index > 0 ? "-ml-1.5" : ""
+						}`}
+					/>
+				) : (
+					<span
+						key={assignee.id}
+						title={name}
+						className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-1 ring-white shadow-sm ${
+							index > 0 ? "-ml-1.5" : ""
+						}`}
+					>
+						{getInitials(name)}
+					</span>
+				);
+			})}
+			{assignees.length > 3 && (
+				<span className="-ml-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-gray-100 text-gray-600 ring-1 ring-white shadow-sm">
+					+{assignees.length - 3}
+				</span>
+			)}
+		</span>
+	);
 }
 
 type CanvasTaskRowProps = {
-  task: RoadmapTask;
-  editors?: CollaboratorInfo[];
-  isRunning: boolean;
-  pulseToken?: number;
-  onClick?: (task: RoadmapTask) => void;
-  onToggleComplete?: (task: RoadmapTask) => void;
-  onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
+	task: RoadmapTask;
+	editors?: CollaboratorInfo[];
+	isRunning: boolean;
+	pulseToken?: number;
+	onClick?: (task: RoadmapTask) => void;
+	onToggleComplete?: (task: RoadmapTask) => void;
+	onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 };
 
 const CANVAS_STATUS_MENU_WIDTH = 140;
 
 const CanvasTaskRow = memo(
-  ({
-    task,
-    editors,
-    isRunning,
-    pulseToken,
-    onClick,
-    onToggleComplete,
-    onUpdateStatus,
-  }: CanvasTaskRowProps) => {
-    const [isPulsing, setIsPulsing] = useState(false);
-    const isDone = task.status === "done";
-    const projectId = useRoadmapStore((state) => state.roadmap?.project_id ?? "");
-    const [isStatusOpen, setIsStatusOpen] = useState(false);
-    const statusTriggerRef = useRef<HTMLButtonElement>(null);
-    const statusMenuRef = useRef<HTMLDivElement>(null);
-    const [statusMenuPosition, setStatusMenuPosition] = useState({
-      top: 0,
-      left: 0,
-    });
+	({
+		task,
+		editors,
+		isRunning,
+		pulseToken,
+		onClick,
+		onToggleComplete,
+		onUpdateStatus,
+	}: CanvasTaskRowProps) => {
+		const [isPulsing, setIsPulsing] = useState(false);
+		const isDone = task.status === "done";
+		const projectId = useRoadmapStore(
+			(state) => state.roadmap?.project_id ?? "",
+		);
+		const [isStatusOpen, setIsStatusOpen] = useState(false);
+		const statusTriggerRef = useRef<HTMLButtonElement>(null);
+		const statusMenuRef = useRef<HTMLDivElement>(null);
+		const [statusMenuPosition, setStatusMenuPosition] = useState({
+			top: 0,
+			left: 0,
+		});
 
-    useEffect(() => {
-      if (!pulseToken) return;
-      setIsPulsing(true);
-      const timeoutId = window.setTimeout(() => setIsPulsing(false), 2100);
-      return () => window.clearTimeout(timeoutId);
-    }, [pulseToken]);
+		useEffect(() => {
+			if (!pulseToken) return;
+			setIsPulsing(true);
+			const timeoutId = window.setTimeout(() => setIsPulsing(false), 2100);
+			return () => window.clearTimeout(timeoutId);
+		}, [pulseToken]);
 
-    const updateStatusMenuPosition = () => {
-      const rect = statusTriggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const clampedLeft = Math.max(
-        8,
-        Math.min(
-          rect.right - CANVAS_STATUS_MENU_WIDTH,
-          window.innerWidth - CANVAS_STATUS_MENU_WIDTH - 8,
-        ),
-      );
-      setStatusMenuPosition({ top: rect.bottom + 4, left: clampedLeft });
-    };
+		const updateStatusMenuPosition = () => {
+			const rect = statusTriggerRef.current?.getBoundingClientRect();
+			if (!rect) return;
+			const clampedLeft = Math.max(
+				8,
+				Math.min(
+					rect.right - CANVAS_STATUS_MENU_WIDTH,
+					window.innerWidth - CANVAS_STATUS_MENU_WIDTH - 8,
+				),
+			);
+			setStatusMenuPosition({ top: rect.bottom + 4, left: clampedLeft });
+		};
 
-    useEffect(() => {
-      if (!isStatusOpen) return;
-      updateStatusMenuPosition();
+		useEffect(() => {
+			if (!isStatusOpen) return;
+			updateStatusMenuPosition();
 
-      const handlePointerDown = (event: MouseEvent) => {
-        const target = event.target as globalThis.Node;
-        if (
-          !statusTriggerRef.current?.contains(target) &&
-          !statusMenuRef.current?.contains(target)
-        ) {
-          setIsStatusOpen(false);
-        }
-      };
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") setIsStatusOpen(false);
-      };
-      const handleReposition = () => updateStatusMenuPosition();
+			const handlePointerDown = (event: MouseEvent) => {
+				const target = event.target as globalThis.Node;
+				if (
+					!statusTriggerRef.current?.contains(target) &&
+					!statusMenuRef.current?.contains(target)
+				) {
+					setIsStatusOpen(false);
+				}
+			};
+			const handleKeyDown = (event: KeyboardEvent) => {
+				if (event.key === "Escape") setIsStatusOpen(false);
+			};
+			const handleReposition = () => updateStatusMenuPosition();
 
-      document.addEventListener("mousedown", handlePointerDown);
-      document.addEventListener("keydown", handleKeyDown);
-      window.addEventListener("scroll", handleReposition, true);
-      window.addEventListener("resize", handleReposition);
-      return () => {
-        document.removeEventListener("mousedown", handlePointerDown);
-        document.removeEventListener("keydown", handleKeyDown);
-        window.removeEventListener("scroll", handleReposition, true);
-        window.removeEventListener("resize", handleReposition);
-      };
-    }, [isStatusOpen]);
+			document.addEventListener("mousedown", handlePointerDown);
+			document.addEventListener("keydown", handleKeyDown);
+			window.addEventListener("scroll", handleReposition, true);
+			window.addEventListener("resize", handleReposition);
+			return () => {
+				document.removeEventListener("mousedown", handlePointerDown);
+				document.removeEventListener("keydown", handleKeyDown);
+				window.removeEventListener("scroll", handleReposition, true);
+				window.removeEventListener("resize", handleReposition);
+			};
+		}, [isStatusOpen]);
 
-    return (
-      <div
-        data-task-id={task.id}
-        className={`nodrag group flex h-7 items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
-          isRunning ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200" : ""
-        } ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
-        onClick={() => onClick?.(task)}
-      >
-        {onToggleComplete && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleComplete(task);
-            }}
-            className={`shrink-0 rounded border-2 flex h-4 w-4 items-center justify-center transition-colors ${
-              isDone
-                ? "border-emerald-500 bg-emerald-500 text-white"
-                : "border-gray-300 bg-white text-transparent hover:border-emerald-400 hover:text-emerald-500"
-            }`}
-            title={isDone ? "Mark as incomplete" : "Mark as complete"}
-            aria-label={isDone ? "Mark as incomplete" : "Mark as complete"}
-          >
-            <CheckCircle2 className="h-3 w-3" />
-          </button>
-        )}
+		return (
+			<div
+				data-task-id={task.id}
+				className={`nodrag group flex h-7 items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
+					isRunning
+						? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200"
+						: ""
+				} ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
+				onClick={() => onClick?.(task)}
+			>
+				{onToggleComplete && (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onToggleComplete(task);
+						}}
+						className={`shrink-0 rounded border-2 flex h-4 w-4 items-center justify-center transition-colors ${
+							isDone
+								? "border-emerald-500 bg-emerald-500 text-white"
+								: "border-gray-300 bg-white text-transparent hover:border-emerald-400 hover:text-emerald-500"
+						}`}
+						title={isDone ? "Mark as incomplete" : "Mark as complete"}
+						aria-label={isDone ? "Mark as incomplete" : "Mark as complete"}
+					>
+						<CheckCircle2 className="h-3 w-3" />
+					</button>
+				)}
 
-        <span
-          className={`min-w-0 flex-1 truncate text-xs font-medium ${
-            isDone ? "text-gray-400 line-through" : "text-gray-900"
-          }`}
-          title={task.title}
-        >
-          {task.title}
-        </span>
+				<span
+					className={`min-w-0 flex-1 truncate text-xs font-medium ${
+						isDone ? "text-gray-400 line-through" : "text-gray-900"
+					}`}
+					title={task.title}
+				>
+					{task.title}
+				</span>
 
-        <div
-          data-task-row-controls
-          className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
-        >
-          <div className="relative flex min-w-0 justify-start">
-            {onUpdateStatus ? (
-              <>
-                <button
-                  type="button"
-                  ref={statusTriggerRef}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setIsStatusOpen((prev) => !prev);
-                  }}
-                  className="rounded-full transition-colors hover:bg-accent"
-                >
-                  <TaskStatusBadge
-                    status={task.status}
-                    className="text-[10px]"
-                    trailing={<ChevronDown className="h-2.5 w-2.5" />}
-                  />
-                </button>
+				<div
+					data-task-row-controls
+					className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
+				>
+					<div className="relative flex min-w-0 justify-start">
+						{onUpdateStatus ? (
+							<>
+								<button
+									type="button"
+									ref={statusTriggerRef}
+									onClick={(event) => {
+										event.stopPropagation();
+										setIsStatusOpen((prev) => !prev);
+									}}
+									className="rounded-full transition-colors hover:bg-accent"
+								>
+									<TaskStatusBadge
+										status={task.status}
+										className="text-[10px]"
+										trailing={<ChevronDown className="h-2.5 w-2.5" />}
+									/>
+								</button>
 
-                {isStatusOpen &&
-                  createPortal(
-                    <div
-                      ref={statusMenuRef}
-                      className="fixed z-300 min-w-40 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
-                      style={{
-                        top: statusMenuPosition.top,
-                        left: statusMenuPosition.left,
-                      }}
-                    >
-                      {CANVAS_TASK_STATUS_OPTIONS.map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onUpdateStatus(task, status);
-                            setIsStatusOpen(false);
-                          }}
-                          className={`flex w-full items-center px-3 py-1.5 text-left transition-colors hover:bg-accent ${
-                            task.status === status ? "bg-muted font-semibold" : ""
-                          }`}
-                        >
-                          <TaskStatusBadge status={status} appearance="menu" />
-                        </button>
-                      ))}
-                    </div>,
-                    document.body,
-                  )}
-              </>
-            ) : (
-              <TaskStatusBadge
-                status={task.status}
-                className="shrink-0 text-[10px]"
-              />
-            )}
-          </div>
+								{isStatusOpen &&
+									createPortal(
+										<div
+											ref={statusMenuRef}
+											className="fixed z-300 min-w-40 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
+											style={{
+												top: statusMenuPosition.top,
+												left: statusMenuPosition.left,
+											}}
+										>
+											{CANVAS_TASK_STATUS_OPTIONS.map((status) => (
+												<button
+													key={status}
+													type="button"
+													onClick={(event) => {
+														event.stopPropagation();
+														onUpdateStatus(task, status);
+														setIsStatusOpen(false);
+													}}
+													className={`flex w-full items-center px-3 py-1.5 text-left transition-colors hover:bg-accent ${
+														task.status === status
+															? "bg-muted font-semibold"
+															: ""
+													}`}
+												>
+													<TaskStatusBadge status={status} appearance="menu" />
+												</button>
+											))}
+										</div>,
+										document.body,
+									)}
+							</>
+						) : (
+							<TaskStatusBadge
+								status={task.status}
+								className="shrink-0 text-[10px]"
+							/>
+						)}
+					</div>
 
-          {/* Fixed slots keep controls aligned when optional row data is absent. */}
-          <span
-            className={`flex h-6 w-6 items-center justify-center transition-opacity ${
-              isRunning ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-            }`}
-          >
-            {projectId ? (
-              <TaskTimerButton projectId={projectId} taskId={task.id} />
-            ) : null}
-          </span>
-          <span className="flex h-6 w-6 items-center justify-center">
-            <EditingTaskAvatar editors={editors} />
-          </span>
-          <span className="flex h-6 w-14 items-center justify-end">
-            <CanvasTaskAssignees task={task} />
-          </span>
-        </div>
-      </div>
-    );
-  },
+					{/* Fixed slots keep controls aligned when optional row data is absent. */}
+					<span
+						className={`flex h-6 w-6 items-center justify-center transition-opacity ${
+							isRunning ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+						}`}
+					>
+						{projectId ? (
+							<TaskTimerButton projectId={projectId} taskId={task.id} />
+						) : null}
+					</span>
+					<span className="flex h-6 w-6 items-center justify-center">
+						<EditingTaskAvatar editors={editors} />
+					</span>
+					<span className="flex h-6 w-14 items-center justify-end">
+						<CanvasTaskAssignees task={task} />
+					</span>
+				</div>
+			</div>
+		);
+	},
 );
 
 CanvasTaskRow.displayName = "CanvasTaskRow";
 
 function CanvasTaskList({
-  tasks,
-  runningTaskId,
-  pulseTaskId,
-  pulseTaskToken,
-  taskEditorsByNodeId,
-  onSelectTask,
-  onToggleComplete,
-  onUpdateStatus,
+	tasks,
+	runningTaskId,
+	pulseTaskId,
+	pulseTaskToken,
+	taskEditorsByNodeId,
+	onSelectTask,
+	onToggleComplete,
+	onUpdateStatus,
 }: {
-  tasks: RoadmapTask[];
-  runningTaskId?: string | null;
-  pulseTaskId?: string | null;
-  pulseTaskToken?: number;
-  taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
-  onSelectTask?: (task: RoadmapTask) => void;
-  onToggleComplete?: (task: RoadmapTask) => void;
-  onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
+	tasks: RoadmapTask[];
+	runningTaskId?: string | null;
+	pulseTaskId?: string | null;
+	pulseTaskToken?: number;
+	taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
+	onSelectTask?: (task: RoadmapTask) => void;
+	onToggleComplete?: (task: RoadmapTask) => void;
+	onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 }) {
-  return (
-    <div className="flex flex-col gap-0 px-2">
-      {tasks.map((task) => (
-        <CanvasTaskRow
-          key={task.id}
-          task={task}
-          isRunning={runningTaskId === task.id}
-          pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
-          editors={taskEditorsByNodeId?.get(task.id)}
-          onClick={onSelectTask}
-          onToggleComplete={onToggleComplete}
-          onUpdateStatus={onUpdateStatus}
-        />
-      ))}
-    </div>
-  );
+	return (
+		<div className="flex flex-col gap-0 px-2">
+			{tasks.map((task) => (
+				<CanvasTaskRow
+					key={task.id}
+					task={task}
+					isRunning={runningTaskId === task.id}
+					pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
+					editors={taskEditorsByNodeId?.get(task.id)}
+					onClick={onSelectTask}
+					onToggleComplete={onToggleComplete}
+					onUpdateStatus={onUpdateStatus}
+				/>
+			))}
+		</div>
+	);
 }
 
 export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
-  const {
-    feature,
-    showTaskCount = true,
-    onEdit,
-    onDelete,
-    onClick,
-    onAddTask,
-    onSelectTask,
-    onUpdateTask,
-    pulseTaskId,
-    pulseTaskToken,
-    pulseToken,
-    runningTaskId,
-    toolbarDraggingType = null,
-    performanceMode = "normal",
-    canEditRoadmap = false,
-    editors,
-    taskEditorsByNodeId,
-  } = data;
-  const isReducedMotion = performanceMode === "reducedMotion";
-  const safelyUpdateTask = (task: RoadmapTask) => {
-    if (!onUpdateTask) return;
-    void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
-  };
-  const descriptionRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const taskListRef = useRef<HTMLDivElement>(null);
+	const {
+		feature,
+		showTaskCount = true,
+		onEdit,
+		onDelete,
+		onDuplicate,
+		onClick,
+		onAddTask,
+		onSelectTask,
+		onUpdateTask,
+		pulseTaskId,
+		pulseTaskToken,
+		pulseToken,
+		runningTaskId,
+		toolbarDraggingType = null,
+		performanceMode = "normal",
+		canEditRoadmap = false,
+		editors,
+		taskEditorsByNodeId,
+	} = data;
+	const toast = useToast();
+	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
+	const resolveCanonicalNodeId = useRoadmapStore(
+		(s) => s.resolveCanonicalNodeId,
+	);
+	const isOptimisticNodeId = useRoadmapStore((s) => s.isOptimisticNodeId);
+	const handleCopyLink = (e: { stopPropagation: () => void }) => {
+		e.stopPropagation();
+		const canonicalId = resolveCanonicalNodeId(feature.id) ?? feature.id;
+		if (isOptimisticNodeId(canonicalId)) {
+			toast.error("Still saving this feature — try again in a moment.");
+			return;
+		}
+		if (!roadmapId || !projectId) {
+			toast.error("Can't build a link outside a roadmap.");
+			return;
+		}
+		const url = `${window.location.origin}/project/${projectId}/roadmap/${roadmapId}?nodeId=${canonicalId}&view=roadmapView`;
+		navigator.clipboard.writeText(url);
+		toast.success("Link copied to clipboard");
+	};
+	const isReducedMotion = performanceMode === "reducedMotion";
+	const safelyUpdateTask = (task: RoadmapTask) => {
+		if (!onUpdateTask) return;
+		void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
+	};
+	const descriptionRef = useRef<HTMLDivElement>(null);
+	const cardRef = useRef<HTMLDivElement>(null);
+	const taskListRef = useRef<HTMLDivElement>(null);
 
-  const [hasOverflow, setHasOverflow] = useState(false);
-  const [taskListHasScroll, setTaskListHasScroll] = useState(false);
-  const [taskListScrollTop, setTaskListScrollTop] = useState(0);
-  const [isPulsing, setIsPulsing] = useState(false);
-  const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
-  const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
-  const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
-  const derivedStatus = deriveFeatureStatus(feature.tasks);
+	const [hasOverflow, setHasOverflow] = useState(false);
+	const [taskListHasScroll, setTaskListHasScroll] = useState(false);
+	const [taskListScrollTop, setTaskListScrollTop] = useState(0);
+	const [isPulsing, setIsPulsing] = useState(false);
+	const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
+	const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
+	const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
+	const derivedStatus = deriveFeatureStatus(feature.tasks);
 
-  const taskCount = feature.tasks?.length || 0;
-  const isOptimisticFeature = feature.id.startsWith("temp-");
-  const completedTasks = getCompletedTaskCount(feature.tasks);
-  const autoProgress = calculateFeatureProgressFromTasks(feature.tasks);
-  const featureAssignees = useMemo(() => {
-    const deduped = new Map<string, NonNullable<RoadmapTask["assignee"]>>();
+	const taskCount = feature.tasks?.length || 0;
+	const isOptimisticFeature = feature.id.startsWith("temp-");
+	const completedTasks = getCompletedTaskCount(feature.tasks);
+	const autoProgress = calculateFeatureProgressFromTasks(feature.tasks);
+	const featureAssignees = useMemo(() => {
+		const deduped = new Map<string, NonNullable<RoadmapTask["assignee"]>>();
 
-    for (const task of feature.tasks ?? []) {
-      const assigneeId = task.assignee_id ?? task.assignee?.id;
-      if (!assigneeId || !task.assignee) continue;
-      if (!deduped.has(assigneeId)) deduped.set(assigneeId, task.assignee);
-    }
+		for (const task of feature.tasks ?? []) {
+			const assigneeId = task.assignee_id ?? task.assignee?.id;
+			if (!assigneeId || !task.assignee) continue;
+			if (!deduped.has(assigneeId)) deduped.set(assigneeId, task.assignee);
+		}
 
-    return Array.from(deduped.values());
-  }, [feature.tasks]);
+		return Array.from(deduped.values());
+	}, [feature.tasks]);
 
-  useEffect(() => {
-    const el = descriptionRef.current;
-    if (!el) return;
-    setHasOverflow(el.scrollHeight > el.clientHeight + 1);
-  }, [feature.description]);
+	useEffect(() => {
+		const el = descriptionRef.current;
+		if (!el) return;
+		setHasOverflow(el.scrollHeight > el.clientHeight + 1);
+	}, [feature.description]);
 
-  useEffect(() => {
-    const el = taskListRef.current;
-    if (!el) {
-      setTaskListHasScroll(false);
-      return;
-    }
-    setTaskListHasScroll(el.scrollHeight > el.clientHeight + 1);
-  }, [feature.tasks]);
+	useEffect(() => {
+		const el = taskListRef.current;
+		if (!el) {
+			setTaskListHasScroll(false);
+			return;
+		}
+		setTaskListHasScroll(el.scrollHeight > el.clientHeight + 1);
+	}, [feature.tasks]);
 
-  useEffect(() => {
-    if (isReducedMotion) {
-      setIsPulsing(false);
-      return;
-    }
-    if (!pulseToken) return;
-    setIsPulsing(true);
-    const timeoutId = window.setTimeout(() => {
-      setIsPulsing(false);
-    }, 900);
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [isReducedMotion, pulseToken]);
+	useEffect(() => {
+		if (isReducedMotion) {
+			setIsPulsing(false);
+			return;
+		}
+		if (!pulseToken) return;
+		setIsPulsing(true);
+		const timeoutId = window.setTimeout(() => {
+			setIsPulsing(false);
+		}, 900);
+		return () => {
+			window.clearTimeout(timeoutId);
+		};
+	}, [isReducedMotion, pulseToken]);
 
+	const getToolbarItemType = (
+		event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
+	): ToolbarItemType | null => {
+		const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+		if (
+			rawCustom === "epic" ||
+			rawCustom === "feature" ||
+			rawCustom === "task"
+		) {
+			return rawCustom;
+		}
 
-  const getToolbarItemType = (
-    event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
-  ): ToolbarItemType | null => {
-    const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
-    if (
-      rawCustom === "epic" ||
-      rawCustom === "feature" ||
-      rawCustom === "task"
-    ) {
-      return rawCustom;
-    }
+		const rawText = event.dataTransfer.getData("text/plain");
+		if (rawText === "epic" || rawText === "feature" || rawText === "task") {
+			return rawText;
+		}
 
-    const rawText = event.dataTransfer.getData("text/plain");
-    if (rawText === "epic" || rawText === "feature" || rawText === "task") {
-      return rawText;
-    }
+		if (toolbarDraggingType) {
+			return toolbarDraggingType;
+		}
 
-    if (toolbarDraggingType) {
-      return toolbarDraggingType;
-    }
+		return null;
+	};
+	const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
 
-    return null;
-  };
-  const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
+	const renderAssigneeAvatar = (
+		assignee: NonNullable<RoadmapTask["assignee"]>,
+	) => {
+		if (assignee.avatar_url) {
+			return (
+				<img
+					src={assignee.avatar_url}
+					alt={assignee.display_name ?? assignee.email ?? "Assignee"}
+					className="w-6 h-6 rounded-full object-cover ring-1 ring-white"
+				/>
+			);
+		}
 
-  const renderAssigneeAvatar = (
-    assignee: NonNullable<RoadmapTask["assignee"]>,
-  ) => {
-    if (assignee.avatar_url) {
-      return (
-        <img
-          src={assignee.avatar_url}
-          alt={assignee.display_name ?? assignee.email ?? "Assignee"}
-          className="w-6 h-6 rounded-full object-cover ring-1 ring-white"
-        />
-      );
-    }
+		const source = assignee.display_name ?? assignee.email ?? "?";
+		const initials = source
+			.split(" ")
+			.map((part) => part[0])
+			.join("")
+			.slice(0, 2)
+			.toUpperCase();
 
-    const source = assignee.display_name ?? assignee.email ?? "?";
-    const initials = source
-      .split(" ")
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+		return (
+			<div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
+				{initials}
+			</div>
+		);
+	};
 
-    return (
-      <div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
-        {initials}
-      </div>
-    );
-  };
-
-  return (
-    <div className="relative w-[500px]">
-      <motion.div
-        ref={cardRef}
-        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-          } ${isOptimisticFeature ? "opacity-75" : ""} ${isCardTaskDropActive
-            ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
-            : isGlobalTaskDropHighlight
-              ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+	return (
+		<div className="relative w-[500px]">
+			<motion.div
+				ref={cardRef}
+				className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
+					isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+				} ${isOptimisticFeature ? "opacity-75" : ""} ${
+					isCardTaskDropActive
+						? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
+						: isGlobalTaskDropHighlight
+							? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
 							: "border-border hover:border-primary/60"
-          }`}
-        style={
-          editingBorderColor(editors)
-            ? { borderColor: editingBorderColor(editors) }
-            : undefined
-        }
-        onClick={() => onClick?.(feature)}
-        onDragEnter={(event) => {
-          if (!onAddTask || getToolbarItemType(event) !== "task") return;
-          event.preventDefault();
-          event.stopPropagation();
-          setIsCardTaskDropActive(true);
-        }}
-        onDragOver={(event) => {
-          if (!onAddTask || getToolbarItemType(event) !== "task") return;
-          event.preventDefault();
-          event.stopPropagation();
-          event.dataTransfer.dropEffect = "move";
-          setIsCardTaskDropActive(true);
-        }}
-        onDragLeave={() => {
-          setIsCardTaskDropActive(false);
-        }}
-        onDrop={(event) => {
-          const itemType = getToolbarItemType(event);
-          setIsCardTaskDropActive(false);
-          if (!onAddTask || itemType !== "task") return;
-          event.preventDefault();
-          event.stopPropagation();
-          onAddTask(feature.id);
-        }}
-        initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
-        animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-        transition={
-          isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
-        }
-      >
-        {/* Live "editing" presence — collaborators with this feature open */}
-        <EditingAvatars editors={editors} />
+				}`}
+				style={
+					editingBorderColor(editors)
+						? { borderColor: editingBorderColor(editors) }
+						: undefined
+				}
+				onClick={() => onClick?.(feature)}
+				onDragEnter={(event) => {
+					if (!onAddTask || getToolbarItemType(event) !== "task") return;
+					event.preventDefault();
+					event.stopPropagation();
+					setIsCardTaskDropActive(true);
+				}}
+				onDragOver={(event) => {
+					if (!onAddTask || getToolbarItemType(event) !== "task") return;
+					event.preventDefault();
+					event.stopPropagation();
+					event.dataTransfer.dropEffect = "move";
+					setIsCardTaskDropActive(true);
+				}}
+				onDragLeave={() => {
+					setIsCardTaskDropActive(false);
+				}}
+				onDrop={(event) => {
+					const itemType = getToolbarItemType(event);
+					setIsCardTaskDropActive(false);
+					if (!onAddTask || itemType !== "task") return;
+					event.preventDefault();
+					event.stopPropagation();
+					onAddTask(feature.id);
+				}}
+				initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+				animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+				transition={
+					isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
+				}
+			>
+				{/* Live "editing" presence — collaborators with this feature open */}
+				<EditingAvatars editors={editors} />
 
-        {/* Deliverable indicator */}
-        {feature.is_deliverable && (
-          <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
-            ★
-          </div>
-        )}
+				{/* Deliverable indicator */}
+				{feature.is_deliverable && (
+					<div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
+						★
+					</div>
+				)}
 
-        {/* Invisible handles for edge connections */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="w-3 h-3 opacity-0"
-        />
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="w-3 h-3 opacity-0"
-        />
+				{/* Invisible handles for edge connections */}
+				<Handle
+					type="target"
+					position={Position.Left}
+					className="w-3 h-3 opacity-0"
+				/>
+				<Handle
+					type="source"
+					position={Position.Right}
+					className="w-3 h-3 opacity-0"
+				/>
 
-        {onAddTask && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onAddTask(feature.id);
-            }}
-            onDragEnter={(event) => {
-              if (getToolbarItemType(event) !== "task") return;
-              event.preventDefault();
-              setIsAddTaskDropActive(true);
-            }}
-            onDragOver={(event) => {
-              if (getToolbarItemType(event) !== "task") return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              setIsAddTaskDropActive(true);
-            }}
-            onDragLeave={() => {
-              setIsAddTaskDropActive(false);
-            }}
-            onDrop={(event) => {
-              setIsAddTaskDropActive(false);
-              if (getToolbarItemType(event) !== "task") return;
-              event.preventDefault();
-              event.stopPropagation();
-              onAddTask(feature.id);
-            }}
-            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${toolbarDraggingType === "task"
-              ? `opacity-100 scale-100 ring-2 ${isAddTaskDropActive
-                ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
-                : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
-              }`
-              : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
-              }`}
-            title="Add task"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
+				{onAddTask && (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onAddTask(feature.id);
+						}}
+						onDragEnter={(event) => {
+							if (getToolbarItemType(event) !== "task") return;
+							event.preventDefault();
+							setIsAddTaskDropActive(true);
+						}}
+						onDragOver={(event) => {
+							if (getToolbarItemType(event) !== "task") return;
+							event.preventDefault();
+							event.dataTransfer.dropEffect = "move";
+							setIsAddTaskDropActive(true);
+						}}
+						onDragLeave={() => {
+							setIsAddTaskDropActive(false);
+						}}
+						onDrop={(event) => {
+							setIsAddTaskDropActive(false);
+							if (getToolbarItemType(event) !== "task") return;
+							event.preventDefault();
+							event.stopPropagation();
+							onAddTask(feature.id);
+						}}
+						className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
+							toolbarDraggingType === "task"
+								? `opacity-100 scale-100 ring-2 ${
+										isAddTaskDropActive
+											? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+											: "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+									}`
+								: "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+						}`}
+						title="Add task"
+					>
+						<Plus className="w-4 h-4" />
+					</button>
+				)}
 
-        <div className="p-10 flex flex-col h-full overflow-hidden">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1"></div>
-              <h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
-                {feature.title}
-              </h4>
-            </div>
+				<div className="p-10 flex flex-col h-full overflow-hidden">
+					{/* Header */}
+					<div className="flex items-start justify-between gap-2 mb-2">
+						<div className="flex-1 min-w-0">
+							<div className="flex items-center gap-2 mb-1"></div>
+							<h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
+								{feature.title}
+							</h4>
+						</div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 shrink-0">
-              {onEdit && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(feature);
-                  }}
-                  className="p-1 hover:bg-amber-100 rounded transition-colors"
-                  title="Edit feature"
-                >
-                  <Edit2 className="w-3 h-3 text-gray-600" />
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(feature.id);
-                  }}
-                  className="p-1 hover:bg-red-100 rounded transition-colors"
-                  title="Delete feature"
-                >
-                  <Trash2 className="w-3 h-3 text-red-600" />
-                </button>
-              )}
-            </div>
-          </div>
+						{/* Actions */}
+						<div className="flex items-center gap-1 shrink-0">
+							{onEdit && (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										onEdit(feature);
+									}}
+									className="p-1 hover:bg-amber-100 rounded transition-colors"
+									title="Edit feature"
+								>
+									<Edit2 className="w-3 h-3 text-gray-600" />
+								</button>
+							)}
+							{onDuplicate && (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										onDuplicate(feature.id);
+									}}
+									className="p-1 hover:bg-gray-100 rounded transition-colors"
+									title="Duplicate feature"
+								>
+									<Copy className="w-3 h-3 text-gray-600" />
+								</button>
+							)}
+							<button
+								type="button"
+								onClick={handleCopyLink}
+								className="p-1 hover:bg-gray-100 rounded transition-colors"
+								title="Copy link"
+							>
+								<Link2 className="w-3 h-3 text-gray-600" />
+							</button>
+							{onDelete && (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										onDelete(feature.id);
+									}}
+									className="p-1 hover:bg-red-100 rounded transition-colors"
+									title="Delete feature"
+								>
+									<Trash2 className="w-3 h-3 text-red-600" />
+								</button>
+							)}
+						</div>
+					</div>
 
-          {/* Description */}
-          {feature.description && (
-            <div
-              ref={descriptionRef}
-              className="relative mb-2 grow overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              <div
-                className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: feature.description }}
-              />
-              {hasOverflow && (
-                <div
-                  data-description-overflow-fade
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-card via-card/80 to-transparent"
-                />
-              )}
-            </div>
-          )}
+					{/* Description */}
+					{feature.description && (
+						<div
+							ref={descriptionRef}
+							className="relative mb-2 grow overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						>
+							<div
+								className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none"
+								dangerouslySetInnerHTML={{ __html: feature.description }}
+							/>
+							{hasOverflow && (
+								<div
+									data-description-overflow-fade
+									className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-card via-card/80 to-transparent"
+								/>
+							)}
+						</div>
+					)}
 
-          {/* Status Badge */}
-          <div className="flex items-center gap-2 mb-2">
-            <TaskStatusBadge status={derivedStatus} />
+					{/* Status Badge */}
+					<div className="flex items-center gap-2 mb-2">
+						<TaskStatusBadge status={derivedStatus} />
 
-            {featureAssignees.length > 0 && (
-              <div className="ml-auto flex items-center">
-                {featureAssignees.slice(0, 4).map((assignee, index) => (
-                  <div
-                    key={assignee.id}
-                    className={index > 0 ? "-ml-1.5" : ""}
-                    title={
-                      assignee.display_name ?? assignee.email ?? "Assignee"
-                    }
-                  >
-                    {renderAssigneeAvatar(assignee)}
-                  </div>
-                ))}
-                {featureAssignees.length > 4 && (
-                  <span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
-                    +{featureAssignees.length - 4}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+						{featureAssignees.length > 0 && (
+							<div className="ml-auto flex items-center">
+								{featureAssignees.slice(0, 4).map((assignee, index) => (
+									<div
+										key={assignee.id}
+										className={index > 0 ? "-ml-1.5" : ""}
+										title={
+											assignee.display_name ?? assignee.email ?? "Assignee"
+										}
+									>
+										{renderAssigneeAvatar(assignee)}
+									</div>
+								))}
+								{featureAssignees.length > 4 && (
+									<span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
+										+{featureAssignees.length - 4}
+									</span>
+								)}
+							</div>
+						)}
+					</div>
 
-          {/* Progress Bar (auto-calculated from task statuses) */}
-          {taskCount > 0 && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                <span>Progress</span>
-                <span className="font-medium">{autoProgress}%</span>
-              </div>
-              <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${autoProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
+					{/* Progress Bar (auto-calculated from task statuses) */}
+					{taskCount > 0 && (
+						<div className="mb-2">
+							<div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+								<span>Progress</span>
+								<span className="font-medium">{autoProgress}%</span>
+							</div>
+							<div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+								<div
+									className="h-full bg-primary transition-all duration-300"
+									style={{ width: `${autoProgress}%` }}
+								/>
+							</div>
+						</div>
+					)}
 
-          {/* Task count or indicator */}
-          {showTaskCount && (
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1 text-gray-600">
-                <List className="w-3 h-3" />
-                <span>
-                  {taskCount} task{taskCount !== 1 ? "s" : ""}
-                </span>
-              </div>
-              {taskCount > 0 && (
-                <span className="text-gray-500">
-                  {completedTasks}/{taskCount} done
-                </span>
-              )}
-            </div>
-          )}
+					{/* Task count or indicator */}
+					{showTaskCount && (
+						<div className="flex items-center justify-between text-xs">
+							<div className="flex items-center gap-1 text-gray-600">
+								<List className="w-3 h-3" />
+								<span>
+									{taskCount} task{taskCount !== 1 ? "s" : ""}
+								</span>
+							</div>
+							{taskCount > 0 && (
+								<span className="text-gray-500">
+									{completedTasks}/{taskCount} done
+								</span>
+							)}
+						</div>
+					)}
 
-          {/* Estimated hours */}
-          {feature.estimated_hours && (
-            <div className="mt-2 text-xs text-gray-500 text-right">
-              ~{feature.estimated_hours}h
-            </div>
-          )}
+					{/* Estimated hours */}
+					{feature.estimated_hours && (
+						<div className="mt-2 text-xs text-gray-500 text-right">
+							~{feature.estimated_hours}h
+						</div>
+					)}
 
-          {/* Date range */}
-          {(feature.start_date || feature.end_date) && (
-            <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
-              <Calendar className="w-3 h-3 shrink-0" />
-              <span>
-                {feature.start_date
-                  ? new Date(feature.start_date).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })
-                  : "—"}
-                {" → "}
-                {feature.end_date
-                  ? new Date(feature.end_date).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })
-                  : "—"}
-              </span>
-            </div>
-          )}
-        </div>
-      </motion.div>
+					{/* Date range */}
+					{(feature.start_date || feature.end_date) && (
+						<div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
+							<Calendar className="w-3 h-3 shrink-0" />
+							<span>
+								{feature.start_date
+									? new Date(feature.start_date).toLocaleDateString(undefined, {
+											month: "short",
+											day: "numeric",
+										})
+									: "—"}
+								{" → "}
+								{feature.end_date
+									? new Date(feature.end_date).toLocaleDateString(undefined, {
+											month: "short",
+											day: "numeric",
+										})
+									: "—"}
+							</span>
+						</div>
+					)}
+				</div>
+			</motion.div>
 
-      {taskCount > 0 && (
-        <>
-          {/* Connecting line from feature to tasks */}
+			{taskCount > 0 && (
+				<>
+					{/* Connecting line from feature to tasks */}
 					<div
 						className="absolute top-1/2 -translate-y-1/2 left-[500px] h-px w-10"
 						style={{ backgroundColor: "var(--canvas-edge)" }}
 					/>
 
-          {/* Task List - positioned to the right */}
-          {(() => {
-            const allTasks = feature.tasks ?? [];
-            return (
-              <div
-                role="presentation"
-                data-task-list-shell
-                className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
-                style={{
-                  height: `${(allTasks.length + 2) * 1.75}rem`,
-                  maxHeight: "calc(100% - 1.5rem)",
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div
-                  data-task-list-container
-                  className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-                >
-                  {/* Header */}
-                  <button
-                    type="button"
-                    className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsTaskListModalOpen(true);
-                    }}
-                  >
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                      Tasks - {allTasks.length}
-                    </span>
-                    <Maximize2 className="w-3 h-3 text-gray-500" />
-                  </button>
+					{/* Task List - positioned to the right */}
+					{(() => {
+						const allTasks = feature.tasks ?? [];
+						return (
+							<div
+								role="presentation"
+								data-task-list-shell
+								className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
+								style={{
+									height: `${(allTasks.length + 2) * 1.75}rem`,
+									maxHeight: "calc(100% - 1.5rem)",
+								}}
+								onClick={(e) => e.stopPropagation()}
+								onPointerDown={(e) => e.stopPropagation()}
+							>
+								<div
+									data-task-list-container
+									className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+								>
+									{/* Header */}
+									<button
+										type="button"
+										className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
+										onClick={(e) => {
+											e.stopPropagation();
+											setIsTaskListModalOpen(true);
+										}}
+									>
+										<span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+											Tasks - {allTasks.length}
+										</span>
+										<Maximize2 className="w-3 h-3 text-gray-500" />
+									</button>
 
-                  {/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
-                  <div
-                    role="presentation"
-                    ref={taskListRef}
-                    className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
-                    onClick={(e) => e.stopPropagation()}
-                    onScroll={(event) =>
-                      setTaskListScrollTop(event.currentTarget.scrollTop)
-                    }
-                  >
-                    <CanvasTaskList
-                      tasks={allTasks}
-                      pulseTaskId={pulseTaskId}
-                      pulseTaskToken={pulseTaskToken}
-                      runningTaskId={runningTaskId}
-                      taskEditorsByNodeId={taskEditorsByNodeId}
-                      onSelectTask={onSelectTask}
-                      onToggleComplete={onUpdateTask ? (task) => {
-                        safelyUpdateTask({
-                          ...task,
-                          status: task.status === "done" ? "todo" : "done",
-                        });
-                      } : undefined}
-                      onUpdateStatus={onUpdateTask ? (task, status) => {
-                        safelyUpdateTask({ ...task, status });
-                      } : undefined}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setIsTaskListModalOpen(true);
-                    }}
-                  >
-                    <Maximize2 className="h-3 w-3" />
-                    Full task controls
-                  </button>
-                </div>
+									{/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
+									<div
+										role="presentation"
+										ref={taskListRef}
+										className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+										onClick={(e) => e.stopPropagation()}
+										onScroll={(event) =>
+											setTaskListScrollTop(event.currentTarget.scrollTop)
+										}
+									>
+										<CanvasTaskList
+											tasks={allTasks}
+											pulseTaskId={pulseTaskId}
+											pulseTaskToken={pulseTaskToken}
+											runningTaskId={runningTaskId}
+											taskEditorsByNodeId={taskEditorsByNodeId}
+											onSelectTask={onSelectTask}
+											onToggleComplete={
+												onUpdateTask
+													? (task) => {
+															safelyUpdateTask({
+																...task,
+																status:
+																	task.status === "done" ? "todo" : "done",
+															});
+														}
+													: undefined
+											}
+											onUpdateStatus={
+												onUpdateTask
+													? (task, status) => {
+															safelyUpdateTask({ ...task, status });
+														}
+													: undefined
+											}
+										/>
+									</div>
+									<button
+										type="button"
+										className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
+										onClick={(event) => {
+											event.stopPropagation();
+											setIsTaskListModalOpen(true);
+										}}
+									>
+										<Maximize2 className="h-3 w-3" />
+										Full task controls
+									</button>
+								</div>
 
-                {onSelectTask && (
-                  <div
-                    data-task-comment-gutter
-                    className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
-                  >
-                    <div
-                      style={{ transform: `translateY(-${taskListScrollTop}px)` }}
-                    >
-                      {allTasks.map((task) => {
-                        const commentCount = Math.max(
-                          0,
-                          Math.floor(task.comment_count ?? 0),
-                        );
+								{onSelectTask && (
+									<div
+										data-task-comment-gutter
+										className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
+									>
+										<div
+											style={{
+												transform: `translateY(-${taskListScrollTop}px)`,
+											}}
+										>
+											{allTasks.map((task) => {
+												const commentCount = Math.max(
+													0,
+													Math.floor(task.comment_count ?? 0),
+												);
 
-                        return (
-                          <div
-                            key={task.id}
-                            className="flex h-7 items-center justify-start"
-                          >
-                            {commentCount > 0 && (
-                              <button
-                                type="button"
-                                className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onSelectTask(task, "comments");
-                                }}
-                                title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
-                                aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
-                                >
-                                  <span className="relative z-10 flex items-center gap-0.5">
-                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
-                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
-                                    <span className="h-1 w-1 rounded-full bg-primary-foreground" />
-                                  </span>
-                                </span>
-                                <span className="tabular-nums text-[11px] font-bold tracking-tight">
-                                  {commentCount > 99 ? "99+" : commentCount}
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+												return (
+													<div
+														key={task.id}
+														className="flex h-7 items-center justify-start"
+													>
+														{commentCount > 0 && (
+															<button
+																type="button"
+																className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
+																onClick={(event) => {
+																	event.stopPropagation();
+																	onSelectTask(task, "comments");
+																}}
+																title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
+																aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
+															>
+																<span
+																	aria-hidden="true"
+																	className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																>
+																	<span className="relative z-10 flex items-center gap-0.5">
+																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																	</span>
+																</span>
+																<span className="tabular-nums text-[11px] font-bold tracking-tight">
+																	{commentCount > 99 ? "99+" : commentCount}
+																</span>
+															</button>
+														)}
+													</div>
+												);
+											})}
+										</div>
+									</div>
+								)}
+							</div>
+						);
+					})()}
 
-          {isTaskListModalOpen && (
-            <TaskListModal
-              feature={feature}
-              onClose={() => setIsTaskListModalOpen(false)}
-              onUpdateTask={safelyUpdateTask}
-              onSelectTask={onSelectTask ? (task) => {
-                setIsTaskListModalOpen(false);
-                onSelectTask(task);
-              } : undefined}
-              onAddTask={onAddTask ? () => {
-                setIsTaskListModalOpen(false);
-                onAddTask(feature.id);
-              } : undefined}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
+					{isTaskListModalOpen && (
+						<TaskListModal
+							feature={feature}
+							onClose={() => setIsTaskListModalOpen(false)}
+							onUpdateTask={safelyUpdateTask}
+							onSelectTask={
+								onSelectTask
+									? (task) => {
+											setIsTaskListModalOpen(false);
+											onSelectTask(task);
+										}
+									: undefined
+							}
+							onAddTask={
+								onAddTask
+									? () => {
+											setIsTaskListModalOpen(false);
+											onAddTask(feature.id);
+										}
+									: undefined
+							}
+						/>
+					)}
+				</>
+			)}
+		</div>
+	);
 });
 
 FeatureWidget.displayName = "FeatureWidget";

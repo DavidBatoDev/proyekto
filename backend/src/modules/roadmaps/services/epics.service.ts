@@ -1,5 +1,7 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import type { IEpicsRepository } from '../repositories/epics.repository.interface';
+import type { IFeaturesRepository } from '../repositories/features.repository.interface';
+import type { ITasksRepository } from '../repositories/tasks.repository.interface';
 import {
   CreateEpicDto,
   UpdateEpicDto,
@@ -22,6 +24,8 @@ import { MENTION_EXCERPT_MAX_CHARS } from '../../notifications/notification-cont
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
+import { FEATURES_REPOSITORY } from './features.service';
+import { TASKS_REPOSITORY } from './tasks.service';
 
 export const EPICS_REPOSITORY = Symbol('EPICS_REPOSITORY');
 const TEMP_EPIC_ID_PREFIX = 'temp-epic-';
@@ -41,6 +45,9 @@ const EPIC_TRACKED_FIELDS = [
 export class EpicsService {
   constructor(
     @Inject(EPICS_REPOSITORY) private readonly repo: IEpicsRepository,
+    @Inject(FEATURES_REPOSITORY)
+    private readonly featuresRepo: IFeaturesRepository,
+    @Inject(TASKS_REPOSITORY) private readonly tasksRepo: ITasksRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
@@ -118,6 +125,90 @@ export class EpicsService {
       }),
     });
     return reordered;
+  }
+
+  /**
+   * Deep-clones the epic plus its features and their tasks. Children are
+   * created straight through the sibling repositories (not FeaturesService/
+   * TasksService) so the gesture logs a single activity row instead of one
+   * per cloned child — the same "one row for the whole gesture" rule as
+   * bulkReorder. Assignees are intentionally not copied to a fresh clone.
+   */
+  async duplicate(id: string, userId: string) {
+    const existing = await this.repo.findById(id);
+    if (!existing) throw new NotFoundException('Epic not found');
+    const ctx = await this.roadmapAuthz.assertEpicPermission(
+      id,
+      userId,
+      'roadmap.edit',
+    );
+
+    const clonedEpic = await this.repo.create(
+      {
+        roadmap_id: existing.roadmap_id,
+        title: `${existing.title} (Copy)`,
+        description: existing.description ?? undefined,
+        priority: existing.priority ?? undefined,
+        status: existing.status ?? undefined,
+        position: (existing.position ?? 0) + 1,
+        color: existing.color ?? undefined,
+        estimated_hours: existing.estimated_hours ?? undefined,
+        start_date: existing.start_date ?? undefined,
+        end_date: existing.end_date ?? undefined,
+        tags: existing.tags ?? undefined,
+      },
+      userId,
+    );
+
+    const sourceFeatures = await this.featuresRepo.findByEpic(id);
+    const newFeatures: unknown[] = [];
+    for (const [index, feature] of sourceFeatures.entries()) {
+      const clonedFeature = await this.featuresRepo.create(
+        {
+          roadmap_id: existing.roadmap_id,
+          epic_id: (clonedEpic as { id: string }).id,
+          title: feature.title,
+          description: feature.description ?? undefined,
+          position: index,
+          is_deliverable: feature.is_deliverable ?? undefined,
+          estimated_hours: feature.estimated_hours ?? undefined,
+          start_date: feature.start_date ?? undefined,
+          end_date: feature.end_date ?? undefined,
+        },
+        userId,
+      );
+
+      const sourceTasks = await this.tasksRepo.findByFeature(feature.id);
+      const newTasks: unknown[] = [];
+      for (const [taskIndex, task] of sourceTasks.entries()) {
+        const clonedTask = await this.tasksRepo.create(
+          {
+            feature_id: (clonedFeature as { id: string }).id,
+            title: task.title,
+            description: task.description ?? undefined,
+            priority: task.priority ?? undefined,
+            status: task.status ?? undefined,
+            due_date: task.due_date ?? undefined,
+            position: taskIndex,
+            work_type: task.work_type ?? undefined,
+            checklist: task.checklist ?? undefined,
+          },
+          userId,
+        );
+        newTasks.push(clonedTask);
+      }
+      newFeatures.push({ ...clonedFeature, tasks: newTasks });
+    }
+
+    this.effects.emit(ctx, userId, {
+      action: ACTIVITY_ACTIONS.EPIC_DUPLICATED,
+      entityType: 'epic',
+      entityId: (clonedEpic as { id?: string })?.id ?? null,
+      title: (clonedEpic as { title?: string })?.title ?? null,
+      metadata: { source_epic_id: id },
+    });
+
+    return { ...clonedEpic, features: newFeatures };
   }
 
   async findComments(epicId: string, userId: string) {

@@ -45,11 +45,14 @@ interface RoadmapCanvasOverlaysProps {
 	targetEpicForFeature: string | null;
 	deleteConfirm: DeleteConfirm | null;
 	setDeleteConfirm: Dispatch<SetStateAction<DeleteConfirm | null>>;
+	duplicateConfirm: DeleteConfirm | null;
+	setDuplicateConfirm: Dispatch<SetStateAction<DeleteConfirm | null>>;
 	setIsAddEpicModalOpen: Dispatch<SetStateAction<boolean>>;
 	setIsEditEpicModalOpen: Dispatch<SetStateAction<boolean>>;
 	setEditingEpicId: Dispatch<SetStateAction<string | null>>;
 	handleTaskUpdate: (task: RoadmapTask) => Promise<void>;
 	handleTaskDelete: (taskId: string) => Promise<void>;
+	handleTaskDuplicate?: (taskId: string) => Promise<void>;
 	handleTaskCreate: (taskData: Partial<RoadmapTask>) => Promise<void>;
 	handleSelectTask?: (
 		task: { id: string },
@@ -90,6 +93,7 @@ interface RoadmapCanvasOverlaysProps {
 	}) => Promise<void>;
 	handleOpenEditFeatureModal: (epicId: string, featureId: string) => void;
 	handleConfirmDelete: () => void;
+	handleConfirmDuplicate: () => void;
 }
 
 export function RoadmapCanvasOverlays({
@@ -126,11 +130,14 @@ export function RoadmapCanvasOverlays({
 	targetEpicForFeature,
 	deleteConfirm,
 	setDeleteConfirm,
+	duplicateConfirm,
+	setDuplicateConfirm,
 	setIsAddEpicModalOpen,
 	setIsEditEpicModalOpen,
 	setEditingEpicId,
 	handleTaskUpdate,
 	handleTaskDelete,
+	handleTaskDuplicate,
 	handleTaskCreate,
 	handleSelectTask,
 	handleCreateTaskFromFeature,
@@ -140,6 +147,7 @@ export function RoadmapCanvasOverlays({
 	handleUpdateFeatureFromModal,
 	handleOpenEditFeatureModal,
 	handleConfirmDelete,
+	handleConfirmDuplicate,
 }: RoadmapCanvasOverlaysProps) {
 	const navigateToNode = useRoadmapStore((s) => s.navigateToNode);
 	const selectTask =
@@ -179,6 +187,7 @@ export function RoadmapCanvasOverlays({
 				}}
 				onUpdateTask={handleTaskUpdate}
 				onDeleteTask={handleTaskDelete}
+				onDuplicateTask={handleTaskDuplicate}
 				onCreateTask={handleTaskCreate}
 				isLoading={isTaskLoading}
 				isPendingCreate={isSelectedTaskPending}
@@ -215,9 +224,7 @@ export function RoadmapCanvasOverlays({
 							}
 						: undefined
 				}
-				onAddTask={
-					editingEpicId ? createTaskFromFeature : undefined
-				}
+				onAddTask={editingEpicId ? createTaskFromFeature : undefined}
 				onUpdateTask={handleTaskUpdate}
 				onDeleteTask={handleTaskDelete}
 				onSelectTask={selectTask}
@@ -287,9 +294,7 @@ export function RoadmapCanvasOverlays({
 					setEditingFeatureId(null);
 					setEditingFeatureEpicId(null);
 				}}
-				onAddTask={
-					editingFeatureId ? createTaskFromFeature : undefined
-				}
+				onAddTask={editingFeatureId ? createTaskFromFeature : undefined}
 				onUpdateTask={handleTaskUpdate}
 				onDeleteTask={handleTaskDelete}
 				onSelectTask={selectTask}
@@ -326,6 +331,42 @@ export function RoadmapCanvasOverlays({
 								className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
 							>
 								Delete
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{duplicateConfirm && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center">
+					<div
+						className="absolute inset-0 bg-black/40"
+						onClick={() => setDuplicateConfirm(null)}
+					/>
+					<div className="relative z-10 w-full max-w-md mx-4 rounded-xl bg-white shadow-2xl p-6">
+						<h3 className="text-lg font-semibold text-gray-900">
+							Duplicate {duplicateConfirm.type === "epic" ? "Epic" : "Feature"}?
+						</h3>
+						<p className="text-sm text-gray-600 mt-2">
+							This will create a copy of {duplicateConfirm.label}
+							{duplicateConfirm.type === "epic"
+								? ", including all its features and tasks."
+								: ", including all its tasks."}
+						</p>
+						<div className="mt-6 flex justify-end gap-3">
+							<button
+								type="button"
+								onClick={() => setDuplicateConfirm(null)}
+								className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={handleConfirmDuplicate}
+								className="px-4 py-2 text-sm rounded-md bg-primary text-white hover:bg-primary/90"
+							>
+								Duplicate
 							</button>
 						</div>
 					</div>

@@ -16,557 +16,570 @@ import { useRoadmapCollaboration } from "@/hooks/useRoadmapCollaboration";
 import { CollaborationPresenceBar } from "@/components/roadmap/collaboration/CollaborationPresenceBar";
 
 const RoadmapCanvas = ({
-  projectTitle: _projectTitle,
-  roadmap: roadmapProp,
-  milestones: milestonesProp,
-  epics: epicsProp,
-  onUpdateRoadmap: _onUpdateRoadmap,
-  onAddMilestone: onAddMilestoneProp,
-  onUpdateMilestone: onUpdateMilestoneProp,
-  onDeleteMilestone: onDeleteMilestoneProp,
-  onAddEpic: onAddEpicProp,
-  onUpdateEpic: onUpdateEpicProp,
-  onDeleteEpic: onDeleteEpicProp,
-  onAddFeature: onAddFeatureProp,
-  onUpdateFeature: onUpdateFeatureProp,
-  onDeleteFeature: onDeleteFeatureProp,
-  onAddTask: onAddTaskProp,
-  onUpdateTask: onUpdateTaskProp,
-  onDeleteTask: onDeleteTaskProp,
-  onShare: _onShare,
-  onExport: _onExport,
-  canEditTimelineDates = true,
-  focusNodeId: focusNodeIdProp,
-  focusNodeOffsetX: focusNodeOffsetXProp,
-  focusTaskId: focusTaskIdProp,
-  onFocusComplete: onFocusCompleteProp,
-  navigateToEpicId: navigateToEpicIdProp,
-  onNavigateToEpicHandled: onNavigateToEpicHandledProp,
-  navigateToFeature: navigateToFeatureProp,
-  onNavigateToFeatureHandled: onNavigateToFeatureHandledProp,
-  openEpicEditorId: openEpicEditorIdProp,
-  onOpenEpicEditorHandled: onOpenEpicEditorHandledProp,
-  openFeatureEditor: openFeatureEditorProp,
-  onOpenFeatureEditorHandled: onOpenFeatureEditorHandledProp,
-  openTaskDetailId: openTaskDetailIdProp,
-  onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
-  onActiveEpicChange,
-  onNodeOpen,
-  onNodeClose,
-  performanceMode = "normal",
-  mobile = false,
+	projectTitle: _projectTitle,
+	roadmap: roadmapProp,
+	milestones: milestonesProp,
+	epics: epicsProp,
+	onUpdateRoadmap: _onUpdateRoadmap,
+	onAddMilestone: onAddMilestoneProp,
+	onUpdateMilestone: onUpdateMilestoneProp,
+	onDeleteMilestone: onDeleteMilestoneProp,
+	onAddEpic: onAddEpicProp,
+	onUpdateEpic: onUpdateEpicProp,
+	onDeleteEpic: onDeleteEpicProp,
+	onAddFeature: onAddFeatureProp,
+	onUpdateFeature: onUpdateFeatureProp,
+	onDeleteFeature: onDeleteFeatureProp,
+	onAddTask: onAddTaskProp,
+	onUpdateTask: onUpdateTaskProp,
+	onDeleteTask: onDeleteTaskProp,
+	onShare: _onShare,
+	onExport: _onExport,
+	canEditTimelineDates = true,
+	focusNodeId: focusNodeIdProp,
+	focusNodeOffsetX: focusNodeOffsetXProp,
+	focusTaskId: focusTaskIdProp,
+	onFocusComplete: onFocusCompleteProp,
+	navigateToEpicId: navigateToEpicIdProp,
+	onNavigateToEpicHandled: onNavigateToEpicHandledProp,
+	navigateToFeature: navigateToFeatureProp,
+	onNavigateToFeatureHandled: onNavigateToFeatureHandledProp,
+	openEpicEditorId: openEpicEditorIdProp,
+	onOpenEpicEditorHandled: onOpenEpicEditorHandledProp,
+	openFeatureEditor: openFeatureEditorProp,
+	onOpenFeatureEditorHandled: onOpenFeatureEditorHandledProp,
+	openTaskDetailId: openTaskDetailIdProp,
+	onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
+	onActiveEpicChange,
+	onNodeOpen,
+	onNodeClose,
+	performanceMode = "normal",
+	mobile = false,
 }: RoadmapCanvasProps) => {
-  const user = useUser();
-  const profile = useAuthStore((s) => s.profile);
-  const [isPanningCanvas, setIsPanningCanvas] = useState(false);
-  const [taskPanelInitialTab, setTaskPanelInitialTab] = useState<
-    "details" | "comments"
-  >("details");
-  const [taskPanelOpenRequestToken, setTaskPanelOpenRequestToken] = useState(0);
+	const user = useUser();
+	const profile = useAuthStore((s) => s.profile);
+	const [isPanningCanvas, setIsPanningCanvas] = useState(false);
+	const [taskPanelInitialTab, setTaskPanelInitialTab] = useState<
+		"details" | "comments"
+	>("details");
+	const [taskPanelOpenRequestToken, setTaskPanelOpenRequestToken] = useState(0);
 
-  const {
-    collaborators,
-    remoteCursors,
-    remoteDrag,
-    shouldTrackCursors,
-    trackCursor,
-    setEditingNode,
-    broadcastDataChanged,
-    broadcastNodeDragStart,
-    broadcastNodeDrag,
-    broadcastNodeDragEnd,
-  } = useRoadmapCollaboration({
-    roadmapId: roadmapProp?.id ?? "",
-    userId: user?.id,
-    profile,
-    isPanningCanvas,
-  });
+	const {
+		collaborators,
+		remoteCursors,
+		remoteDrag,
+		shouldTrackCursors,
+		trackCursor,
+		setEditingNode,
+		broadcastDataChanged,
+		broadcastNodeDragStart,
+		broadcastNodeDrag,
+		broadcastNodeDragEnd,
+	} = useRoadmapCollaboration({
+		roadmapId: roadmapProp?.id ?? "",
+		userId: user?.id,
+		profile,
+		isPanningCanvas,
+	});
 
-  // Broadcast a data_changed event whenever a local mutation settles so
-  // collaborators get an immediate notification without relying solely on
-  // postgres_changes (which requires publication + RLS to be correctly set up).
-  //
-  // addEpic/addFeature/addTask use isLoadingEpic/Feature/Task (booleans).
-  // updateEpic/Feature/Task use pendingEpicById/FeatureById/TaskById (maps).
-  // Task-status drags use queuedTaskStatusIntentById.
-  // We sum all of them into a single activity count and broadcast when it drops.
-  const mutationActivityCount = useRoadmapStore(
-    useShallow(
-      (s) =>
-        (s.isLoadingEpic ? 1 : 0) +
-        (s.isLoadingFeature ? 1 : 0) +
-        (s.isLoadingTask ? 1 : 0) +
-        Object.keys(s.pendingEpicById).length +
-        Object.keys(s.pendingFeatureById).length +
-        Object.keys(s.pendingTaskById).length +
-        // queuedTaskStatusIntentById is cleared BEFORE the API call; use
-        // activeTaskStatusSyncById which stays set until the API completes.
-        Object.keys(s.activeTaskStatusSyncById).length,
-    ),
-  );
-  const prevActivityRef = useRef(0);
-  useEffect(() => {
-    const prev = prevActivityRef.current;
-    prevActivityRef.current = mutationActivityCount;
-    // Only broadcast when activity drops (mutation completed, not started)
-    if (prev > mutationActivityCount) {
-      broadcastDataChanged();
-    }
-  }, [mutationActivityCount, broadcastDataChanged]);
+	// Broadcast a data_changed event whenever a local mutation settles so
+	// collaborators get an immediate notification without relying solely on
+	// postgres_changes (which requires publication + RLS to be correctly set up).
+	//
+	// addEpic/addFeature/addTask use isLoadingEpic/Feature/Task (booleans).
+	// updateEpic/Feature/Task use pendingEpicById/FeatureById/TaskById (maps).
+	// Task-status drags use queuedTaskStatusIntentById.
+	// We sum all of them into a single activity count and broadcast when it drops.
+	const mutationActivityCount = useRoadmapStore(
+		useShallow(
+			(s) =>
+				(s.isLoadingEpic ? 1 : 0) +
+				(s.isLoadingFeature ? 1 : 0) +
+				(s.isLoadingTask ? 1 : 0) +
+				Object.keys(s.pendingEpicById).length +
+				Object.keys(s.pendingFeatureById).length +
+				Object.keys(s.pendingTaskById).length +
+				// queuedTaskStatusIntentById is cleared BEFORE the API call; use
+				// activeTaskStatusSyncById which stays set until the API completes.
+				Object.keys(s.activeTaskStatusSyncById).length,
+		),
+	);
+	const prevActivityRef = useRef(0);
+	useEffect(() => {
+		const prev = prevActivityRef.current;
+		prevActivityRef.current = mutationActivityCount;
+		// Only broadcast when activity drops (mutation completed, not started)
+		if (prev > mutationActivityCount) {
+			broadcastDataChanged();
+		}
+	}, [mutationActivityCount, broadcastDataChanged]);
 
-  const controller = useRoadmapCanvasController({
-    roadmap: roadmapProp,
-    milestones: milestonesProp,
-    epics: epicsProp,
-    onAddMilestone: onAddMilestoneProp,
-    onUpdateMilestone: onUpdateMilestoneProp,
-    onDeleteMilestone: onDeleteMilestoneProp,
-    onAddEpic: onAddEpicProp,
-    onUpdateEpic: onUpdateEpicProp,
-    onDeleteEpic: onDeleteEpicProp,
-    onAddFeature: onAddFeatureProp,
-    onUpdateFeature: onUpdateFeatureProp,
-    onDeleteFeature: onDeleteFeatureProp,
-    onAddTask: onAddTaskProp,
-    onUpdateTask: onUpdateTaskProp,
-    onDeleteTask: onDeleteTaskProp,
-    focusNodeId: focusNodeIdProp,
-    focusNodeOffsetX: focusNodeOffsetXProp,
-    focusTaskId: focusTaskIdProp,
-    onFocusComplete: onFocusCompleteProp,
-    navigateToEpicId: navigateToEpicIdProp,
-    onNavigateToEpicHandled: onNavigateToEpicHandledProp,
-    navigateToFeature: navigateToFeatureProp,
-    onNavigateToFeatureHandled: onNavigateToFeatureHandledProp,
-    openEpicEditorId: openEpicEditorIdProp,
-    onOpenEpicEditorHandled: onOpenEpicEditorHandledProp,
-    openFeatureEditor: openFeatureEditorProp,
-    onOpenFeatureEditorHandled: onOpenFeatureEditorHandledProp,
-    openTaskDetailId: openTaskDetailIdProp,
-    onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
-    onActiveEpicChange,
-    onNodeOpen,
-    onNodeClose,
-  });
+	const controller = useRoadmapCanvasController({
+		roadmap: roadmapProp,
+		milestones: milestonesProp,
+		epics: epicsProp,
+		onAddMilestone: onAddMilestoneProp,
+		onUpdateMilestone: onUpdateMilestoneProp,
+		onDeleteMilestone: onDeleteMilestoneProp,
+		onAddEpic: onAddEpicProp,
+		onUpdateEpic: onUpdateEpicProp,
+		onDeleteEpic: onDeleteEpicProp,
+		onAddFeature: onAddFeatureProp,
+		onUpdateFeature: onUpdateFeatureProp,
+		onDeleteFeature: onDeleteFeatureProp,
+		onAddTask: onAddTaskProp,
+		onUpdateTask: onUpdateTaskProp,
+		onDeleteTask: onDeleteTaskProp,
+		focusNodeId: focusNodeIdProp,
+		focusNodeOffsetX: focusNodeOffsetXProp,
+		focusTaskId: focusTaskIdProp,
+		onFocusComplete: onFocusCompleteProp,
+		navigateToEpicId: navigateToEpicIdProp,
+		onNavigateToEpicHandled: onNavigateToEpicHandledProp,
+		navigateToFeature: navigateToFeatureProp,
+		onNavigateToFeatureHandled: onNavigateToFeatureHandledProp,
+		openEpicEditorId: openEpicEditorIdProp,
+		onOpenEpicEditorHandled: onOpenEpicEditorHandledProp,
+		openFeatureEditor: openFeatureEditorProp,
+		onOpenFeatureEditorHandled: onOpenFeatureEditorHandledProp,
+		openTaskDetailId: openTaskDetailIdProp,
+		onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
+		onActiveEpicChange,
+		onNodeOpen,
+		onNodeClose,
+	});
 
-  const {
-    roadmap,
-    milestones,
-    epics,
-    viewMode,
-    selectedTaskId,
-    sidePanelOpen,
-    canonicalActiveDetailNodeId,
-    targetFeatureForTask,
-    isAddEpicModalOpen,
-    isEditEpicModalOpen,
-    editingEpicId,
-    isAddFeatureModalOpen,
-    targetEpicForFeature,
-    isEditFeatureModalOpen,
-    editingFeatureId,
-    editingFeatureEpicId,
-    deleteConfirm,
-    scrollToFeatureId,
-    isTaskLoading,
-    isEpicLoading,
-    isFeatureLoading,
-    isEditingEpicPending,
-    isEditingFeaturePending,
-    isSelectedTaskPending,
-    currentEpic,
-    selectedTask,
-    focusNodeId,
-    focusNodeOffsetX,
-    focusTaskId,
-    onAddMilestone,
-    onUpdateMilestone,
-    onDeleteMilestone,
-    onUpdateEpic,
-    onUpdateFeature,
-    onDeleteTask,
-    onUpdateTask,
-    onFocusComplete,
-    onNavigateToFeatureHandled,
-    closeAddTaskPanel,
-    setViewMode,
-    setSelectedEpic,
-    setOpenEpicTabs,
-    setTargetFeatureForTask,
-    setSidePanelOpen,
-    setSelectedTaskId,
-    setIsAddEpicModalOpen,
-    setIsEditEpicModalOpen,
-    setEditingEpicId,
-    setIsAddFeatureModalOpen,
-    setTargetEpicForFeature,
-    setIsEditFeatureModalOpen,
-    setEditingFeatureId,
-    setEditingFeatureEpicId,
-    setDeleteConfirm,
-    setScrollToFeatureId,
-    handleDeleteEpic,
-    handleDeleteFeature,
-    handleCreateEpic,
-    handleUpdateEpicFromModal,
-    handleCreateFeature,
-    handleUpdateFeatureFromModal,
-    handleOpenEditFeatureModal,
-    handleOpenAddFeatureModal,
-    handleAddEpicBelow,
-    handleConfirmDelete,
-    handleTaskCreate,
-    handleTaskUpdate,
-    handleTaskDelete,
-  } = controller;
+	const {
+		roadmap,
+		milestones,
+		epics,
+		viewMode,
+		selectedTaskId,
+		sidePanelOpen,
+		canonicalActiveDetailNodeId,
+		targetFeatureForTask,
+		isAddEpicModalOpen,
+		isEditEpicModalOpen,
+		editingEpicId,
+		isAddFeatureModalOpen,
+		targetEpicForFeature,
+		isEditFeatureModalOpen,
+		editingFeatureId,
+		editingFeatureEpicId,
+		deleteConfirm,
+		duplicateConfirm,
+		scrollToFeatureId,
+		isTaskLoading,
+		isEpicLoading,
+		isFeatureLoading,
+		isEditingEpicPending,
+		isEditingFeaturePending,
+		isSelectedTaskPending,
+		currentEpic,
+		selectedTask,
+		focusNodeId,
+		focusNodeOffsetX,
+		focusTaskId,
+		onAddMilestone,
+		onUpdateMilestone,
+		onDeleteMilestone,
+		onUpdateEpic,
+		onUpdateFeature,
+		onDeleteTask,
+		onUpdateTask,
+		onFocusComplete,
+		onNavigateToFeatureHandled,
+		closeAddTaskPanel,
+		setViewMode,
+		setSelectedEpic,
+		setOpenEpicTabs,
+		setTargetFeatureForTask,
+		setSidePanelOpen,
+		setSelectedTaskId,
+		setIsAddEpicModalOpen,
+		setIsEditEpicModalOpen,
+		setEditingEpicId,
+		setIsAddFeatureModalOpen,
+		setTargetEpicForFeature,
+		setIsEditFeatureModalOpen,
+		setEditingFeatureId,
+		setEditingFeatureEpicId,
+		setDeleteConfirm,
+		setDuplicateConfirm,
+		setScrollToFeatureId,
+		handleDeleteEpic,
+		handleDuplicateEpic,
+		handleDeleteFeature,
+		handleDuplicateFeature,
+		handleDuplicateTask,
+		handleCreateEpic,
+		handleUpdateEpicFromModal,
+		handleCreateFeature,
+		handleUpdateFeatureFromModal,
+		handleOpenEditFeatureModal,
+		handleOpenAddFeatureModal,
+		handleAddEpicBelow,
+		handleConfirmDelete,
+		handleConfirmDuplicate,
+		handleTaskCreate,
+		handleTaskUpdate,
+		handleTaskDelete,
+	} = controller;
 
-  // Announce which epic/feature/task detail this user has open (or null when
-  // closed) so collaborators see an "editing" badge on the matching card.
-  useEffect(() => {
-    setEditingNode(canonicalActiveDetailNodeId);
-  }, [canonicalActiveDetailNodeId, setEditingNode]);
+	// Announce which epic/feature/task detail this user has open (or null when
+	// closed) so collaborators see an "editing" badge on the matching card.
+	useEffect(() => {
+		setEditingNode(canonicalActiveDetailNodeId);
+	}, [canonicalActiveDetailNodeId, setEditingNode]);
 
-  // Clear our editing presence when the canvas unmounts (e.g. leaving the
-  // roadmap with a detail still open) so no stale badge lingers for peers.
-  useEffect(() => {
-    return () => setEditingNode(null);
-  }, [setEditingNode]);
+	// Clear our editing presence when the canvas unmounts (e.g. leaving the
+	// roadmap with a detail still open) so no stale badge lingers for peers.
+	useEffect(() => {
+		return () => setEditingNode(null);
+	}, [setEditingNode]);
 
-  const [isLinkRoadmapModalOpen, setIsLinkRoadmapModalOpen] = useState(false);
-  const navigate = useNavigate();
+	const [isLinkRoadmapModalOpen, setIsLinkRoadmapModalOpen] = useState(false);
+	const navigate = useNavigate();
 
-  if (!roadmap) {
-    return null;
-  }
+	if (!roadmap) {
+		return null;
+	}
 
-  const canLinkExisting =
-    Boolean(roadmap.project_id) &&
-    epics.length === 0 &&
-    milestones.length === 0;
+	const canLinkExisting =
+		Boolean(roadmap.project_id) &&
+		epics.length === 0 &&
+		milestones.length === 0;
 
-  const handleNavigateToEpicTab = useCallback(
-    (epicId: string) => {
-      setSelectedEpic(epicId);
-      setViewMode("epic");
-      setOpenEpicTabs((prevTabs) =>
-        prevTabs.includes(epicId) ? prevTabs : [...prevTabs, epicId],
-      );
-    },
-    [setOpenEpicTabs, setSelectedEpic, setViewMode],
-  );
+	const handleNavigateToEpicTab = useCallback(
+		(epicId: string) => {
+			setSelectedEpic(epicId);
+			setViewMode("epic");
+			setOpenEpicTabs((prevTabs) =>
+				prevTabs.includes(epicId) ? prevTabs : [...prevTabs, epicId],
+			);
+		},
+		[setOpenEpicTabs, setSelectedEpic, setViewMode],
+	);
 
-  const handleSelectFeature = useCallback(
-    (feature: { epic_id: string; id: string }) => {
-      setEditingFeatureEpicId(feature.epic_id);
-      setEditingFeatureId(feature.id);
-      setIsEditFeatureModalOpen(true);
-    },
-    [setEditingFeatureEpicId, setEditingFeatureId, setIsEditFeatureModalOpen],
-  );
+	const handleSelectFeature = useCallback(
+		(feature: { epic_id: string; id: string }) => {
+			setEditingFeatureEpicId(feature.epic_id);
+			setEditingFeatureId(feature.id);
+			setIsEditFeatureModalOpen(true);
+		},
+		[setEditingFeatureEpicId, setEditingFeatureId, setIsEditFeatureModalOpen],
+	);
 
-  const handleSelectEpic = useCallback(
-    (epicId: string) => {
-      setEditingEpicId(epicId);
-      setIsEditEpicModalOpen(true);
-    },
-    [setEditingEpicId, setIsEditEpicModalOpen],
-  );
+	const handleSelectEpic = useCallback(
+		(epicId: string) => {
+			setEditingEpicId(epicId);
+			setIsEditEpicModalOpen(true);
+		},
+		[setEditingEpicId, setIsEditEpicModalOpen],
+	);
 
-  const handleSelectTask = useCallback(
-    (
-      task: { id: string },
-      initialTab: "details" | "comments" = "details",
-    ) => {
-      setTaskPanelInitialTab(initialTab);
-      setTaskPanelOpenRequestToken((token) => token + 1);
-      setSelectedTaskId(task.id);
-      setTargetFeatureForTask(null);
-      setSidePanelOpen(true);
-    },
-    [setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
-  );
+	const handleSelectTask = useCallback(
+		(task: { id: string }, initialTab: "details" | "comments" = "details") => {
+			setTaskPanelInitialTab(initialTab);
+			setTaskPanelOpenRequestToken((token) => token + 1);
+			setSelectedTaskId(task.id);
+			setTargetFeatureForTask(null);
+			setSidePanelOpen(true);
+		},
+		[setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
+	);
 
-  const handleCreateTaskFromFeature = useCallback(
-    (featureId: string) => {
-      setTaskPanelInitialTab("details");
-      setTaskPanelOpenRequestToken((token) => token + 1);
-      setTargetFeatureForTask(featureId);
-      setSelectedTaskId(null);
-      setSidePanelOpen(true);
-    },
-    [setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
-  );
+	const handleCreateTaskFromFeature = useCallback(
+		(featureId: string) => {
+			setTaskPanelInitialTab("details");
+			setTaskPanelOpenRequestToken((token) => token + 1);
+			setTargetFeatureForTask(featureId);
+			setSelectedTaskId(null);
+			setSidePanelOpen(true);
+		},
+		[setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
+	);
 
-  return (
-    <div className="relative flex h-full flex-col bg-background text-foreground">
-      {/* Presence bar — rendered here (outside overflow-hidden) so it and its
+	return (
+		<div className="relative flex h-full flex-col bg-background text-foreground">
+			{/* Presence bar — rendered here (outside overflow-hidden) so it and its
           tooltip are never clipped by the canvas container */}
-      {collaborators.length > 0 && (
-        <div className="absolute top-3 right-14 z-30">
-          <CollaborationPresenceBar collaborators={collaborators} />
-        </div>
-      )}
+			{collaborators.length > 0 && (
+				<div className="absolute top-3 right-14 z-30">
+					<CollaborationPresenceBar collaborators={collaborators} />
+				</div>
+			)}
 
-      {/* View Content */}
-      <div className="flex-1 relative overflow-hidden">
-        {mobile ? (
-          viewMode === "milestones" ? (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <CalendarDays className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground">
-                Milestones timeline
-              </h3>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                The milestones timeline is best viewed on a larger screen. Switch
-                to Roadmap to browse epics, features, and tasks.
-              </p>
-            </div>
-          ) : epics.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <Plus className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold text-foreground">
-                No Epics Yet
-              </h3>
-              <p className="mb-6 max-w-xs text-sm text-muted-foreground">
-                Create your first epic to start building this roadmap.
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsAddEpicModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                <Plus className="h-4 w-4" />
-                Add Epic
-              </button>
-            </div>
-          ) : (
-            <RoadmapLeftSidePanel
-              messages={[]}
-              onSendMessage={() => {}}
-              isCollapsed={false}
-              mobile
-              highlightedEpicId={null}
-              onSelectEpic={handleSelectEpic}
-              onSelectFeature={(epicId, featureId) =>
-                handleOpenEditFeatureModal(epicId, featureId)
-              }
-              onSelectTask={(taskId) => handleSelectTask({ id: taskId })}
-              onOpenEpicEditor={handleSelectEpic}
-              onOpenFeatureEditor={(epicId, featureId) =>
-                handleOpenEditFeatureModal(epicId, featureId)
-              }
-              onOpenTaskDetail={(taskId) => handleSelectTask({ id: taskId })}
-              onNavigateToNode={(_nodeId, options) => {
-                if (options?.taskId) {
-                  handleSelectTask({ id: options.taskId });
-                }
-              }}
-              onNavigateToEpicTab={handleNavigateToEpicTab}
-            />
-          )
-        ) : (
-        <>
-        {viewMode === "roadmap" && epics.length === 0 ? (
-          // Empty state - no epics
-          <div className="flex h-full flex-col items-center justify-center bg-background">
-            <div className="text-center max-w-md">
-              <div className="mb-4">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                  <Plus className="h-8 w-8 text-muted-foreground" />
-                </div>
-              </div>
-              <h3 className="mb-2 text-xl font-semibold text-foreground">
-                No Epics Yet
-              </h3>
-              <p className="mb-6 text-muted-foreground">
-                Get started by creating your first epic. Epics help you organize
-                large bodies of work into manageable pieces.
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAddEpicModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Epic
-                </button>
-                {canLinkExisting && (
-                  <button
-                    type="button"
-                    onClick={() => setIsLinkRoadmapModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
-                  >
-                    <Link2 className="w-4 h-4" />
-                    Link Existing Roadmap
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : viewMode === "roadmap" ? (
-          <RoadmapView
-            roadmap={roadmap}
-            epics={epics}
-            performanceMode={performanceMode}
-            remoteCursors={shouldTrackCursors ? remoteCursors : []}
-            editors={collaborators}
-            onTrackCursor={shouldTrackCursors ? trackCursor : undefined}
-            remoteDrag={remoteDrag}
-            onBroadcastNodeDragStart={broadcastNodeDragStart}
-            onBroadcastNodeDrag={broadcastNodeDrag}
-            onBroadcastNodeDragEnd={broadcastNodeDragEnd}
-            onUpdateEpic={onUpdateEpic}
-            onDeleteEpic={handleDeleteEpic}
-            onUpdateFeature={onUpdateFeature}
-            onDeleteFeature={handleDeleteFeature}
-            onSelectFeature={handleSelectFeature}
-            onSelectEpic={handleSelectEpic}
-            onSelectTask={handleSelectTask}
-            onAddEpicBelow={handleAddEpicBelow}
-            onAddFeature={handleOpenAddFeatureModal}
-            onAddTask={handleCreateTaskFromFeature}
-            onEditFeature={handleOpenEditFeatureModal}
-            onNavigateToEpic={handleNavigateToEpicTab}
-            onUpdateTask={onUpdateTask}
-            focusNodeId={focusNodeId}
-            focusNodeOffsetX={focusNodeOffsetX}
-            focusTaskId={focusTaskId}
-            onFocusComplete={onFocusComplete}
-            onPanStart={() => setIsPanningCanvas(true)}
-            onPanEnd={() => setIsPanningCanvas(false)}
-          />
-        ) : null}
+			{/* View Content */}
+			<div className="flex-1 relative overflow-hidden">
+				{mobile ? (
+					viewMode === "milestones" ? (
+						<div className="flex h-full flex-col items-center justify-center px-8 text-center">
+							<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+								<CalendarDays className="h-6 w-6 text-muted-foreground" />
+							</div>
+							<h3 className="text-base font-semibold text-foreground">
+								Milestones timeline
+							</h3>
+							<p className="mt-1 max-w-xs text-sm text-muted-foreground">
+								The milestones timeline is best viewed on a larger screen.
+								Switch to Roadmap to browse epics, features, and tasks.
+							</p>
+						</div>
+					) : epics.length === 0 ? (
+						<div className="flex h-full flex-col items-center justify-center px-8 text-center">
+							<div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+								<Plus className="h-8 w-8 text-muted-foreground" />
+							</div>
+							<h3 className="mb-2 text-lg font-semibold text-foreground">
+								No Epics Yet
+							</h3>
+							<p className="mb-6 max-w-xs text-sm text-muted-foreground">
+								Create your first epic to start building this roadmap.
+							</p>
+							<button
+								type="button"
+								onClick={() => setIsAddEpicModalOpen(true)}
+								className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+							>
+								<Plus className="h-4 w-4" />
+								Add Epic
+							</button>
+						</div>
+					) : (
+						<RoadmapLeftSidePanel
+							messages={[]}
+							onSendMessage={() => {}}
+							isCollapsed={false}
+							mobile
+							highlightedEpicId={null}
+							onSelectEpic={handleSelectEpic}
+							onSelectFeature={(epicId, featureId) =>
+								handleOpenEditFeatureModal(epicId, featureId)
+							}
+							onSelectTask={(taskId) => handleSelectTask({ id: taskId })}
+							onOpenEpicEditor={handleSelectEpic}
+							onOpenFeatureEditor={(epicId, featureId) =>
+								handleOpenEditFeatureModal(epicId, featureId)
+							}
+							onOpenTaskDetail={(taskId) => handleSelectTask({ id: taskId })}
+							onNavigateToNode={(_nodeId, options) => {
+								if (options?.taskId) {
+									handleSelectTask({ id: options.taskId });
+								}
+							}}
+							onNavigateToEpicTab={handleNavigateToEpicTab}
+						/>
+					)
+				) : (
+					<>
+						{viewMode === "roadmap" && epics.length === 0 ? (
+							// Empty state - no epics
+							<div className="flex h-full flex-col items-center justify-center bg-background">
+								<div className="text-center max-w-md">
+									<div className="mb-4">
+										<div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+											<Plus className="h-8 w-8 text-muted-foreground" />
+										</div>
+									</div>
+									<h3 className="mb-2 text-xl font-semibold text-foreground">
+										No Epics Yet
+									</h3>
+									<p className="mb-6 text-muted-foreground">
+										Get started by creating your first epic. Epics help you
+										organize large bodies of work into manageable pieces.
+									</p>
+									<div className="flex items-center justify-center gap-3">
+										<button
+											type="button"
+											onClick={() => setIsAddEpicModalOpen(true)}
+											className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+										>
+											<Plus className="w-4 h-4" />
+											Add Epic
+										</button>
+										{canLinkExisting && (
+											<button
+												type="button"
+												onClick={() => setIsLinkRoadmapModalOpen(true)}
+												className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
+											>
+												<Link2 className="w-4 h-4" />
+												Link Existing Roadmap
+											</button>
+										)}
+									</div>
+								</div>
+							</div>
+						) : viewMode === "roadmap" ? (
+							<RoadmapView
+								roadmap={roadmap}
+								epics={epics}
+								performanceMode={performanceMode}
+								remoteCursors={shouldTrackCursors ? remoteCursors : []}
+								editors={collaborators}
+								onTrackCursor={shouldTrackCursors ? trackCursor : undefined}
+								remoteDrag={remoteDrag}
+								onBroadcastNodeDragStart={broadcastNodeDragStart}
+								onBroadcastNodeDrag={broadcastNodeDrag}
+								onBroadcastNodeDragEnd={broadcastNodeDragEnd}
+								onUpdateEpic={onUpdateEpic}
+								onDeleteEpic={handleDeleteEpic}
+								onDuplicateEpic={handleDuplicateEpic}
+								onUpdateFeature={onUpdateFeature}
+								onDeleteFeature={handleDeleteFeature}
+								onDuplicateFeature={handleDuplicateFeature}
+								onSelectFeature={handleSelectFeature}
+								onSelectEpic={handleSelectEpic}
+								onSelectTask={handleSelectTask}
+								onAddEpicBelow={handleAddEpicBelow}
+								onAddFeature={handleOpenAddFeatureModal}
+								onAddTask={handleCreateTaskFromFeature}
+								onEditFeature={handleOpenEditFeatureModal}
+								onNavigateToEpic={handleNavigateToEpicTab}
+								onUpdateTask={onUpdateTask}
+								focusNodeId={focusNodeId}
+								focusNodeOffsetX={focusNodeOffsetX}
+								focusTaskId={focusTaskId}
+								onFocusComplete={onFocusComplete}
+								onPanStart={() => setIsPanningCanvas(true)}
+								onPanEnd={() => setIsPanningCanvas(false)}
+							/>
+						) : null}
 
-        {viewMode === "epic" && currentEpic && (
-          <EpicTab
-            epic={currentEpic}
-            onUpdateEpic={onUpdateEpic}
-            onUpdateFeature={onUpdateFeature}
-            onDeleteFeature={handleDeleteFeature}
-            onUpdateTask={onUpdateTask}
-            onDeleteTask={onDeleteTask}
-            onSelectTask={handleSelectTask}
-            onAddTask={handleCreateTaskFromFeature}
-            scrollToFeatureId={scrollToFeatureId}
-            onScrollToFeatureHandled={() => {
-              setScrollToFeatureId(null);
-              onNavigateToFeatureHandled?.();
-            }}
-          />
-        )}
+						{viewMode === "epic" && currentEpic && (
+							<EpicTab
+								epic={currentEpic}
+								onUpdateEpic={onUpdateEpic}
+								onUpdateFeature={onUpdateFeature}
+								onDeleteFeature={handleDeleteFeature}
+								onUpdateTask={onUpdateTask}
+								onDeleteTask={onDeleteTask}
+								onSelectTask={handleSelectTask}
+								onAddTask={handleCreateTaskFromFeature}
+								scrollToFeatureId={scrollToFeatureId}
+								onScrollToFeatureHandled={() => {
+									setScrollToFeatureId(null);
+									onNavigateToFeatureHandled?.();
+								}}
+							/>
+						)}
 
-        {viewMode === "epic" && !currentEpic && (
-          <div className="flex h-full items-center justify-center bg-background">
-            <div className="text-center">
-              <p className="mb-4 text-muted-foreground">No epic selected</p>
-              <button
-                type="button"
-                onClick={() => setViewMode("roadmap")}
-                className="rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
-              >
-                Go to Roadmap View
-              </button>
-            </div>
-          </div>
-        )}
+						{viewMode === "epic" && !currentEpic && (
+							<div className="flex h-full items-center justify-center bg-background">
+								<div className="text-center">
+									<p className="mb-4 text-muted-foreground">No epic selected</p>
+									<button
+										type="button"
+										onClick={() => setViewMode("roadmap")}
+										className="rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
+									>
+										Go to Roadmap View
+									</button>
+								</div>
+							</div>
+						)}
 
-        {viewMode === "milestones" && (
-          <MilestonesView
-            roadmap={roadmap}
-            milestones={milestones}
-            epics={epics}
-            onAddMilestone={onAddMilestone}
-            onUpdateMilestone={onUpdateMilestone}
-            onDeleteMilestone={onDeleteMilestone}
-            onUpdateEpic={onUpdateEpic}
-            onUpdateFeature={onUpdateFeature}
-            onAddFeature={handleOpenAddFeatureModal}
-            onOpenFeatureEditor={handleOpenEditFeatureModal}
-            canEditTimelineDates={canEditTimelineDates}
-            onNavigateToEpic={handleNavigateToEpicTab}
-            onAddEpic={() => setIsAddEpicModalOpen(true)}
-            onLinkRoadmap={canLinkExisting ? () => setIsLinkRoadmapModalOpen(true) : undefined}
-          />
-        )}
-        </>
-        )}
+						{viewMode === "milestones" && (
+							<MilestonesView
+								roadmap={roadmap}
+								milestones={milestones}
+								epics={epics}
+								onAddMilestone={onAddMilestone}
+								onUpdateMilestone={onUpdateMilestone}
+								onDeleteMilestone={onDeleteMilestone}
+								onUpdateEpic={onUpdateEpic}
+								onUpdateFeature={onUpdateFeature}
+								onAddFeature={handleOpenAddFeatureModal}
+								onOpenFeatureEditor={handleOpenEditFeatureModal}
+								canEditTimelineDates={canEditTimelineDates}
+								onNavigateToEpic={handleNavigateToEpicTab}
+								onAddEpic={() => setIsAddEpicModalOpen(true)}
+								onLinkRoadmap={
+									canLinkExisting
+										? () => setIsLinkRoadmapModalOpen(true)
+										: undefined
+								}
+							/>
+						)}
+					</>
+				)}
 
-        <RoadmapCanvasOverlays
-            projectId={roadmap.project_id ?? undefined}
-            epics={epics}
-            selectedTask={selectedTask}
-            sidePanelOpen={sidePanelOpen}
-            selectedTaskId={selectedTaskId}
-            targetFeatureForTask={targetFeatureForTask}
-            taskPanelInitialTab={taskPanelInitialTab}
-            taskPanelOpenRequestToken={taskPanelOpenRequestToken}
-            closeAddTaskPanel={closeAddTaskPanel}
-            setSidePanelOpen={setSidePanelOpen}
-            setSelectedTaskId={setSelectedTaskId}
-            setTargetFeatureForTask={setTargetFeatureForTask}
-            setIsAddFeatureModalOpen={setIsAddFeatureModalOpen}
-            setTargetEpicForFeature={setTargetEpicForFeature}
-            setIsEditFeatureModalOpen={setIsEditFeatureModalOpen}
-            setEditingFeatureId={setEditingFeatureId}
-            setEditingFeatureEpicId={setEditingFeatureEpicId}
-            isTaskLoading={isTaskLoading}
-            isEpicLoading={isEpicLoading}
-            isFeatureLoading={isFeatureLoading}
-            isEditingEpicPending={isEditingEpicPending}
-            isEditingFeaturePending={isEditingFeaturePending}
-            isSelectedTaskPending={isSelectedTaskPending}
-            isAddEpicModalOpen={isAddEpicModalOpen}
-            isEditEpicModalOpen={isEditEpicModalOpen}
-            isAddFeatureModalOpen={isAddFeatureModalOpen}
-            isEditFeatureModalOpen={isEditFeatureModalOpen}
-            editingEpicId={editingEpicId}
-            editingFeatureId={editingFeatureId}
-            editingFeatureEpicId={editingFeatureEpicId}
-            targetEpicForFeature={targetEpicForFeature}
-            deleteConfirm={deleteConfirm}
-            setDeleteConfirm={setDeleteConfirm}
-            setIsAddEpicModalOpen={setIsAddEpicModalOpen}
-            setIsEditEpicModalOpen={setIsEditEpicModalOpen}
-            setEditingEpicId={setEditingEpicId}
-            handleTaskUpdate={handleTaskUpdate}
-            handleTaskDelete={handleTaskDelete}
-            handleTaskCreate={handleTaskCreate}
-            handleSelectTask={handleSelectTask}
-            handleCreateTaskFromFeature={handleCreateTaskFromFeature}
-            handleCreateEpic={handleCreateEpic}
-            handleUpdateEpicFromModal={handleUpdateEpicFromModal}
-            handleCreateFeature={handleCreateFeature}
-            handleUpdateFeatureFromModal={handleUpdateFeatureFromModal}
-            handleOpenEditFeatureModal={handleOpenEditFeatureModal}
-            handleConfirmDelete={handleConfirmDelete}
-          />
-      </div>
-      {roadmap.project_id && (
-        <LinkRoadmapModal
-          isOpen={isLinkRoadmapModalOpen}
-          onClose={() => setIsLinkRoadmapModalOpen(false)}
-          projectId={roadmap.project_id}
-          currentRoadmapId={roadmap.id}
-          onLinked={(newRoadmapId) => {
-            setIsLinkRoadmapModalOpen(false);
-            void navigate({
-              to: "/project/$projectId/roadmap/$roadmapId",
-              params: {
-                projectId: roadmap.project_id as string,
-                roadmapId: newRoadmapId,
-              },
-              replace: true,
-            });
-          }}
-        />
-      )}
-    </div>
-  );
+				<RoadmapCanvasOverlays
+					projectId={roadmap.project_id ?? undefined}
+					epics={epics}
+					selectedTask={selectedTask}
+					sidePanelOpen={sidePanelOpen}
+					selectedTaskId={selectedTaskId}
+					targetFeatureForTask={targetFeatureForTask}
+					taskPanelInitialTab={taskPanelInitialTab}
+					taskPanelOpenRequestToken={taskPanelOpenRequestToken}
+					closeAddTaskPanel={closeAddTaskPanel}
+					setSidePanelOpen={setSidePanelOpen}
+					setSelectedTaskId={setSelectedTaskId}
+					setTargetFeatureForTask={setTargetFeatureForTask}
+					setIsAddFeatureModalOpen={setIsAddFeatureModalOpen}
+					setTargetEpicForFeature={setTargetEpicForFeature}
+					setIsEditFeatureModalOpen={setIsEditFeatureModalOpen}
+					setEditingFeatureId={setEditingFeatureId}
+					setEditingFeatureEpicId={setEditingFeatureEpicId}
+					isTaskLoading={isTaskLoading}
+					isEpicLoading={isEpicLoading}
+					isFeatureLoading={isFeatureLoading}
+					isEditingEpicPending={isEditingEpicPending}
+					isEditingFeaturePending={isEditingFeaturePending}
+					isSelectedTaskPending={isSelectedTaskPending}
+					isAddEpicModalOpen={isAddEpicModalOpen}
+					isEditEpicModalOpen={isEditEpicModalOpen}
+					isAddFeatureModalOpen={isAddFeatureModalOpen}
+					isEditFeatureModalOpen={isEditFeatureModalOpen}
+					editingEpicId={editingEpicId}
+					editingFeatureId={editingFeatureId}
+					editingFeatureEpicId={editingFeatureEpicId}
+					targetEpicForFeature={targetEpicForFeature}
+					deleteConfirm={deleteConfirm}
+					setDeleteConfirm={setDeleteConfirm}
+					duplicateConfirm={duplicateConfirm}
+					setDuplicateConfirm={setDuplicateConfirm}
+					setIsAddEpicModalOpen={setIsAddEpicModalOpen}
+					setIsEditEpicModalOpen={setIsEditEpicModalOpen}
+					setEditingEpicId={setEditingEpicId}
+					handleTaskUpdate={handleTaskUpdate}
+					handleTaskDelete={handleTaskDelete}
+					handleTaskDuplicate={handleDuplicateTask}
+					handleTaskCreate={handleTaskCreate}
+					handleSelectTask={handleSelectTask}
+					handleCreateTaskFromFeature={handleCreateTaskFromFeature}
+					handleCreateEpic={handleCreateEpic}
+					handleUpdateEpicFromModal={handleUpdateEpicFromModal}
+					handleCreateFeature={handleCreateFeature}
+					handleUpdateFeatureFromModal={handleUpdateFeatureFromModal}
+					handleOpenEditFeatureModal={handleOpenEditFeatureModal}
+					handleConfirmDelete={handleConfirmDelete}
+					handleConfirmDuplicate={handleConfirmDuplicate}
+				/>
+			</div>
+			{roadmap.project_id && (
+				<LinkRoadmapModal
+					isOpen={isLinkRoadmapModalOpen}
+					onClose={() => setIsLinkRoadmapModalOpen(false)}
+					projectId={roadmap.project_id}
+					currentRoadmapId={roadmap.id}
+					onLinked={(newRoadmapId) => {
+						setIsLinkRoadmapModalOpen(false);
+						void navigate({
+							to: "/project/$projectId/roadmap/$roadmapId",
+							params: {
+								projectId: roadmap.project_id as string,
+								roadmapId: newRoadmapId,
+							},
+							replace: true,
+						});
+					}}
+				/>
+			)}
+		</div>
+	);
 };
 
 export { RoadmapCanvas };

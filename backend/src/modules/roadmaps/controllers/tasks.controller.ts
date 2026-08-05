@@ -27,6 +27,11 @@ import {
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.tasksService.duplicate(id, user.id);
+  }
+
   @Get('feature/:featureId')
   getByFeature(
     @Param('featureId') featureId: string,

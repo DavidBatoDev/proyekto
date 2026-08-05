@@ -31,6 +31,11 @@ import {
 export class FeaturesController {
   constructor(private readonly featuresService: FeaturesService) {}
 
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.featuresService.duplicate(id, user.id);
+  }
+
   @Get('epic/:epicId')
   getByEpic(
     @Param('epicId') epicId: string,
