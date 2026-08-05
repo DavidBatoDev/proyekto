@@ -1,12 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { FolderOpen, ShieldCheck } from "lucide-react";
+import { FolderOpen, ShieldCheck, Video } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import {
 	getRoadmapsPreview,
 	type RoadmapPreview,
 } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
+import {
+	MEETING_TYPE_LABELS,
+	type Meeting,
+	meetingsService,
+} from "@/services/meetings.service";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -26,16 +31,7 @@ type ActivityItem = {
 	isAssignedToCurrentUser: boolean;
 };
 
-type TimelineItem = {
-	id: string;
-	title: string;
-	roadmapName: string;
-	targetDate: string;
-	assigneeId?: string | null;
-	actualHours?: number;
-	status?: string;
-	projectId?: string | null;
-};
+type UpcomingMeeting = Meeting & { projectTitle: string | null };
 
 function formatDateLabel(value: string): string {
 	return new Date(value).toLocaleDateString(undefined, {
@@ -45,9 +41,11 @@ function formatDateLabel(value: string): string {
 	});
 }
 
-function startOfToday(): Date {
-	const now = new Date();
-	return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+function formatMeetingTime(value: string): string {
+	return new Date(value).toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
 }
 
 function formatTaskStatus(status: string): string {
@@ -116,35 +114,27 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
+	const meetingsQuery = useQuery({
+		queryKey: [
+			"dashboard",
+			"meetings-preview",
+			user?.id ?? "anonymous",
+		] as const,
+		queryFn: () =>
+			meetingsService.list({
+				status: "scheduled",
+				from: new Date().toISOString(),
+			}),
+		enabled: Boolean(user?.id),
+		staleTime: 30_000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
+	});
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
 	const isProjectsLoading = projectsQuery.isPending;
 	const isMilestonesLoading = timelineQuery.isPending;
-
-	const upcomingMilestones = useMemo(() => {
-		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
-		const today = startOfToday().getTime();
-
-		return validRoadmaps
-			.flatMap((roadmap) =>
-				(roadmap.milestones || []).map((milestone) => ({
-					id: milestone.id,
-					title: milestone.title,
-					roadmapName: roadmap.name,
-					targetDate: milestone.target_date,
-					projectId: roadmap.project_id || null,
-				})),
-			)
-			.filter((item: TimelineItem) => {
-				if (!item.targetDate) return false;
-				const parsed = new Date(item.targetDate).getTime();
-				return Number.isFinite(parsed) && parsed >= today;
-			})
-			.sort(
-				(a: TimelineItem, b: TimelineItem) =>
-					new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
-			)
-			.slice(0, 6);
-	}, [timelineQuery.data]);
+	const isMeetingsLoading = meetingsQuery.isPending;
 
 	const projectActiveCount = useMemo(() => projects.length, [projects]);
 
@@ -163,6 +153,29 @@ export function DashboardWidgets({
 		}
 		return map;
 	}, [projects]);
+
+	const upcomingMeetings = useMemo((): UpcomingMeeting[] => {
+		const meetings = meetingsQuery.data ?? [];
+		const nowMs = Date.now();
+
+		return meetings
+			.filter((meeting) => {
+				const parsed = new Date(meeting.scheduled_at).getTime();
+				return Number.isFinite(parsed) && parsed >= nowMs;
+			})
+			.sort(
+				(a, b) =>
+					new Date(a.scheduled_at).getTime() -
+					new Date(b.scheduled_at).getTime(),
+			)
+			.slice(0, 5)
+			.map((meeting) => ({
+				...meeting,
+				projectTitle: meeting.project_id
+					? (projectTitleById.get(meeting.project_id) ?? null)
+					: null,
+			}));
+	}, [meetingsQuery.data, projectTitleById]);
 
 	const activityItems = useMemo(() => {
 		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
@@ -313,8 +326,8 @@ export function DashboardWidgets({
 									Welcome back, {greetingName}
 								</h2>
 								<p className="mt-1 text-sm text-slate-600">
-									Here is a quick view of your project portfolio and delivery
-									milestones.
+									Here is a quick view of your project portfolio and upcoming
+									activity.
 								</p>
 							</div>
 							<DashboardCreateActions />
@@ -413,84 +426,101 @@ export function DashboardWidgets({
 
 				<div className="xl:sticky xl:top-24 self-start space-y-4 min-w-0">
 					<div className="app-surface-card p-6">
-						<div className="mb-3">
-							<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
-								Upcoming Milestones
-							</h3>
-							<p className="mt-1 text-xs text-slate-600">
-								Track upcoming roadmap deadlines and delivery checkpoints.
-							</p>
+						<div className="mb-3 flex items-start justify-between gap-2">
+							<div>
+								<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
+									Upcoming Meetings
+								</h3>
+								<p className="mt-1 text-xs text-slate-600">
+									Stay ahead of scheduled calls across your projects.
+								</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => navigate({ to: "/meetings" })}
+								className="shrink-0 text-xs font-medium text-primary hover:underline"
+							>
+								View all
+							</button>
 						</div>
 
-						{isMilestonesLoading ? (
-							<p className="text-sm text-slate-600">
-								Loading milestone timeline...
-							</p>
-						) : upcomingMilestones.length === 0 ? (
+						{isMeetingsLoading ? (
+							<p className="text-sm text-slate-600">Loading meetings...</p>
+						) : upcomingMeetings.length === 0 ? (
 							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
 								<p className="mb-1 text-sm font-semibold text-slate-900">
-									No upcoming milestones
+									No upcoming meetings
 								</p>
 								<p className="text-xs text-slate-600">
-									Milestones with future target dates will appear here.
+									Meetings scheduled across your projects will appear here.
 								</p>
 							</div>
 						) : (
-							<div className="space-y-5">
-								{upcomingMilestones.map((item, index, arr) => {
-									const isLast = index === arr.length - 1;
-									const isCurrent = index === 0;
-									const isNext = index === 1;
-									const isUpcoming = index > 1;
-									const circleBaseClass = "w-3 h-3 rounded-full shrink-0";
-									const connectorColor =
-										index === 0 ? "#2563eb" : "rgb(226 232 240)";
+							<div className="space-y-2.5">
+								{upcomingMeetings.map((meeting, index) => {
+									const isNext = index === 0;
+									const typeLabel =
+										MEETING_TYPE_LABELS[meeting.type] ?? "Meeting";
+									const canJoin =
+										meeting.video_provider !== "none" &&
+										Boolean(meeting.meeting_url);
+									const scheduled = new Date(meeting.scheduled_at);
 
 									return (
-										<div key={item.id} className="flex items-start gap-3">
-											<div className="flex flex-col items-center pt-1 shrink-0 w-4">
-												<span
-													className={circleBaseClass}
-													style={
-														isCurrent
-															? { backgroundColor: "#2563eb" }
-															: isNext
-																? {
-																		backgroundColor: "white",
-																		border: "2px solid #334155",
-																	}
-																: {
-																		backgroundColor: "white",
-																		border: "2px solid rgb(203 213 225)",
-																	}
-													}
-												/>
-												{!isLast ? (
-													<span
-														className="w-px flex-1 mt-1 min-h-8"
-														style={{ backgroundColor: connectorColor }}
-													/>
-												) : null}
+										<div
+											key={meeting.id}
+											className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${
+												isNext
+													? "border-primary/30 bg-primary/5"
+													: "border-slate-200 bg-white hover:bg-slate-50"
+											}`}
+										>
+											<div
+												className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg ${
+													isNext
+														? "bg-primary text-white"
+														: "bg-slate-100 text-slate-700"
+												}`}
+											>
+												<span className="text-[10px] font-medium uppercase leading-none">
+													{scheduled.toLocaleDateString(undefined, {
+														month: "short",
+													})}
+												</span>
+												<span className="text-base font-bold leading-tight">
+													{scheduled.toLocaleDateString(undefined, {
+														day: "numeric",
+													})}
+												</span>
 											</div>
 
-											<div className="flex-1 min-w-0 pb-1">
-												<p
-													className={`text-xs ${
-														isCurrent || isNext
-															? "text-slate-600"
-															: "text-slate-400"
-													}`}
-												>
-													{formatDateLabel(item.targetDate)}
-												</p>
-												<p
-													className={`mt-1 text-[14px] font-semibold ${isUpcoming ? "text-slate-700" : "text-slate-900"}`}
-												>
-													{item.title}
-												</p>
+											<div className="min-w-0 flex-1">
+												<div className="flex items-center justify-between gap-2">
+													<p className="truncate text-[14px] font-semibold text-slate-900">
+														{meeting.title}
+													</p>
+													{canJoin ? (
+														<a
+															href={meeting.meeting_url ?? undefined}
+															target="_blank"
+															rel="noopener noreferrer"
+															onClick={(e) => e.stopPropagation()}
+															className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-primary/90"
+														>
+															<Video className="h-3 w-3" />
+															Join
+														</a>
+													) : null}
+												</div>
 												<p className="mt-0.5 text-xs text-slate-600">
-													{item.roadmapName}
+													{formatMeetingTime(meeting.scheduled_at)}
+													{meeting.projectTitle
+														? ` · ${meeting.projectTitle}`
+														: ""}
 												</p>
+												<span className="mt-1.5 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+													{typeLabel}
+												</span>
 											</div>
 										</div>
 									);
