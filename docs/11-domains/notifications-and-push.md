@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-08-04 · **Status:** current
+> **Last updated:** 2026-08-05 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -55,6 +55,36 @@ The web/mobile client registers tokens via `web/src/services/pushNotifications.t
 Capacitor/FCM wiring.
 
 ## Email channel
+
+## Outbound email delivery
+
+Proyekto uses two delivery models. Action emails are sent synchronously while
+the initiating request is still running; notification emails are queued so an
+in-app read can prevent an unnecessary email.
+
+| Email | Trigger | Delivery path | Expected send time |
+| --- | --- | --- | --- |
+| Verification code | Sign-up verification request | Direct `MailerService` call | During the request (normally seconds) |
+| Password reset code | Reset request for an existing account | Direct `MailerService` call | During the request (normally seconds) |
+| Project invite | A collaborator is invited to a project | Direct `MailerService` call | After the invite is created (normally seconds) |
+| Team invite | A person is invited to a team | Direct `MailerService` call | After the invite is created (normally seconds) |
+| Contract signing link | A signing link is created with email enabled | Direct `MailerService` call | During link creation (normally seconds) |
+| Signing-link withdrawal | An active signing link is explicitly revoked | Direct `MailerService` call | During revocation (normally seconds) |
+| Invoice | A consultant sends or re-sends an issued invoice | Direct `MailerService` call, with the PDF attached | During the send action (normally seconds) |
+| Task, feature, epic, or chat mention | An existing member is @mentioned | Notification email outbox | 10-15 minutes |
+| Direct message | A recipient has a new unread DM | Notification email outbox | 30-35 minutes |
+| Mention invite (when enabled) | An admin @mentions an email address with no account | Notification email outbox | 2-7 minutes |
+
+The notification dispatcher runs every five minutes. Its configured delay is
+600 seconds for mentions, 1,800 seconds for direct messages, and two minutes
+for account-less mention invites; the scheduler interval accounts for the
+range shown above. Inbox arrival can still vary after the mail provider accepts
+the message.
+
+> **Read before send:** Notification emails are deliberately cancelled when
+> their in-app notification is already read. At dispatch time, the worker
+> re-loads the notification and marks the outbox entry `skipped` with the
+> `already_read` reason instead of calling the mail provider.
 
 **Live since 2026-08-04** for the four mention types and for direct messages. Being
 mentioned in a task, feature or epic comment or in chat, or receiving a DM, can

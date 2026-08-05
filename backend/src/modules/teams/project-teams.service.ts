@@ -58,6 +58,8 @@ export class ProjectTeamsService {
    *   - If the user already has a project_access row, picked role is
    *     ignored: the existing row's role is the user's effective
    *     access on this project.
+   *   - An explicit direct-invite move changes only the origin label and
+   *     direct-grant flag; role, capabilities, and position stay intact.
    */
   private async curateOne(
     projectId: string,
@@ -65,10 +67,11 @@ export class ProjectTeamsService {
     callerId: string,
     userId: string,
     pickedRole?: ProjectTeamDefaultRole,
+    moveDirectGrant = false,
   ): Promise<void> {
     const { data: existing, error: lookupErr } = await this.supabase
       .from('project_access')
-      .select('id')
+      .select('id, origin, has_direct_grant')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -87,7 +90,23 @@ export class ProjectTeamsService {
       );
     if (ptmErr) throw new Error(ptmErr.message);
 
-    if (existing) return;
+    if (existing) {
+      if (
+        moveDirectGrant &&
+        existing.origin === 'invited' &&
+        existing.has_direct_grant === true
+      ) {
+        const { error: moveErr } = await this.supabase
+          .from('project_access')
+          .update({
+            origin: `team:${teamId}`,
+            has_direct_grant: false,
+          })
+          .eq('id', existing.id);
+        if (moveErr) throw new Error(moveErr.message);
+      }
+      return;
+    }
 
     const role: ProjectTeamDefaultRole = pickedRole ?? 'editor';
     const { error: paErr } = await this.supabase
@@ -312,7 +331,14 @@ export class ProjectTeamsService {
       throw new NotFoundException('Team is not attached to this project');
     }
 
-    await this.curateOne(projectId, teamId, callerId, dto.user_id, dto.role);
+    await this.curateOne(
+      projectId,
+      teamId,
+      callerId,
+      dto.user_id,
+      dto.role,
+      dto.move_direct_grant,
+    );
 
     const { data, error } = await this.supabase
       .from('project_team_members')

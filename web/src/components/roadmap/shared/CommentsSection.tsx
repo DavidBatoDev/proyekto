@@ -187,7 +187,7 @@ export const CommentsSection = ({
 	};
 
 	return (
-		<div className="space-y-4">
+		<div className="flex flex-col gap-4">
 			{/* Comments List */}
 			{isLoading ? (
 				<div className="flex items-center justify-center py-8">
@@ -311,7 +311,7 @@ export const CommentsSection = ({
 										<>
 											<div className="border border-gray-300 rounded-xl bg-white px-4 py-3">
 												<div
-													className="text-sm text-gray-700 max-w-none wrap-break-word [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
+											className="max-w-none wrap-break-word text-sm text-gray-700 [&_.mention]:rounded [&_.mention]:bg-primary/10 [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:font-semibold [&_.mention]:text-primary [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
 													dangerouslySetInnerHTML={{
 														__html: sanitizeCommentHtml(comment.content),
 													}}
@@ -364,7 +364,7 @@ export const CommentsSection = ({
 
 			{/* Comment Compose — at bottom */}
 			{canComment && (
-				<div className="space-y-2">
+				<div className="order-first space-y-2">
 					{!isComposerOpen && !isPreparingComposer ? (
 						<button
 							type="button"

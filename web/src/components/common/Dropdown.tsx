@@ -16,6 +16,8 @@ interface DropdownProps {
 	className?: string;
 	id?: string;
 	ariaLabel?: string;
+	/** Render the menu above its trigger when a fixed footer would clip it. */
+	menuPlacement?: "bottom" | "top";
 }
 
 /**
@@ -35,6 +37,7 @@ export function Dropdown({
 	className,
 	id,
 	ariaLabel,
+	menuPlacement = "bottom",
 }: DropdownProps) {
 	const generatedId = useId();
 	const listId = id ?? generatedId;
@@ -132,7 +135,11 @@ export function Dropdown({
 						animate={{ opacity: 1, y: 0 }}
 						exit={{ opacity: 0, y: -4 }}
 						transition={{ duration: 0.14, ease: "easeOut" }}
-						className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+						className={`absolute z-50 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg ${
+							menuPlacement === "top"
+								? "bottom-full mb-1"
+								: "mt-1"
+						}`}
 					>
 						{options.map((option, index) => {
 							const isSelected = option.value === value;

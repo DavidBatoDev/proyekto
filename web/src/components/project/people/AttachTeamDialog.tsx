@@ -230,6 +230,7 @@ export function AttachTeamDialog({
 								onChange={(v) => setDefaultRole(v as ProjectTeamDefaultRole)}
 								options={ROLE_OPTIONS}
 								disabled={attachMutation.isPending}
+								menuPlacement="top"
 							/>
 							<p className="mt-1 text-[11px] text-muted-foreground">
 								You can change any individual below.

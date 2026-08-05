@@ -371,4 +371,12 @@ export class AddCuratedMemberDto {
   @IsOptional()
   @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
   role?: ProjectTeamDefaultRole;
+
+  /**
+   * Converts a direct invitation into this team's project membership. The
+   * existing project role and permissions are retained.
+   */
+  @IsOptional()
+  @IsBoolean()
+  move_direct_grant?: boolean;
 }

@@ -5,6 +5,7 @@ import {
 	AppSectionHeader,
 } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
+import { AddTeamMemberDialog } from "./AddTeamMemberDialog";
 import { AttachTeamDialog } from "./AttachTeamDialog";
 import { TeamGroupCard } from "./TeamGroupCard";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
@@ -24,6 +25,20 @@ export function ProjectTeamsPage({
 	const user = useUser();
 	const people = useProjectPeople(projectId, user?.id ?? null);
 	const [attachOpen, setAttachOpen] = useState(false);
+	const [teamForNewMember, setTeamForNewMember] = useState<{
+		id: string;
+		name: string;
+	} | null>(null);
+	const directInvitedUserIds = new Set(
+		people.people
+			.filter((person) =>
+				person.rows.some(
+					(row) => row.origin === "invited" && row.has_direct_grant === true,
+				),
+			)
+			.map((person) => person.userId)
+			.filter((userId): userId is string => Boolean(userId)),
+	);
 
 	if (people.isPending) {
 		return (
@@ -84,7 +99,12 @@ export function ProjectTeamsPage({
 								group.attachment.is_primary || group.people.length <= 5
 							}
 							onOpenPerson={onOpenPerson}
-							onAddMember={() => setAttachOpen(true)}
+							onAddMember={(teamId) =>
+								setTeamForNewMember({
+									id: teamId,
+									name: group.team?.name ?? "this team",
+								})
+							}
 						/>
 					))}
 				</div>
@@ -95,6 +115,16 @@ export function ProjectTeamsPage({
 					projectId={projectId}
 					currentUserId={user?.id ?? null}
 					onClose={() => setAttachOpen(false)}
+				/>
+			)}
+
+			{teamForNewMember && (
+				<AddTeamMemberDialog
+					projectId={projectId}
+					teamId={teamForNewMember.id}
+					teamName={teamForNewMember.name}
+					directInvitedUserIds={directInvitedUserIds}
+					onClose={() => setTeamForNewMember(null)}
 				/>
 			)}
 		</div>

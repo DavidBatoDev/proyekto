@@ -667,7 +667,11 @@ export async function listAvailableTeamMembers(
 export async function addCuratedMember(
 	projectId: string,
 	teamId: string,
-	input: { user_id: string; role?: ProjectTeamDefaultRole },
+	input: {
+		user_id: string;
+		role?: ProjectTeamDefaultRole;
+		move_direct_grant?: boolean;
+	},
 ): Promise<ProjectTeamMember> {
 	try {
 		const { data } = await apiClient.post<{ data: ProjectTeamMember }>(
