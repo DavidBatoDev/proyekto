@@ -18,7 +18,7 @@ import {
 export const INVOICE_STATUSES = [
   'draft',
   'issued',
-  'sent',
+  'partially_paid',
   'paid',
   'void',
 ] as const;
@@ -208,4 +208,41 @@ export class InvoiceListQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+}
+
+export class RecordInvoicePaymentDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
+
+  @IsDateString()
+  payment_date!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  payment_method?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reference?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
+export class ReverseInvoicePaymentDto {
+  @IsString()
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class VoidAndReplaceInvoiceDto {
+  @IsString()
+  @MaxLength(1000)
+  reason!: string;
 }

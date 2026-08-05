@@ -195,6 +195,15 @@ export class UploadsService {
     return { path: key };
   }
 
+  /** Read a server-generated private object for an authorized attachment send. */
+  async getPrivateObject(key: string): Promise<Buffer> {
+    const result = await this.r2.send(
+      new GetObjectCommand({ Bucket: this.r2Config.privateBucket, Key: key }),
+    );
+    if (!result.Body) throw new BadRequestException('Private object not found');
+    return Buffer.from(await result.Body.transformToByteArray());
+  }
+
   /**
    * Presigned GET URL for an object in the private R2 bucket (identity
    * documents, payout proofs, invoice PDFs, …). Callers MUST authorize the

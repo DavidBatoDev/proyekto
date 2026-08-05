@@ -21,7 +21,10 @@ import { InvoiceSchedulerService } from './invoice-scheduler.service';
 import {
   CreateInvoiceDto,
   InvoiceListQueryDto,
+  RecordInvoicePaymentDto,
+  ReverseInvoicePaymentDto,
   UpdateInvoiceDto,
+  VoidAndReplaceInvoiceDto,
 } from './dto/invoices.dto';
 
 @UseGuards(SupabaseAuthGuard)
@@ -105,6 +108,34 @@ export class InvoicesController {
   @Post(':id/resend')
   resend(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.resendInvoiceEmail(user.id, id);
+  }
+
+  @Post(':id/payments')
+  recordPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RecordInvoicePaymentDto,
+  ) {
+    return this.invoices.recordPayment(user.id, id, dto);
+  }
+
+  @Post(':id/payments/:paymentId/reverse')
+  reversePayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: ReverseInvoicePaymentDto,
+  ) {
+    return this.invoices.reversePayment(user.id, id, paymentId, dto.reason);
+  }
+
+  @Post(':id/void-and-replace')
+  voidAndReplace(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: VoidAndReplaceInvoiceDto,
+  ) {
+    return this.invoices.voidAndReplaceInvoice(user.id, id, dto.reason);
   }
 
   @Post(':id/generate-pdf')

@@ -13,6 +13,8 @@ import {
 
 interface CurrencyAccumulator {
   revenue: number;
+  collected: number;
+  outstanding: number;
   cost: number;
   invoice_count: number;
   project_ids: Set<string>;
@@ -34,9 +36,9 @@ export class FinanceService {
     const ids = projects.map((project) => project.id);
     let invoicesQuery = this.supabase
       .from('invoices')
-      .select('project_id, currency, total, status, created_at')
+      .select('id, project_id, currency, total, status, created_at')
       .in('project_id', ids)
-      .in('status', ['issued', 'sent', 'paid']);
+      .in('status', ['issued', 'partially_paid', 'paid']);
     let logsQuery = this.supabase
       .from('task_time_logs')
       .select(
@@ -78,15 +80,49 @@ export class FinanceService {
     if (logResult.error) throw new Error(logResult.error.message);
     if (contractResult.error) throw new Error(contractResult.error.message);
 
+    const invoiceRows = (invoiceResult.data ?? []) as Array<{
+      id: string;
+      project_id: string;
+      currency: string | null;
+      total: string | number;
+    }>;
+    const invoiceIds = invoiceRows.map((row) => row.id);
+    const { data: paymentData, error: paymentError } = invoiceIds.length
+      ? await this.supabase
+          .from('invoice_payments')
+          .select('invoice_id, amount, reverses_payment_id')
+          .in('invoice_id', invoiceIds)
+      : { data: [], error: null };
+    // The receivables migration can be deployed after the API during a staged
+    // rollout. Existing portfolio reads must remain available until its table
+    // reaches PostgREST's schema cache.
+    if (paymentError && !isMissingReceivablesSchema(paymentError)) {
+      throw new Error(paymentError.message);
+    }
+    const paidByInvoice = new Map<string, number>();
+    for (const payment of (paymentData ?? []) as Array<{
+      invoice_id: string;
+      amount: string | number;
+      reverses_payment_id: string | null;
+    }>) {
+      paidByInvoice.set(
+        payment.invoice_id,
+        (paidByInvoice.get(payment.invoice_id) ?? 0) +
+          (payment.reverses_payment_id ? -Number(payment.amount) : Number(payment.amount)),
+      );
+    }
+
     const currencies = new Map<string, CurrencyAccumulator>();
     const perProject = new Map<
       string,
-      { revenue: number; cost: number; invoice_count: number }
+      { revenue: number; collected: number; outstanding: number; cost: number; invoice_count: number }
     >();
     const ensureCurrency = (currency: string): CurrencyAccumulator => {
       const key = currency.toUpperCase();
       const current = currencies.get(key) ?? {
         revenue: 0,
+        collected: 0,
+        outstanding: 0,
         cost: 0,
         invoice_count: 0,
         project_ids: new Set<string>(),
@@ -97,6 +133,8 @@ export class FinanceService {
     const ensureProject = (projectId: string) => {
       const current = perProject.get(projectId) ?? {
         revenue: 0,
+        collected: 0,
+        outstanding: 0,
         cost: 0,
         invoice_count: 0,
       };
@@ -109,18 +147,23 @@ export class FinanceService {
       ensureProject(project.id);
     }
 
-    for (const row of invoiceResult.data ?? []) {
+    for (const row of invoiceRows) {
       const projectId = String(row.project_id);
       const currency = String(row.currency ?? 'USD').toUpperCase();
       const amount = Number(row.total ?? 0);
       const bucket = ensureCurrency(currency);
       bucket.revenue += amount;
+      const paid = Math.max(0, paidByInvoice.get(row.id) ?? 0);
+      bucket.collected += paid;
+      bucket.outstanding += Math.max(0, amount - paid);
       bucket.invoice_count += 1;
       bucket.project_ids.add(projectId);
       const project = projects.find((item) => item.id === projectId);
       if ((project?.currency ?? 'USD').toUpperCase() === currency) {
         const totals = ensureProject(projectId);
         totals.revenue += amount;
+        totals.collected += paid;
+        totals.outstanding += Math.max(0, amount - paid);
         totals.invoice_count += 1;
       }
     }
@@ -167,6 +210,8 @@ export class FinanceService {
         .map(([currency, totals]) => ({
           currency,
           revenue: round2(totals.revenue),
+          collected: round2(totals.collected),
+          outstanding: round2(totals.outstanding),
           cost: round2(totals.cost),
           margin: round2(totals.revenue - totals.cost),
           margin_percent: marginPercent(
@@ -266,7 +311,7 @@ export class FinanceService {
   private toProjectSummary(
     project: ConsultantFinanceProject,
     totals:
-      | { revenue: number; cost: number; invoice_count: number }
+      | { revenue: number; collected: number; outstanding: number; cost: number; invoice_count: number }
       | undefined,
     contracts: Map<string, { id: string; status: string; version: number }>,
   ) {
@@ -276,6 +321,8 @@ export class FinanceService {
       ...project,
       currency: (project.currency ?? 'USD').toUpperCase(),
       revenue: round2(revenue),
+      collected: round2(totals?.collected ?? 0),
+      outstanding: round2(totals?.outstanding ?? 0),
       cost: round2(cost),
       margin: round2(revenue - cost),
       margin_percent: marginPercent(revenue, revenue - cost),
@@ -292,4 +339,11 @@ function round2(value: number): number {
 function marginPercent(revenue: number, margin: number): number | null {
   if (!(revenue > 0)) return null;
   return Math.round((margin / revenue) * 1000) / 10;
+}
+
+function isMissingReceivablesSchema(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === 'PGRST205' ||
+    error.message?.includes("Could not find the table 'public.invoice_payments'") === true
+  );
 }
