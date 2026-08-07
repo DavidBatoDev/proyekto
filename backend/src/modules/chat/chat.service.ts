@@ -1227,14 +1227,28 @@ export class ChatService {
     }
 
     const slug = await this.uniqueChannelSlug(projectId, name);
+    const isClientProjectRoom = dto.kind === 'client_project';
     const room = await this.chatRepo.upsertChannel({
       projectId,
       slug,
       name,
-      isPrivate: !!dto.is_private,
+      isPrivate: isClientProjectRoom || !!dto.is_private,
       createdBy: userId,
     });
     await this.chatRepo.upsertParticipants(room.id, [userId]);
+    if (isClientProjectRoom) {
+      const coreMemberIds = (
+        await this.chatRepo.listProjectMemberCandidates(projectId)
+      )
+        .filter(
+          (member) =>
+            member.role === 'consultant' ||
+            member.role === 'client' ||
+            member.access_role === 'owner',
+        )
+        .map((member) => member.user_id);
+      await this.chatRepo.upsertParticipants(room.id, coreMemberIds);
+    }
 
     this.audit.log({
       projectId,
@@ -1242,7 +1256,12 @@ export class ChatService {
       action: 'channel.created',
       entityType: 'chat_channel',
       entityId: room.id,
-      metadata: { name, slug, is_private: !!dto.is_private },
+      metadata: {
+        name,
+        slug,
+        is_private: isClientProjectRoom || !!dto.is_private,
+        kind: dto.kind,
+      },
     });
     this.notifyProjectRoomsChanged(projectId, room.id);
 
@@ -1269,6 +1288,14 @@ export class ChatService {
     if (DEFAULT_CHANNEL_SLUGS.has(room.slug) && dto.is_archived === true) {
       throw new BadRequestException(
         'Default project channels cannot be archived.',
+      );
+    }
+    if (
+      (room.slug === 'client-project-room' || room.slug === 'client-room') &&
+      dto.is_private === false
+    ) {
+      throw new BadRequestException(
+        'The client project room must stay private.',
       );
     }
 
@@ -1304,27 +1331,49 @@ export class ChatService {
     const room = await this.assertRoomAccess(roomId, userId);
     const participants = await this.chatRepo.listRoomParticipants(roomId);
 
+    const candidates = room.project_id
+      ? await this.chatRepo.listProjectMemberCandidates(room.project_id)
+      : [];
+    const candidateByUserId = new Map(
+      candidates.map((candidate) => [candidate.user_id, candidate]),
+    );
+    const enrich = (participant: (typeof participants)[number]) => {
+      const candidate = candidateByUserId.get(participant.user_id);
+      return candidate
+        ? {
+            ...participant,
+            role: candidate.role,
+            access_role: candidate.access_role,
+            position: candidate.position,
+            team: candidate.team,
+          }
+        : participant;
+    };
+
     // Private channel: membership is explicit — return the real participants.
-    if (room.is_private || !room.project_id) return participants;
+    if (room.is_private || !room.project_id) return participants.map(enrich);
 
     // Public channel: open to the whole project, so list the full roster, not
     // just whoever has lazy-joined by opening it. Reuse already-joined rows
     // (keeps joined_at/last_read_at) and synthesize a display-only row for
     // members who haven't opened the channel yet.
-    const candidates = await this.chatRepo.listProjectMemberCandidates(
-      room.project_id,
-    );
     const joined = new Map(participants.map((p) => [p.user_id, p]));
-    return candidates.map(
-      (c) =>
-        joined.get(c.user_id) ?? {
-          room_id: roomId,
-          user_id: c.user_id,
-          joined_at: '',
-          last_read_at: null,
-          user: c.user,
-        },
-    );
+    return candidates.map((c) => {
+      const participant = joined.get(c.user_id);
+      return participant
+        ? enrich(participant)
+        : {
+            room_id: roomId,
+            user_id: c.user_id,
+            joined_at: '',
+            last_read_at: null,
+            user: c.user,
+            role: c.role,
+            access_role: c.access_role,
+            position: c.position,
+            team: c.team,
+          };
+    });
   }
 
   async addChannelMember(
@@ -1379,6 +1428,22 @@ export class ChatService {
       throw new NotFoundException('Chat room not found.');
     }
 
+    if (room.slug === 'client-project-room' || room.slug === 'client-room') {
+      const member = (
+        await this.chatRepo.listProjectMemberCandidates(projectId)
+      ).find((candidate) => candidate.user_id === memberId);
+      if (
+        member &&
+        (member.role === 'consultant' ||
+          member.role === 'client' ||
+          member.access_role === 'owner')
+      ) {
+        throw new BadRequestException(
+          'The consultant, project owner, and client cannot be removed from the client project room.',
+        );
+      }
+    }
+
     await this.chatRepo.removeParticipant(roomId, memberId);
 
     this.audit.log({
@@ -1409,6 +1474,22 @@ export class ChatService {
     const room = await this.chatRepo.findRoomById(roomId);
     if (!room || room.type !== 'channel' || room.project_id !== projectId) {
       throw new NotFoundException('Chat room not found.');
+    }
+
+    if (room.slug === 'client-project-room' || room.slug === 'client-room') {
+      const member = (
+        await this.chatRepo.listProjectMemberCandidates(projectId)
+      ).find((candidate) => candidate.user_id === userId);
+      if (
+        member &&
+        (member.role === 'consultant' ||
+          member.role === 'client' ||
+          member.access_role === 'owner')
+      ) {
+        throw new BadRequestException(
+          'Core members cannot leave the client project room.',
+        );
+      }
     }
 
     await this.chatRepo.removeParticipant(roomId, userId);

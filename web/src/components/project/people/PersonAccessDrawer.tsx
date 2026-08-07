@@ -4,15 +4,18 @@ import {
 	Building2,
 	Check,
 	Loader2,
+	Save,
 	SlidersHorizontal,
 	UserMinus,
 	Users,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { Avatar } from "@/components/common/Avatar";
 import { displayNameOf } from "@/components/common/MemberDisplay";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
+import { chatKeys } from "@/queries/chat";
 import { projectKeys } from "@/queries/project";
 import { projectService } from "@/services/project.service";
 import { describeAccess } from "./accessLanguage";
@@ -42,6 +45,13 @@ export function PersonAccessDrawer({
 	const qc = useQueryClient();
 	const toast = useToast();
 	const confirm = useConfirm();
+	const [position, setPosition] = useState(person.position ?? "");
+	const [savedPosition, setSavedPosition] = useState(person.position ?? "");
+
+	useEffect(() => {
+		setPosition(person.position ?? "");
+		setSavedPosition(person.position ?? "");
+	}, [person.memberId, person.position]);
 
 	const permsQuery = useQuery({
 		queryKey: ["project", "member-permissions", projectId, person.memberId],
@@ -62,8 +72,28 @@ export function PersonAccessDrawer({
 		onError: (err) => toast.error((err as Error).message),
 	});
 
+	const positionMutation = useMutation({
+		mutationFn: () =>
+			projectService.updateMemberPosition(projectId, person.memberId, position),
+		onSuccess: (updatedMember) => {
+			const updatedPosition = updatedMember.position ?? "";
+			setPosition(updatedPosition);
+			setSavedPosition(updatedPosition);
+			toast.success("Position updated");
+			void qc.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+			void qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+			void qc.invalidateQueries({ queryKey: chatKeys.members(projectId) });
+			void qc.invalidateQueries({
+				queryKey: ["chat", "channel-members", projectId],
+			});
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
+
 	const name = displayNameOf(person.user, person.userId ?? undefined);
 	const described = permsQuery.data ? describeAccess(permsQuery.data) : null;
+	const normalizedPosition = position.trim();
+	const positionChanged = normalizedPosition !== savedPosition.trim();
 
 	const askRemove = async () => {
 		const ok = await confirm({
@@ -105,6 +135,46 @@ export function PersonAccessDrawer({
 						</p>
 					</div>
 				</div>
+
+				{person.canEditPosition && (
+					<Section title="Project position">
+						<div className="flex items-center gap-2">
+							<input
+								value={position}
+								onChange={(event) => setPosition(event.target.value)}
+								onKeyDown={(event) => {
+									if (
+										event.key === "Enter" &&
+										positionChanged &&
+										!positionMutation.isPending
+									) {
+										positionMutation.mutate();
+									}
+								}}
+								maxLength={80}
+								placeholder="e.g. Product designer"
+								aria-label={`Position for ${name}`}
+								className="min-w-0 flex-1 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+							/>
+							<button
+								type="button"
+								onClick={() => positionMutation.mutate()}
+								disabled={!positionChanged || positionMutation.isPending}
+								className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{positionMutation.isPending ? (
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								) : (
+									<Save className="h-3.5 w-3.5" />
+								)}
+								Save
+							</button>
+						</div>
+						<p className="mt-1.5 text-[11px] text-muted-foreground">
+							Shown beside this person throughout the project and chat.
+						</p>
+					</Section>
+				)}
 
 				{permsQuery.isPending ? (
 					<div className="flex justify-center py-8">

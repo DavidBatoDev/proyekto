@@ -219,6 +219,7 @@ export function ThreadMessageGroup({
 							<ChatAvatar
 								name={group.sender.name}
 								avatarUrl={group.sender.avatarUrl}
+								team={group.sender.team}
 								size="sm"
 							/>
 						</div>

@@ -346,6 +346,64 @@ describe('ChatService', () => {
     expect(upsertChannel).toHaveBeenCalledTimes(1);
   });
 
+  it('creates the client project room as private and seeds its core audience', async () => {
+    const upsertParticipants = jest.fn().mockResolvedValue(undefined);
+    const upsertChannel = jest
+      .fn()
+      .mockImplementation((params) =>
+        Promise.resolve(channel(params.slug, params.isPrivate ?? false)),
+      );
+    const repo = buildRepo({
+      listProjectMemberCandidates: jest.fn().mockResolvedValue([
+        {
+          user_id: 'consultant-1',
+          role: 'consultant',
+          access_role: 'owner',
+          position: 'Consultant',
+          team: null,
+          user: null,
+        },
+        {
+          user_id: 'client-1',
+          role: 'client',
+          access_role: 'admin',
+          position: 'Client',
+          team: null,
+          user: null,
+        },
+        {
+          user_id: 'freelancer-1',
+          role: 'freelancer',
+          access_role: 'editor',
+          position: 'Designer',
+          team: null,
+          user: null,
+        },
+      ]),
+      upsertChannel,
+      upsertParticipants,
+    });
+
+    await makeService(repo).createChannel('project-1', 'admin-1', {
+      name: 'Client Project Room',
+      kind: 'client_project',
+    });
+
+    expect(upsertChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrivate: true }),
+    );
+    expect(upsertParticipants).toHaveBeenNthCalledWith(
+      1,
+      'room-client-project-room',
+      ['admin-1'],
+    );
+    expect(upsertParticipants).toHaveBeenNthCalledWith(
+      2,
+      'room-client-project-room',
+      ['consultant-1', 'client-1'],
+    );
+  });
+
   it('updateChannel toggles visibility via manage_channels', async () => {
     const assertPermission = jest.fn().mockResolvedValue(undefined);
     const updateRoom = jest
@@ -393,6 +451,35 @@ describe('ChatService', () => {
     );
   });
 
+  it('keeps core members in the client project room', async () => {
+    const removeParticipant = jest.fn().mockResolvedValue(undefined);
+    const repo = buildRepo({
+      findRoomById: jest
+        .fn()
+        .mockResolvedValue(channel('client-project-room', true)),
+      listProjectMemberCandidates: jest.fn().mockResolvedValue([
+        {
+          user_id: 'consultant-1',
+          role: 'consultant',
+          access_role: 'owner',
+          position: 'Consultant',
+          team: null,
+          user: null,
+        },
+      ]),
+      removeParticipant,
+    });
+
+    await expect(
+      makeService(repo).leaveChannel(
+        'project-1',
+        'consultant-1',
+        'room-client-project-room',
+      ),
+    ).rejects.toThrow('cannot leave');
+    expect(removeParticipant).not.toHaveBeenCalled();
+  });
+
   // ── Channel member list ───────────────────────────────────────────────────
   it('listChannelMembers returns the full project roster for a public channel', async () => {
     const participant = {
@@ -403,11 +490,20 @@ describe('ChatService', () => {
       user: { id: 'p1', display_name: 'P One', avatar_url: null, email: null },
     };
     const listProjectMemberCandidates = jest.fn().mockResolvedValue([
-      { user_id: 'p1', role: 'member', position: null, user: participant.user },
+      {
+        user_id: 'p1',
+        role: 'freelancer',
+        access_role: 'editor',
+        position: 'Designer',
+        team: { id: 't1', name: 'Studio', avatar_url: 'studio.png' },
+        user: participant.user,
+      },
       {
         user_id: 'p2',
-        role: 'member',
+        role: 'freelancer',
+        access_role: 'viewer',
         position: null,
+        team: null,
         user: {
           id: 'p2',
           display_name: 'P Two',
@@ -418,7 +514,9 @@ describe('ChatService', () => {
       {
         user_id: 'viewer-1',
         role: 'client',
+        access_role: 'owner',
         position: 'Client',
+        team: null,
         user: {
           id: 'viewer-1',
           display_name: 'Me',
@@ -446,6 +544,11 @@ describe('ChatService', () => {
     // The already-joined row is reused; the rest are synthesized (no joined_at).
     expect(members.find((m) => m.user_id === 'p1')?.joined_at).toBe('t');
     expect(members.find((m) => m.user_id === 'p2')?.joined_at).toBe('');
+    expect(members.find((m) => m.user_id === 'p1')).toMatchObject({
+      access_role: 'editor',
+      position: 'Designer',
+      team: { id: 't1', name: 'Studio' },
+    });
   });
 
   it('listChannelMembers returns only explicit participants for a private channel', async () => {
@@ -463,7 +566,16 @@ describe('ChatService', () => {
         },
       },
     ];
-    const listProjectMemberCandidates = jest.fn();
+    const listProjectMemberCandidates = jest.fn().mockResolvedValue([
+      {
+        user_id: 'p1',
+        role: 'freelancer',
+        access_role: 'commenter',
+        position: 'Writer',
+        team: null,
+        user: participants[0].user,
+      },
+    ]);
     const repo = buildRepo({
       findRoomById: jest.fn().mockResolvedValue(channel('secret', true)),
       listRoomParticipants: jest.fn().mockResolvedValue(participants),
@@ -475,8 +587,44 @@ describe('ChatService', () => {
       'viewer-1',
     );
 
-    expect(members).toEqual(participants);
-    expect(listProjectMemberCandidates).not.toHaveBeenCalled();
+    expect(members).toEqual([
+      expect.objectContaining({
+        user_id: 'p1',
+        access_role: 'commenter',
+        position: 'Writer',
+      }),
+    ]);
+    expect(listProjectMemberCandidates).toHaveBeenCalledWith('project-1');
+  });
+
+  it('does not remove core members from the client project room', async () => {
+    const removeParticipant = jest.fn().mockResolvedValue(undefined);
+    const repo = buildRepo({
+      findRoomById: jest
+        .fn()
+        .mockResolvedValue(channel('client-project-room', true)),
+      listProjectMemberCandidates: jest.fn().mockResolvedValue([
+        {
+          user_id: 'client-1',
+          role: 'client',
+          access_role: 'owner',
+          position: 'Client',
+          team: null,
+          user: null,
+        },
+      ]),
+      removeParticipant,
+    });
+
+    await expect(
+      makeService(repo).removeChannelMember(
+        'project-1',
+        'admin-1',
+        'room-client-project-room',
+        'client-1',
+      ),
+    ).rejects.toThrow('cannot be removed');
+    expect(removeParticipant).not.toHaveBeenCalled();
   });
 
   // ── DMs (unchanged behavior) ──────────────────────────────────────────────

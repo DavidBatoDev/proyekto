@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 import { PermissionsLanding } from "@/components/project/people/PermissionsLanding";
 import { ProjectPermissionsEditor } from "@/components/project/people/ProjectPermissions";
+import { ProjectTeamAdminGate } from "@/components/project/people/ProjectTeamAdminGate";
+import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 
 export const Route = createFileRoute("/project/$projectId/team/permissions")({
 	validateSearch: (
@@ -19,15 +20,17 @@ function RouteComponent() {
 
 	return (
 		<TeamPageLayout projectId={projectId}>
-			{memberId || role ? (
-				<ProjectPermissionsEditor
-					projectId={projectId}
-					memberId={memberId}
-					role={role}
-				/>
-			) : (
-				<PermissionsLanding projectId={projectId} />
-			)}
+			<ProjectTeamAdminGate projectId={projectId}>
+				{memberId || role ? (
+					<ProjectPermissionsEditor
+						projectId={projectId}
+						memberId={memberId}
+						role={role}
+					/>
+				) : (
+					<PermissionsLanding projectId={projectId} />
+				)}
+			</ProjectTeamAdminGate>
 		</TeamPageLayout>
 	);
 }

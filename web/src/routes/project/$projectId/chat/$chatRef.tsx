@@ -563,12 +563,20 @@ function ChatPage() {
 			? (activeDmMember?.user_id ?? null)
 			: selectedProfileUserId;
 	const senderMap = useMemo(() => {
-		const map: Record<string, { name: string; avatarUrl?: string | null }> = {};
+		const map: Record<
+			string,
+			{
+				name: string;
+				avatarUrl?: string | null;
+				team?: { name: string; avatar_url: string | null } | null;
+			}
+		> = {};
 
 		for (const member of members) {
 			map[member.user_id] = {
 				name: getDisplayName(member),
 				avatarUrl: member.user?.avatar_url ?? null,
+				team: member.team,
 			};
 		}
 
@@ -580,6 +588,7 @@ function ChatPage() {
 						participant.user?.email ||
 						participant.user_id,
 					avatarUrl: participant.user?.avatar_url ?? null,
+					team: participant.team,
 				};
 			}
 		}
@@ -650,8 +659,10 @@ function ChatPage() {
 
 		return {
 			user_id: fromParticipants.user_id,
-			role: "freelancer" as ChatMemberRole,
-			position: null,
+			role: fromParticipants.role ?? ("freelancer" as ChatMemberRole),
+			access_role: fromParticipants.access_role ?? "member",
+			position: fromParticipants.position ?? null,
+			team: fromParticipants.team ?? null,
 			user: fromParticipants.user,
 		} satisfies ChatMemberCandidate;
 	}, [activeProfileUserId, activeRoom?.participants, members]);
@@ -1546,11 +1557,12 @@ function ChatPage() {
 					if (createChannelMutation.isPending) return;
 					setShowCreateChannel(false);
 				}}
-				onCreate={async ({ name, isPrivate, memberIds }) => {
+				onCreate={async ({ name, isPrivate, kind, memberIds }) => {
 					try {
 						const room = await createChannelMutation.mutateAsync({
 							name,
 							is_private: isPrivate,
+							kind,
 							memberIds,
 						});
 						setShowCreateChannel(false);

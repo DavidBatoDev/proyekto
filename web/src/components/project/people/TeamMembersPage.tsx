@@ -11,6 +11,7 @@ import { useUser } from "@/stores/authStore";
 import { PeopleAccessSummary, type PeopleFilter } from "./PeopleAccessSummary";
 import { PersonRow, primaryTeamFor, teamOriginFor } from "./PersonRow";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
+import { useProjectTeamAccess } from "./useProjectTeamAccess";
 
 /**
  * The project's Members page — one flat roster of everyone with access,
@@ -29,6 +30,7 @@ export function TeamMembersPage({
 }) {
 	const user = useUser();
 	const people = useProjectPeople(projectId, user?.id ?? null);
+	const teamAccess = useProjectTeamAccess(projectId);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<PeopleFilter>("all");
 	const [inviteOpen, setInviteOpen] = useState(false);
@@ -124,13 +126,15 @@ export function TeamMembersPage({
 				</section>
 			)}
 
-			<Link
-				to="/project/$projectId/team/catalog"
-				params={{ projectId }}
-				className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-2 hover:underline"
-			>
-				What do these access levels mean?
-			</Link>
+			{teamAccess.canViewAdmin && (
+				<Link
+					to="/project/$projectId/team/catalog"
+					params={{ projectId }}
+					className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+				>
+					What do these access levels mean?
+				</Link>
+			)}
 
 			{inviteOpen && (
 				<InviteToProjectModal

@@ -51,6 +51,8 @@ export interface PersonAccess {
 	likelyCanEdit: boolean;
 	/** Caller may edit this person's permissions. */
 	canEditPermissions: boolean;
+	/** Caller may edit this person's project position (everyone may edit self). */
+	canEditPosition: boolean;
 	/** Caller may remove this person from the project. */
 	canRemove: boolean;
 	sources: AccessSource[];
@@ -157,6 +159,9 @@ export function useProjectPeople(
 	const canEditPermissionsGrant = Boolean(
 		permissionsQuery.data?.members.edit_permissions,
 	);
+	const canEditPositionGrant = Boolean(
+		permissionsQuery.data?.members.edit_position,
+	);
 	const canManageTeams = Boolean(permissionsQuery.data?.teams.manage);
 
 	const people = useMemo<PersonAccess[]>(() => {
@@ -211,6 +216,7 @@ export function useProjectPeople(
 				// you cannot act on someone who outranks you — mirrors the server.
 				canEditPermissions:
 					canEditPermissionsGrant && !isSelf && !outrankedForPerms,
+				canEditPosition: isSelf || canEditPositionGrant,
 				canRemove: canManageMembers && !isSelf && !outrankedForManage,
 				sources: accessSources(rows, teamNameById),
 				teamIds,
@@ -230,6 +236,7 @@ export function useProjectPeople(
 		callerUserId,
 		callerIsOwner,
 		canEditPermissionsGrant,
+		canEditPositionGrant,
 		canManageMembers,
 		teamNameById,
 	]);

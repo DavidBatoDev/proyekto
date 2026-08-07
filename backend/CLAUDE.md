@@ -19,7 +19,7 @@ Local context for the backend unit. Cross-cutting rules live in the root CLAUDE.
 
 ## Module conventions
 
-- 26 feature modules under src/modules/ (the list drifts - `ls src/modules` is the source of truth). Each module: controllers/, services/, repositories/, dto/ subfolders plus *.module.ts, wired in src/app.module.ts.
+- 31 feature modules under src/modules/ (the list drifts - `ls src/modules` is the source of truth). Each module: controllers/, services/, repositories/, dto/ subfolders plus *.module.ts, wired in src/app.module.ts.
 - Repository pattern: interface (`*.repository.interface.ts`) + Supabase impl (`*.repository.supabase.ts`). Update both together.
 - DTOs use class-validator. The global ValidationPipe runs whitelist + forbidNonWhitelisted - any request field not declared on the DTO makes the request 400. New fields MUST be added to the DTO.
 - ResponseInterceptor wraps every response in an envelope - controllers return raw data; never hand-wrap responses.

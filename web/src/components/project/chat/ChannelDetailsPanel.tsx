@@ -1,22 +1,22 @@
+import {
+	Hash,
+	Lock,
+	LogOut,
+	PanelRightClose,
+	PanelRightOpen,
+	Plus,
+	Settings,
+	X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  Hash,
-  Lock,
-  LogOut,
-  PanelRightClose,
-  PanelRightOpen,
-  Plus,
-  Settings,
-  X,
-} from "lucide-react";
-import type { ChatMemberCandidate, ChatRoom } from "@/services/chat.service";
-import {
-  useChannelMembersQuery,
-  useLeaveChannelMutation,
-  useRemoveChannelMemberMutation,
+	useChannelMembersQuery,
+	useLeaveChannelMutation,
+	useRemoveChannelMemberMutation,
 } from "@/hooks/useChatQueries";
-import { ChatAvatar } from "./Avatar";
+import type { ChatMemberCandidate, ChatRoom } from "@/services/chat.service";
 import { AddChannelMembersModal } from "./AddChannelMembersModal";
+import { ChatAvatar } from "./Avatar";
 import { ChannelSettingsModal } from "./ChannelSettingsModal";
 
 // Default rooms can't be archived (mirrors backend DEFAULT_CHANNEL_SLUGS).
@@ -29,219 +29,241 @@ const DEFAULT_CHANNEL_SLUGS = new Set(["general"]);
  * Replaces showing project members for channels.
  */
 export function ChannelDetailsPanel({
-  projectId,
-  room,
-  members,
-  currentUserId,
-  canManage,
-  isOpen,
-  onToggle,
-  onClose,
-  onExitChannel,
+	projectId,
+	room,
+	members,
+	currentUserId,
+	canManage,
+	isOpen,
+	onToggle,
+	onClose,
+	onExitChannel,
 }: {
-  projectId: string;
-  room: ChatRoom | null;
-  members: ChatMemberCandidate[];
-  currentUserId?: string;
-  canManage: boolean;
-  isOpen: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  /** Navigate away after the active channel disappears (leave / archive). */
-  onExitChannel: () => void;
+	projectId: string;
+	room: ChatRoom | null;
+	members: ChatMemberCandidate[];
+	currentUserId?: string;
+	canManage: boolean;
+	isOpen: boolean;
+	onToggle: () => void;
+	onClose: () => void;
+	/** Navigate away after the active channel disappears (leave / archive). */
+	onExitChannel: () => void;
 }) {
-  const roomId = room?.id ?? null;
-  const membersQuery = useChannelMembersQuery(projectId, roomId, isOpen);
-  const removeMember = useRemoveChannelMemberMutation(projectId);
-  const leaveChannel = useLeaveChannelMutation(projectId);
+	const roomId = room?.id ?? null;
+	const membersQuery = useChannelMembersQuery(projectId, roomId, isOpen);
+	const removeMember = useRemoveChannelMemberMutation(projectId);
+	const leaveChannel = useLeaveChannelMutation(projectId);
 
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+	const [showSettingsModal, setShowSettingsModal] = useState(false);
+	const [showAddModal, setShowAddModal] = useState(false);
 
-  const channelMembers = membersQuery.data ?? [];
-  const currentMemberIds = useMemo(
-    () => new Set(channelMembers.map((m) => m.user_id)),
-    [channelMembers],
-  );
-  const addableMembers = useMemo(
-    () => members.filter((m) => !currentMemberIds.has(m.user_id)),
-    [members, currentMemberIds],
-  );
+	const channelMembers = membersQuery.data ?? [];
+	const currentMemberIds = useMemo(
+		() => new Set(channelMembers.map((m) => m.user_id)),
+		[channelMembers],
+	);
+	const addableMembers = useMemo(
+		() => members.filter((m) => !currentMemberIds.has(m.user_id)),
+		[members, currentMemberIds],
+	);
 
-  if (!room) return null;
+	if (!room) return null;
 
-  const isDefault = DEFAULT_CHANNEL_SLUGS.has(room.slug);
-  const isPrivate = room.is_private;
-  const channelName = room.name || room.slug;
-  const isBusy = leaveChannel.isPending || removeMember.isPending;
-  const canLeave =
-    isPrivate && !!currentUserId && currentMemberIds.has(currentUserId);
+	const isDefault = DEFAULT_CHANNEL_SLUGS.has(room.slug);
+	const isPrivate = room.is_private;
+	const channelName = room.name || room.slug;
+	const isBusy = leaveChannel.isPending || removeMember.isPending;
+	const canLeave =
+		isPrivate && !!currentUserId && currentMemberIds.has(currentUserId);
 
-  return (
-    <div className="h-full flex flex-col">
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-3 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Channel Details
-          </p>
-          <div className="flex items-center gap-1">
-            {canManage && (
-              <button
-                type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100"
-                aria-label="Channel settings"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onToggle}
-              className="hidden h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:inline-flex"
-              aria-label={isOpen ? "Collapse panel" : "Expand panel"}
-            >
-              {isOpen ? (
-                <PanelRightClose className="w-4 h-4" />
-              ) : (
-                <PanelRightOpen className="w-4 h-4" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:hidden"
-              aria-label="Close panel"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+	return (
+		<div className="h-full flex flex-col">
+			<div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-3 py-3 backdrop-blur">
+				<div className="flex items-center justify-between gap-2">
+					<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+						Channel Details
+					</p>
+					<div className="flex items-center gap-1">
+						{canManage && (
+							<button
+								type="button"
+								onClick={() => setShowSettingsModal(true)}
+								className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100"
+								aria-label="Channel settings"
+							>
+								<Settings className="w-4 h-4" />
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={onToggle}
+							className="hidden h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:inline-flex"
+							aria-label={isOpen ? "Collapse panel" : "Expand panel"}
+						>
+							{isOpen ? (
+								<PanelRightClose className="w-4 h-4" />
+							) : (
+								<PanelRightOpen className="w-4 h-4" />
+							)}
+						</button>
+						<button
+							type="button"
+							onClick={onClose}
+							className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:hidden"
+							aria-label="Close panel"
+						>
+							<X className="w-4 h-4" />
+						</button>
+					</div>
+				</div>
+			</div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-4">
-        {/* Identity */}
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-              {isPrivate ? (
-                <Lock className="w-4 h-4" />
-              ) : (
-                <Hash className="w-5 h-5" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900">
-                {channelName}
-              </p>
-              <p className="text-xs text-slate-500">
-                {isPrivate ? "Private channel" : "Channel"} ·{" "}
-                {channelMembers.length} member
-                {channelMembers.length === 1 ? "" : "s"}
-              </p>
-            </div>
-          </div>
-        </div>
+			<div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-4">
+				{/* Identity */}
+				<div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+					<div className="flex items-center gap-2">
+						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+							{isPrivate ? (
+								<Lock className="w-4 h-4" />
+							) : (
+								<Hash className="w-5 h-5" />
+							)}
+						</div>
+						<div className="min-w-0">
+							<p className="truncate text-sm font-semibold text-slate-900">
+								{channelName}
+							</p>
+							<p className="text-xs text-slate-500">
+								{isPrivate ? "Private channel" : "Channel"} ·{" "}
+								{channelMembers.length} member
+								{channelMembers.length === 1 ? "" : "s"}
+							</p>
+						</div>
+					</div>
+				</div>
 
-        {/* Members */}
-        <div>
-          <div className="mb-1 flex items-center justify-between px-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Members
-            </p>
-            {canManage && addableMembers.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add
-              </button>
-            )}
-          </div>
+				{/* Members */}
+				<div>
+					<div className="mb-1 flex items-center justify-between px-1">
+						<p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+							Members
+						</p>
+						{canManage && addableMembers.length > 0 && (
+							<button
+								type="button"
+								onClick={() => setShowAddModal(true)}
+								className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+							>
+								<Plus className="w-3.5 h-3.5" />
+								Add
+							</button>
+						)}
+					</div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-1.5">
-            {membersQuery.isPending ? (
-              <p className="px-2 py-2 text-sm text-slate-400">Loading…</p>
-            ) : channelMembers.length === 0 ? (
-              <p className="px-2 py-2 text-sm text-slate-400">No members yet.</p>
-            ) : (
-              channelMembers.map((participant) => {
-                const label =
-                  participant.user?.display_name ||
-                  participant.user?.email ||
-                  participant.user_id;
-                return (
-                  <div
-                    key={participant.user_id}
-                    className="flex items-center gap-2 rounded-lg px-2 py-2"
-                  >
-                    <ChatAvatar
-                      name={label}
-                      avatarUrl={participant.user?.avatar_url ?? null}
-                      size="sm"
-                    />
-                    <span className="flex-1 truncate text-sm text-slate-800">
-                      {label}
-                      {participant.user_id === currentUserId && (
-                        <span className="ml-1 text-xs text-slate-400">(you)</span>
-                      )}
-                    </span>
-                    {canManage && (
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() =>
-                          removeMember.mutate({
-                            roomId: room.id,
-                            userId: participant.user_id,
-                          })
-                        }
-                        className="rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+					<div className="rounded-xl border border-slate-200 bg-white p-1.5">
+						{membersQuery.isPending ? (
+							<p className="px-2 py-2 text-sm text-slate-400">Loading…</p>
+						) : channelMembers.length === 0 ? (
+							<p className="px-2 py-2 text-sm text-slate-400">
+								No members yet.
+							</p>
+						) : (
+							channelMembers.map((participant) => {
+								const label =
+									participant.user?.display_name ||
+									participant.user?.email ||
+									participant.user_id;
+								const isCoreClientRoomMember =
+									(room.slug === "client-project-room" ||
+										room.slug === "client-room") &&
+									(participant.role === "consultant" ||
+										participant.role === "client" ||
+										participant.access_role === "owner");
+								return (
+									<div
+										key={participant.user_id}
+										className="flex items-center gap-2 rounded-lg px-2 py-2"
+									>
+										<ChatAvatar
+											name={label}
+											avatarUrl={participant.user?.avatar_url ?? null}
+											team={participant.team}
+											size="sm"
+										/>
+										<span className="min-w-0 flex-1">
+											<span className="block truncate text-sm text-slate-800">
+												{label}
+												{participant.user_id === currentUserId && (
+													<span className="ml-1 text-xs text-slate-400">
+														(you)
+													</span>
+												)}
+											</span>
+											<span className="block truncate text-xs capitalize text-slate-500">
+												{participant.position ||
+													participant.access_role ||
+													participant.role ||
+													"Project member"}
+												{participant.team ? ` · ${participant.team.name}` : ""}
+											</span>
+										</span>
+										{canManage && !isCoreClientRoomMember && (
+											<button
+												type="button"
+												disabled={isBusy}
+												onClick={() =>
+													removeMember.mutate({
+														roomId: room.id,
+														userId: participant.user_id,
+													})
+												}
+												className="rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+											>
+												Remove
+											</button>
+										)}
+									</div>
+								);
+							})
+						)}
+					</div>
+				</div>
 
-        {/* Leave */}
-        {canLeave && (
-          <button
-            type="button"
-            disabled={isBusy}
-            onClick={() => leaveChannel.mutate(room.id, { onSuccess: onExitChannel })}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-          >
-            <LogOut className="w-4 h-4" />
-            Leave channel
-          </button>
-        )}
-      </div>
+				{/* Leave */}
+				{canLeave && (
+					<button
+						type="button"
+						disabled={isBusy}
+						onClick={() =>
+							leaveChannel.mutate(room.id, { onSuccess: onExitChannel })
+						}
+						className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+					>
+						<LogOut className="w-4 h-4" />
+						Leave channel
+					</button>
+				)}
+			</div>
 
-      <AddChannelMembersModal
-        open={showAddModal}
-        projectId={projectId}
-        roomId={room.id}
-        channelName={channelName}
-        members={members}
-        existingMemberIds={currentMemberIds}
-        onClose={() => setShowAddModal(false)}
-      />
+			<AddChannelMembersModal
+				open={showAddModal}
+				projectId={projectId}
+				roomId={room.id}
+				channelName={channelName}
+				members={members}
+				existingMemberIds={currentMemberIds}
+				onClose={() => setShowAddModal(false)}
+			/>
 
-      <ChannelSettingsModal
-        open={showSettingsModal}
-        projectId={projectId}
-        room={room}
-        isDefault={isDefault}
-        onClose={() => setShowSettingsModal(false)}
-        onArchived={onExitChannel}
-      />
-    </div>
-  );
+			<ChannelSettingsModal
+				open={showSettingsModal}
+				projectId={projectId}
+				room={room}
+				isDefault={isDefault}
+				onClose={() => setShowSettingsModal(false)}
+				onArchived={onExitChannel}
+			/>
+		</div>
+	);
 }

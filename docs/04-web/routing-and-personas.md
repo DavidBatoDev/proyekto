@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-04 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -21,15 +21,20 @@ gating done in route `beforeLoad` hooks and project components.
 | `project/` | `$projectId` layout + tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
-| `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps). **Missing:** `notifications` — the email-preferences API is live with no UI, see [Notifications → known gap](../11-domains/notifications-and-push.md#known-gap-no-settings-ui) |
+| `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps), `notifications` |
+| `finance/` | `index`, `$contractId`, `invoices/new`, `invoices/$invoiceId/edit` — consultant-only (`ConsultantOnlyGuard` on `/api/finance`) |
+| `contract/` | `sign/$token` — the public, account-free client signing page |
 | `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
 Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,
-`notifications`, `meetings`, `work-items`, `project-posting`, `command-center`.
+`notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `project-posting`,
+`command-center`.
 
-> **No `client/` route subtree.** Client-facing surfaces live under `project/` and
-> `dashboard` — the
-> `web/src/routes/client/` directory is empty and generates no routes.
+> **No `client/` route subtree.** Client-facing surfaces live under `project/`,
+> `dashboard`, and the public `contract/sign/$token` page — `web/src/routes/client/`
+> **does not exist**. See
+> [Feature Domains → clients](../11-domains/clients/client-surfaces.md) for the full
+> inventory of what a client actually reaches.
 
 > **⚠️ `oauth/authorize` is deliberately absent from `Header.tsx`'s `validPaths`.**
 > An unrecognized path renders no header, which is exactly what this chrome-free
@@ -43,10 +48,13 @@ Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbo
 `project/$projectId.tsx` is a layout with tabs (nav in `ProjectSidebar` /
 `ProjectBottomNav`, grouped Plan / Collaborate / Manage):
 
-`overview`, `roadmap` (+ `roadmap/$roadmapId`, `roadmap/create`), `work-items`,
-`team`, `payments` (shown as "Invoices"), `resources`, `logs`, `chat/$chatRef`, and
+`overview`, `roadmap` (+ `roadmap/$roadmapId`, `roadmap/create`), `work-items`
+(+ `work-items/$roadmapId`), `team/*`, `resources`, `time`, `logs`, `chat/$chatRef`, and
 `settings/*`. There's also `project/roadmap/convert/$roadmapId` for the guest-roadmap →
 project conversion.
+
+> **There is no `payments` project tab.** Invoicing and contracts live in the top-level
+> `finance/` subtree, which is consultant-only.
 
 ## Auth and access gating
 
@@ -59,11 +67,15 @@ Gating happens in three places:
 - **Consultant verification** — `consultant/marketplace` and `consultant/templates`
   add a `beforeLoad` check that redirects to `/dashboard` unless
   `profile.is_consultant_verified`.
-- **Component guards** — finer-grained access is enforced in components:
-  `RequireProjectAccess` (backed by `project_access` role) wraps project bodies, and
-  `ProtectedRoute` handles authentication only. `RequireProjectAccess` uses the
-  project role/capability model. Admin gating runs in the `admin.tsx` layout via an
-  `adminMe` query (shows "Access Denied" if not an admin).
+- **Component guards** — finer-grained access is enforced in components.
+  `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
+  exactly five route bodies — `roadmap`, `work-items`, `resources`, `chat/$chatRef`, and
+  `time` — keyed on the corresponding `access.*` flag. `logs` gates **inline** on
+  `permissions.logs.view` because the component's `access` prop is typed to the `access.*`
+  section, which has no `logs` key. `overview`, `team/*`, and `settings/*` are **not
+  wrapped** and rely on backend 403s surfacing as toasts. `ProtectedRoute` handles
+  authentication only. Admin gating runs in the `admin.tsx` layout via an `adminMe` query
+  (shows "Access Denied" if not an admin).
 
 > The **`projectId === "n"`** sentinel is the guest / roadmap-only path — its
 > `beforeLoad` skips the auth check so guests can build a roadmap before signing up.
@@ -81,3 +93,4 @@ Gating happens in three places:
 
 - [architecture.md](./architecture.md) — the app shell and providers.
 - [Product → roles and capabilities](../01-product/personas.md) — the access model these routes serve.
+- [Feature Domains → clients](../11-domains/clients/client-surfaces.md) — which of these routes a client reaches, and the gate on each.

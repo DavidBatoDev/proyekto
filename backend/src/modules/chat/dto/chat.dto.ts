@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -218,6 +219,10 @@ export class CreateChannelDto {
   @IsOptional()
   @IsBoolean()
   is_private?: boolean;
+
+  @IsOptional()
+  @IsIn(['client_project'])
+  kind?: 'client_project';
 }
 
 /** Rename, archive, and/or change the visibility of a channel. */

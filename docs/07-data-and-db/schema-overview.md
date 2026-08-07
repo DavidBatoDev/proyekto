@@ -1,9 +1,9 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **228 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **230 migrations** spanning
 2025-12-11 → 2026-08-05. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -33,8 +33,8 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `projects` | Top-level project (`project_status`) |
-| `project_access` | **Authorization source of truth** (renamed from `project_shares`); one row per (project, user) → `share_role` + capabilities jsonb |
+| `projects` | Top-level project (`project_status`). Key columns: `client_id` (**NOT NULL** → `profiles`), `consultant_id`, `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id` |
+| `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + `origin` label + capabilities jsonb + `has_direct_grant` |
 | `project_invites` | Email invite flow |
 | `project_briefs` | Structured brief (mission/vision, summary) |
 | `project_resource_folders`, `project_resource_links` | Resource hyperlinks |
@@ -44,7 +44,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `roadmaps` | One per project (`roadmap_status`) |
+| `roadmaps` | One per project — `project_id` is `UNIQUE` (nullable since `20260210000001` for guest roadmaps) (`roadmap_status`) |
 | `roadmap_milestones`, `roadmap_epics`, `roadmap_features`, `roadmap_tasks` | The graph (feature status is **derived in app code**, not a column) |
 | `milestone_features` | M:N milestones ↔ features (delivery tracking) |
 | `roadmap_task_assignees`, `roadmap_feature_assignees` | Multi-assignee joins |
@@ -68,6 +68,11 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `wallets` | User balances (available + escrow) |
 | `payout_methods`, `payouts` | The **active** money path — manual payouts grouping approved time logs |
 | `invoices`, `invoice_line_items`, `invoice_documents` | Invoice generation + PDFs |
+| `invoice_payments`, `invoice_events` | Payment recording/reversal and the invoice audit trail |
+| `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). Snapshots both parties, carries `client_hourly_rate` (**client-facing**, never the internal cost rate), a `clauses` jsonb, and a **`services` jsonb catalog** picked into invoice lines |
+| `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
+| `project_economics` | Company % vs team % revenue split per project (CHECK sums to 100) |
+| `project_member_allocations` | Each member's slice of the team pool — **internal, never reaches a client** |
 
 > **⚠️ Dead tables:** `payment_checkpoints` (initial schema) and `transactions`
 > (escrow migration) were **dropped** on 2026-01-11 (`20260111000000_drop_old_project_tables.sql`)
@@ -81,7 +86,9 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | Table | Purpose |
 | --- | --- |
 | `chat_rooms`, `chat_room_participants`, `chat_room_messages`, `chat_room_message_reactions`, `chat_room_stars` | Channels + DMs + reactions + stars |
-| `notifications`, `notification_types` | In-app notifications + catalog |
+| `notifications`, `notification_types` | In-app notifications + catalog. The `type_id` FK is **`ON DELETE RESTRICT`** — a new notification type needs a seed migration or `createNotification` 500s |
+| `notification_preferences`, `notification_email_settings`, `notification_email_outbox`, `email_suppressions` | Email fan-out preferences, queue, and suppression list |
+| `pending_mention_invites` | Pre-signup `@email` mention invites, reconciled on account creation |
 | `device_tokens` | Push tokens per user |
 | `meetings`, `meeting_series`, `meeting_participants` | Meetings + RRULE series + RSVP |
 
