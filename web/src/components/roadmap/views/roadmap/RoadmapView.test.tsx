@@ -81,6 +81,7 @@ const epics: RoadmapEpic[] = [
 				description: "",
 				position: 1000,
 				is_deliverable: false,
+				status: "not_started",
 				created_at: "2026-01-01T00:00:00.000Z",
 				updated_at: "2026-01-01T00:00:00.000Z",
 				tasks: [

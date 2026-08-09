@@ -17,7 +17,6 @@ import type {
 	RoadmapTask,
 	Comment,
 } from "@/types/roadmap";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { FeatureModal } from "../../../modals/FeatureModal";
 import { CommentsSection } from "../../../shared/CommentsSection";
@@ -668,9 +667,7 @@ export const EpicTab = ({
 												{feature.title}
 											</h3>
 											{(() => {
-												const derivedStatus = deriveFeatureStatus(
-													feature.tasks,
-												);
+												const derivedStatus = feature.status;
 												return (
 													<span
 														className={`text-xs px-2 py-1 rounded-md font-medium ${getStatusColor(derivedStatus)}`}

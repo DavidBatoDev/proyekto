@@ -32,7 +32,6 @@ import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import {
 	EditingAvatars,
@@ -269,7 +268,7 @@ const CanvasTaskRow = memo(
 					data-task-row-controls
 					className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
 				>
-					<div className="relative flex min-w-0 justify-start">
+					<div className="relative flex w-full min-w-0 justify-start">
 						{onUpdateStatus ? (
 							<>
 								<button
@@ -279,12 +278,12 @@ const CanvasTaskRow = memo(
 										event.stopPropagation();
 										setIsStatusOpen((prev) => !prev);
 									}}
-									className="rounded-full transition-colors hover:bg-accent"
+									className="flex w-full min-w-0 items-center rounded-full transition-colors hover:bg-accent"
 								>
 									<TaskStatusBadge
 										status={task.status}
-										className="text-[10px]"
-										trailing={<ChevronDown className="h-2.5 w-2.5" />}
+										className="w-full text-[10px]"
+										trailing={<ChevronDown className="h-2.5 w-2.5 shrink-0" />}
 									/>
 								</button>
 
@@ -323,7 +322,7 @@ const CanvasTaskRow = memo(
 						) : (
 							<TaskStatusBadge
 								status={task.status}
-								className="shrink-0 text-[10px]"
+								className="w-full text-[10px]"
 							/>
 						)}
 					</div>
@@ -448,7 +447,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 	const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
 	const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
 	const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
-	const derivedStatus = deriveFeatureStatus(feature.tasks);
+	const derivedStatus = feature.status;
 
 	const taskCount = feature.tasks?.length || 0;
 	const isOptimisticFeature = feature.id.startsWith("temp-");

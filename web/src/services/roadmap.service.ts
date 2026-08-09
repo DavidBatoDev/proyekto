@@ -10,6 +10,7 @@ import type {
 	Comment,
 	EpicPriority,
 	EpicStatus,
+	FeatureStatus,
 	Roadmap,
 	RoadmapEpic,
 	RoadmapFeature,
@@ -327,6 +328,9 @@ export interface UpdateFeatureDto {
 	actual_hours?: number;
 	start_date?: string | null;
 	end_date?: string | null;
+	// Only honored by the backend when the feature currently has 0 tasks —
+	// otherwise it's silently ignored and stays cascade-derived.
+	status?: FeatureStatus;
 	assignee_ids?: string[];
 }
 

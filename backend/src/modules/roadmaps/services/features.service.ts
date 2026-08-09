@@ -101,7 +101,22 @@ export class FeaturesService {
         'roadmap.edit',
       );
     }
-    const feature = await this.repo.update(id, dto);
+
+    // Status is only user-settable when the feature currently has zero
+    // tasks — otherwise TasksService/FeatureStatusSyncService keeps it
+    // cascade-derived. Never trust the client's word for "has no tasks";
+    // check server-side and silently drop the field rather than reject the
+    // whole update.
+    let effectiveDto = dto;
+    if (dto.status !== undefined) {
+      const tasks = await this.tasksRepo.findByFeature(id);
+      if (tasks.length > 0) {
+        effectiveDto = { ...dto };
+        delete effectiveDto.status;
+      }
+    }
+
+    const feature = await this.repo.update(id, effectiveDto);
 
     const changes = this.activity.diff(
       existing,

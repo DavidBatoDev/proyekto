@@ -19,11 +19,11 @@ import {
 import type {
 	AssigneeProfile,
 	Comment,
+	FeatureStatus,
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
 import { projectService, type ProjectMember } from "@/services/project.service";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -39,6 +39,14 @@ import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+
+const FEATURE_STATUS_OPTIONS: FeatureStatus[] = [
+	"not_started",
+	"in_progress",
+	"in_review",
+	"completed",
+	"blocked",
+];
 
 interface FeatureModalProps {
 	isOpen: boolean;
@@ -57,6 +65,9 @@ interface FeatureModalProps {
 		is_deliverable: boolean;
 		start_date?: string;
 		end_date?: string;
+		// Only present (and only honored server-side) when the feature has 0
+		// tasks — otherwise status stays cascade-derived.
+		status?: FeatureStatus;
 		assignee_ids?: string[];
 	}) => void;
 	isLoading?: boolean;
@@ -132,6 +143,9 @@ export const FeatureModal = ({
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [isDeliverable, setIsDeliverable] = useState(false);
+	// Only user-editable (and only submitted) while the feature has 0 tasks —
+	// see the read-only vs. <select> branch in the Status block below.
+	const [status, setStatus] = useState<FeatureStatus>("not_started");
 	const [startDate, setStartDate] = useState("");
 	const [endDate, setEndDate] = useState("");
 	const [draftStartDate, setDraftStartDate] = useState("");
@@ -160,6 +174,7 @@ export const FeatureModal = ({
 		isDeliverable: boolean;
 		startDate: string;
 		endDate: string;
+		status: FeatureStatus;
 		assigneeKey: string;
 	} | null>(null);
 	const isReadOnlyPending = isPendingCreate;
@@ -176,6 +191,7 @@ export const FeatureModal = ({
 				isDeliverable: initialData?.is_deliverable ?? false,
 				startDate: initialData?.start_date?.slice(0, 10) ?? "",
 				endDate: initialData?.end_date?.slice(0, 10) ?? "",
+				status: initialData?.status ?? ("not_started" as FeatureStatus),
 				assigneeKey: [...initialIds].sort().join(","),
 			};
 			initialSnapshotRef.current = nextInitialValues;
@@ -185,6 +201,7 @@ export const FeatureModal = ({
 			setIsDeliverable(nextInitialValues.isDeliverable);
 			setStartDate(nextInitialValues.startDate);
 			setEndDate(nextInitialValues.endDate);
+			setStatus(nextInitialValues.status);
 			setDraftStartDate(nextInitialValues.startDate);
 			setDraftEndDate(nextInitialValues.endDate);
 			setFeatureAssigneeIds(initialIds);
@@ -249,6 +266,8 @@ export const FeatureModal = ({
 		return () => clearTimeout(timer);
 	}, [description, isEditingDescription, isOpen]);
 
+	const isFeatureTaskless = (initialData?.tasks?.length ?? 0) === 0;
+
 	const submitCurrentValues = () => {
 		onSubmit({
 			title,
@@ -256,6 +275,9 @@ export const FeatureModal = ({
 			is_deliverable: isDeliverable,
 			start_date: startDate || undefined,
 			end_date: endDate || undefined,
+			// Only meaningful while task-less; the backend ignores it otherwise,
+			// but omitting it here keeps the payload honest about intent.
+			status: isFeatureTaskless ? status : undefined,
 			assignee_ids: featureAssigneeIds,
 		});
 
@@ -264,6 +286,7 @@ export const FeatureModal = ({
 			setTitle("");
 			setDescription("");
 			setIsDeliverable(false);
+			setStatus("not_started");
 			setFeatureAssigneeIds([]);
 			setFeatureAssigneeProfiles([]);
 		}
@@ -289,9 +312,19 @@ export const FeatureModal = ({
 			isDeliverable !== snapshot.isDeliverable ||
 			startDate !== snapshot.startDate ||
 			endDate !== snapshot.endDate ||
+			(isFeatureTaskless && status !== snapshot.status) ||
 			assigneeKey !== snapshot.assigneeKey
 		);
-	}, [description, endDate, isDeliverable, startDate, title, assigneeKey]);
+	}, [
+		description,
+		endDate,
+		isDeliverable,
+		isFeatureTaskless,
+		startDate,
+		status,
+		title,
+		assigneeKey,
+	]);
 
 	const handleRequestClose = () => {
 		if (isLoading) return;
@@ -508,17 +541,34 @@ export const FeatureModal = ({
 					isReadOnlyPending ? "pointer-events-none opacity-70" : undefined
 				}
 			>
-				{/* Status (derived from tasks) and Deliverable Row */}
+				{/* Status and Deliverable Row */}
 				<div className="flex flex-col gap-4 mb-6 md:flex-row md:gap-6">
-					{/* Status — read-only, derived from child task statuses */}
+					{/* Status — editable only while the feature has no tasks; once a
+					    task exists, it's cascade-derived and read-only. */}
 					<div className="flex-1">
 						<h3 className="text-sm font-semibold text-gray-900 mb-2">Status</h3>
-						<div className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-md bg-gray-50 capitalize">
-							{deriveFeatureStatus(initialData?.tasks).replace(/_/g, " ")}
-						</div>
-						<p className="mt-1 text-xs text-gray-500">
-							Derived from task statuses
-						</p>
+						{isFeatureTaskless ? (
+							<select
+								value={status}
+								onChange={(e) => setStatus(e.target.value as FeatureStatus)}
+								className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white capitalize"
+							>
+								{FEATURE_STATUS_OPTIONS.map((option) => (
+									<option key={option} value={option} className="capitalize">
+										{option.replace(/_/g, " ")}
+									</option>
+								))}
+							</select>
+						) : (
+							<>
+								<div className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-md bg-gray-50 capitalize">
+									{(initialData?.status ?? "not_started").replace(/_/g, " ")}
+								</div>
+								<p className="mt-1 text-xs text-gray-500">
+									Derived from task statuses
+								</p>
+							</>
+						)}
 					</div>
 
 					{/* Is Deliverable */}
@@ -563,22 +613,24 @@ export const FeatureModal = ({
 					</div>
 				)}
 
-				{/* Progress (auto-calculated from task statuses) */}
-				<div className="mb-6">
-					<div className="flex items-center justify-between text-sm text-gray-700 mb-1.5">
-						<h3 className="font-semibold text-gray-900">Progress</h3>
-						<span className="font-medium">{autoProgress}%</span>
+				{/* Progress (auto-calculated from task statuses) — hidden until the feature has tasks */}
+				{tasks.length > 0 && (
+					<div className="mb-6">
+						<div className="flex items-center justify-between text-sm text-gray-700 mb-1.5">
+							<h3 className="font-semibold text-gray-900">Progress</h3>
+							<span className="font-medium">{autoProgress}%</span>
+						</div>
+						<div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+							<div
+								className="h-full bg-primary transition-all duration-300"
+								style={{ width: `${autoProgress}%` }}
+							/>
+						</div>
+						<p className="mt-1 text-xs text-gray-500">
+							Auto-calculated from tasks: {completedTasks}/{tasks.length} done
+						</p>
 					</div>
-					<div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-						<div
-							className="h-full bg-primary transition-all duration-300"
-							style={{ width: `${autoProgress}%` }}
-						/>
-					</div>
-					<p className="mt-1 text-xs text-gray-500">
-						Auto-calculated from tasks: {completedTasks}/{tasks.length} done
-					</p>
-				</div>
+				)}
 
 				{/* Feature team (editable) */}
 				<div className="mb-6">

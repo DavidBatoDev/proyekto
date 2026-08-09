@@ -6,7 +6,6 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
@@ -568,9 +567,7 @@ export const EpicModal = ({
 												{feature.title}
 											</p>
 											{(() => {
-												const derivedStatus = deriveFeatureStatus(
-													feature.tasks,
-												);
+												const derivedStatus = feature.status;
 												return (
 													<span
 														className={`text-xs px-2 py-1 rounded-md font-medium ${getFeatureStatusColor(derivedStatus)}`}

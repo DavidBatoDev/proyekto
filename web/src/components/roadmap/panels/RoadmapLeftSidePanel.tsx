@@ -1,4 +1,11 @@
-import { ChevronRight, ExternalLink, FolderOpen, GripVertical, Plus, RotateCcw } from "lucide-react";
+import {
+	ChevronRight,
+	ExternalLink,
+	FolderOpen,
+	GripVertical,
+	Plus,
+	RotateCcw,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Tooltip } from "@mui/material";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
@@ -27,7 +34,6 @@ import type { Message } from "./ChatPanel";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { TaskListItem } from "../widgets/TaskListItem";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useToast } from "@/hooks/useToast";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -73,7 +79,8 @@ const FEATURE_REORDER_CONFIRM_SKIP_KEY =
 	"roadmap.leftPanel.skipFeatureReorderConfirm";
 const FEATURE_MOVE_CONFIRM_SKIP_KEY =
 	"roadmap.leftPanel.skipFeatureMoveConfirm";
-const EPIC_REORDER_CONFIRM_SKIP_KEY = "roadmap.leftPanel.skipEpicReorderConfirm";
+const EPIC_REORDER_CONFIRM_SKIP_KEY =
+	"roadmap.leftPanel.skipEpicReorderConfirm";
 const LARGE_ROADMAP_NODE_THRESHOLD = 80;
 const LARGE_ROADMAP_TASK_THRESHOLD = 300;
 
@@ -129,8 +136,14 @@ type SortableEpicRowProps = {
 };
 
 function SortableEpicRow({ epicId, canDrag, children }: SortableEpicRowProps) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-		useSortable({ id: epicId, data: { type: 'epic' } });
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: epicId, data: { type: "epic" } });
 
 	return children({
 		setNodeRef,
@@ -187,7 +200,10 @@ function SortableFeatureRow({
 		transform,
 		transition,
 		isDragging,
-	} = useSortable({ id: feature.id, data: { type: 'feature', epicId: currentEpicId } });
+	} = useSortable({
+		id: feature.id,
+		data: { type: "feature", epicId: currentEpicId },
+	});
 
 	const style = {
 		transform: CSS.Transform.toString(transform),
@@ -222,7 +238,9 @@ function SortableFeatureRow({
 							onToggleFeature(feature.id);
 						}}
 						className="p-0.5 hover:bg-black/5 rounded cursor-pointer"
-						aria-label={isFeatureExpanded ? "Collapse feature" : "Expand feature"}
+						aria-label={
+							isFeatureExpanded ? "Collapse feature" : "Expand feature"
+						}
 					>
 						<ChevronRight
 							className={`w-3.5 h-3.5 text-gray-400 transition-transform ${
@@ -250,7 +268,7 @@ function SortableFeatureRow({
 					</span>
 				</Tooltip>
 				{(() => {
-					const derivedStatus = deriveFeatureStatus(feature.tasks);
+					const derivedStatus = feature.status;
 					return (
 						<TaskStatusBadge
 							status={derivedStatus === "completed" ? "done" : derivedStatus}
@@ -273,18 +291,26 @@ function SortableFeatureRow({
 				</button>
 			</div>
 		</div>
-			);
-		}
+	);
+}
 
-function DroppableEpicBody({ epicId, isOver, children }: { epicId: string; isOver?: boolean; children: ReactNode }) {
+function DroppableEpicBody({
+	epicId,
+	isOver,
+	children,
+}: {
+	epicId: string;
+	isOver?: boolean;
+	children: ReactNode;
+}) {
 	const { setNodeRef } = useDroppable({
 		id: `epic-drop-${epicId}`,
-		data: { type: 'epic-drop', epicId },
+		data: { type: "epic-drop", epicId },
 	});
 	return (
 		<div
 			ref={setNodeRef}
-			className={`min-h-2 transition-colors ${isOver ? 'bg-blue-50 rounded-md' : ''}`}
+			className={`min-h-2 transition-colors ${isOver ? "bg-blue-50 rounded-md" : ""}`}
 		>
 			{children}
 		</div>
@@ -404,16 +430,24 @@ function ExplorerPanel({
 		useState(false);
 	const [isPersistingFeatureMove, setIsPersistingFeatureMove] = useState(false);
 	const [isPersistingEpicReorder, setIsPersistingEpicReorder] = useState(false);
-	const [dontAskFeatureReorderAgainInSession, setDontAskFeatureReorderAgainInSession] =
-		useState(false);
-	const [dontAskFeatureMoveAgainInSession, setDontAskFeatureMoveAgainInSession] =
-		useState(false);
-	const [dontAskEpicReorderAgainInSession, setDontAskEpicReorderAgainInSession] =
-		useState(false);
+	const [
+		dontAskFeatureReorderAgainInSession,
+		setDontAskFeatureReorderAgainInSession,
+	] = useState(false);
+	const [
+		dontAskFeatureMoveAgainInSession,
+		setDontAskFeatureMoveAgainInSession,
+	] = useState(false);
+	const [
+		dontAskEpicReorderAgainInSession,
+		setDontAskEpicReorderAgainInSession,
+	] = useState(false);
 	// Cross-epic drag state
 	const [activeId, setActiveId] = useState<string | null>(null);
-	const [activeType, setActiveType] = useState<'epic' | 'feature' | null>(null);
-	const [activeFeatureEpicId, setActiveFeatureEpicId] = useState<string | null>(null);
+	const [activeType, setActiveType] = useState<"epic" | "feature" | null>(null);
+	const [activeFeatureEpicId, setActiveFeatureEpicId] = useState<string | null>(
+		null,
+	);
 	const [workingEpics, setWorkingEpics] = useState<RoadmapEpic[] | null>(null);
 	const [overEpicDropId, setOverEpicDropId] = useState<string | null>(null);
 	const currentUserRole = roadmap?.currentUserRole;
@@ -511,7 +545,7 @@ function ExplorerPanel({
 						(epic.features || [])
 							.filter((feature) => (feature.tasks?.length || 0) > 0)
 							.map((feature) => feature.id),
-				  )
+					)
 				: [],
 		[
 			explorerConfig.allowFeatureCollapse,
@@ -610,46 +644,63 @@ function ExplorerPanel({
 	};
 
 	const customCollisionDetection: CollisionDetection = (args) => {
-		const activeData = args.active.data.current as { type?: string } | undefined;
+		const activeData = args.active.data.current as
+			| { type?: string }
+			| undefined;
 		const activeItemType = activeData?.type;
 		const filteredDroppables = args.droppableContainers.filter((container) => {
-			const containerData = container.data.current as { type?: string } | undefined;
+			const containerData = container.data.current as
+				| { type?: string }
+				| undefined;
 			const containerType = containerData?.type;
-			if (activeItemType === 'epic') return containerType === 'epic';
-			if (activeItemType === 'feature') return containerType === 'feature' || containerType === 'epic-drop';
+			if (activeItemType === "epic") return containerType === "epic";
+			if (activeItemType === "feature")
+				return containerType === "feature" || containerType === "epic-drop";
 			return true;
 		});
 		return closestCenter({ ...args, droppableContainers: filteredDroppables });
 	};
 
 	const handleDragStart = (event: DragStartEvent) => {
-		const data = event.active.data.current as { type?: string; epicId?: string } | undefined;
-		const type = data?.type as 'epic' | 'feature' | undefined;
+		const data = event.active.data.current as
+			| { type?: string; epicId?: string }
+			| undefined;
+		const type = data?.type as "epic" | "feature" | undefined;
 		const epicId = data?.epicId;
 		setActiveId(event.active.id as string);
 		setActiveType(type ?? null);
 		setActiveFeatureEpicId(epicId ?? null);
-		setWorkingEpics(sortedEpics.map((epic) => ({
-			...epic,
-			features: [...(epic.features || [])].sort((a, b) => a.position - b.position),
-		})));
+		setWorkingEpics(
+			sortedEpics.map((epic) => ({
+				...epic,
+				features: [...(epic.features || [])].sort(
+					(a, b) => a.position - b.position,
+				),
+			})),
+		);
 	};
 
 	const handleDragOver = (event: DragOverEvent) => {
-		if (activeType !== 'feature') return;
+		if (activeType !== "feature") return;
 		const { active, over } = event;
 		if (!over || active.id === over.id) return;
 
 		const current = workingEpics ?? sortedEpics;
-		const sourceEpic = current.find((e) => e.features?.some((f) => f.id === active.id));
+		const sourceEpic = current.find((e) =>
+			e.features?.some((f) => f.id === active.id),
+		);
 		if (!sourceEpic) return;
 
-		const overData = over.data.current as { type?: string; epicId?: string } | undefined;
+		const overData = over.data.current as
+			| { type?: string; epicId?: string }
+			| undefined;
 		let targetEpicId: string | null = null;
-		if (overData?.type === 'feature') {
-			const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
+		if (overData?.type === "feature") {
+			const targetEpic = current.find((e) =>
+				e.features?.some((f) => f.id === over.id),
+			);
 			targetEpicId = targetEpic?.id ?? null;
-		} else if (overData?.type === 'epic-drop') {
+		} else if (overData?.type === "epic-drop") {
 			targetEpicId = overData.epicId ?? null;
 		}
 
@@ -666,8 +717,11 @@ function ExplorerPanel({
 		const targetFeaturesWithoutActive = (targetEpic.features || []).filter(
 			(f) => f.id !== active.id,
 		);
-		const overIndex = targetFeaturesWithoutActive.findIndex((f) => f.id === over.id);
-		const insertIndex = overIndex >= 0 ? overIndex : targetFeaturesWithoutActive.length;
+		const overIndex = targetFeaturesWithoutActive.findIndex(
+			(f) => f.id === over.id,
+		);
+		const insertIndex =
+			overIndex >= 0 ? overIndex : targetFeaturesWithoutActive.length;
 
 		const newTargetFeatures = [...targetFeaturesWithoutActive];
 		newTargetFeatures.splice(insertIndex, 0, activeFeature);
@@ -675,7 +729,10 @@ function ExplorerPanel({
 		setWorkingEpics(
 			current.map((epic) => {
 				if (epic.id === sourceEpic.id) {
-					return { ...epic, features: (epic.features || []).filter((f) => f.id !== active.id) };
+					return {
+						...epic,
+						features: (epic.features || []).filter((f) => f.id !== active.id),
+					};
 				}
 				if (epic.id === targetEpicId) {
 					return { ...epic, features: newTargetFeatures };
@@ -700,18 +757,22 @@ function ExplorerPanel({
 		if (!canEditRoadmap) return;
 		if (!over) return;
 
-		if (capturedActiveType === 'epic') {
+		if (capturedActiveType === "epic") {
 			if (active.id === over.id) return;
 			const currentOrderIds = sortedEpics.map((e) => e.id);
 			const oldIndex = currentOrderIds.indexOf(active.id as string);
 			const newIndex = currentOrderIds.indexOf(over.id as string);
 			if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
 			const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
-			queueEpicReorderFromDrag(active.id as string, currentOrderIds, nextOrderIds);
+			queueEpicReorderFromDrag(
+				active.id as string,
+				currentOrderIds,
+				nextOrderIds,
+			);
 			return;
 		}
 
-		if (capturedActiveType === 'feature') {
+		if (capturedActiveType === "feature") {
 			const sourceEpicId = capturedActiveFeatureEpicId;
 			if (!sourceEpicId) return;
 
@@ -724,14 +785,20 @@ function ExplorerPanel({
 				// This happens when it was moved to another epic via handleDragOver and the user
 				// released at the first row (where the placeholder now lives). Resolve the target
 				// epic from the working state instead of bailing.
-				const workingEpic = current.find((e) => e.features?.some((f) => f.id === active.id));
+				const workingEpic = current.find((e) =>
+					e.features?.some((f) => f.id === active.id),
+				);
 				targetEpicId = workingEpic?.id ?? null;
 			} else {
-				const overData = over.data.current as { type?: string; epicId?: string } | undefined;
-				if (overData?.type === 'feature') {
-					const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
+				const overData = over.data.current as
+					| { type?: string; epicId?: string }
+					| undefined;
+				if (overData?.type === "feature") {
+					const targetEpic = current.find((e) =>
+						e.features?.some((f) => f.id === over.id),
+					);
 					targetEpicId = targetEpic?.id ?? null;
-				} else if (overData?.type === 'epic-drop') {
+				} else if (overData?.type === "epic-drop") {
 					targetEpicId = overData.epicId ?? null;
 				}
 			}
@@ -741,18 +808,34 @@ function ExplorerPanel({
 			if (targetEpicId === sourceEpicId) {
 				const sourceEpic = sortedEpics.find((e) => e.id === sourceEpicId);
 				if (!sourceEpic) return;
-				const features = [...(sourceEpic.features ?? [])].sort((a, b) => a.position - b.position);
+				const features = [...(sourceEpic.features ?? [])].sort(
+					(a, b) => a.position - b.position,
+				);
 				const currentOrderIds = features.map((f) => f.id);
 				const oldIndex = currentOrderIds.indexOf(active.id as string);
 				const newIndex = currentOrderIds.indexOf(over.id as string);
 				if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
 				const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
-				queueFeatureReorderFromDrag(sourceEpic, active.id as string, currentOrderIds, nextOrderIds, oldIndex, newIndex);
+				queueFeatureReorderFromDrag(
+					sourceEpic,
+					active.id as string,
+					currentOrderIds,
+					nextOrderIds,
+					oldIndex,
+					newIndex,
+				);
 			} else {
 				const targetEpicWorking = current.find((e) => e.id === targetEpicId);
 				if (!targetEpicWorking) return;
-				const orderedTargetFeatureIds = (targetEpicWorking.features ?? []).map((f) => f.id);
-				queueFeatureMoveFromDrag(active.id as string, sourceEpicId, targetEpicId, orderedTargetFeatureIds);
+				const orderedTargetFeatureIds = (targetEpicWorking.features ?? []).map(
+					(f) => f.id,
+				);
+				queueFeatureMoveFromDrag(
+					active.id as string,
+					sourceEpicId,
+					targetEpicId,
+					orderedTargetFeatureIds,
+				);
 			}
 		}
 	};
@@ -798,7 +881,9 @@ function ExplorerPanel({
 		oldIndex: number,
 		newIndex: number,
 	) => {
-		const feature = (epic.features ?? []).find((item) => item.id === activeFeatureId);
+		const feature = (epic.features ?? []).find(
+			(item) => item.id === activeFeatureId,
+		);
 		if (!feature) return;
 
 		previewFeatureOrderInEpic(epic.id, nextOrderIds);
@@ -832,7 +917,12 @@ function ExplorerPanel({
 			);
 			toast.success(`Moved "${change.featureTitle}"`);
 		} catch {
-			previewFeatureOrderInEpic(change.sourceEpicId, sortedEpics.find((e) => e.id === change.sourceEpicId)?.features?.map((f) => f.id) ?? []);
+			previewFeatureOrderInEpic(
+				change.sourceEpicId,
+				sortedEpics
+					.find((e) => e.id === change.sourceEpicId)
+					?.features?.map((f) => f.id) ?? [],
+			);
 		} finally {
 			setIsPersistingFeatureMove(false);
 		}
@@ -995,177 +1085,195 @@ function ExplorerPanel({
 							building your roadmap.
 						</p>
 					</div>
-					) : (
-						<div className="space-y-1">
-							<DndContext
-								sensors={sensors}
-								collisionDetection={customCollisionDetection}
-								onDragStart={handleDragStart}
-								onDragOver={handleDragOver}
-								onDragEnd={handleDragEnd}
+				) : (
+					<div className="space-y-1">
+						<DndContext
+							sensors={sensors}
+							collisionDetection={customCollisionDetection}
+							onDragStart={handleDragStart}
+							onDragOver={handleDragOver}
+							onDragEnd={handleDragEnd}
+						>
+							<SortableContext
+								items={displayedEpics.map((epic) => epic.id)}
+								strategy={verticalListSortingStrategy}
 							>
-								<SortableContext
-									items={displayedEpics.map((epic) => epic.id)}
-									strategy={verticalListSortingStrategy}
-								>
-									{displayedEpics.map((epic) => {
-										const features = activeId
-											? (epic.features || [])
-											: [...(epic.features || [])].sort(
+								{displayedEpics.map((epic) => {
+									const features = activeId
+										? epic.features || []
+										: [...(epic.features || [])].sort(
 												(a, b) => a.position - b.position,
 											);
-										const isEpicExpanded =
-											features.length === 0 ||
-											expandedEpics.has(epic.id) ||
-											overEpicDropId === epic.id;
-										const isEpicHighlighted = highlightedEpicId === epic.id;
+									const isEpicExpanded =
+										features.length === 0 ||
+										expandedEpics.has(epic.id) ||
+										overEpicDropId === epic.id;
+									const isEpicHighlighted = highlightedEpicId === epic.id;
 
-										return (
-											<SortableEpicRow
-												key={epic.id}
-												epicId={epic.id}
-												canDrag={canDrag}
-											>
-												{({ setNodeRef, style, handleAttributes, handleListeners }) => (
-													<div
-														ref={(node) => setNodeRef(node)}
-														style={style}
-														className="min-w-0"
-													>
-														{/* Epic */}
-														<div className="group relative flex items-center gap-1 min-w-0">
-															<div
-																className={`flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 pr-12 text-xs font-semibold rounded-lg transition-all border ${
-																	isEpicHighlighted
-																		? "text-primary bg-primary/10 border-primary/30 shadow-sm"
-																		: "text-foreground bg-muted border-border hover:bg-accent hover:text-accent-foreground hover:shadow-sm"
-																}`}
-															>
-																{!mobile && (
-																	<div
-																		{...handleAttributes}
-																		{...handleListeners}
-																		onClick={(event) => event.stopPropagation()}
-																		className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
-																			canEditRoadmap
-																						? "cursor-grab hover:bg-accent hover:text-foreground active:cursor-grabbing"
-																				: "cursor-default opacity-50"
-																		}`}
-																		title="Drag to reorder epic"
-																		aria-label={`Drag to reorder ${epic.title}`}
-																	>
-																		<GripVertical className="h-3.5 w-3.5" />
-																	</div>
-																)}
-																{features.length > 0 ? (
-																	<button
-																		type="button"
-																		onClick={(event) => {
-																			event.stopPropagation();
-																			toggleEpic(epic.id);
-																		}}
-																		className="p-0.5 hover:bg-black/5 rounded cursor-pointer"
-																		aria-label={
-																			isEpicExpanded ? "Collapse epic" : "Expand epic"
-																		}
-																	>
-																		<ChevronRight
-																			className={`w-4 h-4 transition-transform ${
-																				isEpicHighlighted
-																					? "text-primary"
-																					: "text-gray-500"
-																			} ${isEpicExpanded ? "rotate-90" : ""}`}
-																		/>
-																	</button>
-																) : (
-																	<div className="w-2 h-2 rounded-full bg-gray-300 ml-1 mr-0.5" />
-																)}
-																<Tooltip title={epic.title} enterDelay={600} placement="right" arrow>
-																	<span
-																		onClick={() => {
-																			onSelectEpic?.(epic.id);
-																			onNavigateToNode?.(epic.id);
-																		}}
-																		onDoubleClick={() => {
-																			runAfterNavigationDelay(() => {
-																				onOpenEpicEditor?.(epic.id);
-																			});
-																		}}
-																		className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
-																	>
-																		{epic.title}
-																	</span>
-																</Tooltip>
-																{features.length > 0 && (
-																	<span className="text-xs font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-																		{features.length}
-																	</span>
-																)}
-															</div>
-															{/* Quick Add Feature Button - Absolutely positioned */}
-															<button
-																type="button"
-																onClick={() => openAddFeatureModal(epic.id)}
-																className={`absolute right-10 transition-opacity inline-flex items-center justify-center w-7 h-7 text-muted-foreground bg-card border border-border rounded-md hover:bg-accent hover:border-primary hover:text-primary shadow-sm ${mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-																title="Add feature to epic"
-															>
-																<Plus className="w-3.5 h-3.5" />
-															</button>
-															<button
-																type="button"
-																onClick={() => onNavigateToEpicTab?.(epic.id)}
-																className={`shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-primary bg-card border border-border rounded-lg hover:bg-accent transition-colors ${mobile ? "hidden" : ""}`}
-																title="Navigate to epic"
-															>
-																<ExternalLink className="w-3 h-3" />
-															</button>
-														</div>
-
-														{/* Features */}
-														{isEpicExpanded && (
-															<div className="mt-1 space-y-0.5 pl-3 border-l-2 border-gray-200">
-																<DroppableEpicBody
-																	epicId={epic.id}
-																	isOver={overEpicDropId === epic.id}
+									return (
+										<SortableEpicRow
+											key={epic.id}
+											epicId={epic.id}
+											canDrag={canDrag}
+										>
+											{({
+												setNodeRef,
+												style,
+												handleAttributes,
+												handleListeners,
+											}) => (
+												<div
+													ref={(node) => setNodeRef(node)}
+													style={style}
+													className="min-w-0"
+												>
+													{/* Epic */}
+													<div className="group relative flex items-center gap-1 min-w-0">
+														<div
+															className={`flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 pr-12 text-xs font-semibold rounded-lg transition-all border ${
+																isEpicHighlighted
+																	? "text-primary bg-primary/10 border-primary/30 shadow-sm"
+																	: "text-foreground bg-muted border-border hover:bg-accent hover:text-accent-foreground hover:shadow-sm"
+															}`}
+														>
+															{!mobile && (
+																<div
+																	{...handleAttributes}
+																	{...handleListeners}
+																	onClick={(event) => event.stopPropagation()}
+																	className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
+																		canEditRoadmap
+																			? "cursor-grab hover:bg-accent hover:text-foreground active:cursor-grabbing"
+																			: "cursor-default opacity-50"
+																	}`}
+																	title="Drag to reorder epic"
+																	aria-label={`Drag to reorder ${epic.title}`}
 																>
-																	<SortableContext
-																		items={features.map((feature) => feature.id)}
-																		strategy={verticalListSortingStrategy}
-																	>
-																		{features.map((feature) => {
-																			const isFeatureExpanded =
-																				expandedFeatures.has(feature.id);
-																			const tasks = [...(feature.tasks || [])].sort(
-																				(a, b) => a.position - b.position,
-																			);
-																			const canCollapseFeature =
-																				explorerConfig.allowFeatureCollapse &&
-																				explorerConfig.showTaskRows &&
-																				tasks.length > 0;
+																	<GripVertical className="h-3.5 w-3.5" />
+																</div>
+															)}
+															{features.length > 0 ? (
+																<button
+																	type="button"
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		toggleEpic(epic.id);
+																	}}
+																	className="p-0.5 hover:bg-black/5 rounded cursor-pointer"
+																	aria-label={
+																		isEpicExpanded
+																			? "Collapse epic"
+																			: "Expand epic"
+																	}
+																>
+																	<ChevronRight
+																		className={`w-4 h-4 transition-transform ${
+																			isEpicHighlighted
+																				? "text-primary"
+																				: "text-gray-500"
+																		} ${isEpicExpanded ? "rotate-90" : ""}`}
+																	/>
+																</button>
+															) : (
+																<div className="w-2 h-2 rounded-full bg-gray-300 ml-1 mr-0.5" />
+															)}
+															<Tooltip
+																title={epic.title}
+																enterDelay={600}
+																placement="right"
+																arrow
+															>
+																<span
+																	onClick={() => {
+																		onSelectEpic?.(epic.id);
+																		onNavigateToNode?.(epic.id);
+																	}}
+																	onDoubleClick={() => {
+																		runAfterNavigationDelay(() => {
+																			onOpenEpicEditor?.(epic.id);
+																		});
+																	}}
+																	className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
+																>
+																	{epic.title}
+																</span>
+															</Tooltip>
+															{features.length > 0 && (
+																<span className="text-xs font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+																	{features.length}
+																</span>
+															)}
+														</div>
+														{/* Quick Add Feature Button - Absolutely positioned */}
+														<button
+															type="button"
+															onClick={() => openAddFeatureModal(epic.id)}
+															className={`absolute right-10 transition-opacity inline-flex items-center justify-center w-7 h-7 text-muted-foreground bg-card border border-border rounded-md hover:bg-accent hover:border-primary hover:text-primary shadow-sm ${mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+															title="Add feature to epic"
+														>
+															<Plus className="w-3.5 h-3.5" />
+														</button>
+														<button
+															type="button"
+															onClick={() => onNavigateToEpicTab?.(epic.id)}
+															className={`shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-primary bg-card border border-border rounded-lg hover:bg-accent transition-colors ${mobile ? "hidden" : ""}`}
+															title="Navigate to epic"
+														>
+															<ExternalLink className="w-3 h-3" />
+														</button>
+													</div>
 
-																			return (
-																				<div key={feature.id} className="min-w-0">
-																					<SortableFeatureRow
-																						feature={feature}
-																						epic={epic}
-																						currentEpicId={epic.id}
-																						canDrag={canDrag}
-																						mobile={mobile}
-																						isFeatureExpanded={isFeatureExpanded}
-																						canCollapseFeature={canCollapseFeature}
-																						taskCount={tasks.length}
-																						onToggleFeature={toggleFeature}
-																						onSelectFeature={onSelectFeature}
-																						onNavigateToNode={onNavigateToNode}
-																						onOpenFeatureEditor={onOpenFeatureEditor}
-																						onOpenAddTaskPanel={openAddTaskPanel}
-																						runAfterNavigationDelay={
-																							runAfterNavigationDelay
-																						}
-																					/>
+													{/* Features */}
+													{isEpicExpanded && (
+														<div className="mt-1 space-y-0.5 pl-3 border-l-2 border-gray-200">
+															<DroppableEpicBody
+																epicId={epic.id}
+																isOver={overEpicDropId === epic.id}
+															>
+																<SortableContext
+																	items={features.map((feature) => feature.id)}
+																	strategy={verticalListSortingStrategy}
+																>
+																	{features.map((feature) => {
+																		const isFeatureExpanded =
+																			expandedFeatures.has(feature.id);
+																		const tasks = [
+																			...(feature.tasks || []),
+																		].sort((a, b) => a.position - b.position);
+																		const canCollapseFeature =
+																			explorerConfig.allowFeatureCollapse &&
+																			explorerConfig.showTaskRows &&
+																			tasks.length > 0;
 
-																					{/* Tasks */}
-																					{explorerConfig.showTaskRows && isFeatureExpanded && tasks.length > 0 && (
+																		return (
+																			<div key={feature.id} className="min-w-0">
+																				<SortableFeatureRow
+																					feature={feature}
+																					epic={epic}
+																					currentEpicId={epic.id}
+																					canDrag={canDrag}
+																					mobile={mobile}
+																					isFeatureExpanded={isFeatureExpanded}
+																					canCollapseFeature={
+																						canCollapseFeature
+																					}
+																					taskCount={tasks.length}
+																					onToggleFeature={toggleFeature}
+																					onSelectFeature={onSelectFeature}
+																					onNavigateToNode={onNavigateToNode}
+																					onOpenFeatureEditor={
+																						onOpenFeatureEditor
+																					}
+																					onOpenAddTaskPanel={openAddTaskPanel}
+																					runAfterNavigationDelay={
+																						runAfterNavigationDelay
+																					}
+																				/>
+
+																				{/* Tasks */}
+																				{explorerConfig.showTaskRows &&
+																					isFeatureExpanded &&
+																					tasks.length > 0 && (
 																						<div className="ml-2 mt-1 mb-1 overflow-hidden rounded-lg border border-border bg-card text-card-foreground">
 																							<div className="flex flex-col gap-0.5 px-2 py-1">
 																								{tasks.map((task) => (
@@ -1175,27 +1283,45 @@ function ExplorerPanel({
 																										density="compact"
 																										onClick={(clicked) => {
 																											if (mobile) {
-																												onOpenTaskDetail?.(clicked.id);
+																												onOpenTaskDetail?.(
+																													clicked.id,
+																												);
 																												return;
 																											}
-																											onSelectTask?.(clicked.id);
-																											onNavigateToNode?.(feature.id, {
-																												offsetX: TASK_NAVIGATE_OFFSET_X,
-																												taskId: clicked.id,
-																											});
+																											onSelectTask?.(
+																												clicked.id,
+																											);
+																											onNavigateToNode?.(
+																												feature.id,
+																												{
+																													offsetX:
+																														TASK_NAVIGATE_OFFSET_X,
+																													taskId: clicked.id,
+																												},
+																											);
 																										}}
 																										onToggleComplete={() => {
 																											void Promise.resolve(
 																												updateTask({
 																													...task,
-																													status: task.status === "done" ? "todo" : "done",
+																													status:
+																														task.status ===
+																														"done"
+																															? "todo"
+																															: "done",
 																												}),
 																											).catch(() => undefined);
 																										}}
-																										onUpdateStatus={(_taskId, status) => {
-																											void Promise.resolve(updateTask({ ...task, status })).catch(
-																												() => undefined,
-																											);
+																										onUpdateStatus={(
+																											_taskId,
+																											status,
+																										) => {
+																											void Promise.resolve(
+																												updateTask({
+																													...task,
+																													status,
+																												}),
+																											).catch(() => undefined);
 																										}}
 																									/>
 																								))}
@@ -1203,7 +1329,9 @@ function ExplorerPanel({
 																							{canEditRoadmap && (
 																								<button
 																									type="button"
-																									onClick={() => openAddTaskPanel(feature.id)}
+																									onClick={() =>
+																										openAddTaskPanel(feature.id)
+																									}
 																									className="flex w-full items-center justify-center gap-1.5 border-t border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 																								>
 																									<Plus className="h-3.5 w-3.5" />
@@ -1212,22 +1340,22 @@ function ExplorerPanel({
 																							)}
 																						</div>
 																					)}
-																				</div>
-																			);
-																		})}
-																	</SortableContext>
-																</DroppableEpicBody>
-															</div>
-														)}
-													</div>
-												)}
-											</SortableEpicRow>
-										);
-									})}
-								</SortableContext>
+																			</div>
+																		);
+																	})}
+																</SortableContext>
+															</DroppableEpicBody>
+														</div>
+													)}
+												</div>
+											)}
+										</SortableEpicRow>
+									);
+								})}
+							</SortableContext>
 						</DndContext>
-						</div>
-					)}
+					</div>
+				)}
 			</div>
 
 			<FeatureReorderConfirmModal
@@ -1245,7 +1373,8 @@ function ExplorerPanel({
 				featureTitle={pendingFeatureMove?.featureTitle ?? null}
 				targetEpicTitle={
 					pendingFeatureMove
-						? (sortedEpics.find((e) => e.id === pendingFeatureMove.targetEpicId)?.title ?? null)
+						? (sortedEpics.find((e) => e.id === pendingFeatureMove.targetEpicId)
+								?.title ?? null)
 						: null
 				}
 				dontAskAgain={dontAskFeatureMoveAgainInSession}

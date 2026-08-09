@@ -1752,6 +1752,12 @@ export class RoadmapAiService {
     );
     const candidate = this.clone(base);
     const applyResult = this.applyOperations(candidate, operations);
+    // applyOperations mutates candidate's task arrays in place without
+    // re-normalizing — restamp cascade-derived status on every feature that
+    // now has tasks so the upsert below never writes a stale value. Feature
+    // untouched by ops (or task-less) keep whatever normalizeFeature already
+    // carried through from the persisted state.
+    this.restampFeatureStatuses(candidate);
     const operationIssues = applyResult.issues;
     const validationIssues = [
       ...operationIssues,
@@ -4545,6 +4551,22 @@ export class RoadmapAiService {
     };
   }
 
+  /**
+   * Recomputes `status` for every feature that currently has tasks, in
+   * place. Used after applyOperations mutates a candidate's task arrays
+   * without going back through normalizeFeature. Task-less features are
+   * left untouched — their status is user-set, not derived.
+   */
+  private restampFeatureStatuses(state: FullRoadmapState): void {
+    for (const epic of state.roadmap_epics ?? []) {
+      for (const feature of epic.roadmap_features ?? []) {
+        if ((feature.roadmap_tasks ?? []).length > 0) {
+          feature.status = deriveFeatureStatus(feature.roadmap_tasks);
+        }
+      }
+    }
+  }
+
   private normalizeFeature(
     raw: Record<string, unknown>,
     featureIndex: number,
@@ -4554,6 +4576,15 @@ export class RoadmapAiService {
         this.readArray(raw, 'tasks') ??
         [],
     );
+    const roadmapTasks = sourceTasks.map((taskRaw, taskIndex) =>
+      this.normalizeTask(taskRaw, taskIndex),
+    );
+    // With tasks present, status is always cascade-derived — never trust a
+    // caller-supplied value once the feature isn't task-less anymore.
+    const status =
+      roadmapTasks.length > 0
+        ? deriveFeatureStatus(roadmapTasks)
+        : (this.readString(raw, 'status') ?? 'not_started');
 
     return {
       id: this.readUuid(raw, 'id'),
@@ -4563,9 +4594,8 @@ export class RoadmapAiService {
       is_deliverable: this.readBoolean(raw, 'is_deliverable') ?? true,
       start_date: this.readString(raw, 'start_date'),
       end_date: this.readString(raw, 'end_date'),
-      roadmap_tasks: sourceTasks.map((taskRaw, taskIndex) =>
-        this.normalizeTask(taskRaw, taskIndex),
-      ),
+      status,
+      roadmap_tasks: roadmapTasks,
     };
   }
 

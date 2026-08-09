@@ -585,6 +585,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 						title,
 						position: 0,
 						is_deliverable: false,
+						status: "not_started",
 						created_at: now,
 						updated_at: now,
 						tasks: [],
@@ -1344,6 +1345,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 					actual_hours: undefined,
 					start_date: data.start_date,
 					end_date: data.end_date,
+					status: "not_started",
 					created_at: createdAt,
 					updated_at: createdAt,
 					progress: undefined,
@@ -1469,6 +1471,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				actual_hours: feature.actual_hours,
 				start_date: feature.start_date ?? null,
 				end_date: feature.end_date ?? null,
+				// Only honored server-side when the feature has 0 tasks; harmless
+				// to always send since the backend silently drops it otherwise.
+				status: feature.status,
 				// Only sent when the caller explicitly set the feature team;
 				// undefined tells the backend to leave assignees untouched.
 				assignee_ids: feature.assignee_ids,

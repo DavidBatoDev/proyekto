@@ -58,6 +58,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
 import { RoadmapMentionInviteService } from './services/roadmap-mention-invite.service';
 import { RoadmapActivityService } from './services/roadmap-activity.service';
 import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
+import { FeatureStatusSyncService } from './services/derive-feature-status';
 
 @Module({
   imports: [ProjectsModule, NotificationsModule],
@@ -103,6 +104,7 @@ import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
     { provide: TASKS_REPOSITORY, useClass: TasksRepositorySupabase },
     TaskExtrasService,
     { provide: TASK_EXTRAS_REPOSITORY, useClass: TaskExtrasRepositorySupabase },
+    FeatureStatusSyncService,
   ],
   exports: [
     RoadmapAuthorizationService,

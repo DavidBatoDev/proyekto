@@ -18,6 +18,7 @@ import { MissingPermissionException } from '../../projects/authorization/missing
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
+import { FeatureStatusSyncService } from './derive-feature-status';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
 
@@ -40,6 +41,7 @@ export class TasksService {
     private readonly notifications: NotificationsService,
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
+    private readonly featureStatusSync: FeatureStatusSyncService,
   ) {}
 
   async findByFeature(featureId: string, userId: string) {
@@ -67,6 +69,7 @@ export class TasksService {
     );
     const task = await this.repo.create(dto, userId);
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
+    await this.featureStatusSync.syncAfterTaskChange(dto.feature_id);
     this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.TASK_CREATED,
       entityType: 'task',
@@ -98,6 +101,7 @@ export class TasksService {
       userId,
     );
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
+    await this.featureStatusSync.syncAfterTaskChange(featureId);
     // ensureTimerFeature just resolved (or created) the roadmap chain, so this
     // is the one place a lookup is genuinely still needed.
     const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ featureId });
@@ -139,6 +143,9 @@ export class TasksService {
       this.assertAssignCapability(ctx);
     }
     const task = await this.repo.update(id, dto, userId);
+    // UpdateTaskDto has no feature_id — a task never moves features here —
+    // so only the one feature can be affected.
+    await this.featureStatusSync.syncAfterTaskChange(task.feature_id);
     // Notify only assignees that are newly added by this update.
     const previousAssignees = new Set(this.assigneeIdsOf(existing));
     const currentAssignees = this.assigneeIdsOf(task);
@@ -237,6 +244,7 @@ export class TasksService {
       },
       userId,
     );
+    await this.featureStatusSync.syncAfterTaskChange(existing.feature_id);
 
     this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.TASK_DUPLICATED,
@@ -316,6 +324,7 @@ export class TasksService {
       'roadmap.edit_tasks',
     );
     await this.repo.remove(id);
+    await this.featureStatusSync.syncAfterTaskChange(existing.feature_id);
     this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.TASK_DELETED,
       entityType: 'task',

@@ -51,6 +51,7 @@ describe("MilestonesView Timer Integration", () => {
 					title: "Feature 1",
 					position: 0,
 					is_deliverable: true,
+					status: "not_started",
 					start_date: "2026-08-01",
 					end_date: "2026-08-15",
 					created_at: new Date().toISOString(),
@@ -86,7 +87,9 @@ describe("MilestonesView Timer Integration", () => {
 			/>,
 		);
 
-		const timerButtons = screen.getAllByRole("button", { name: /start timer/i });
+		const timerButtons = screen.getAllByRole("button", {
+			name: /start timer/i,
+		});
 		expect(timerButtons.length).toBeGreaterThan(0);
 	});
 });

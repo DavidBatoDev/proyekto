@@ -1,7 +1,6 @@
 import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { FeatureStatus } from "@/types/roadmap";
 
 const getPillBorderColor = (status: FeatureStatus) => {
@@ -100,7 +99,7 @@ function pillClass(isActive: boolean, borderColorClass?: string) {
 			? "bg-primary text-white border-primary shadow-sm"
 			: `bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 ${
 					borderColorClass || "border-slate-200 hover:border-slate-400"
-			  }`
+				}`
 	}`;
 }
 
@@ -234,7 +233,10 @@ function FilterRow({
 						key={option.id}
 						type="button"
 						onClick={() => onSelect(option.id)}
-						className={pillClass(selectedId === option.id, option.borderColorClass)}
+						className={pillClass(
+							selectedId === option.id,
+							option.borderColorClass,
+						)}
 					>
 						{option.label}
 					</button>
@@ -284,7 +286,7 @@ function AssigneesDropdown({
 	const selectedCount = selected.length;
 	const selectedOption =
 		selectedCount === 1
-			? options.find((o) => o.id === selected[0]) ?? null
+			? (options.find((o) => o.id === selected[0]) ?? null)
 			: null;
 	const triggerLabel = !selectedCount
 		? "All assignees"
@@ -404,7 +406,10 @@ export function KanbanFilters({
 		boardFilters.featureIds.length === 1 ? boardFilters.featureIds[0] : null;
 
 	const selectedEpic = useMemo(
-		() => (selectedEpicId ? epics.find((e) => e.id === selectedEpicId) ?? null : null),
+		() =>
+			selectedEpicId
+				? (epics.find((e) => e.id === selectedEpicId) ?? null)
+				: null,
 		[epics, selectedEpicId],
 	);
 
@@ -413,7 +418,7 @@ export function KanbanFilters({
 			return (selectedEpic.features ?? []).map((f) => ({
 				id: f.id,
 				label: f.title,
-				borderColorClass: getPillBorderColor(deriveFeatureStatus(f.tasks)),
+				borderColorClass: getPillBorderColor(f.status),
 			}));
 		}
 		// "All" epics: aggregate every feature across all epics.
@@ -421,7 +426,7 @@ export function KanbanFilters({
 			(epic.features ?? []).map((f) => ({
 				id: f.id,
 				label: f.title,
-				borderColorClass: getPillBorderColor(deriveFeatureStatus(f.tasks)),
+				borderColorClass: getPillBorderColor(f.status),
 			})),
 		);
 	}, [epics, selectedEpic]);
@@ -503,7 +508,6 @@ export function KanbanFilters({
 
 	return (
 		<div className="border-b border-border bg-card text-card-foreground">
-
 			{/* ── Mobile compact row: search + filter toggle ── */}
 			<div className="flex items-center gap-2 px-3 py-2 md:hidden">
 				<div className="relative flex-1 min-w-0">
@@ -559,7 +563,6 @@ export function KanbanFilters({
 			{/* ── Full filter panel: toggled on mobile, always on md+ ── */}
 			<div className={`${showFilters ? "block" : "hidden"} md:block`}>
 				<div className="flex flex-col gap-2.5 px-3 pb-3 pt-1 md:grid md:grid-cols-10 md:gap-6 md:px-4 md:py-3">
-
 					{/* Left: Epics + Features */}
 					<div className="flex flex-col gap-2 md:col-span-7 md:pr-6 md:border-r md:border-slate-200 md:relative">
 						<div className="flex items-center min-w-0">
@@ -627,7 +630,6 @@ export function KanbanFilters({
 							</button>
 						</div>
 					</div>
-
 				</div>
 			</div>
 		</div>

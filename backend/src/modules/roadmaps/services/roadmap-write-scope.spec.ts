@@ -242,6 +242,9 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         notifications() as never,
         effects,
         activity,
+        {
+          syncAfterTaskChange: jest.fn().mockResolvedValue(undefined),
+        } as never,
       );
       return { service, rt, authz };
     }

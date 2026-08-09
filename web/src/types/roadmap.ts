@@ -129,6 +129,9 @@ export interface RoadmapFeature {
 	actual_hours?: number;
 	start_date?: string;
 	end_date?: string;
+	// Persisted: cascade-derived once the feature has tasks, user-editable
+	// (see FeatureModal) only while it has none.
+	status: FeatureStatus;
 	created_at: string;
 	updated_at: string;
 	// The explicit "feature team". Write via assignee_ids; read via assignees.

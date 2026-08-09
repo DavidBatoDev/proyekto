@@ -90,6 +90,9 @@ export function buildTemplateRoadmapPreview(
 					progress: 0,
 					created_at: CREATED_AT,
 					updated_at: CREATED_AT,
+					// Template tasks are always seeded as "todo" — the cascade
+					// always derives "not_started" here regardless of task count.
+					status: "not_started" as const,
 					tasks: feature.tasks.map((task, taskIndex) => ({
 						id: `${roadmapId}-task-${task.key}`,
 						feature_id: featureId,

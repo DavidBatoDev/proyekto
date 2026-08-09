@@ -213,6 +213,14 @@ export class UpdateEpicDto {
   @IsArray() @IsOptional() labels?: any[];
 }
 
+const FEATURE_STATUS_VALUES = [
+  'not_started',
+  'in_progress',
+  'in_review',
+  'completed',
+  'blocked',
+];
+
 // Feature DTOs
 export class CreateFeatureDto {
   @IsUUID() roadmap_id: string;
@@ -224,6 +232,8 @@ export class CreateFeatureDto {
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;
   @IsDateString() @IsOptional() start_date?: string;
   @IsDateString() @IsOptional() end_date?: string;
+  // A brand-new feature always has 0 tasks, so this is honored as-is.
+  @IsIn(FEATURE_STATUS_VALUES) @IsOptional() status?: string;
   @IsArray()
   @IsOptional()
   @IsUUID('all', { each: true })
@@ -240,6 +250,9 @@ export class UpdateFeatureDto {
   @IsNumber() @IsOptional() @Min(0) actual_hours?: number;
   @IsDateString() @IsOptional() start_date?: string | null;
   @IsDateString() @IsOptional() end_date?: string | null;
+  // Only honored when the feature currently has 0 tasks — FeaturesService
+  // strips this otherwise so a feature with tasks always stays derived.
+  @IsIn(FEATURE_STATUS_VALUES) @IsOptional() status?: string;
   @IsArray()
   @IsOptional()
   @IsUUID('all', { each: true })

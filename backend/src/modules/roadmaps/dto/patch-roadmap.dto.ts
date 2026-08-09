@@ -107,6 +107,12 @@ export class FullRoadmapFeatureDto {
   @IsDateString()
   end_date?: string;
 
+  // Only meaningful when roadmap_tasks is empty — with tasks present, the
+  // normalizer always overwrites this with the cascade-derived value.
+  @IsOptional()
+  @IsString()
+  status?: string;
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

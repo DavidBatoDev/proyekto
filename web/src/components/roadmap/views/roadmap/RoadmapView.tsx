@@ -39,7 +39,6 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
-import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { RoadmapPerformanceMode } from "./models/types";
 import {
 	useRecentAssignees,
@@ -623,7 +622,7 @@ export const RoadmapView = ({
 		const allNodes = [...epicNodes, ...featureNodes];
 
 		const featureEdges: Edge[] = allFeatures.map((feature) => {
-			const derivedStatus = deriveFeatureStatus(feature.tasks);
+			const derivedStatus = feature.status;
 			return {
 				id: `epic-feature-${feature.epic_id}-${feature.id}`,
 				source: feature.epic_id,

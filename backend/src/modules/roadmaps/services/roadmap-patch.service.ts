@@ -22,6 +22,7 @@ import { RoadmapJsonPatchProcessor } from '../patch/roadmap-json-patch.processor
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import { deriveFeatureStatus } from './derive-feature-status';
 
 export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');
 
@@ -254,6 +255,16 @@ export class RoadmapPatchService {
     feature: FullRoadmapFeatureDto,
     featureIndex: number,
   ): FullRoadmapFeatureDto {
+    const roadmapTasks = (feature.roadmap_tasks ?? []).map((task, taskIndex) =>
+      this.normalizeTask(task, taskIndex),
+    );
+    // With tasks present, status is always cascade-derived — never trust a
+    // caller-supplied value once the feature isn't task-less anymore.
+    const status =
+      roadmapTasks.length > 0
+        ? deriveFeatureStatus(roadmapTasks)
+        : (feature.status ?? 'not_started');
+
     return {
       id: feature.id ?? randomUUID(),
       title: feature.title,
@@ -262,9 +273,8 @@ export class RoadmapPatchService {
       is_deliverable: feature.is_deliverable ?? true,
       start_date: feature.start_date,
       end_date: feature.end_date,
-      roadmap_tasks: (feature.roadmap_tasks ?? []).map((task, taskIndex) =>
-        this.normalizeTask(task, taskIndex),
-      ),
+      status,
+      roadmap_tasks: roadmapTasks,
     };
   }
 
