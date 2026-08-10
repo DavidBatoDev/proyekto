@@ -1,6 +1,6 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
@@ -15,8 +15,8 @@ A user applies to become a verified consultant; an admin reviews and approves.
 - **HTTP:** `GET /applications/me`, `POST /applications` (upsert), `POST
   /applications/submit`.
 - **Review** happens in the admin console over the full `user_*` identity — see
-  [Data → identity model](../07-data-and-db/identity-vetting-model.md) and the
-  [Admin vetting playbook](../12-runbooks/README.md).
+[Data → identity model](../../07-data-and-db/identity-vetting-model.md) and the
+[Admin vetting playbook](../../12-runbooks/README.md).
 
 Consultant-lane accounts have `role='consultant'` before approval but no consultant
 powers. Approval idempotently provisions their personal team, sets consultant role
@@ -39,19 +39,23 @@ rate, and availability. Invites reuse `project_invites`.
 
 > **The active-consultant gate:** consultant-only routes require both
 > `profiles.role='consultant'` and `is_consultant_verified=true` through the shared
-> predicate. Freelancer discovery separately filters `role='talent'`. See
-> [Backend → auth & guards](../03-backend/auth-and-guards.md) and
-> [Product → personas](../01-product/personas.md).
+> predicate. The current freelancer query filters `is_public=true` but does **not** yet
+> enforce `role='talent'`; `POST /marketplace/go-live` has the same gap. See
+> [Talent → discovery and delivery](../talent/discovery-and-delivery.md),
+> [Backend → auth & guards](../../03-backend/auth-and-guards.md), and
+> [Product → personas](../../01-product/personas.md).
 
 ## Related flows
 
 - **Admin matchmaking** — admins can also match candidates to projects
   (`GET /admin/match-candidates`, `POST /admin/match-assign`). See the
-  [Admin vetting playbook](../12-runbooks/README.md).
+  [Admin vetting playbook](../../12-runbooks/README.md).
 - **Teams** — hired freelancers land in project teams; see
-  [teams-and-time.md](./teams-and-time.md).
+  [Teams and Time](../teams-and-time/README.md).
+- **Role deep dives** — see [Talent](../talent/README.md) and
+  [Consultants](../consultants/README.md) for the complete account-to-delivery flows.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/applications/`](../../backend/src/modules/applications/), [`backend/src/modules/marketplace/`](../../backend/src/modules/marketplace/), [`backend/src/modules/consultants/`](../../backend/src/modules/consultants/), [`backend/src/modules/admin/`](../../backend/src/modules/admin/)
+- **Backend:** [`backend/src/modules/applications/`](../../../backend/src/modules/applications/), [`backend/src/modules/marketplace/`](../../../backend/src/modules/marketplace/), [`backend/src/modules/consultants/`](../../../backend/src/modules/consultants/), [`backend/src/modules/admin/`](../../../backend/src/modules/admin/)
 - **Web:** `web/src/routes/consultant/`, `web/src/routes/freelancer/`, `web/src/components/marketplace/`

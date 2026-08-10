@@ -1,6 +1,6 @@
 # Client User Flows
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Four paths bring a client into contact with a project: they create it, they are invited to
 it, they sign its contract from outside the product, or they arrive as a guest and convert.
@@ -118,7 +118,7 @@ real account; converting it to a project grants the creator `admin` + `origin='c
 on that project. This project-scoped origin is independent of whether signup selected the
 Client, Talent, or Consultant account role. Guests are blocked from
 `POST /projects/from-roadmap` and `POST /roadmaps/migrate` until they have an account. See
-[guests.md](../guests.md).
+[Guests](../guests/README.md).
 
 ## 4. Leaving a project
 
@@ -145,4 +145,4 @@ project that still names a client who can no longer see it. See
 
 - [client-surfaces.md](./client-surfaces.md) — where each flow lands in the UI.
 - [Product → invoice lifecycle](../../01-product/invoice-lifecycle.md) — what happens after signing.
-- [notifications-and-push.md](../notifications-and-push.md) — the email and push fan-out.
+- [Notifications and Push](../notifications/README.md) — the email and push fan-out.

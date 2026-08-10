@@ -1,25 +1,42 @@
 # Feature Domains
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
 [Backend module list](../03-backend/modules.md). Each page covers what the feature
 does, its data model, its HTTP surface, and where the code lives.
 
-## Documentation index
+## Account roles
 
 | Doc | What's in it |
 | --- | --- |
-| [meetings/](./meetings/README.md) | Meeting scheduling — calendar, RRULE recurrence, timezones, reminders (a full sub-set) |
 | [clients/](./clients/README.md) | The client role — structure, permission resolution, user flows, surfaces, and the consultant handoff (a full sub-set) |
-| [chat.md](./chat.md) | Project channels, DMs, reactions, stars, the activity feed |
-| [notifications-and-push.md](./notifications-and-push.md) | In-app notifications, the FCM push fan-out, deferred mention email, and the `/settings/notifications` preferences UI |
-| [payments-payouts-invoices.md](./payments-payouts-invoices.md) | The money domain — live payouts + invoices, and the retired escrow |
-| [marketplace-and-applications.md](./marketplace-and-applications.md) | Consultant applications/vetting and talent discovery/hiring |
-| [teams-and-time.md](./teams-and-time.md) | Reusable teams, project curation → access, billable time logs |
-| [roadmap-sharing.md](./roadmap-sharing.md) | Tokenized read/comment sharing of a roadmap |
-| [guests.md](./guests.md) | Anonymous guest sessions and the guest→user migration |
+| [talent/](./talent/README.md) | The Talent role — identity, discovery, project access, delivery, time, and payout boundaries (a full sub-set) |
+| [consultants/](./consultants/README.md) | The Consultant role — identity, vetting, active capabilities, project operation, and role-specific surfaces (a full sub-set) |
+
+## Delivery lifecycle
+
+| Doc | What's in it |
+| --- | --- |
+| [marketplace/](./marketplace/README.md) | Consultant applications, vetting, Talent discovery, and hiring |
+| [teams-and-time/](./teams-and-time/README.md) | Reusable teams, project curation → access, rates, and billable time |
+| [finance/](./finance/README.md) | Payouts, invoices, contract pricing boundaries, and the retired escrow |
+
+## Collaboration
+
+| Doc | What's in it |
+| --- | --- |
+| [chat/](./chat/README.md) | Project channels, DMs, reactions, stars, and the activity feed |
+| [meetings/](./meetings/README.md) | Meeting scheduling — calendar, recurrence, timezones, and reminders (a full sub-set) |
+| [notifications/](./notifications/README.md) | In-app notifications, FCM push fan-out, deferred mention email, and notification preferences |
+
+## Platform experiences
+
+| Doc | What's in it |
+| --- | --- |
+| [roadmap-sharing/](./roadmap-sharing/README.md) | Tokenized read/comment sharing of a roadmap |
+| [guests/](./guests/README.md) | Anonymous guest sessions and guest-to-user migration |
 
 ## How these relate
 

@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -33,7 +33,7 @@ at 4KB.
 
 HTTP: `GET /notifications`, `GET /notifications/unread-count`,
 `PATCH /notifications/read-all`, `PATCH /notifications/:id/read`,
-`DELETE /notifications/:id` ([Backend → api reference](../03-backend/api-reference.md#notifications--notifications)).
+`DELETE /notifications/:id` ([Backend → api reference](../../03-backend/api-reference.md#notifications--notifications)).
 
 ## Push (FCM)
 
@@ -51,7 +51,7 @@ sends to a user's registered devices via **Firebase Cloud Messaging**.
   deploy variable.
 
 The web/mobile client registers tokens via `web/src/services/pushNotifications.ts` /
-`deviceTokens.service.ts`. See [Mobile → push](../09-mobile/README.md) for the
+`deviceTokens.service.ts`. See [Mobile → push](../../09-mobile/README.md) for the
 Capacitor/FCM wiring.
 
 ## Email channel
@@ -331,7 +331,7 @@ unsubscribe button only when both are present.
   dead-letter in place (stay pending, excluded from claims).
 - **Deliverability:** Gmail exposes no bounce webhook or complaint feedback loop, so
   `email_suppressions` is never populated automatically today. See
-  [Runbook → Google OAuth email](../12-runbooks/google-oauth-email.md) for the ESP
+[Runbook → Google OAuth email](../../12-runbooks/google-oauth-email.md) for the ESP
   triggers and credential recovery.
 
 ## Flow
@@ -346,14 +346,14 @@ domain event  ─►  NotificationsService.createNotification(...)  ─►  noti
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/notifications/`](../../backend/src/modules/notifications/), [`backend/src/modules/push/`](../../backend/src/modules/push/)
-- **Email:** [`notifications/email/`](../../backend/src/modules/notifications/email/) — worker, registry, preferences service
-- **Templates:** [`backend/src/common/mail/templates/`](../../backend/src/common/mail/templates/) — shared layout; delivery via [`transport/`](../../backend/src/common/mail/transport/)
+- **Backend:** [`backend/src/modules/notifications/`](../../../backend/src/modules/notifications/), [`backend/src/modules/push/`](../../../backend/src/modules/push/)
+- **Email:** [`notifications/email/`](../../../backend/src/modules/notifications/email/) — worker, registry, preferences service
+- **Templates:** [`backend/src/common/mail/templates/`](../../../backend/src/common/mail/templates/) — shared layout; delivery via [`transport/`](../../../backend/src/common/mail/transport/)
 - **Migrations:** `supabase/migrations/20260804090000_notification_email_outbox.sql` (machinery), `20260804120000_activate_mention_email.sql` (activation)
 - **Web:** `web/src/services/notifications.service.ts`, `web/src/services/pushNotifications.ts`
 
 ## See also
 
-- [Mobile](../09-mobile/README.md) — Capacitor + FCM setup.
-- [Realtime](../06-realtime/README.md) — live in-app event push (distinct from FCM).
-- [Runbook → Google OAuth email](../12-runbooks/google-oauth-email.md) — Gmail credentials, `invalid_client` vs `invalid_grant`.
+- [Mobile](../../09-mobile/README.md) — Capacitor + FCM setup.
+- [Realtime](../../06-realtime/README.md) — live in-app event push (distinct from FCM).
+- [Runbook → Google OAuth email](../../12-runbooks/google-oauth-email.md) — Gmail credentials, `invalid_client` vs `invalid_grant`.

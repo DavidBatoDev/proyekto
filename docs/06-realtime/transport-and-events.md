@@ -1,6 +1,6 @@
 # Transport & Events
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 How events get from a backend write to a browser: the backend (and agent) **publish**
 to the Worker, which routes to a Durable Object that **fans out** to connected
@@ -78,4 +78,4 @@ turning it on is a config change, not a code change.
 ## See also
 
 - [durable-objects.md](./durable-objects.md) — the Worker + room model.
-- [Feature Domains → chat](../11-domains/chat.md) — the biggest realtime consumer.
+- [Feature Domains → chat](../11-domains/chat/README.md) — the biggest realtime consumer.

@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-09 · **Status:** draft
+> **Last updated:** 2026-08-10 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows that happen to share a `client_id`, and an agency running delivery for six
@@ -382,4 +382,4 @@ confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migrati
 
 - [delivery-tree-visualization.md](./delivery-tree-visualization.md) — what this structure enables.
 - [11-domains/clients/client-structure.md](../11-domains/clients/client-structure.md) — today's model.
-- [11-domains/teams-and-time.md](../11-domains/teams-and-time.md) — the fan-out trigger to extend.
+- [11-domains/teams-and-time](../11-domains/teams-and-time/README.md) — the fan-out trigger to extend.

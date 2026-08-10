@@ -1,6 +1,6 @@
 # Push (FCM)
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Mobile push uses **Firebase Cloud Messaging** and reuses the existing in-app
 notifications domain: when a notification row is created, the backend also pushes it
@@ -84,4 +84,4 @@ Without the APNs key, iOS devices never get an FCM token. Test on a **real devic
 
 ## See also
 
-- [Feature Domains → notifications & push](../11-domains/notifications-and-push.md) — the in-app side.
+- [Feature Domains → notifications & push](../11-domains/notifications/README.md) — the in-app side.

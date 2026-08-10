@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-09 · **Status:** current (all 14 sections written)
+> **Last updated:** 2026-08-10 · **Status:** current (all 14 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -38,7 +38,7 @@ site, so links are relative filesystem paths. Every page carries a
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | **current** |
 | 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | **current** |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | **current** |
-| 11 | [Feature Domains](./11-domains/README.md) | Per-feature deep dives — incl. the [Meetings](./11-domains/meetings/README.md) and [Clients](./11-domains/clients/README.md) sets | **current** |
+| 11 | [Feature Domains](./11-domains/README.md) | Account roles, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
 | 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree | **draft** |
 

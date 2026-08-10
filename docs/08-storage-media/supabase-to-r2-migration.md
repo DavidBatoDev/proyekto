@@ -1,6 +1,6 @@
 # Supabase Storage → R2 Migration
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Storage is moving off **Supabase Storage** onto **Cloudflare R2**. New uploads
 already go to R2 (see [r2-architecture.md](./r2-architecture.md)); this page is about
@@ -66,4 +66,4 @@ before cutover to catch stragglers. `--check` verifies parity without copying.
 
 > **⚠️** Two different "migrations" share a name — this is **files → R2**. The
 > **guest → user** roadmap migration is unrelated (see
-> [Feature Domains → guests](../11-domains/guests.md)).
+> [Feature Domains → guests](../11-domains/guests/README.md)).

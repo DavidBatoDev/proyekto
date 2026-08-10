@@ -1,6 +1,6 @@
 # Guests
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Anonymous users can build a roadmap **before signing up** — typically from the hero
 chat — and their work migrates to a real account when they register. There's no
@@ -14,7 +14,7 @@ separate guest table: a guest is just a `profiles` row flagged `is_guest`.
 - The client identifies as that guest with an **`x-guest-user-id`** header (not a
   JWT). `SupabaseAuthGuard` accepts it, verifying the session is a real guest profile
   and **not older than 30 days**. See
-  [Backend → auth & guards](../03-backend/auth-and-guards.md).
+[Backend → auth & guards](../../03-backend/auth-and-guards.md).
 - Guests are read-limited and rate-limited: `POST /guests/create` (5/60s) and
   `GET /guests/by-session/:sessionId` (30/60s) are throttled public endpoints.
 
@@ -33,7 +33,7 @@ On signup, the guest's roadmap(s) migrate to the new authenticated user:
 - Web side: `web/src/services/migration.service.ts` orchestrates the handoff.
 
 > Don't confuse this **guest→user** migration with the **Supabase Storage → R2**
-> file migration — different thing, see [Storage & Media](../08-storage-media/README.md).
+> file migration — different thing, see [Storage & Media](../../08-storage-media/README.md).
 
 ## Housekeeping
 
@@ -43,11 +43,11 @@ Old guest profiles are cleaned up via the `cleanup_old_guest_users` RPC
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/guests/`](../../backend/src/modules/guests/)
+- **Backend:** [`backend/src/modules/guests/`](../../../backend/src/modules/guests/)
 - **RPCs:** `create_guest_user`, `get_guest_user_id`, `is_valid_guest_session`, `cleanup_old_guest_users`
 - **Web:** `web/src/services/migration.service.ts`
 
 ## See also
 
-- [Product → personas](../01-product/personas.md) — where guests sit in the model.
-- [Agent & Roadmap AI](../05-agent-ai/README.md) — the AI flow guests use to build a roadmap.
+- [Product → personas](../../01-product/personas.md) — where guests sit in the model.
+- [Agent & Roadmap AI](../../05-agent-ai/README.md) — the AI flow guests use to build a roadmap.

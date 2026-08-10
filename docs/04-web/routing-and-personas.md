@@ -85,7 +85,7 @@ Gating happens in three places:
 
 > The **`projectId === "n"`** sentinel is the guest / roadmap-only path — its
 > `beforeLoad` skips the auth check so guests can build a roadmap before signing up.
-> See [Feature Domains → guests](../11-domains/guests.md).
+> See [Feature Domains → guests](../11-domains/guests/README.md).
 
 ## Adding a route
 

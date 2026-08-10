@@ -1,6 +1,6 @@
 # Client ↔ Consultant Interaction
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 The Consultant layer is Proyekto's differentiator: a vetted project lead sitting between the
 Client and Talent, so a freelance hire becomes managed delivery. This page documents
@@ -134,5 +134,5 @@ A `warning`-severity checklist item surfacing unbilled direct members is propose
 ## See also
 
 - [user-flows.md](./user-flows.md) — the invite and revocation mechanics.
-- [teams-and-time.md](../teams-and-time.md) — curation → access fan-out and rates.
+- [Teams and Time](../teams-and-time/README.md) — curation → access fan-out and rates.
 - [Product → project lifecycle](../../01-product/project-lifecycle.md) — activation in context.

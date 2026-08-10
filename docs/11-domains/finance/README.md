@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Money in Proyekto flows through three modules — but only two of them are live. The
 **payouts** and **invoices** modules are the shipped financial path; the older
@@ -11,7 +11,7 @@ dropped. `wallets` still exist for balances.
 > on 2026-01-11 and never recreated. The `payments` module's fund/release/refund
 > escrow code queries those missing tables and is effectively dead. Treat
 > **payouts + invoices** as the real money system. See
-> [Data → schema overview](../07-data-and-db/schema-overview.md).
+> [Data → schema overview](../../07-data-and-db/schema-overview.md).
 
 ## Payouts (live)
 
@@ -29,7 +29,7 @@ recorded payout, with a snapshotted payout method and a proof document.
 - **Proof documents** upload to the **private R2 bucket** (`payout_proofs`) via the
   `uploads` module and are served through presigned GETs.
 - HTTP under `/payout-methods` and `/payouts`
-  ([Backend → api reference](../03-backend/api-reference.md#payouts--payout-methods--payouts)).
+([Backend → api reference](../../03-backend/api-reference.md#payouts--payout-methods--payouts)).
 
 ## Invoices (live)
 
@@ -58,10 +58,10 @@ task_time_logs  ──approved──►  payouts (per member, single currency)
                 └──────────►  invoice_line_items ──►  invoices ──►  invoice_documents (PDF)
 ```
 
-Billable time (see [teams-and-time.md](./teams-and-time.md)) is the source for both
+Billable time (see [Teams and Time](../teams-and-time/README.md)) is the source for both
 payouts and invoices.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/payouts/`](../../backend/src/modules/payouts/), [`backend/src/modules/invoices/`](../../backend/src/modules/invoices/), [`backend/src/modules/payments/`](../../backend/src/modules/payments/) (legacy)
-- **Payout RPCs:** `create_payout_and_mark_paid`, `void_payout_and_revert` (see [migrations-workflow.md](../07-data-and-db/migrations-workflow.md))
+- **Backend:** [`backend/src/modules/payouts/`](../../../backend/src/modules/payouts/), [`backend/src/modules/invoices/`](../../../backend/src/modules/invoices/), [`backend/src/modules/payments/`](../../../backend/src/modules/payments/) (legacy)
+- **Payout RPCs:** `create_payout_and_mark_paid`, `void_payout_and_revert` (see [migrations-workflow.md](../../07-data-and-db/migrations-workflow.md))

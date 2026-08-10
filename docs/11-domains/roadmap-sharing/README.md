@@ -1,6 +1,6 @@
 # Roadmap Sharing
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 A roadmap can be shared outside its project — a Google-Docs-style tokenized link that
 grants read-only or comment access without a full project membership. Recipients see
@@ -25,7 +25,7 @@ is limited to **viewer** or **commenter** (sharing never grants edit).
   `POST /roadmap-shares/feature/:id/comments`.
 
 The token route is the only **public** (unauthenticated) entry point; everything else
-requires auth ([Backend → api reference](../03-backend/api-reference.md#roadmap-shares--roadmap-shares)).
+requires auth ([Backend → api reference](../../03-backend/api-reference.md#roadmap-shares--roadmap-shares)).
 
 ## Templates (related)
 
@@ -39,13 +39,13 @@ read/comment access to a specific roadmap.
 Share access resolves through the roadmap authorization helpers
 (`can_view_roadmap`, `get_user_roadmap_effective_role`) which fold in project access,
 share tokens, and invited emails. See
-[Data → RLS & security](../07-data-and-db/rls-and-security.md).
+[Data → RLS & security](../../07-data-and-db/rls-and-security.md).
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/roadmap-shares/`](../../backend/src/modules/roadmap-shares/)
+- **Backend:** [`backend/src/modules/roadmap-shares/`](../../../backend/src/modules/roadmap-shares/)
 - **Web:** `web/src/routes/roadmap/shared/`, `web/src/routes/roadmap/shared-with-me.tsx`
 
 ## See also
 
-- [Product → roadmap & milestones](../01-product/roadmap-and-milestones.md) — the roadmap model being shared.
+- [Product → roadmap & milestones](../../01-product/roadmap-and-milestones.md) — the roadmap model being shared.

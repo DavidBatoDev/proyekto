@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -23,7 +23,7 @@ A team is owned by any user and reused across projects.
 **Curation → access (the key mechanic):** when a member is curated into a project via
 `project_team_members`, a **DB trigger** (`tg_project_team_members_sync_shares`) fans
 out a `project_access` row — so their roadmap/chat access follows automatically. You
-don't grant access twice. See [Data → RLS & security](../07-data-and-db/rls-and-security.md).
+don't grant access twice. See [Data → RLS & security](../../07-data-and-db/rls-and-security.md).
 
 Rate rules are guarded: a trigger requires a verified consultant for certain rate
 operations, and the team owner can't be removed.
@@ -39,10 +39,10 @@ Billable work is logged against tasks, reviewed, then rolled into payouts/invoic
 
 - **Lifecycle:** start / stop / manual entry → review (per-log or bulk) → grouped into
   a payout. HTTP under `/team-time`
-  ([Backend → api reference](../03-backend/api-reference.md#team-time--team-time)).
+([Backend → api reference](../../03-backend/api-reference.md#team-time--team-time)).
 - **Rate resolution** pulls from `team_member_rates` (per member, per project).
 - Approved logs feed the money domain — see
-  [payments-payouts-invoices.md](./payments-payouts-invoices.md).
+  [Finance](../finance/README.md).
 
 ## The delivery loop
 
@@ -54,10 +54,10 @@ team ──attach──► project_teams ──curate──► project_team_memb
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/teams/`](../../backend/src/modules/teams/) (3 controllers), [`backend/src/modules/team-time/`](../../backend/src/modules/team-time/)
+- **Backend:** [`backend/src/modules/teams/`](../../../backend/src/modules/teams/) (3 controllers), [`backend/src/modules/team-time/`](../../../backend/src/modules/team-time/)
 - **Web:** `web/src/routes/teams/`, `web/src/components/team/`, `web/src/components/team-time/`
 
 ## See also
 
-- [Product → project lifecycle](../01-product/project-lifecycle.md) — where teams fit end to end.
-- [payments-payouts-invoices.md](./payments-payouts-invoices.md) — what billable time becomes.
+- [Product → project lifecycle](../../01-product/project-lifecycle.md) — where teams fit end to end.
+- [Finance](../finance/README.md) — what billable time becomes.
