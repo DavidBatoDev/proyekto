@@ -98,6 +98,21 @@ describe("auth continuation storage", () => {
 		expect(getAuthContinuation()?.postSignupWelcomeRequired).toBe(true);
 	});
 
+	it("reads intent from a legacy continuation", () => {
+		sessionStore.setItem(
+			AUTH_CONTINUATION_KEY,
+			JSON.stringify({
+				source: "signup",
+				authMethod: "google",
+				lane: "client_freelancer",
+				intent: "freelancer",
+				createdAt: new Date().toISOString(),
+			}),
+		);
+
+		expect(getAuthContinuation()?.intent).toBe("freelancer");
+	});
+
 	it("drops stale continuation state", () => {
 		const nowMs = Date.parse("2026-07-05T12:00:00.000Z");
 		sessionStore.setItem(

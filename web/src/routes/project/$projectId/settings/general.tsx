@@ -286,7 +286,8 @@ function SettingsGeneralPage() {
 				(member) =>
 					Boolean(member.user_id) &&
 					member.user_id !== project?.consultant_id &&
-					member.user?.is_consultant_verified === true,
+					member.user?.role === "consultant" &&
+					member.user.is_consultant_verified === true,
 			),
 		[members, project?.consultant_id],
 	);

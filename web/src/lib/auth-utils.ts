@@ -4,9 +4,30 @@
 
 import type { Profile } from "../types/profile.types";
 
-/** Check whether consultant vetting has granted the durable capability. */
-export function isVerifiedConsultant(profile: Profile | null): boolean {
-	return profile?.is_consultant_verified === true;
+export function isConsultant(profile: Profile | null | undefined): boolean {
+	return profile?.role === "consultant";
+}
+
+export function isClient(profile: Profile | null | undefined): boolean {
+	return profile?.role === "client";
+}
+
+export function isTalent(profile: Profile | null | undefined): boolean {
+	return profile?.role === "talent";
+}
+
+/** Check whether consultant identity and vetting grant the capability. */
+export function isActiveConsultant(
+	profile: Profile | null | undefined,
+): boolean {
+	return isConsultant(profile) && profile?.is_consultant_verified === true;
+}
+
+/** @deprecated Use isActiveConsultant. */
+export function isVerifiedConsultant(
+	profile: Profile | null | undefined,
+): boolean {
+	return isActiveConsultant(profile);
 }
 
 /** Get the display name or fall back to the email prefix. */

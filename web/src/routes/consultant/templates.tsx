@@ -13,6 +13,7 @@ import {
 	reviseRoadmapTemplate,
 	unlistRoadmapTemplate,
 } from "@/api";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/consultant/templates")({
 	beforeLoad: () => {
 		const { isAuthenticated, profile } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
-		if (profile && !profile.is_consultant_verified)
+		if (profile && !isActiveConsultant(profile))
 			throw redirect({ to: "/dashboard" });
 	},
 	component: ConsultantTemplatesPage,

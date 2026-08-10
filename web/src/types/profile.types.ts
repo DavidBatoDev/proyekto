@@ -3,19 +3,28 @@
  * Types related to user profiles
  */
 
+import type { AccountRole } from "@/lib/onboardingLane";
 import type { AppearancePreferencesV1 } from "@/theme/types";
 
-// Onboarding intent type
-export interface OnboardingIntent {
+export interface LegacyOnboardingIntent {
 	freelancer: boolean;
 	client: boolean;
 }
 
-// Onboarding settings type
-export interface OnboardingSettings {
-	intent: OnboardingIntent;
+interface CanonicalOnboardingSettings {
+	lane: AccountRole;
 	completed_at: string; // ISO timestamp
 }
+
+interface LegacyOnboardingSettings {
+	lane: "client_freelancer";
+	intent: LegacyOnboardingIntent;
+	completed_at: string; // ISO timestamp
+}
+
+export type OnboardingSettings =
+	| CanonicalOnboardingSettings
+	| LegacyOnboardingSettings;
 
 // Profile settings JSONB type
 export interface ProfileSettings {
@@ -31,6 +40,7 @@ export interface Profile {
 	display_name: string | null;
 	avatar_url: string | null;
 	banner_url: string | null;
+	role: AccountRole;
 	is_consultant_verified: boolean;
 	is_public: boolean;
 	bio: string | null;
@@ -59,7 +69,6 @@ export interface ProfileInsert {
 	email: string;
 	avatar_url?: string | null;
 	banner_url?: string | null;
-	is_consultant_verified?: boolean;
 	bio?: string | null;
 	headline?: string | null;
 	first_name?: string | null;
@@ -81,7 +90,6 @@ export interface ProfileUpdate {
 	display_name?: string | null;
 	avatar_url?: string | null;
 	banner_url?: string | null;
-	is_consultant_verified?: boolean;
 	bio?: string | null;
 	headline?: string | null;
 	first_name?: string | null;

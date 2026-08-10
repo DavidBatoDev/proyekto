@@ -1,17 +1,21 @@
+import { CircularProgress } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { CircularProgress } from "@mui/material";
-import { supabase } from "../../lib/supabase";
-import { useAuthStore } from "../../stores/authStore";
-import { useToast } from "../../hooks/useToast";
-import { completeOnboarding, type OnboardingLane } from "../../lib/auth-api";
-import { fetchProfile, profileKeys } from "../../queries/profile";
 import {
 	clearAuthContinuation,
 	getAuthContinuation,
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
+import {
+	buildOnboardingPayload,
+	normalizeSignupLane,
+} from "@/lib/onboardingLane";
+import { useToast } from "../../hooks/useToast";
+import { completeOnboarding } from "../../lib/auth-api";
+import { supabase } from "../../lib/supabase";
+import { fetchProfile, profileKeys } from "../../queries/profile";
+import { useAuthStore } from "../../stores/authStore";
 
 export const Route = createFileRoute("/auth/callback")({
 	component: AuthCallbackPage,
@@ -132,25 +136,21 @@ function AuthCallbackPage() {
 					// Google users never ran the signup-time onboarding step that the
 					// password flow runs. Complete it idempotently, then show Welcome once.
 					// If signup started from a specific lane, the continuation preserves it.
-					const lane: OnboardingLane =
-						continuation?.lane === "consultant"
-							? "consultant"
-							: "client_freelancer";
+					const needsRoleSelection = !continuation?.lane;
+					if (!needsRoleSelection) {
+						const lane = normalizeSignupLane(
+							continuation?.lane ?? "client_freelancer",
+							continuation?.intent,
+						);
 
-					try {
-						await completeOnboarding({
-							lane,
-							intent:
-								lane === "consultant"
-									? { client: false, freelancer: false }
-									: {
-											client: continuation?.intent !== "freelancer",
-											freelancer: continuation?.intent === "freelancer",
-										},
-						});
-					} catch (err) {
-						// Non-fatal: the welcome deck re-attempts completion as a backstop.
-						console.error("OAuth onboarding completion failed:", err);
+						try {
+							await completeOnboarding(
+								buildOnboardingPayload(lane, continuation?.intent),
+							);
+						} catch (err) {
+							// Non-fatal: /welcome retries a known lane or asks the user to choose.
+							console.error("OAuth onboarding completion failed:", err);
+						}
 					}
 					// Seed the profile the same way the password signup flow does
 					// (SignupForm.tsx), so /welcome renders immediately instead of hanging

@@ -46,6 +46,7 @@ import { ProjectFinancials } from "@/components/finance/ProjectFinancials";
 import { ProjectInvoices } from "@/components/finance/ProjectInvoices";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { CURRENCY_CODE_OPTIONS, formatCurrency } from "@/lib/currency";
 import { contractService } from "@/services/contract.service";
 import {
@@ -153,7 +154,7 @@ function FinancePage() {
 	const qc = useQueryClient();
 	const toast = useToast();
 	const profile = useProfile();
-	const isConsultant = profile?.is_consultant_verified === true;
+	const isConsultant = isActiveConsultant(profile);
 	const [createContractOpen, setCreateContractOpen] = useState(false);
 	const filters: FinanceFilters = {
 		q: search.q,
@@ -261,7 +262,7 @@ function FinancePage() {
 				<div className="mx-auto max-w-4xl px-5 py-10">
 					<AppEmptyState
 						icon={CircleDollarSign}
-						title="Finance is for verified consultants"
+						title="Finance is for active consultants"
 						description="Once your consultant profile is verified, contracts, client invoices, and portfolio financials will appear here."
 					/>
 				</div>

@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { SignupForm } from "../../components/auth/signup/SignupForm";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { parseInviteEmailParam } from "../../lib/inviteEmailParam";
+import type { OnboardingLane } from "../../lib/onboardingLane";
 import { useAuthStore } from "../../stores/authStore";
 
 export const Route = createFileRoute("/auth/signup")({
@@ -10,7 +11,7 @@ export const Route = createFileRoute("/auth/signup")({
 	): {
 		redirect?: string;
 		intent?: "client" | "freelancer";
-		lane?: "client_freelancer" | "consultant";
+		lane?: OnboardingLane;
 		email?: string;
 	} => {
 		const rawIntent = search.intent as string | undefined;
@@ -20,7 +21,10 @@ export const Route = createFileRoute("/auth/signup")({
 				: undefined;
 		const rawLane = search.lane as string | undefined;
 		const lane =
-			rawLane === "client_freelancer" || rawLane === "consultant"
+			rawLane === "client_freelancer" ||
+			rawLane === "client" ||
+			rawLane === "talent" ||
+			rawLane === "consultant"
 				? rawLane
 				: undefined;
 		return {

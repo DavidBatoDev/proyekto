@@ -1,11 +1,10 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ModalPortal } from "@/components/common/ModalPortal";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-	ArrowRight,
 	ArrowLeft,
+	ArrowRight,
 	BookOpen,
+	BriefcaseBusiness,
 	Check,
 	CheckCircle2,
 	Clock,
@@ -14,24 +13,36 @@ import {
 	Sparkles,
 	Trash2,
 	UserCheck,
+	UserRound,
 	Users,
 	Wallet,
 	Workflow,
 	X,
 } from "lucide-react";
-import { Button } from "@/ui/button";
-import { featureFlags } from "@/config/featureFlags";
-import { useAuthStore } from "@/stores/authStore";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { supabase } from "@/lib/supabase";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/api";
-import { completeOnboarding, type OnboardingLane } from "@/lib/auth-api";
-import { clearAuthContinuation } from "@/lib/authContinuation";
-import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import { LaneCard } from "@/components/auth/signup/SignupStepLane";
+import { ModalPortal } from "@/components/common/ModalPortal";
+import { featureFlags } from "@/config/featureFlags";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { useToast } from "@/hooks/useToast";
+import { completeOnboarding } from "@/lib/auth-api";
+import {
+	clearAuthContinuation,
+	getAuthContinuation,
+} from "@/lib/authContinuation";
+import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import {
+	type AccountRole,
+	buildOnboardingPayload,
+	normalizeSignupLane,
+} from "@/lib/onboardingLane";
+import { supabase } from "@/lib/supabase";
 import { useAppearanceStore } from "@/stores/appearanceStore";
+import { useAuthStore } from "@/stores/authStore";
 import { PRESET_THEMES, THEME_OPTIONS } from "@/theme/presets";
 import type { ThemeId } from "@/theme/types";
+import { Button } from "@/ui/button";
 
 export const Route = createFileRoute("/welcome")({
 	beforeLoad: () => {
@@ -47,8 +58,21 @@ export const Route = createFileRoute("/welcome")({
 
 function WelcomePage() {
 	useProfileQuery(); // ensures profile is fetched and synced to the store on fresh loads
-	const profile = useAuthStore((s) => s.profile);
+	const storedProfile = useAuthStore((s) => s.profile);
+	const [completedProfile, setCompletedProfile] =
+		useState<typeof storedProfile>(null);
+	const profile = completedProfile ?? storedProfile;
 	const ensuredCompletionRef = useRef(false);
+	const onboarding = profile?.settings?.onboarding;
+	const continuation = getAuthContinuation();
+	const pendingLane = onboarding?.lane ?? continuation?.lane;
+	const pendingIntent =
+		onboarding?.lane === "client_freelancer"
+			? onboarding.intent
+			: continuation?.intent;
+	const needsRoleSelection = Boolean(
+		profile && !profile.has_completed_onboarding && !pendingLane,
+	);
 
 	// Backstop: anyone who reaches /welcome without onboarding persisted (e.g. the
 	// OAuth callback's completion call failed, or a legacy account that got stuck
@@ -57,24 +81,26 @@ function WelcomePage() {
 	// itself needs, so the user is never re-trapped on /welcome. Best-effort: the
 	// tour renders regardless of the result.
 	useEffect(() => {
-		if (!profile || ensuredCompletionRef.current) return;
+		if (!profile || ensuredCompletionRef.current || needsRoleSelection) return;
 		if (profile.has_completed_onboarding) return;
 		ensuredCompletionRef.current = true;
-		const lane: OnboardingLane =
-			(profile.settings as { onboarding?: { lane?: string } } | null)
-				?.onboarding?.lane === "consultant"
-				? "consultant"
-				: "client_freelancer";
-		void completeOnboarding({
-			lane,
-			intent:
-				lane === "consultant"
-					? { client: false, freelancer: false }
-					: { client: true, freelancer: false },
-		}).catch((err) => {
-			console.error("Welcome-deck onboarding completion backstop failed:", err);
-		});
-	}, [profile]);
+		const lane = normalizeSignupLane(
+			pendingLane ?? "client_freelancer",
+			pendingIntent,
+		);
+		void completeOnboarding(buildOnboardingPayload(lane, pendingIntent))
+			.then((result) => {
+				setCompletedProfile(result.profile);
+				useAuthStore.setState({ profile: result.profile });
+			})
+			.catch((err) => {
+				ensuredCompletionRef.current = false;
+				console.error(
+					"Welcome-deck onboarding completion backstop failed:",
+					err,
+				);
+			});
+	}, [profile, pendingLane, pendingIntent, needsRoleSelection]);
 
 	// Wait for profile hydration before deciding the lane. Guessing a default
 	// here causes a flicker between decks when the user lands on /welcome
@@ -87,18 +113,109 @@ function WelcomePage() {
 		);
 	}
 
-	const lane =
-		(profile.settings as { onboarding?: { lane?: string } } | null)?.onboarding
-			?.lane ?? "client_freelancer";
+	if (needsRoleSelection) {
+		return (
+			<RoleSelectStep
+				onComplete={(nextProfile) => {
+					setCompletedProfile(nextProfile);
+					useAuthStore.setState({ profile: nextProfile });
+				}}
+			/>
+		);
+	}
+
 	const firstName =
 		(profile.first_name as string | undefined) ||
 		profile.display_name ||
 		"there";
 
-	if (lane === "consultant") {
+	if (profile.role === "consultant") {
 		return <ConsultantWelcomeDeck firstName={firstName} />;
 	}
 	return <ClientFreelancerWelcomeDeck firstName={firstName} />;
+}
+
+function RoleSelectStep({
+	onComplete,
+}: {
+	onComplete: (
+		profile: NonNullable<ReturnType<typeof useAuthStore.getState>["profile"]>,
+	) => void;
+}) {
+	const [selected, setSelected] = useState<AccountRole | null>(null);
+	const [isSaving, setIsSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const save = async () => {
+		if (!selected || isSaving) return;
+		setIsSaving(true);
+		setError(null);
+		try {
+			const result = await completeOnboarding({ lane: selected });
+			onComplete(result.profile);
+		} catch (cause) {
+			setError(
+				cause instanceof Error
+					? cause.message
+					: "We couldn't save your account role. Please try again.",
+			);
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	return (
+		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
+			<div className="w-full max-w-5xl rounded-3xl border border-border bg-card p-6 shadow-xl sm:p-10">
+				<div className="mb-7 text-center">
+					<h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+						Choose your Proyekto account
+					</h1>
+					<p className="mt-2 text-sm text-muted-foreground">
+						This identity is permanent. Project permissions are assigned
+						separately.
+					</p>
+				</div>
+				<div className="grid gap-3 sm:grid-cols-3">
+					<LaneCard
+						label="I'm a client"
+						description="Plan and fund projects with a vetted delivery lead."
+						icon={BriefcaseBusiness}
+						tone="primary"
+						selected={selected === "client"}
+						onClick={() => setSelected("client")}
+					/>
+					<LaneCard
+						label="I'm talent"
+						description="Contribute your skills to project delivery teams."
+						icon={UserRound}
+						tone="slate"
+						selected={selected === "talent"}
+						onClick={() => setSelected("talent")}
+					/>
+					<LaneCard
+						label="I'm a consultant"
+						description="Apply to lead engagements; consultant tools unlock after vetting."
+						icon={Crown}
+						tone="amber"
+						selected={selected === "consultant"}
+						onClick={() => setSelected("consultant")}
+					/>
+				</div>
+				{error && (
+					<p className="mt-4 text-center text-sm text-destructive">{error}</p>
+				)}
+				<Button
+					type="button"
+					onClick={save}
+					disabled={!selected || isSaving}
+					className="mt-7 w-full"
+				>
+					{isSaving ? "Saving..." : "Continue"}
+				</Button>
+			</div>
+		</div>
+	);
 }
 
 // ─── Client/Freelancer deck ─────────────────────────────────────────────────
@@ -1118,7 +1235,10 @@ function SlideTheme({
 							>
 								<div className="flex items-center gap-2">
 									<span
-										style={{ background: t.primary, color: t.primaryForeground }}
+										style={{
+											background: t.primary,
+											color: t.primaryForeground,
+										}}
 										className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold"
 									>
 										Aa
@@ -1155,7 +1275,10 @@ function SlideTheme({
 								</span>
 								{selected && (
 									<span
-										style={{ background: t.primary, color: t.primaryForeground }}
+										style={{
+											background: t.primary,
+											color: t.primaryForeground,
+										}}
 										className="inline-flex h-5 w-5 items-center justify-center rounded-full"
 									>
 										<Check className="h-3 w-3" />

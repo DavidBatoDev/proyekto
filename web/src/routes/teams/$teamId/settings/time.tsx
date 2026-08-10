@@ -1,13 +1,14 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import { PayPeriodSettingsCard } from "@/components/team-time/PayPeriodSettingsCard";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
-import { useToast } from "@/hooks/useToast";
+import { PayPeriodSettingsCard } from "@/components/team-time/PayPeriodSettingsCard";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useToast } from "@/hooks/useToast";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { getTeam, updateTeam } from "@/services/teams.service";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/teams/$teamId/settings/time")({
 	beforeLoad: () => {
@@ -38,9 +39,9 @@ function TeamTimeSettings() {
 	}, [team?.retroactive_log_days]);
 	const isOwner = team?.owner_id === user?.id;
 	// The flag can only be flipped by the team owner, and only when that
-	// owner is a consultant-verified profile. For viewers who are not
+	// owner is an active consultant (role plus verification). For viewers who are not
 	// the owner the toggle is read-only with an explainer.
-	const isConsultantVerified = Boolean(profile?.is_consultant_verified);
+	const isConsultantVerified = isActiveConsultant(profile ?? null);
 	const canToggle = isOwner && isConsultantVerified;
 	const enabled = team?.time_tracking_enabled === true;
 
@@ -163,12 +164,12 @@ function TeamTimeSettings() {
 									<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
 									<div>
 										<div className="font-semibold">
-											Consultant verification required
+											Active consultant account required
 										</div>
 										<p className="mt-0.5">
 											Time tracking and per-member rates are only available to
-											teams owned by a verified consultant. Apply for
-											consultant verification to enable this feature.
+											teams owned by an active consultant. A consultant role and
+											completed verification are both required.
 										</p>
 									</div>
 								</div>
@@ -205,8 +206,9 @@ function TeamTimeSettings() {
 										Retroactive manual logs
 									</p>
 									<p className="mt-1 text-xs text-slate-500">
-										Set how many days back members can manually add or edit logs.
-										Set to <span className="font-semibold">0</span> for no limit.
+										Set how many days back members can manually add or edit
+										logs. Set to <span className="font-semibold">0</span> for no
+										limit.
 									</p>
 									<div className="mt-3 flex items-center gap-2">
 										<input
@@ -225,7 +227,9 @@ function TeamTimeSettings() {
 											disabled={retroPolicyMutation.isPending}
 											className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
 										>
-											{retroPolicyMutation.isPending ? "Saving..." : "Save policy"}
+											{retroPolicyMutation.isPending
+												? "Saving..."
+												: "Save policy"}
 										</button>
 									</div>
 								</div>
@@ -238,7 +242,8 @@ function TeamTimeSettings() {
 									</p>
 									<p className="mt-1 text-xs text-slate-500">
 										Used as the fallback currency for member rates and new logs.
-										Existing logs keep the currency frozen when they were recorded.
+										Existing logs keep the currency frozen when they were
+										recorded.
 									</p>
 									<div className="mt-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
 										{(["USD", "CAD", "PHP"] as const).map((code) => {

@@ -3,7 +3,7 @@
  */
 
 import type { Session, User } from "@supabase/supabase-js";
-import type { OnboardingIntent, Profile } from "./profile.types";
+import type { Profile } from "./profile.types";
 
 // Re-export Supabase types
 export type { Session, User };
@@ -40,11 +40,6 @@ export interface SignupCredentials {
 	email: string;
 	password: string;
 	display_name?: string;
-}
-
-// Onboarding complete request
-export interface OnboardingCompleteRequest {
-	intent: OnboardingIntent;
 }
 
 // Profile update data

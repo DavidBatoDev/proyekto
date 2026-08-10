@@ -1,21 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { useAuthStore } from "../../../stores/authStore";
-import { supabase } from "../../../lib/supabase";
-import { useToast } from "../../../hooks/useToast";
-import { fetchProfile, profileKeys } from "../../../queries/profile";
-import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
-import {
-	confirmEmailVerificationCode,
-	requestEmailVerificationCode,
-} from "../../../lib/email-otp-api";
-import { SignupStepLane } from "./SignupStepLane";
-import { SignupStepAccount } from "./SignupStepAccount";
-import { SignupStepPassword } from "./SignupStepPassword";
-import { SignupStepProfile } from "./SignupStepProfile";
 import { BrandMark } from "@/components/brand/BrandMark";
 import {
 	clearAuthContinuation,
@@ -23,7 +9,25 @@ import {
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
 import { hasPendingProjectFromRoadmapIntent } from "@/lib/guestRoadmapConversion";
+import {
+	type AccountRole,
+	buildOnboardingPayload,
+	normalizeSignupLane,
+} from "@/lib/onboardingLane";
 import { runGuestMigrationIfNeeded } from "@/services/migration.service";
+import { useToast } from "../../../hooks/useToast";
+import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
+import {
+	confirmEmailVerificationCode,
+	requestEmailVerificationCode,
+} from "../../../lib/email-otp-api";
+import { supabase } from "../../../lib/supabase";
+import { fetchProfile, profileKeys } from "../../../queries/profile";
+import { useAuthStore } from "../../../stores/authStore";
+import { SignupStepAccount } from "./SignupStepAccount";
+import { SignupStepLane } from "./SignupStepLane";
+import { SignupStepPassword } from "./SignupStepPassword";
+import { SignupStepProfile } from "./SignupStepProfile";
 
 interface SignupFormProps {
 	redirectUrl?: string;
@@ -66,20 +70,30 @@ export function SignupForm(_props: SignupFormProps) {
 	// default. Lane is editable from Step 1 (the lane picker); whatever the
 	// user lands on is persisted to sessionStorage so the wizard survives
 	// refreshes without losing the choice.
-	const resolveLane = (): OnboardingLane => {
+	const resolveLane = (): AccountRole => {
+		const normalize = (candidate: OnboardingLane): AccountRole =>
+			normalizeSignupLane(candidate, search.intent);
 		if (search.lane) {
-			sessionStorage.setItem("signup_lane", search.lane);
-			return search.lane;
+			const resolved = normalize(search.lane);
+			sessionStorage.setItem("signup_lane", resolved);
+			return resolved;
 		}
 		const stored = sessionStorage.getItem("signup_lane");
-		if (stored === "client_freelancer" || stored === "consultant") {
-			return stored;
+		if (
+			stored === "client_freelancer" ||
+			stored === "client" ||
+			stored === "talent" ||
+			stored === "consultant"
+		) {
+			return normalize(stored);
 		}
-		sessionStorage.setItem("signup_lane", "client_freelancer");
-		return "client_freelancer";
+		const fallback: AccountRole =
+			search.intent === "freelancer" ? "talent" : "client";
+		sessionStorage.setItem("signup_lane", fallback);
+		return fallback;
 	};
-	const [lane, setLaneState] = useState<OnboardingLane>(() => resolveLane());
-	const setLane = (next: OnboardingLane) => {
+	const [lane, setLaneState] = useState<AccountRole>(() => resolveLane());
+	const setLane = (next: AccountRole) => {
 		sessionStorage.setItem("signup_lane", next);
 		setLaneState(next);
 	};
@@ -203,7 +217,6 @@ export function SignupForm(_props: SignupFormProps) {
 				source: "signup",
 				authMethod: "password",
 				lane,
-				intent: search.intent,
 			});
 
 			// 1. Create the Supabase auth user
@@ -312,18 +325,8 @@ export function SignupForm(_props: SignupFormProps) {
 				});
 			}
 
-			// Lane-aware completion. Server writes settings.onboarding.lane,
-			// stores onboarding intent and provisions the personal workspace.
-			const intent =
-				lane === "client_freelancer"
-					? {
-							client: search.intent !== "freelancer",
-							freelancer: search.intent === "freelancer",
-						}
-					: { client: false, freelancer: false };
-
 			try {
-				await completeOnboarding({ lane, intent });
+				await completeOnboarding(buildOnboardingPayload(lane, search.intent));
 			} catch (onboardingErr) {
 				// Non-fatal — settings can be retried from /welcome on next visit.
 				// Still log it so we notice if it's a recurring failure.
@@ -460,7 +463,6 @@ export function SignupForm(_props: SignupFormProps) {
 							onBack={() => setStep(1)}
 							authRedirect={search.redirect}
 							authLane={lane}
-							authIntent={search.intent}
 						/>
 					</motion.div>
 				)}

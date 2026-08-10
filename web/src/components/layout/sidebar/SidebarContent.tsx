@@ -11,6 +11,7 @@ import {
 	Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { type Project, projectService } from "@/services/project.service";
 import {
 	listMyTeams,
@@ -194,9 +195,7 @@ export function SidebarContent() {
 			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
 				<div className="space-y-0.5">
 					{DASHBOARD_PRIMARY_NAV_ITEMS.filter(
-						(item) =>
-							item.key !== "finance" ||
-							profile?.is_consultant_verified === true,
+						(item) => item.key !== "finance" || isActiveConsultant(profile),
 					).map((item) => (
 						<SidebarNavLink
 							key={item.key}

@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -62,6 +63,13 @@ export default function UserMenu() {
 		setIsOpen(false);
 		navigate({ to: "/" });
 	};
+	const accountLabel = isActiveConsultant(profile)
+		? "Verified consultant"
+		: profile?.role === "consultant"
+			? "Consultant"
+			: profile?.role === "client"
+				? "Client"
+				: "Talent";
 
 	return (
 		<div className="relative overflow-visible" ref={dropdownRef}>
@@ -89,7 +97,7 @@ export default function UserMenu() {
 						{getDisplayName()}
 					</span>
 					<span className="text-xs font-medium text-slate-500">
-						{profile?.is_consultant_verified ? "Verified consultant" : "Member"}
+						{accountLabel}
 					</span>
 				</div>
 

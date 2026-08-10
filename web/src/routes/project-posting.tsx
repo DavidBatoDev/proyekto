@@ -21,6 +21,7 @@ import {
 } from "@/components/project-brief";
 import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
 import { useToast } from "@/hooks/useToast";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
 import { useProfile } from "@/stores/authStore";
@@ -128,7 +129,7 @@ function ProjectPostingPage() {
 
 	// The picked team's cut-off config drives the billing-period preview, so the
 	// schedule shown here matches the periods the team actually gets paid on.
-	const isVerifiedConsultant = profile?.is_consultant_verified === true;
+	const isVerifiedConsultant = isActiveConsultant(profile);
 	const effectiveIntent: ProjectCreationIntent =
 		isVerifiedConsultant && creationIntent === "consultant"
 			? "consultant"
