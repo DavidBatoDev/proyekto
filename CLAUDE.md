@@ -8,14 +8,14 @@ Proyekto is a managed work-delivery platform for digital projects: Clients fund 
 
 Brand rule: the product is "Proyekto" in ALL user-facing copy - "Prodigy" and the prdigy/ folder name are legacy only.
 
-Product docs: docs/01-product/. The docs/ tree (sections 00-12) is authoritative and source-verified; the setup guide is docs/00-getting-started/setup.md.
+Product docs: docs/01-product/. The docs/ tree (sections 00-13) is authoritative and source-verified; sections 00-12 describe shipped behaviour, 13-proposals holds reviewed-but-unbuilt designs; the setup guide is docs/00-getting-started/setup.md.
 
 ## Repository Layout
 
 Proyekto is a monorepo with six deployable units. Each unit has its own CLAUDE.md with local commands, conventions, and gotchas - read it before working in that unit.
 
 - web/ - React 19 + Vite + TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow/dagre (roadmap canvas), Supabase client, Capacitor mobile. Dev port 3000, path alias @/* -> web/src/*. See web/CLAUDE.md.
-- backend/ - NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Cloud Run as a Docker image (container starts backend/src/server.ts; backend/src/lambda.ts is an orphaned Vercel adapter, not deployed). 26 feature modules under backend/src/modules/ as of 2026-07 - the list drifts; `ls backend/src/modules` is the source of truth. See backend/CLAUDE.md.
+- backend/ - NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Cloud Run as a Docker image (container starts backend/src/server.ts; backend/src/lambda.ts is an orphaned Vercel adapter, not deployed). 31 feature modules under backend/src/modules/ as of 2026-08 - the list drifts; `ls backend/src/modules` is the source of truth. See backend/CLAUDE.md.
 - agent/ - Python 3.12 FastAPI AI agent powering roadmap AI. Entry: agent/run.py -> app.main:app (port 8010). The single brain is the v2 tool-calling loop in agent/app/core/v2/ over the OpenAI Responses API (OPENAI_MODEL_V2). Session state via Upstash Redis. Deployed to Cloud Run (Docker built from repo root). See agent/CLAUDE.md.
 - realtime/ - Cloudflare Worker + Durable Objects carrying collaborative realtime (roadmap canvas + chat), replacing Supabase Realtime. Shipped dormant behind transport flags. Buckets: R2 proyekto-media / proyekto-private. See realtime/CLAUDE.md.
 - supabase/ - migrations/ (source of truth for DB schema). No edge functions: the 4 that existed were dead code and were removed 2026-08-03; outbound email is the backend's MailerService. See supabase/CLAUDE.md.

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 import { PermissionCatalogPage } from "@/components/project/people/PermissionCatalogPage";
+import { ProjectTeamAdminGate } from "@/components/project/people/ProjectTeamAdminGate";
+import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 
 export const Route = createFileRoute("/project/$projectId/team/catalog")({
 	component: RouteComponent,
@@ -11,7 +12,9 @@ function RouteComponent() {
 
 	return (
 		<TeamPageLayout projectId={projectId}>
-			<PermissionCatalogPage />
+			<ProjectTeamAdminGate projectId={projectId}>
+				<PermissionCatalogPage />
+			</ProjectTeamAdminGate>
 		</TeamPageLayout>
 	);
 }

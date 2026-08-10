@@ -13,12 +13,12 @@ Local context for the web unit. Cross-cutting rules live in the root CLAUDE.md.
 ## Conventions
 
 - Path alias @/* -> web/src/*.
-- Routing: TanStack Router file-based routes under src/routes/, split per persona (admin/, client/, consultant/, freelancer/, profile/, project/, roadmap/, roadmap-templates/, teams/, ...). src/routeTree.gen.ts is GENERATED - never hand-edit (a hook blocks it); it regenerates via the dev server or build.
+- Routing: TanStack Router file-based routes under src/routes/, grouped by product area (admin/, auth/, consultant/, contract/, finance/, freelancer/, oauth/, profile/, project/, roadmap/, roadmap-templates/, settings/, teams/) - there is NO client/ subtree. src/routeTree.gen.ts is GENERATED - never hand-edit (a hook blocks it); it regenerates via the dev server or build.
 - New page paths must be added to Header.tsx validPaths or the header breaks on them.
 - Styling: MUI 7 and Tailwind 4 coexist. Use theme tokens (bg-primary, text-primary, the blue-600 scale) - NEVER hardcode hex colors. Theme tokens live in src/styles.css.
 - User-facing copy says "Proyekto" - never "Prodigy".
 - State: server state in TanStack Query (src/queries/), client state in the 5 Zustand stores (src/stores/: authStore, roadmapStore, roadmapAiThreadsStore, projectSettingsStore, appearanceStore). API calls go through src/services/ + src/api/ (axios.ts for backend, agent-axios.ts for the agent).
-- Roadmap canvas: XYFlow + dagre; epic/feature/task mutations use optimistic updates with rollback - follow the existing pattern in roadmapStore/services when adding operations.
+- Roadmap canvas: XYFlow (dagre is a declared dep but is NOT imported anywhere - layout is a hand-written getLayoutedElements in RoadmapView.tsx); epic/feature/task mutations use optimistic updates with rollback - follow the existing pattern in roadmapStore/services when adding operations.
 
 ## Playwright (e2e)
 

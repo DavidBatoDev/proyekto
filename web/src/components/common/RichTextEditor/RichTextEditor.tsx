@@ -81,13 +81,28 @@ export function RichTextEditor({
 		}
 	}, [autoFocus]);
 
-	// Update active formats on selection change
+	// Update active formats on selection change (scoped to editor focused selection)
 	useEffect(() => {
+		let rafId: number | null = null;
 		const updateFormats = () => {
-			setActiveFormats(getActiveFormats());
+			if (rafId !== null) cancelAnimationFrame(rafId);
+			rafId = requestAnimationFrame(() => {
+				const sel = window.getSelection();
+				if (
+					editorRef.current &&
+					sel &&
+					sel.anchorNode &&
+					editorRef.current.contains(sel.anchorNode)
+				) {
+					setActiveFormats(getActiveFormats());
+				}
+			});
 		};
 		document.addEventListener("selectionchange", updateFormats);
-		return () => document.removeEventListener("selectionchange", updateFormats);
+		return () => {
+			if (rafId !== null) cancelAnimationFrame(rafId);
+			document.removeEventListener("selectionchange", updateFormats);
+		};
 	}, []);
 
 	const handleInput = useCallback(() => {
@@ -95,9 +110,9 @@ export function RichTextEditor({
 			isUpdatingRef.current = true;
 			const html = cleanHTML(editorRef.current.innerHTML);
 			onChange(html);
-			setTimeout(() => {
+			requestAnimationFrame(() => {
 				isUpdatingRef.current = false;
-			}, 0);
+			});
 		}
 	}, [onChange]);
 

@@ -1,15 +1,15 @@
 # State & Services
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 Two kinds of state: **server state** (cached by TanStack Query, fetched through
-per-domain service clients) and a small amount of **client state** (four Zustand
+per-domain service clients) and a small amount of **client state** (five Zustand
 stores). API calls go through two axios instances — one for the backend, one for the
 agent.
 
 ## Zustand stores (`web/src/stores/`)
 
-Exactly four:
+Exactly five:
 
 | Store | Holds |
 | --- | --- |
@@ -17,6 +17,7 @@ Exactly four:
 | `roadmapStore` | The roadmap (`roadmap`, `epics`, `milestones`) plus all optimistic bookkeeping and canvas UI state (`canvasViewMode`, open epic tabs, board filters). See [roadmap-canvas.md](./roadmap-canvas.md). |
 | `roadmapAiThreadsStore` | Persisted (localStorage) AI thread picker state — active thread per roadmap + draft input. The threads/messages themselves are server state. |
 | `projectSettingsStore` | Persisted UI prefs (sidebar expanded, toggles); migrates the legacy `prdigy-*` key. |
+| `appearanceStore` | Persisted theme/appearance preferences, backing `/settings/appearance` and the theme tokens in `styles.css`. |
 
 Everything else is server state — don't add a store for data that lives on the backend.
 

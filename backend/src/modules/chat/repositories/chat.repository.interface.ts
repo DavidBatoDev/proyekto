@@ -1,5 +1,21 @@
 export type ChatRole = 'consultant' | 'client' | 'freelancer';
 
+export type ChatProjectRole =
+  | 'owner'
+  | 'admin'
+  | 'editor'
+  | 'commenter'
+  | 'viewer'
+  | 'consultant'
+  | 'client'
+  | 'member';
+
+export type ChatTeam = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+};
+
 export type ChatRoomType = 'channel' | 'dm';
 
 export type ChatRoom = {
@@ -112,6 +128,11 @@ export type ChatParticipant = {
   joined_at: string;
   last_read_at: string | null;
   user: ChatUser | null;
+  /** Project context, enriched by ChatService for channel member lists. */
+  role?: ChatRole;
+  access_role?: ChatProjectRole;
+  position?: string | null;
+  team?: ChatTeam | null;
 };
 
 export type ChatRoomWithLastMessage = ChatRoom & {
@@ -123,7 +144,9 @@ export type ChatRoomWithLastMessage = ChatRoom & {
 export type ChatMemberCandidate = {
   user_id: string;
   role: ChatRole;
+  access_role: ChatProjectRole;
   position: string | null;
+  team: ChatTeam | null;
   user: ChatUser | null;
 };
 

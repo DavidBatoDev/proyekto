@@ -1,6 +1,6 @@
 # Roles and Capabilities
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 Proyekto supports four participant roles without a global account mode. A person can
 fund one project, contribute work to another, and lead a third without switching
@@ -20,6 +20,13 @@ their profile into a different state.
 
 These are contextual responsibilities, not values stored on `profiles`. The app has
 no role switcher and no account-level role enum.
+
+> **The one exception is `project_access.origin`** — the only place in the schema where
+> the string `'client'` is stored as a fact about a person. It is a *source label* for a
+> grant, not an identity, and it is only ever assigned to the person who **created** the
+> project: `respondInvite` hardcodes `origin: 'invited'`, so an invited client does not
+> get it. See [Feature Domains → clients](../11-domains/clients/README.md) for the full
+> model, the resolved permission matrix, and the client user flows.
 
 ## Authorization sources
 
@@ -52,3 +59,4 @@ work migrates to a real account on signup. See
 
 - [project-lifecycle.md](./project-lifecycle.md) — how participants move a project from idea to delivery.
 - [roadmap-and-milestones.md](./roadmap-and-milestones.md) — the planning model they share.
+- [Feature Domains → clients](../11-domains/clients/README.md) — the Client role in depth: structure, permissions, flows, and surfaces.

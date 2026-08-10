@@ -34,7 +34,9 @@ type ProjectRoleData = {
 
 type ProjectMemberRow = {
   user_id: string | null;
+  role?: string | null;
   origin?: string | null;
+  position?: string | null;
   user?:
     | {
         id: string;
@@ -49,6 +51,23 @@ type ProjectMemberRow = {
         email: string | null;
       }>
     | null;
+};
+
+type ProjectTeamMemberRow = {
+  user_id: string;
+  team_id: string;
+};
+
+type ProjectTeamRow = {
+  team_id: string;
+  is_primary: boolean;
+  attached_at: string;
+};
+
+type TeamSummaryRow = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
 };
 
 type RawProjectSelect = {
@@ -237,17 +256,36 @@ export class SupabaseChatRepository implements ChatRepository {
       .select(
         `
         user_id,
+        role,
         origin,
+        position,
         user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email)
       `,
       )
       .eq('project_id', projectId)
       .not('user_id', 'is', null);
 
+    const curatedMembersQuery = this.supabase
+      .from('project_team_members')
+      .select('user_id, team_id')
+      .eq('project_id', projectId);
+
+    const projectTeamsQuery = this.supabase
+      .from('project_teams')
+      .select('team_id, is_primary, attached_at')
+      .eq('project_id', projectId);
+
     const [
       { data: projectData, error: projectError },
       { data: memberRows, error: membersError },
-    ] = await Promise.all([projectQuery, membersQuery]);
+      { data: curatedMemberRows, error: curatedMembersError },
+      { data: projectTeamRows, error: projectTeamsError },
+    ] = await Promise.all([
+      projectQuery,
+      membersQuery,
+      curatedMembersQuery,
+      projectTeamsQuery,
+    ]);
 
     if (projectError || !projectData) {
       throw new Error(projectError?.message || 'Project not found');
@@ -256,6 +294,53 @@ export class SupabaseChatRepository implements ChatRepository {
     if (membersError) {
       throw new Error(membersError.message);
     }
+    if (curatedMembersError) throw new Error(curatedMembersError.message);
+    if (projectTeamsError) throw new Error(projectTeamsError.message);
+
+    const teamIds = Array.from(
+      new Set(
+        ((projectTeamRows ?? []) as ProjectTeamRow[]).map((row) => row.team_id),
+      ),
+    );
+    const teamById = new Map<string, TeamSummaryRow>();
+    if (teamIds.length > 0) {
+      const { data: teamRows, error: teamsError } = await this.supabase
+        .from('teams')
+        .select('id, name, avatar_url')
+        .in('id', teamIds);
+      if (teamsError) throw new Error(teamsError.message);
+      for (const team of (teamRows ?? []) as TeamSummaryRow[]) {
+        teamById.set(team.id, team);
+      }
+    }
+
+    const attachmentRank = new Map(
+      ((projectTeamRows ?? []) as ProjectTeamRow[]).map((row) => [
+        row.team_id,
+        { isPrimary: row.is_primary, attachedAt: row.attached_at },
+      ]),
+    );
+    const teamIdsByUser = new Map<string, string[]>();
+    for (const row of (curatedMemberRows ?? []) as ProjectTeamMemberRow[]) {
+      const current = teamIdsByUser.get(row.user_id) ?? [];
+      current.push(row.team_id);
+      teamIdsByUser.set(row.user_id, current);
+    }
+    for (const ids of teamIdsByUser.values()) {
+      ids.sort((a, b) => {
+        const aRank = attachmentRank.get(a);
+        const bRank = attachmentRank.get(b);
+        if (aRank?.isPrimary !== bRank?.isPrimary) {
+          return aRank?.isPrimary ? -1 : 1;
+        }
+        return (aRank?.attachedAt ?? '').localeCompare(bRank?.attachedAt ?? '');
+      });
+    }
+
+    const teamForUser = (userId: string): TeamSummaryRow | null => {
+      const teamId = teamIdsByUser.get(userId)?.[0];
+      return teamId ? (teamById.get(teamId) ?? null) : null;
+    };
 
     const rawProject = projectData as unknown as RawProjectSelect;
     const project = {
@@ -276,7 +361,9 @@ export class SupabaseChatRepository implements ChatRepository {
           project,
           memberRole: 'client',
         }),
+        access_role: 'client',
         position: 'Client',
+        team: teamForUser(clientProfile.id),
         user: clientProfile,
       });
     }
@@ -290,7 +377,9 @@ export class SupabaseChatRepository implements ChatRepository {
           project,
           memberRole: 'consultant',
         }),
+        access_role: 'consultant',
         position: 'Consultant',
+        team: teamForUser(consultantProfile.id),
         user: consultantProfile,
       });
     }
@@ -310,6 +399,11 @@ export class SupabaseChatRepository implements ChatRepository {
         if (!existing.user && rowUser) {
           existing.user = rowUser;
         }
+        if (row.role) {
+          existing.access_role = row.role as ChatMemberCandidate['access_role'];
+        }
+        if (row.position?.trim()) existing.position = row.position.trim();
+        existing.team = teamForUser(row.user_id);
         continue;
       }
 
@@ -320,7 +414,10 @@ export class SupabaseChatRepository implements ChatRepository {
           project,
           memberRole,
         }),
-        position: null,
+        access_role: (row.role ??
+          'member') as ChatMemberCandidate['access_role'],
+        position: row.position?.trim() || null,
+        team: teamForUser(row.user_id),
         user: this.pickSingle(row.user),
       });
     }

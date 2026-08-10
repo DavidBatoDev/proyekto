@@ -1,6 +1,6 @@
 # Web (Frontend)
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 The React 19 + Vite single-page app — also the mobile app via Capacitor. File-based
 routing (TanStack Router), server state in TanStack Query, a little client state in
@@ -15,7 +15,7 @@ Zustand, and a rich XYFlow roadmap canvas with optimistic UI.
 | --- | --- |
 | [architecture.md](./architecture.md) | Stack, bootstrap, providers, the two API clients, query defaults |
 | [routing-and-personas.md](./routing-and-personas.md) | File-based routes, product-area subtrees, authentication and capability gating |
-| [state-and-services.md](./state-and-services.md) | The four Zustand stores, service clients, TanStack Query usage |
+| [state-and-services.md](./state-and-services.md) | The five Zustand stores, service clients, TanStack Query usage |
 | [roadmap-canvas.md](./roadmap-canvas.md) | The XYFlow canvas, view modes, and the optimistic-UI model |
 
 ## Glossary

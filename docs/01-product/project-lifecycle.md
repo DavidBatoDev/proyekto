@@ -1,6 +1,6 @@
 # Project Lifecycle
 
-> **Last updated:** 2026-07-24 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
 A **project** is the structured container for delivery — it holds the roadmap, the
 team, the conversations, the meetings, and the money. This page walks a project from
@@ -34,7 +34,9 @@ Each project has an owner and a `personal-workspace` flavor for solo/first use.
 The Consultant turns the vision into a **hybrid roadmap** — milestones, epics,
 features, and tasks — often with AI assistance. This is the heart of the product and
 has its own concept page: [roadmap-and-milestones.md](./roadmap-and-milestones.md).
-The roadmap is one-to-one with the project.
+The roadmap is one-to-one with the project — `roadmaps.project_id` carries a `UNIQUE`
+constraint, and the app enforces it as well. Multi-service engagements strain this; see
+[Proposals → organizations and services](../13-proposals/organizations-and-services.md#resolving-1-roadmap--1-service).
 
 ## 3. Team assembly
 

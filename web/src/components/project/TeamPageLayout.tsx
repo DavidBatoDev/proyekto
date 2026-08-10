@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Mail, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { BookOpen, Mail, ShieldCheck, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { useProjectTeamAccess } from "@/components/project/people/useProjectTeamAccess";
 
 interface TeamPageLayoutProps {
 	projectId: string;
@@ -12,21 +13,16 @@ export function TeamPageLayout({ projectId, children }: TeamPageLayoutProps) {
 	const currentPath = useRouterState({
 		select: (state) => state.location.pathname,
 	});
+	const teamAccess = useProjectTeamAccess(projectId);
 
 	const navItems = [
 		{
-			label: "Members",
+			label: "People & teams",
 			to: `/project/${projectId}/team`,
 			icon: Users,
 			// Exact match only — every sub-page's path also starts with this
 			// prefix, so `startsWith` here would keep Members lit everywhere.
 			active: currentPath === `/project/${projectId}/team`,
-		},
-		{
-			label: "Teams",
-			to: `/project/${projectId}/team/teams`,
-			icon: UsersRound,
-			active: currentPath.startsWith(`/project/${projectId}/team/teams`),
 		},
 		{
 			label: "Permissions",
@@ -46,7 +42,9 @@ export function TeamPageLayout({ projectId, children }: TeamPageLayoutProps) {
 			icon: Mail,
 			active: currentPath.startsWith(`/project/${projectId}/team/invites`),
 		},
-	];
+	].filter(
+		(item) => item.label === "People & teams" || teamAccess.canViewAdmin,
+	);
 
 	return (
 		<div className="app-shell-bg h-full min-h-0 overflow-hidden">

@@ -15,6 +15,10 @@ export interface ChatParticipant {
 	joined_at: string;
 	last_read_at: string | null;
 	user: ChatUser | null;
+	role?: ChatMemberRole;
+	access_role?: ChatProjectRole;
+	position?: string | null;
+	team?: ChatTeamSummary | null;
 }
 
 export interface ChatAttachment {
@@ -93,10 +97,28 @@ export interface ChatRoom {
 
 export type ChatMemberRole = "consultant" | "client" | "freelancer";
 
+export type ChatProjectRole =
+	| "owner"
+	| "admin"
+	| "editor"
+	| "commenter"
+	| "viewer"
+	| "consultant"
+	| "client"
+	| "member";
+
+export interface ChatTeamSummary {
+	id: string;
+	name: string;
+	avatar_url: string | null;
+}
+
 export interface ChatMemberCandidate {
 	user_id: string;
 	role: ChatMemberRole;
+	access_role: ChatProjectRole;
 	position: string | null;
+	team: ChatTeamSummary | null;
 	user: ChatUser | null;
 }
 
@@ -226,7 +248,11 @@ class ChatService {
 	// ── Channel management ──────────────────────────────────────────────────
 	createChannel(
 		projectId: string,
-		payload: { name: string; is_private?: boolean },
+		payload: {
+			name: string;
+			is_private?: boolean;
+			kind?: "client_project";
+		},
 	): Promise<ChatRoom> {
 		return this.request<ChatRoom>(`/projects/${projectId}/chat/channels`, {
 			method: "POST",

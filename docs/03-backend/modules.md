@@ -1,8 +1,8 @@
 # Modules
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-07 · **Status:** current
 
-The backend is **27 feature modules** under
+The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
@@ -31,6 +31,10 @@ R2**, not Supabase Storage.
 | `payments` | Wallet + **legacy** escrow/checkpoints (partly dead) | `wallets` (+ dropped `payment_checkpoints`, `transactions`) |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
+| `contracts` | Service agreements, the services catalog, signing (in-app + tokenized link), amendments, project activation | `contracts`, `contract_signature_links`, `project_economics`, `project_member_allocations` |
+| `finance` | Consultant-only cross-project money portfolio | *(reads `contracts`, `invoices`)* |
+| `financials` | Per-project financial panel | *(reads `project_economics`, `task_time_logs`)* |
+| `activity` | Project activity feed read API | `project_activity_log` |
 | `meetings` | Meetings + recurring series + reminders | `meetings`, `meeting_series`, `meeting_participants` |
 | `chat` | Project channels, DMs, reactions, activity feed | `chat_rooms`, `chat_room_*` |
 | `notifications` | In-app notifications; fans out to push | `notifications`, `notification_types` |
