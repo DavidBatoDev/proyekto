@@ -173,7 +173,7 @@ export class FinancialsService {
     projectId: string,
   ): Promise<{ company_percent: number; team_percent: number } | null> {
     const { data } = await this.supabase
-      .from('project_economics')
+      .from('finance_project_settings')
       .select('company_percent, team_percent')
       .eq('project_id', projectId)
       .maybeSingle();

@@ -48,8 +48,8 @@ the client price.
 flowchart TD
     CLIENT["Client"] -->|"invoices<br/>priced at contracts.client_hourly_rate<br/>or recurring_fee"| CONS["Consultant / provider"]
     CONS -->|"payouts<br/>priced at team_member_rates<br/>→ task_time_logs.rate_snapshot"| TEAM["Team members"]
-    ECON["project_economics<br/>company_percent + team_percent = 100"] -.->|splits revenue| CONS
-    ALLOC["project_member_allocations<br/>per-member slice"] -.->|INTERNAL, never reaches a client| TEAM
+    ECON["finance_project_settings<br/>company_percent + team_percent = 100"] -.->|splits revenue| CONS
+    ALLOC["finance_member_allocations<br/>per-member slice"] -.->|INTERNAL, never reaches a client| TEAM
 
     style CLIENT fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
     style TEAM fill:#fef9c3,stroke:#ca8a04,color:#713f12
@@ -61,7 +61,7 @@ flowchart TD
 | `contracts.recurring_fee` | Retainer amount | ✅ |
 | `team_member_rates.hourly_rate` | The member's internal cost | ❌ **never** |
 | `task_time_logs.rate_snapshot` | Cost at time of logging | ❌ **never** |
-| `project_member_allocations` | Each member's slice of the team pool | ❌ — "INTERNAL — never reaches a client" |
+| `finance_member_allocations` | Each member's slice of the team pool | ❌ — "INTERNAL — never reaches a client" |
 
 Automated invoicing drafts one invoice per contract per closed billing period and notifies the
 consultant. **Nothing is sent to a client automatically** — issuing is always a human action.

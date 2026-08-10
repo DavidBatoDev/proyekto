@@ -1,6 +1,6 @@
 # Project Lifecycle
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 A **project** is the structured container for delivery — it holds the roadmap, the
 team, the conversations, the meetings, and the money. This page walks a project from
@@ -69,7 +69,7 @@ carries the editable clause set that renders the Service Agreement.
 
 Flipping a project to `active` — the state that means it is paying the consultant and
 the team — runs an **activation checklist** (`GET /api/projects/:id/activation-checklist`):
-a fully signed contract, a `project_economics` split (company % vs team %), an attached
+a fully signed contract, a `finance_project_settings` split (company % vs team %), an attached
 team, a rate for every curated member (`hourly` or `fixed`), hour limits on hourly
 members, and an identified client. `ProjectsService.updateProject` refuses the
 transition until the blockers clear.

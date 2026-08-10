@@ -3,7 +3,7 @@
 > **Last updated:** 2026-08-10 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **239 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **240 migrations** spanning
 2025-12-11 → 2026-08-10. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -71,8 +71,8 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `invoice_payments`, `invoice_events` | Payment recording/reversal and the invoice audit trail |
 | `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). Snapshots both parties, carries `client_hourly_rate` (**client-facing**, never the internal cost rate), a `clauses` jsonb, and a **`services` jsonb catalog** picked into invoice lines |
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
-| `project_economics` | Company % vs team % revenue split per project (CHECK sums to 100) |
-| `project_member_allocations` | Each member's slice of the team pool — **internal, never reaches a client** |
+| `finance_project_settings` | Company % vs team % revenue split and allocation mode per project (CHECK sums to 100) |
+| `finance_member_allocations` | Each member's slice of a project's team pool — **internal, never reaches a client** |
 
 > **⚠️ Dead tables:** `payment_checkpoints` (initial schema) and `transactions`
 > (escrow migration) were **dropped** on 2026-01-11 (`20260111000000_drop_old_project_tables.sql`)

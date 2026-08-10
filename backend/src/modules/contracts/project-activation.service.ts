@@ -151,7 +151,7 @@ export class ProjectActivationService {
     };
 
     const { data, error } = await this.supabase
-      .from('project_economics')
+      .from('finance_project_settings')
       .upsert(payload, { onConflict: 'project_id' })
       .select('*')
       .single();
@@ -171,7 +171,7 @@ export class ProjectActivationService {
     projectId: string,
   ): Promise<ProjectMemberAllocationRow[]> {
     const { data, error } = await this.supabase
-      .from('project_member_allocations')
+      .from('finance_member_allocations')
       .select('project_id, team_id, user_id, monthly_allocation, currency')
       .eq('project_id', projectId);
     if (error) throw new Error(error.message);
@@ -207,7 +207,7 @@ export class ProjectActivationService {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await this.supabase
-        .from('project_member_allocations')
+        .from('finance_member_allocations')
         .upsert(rows, { onConflict: 'project_id,team_id,user_id' });
       if (error) throw new BadRequestException(error.message);
     }
@@ -219,7 +219,7 @@ export class ProjectActivationService {
     );
     for (const row of stale) {
       const { error } = await this.supabase
-        .from('project_member_allocations')
+        .from('finance_member_allocations')
         .delete()
         .eq('project_id', projectId)
         .eq('team_id', row.team_id)
@@ -454,7 +454,7 @@ export class ProjectActivationService {
     projectId: string,
   ): Promise<ProjectEconomicsRow | null> {
     const { data, error } = await this.supabase
-      .from('project_economics')
+      .from('finance_project_settings')
       .select('*')
       .eq('project_id', projectId)
       .maybeSingle();
