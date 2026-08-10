@@ -4,7 +4,7 @@ Local context for the backend unit. Cross-cutting rules live in the root CLAUDE.
 
 ## Commands (run from backend/)
 
-- npm run dev - nest start --watch (port 3001, global prefix /api)
+- npm run dev - SWC watch transpilation with background type-checking (port 3001, global prefix /api)
 - npm test - Jest (config inline in package.json, rootDir is src/, picks up *.spec.ts)
 - npx jest path/to/file.spec.ts - single spec. Jest rootDir is src/ - pass paths RELATIVE TO backend/src/ (or absolute).
 - npm run test:e2e - Jest via test/jest-e2e.json
