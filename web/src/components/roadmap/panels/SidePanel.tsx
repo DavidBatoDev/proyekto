@@ -31,7 +31,6 @@ import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
 import { uploadService } from "@/services/upload.service";
 import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
-import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
 import { DueDatePicker } from "./DueDatePicker";
@@ -268,8 +267,6 @@ export const SidePanel = ({
 	const [fetchedProjectMembers, setFetchedProjectMembers] = useState<
 		ProjectMember[]
 	>([]);
-	const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
-		useState(false);
 	const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 	const [isDuplicateConfirmOpen, setIsDuplicateConfirmOpen] = useState(false);
 
@@ -355,7 +352,6 @@ export const SidePanel = ({
 			setAssigneeSearch("");
 			setComments([]);
 			setIsLoadingComments(false);
-			setShowUnsavedChangesConfirm(false);
 			setIsDeleteConfirmOpen(false);
 			setIsEditingDescription(false);
 			setAttachments([]);
@@ -859,51 +855,46 @@ export const SidePanel = ({
 		}
 	};
 
-	const handleSave = () => {
-		if (isInteractionDisabled) return false;
-
-		if (isCreateMode) {
-			if (!newTaskData.title?.trim()) {
-				alert("Task title is required");
-				return false;
-			}
-			if (onCreateTask) {
-				void Promise.resolve(
-					onCreateTask({
-						...newTaskData,
+	// Closing is the only way to finish now — no Create/Save/Cancel buttons.
+	// Any pending edit autosaves on the way out; a blank title can't be
+	// submitted, so that case is discarded with a heads-up toast instead.
+	// Unlike the old Save button (which waited for the request to resolve
+	// before closing), this closes immediately and lets the save happen in
+	// the background — a failure still surfaces via the caller's own
+	// toast.error, it just won't block the close.
+	const handleRequestClose = () => {
+		if (isLoading) return;
+		if (hasUnsavedChanges) {
+			if (isCreateMode) {
+				if (newTaskData.title?.trim() && onCreateTask) {
+					void Promise.resolve(
+						onCreateTask({
+							...newTaskData,
+							description: descriptionDraft || null,
+							checklist: checklistItems,
+						}),
+					).catch(() => undefined);
+				} else {
+					toast.error("Title is required — draft discarded");
+				}
+			} else if (editedTask) {
+				if (editedTask.title?.trim()) {
+					const savedTask = {
+						...editedTask,
 						description: descriptionDraft || null,
 						checklist: checklistItems,
-					}),
-				).catch(() => undefined);
-			}
-			onClose();
-			return true;
-		} else {
-			if (editedTask) {
-				if (!editedTask.title?.trim()) {
-					alert("Task title is required");
-					return false;
+					};
+					void Promise.resolve(onUpdateTask(savedTask))
+						.then(() => {
+							// Fire pulse after the panel's 300ms exit animation finishes
+							if (onSaved) setTimeout(() => onSaved(savedTask), 350);
+						})
+						.catch(() => undefined);
+				} else {
+					toast.error("Title is required — changes were discarded");
 				}
-				const savedTask = {
-					...editedTask,
-					description: descriptionDraft || null,
-					checklist: checklistItems,
-				};
-				void Promise.resolve(onUpdateTask(savedTask))
-					.then(() => {
-						onClose();
-						// Fire pulse after the panel's 300ms exit animation finishes
-						if (onSaved) setTimeout(() => onSaved(savedTask), 350);
-					})
-					.catch(() => undefined);
-				return true;
 			}
 		}
-		return false;
-	};
-
-	const closeImmediately = () => {
-		if (isLoading) return;
 		if (isCreateMode) {
 			setNewTaskData({
 				title: "",
@@ -912,17 +903,7 @@ export const SidePanel = ({
 				work_type: "real_work",
 			});
 		}
-		setShowUnsavedChangesConfirm(false);
 		onClose();
-	};
-
-	const handleRequestClose = () => {
-		if (isLoading) return;
-		if (hasUnsavedChanges) {
-			setShowUnsavedChangesConfirm(true);
-			return;
-		}
-		closeImmediately();
 	};
 
 	const handleCopyTaskLink = () => {
@@ -941,31 +922,20 @@ export const SidePanel = ({
 		toast.success("Link copied to clipboard");
 	};
 
-	const handleSaveBeforeClose = () => {
-		if (isInteractionDisabled) return;
-		const didSave = handleSave();
-		if (didSave) setShowUnsavedChangesConfirm(false);
-	};
-
-	// Handle keyboard shortcuts
+	// Handle keyboard shortcuts. Ctrl+Enter is now just a "close now" alias —
+	// closing always autosaves, so there's nothing distinct left for it to do.
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (!isOpen) return;
 			if (e.key === "Escape" && !isLoading) handleRequestClose();
 			if (e.ctrlKey && e.key === "Enter" && !isInteractionDisabled) {
 				e.preventDefault();
-				handleSave();
+				handleRequestClose();
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [
-		handleRequestClose,
-		handleSave,
-		isInteractionDisabled,
-		isLoading,
-		isOpen,
-	]);
+	}, [handleRequestClose, isInteractionDisabled, isLoading, isOpen]);
 
 	// Flat task list for dependency search (from store)
 	const storeEpics = useRoadmapStore((s) => s.epics);
@@ -1817,48 +1787,11 @@ export const SidePanel = ({
 				)}
 			</div>
 
-			{/* Footer Actions */}
+			{/* Footer Actions — no Create/Save/Cancel; closing autosaves. Edit
+			    mode keeps its non-save utility actions (duplicate/link/delete). */}
 			<div className="border-t border-gray-200 px-6 py-4 bg-gray-50 shrink-0">
-				{isCreateMode ? (
-					<div className="flex items-center gap-2">
-						<Button
-							onClick={handleSave}
-							variant="contained"
-							colorScheme="primary"
-							size="md"
-							className="flex-1 flex items-center justify-center gap-2"
-							disabled={isInteractionDisabled}
-						>
-							{isLoading && (
-								<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-							)}
-							{isLoading ? "Creating..." : "Create Task"}
-						</Button>
-						<Button
-							onClick={handleRequestClose}
-							variant="outlined"
-							colorScheme="secondary"
-							size="md"
-							disabled={isLoading}
-						>
-							Cancel
-						</Button>
-					</div>
-				) : (
-					<div className="flex items-center gap-2 w-full">
-						<Button
-							onClick={handleSave}
-							variant="contained"
-							colorScheme="primary"
-							size="md"
-							className="flex-1 flex items-center justify-center gap-2"
-							disabled={isInteractionDisabled}
-						>
-							{isLoading && (
-								<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-							)}
-							{isLoading ? "Saving..." : "Save Changes"}
-						</Button>
+				{!isCreateMode && (
+					<div className="flex items-center justify-end gap-2 w-full">
 						{onDuplicateTask && (
 							<Button
 								onClick={() => {
@@ -1901,7 +1834,7 @@ export const SidePanel = ({
 					</div>
 				)}
 				<p className="text-xs text-gray-500 mt-2 text-center">
-					Press Esc to close | Ctrl+Enter to save
+					Changes save automatically when you close this panel
 				</p>
 			</div>
 		</div>
@@ -1953,19 +1886,6 @@ export const SidePanel = ({
 				</AnimatePresence>,
 				document.body,
 			)}
-			<UnsavedChangesConfirmModal
-				isOpen={isOpen && showUnsavedChangesConfirm}
-				isSaving={isLoading}
-				isSaveDisabled={
-					!(
-						(isCreateMode ? newTaskData.title : editedTask?.title)?.trim() ?? ""
-					)
-				}
-				entityLabel="task"
-				onCancel={() => setShowUnsavedChangesConfirm(false)}
-				onDiscard={closeImmediately}
-				onSave={handleSaveBeforeClose}
-			/>
 
 			{createPortal(
 				<AnimatePresence>

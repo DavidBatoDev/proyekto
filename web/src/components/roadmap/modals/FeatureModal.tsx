@@ -34,7 +34,6 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { SortableTaskList } from "../widgets/SortableTaskList";
 import { CommentsSection } from "../shared/CommentsSection";
 import { commentsService } from "@/services/roadmap.service";
-import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
@@ -79,7 +78,7 @@ export const FeatureModal = ({
 	epicTitle: _epicTitle,
 	initialData,
 	titleText: _titleText = "Add Feature",
-	submitLabel = "Create Feature",
+	submitLabel: _submitLabel = "Create Feature",
 	onClose,
 	onAddTask,
 	onUpdateTask,
@@ -154,8 +153,6 @@ export const FeatureModal = ({
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [showReadMore, setShowReadMore] = useState(false);
-	const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
-		useState(false);
 	const [comments, setComments] = useState<Comment[]>([]);
 	const [loadingComments, setLoadingComments] = useState(false);
 	// The explicit feature team (editable). Initialized from initialData.
@@ -211,7 +208,6 @@ export const FeatureModal = ({
 			setTeamSearch("");
 			setIsEditingDescription(false);
 			setIsExpanded(false);
-			setShowUnsavedChangesConfirm(false);
 		}
 	}, [isOpen, initialData?.id]);
 
@@ -243,12 +239,6 @@ export const FeatureModal = ({
 		document.addEventListener("mousedown", handlePointerDown);
 		return () => document.removeEventListener("mousedown", handlePointerDown);
 	}, [isTeamMenuOpen]);
-
-	useEffect(() => {
-		if (!isOpen) {
-			setShowUnsavedChangesConfirm(false);
-		}
-	}, [isOpen]);
 
 	useEffect(() => {
 		// Check if content needs "Show more" button after render
@@ -326,24 +316,18 @@ export const FeatureModal = ({
 		assigneeKey,
 	]);
 
+	// Closing is the only way to finish now — no Save/Cancel buttons. Any
+	// pending edit autosaves on the way out; a blank title can't be
+	// submitted, so that case is discarded with a heads-up toast instead.
 	const handleRequestClose = () => {
 		if (isLoading) return;
 		if (hasUnsavedChanges) {
-			setShowUnsavedChangesConfirm(true);
-			return;
+			if (title.trim()) {
+				submitCurrentValues();
+			} else {
+				toast.error("Title is required — changes were discarded");
+			}
 		}
-		onClose();
-	};
-
-	const handleDiscardChanges = () => {
-		setShowUnsavedChangesConfirm(false);
-		onClose();
-	};
-
-	const handleSaveBeforeClose = () => {
-		if (isLoading || isReadOnlyPending || !title.trim()) return;
-		setShowUnsavedChangesConfirm(false);
-		submitCurrentValues();
 		onClose();
 	};
 
@@ -926,27 +910,6 @@ export const FeatureModal = ({
 		</>
 	);
 
-	const footer = (
-		<div className="flex justify-end">
-			<button
-				type="submit"
-				disabled={!title.trim() || isLoading || isReadOnlyPending}
-				className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-			>
-				{isLoading ? (
-					<>
-						<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-						Saving...
-					</>
-				) : isReadOnlyPending ? (
-					"Creating..."
-				) : (
-					submitLabel
-				)}
-			</button>
-		</div>
-	);
-
 	const rightPanelTabs = [
 		{
 			id: "comments",
@@ -1059,32 +1022,20 @@ export const FeatureModal = ({
 	) : null;
 
 	return (
-		<>
-			<RoadmapModalLayout
-				isOpen={isOpen}
-				onClose={handleRequestClose}
-				isReadOnly={isReadOnlyPending}
-				title={title}
-				onTitleChange={setTitle}
-				titlePlaceholder="Feature title"
-				onSubmit={handleSubmit}
-				actionButtons={dateActionButton}
-				showDefaultDatesAction={false}
-				body={body}
-				footer={footer}
-				canComment={Boolean(user) && !isReadOnlyPending}
-				rightPanelTabs={rightPanelTabs}
-				defaultRightPanelTabId="comments"
-			/>
-			<UnsavedChangesConfirmModal
-				isOpen={isOpen && showUnsavedChangesConfirm}
-				isSaving={isLoading}
-				isSaveDisabled={!title.trim()}
-				entityLabel="feature"
-				onCancel={() => setShowUnsavedChangesConfirm(false)}
-				onDiscard={handleDiscardChanges}
-				onSave={handleSaveBeforeClose}
-			/>
-		</>
+		<RoadmapModalLayout
+			isOpen={isOpen}
+			onClose={handleRequestClose}
+			isReadOnly={isReadOnlyPending}
+			title={title}
+			onTitleChange={setTitle}
+			titlePlaceholder="Feature title"
+			onSubmit={handleSubmit}
+			actionButtons={dateActionButton}
+			showDefaultDatesAction={false}
+			body={body}
+			canComment={Boolean(user) && !isReadOnlyPending}
+			rightPanelTabs={rightPanelTabs}
+			defaultRightPanelTabId="comments"
+		/>
 	);
 };

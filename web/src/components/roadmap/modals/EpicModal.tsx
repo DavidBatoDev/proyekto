@@ -9,6 +9,7 @@ import type {
 import { useUser } from "@/auth";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
+import { useToast } from "@/hooks/useToast";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { LabelSelector } from "@/components/common/LabelSelector";
@@ -17,7 +18,6 @@ import { CommentsSection } from "../shared/CommentsSection";
 import { commentsService } from "@/services/roadmap.service";
 import type { Label } from "@/types/label";
 import { LABEL_COLORS } from "@/types/label";
-import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 
 interface EpicModalProps {
 	isOpen: boolean;
@@ -81,11 +81,12 @@ export const EpicModal = ({
 	onSelectTask,
 	initialData,
 	titleText: _titleText = "Add Epic",
-	submitLabel = "Create Epic",
+	submitLabel: _submitLabel = "Create Epic",
 	isLoading = false,
 	isPendingCreate = false,
 }: EpicModalProps) => {
 	const user = useUser();
+	const toast = useToast();
 	const mentionProjectId = useRoadmapStore(
 		(s) => s.roadmap?.project_id ?? null,
 	);
@@ -104,8 +105,6 @@ export const EpicModal = ({
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [showReadMore, setShowReadMore] = useState(false);
-	const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
-		useState(false);
 	const [comments, setComments] = useState<Comment[]>([]);
 	const [loadingComments, setLoadingComments] = useState(false);
 	const descriptionRef = useRef<HTMLDivElement>(null);
@@ -141,7 +140,6 @@ export const EpicModal = ({
 			setDraftStartDate(nextInitialValues.startDate);
 			setDraftEndDate(nextInitialValues.endDate);
 			setIsDateMenuOpen(false);
-			setShowUnsavedChangesConfirm(false);
 
 			setLabels(nextInitialValues.labels);
 
@@ -150,12 +148,6 @@ export const EpicModal = ({
 			setIsExpanded(false);
 		}
 	}, [isOpen, initialData?.id]);
-
-	useEffect(() => {
-		if (!isOpen) {
-			setShowUnsavedChangesConfirm(false);
-		}
-	}, [isOpen]);
 
 	useEffect(() => {
 		// Check if content needs "Show more" button after render
@@ -258,24 +250,18 @@ export const EpicModal = ({
 		);
 	}, [description, endDate, labels, priority, startDate, title]);
 
+	// Closing is the only way to finish now — no Save/Cancel buttons. Any
+	// pending edit autosaves on the way out; a blank title can't be
+	// submitted, so that case is discarded with a heads-up toast instead.
 	const handleRequestClose = () => {
 		if (isLoading) return;
 		if (hasUnsavedChanges) {
-			setShowUnsavedChangesConfirm(true);
-			return;
+			if (title.trim()) {
+				submitCurrentValues();
+			} else {
+				toast.error("Title is required — changes were discarded");
+			}
 		}
-		onClose();
-	};
-
-	const handleDiscardChanges = () => {
-		setShowUnsavedChangesConfirm(false);
-		onClose();
-	};
-
-	const handleSaveBeforeClose = () => {
-		if (isLoading || isReadOnlyPending || !title.trim()) return;
-		setShowUnsavedChangesConfirm(false);
-		submitCurrentValues();
 		onClose();
 	};
 
@@ -664,27 +650,6 @@ export const EpicModal = ({
 		</>
 	);
 
-	const footer = (
-		<div className="flex justify-end">
-			<button
-				type="submit"
-				disabled={!title.trim() || isLoading || isReadOnlyPending}
-				className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-			>
-				{isLoading ? (
-					<>
-						<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-						Saving...
-					</>
-				) : isReadOnlyPending ? (
-					"Creating..."
-				) : (
-					submitLabel
-				)}
-			</button>
-		</div>
-	);
-
 	const rightPanelTabs = [
 		{
 			id: "comments",
@@ -732,33 +697,21 @@ export const EpicModal = ({
 	) : null;
 
 	return (
-		<>
-			<RoadmapModalLayout
-				isOpen={isOpen}
-				onClose={handleRequestClose}
-				isReadOnly={isReadOnlyPending}
-				title={title}
-				onTitleChange={setTitle}
-				titlePlaceholder="Title"
-				onSubmit={handleSubmit}
-				actionButtons={dateActionButton}
-				showDefaultDatesAction={false}
-				body={body}
-				footer={footer}
-				canComment={Boolean(user) && !isReadOnlyPending}
-				rightPanelTabs={rightPanelTabs}
-				defaultRightPanelTabId="comments"
-				autoFocusTitle={true}
-			/>
-			<UnsavedChangesConfirmModal
-				isOpen={isOpen && showUnsavedChangesConfirm}
-				isSaving={isLoading}
-				isSaveDisabled={!title.trim()}
-				entityLabel="epic"
-				onCancel={() => setShowUnsavedChangesConfirm(false)}
-				onDiscard={handleDiscardChanges}
-				onSave={handleSaveBeforeClose}
-			/>
-		</>
+		<RoadmapModalLayout
+			isOpen={isOpen}
+			onClose={handleRequestClose}
+			isReadOnly={isReadOnlyPending}
+			title={title}
+			onTitleChange={setTitle}
+			titlePlaceholder="Title"
+			onSubmit={handleSubmit}
+			actionButtons={dateActionButton}
+			showDefaultDatesAction={false}
+			body={body}
+			canComment={Boolean(user) && !isReadOnlyPending}
+			rightPanelTabs={rightPanelTabs}
+			defaultRightPanelTabId="comments"
+			autoFocusTitle={true}
+		/>
 	);
 };
