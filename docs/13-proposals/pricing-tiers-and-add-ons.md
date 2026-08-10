@@ -14,12 +14,12 @@ Shopify-style **add-ons**, modeled on Shopify / ClickUp / Linear pricing pages.
 Everything here is checked against source. Where the design contradicts current code, the
 file is cited so the cost of the change is visible.
 
-## What exists today (verified 2026-08-10)
+## What exists today (verified 2026-08-10, after the account-role-foundation merge)
 
 ### Nothing that bills a user
 
 - **No** `subscriptions` / `plans` / `tiers` / `entitlements` / `usage` / `seats` table in
-  any of the 237 migrations.
+  any of the 240 migrations.
 - **No** Stripe/Paddle/etc. SDK anywhere. `backend/src/modules/payments/` is the internal
   client-escrow ledger (`wallets`, `transactions`), not platform billing. Every occurrence
   of "billing" in the repo means **contract billing period**
@@ -124,7 +124,11 @@ candidates are already per-team surfaces:
 2. **Finance add-on** → today Finance is free for every verified consultant
    (`finance.controller.ts` class-level `ConsultantOnlyGuard`). Pricing it means the guard
    chain becomes `ConsultantOnlyGuard` **and** `EntitlementGuard('finance')`. Decide the
-   grandfathering story before shipping (E7).
+   grandfathering story before shipping (E7). The Finance domain's table boundary just got
+   crisper: `project_economics` → `finance_project_settings` and
+   `project_member_allocations` → `finance_member_allocations`
+   (`20260810140000_rename_project_finance_tables.sql`), so "what the Finance add-on
+   covers" maps cleanly to the `finance_*` tables plus the `finance/` module.
 
 Future add-ons follow the same shape: a named entitlement key on the team, sold à la carte
 on lower tiers, included in higher tiers.
@@ -200,8 +204,12 @@ Rules, in order of importance:
   three owners** (like Slack workspaces), not one pooled identity. Their *personal*
   capabilities follow their own plan.
 - **E5 — Client on a paid team's project.** Clients ride the team's tier for shared
-  surfaces. A client who *also* creates their own projects (they can — `projects.client_id`)
-  is a Free-tier account for those, subject to Free limits.
+  surfaces. A client who *also* owns their own projects is a Free-tier account for those,
+  subject to Free limits. Note the ownership pointer is now `projects.owner_id` — renamed
+  from `client_id` (`20260810120000_rename_project_client_to_owner.sql` +
+  `20260810130000_drop_project_client_id.sql`) precisely because **any role may own a
+  project**. Per-account limits (rule 3 above) count `owner_id`, which makes this
+  role-neutral by construction.
 - **E6 — External clients (no account).** Contract signing via tokenized link
   (`contract_signature_links`) must never hit an entitlement check — there is no account to
   entitle. Gate Finance for the *consultant* side only.
@@ -251,4 +259,7 @@ Rules, in order of importance:
   anchor above teams (D2, D8).
 - [11-domains/clients](../11-domains/clients/README.md) — why clients don't pay and the
   external-client signing path that must stay entitlement-free (E6).
+- [11-domains/consultants](../11-domains/consultants/README.md) and
+  [11-domains/talent](../11-domains/talent/README.md) — the role domains the tier ladder
+  prices (vetting vs payment axes, E9/E14).
 - `web/src/routes/consultant/index.tsx` — the existing consultant-seat pricing copy.
