@@ -952,7 +952,7 @@ export class ContractsService {
     return patch;
   }
 
-  /** Prefills provider/client blocks from the creator and the project client. */
+  /** Prefills provider/client blocks from the creator and project owner. */
   private async seedParties(
     callerId: string,
     projectId: string,
@@ -968,19 +968,19 @@ export class ContractsService {
 
     const { data: project } = await this.supabase
       .from('projects')
-      .select('client_id')
+      .select('owner_id')
       .eq('id', projectId)
       .maybeSingle();
-    const clientId = (project as { client_id: string | null } | null)
-      ?.client_id;
+    const ownerId = (project as { owner_id: string | null } | null)
+      ?.owner_id;
     // A consultant-created project lists the creator as its own client until a
     // real client is transferred in; seeding that as the counterparty would be
     // misleading, so skip it.
-    if (clientId && clientId !== callerId) {
+    if (ownerId && ownerId !== callerId) {
       const { data: client } = await this.supabase
         .from('profiles')
         .select('display_name, first_name, last_name, email')
-        .eq('id', clientId)
+        .eq('id', ownerId)
         .maybeSingle();
       if (client) {
         if (seeded.client_name === undefined) {
@@ -991,7 +991,7 @@ export class ContractsService {
             (client as { email: string | null }).email ?? null;
         }
         if (seeded.client_user_id === undefined) {
-          seeded.client_user_id = clientId;
+          seeded.client_user_id = ownerId;
         }
       }
     }
@@ -1135,11 +1135,11 @@ export class ContractsService {
   ): Promise<void> {
     const { data: project } = await this.supabase
       .from('projects')
-      .select('client_id, consultant_id, title')
+      .select('owner_id, consultant_id, title')
       .eq('id', contract.project_id)
       .maybeSingle();
     const row = project as {
-      client_id: string | null;
+      owner_id: string | null;
       consultant_id: string | null;
       title: string | null;
     } | null;
@@ -1147,7 +1147,7 @@ export class ContractsService {
     const recipients = new Set<string>();
     if (row?.consultant_id) recipients.add(row.consultant_id);
     if (contract.client_user_id) recipients.add(contract.client_user_id);
-    else if (row?.client_id) recipients.add(row.client_id);
+    else if (row?.owner_id) recipients.add(row.owner_id);
     recipients.delete(actorId);
 
     for (const userId of recipients) {

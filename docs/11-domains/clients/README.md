@@ -1,13 +1,11 @@
 # Clients
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
-The Client is the person paying for the work — and the only participant Proyekto has
-**no table for**. There is no `clients` table. "Client" is assembled at runtime from three
-independent facts: a foreign key on the project, a label on an access row, and a set of
-snapshotted strings on the contract. Understanding which of the three you are looking at is
-the whole game, because they answer different questions and disagree with each other more
-often than you would expect.
+The Client is the person paying for the work. There is no `clients` table: a client account
+is a `profiles` row with `role='client'`, project participation is an access-row origin, and
+the legal payer is snapshotted on the contract. Project ownership is deliberately separate:
+`projects.owner_id` may point to a Client, Talent, or Consultant account.
 
 This folder is the source of truth for how the client role works end to end. If you only
 read one page, read [client-structure.md](./client-structure.md).
@@ -17,18 +15,17 @@ read one page, read [client-structure.md](./client-structure.md).
 > are state machines and multi-actor sequences that ASCII renders badly. GitHub renders
 > Mermaid natively. The rest of `docs/` stays ASCII.
 
-## The three ways a client exists
+## The client facts
 
 | Fact | Answers | Nullable |
 | --- | --- | --- |
-| `projects.client_id → profiles` | "Whose project is this?" | No — `NOT NULL` |
+| `profiles.role = 'client'` | "What is this account's primary identity?" | No |
 | `project_access.origin = 'client'` | "What may this person do here?" | Yes — no row means no access |
 | `contracts.client_name` / `client_email` / `client_user_id` | "Who is on the hook to pay?" | Yes — all of them |
 
-They are set at different times by different code paths and **are not kept in sync**. A
-project always has a `client_id`; it may have no client-origin access row (the consultant
-created the project on the client's behalf and never invited them), and its contract may
-name a completely different legal entity than the `client_id` profile.
+They are set at different times by different code paths and **are not kept in sync**.
+`projects.owner_id` answers only who owns the project container and grants no account-wide
+client identity. A project's contract may name a different legal entity from its owner.
 
 ## What a client can do
 
@@ -71,7 +68,8 @@ name a completely different legal entity than the `client_id` profile.
 | **External client** | A contract counterparty with no `profiles` row. Exists only as `contracts.client_*` strings. |
 | **Signing link** | A 256-bit single-use bearer token (`contract_signature_links`) letting an external client sign without an account. |
 | **Soft isolation** | The rule that a client and the freelance pool cannot DM each other; the consultant mediates. |
-| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `client_id = owner` and `consultant_id IS NULL`. The user is their own client. |
+| **Project owner** | The profile referenced by `projects.owner_id`. Ownership is contextual and does not change `profiles.role`. |
+| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `owner_id` is the workspace user and `consultant_id IS NULL`. |
 
 ## Known gaps
 

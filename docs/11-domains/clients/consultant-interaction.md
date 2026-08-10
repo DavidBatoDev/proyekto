@@ -74,14 +74,15 @@ items gating the billing flip. Two concern the client directly.
 **`client_identified`** — severity `blocker`. Satisfied by *either*:
 
 ```ts
-clientIdentified  = project.client_id && project.client_id !== project.consultant_id
+ownerIdentified   = project.owner_id && project.owner_id !== project.consultant_id
 clientOnContract  = contract.client_user_id || contract.client_email || contract.client_name
-ok = clientIdentified || clientOnContract
+ok = ownerIdentified || clientOnContract
 ```
 
-Note the `!==` guard: a project where the client *is* the consultant (a personal workspace, or
-a consultant testing) does **not** count as having a client. An external client named only on
-the contract does.
+The stable checklist key remains `client_identified`, but `owner_id` is now role-neutral.
+The current fallback treats a non-consultant project owner as the billing client when the
+contract has no client fields. An external client named only on the contract also satisfies
+the check.
 
 **`contract_signed`** — a fully signed contract with usable commercial terms. The client's
 signature can arrive through the app or through a tokenized link.
@@ -127,7 +128,7 @@ A `warning`-severity checklist item surfacing unbilled direct members is propose
 | --- | --- |
 | The consultant cannot be removed from a project | ✅ `revoke()` compares against `projects.consultant_id` |
 | The last owner cannot be removed | ✅ `countOwners()` must exceed 1 |
-| The client cannot be removed | ❌ **no guard** — removing them leaves `client_id` dangling |
+| The project owner's access cannot be removed | ❌ **no guard** — the owner may retain no access row |
 | A client cannot see internal cost rates | ✅ by role defaults + the separate `/finance` consultant guard |
 | A client cannot DM freelancers | ⚠️ default only; overridable per member |
 

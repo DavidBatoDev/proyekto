@@ -471,7 +471,7 @@ export function ProjectContract({
 								canSignAsClient={
 									Boolean(user?.id) &&
 									(contract.client_user_id === user?.id ||
-										project?.client_id === user?.id)
+										project?.owner_id === user?.id)
 								}
 								onSign={(party, name, signatureUrl, placement) =>
 									signMutation.mutate({

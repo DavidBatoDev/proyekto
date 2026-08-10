@@ -8,7 +8,7 @@ export interface ConsultantFinanceProject {
   title: string;
   status: string;
   currency: string | null;
-  client_id: string | null;
+  owner_id: string | null;
   consultant_id: string;
   created_at: string;
 }
@@ -29,7 +29,7 @@ export class ConsultantFinanceAccessService {
       this.supabase
         .from('projects')
         .select(
-          'id, title, status, currency, client_id, consultant_id, created_at',
+          'id, title, status, currency, owner_id, consultant_id, created_at',
         )
         .eq('id', projectId)
         .eq('consultant_id', callerId)
@@ -67,7 +67,7 @@ export class ConsultantFinanceAccessService {
     let query = this.supabase
       .from('projects')
       .select(
-        'id, title, status, currency, client_id, consultant_id, created_at',
+        'id, title, status, currency, owner_id, consultant_id, created_at',
       )
       .eq('consultant_id', callerId)
       .order('updated_at', { ascending: false });

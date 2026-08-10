@@ -103,7 +103,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       this.db
         .from('projects')
         .select('id')
-        .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
       // Slice 3b: project membership now lives in project_shares.
       this.db.from('project_access').select('project_id').eq('user_id', userId),
     ]);
@@ -143,7 +143,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .from('projects')
       .select('id')
       .eq('id', projectId)
-      .or(`client_id.eq.${userId},consultant_id.eq.${userId}`)
+      .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`)
       .maybeSingle();
 
     if (projectError) throw new Error(projectError.message);

@@ -46,9 +46,9 @@ export interface Project {
 	/** Default currency for new rates/contracts/invoices + project time display. */
 	currency?: string;
 	banner_url?: string;
-	client_id: string;
+	owner_id: string;
 	consultant_id?: string;
-	client?: {
+	owner?: {
 		id: string;
 		display_name?: string;
 		avatar_url?: string;

@@ -30,6 +30,6 @@ model, and the RLS/security posture. The schema is **migration-driven**:
 
 ## Code locations
 
-- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (237 files)
+- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (239 files)
 - **Edge functions:** none — the 4 Deno functions were dead code and were removed 2026-08-03; email is [`backend/src/common/mail/`](../../backend/src/common/mail/)
 - **Repositories** (the only code that reads/writes tables): `backend/src/modules/**/repositories/`

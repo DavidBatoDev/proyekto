@@ -8,7 +8,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     id: 'project-1',
     title: 'Project One',
     status: 'draft',
-    client_id: 'client-1',
+    owner_id: 'client-1',
     consultant_id: 'consultant-1',
     platform_fee_percent: 10,
     consultant_fee_percent: 15,
@@ -99,7 +99,7 @@ describe('ProjectsService (resources)', () => {
     const repo = {
       findById: jest
         .fn()
-        .mockResolvedValue(buildProject({ client_id: 'lead-1' })),
+        .mockResolvedValue(buildProject({ owner_id: 'lead-1' })),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
       listProjectResources: jest.fn().mockResolvedValue(payload),
     };

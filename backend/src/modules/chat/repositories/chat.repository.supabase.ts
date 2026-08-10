@@ -28,7 +28,7 @@ const MESSAGE_COLUMNS =
   'id, room_id, project_id, sender_id, content, attachments, mentions, edited_at, deleted_at, reply_to_id, created_at, updated_at';
 
 type ProjectRoleData = {
-  client_id: string;
+  owner_id: string;
   consultant_id: string | null;
 };
 
@@ -71,9 +71,9 @@ type TeamSummaryRow = {
 };
 
 type RawProjectSelect = {
-  client_id: string;
+  owner_id: string;
   consultant_id: string | null;
-  client?:
+  owner?:
     | {
         id: string;
         display_name: string | null;
@@ -152,7 +152,7 @@ export class SupabaseChatRepository implements ChatRepository {
     memberRole?: string | null;
   }): ChatRole {
     if (params.userId === params.project.consultant_id) return 'consultant';
-    if (params.userId === params.project.client_id) return 'client';
+    if (params.userId === params.project.owner_id) return 'client';
 
     const role = String(params.memberRole ?? '')
       .trim()
@@ -167,14 +167,14 @@ export class SupabaseChatRepository implements ChatRepository {
   ): Promise<ProjectRoleData | null> {
     const { data, error } = await this.supabase
       .from('projects')
-      .select('client_id, consultant_id')
+      .select('owner_id, consultant_id')
       .eq('id', projectId)
       .maybeSingle();
 
     if (error || !data) return null;
 
     return {
-      client_id: String(data.client_id),
+      owner_id: String(data.owner_id),
       consultant_id:
         typeof data.consultant_id === 'string' ? data.consultant_id : null,
     };
@@ -192,7 +192,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
     const project = await this.getProjectRoleData(projectId);
     if (!project) return false;
-    return project.client_id === userId || project.consultant_id === userId;
+    return project.owner_id === userId || project.consultant_id === userId;
   }
 
   async resolveProjectRole(
@@ -211,7 +211,7 @@ export class SupabaseChatRepository implements ChatRepository {
     if (error) return null;
 
     if (!data || data.length === 0) {
-      if (userId === project.client_id || userId === project.consultant_id) {
+      if (userId === project.owner_id || userId === project.consultant_id) {
         return this.normalizeRole({ userId, project, memberRole: null });
       }
       return null;
@@ -242,9 +242,9 @@ export class SupabaseChatRepository implements ChatRepository {
       .from('projects')
       .select(
         `
-        client_id,
+        owner_id,
         consultant_id,
-        client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email),
+        owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)
       `,
       )
@@ -344,7 +344,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
     const rawProject = projectData as unknown as RawProjectSelect;
     const project = {
-      client_id: String(rawProject.client_id),
+      owner_id: String(rawProject.owner_id),
       consultant_id:
         typeof rawProject.consultant_id === 'string'
           ? rawProject.consultant_id
@@ -352,19 +352,19 @@ export class SupabaseChatRepository implements ChatRepository {
     } satisfies ProjectRoleData;
 
     const map = new Map<string, ChatMemberCandidate>();
-    const clientProfile = this.pickSingle(rawProject.client);
-    if (clientProfile?.id) {
-      map.set(clientProfile.id, {
-        user_id: clientProfile.id,
+    const ownerProfile = this.pickSingle(rawProject.owner);
+    if (ownerProfile?.id) {
+      map.set(ownerProfile.id, {
+        user_id: ownerProfile.id,
         role: this.normalizeRole({
-          userId: clientProfile.id,
+          userId: ownerProfile.id,
           project,
           memberRole: 'client',
         }),
         access_role: 'client',
         position: 'Client',
-        team: teamForUser(clientProfile.id),
-        user: clientProfile,
+        team: teamForUser(ownerProfile.id),
+        user: ownerProfile,
       });
     }
 
@@ -438,23 +438,23 @@ export class SupabaseChatRepository implements ChatRepository {
     // Either user is a client/consultant on a project the other belongs to.
     const { data: projectsForA, error: projErr } = await this.supabase
       .from('projects')
-      .select('id, client_id, consultant_id')
-      .or(`client_id.eq.${userA},consultant_id.eq.${userA}`);
+      .select('id, owner_id, consultant_id')
+      .or(`owner_id.eq.${userA},consultant_id.eq.${userA}`);
 
     if (!projErr && projectsForA) {
       for (const p of projectsForA) {
-        if (p.client_id === userB || p.consultant_id === userB) return true;
+        if (p.owner_id === userB || p.consultant_id === userB) return true;
       }
     }
 
     const { data: projectsForB, error: projErrB } = await this.supabase
       .from('projects')
-      .select('id, client_id, consultant_id')
-      .or(`client_id.eq.${userB},consultant_id.eq.${userB}`);
+      .select('id, owner_id, consultant_id')
+      .or(`owner_id.eq.${userB},consultant_id.eq.${userB}`);
 
     if (!projErrB && projectsForB) {
       for (const p of projectsForB) {
-        if (p.client_id === userA || p.consultant_id === userA) return true;
+        if (p.owner_id === userA || p.consultant_id === userA) return true;
       }
     }
 

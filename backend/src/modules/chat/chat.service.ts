@@ -413,7 +413,7 @@ export class ChatService {
    * (commenter and above); a viewer is a project member but may not post.
    * The capability is resolved from `project_access`, but we must preserve the
    * chat layer's consultant/client fallback: a consultant/client can be present
-   * on a project only via `projects.consultant_id`/`client_id` with no
+   * on a project only via `projects.consultant_id`/`owner_id` with no
    * `project_access` row (the invariant is app-maintained, not DB-enforced),
    * and `resolvePermissions` — which reads only `project_access` — can't see
    * them. Never regress those trusted roles to a 403.

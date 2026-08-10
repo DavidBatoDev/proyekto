@@ -525,9 +525,9 @@ export class TeamsService {
         start_date: string | null;
         custom_start_date: string | null;
         banner_url: string | null;
-        client_id: string | null;
+        owner_id: string | null;
         consultant_id: string | null;
-        client: {
+        owner: {
           id: string;
           display_name: string | null;
           avatar_url: string | null;
@@ -542,8 +542,8 @@ export class TeamsService {
       .select(
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
-           id, title, status, start_date, custom_start_date, banner_url, client_id, consultant_id,
-           client:profiles!projects_client_id_fkey(id, display_name, avatar_url)
+           id, title, status, start_date, custom_start_date, banner_url, owner_id, consultant_id,
+           owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url)
          )`,
       )
       .eq('team_id', teamId)
@@ -561,9 +561,9 @@ export class TeamsService {
         start_date: string | null;
         custom_start_date: string | null;
         banner_url: string | null;
-        client_id: string | null;
+        owner_id: string | null;
         consultant_id: string | null;
-        client: {
+        owner: {
           id: string;
           display_name: string | null;
           avatar_url: string | null;

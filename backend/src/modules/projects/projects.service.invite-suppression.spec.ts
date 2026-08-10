@@ -17,7 +17,7 @@ describe('ProjectsService — invite email honours the suppression list', () => 
     id: 'project-1',
     title: 'Analytical Engine',
     status: 'active',
-    client_id: 'client-1',
+    owner_id: 'client-1',
     consultant_id: 'consultant-1',
     platform_fee_percent: 10,
     consultant_fee_percent: 15,

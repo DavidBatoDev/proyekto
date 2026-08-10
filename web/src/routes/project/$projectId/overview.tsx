@@ -210,7 +210,7 @@ function OverviewPage() {
 	const memberRole = (currentMember?.role ?? "").toLowerCase();
 	const isOwnerOnProject =
 		user?.id !== undefined &&
-		(project?.client_id === user.id || project?.consultant_id === user.id);
+		(project?.owner_id === user.id || project?.consultant_id === user.id);
 	const canEditOverview =
 		isOwnerOnProject ||
 		["owner", "admin", "editor", "client", "consultant"].includes(memberRole);
@@ -364,7 +364,7 @@ function OverviewPage() {
 							</div>
 							<OverviewContent
 								projectTitle={project.title}
-								clientName={project.client?.display_name}
+								ownerName={project.owner?.display_name}
 								consultantName={project.consultant?.display_name}
 								summaryHtml={summaryHtml}
 								customFields={customFields}

@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -22,11 +22,12 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Team** | A reusable group of people; attached to projects and curated per project. |
 | **`project_access`** | The authorization row — exactly one per (project, user) since `20260507000130` — carrying a `share_role` (`owner > admin > editor > commenter > viewer`), an `origin` label, and a capabilities delta. |
 | **Origin** | The *source* of an access grant, not a rank: `client`, `consultant`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. Patches permissions via `ORIGIN_DELTAS`. |
-| **Client** | An account identity for people commissioning work. A project's actual client relationship still comes from `projects.client_id`, `project_access.origin='client'`, and contract snapshots. See [Clients](../11-domains/clients/README.md). |
+| **Client** | An account identity for people commissioning work. Project ownership is separate; project participation and the legal payer come from `project_access` and contract snapshots. See [Clients](../11-domains/clients/README.md). |
+| **Project owner** | The profile referenced by `projects.owner_id`. Any account role may own a project; ownership does not change `profiles.role`. |
 | **External client** | A contract counterparty with no account, existing only as `contracts.client_*` strings, who signs via a tokenized link. |
 | **Contract** | The service agreement for a project (`contracts`) — parties, commercial terms, term dates, clause set, and a jsonb services catalog. |
 | **Activation** | The gated `draft → active` flip, guarded by a seven-item derived checklist so billing never starts without a price and a rate. |
-| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, auto-provisioned per user; `client_id = owner`, `consultant_id IS NULL`. |
+| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, auto-provisioned per user; `owner_id` references that user and `consultant_id IS NULL`. |
 | **Time log** | A billable record of work against a task (`task_time_logs`), rolled into invoices/payouts. |
 | **Payout / Invoice** | The live money paths — manual payouts of approved time, and generated project invoices. |
 | **Guest** | An anonymous user (a `profiles` row with `is_guest`) who can build a roadmap before signing up. |

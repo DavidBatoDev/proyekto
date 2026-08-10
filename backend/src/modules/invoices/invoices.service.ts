@@ -628,17 +628,17 @@ export class InvoicesService {
 
     const { data: project } = await this.supabase
       .from('projects')
-      .select('client_id')
+      .select('owner_id')
       .eq('id', invoice.project_id)
       .maybeSingle();
-    const clientId = (project as { client_id: string | null } | null)
-      ?.client_id;
-    if (!clientId) return { email: null, source: 'none' };
+    const ownerId = (project as { owner_id: string | null } | null)
+      ?.owner_id;
+    if (!ownerId) return { email: null, source: 'none' };
 
     const { data: client } = await this.supabase
       .from('profiles')
       .select('email')
-      .eq('id', clientId)
+      .eq('id', ownerId)
       .maybeSingle();
     const email = (client as { email: string | null } | null)?.email?.trim();
     return email
@@ -786,7 +786,7 @@ export class InvoicesService {
   /**
    * True-or-throw: the invoice has a client to send to. Accepts any of a linked
    * recipient account, a client email snapshotted onto the invoice, or a real
-   * client on the project (client_id distinct from the consultant).
+   * project owner when that owner is distinct from the consultant.
    */
   private async assertInvoiceHasClient(invoice: InvoiceRow): Promise<void> {
     const billToEmail = (invoice.bill_to as InvoiceParty | null)?.email?.trim();
@@ -794,14 +794,14 @@ export class InvoicesService {
 
     const { data } = await this.supabase
       .from('projects')
-      .select('client_id, consultant_id')
+      .select('owner_id, consultant_id')
       .eq('id', invoice.project_id)
       .maybeSingle();
     const project = data as {
-      client_id: string | null;
+      owner_id: string | null;
       consultant_id: string | null;
     } | null;
-    if (project?.client_id && project.client_id !== project.consultant_id) {
+    if (project?.owner_id && project.owner_id !== project.consultant_id) {
       return;
     }
 

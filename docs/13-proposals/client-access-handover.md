@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-07 · **Status:** draft
+> **Last updated:** 2026-08-10 · **Status:** draft
 
 When a consultant starts work, the client has to hand over access to a pile of external
 systems: the Canva brand kit, Google Drive, GA4, Google Tag Manager, Search Console, the
@@ -246,7 +246,7 @@ delta is every path `true`.
 >    [clients/user-flows.md](../11-domains/clients/user-flows.md#where-origin--client-comes-from)).
 >    So an *invited* client would get no `onboarding.respond` from the origin delta. Either the
 >    invite path must learn to grant `origin='client'`, or the checklist must additionally
->    grant `respond` to `projects.client_id`. **This is an open design question and must be
+>    grant `respond` to `projects.owner_id`. **This is an open design question and must be
 >    resolved before P1.**
 
 No `access.onboarding` path is proposed. The `access.*` section is a legacy page-gate duplicate;

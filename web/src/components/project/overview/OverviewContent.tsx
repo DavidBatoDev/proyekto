@@ -7,7 +7,7 @@ import type { ProjectBriefField } from "./types";
 
 interface OverviewContentProps {
   projectTitle: string;
-  clientName?: string;
+  ownerName?: string;
   consultantName?: string;
 
   summaryHtml: string;
@@ -25,7 +25,7 @@ interface OverviewContentProps {
 
 export function OverviewContent({
   projectTitle,
-  clientName,
+  ownerName,
   consultantName,
   summaryHtml,
   customFields,
@@ -53,8 +53,8 @@ export function OverviewContent({
         </h1>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700 md:px-3 md:py-1 md:text-[13px]">
-            <span className="mr-1 font-semibold">Client:</span>
-            <span className="font-medium text-slate-500">{clientName ?? "-"}</span>
+            <span className="mr-1 font-semibold">Owner:</span>
+            <span className="font-medium text-slate-500">{ownerName ?? "-"}</span>
           </div>
           <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700 md:px-3 md:py-1 md:text-[13px]">
             <span className="mr-1 font-semibold">Consultant:</span>

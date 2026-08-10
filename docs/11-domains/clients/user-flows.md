@@ -136,10 +136,9 @@ Two guards refuse regardless of caller:
   comparing against `projects.consultant_id`.
 - **The last owner cannot be removed.** `countOwners()` must exceed 1.
 
-Note there is no equivalent guarantee for the client: nothing stops removing the
-`projects.client_id` profile's access row, and doing so leaves `client_id` dangling — a
-project that still names a client who can no longer see it. See
-[client-structure.md](./client-structure.md#2-nominal-client).
+There is no equivalent guard for the project owner's access row: removing it leaves the
+role-neutral `projects.owner_id` pointer intact while the owner may no longer be able to see
+the project. See [client-structure.md](./client-structure.md#2-project-owner).
 
 ## See also
 

@@ -223,7 +223,7 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
       this.supabase
         .from('projects')
         .select('id')
-        .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
     ]);
     const ids = new Set<string>();
     for (const row of accessRes.data || []) {

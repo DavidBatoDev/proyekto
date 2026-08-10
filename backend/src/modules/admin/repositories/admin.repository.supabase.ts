@@ -366,7 +366,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     const { data } = await this.supabase
       .from('projects')
       .select(
-        '*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url)',
+        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url)',
       )
       .order('created_at', { ascending: false });
     return data || [];

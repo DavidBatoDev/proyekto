@@ -225,7 +225,7 @@ export class ProjectsService {
 
   /**
    * Returns true when the caller has `owner` or `admin` role on the project.
-   * Replaces the legacy `callerId === client_id || callerId === consultant_id`
+   * Replaces the legacy `callerId === owner_id || callerId === consultant_id`
    * "isLead" short-circuit. The legacy check assumed there were exactly two
    * privileged users (the persona-based lead pair); the new check works for
    * any user with the right role grant in project_shares.
@@ -453,7 +453,7 @@ export class ProjectsService {
     userId: string,
   ): Promise<RoadmapLinkCandidate[]> {
     const projects = await this.projectsRepo.findByUser(userId);
-    const owned = projects.filter((project) => project.client_id === userId);
+    const owned = projects.filter((project) => project.owner_id === userId);
     if (owned.length === 0) return [];
 
     const { data: roadmaps, error } = await this.supabase
@@ -1194,7 +1194,7 @@ export class ProjectsService {
   async deleteProject(id: string, userId: string): Promise<void> {
     const project = await this.getProjectOrThrow(id);
 
-    if (project.client_id !== userId) {
+    if (project.owner_id !== userId) {
       throw new MissingPermissionException({
         path: null,
         requiredRole: 'owner',
@@ -1213,7 +1213,7 @@ export class ProjectsService {
   ): Promise<Project> {
     const project = await this.getProjectOrThrow(projectId);
 
-    if (project.client_id !== callerId) {
+    if (project.owner_id !== callerId) {
       throw new MissingPermissionException({
         path: null,
         requiredRole: 'owner',
@@ -1223,7 +1223,7 @@ export class ProjectsService {
 
     const newOwnerId = dto.new_owner_id;
 
-    if (newOwnerId === project.client_id) {
+    if (newOwnerId === project.owner_id) {
       throw new BadRequestException(
         'Selected user is already the project owner.',
       );
@@ -1243,7 +1243,7 @@ export class ProjectsService {
 
     const updatedProject = await this.projectsRepo.transferOwner(
       projectId,
-      project.client_id,
+      project.owner_id,
       newOwnerId,
     );
 
@@ -1252,7 +1252,7 @@ export class ProjectsService {
       projectId,
       callerId,
       ACTIVITY_ACTIONS.PROJECT_OWNER_TRANSFERRED,
-      { previous_owner_id: project.client_id, new_owner_id: newOwnerId },
+      { previous_owner_id: project.owner_id, new_owner_id: newOwnerId },
       newOwnerId,
     );
 
@@ -1263,7 +1263,7 @@ export class ProjectsService {
       actor_id: callerId,
       content: {
         message: `You are now the project owner for ${project.title}.`,
-        previous_owner_id: project.client_id,
+        previous_owner_id: project.owner_id,
       },
       link_url: `/project/${projectId}/team`,
     });
@@ -1341,7 +1341,7 @@ export class ProjectsService {
 
     const updatedProject = await this.projectsRepo.reassignConsultant(
       projectId,
-      project.client_id,
+      project.owner_id,
       previousConsultantId,
       newConsultantId,
     );
@@ -1564,7 +1564,7 @@ export class ProjectsService {
     }
 
     if (
-      callerId === project.client_id &&
+      callerId === project.owner_id &&
       project.consultant_id &&
       project.consultant_id !== callerId
     ) {
@@ -1876,7 +1876,7 @@ export class ProjectsService {
     }
 
     if (
-      callerId === project.client_id &&
+      callerId === project.owner_id &&
       project.consultant_id &&
       project.consultant_id !== callerId
     ) {
@@ -1908,7 +1908,7 @@ export class ProjectsService {
   ): Promise<{ unassigned_task_count: number }> {
     const project = await this.getProjectOrThrow(projectId);
 
-    if (callerId === project.client_id || callerId === project.consultant_id) {
+    if (callerId === project.owner_id || callerId === project.consultant_id) {
       throw new MissingPermissionException({
         path: null,
         message:

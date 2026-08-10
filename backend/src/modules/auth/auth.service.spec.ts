@@ -34,7 +34,7 @@ function buildService(
   const provisionWorkspace = jest.fn().mockResolvedValue({
     id: 'ws-1',
     title: 'Workspace',
-    client_id: 'user-1',
+    owner_id: 'user-1',
     is_personal_workspace: true,
     status: 'active',
   });

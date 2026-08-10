@@ -248,7 +248,7 @@ function CompactProjectCard({
 	projectId,
 	teamId,
 	title,
-	client,
+	owner,
 	status,
 	bannerUrl = null,
 	isLocked = false,
@@ -258,7 +258,7 @@ function CompactProjectCard({
 	projectId: string;
 	teamId: string;
 	title: string;
-	client: string;
+	owner: string;
 	status: string;
 	bannerUrl?: string | null;
 	isLocked?: boolean;
@@ -348,9 +348,9 @@ function CompactProjectCard({
 						</h4>
 						<p className="truncate text-[11px] text-muted-foreground">
 							<span className="font-medium text-card-foreground/80">
-								Client:
+								Owner:
 							</span>{" "}
-							{client}
+							{owner}
 						</p>
 					</div>
 				</div>
@@ -396,8 +396,8 @@ function CompactProjectCard({
 						{title}
 					</h4>
 					<p className="truncate text-[11px] text-muted-foreground">
-						<span className="font-medium text-card-foreground/80">Client:</span>{" "}
-						{client}
+						<span className="font-medium text-card-foreground/80">Owner:</span>{" "}
+						{owner}
 					</p>
 				</div>
 				{avatarStrip ? <div className="mt-auto pt-1">{avatarStrip}</div> : null}
@@ -543,13 +543,13 @@ function TeamDetailPage() {
 										projectId={row.project.id}
 										teamId={teamId}
 										title={row.project.title ?? "Untitled project"}
-										client={row.project.client?.display_name || "Assigned"}
+										owner={row.project.owner?.display_name || "Assigned"}
 										status={statusConfig.label}
 										bannerUrl={row.project.banner_url}
 										isLocked={!row.viewer_has_access}
 										canSetStatus={
 											!!user?.id &&
-											(row.project.client_id === user.id ||
+											(row.project.owner_id === user.id ||
 												row.project.consultant_id === user.id)
 										}
 										members={projectMembersMap.get(row.project.id)}

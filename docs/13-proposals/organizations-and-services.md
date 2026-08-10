@@ -5,8 +5,9 @@
 > **Last updated:** 2026-08-10 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
-`projects` rows that happen to share a `client_id`, and an agency running delivery for six
-clients has no container at all. This proposes an **Organization** tier, promotes contract
+`projects` rows whose client relationship is repeated in access and contract data, and an
+agency running delivery for six clients has no container at all. This proposes an
+**Organization** tier, promotes contract
 services from a jsonb blob into a real table, and resolves the cardinality conflict that
 falls out of doing both: the stated rule `1 Roadmap = 1 Service` collides with
 `roadmaps.project_id UNIQUE`.
@@ -124,14 +125,14 @@ invite shape.
 
 ## Organizations are progressive, never required
 
-**A project is created with `client_id` only, exactly as today.** No org is needed to sign up,
+**A project is created with `owner_id` only, exactly as today.** No org is needed to sign up,
 create a project, or deliver work. The app offers to group projects under an organization at
 the moment grouping starts to pay: a second project for the same client, or a second person on
 the client side.
 
 ```mermaid
 flowchart TD
-    D1["Day 1 — consultant creates a project"] --> S1["client_id only, no org ✓"]
+    D1["Day 1 — user creates a project"] --> S1["owner_id only, no org ✓"]
     S1 --> D2["Later — 2nd project, same client"]
     D2 --> OFFER["Banner: 'Group these under an organization?'"]
     OFFER -->|accept| MAKE["Create org, set client_org_id on both"]
@@ -153,26 +154,26 @@ Likewise there is **no profile-completeness gate** on joining an organization. N
 the product today (see
 [clients/README.md](../11-domains/clients/README.md#known-gaps)); adding one is separate work.
 
-## Back-compat: `projects.client_id` stays
+## Back-compat: `projects.owner_id` stays
 
-`client_id` is `NOT NULL` and is read by at least five things that must keep working:
+`owner_id` is `NOT NULL` and is read by at least five things that must keep working. It is
+the role-neutral project owner, not the client organization or billing counterparty:
 
 | Reader | Why it matters |
 | --- | --- |
-| `projects(client_id) WHERE is_personal_workspace` partial unique index | the personal-workspace identity |
-| `canAccessProject` — `.or('client_id.eq.X,consultant_id.eq.X')` | roadmap access |
+| `projects(owner_id) WHERE is_personal_workspace` partial unique index | the personal-workspace identity |
+| `canAccessProject` — `.or('owner_id.eq.X,consultant_id.eq.X')` | roadmap access |
 | `listRoadmapLinkCandidates` | guest-roadmap conversion |
 | `ProjectActivationService` `client_identified` | the activation blocker |
 | RLS policies across the tree | defence in depth |
 
-**Keep it, and dual-write.** When a project is created with `client_org_id`, the backend also
-writes `client_id = organizations.owner_id`. Document the coupling on the column itself:
+**Keep it independent.** Adding `client_org_id` must not rewrite `owner_id` or require the
+organization owner to own every engagement. Document that separation on the column itself:
 
 ```sql
-COMMENT ON COLUMN public.projects.client_id IS
-'The human billing counterpart. When client_org_id is set this is that org''s owner — kept in
-sync so the personal-workspace index, RLS, and legacy readers keep working. Read through
-ProjectPartiesService.resolveClient, never directly.';
+COMMENT ON COLUMN public.projects.owner_id IS
+'The profile that owns the project. Ownership is contextual and independent of account role,
+client_org_id, and the contract billing counterparty.';
 ```
 
 **One resolver, and nothing else branches:**
@@ -372,7 +373,7 @@ confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migrati
 | --- | --- | --- |
 | 1 | One `organizations` table with a `kind` enum | Separate `agencies` + `clients` — duplicates membership/invite/permission machinery |
 | 2 | Progressive org creation; no auto-provisioning | A personal org per user — uniform queries, but reintroduces `persona_type` |
-| 3 | `client_id` stays `NOT NULL`, dual-written | Making it nullable — breaks the personal-workspace index, RLS, and 4 readers |
+| 3 | `owner_id` stays `NOT NULL`, dual-written | Making it nullable — breaks the personal-workspace index, RLS, and 4 readers |
 | 4 | Org access via `project_access` fan-out | An org-level `share_role` ladder feeding `resolvePermissions` |
 | 5 | `teams.organization_id` is a nullable label | Orgs own teams — needs backfill through rates, payouts, time |
 | 6 | Partial unique indexes preserve the 1:1 lane | Dropping `roadmaps_project_id_key` outright |

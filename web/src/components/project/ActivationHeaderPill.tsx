@@ -28,7 +28,7 @@ export function ActivationHeaderPill({
 	const canManage = Boolean(
 		user?.id &&
 			project &&
-			(project.client_id === user.id || project.consultant_id === user.id),
+			(project.owner_id === user.id || project.consultant_id === user.id),
 	);
 	const active = project?.status === "active";
 	const enabled = canManage && !active && Boolean(projectId);

@@ -1,4 +1,4 @@
-﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -141,7 +141,7 @@ export function ProjectsGrid() {
 					event: "*",
 					schema: "public",
 					table: "projects",
-					filter: `client_id=eq.${user.id}`,
+					filter: `owner_id=eq.${user.id}`,
 				},
 				invalidateProjects,
 			)
@@ -288,7 +288,7 @@ function ProjectsSection({
 								projectId={card.project.id}
 								status={statusConfig.label}
 								title={card.project.title}
-								client={card.project.client?.display_name || "Assigned"}
+								owner={card.project.owner?.display_name || "Assigned"}
 								progress={card.project.status === "completed" ? 100 : null}
 								progressColor={statusConfig.color}
 								nextUp={
@@ -439,7 +439,7 @@ export function ProjectCard({
 	projectId,
 	status,
 	title,
-	client,
+	owner,
 	progress,
 	progressColor,
 	nextUp,
@@ -451,7 +451,7 @@ export function ProjectCard({
 	projectId: string;
 	status: string;
 	title: string;
-	client: string;
+	owner: string;
 	progress: number | null;
 	progressColor: string;
 	nextUp: string;
@@ -480,8 +480,8 @@ export function ProjectCard({
 						{title}
 					</h3>
 					<p className="text-[13px] sm:text-[14px]">
-						<span className="font-semibold text-slate-600">Client:</span>
-						<span className="text-slate-600"> {client}</span>
+						<span className="font-semibold text-slate-600">Owner:</span>
+						<span className="text-slate-600"> {owner}</span>
 					</p>
 				</div>
 

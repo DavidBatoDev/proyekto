@@ -7,7 +7,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     id: 'project-1',
     title: 'Project One',
     status: 'draft',
-    client_id: 'client-1',
+    owner_id: 'client-1',
     consultant_id: 'consultant-1',
     platform_fee_percent: 10,
     consultant_fee_percent: 15,
@@ -83,22 +83,22 @@ describe('ProjectsService listRoadmapLinkCandidates', () => {
     const ownedEmpty = buildProject({
       id: 'project-empty',
       title: 'Empty Roadmap Project',
-      client_id: 'user-1',
+      owner_id: 'user-1',
     });
     const ownedNonEmpty = buildProject({
       id: 'project-full',
       title: 'Busy Project',
-      client_id: 'user-1',
+      owner_id: 'user-1',
     });
     const ownedNoRoadmap = buildProject({
       id: 'project-bare',
       title: 'No Roadmap Project',
-      client_id: 'user-1',
+      owner_id: 'user-1',
     });
     const memberOnly = buildProject({
       id: 'project-member',
       title: 'Someone Else Owns This',
-      client_id: 'other-user',
+      owner_id: 'other-user',
     });
 
     const supabase = buildSupabase({
@@ -135,7 +135,7 @@ describe('ProjectsService listRoadmapLinkCandidates', () => {
   it('returns an empty list without querying roadmaps when the user owns no projects', async () => {
     const memberOnly = buildProject({
       id: 'project-member',
-      client_id: 'other-user',
+      owner_id: 'other-user',
     });
     const supabase = buildSupabase();
     const service = buildService(

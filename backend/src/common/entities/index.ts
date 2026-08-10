@@ -149,7 +149,7 @@ export interface Project {
   title: string;
   description?: string;
   status: ProjectStatus;
-  client_id: string;
+  owner_id: string;
   consultant_id?: string;
   platform_fee_percent: number;
   consultant_fee_percent: number;

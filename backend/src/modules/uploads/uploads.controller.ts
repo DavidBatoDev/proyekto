@@ -248,7 +248,7 @@ export class UploadsService {
     // Verify the user is the client or consultant on this project
     const { data: project, error: projectError } = await this.supabase
       .from('projects')
-      .select('id, client_id, consultant_id')
+      .select('id, owner_id, consultant_id')
       .eq('id', dto.project_id)
       .single();
 
@@ -258,7 +258,7 @@ export class UploadsService {
 
     const p = project as {
       id: string;
-      client_id: string;
+      owner_id: string;
       consultant_id: string | null;
     };
 

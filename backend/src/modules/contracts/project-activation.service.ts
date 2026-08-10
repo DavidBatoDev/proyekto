@@ -410,8 +410,8 @@ export class ProjectActivationService {
     });
 
     // 6 — someone to bill.
-    const clientIdentified = Boolean(
-      project?.client_id && project.client_id !== project.consultant_id,
+    const ownerIdentified = Boolean(
+      project?.owner_id && project.owner_id !== project.consultant_id,
     );
     const clientOnContract = Boolean(
       contract?.client_user_id ||
@@ -421,10 +421,10 @@ export class ProjectActivationService {
     items.push({
       key: 'client_identified',
       label: 'Client identified for invoicing',
-      ok: clientIdentified || clientOnContract,
+      ok: ownerIdentified || clientOnContract,
       severity: 'blocker',
       detail:
-        clientIdentified || clientOnContract
+        ownerIdentified || clientOnContract
           ? null
           : 'Add the client to the project, or fill in the client details on the contract.',
       fixPath: contractPath('parties'),
@@ -474,18 +474,18 @@ export class ProjectActivationService {
   }
 
   private async getProject(projectId: string): Promise<{
-    client_id: string | null;
+    owner_id: string | null;
     consultant_id: string | null;
     status: string | null;
   } | null> {
     const { data } = await this.supabase
       .from('projects')
-      .select('client_id, consultant_id, status')
+      .select('owner_id, consultant_id, status')
       .eq('id', projectId)
       .maybeSingle();
     return (
       (data as {
-        client_id: string | null;
+        owner_id: string | null;
         consultant_id: string | null;
         status: string | null;
       } | null) ?? null

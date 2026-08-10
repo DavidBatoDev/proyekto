@@ -8,7 +8,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     id: 'project-1',
     title: 'Project One',
     status: 'draft',
-    client_id: 'client-1',
+    owner_id: 'client-1',
     consultant_id: 'consultant-1',
     platform_fee_percent: 10,
     consultant_fee_percent: 15,
@@ -322,7 +322,7 @@ describe('ProjectsService (permissions)', () => {
       getProfileDisplayName: jest.fn().mockResolvedValue('Client Owner'),
     };
     // Post-refactor: client has admin role on the project (granted at
-    // project create time). The role bypass replaces the legacy client_id
+    // project create time). The role bypass replaces the legacy owner_id
     // === userId check.
     const service = buildService(repo, {
       getUserProjectRole: jest.fn().mockResolvedValue('admin'),
@@ -379,7 +379,7 @@ describe('ProjectsService (permissions)', () => {
     const repo = {
       findById: jest
         .fn()
-        .mockResolvedValue(buildProject({ client_id: 'owner-1' })),
+        .mockResolvedValue(buildProject({ owner_id: 'owner-1' })),
     };
     const service = buildService(repo);
 
@@ -404,7 +404,7 @@ describe('ProjectsService (permissions)', () => {
       findById: jest
         .fn()
         .mockResolvedValue(
-          buildProject({ client_id: 'owner-1', consultant_id: 'consultant-1' }),
+          buildProject({ owner_id: 'owner-1', consultant_id: 'consultant-1' }),
         ),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
         id: 'member-row-2',

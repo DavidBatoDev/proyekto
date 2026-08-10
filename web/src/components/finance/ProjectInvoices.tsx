@@ -219,7 +219,7 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 		canIssue: invoiceHasClient({
 			recipientUserId: invoice.recipient_user_id,
 			billToEmail: invoice.bill_to?.email,
-			projectClientId: projectQuery.data?.client_id,
+			projectOwnerId: projectQuery.data?.owner_id,
 			projectConsultantId: projectQuery.data?.consultant_id,
 		}),
 		onIssue: () => setConfirmIssue(invoice),

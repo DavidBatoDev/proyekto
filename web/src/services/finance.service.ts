@@ -15,7 +15,7 @@ export interface FinanceProject {
 	title: string;
 	status: string;
 	currency: string;
-	client_id: string | null;
+	owner_id: string | null;
 	consultant_id: string;
 	created_at: string;
 	revenue: number;

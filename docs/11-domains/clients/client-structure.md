@@ -1,23 +1,23 @@
 # Client Structure
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 There is no `clients` table. Proyekto now records `profiles.role='client'` as durable
 account identity, but that identity does not grant project access or identify a contract
 counterparty. The retired switchable `persona_type` was dropped in
 `20260804170019_remove_active_persona.sql`; `account_role` deliberately restores identity,
-not an “acting as” mode. Three project/contract facts still answer narrower questions and
-can disagree with the account role.
+not an “acting as” mode. Project ownership, access origin, and contract counterparty answer
+narrower questions and can disagree with the account role or with one another.
 
-## The three kinds of client
+## Identity, ownership, access, and billing
 
 ```mermaid
 flowchart TD
-    Q{Who is the client?}
-    Q -->|has a profiles row,<br/>is on the project| A["<b>Platform client</b><br/>projects.client_id<br/>+ project_access origin='client'"]
-    Q -->|has a profiles row,<br/>never invited| B["<b>Nominal client</b><br/>projects.client_id only<br/>no access row"]
-    Q -->|no account at all| C["<b>External client</b><br/>contracts.client_name/email<br/>signs via token link"]
-    Q -->|is the consultant| D["<b>Personal workspace</b><br/>client_id = owner<br/>consultant_id IS NULL"]
+    Q{Which question are we answering?}
+    Q -->|primary account identity| A["<b>Client account</b><br/>profiles.role='client'"]
+    Q -->|who controls this project| B["<b>Project owner</b><br/>projects.owner_id<br/>any account role"]
+    Q -->|why this user has access| C["<b>Client-origin member</b><br/>project_access origin='client'"]
+    Q -->|who legally pays| D["<b>Contract client</b><br/>contracts.client_*<br/>may be external"]
 
     style A fill:#dcfce7,stroke:#16a34a,color:#14532d
     style B fill:#fef9c3,stroke:#ca8a04,color:#713f12
@@ -25,37 +25,38 @@ flowchart TD
     style D fill:#f3e8ff,stroke:#9333ea,color:#581c87
 ```
 
-### 1. Platform client
+### 1. Client account
 
-The full case: a `profiles` row, named on the project, and holding a `project_access` row
-with `origin = 'client'`. This is the only kind that can log in and see the project.
+A `profiles` row with durable `role='client'`. The role chooses the account's primary product
+experience; it does not grant access to any project and does not require project ownership.
 
-### 2. Nominal client
+### 2. Project owner
 
-`projects.client_id` is `NOT NULL`, so **every project names a client profile** — including
-projects where that person has never been invited and has no access row. A consultant who
-creates a project on a client's behalf produces exactly this state. The `client_id` is a
-pointer, not a grant.
+`projects.owner_id` is `NOT NULL`, so every project has one controlling profile. The owner
+may have `profiles.role='client'`, `'talent'`, or `'consultant'`; owning a project never
+changes that durable identity. Authorization continues to come from `project_access`.
 
-> **⚠️** `client_id` being set does **not** mean the client can see the project. Access comes
-> only from `project_access`. Never infer visibility from `client_id`.
+> **⚠️** `owner_id` being set does **not** by itself define a client relationship. Access comes
+> only from `project_access`. Never infer visibility from `owner_id`.
 
-### 3. External client
+### 3. Contract client
 
-A counterparty who never signs up. They exist only as snapshotted strings on the contract:
+A billing counterparty is snapshotted on the contract. They may link to a profile through
+`client_user_id` or never sign up at all. The contract stores
 `client_name`, `client_contact_name`, `client_address`, `client_tin`, `client_email`, and a
-nullable `client_user_id` that links to a profile when one happens to exist. They reach
-exactly one surface in the entire product — the tokenized signing page. See
+nullable `client_user_id`. An external client reaches exactly one surface in the product —
+the tokenized signing page. See
 [user-flows.md](./user-flows.md#external-client-signing).
 
-The activation checklist accepts either kind: `ProjectActivationService` treats the
-`client_identified` item as satisfied by a platform client **or** a client named on the
-contract.
+The activation checklist keeps the stable `client_identified` key. Today it accepts either
+a project owner distinct from the consultant or a client named on the contract; the owner
+fallback is role-neutral compatibility behavior.
 
-### 4. Personal workspace (the client is you)
+### 4. Personal workspace
 
 A `projects` row with `is_personal_workspace = true`, auto-provisioned on first login. The
-invariant, from `20260503000020_add_personal_workspace_to_projects.sql`: `client_id = owner`,
+invariant, from `20260503000020_add_personal_workspace_to_projects.sql`: `owner_id` is the
+workspace user,
 `consultant_id IS NULL`, at most one per user (partial unique index). The owner holds
 `origin = 'personal_workspace'`, whose delta grants **every** permission path.
 
@@ -63,7 +64,7 @@ invariant, from `20260503000020_add_personal_workspace_to_projects.sql`: `client
 
 ```mermaid
 erDiagram
-    profiles ||--o{ projects : "client_id (NOT NULL)"
+    profiles ||--o{ projects : "owner_id (NOT NULL)"
     profiles ||--o{ projects : "consultant_id (nullable)"
     profiles ||--o{ project_access : user_id
     projects ||--o{ project_access : project_id
@@ -81,7 +82,7 @@ erDiagram
     }
     projects {
         uuid id PK
-        uuid client_id FK "NOT NULL"
+        uuid owner_id FK "NOT NULL"
         uuid consultant_id FK "nullable"
         bool is_personal_workspace
     }

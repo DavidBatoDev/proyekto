@@ -6,7 +6,7 @@ const project = {
   title: 'Alpha',
   status: 'active',
   currency: 'USD',
-  client_id: null,
+  owner_id: null,
   consultant_id: 'consultant-1',
   created_at: '2026-08-01T00:00:00.000Z',
 };

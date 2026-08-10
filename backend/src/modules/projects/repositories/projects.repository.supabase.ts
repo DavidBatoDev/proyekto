@@ -89,7 +89,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data } = await this.supabase
       .from('project_access')
       .select(
-        'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email))',
+        'project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email))',
       )
       .eq('user_id', userId);
 
@@ -103,14 +103,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       this.supabase
         .from('projects')
         .select(
-          '*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)',
+          '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)',
         )
-        .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
         .from('project_access')
         .select(
-          'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email))',
+          'project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email))',
         )
         .eq('user_id', userId),
     ]);
@@ -156,7 +156,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .select(
         `
         *,
-        client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
+        owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
         members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, role, is_consultant_verified))
       `,
@@ -181,7 +181,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .from('projects')
       .insert({
         ...projectPayload,
-        client_id: userId,
+        owner_id: userId,
         consultant_id: isConsultantMode ? userId : undefined,
       })
       .select()
@@ -262,7 +262,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data: updatedProject, error: updateProjectError } =
       await this.supabase
         .from('projects')
-        .update({ client_id: newOwnerId })
+        .update({ owner_id: newOwnerId })
         .eq('id', projectId)
         .select()
         .single();
@@ -328,7 +328,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .from('projects')
       .select('id')
       .eq('id', projectId)
-      .or(`client_id.eq.${userId},consultant_id.eq.${userId}`)
+      .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`)
       .single();
     return !!data;
   }
@@ -350,7 +350,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ): Promise<unknown> {
     const { data: projectRow } = await this.supabase
       .from('projects')
-      .select('id, client_id, consultant_id')
+      .select('id, owner_id, consultant_id')
       .eq('id', projectId)
       .single();
 

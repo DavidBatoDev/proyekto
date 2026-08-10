@@ -3,8 +3,8 @@
 > **Last updated:** 2026-08-10 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **237 migrations** spanning
-2025-12-11 → 2026-08-09. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **239 migrations** spanning
+2025-12-11 → 2026-08-10. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -33,7 +33,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `projects` | Top-level project (`project_status`). Key columns: `client_id` (**NOT NULL** → `profiles`), `consultant_id`, `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id` |
+| `projects` | Top-level project (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `consultant_id`, `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id` |
 | `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + `origin` label + capabilities jsonb + `has_direct_grant` |
 | `project_invites` | Email invite flow |
 | `project_briefs` | Structured brief (mission/vision, summary) |
@@ -128,7 +128,7 @@ text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/voi
 
 ```
 auth.users.id ─1:1─► profiles.id
-profiles.id ◄─ projects.client_id / consultant_id
+profiles.id ◄─ projects.owner_id / consultant_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
 projects.id ─1:1─► roadmaps.project_id
 roadmaps.id ◄─ roadmap_epics ◄─ roadmap_features ◄─ roadmap_tasks

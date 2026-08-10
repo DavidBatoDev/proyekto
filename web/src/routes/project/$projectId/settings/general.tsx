@@ -180,7 +180,7 @@ function SettingsGeneralPage() {
 	const [transferSelectEntered, setTransferSelectEntered] = useState(false);
 	const [consultantSelectEntered, setConsultantSelectEntered] = useState(false);
 
-	const isOwner = Boolean(user?.id && project?.client_id === user.id);
+	const isOwner = Boolean(user?.id && project?.owner_id === user.id);
 	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
 	const canReassignConsultant = isOwner || isConsultant;
 	const currentMember = useMemo(
@@ -275,9 +275,9 @@ function SettingsGeneralPage() {
 		() =>
 			members.filter(
 				(member) =>
-					Boolean(member.user_id) && member.user_id !== project?.client_id,
+					Boolean(member.user_id) && member.user_id !== project?.owner_id,
 			),
-		[members, project?.client_id],
+		[members, project?.owner_id],
 	);
 
 	const reassignableConsultantMembers = useMemo(

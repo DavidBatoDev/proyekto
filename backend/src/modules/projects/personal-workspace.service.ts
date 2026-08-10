@@ -7,7 +7,7 @@ import { ChatService } from '../chat/chat.service';
 export interface PersonalWorkspace {
   id: string;
   title: string;
-  client_id: string;
+  owner_id: string;
   is_personal_workspace: true;
   status: string | null;
 }
@@ -26,7 +26,7 @@ export class PersonalWorkspaceService {
    * Idempotently provision the user's single personal workspace.
    *
    * Returns the existing workspace if one is already present (the partial
-   * unique index on `projects(client_id) WHERE is_personal_workspace = true`
+   * unique index on `projects(owner_id) WHERE is_personal_workspace = true`
    * is the source of truth). Otherwise creates the project + owner
    * project_members row and returns the new workspace.
    *
@@ -42,13 +42,13 @@ export class PersonalWorkspaceService {
     const { data: created, error: insertError } = await this.supabase
       .from('projects')
       .insert({
-        client_id: userId,
+        owner_id: userId,
         consultant_id: null,
         is_personal_workspace: true,
         title,
         status: 'active',
       })
-      .select('id, title, client_id, is_personal_workspace, status')
+      .select('id, title, owner_id, is_personal_workspace, status')
       .single();
 
     if (insertError) {
@@ -124,8 +124,8 @@ export class PersonalWorkspaceService {
   ): Promise<PersonalWorkspace | null> {
     const { data, error } = await this.supabase
       .from('projects')
-      .select('id, title, client_id, is_personal_workspace, status')
-      .eq('client_id', userId)
+      .select('id, title, owner_id, is_personal_workspace, status')
+      .eq('owner_id', userId)
       .eq('is_personal_workspace', true)
       .maybeSingle();
 

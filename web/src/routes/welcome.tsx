@@ -272,7 +272,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 			const { data, error } = await supabase
 				.from("projects")
 				.select("id, title")
-				.eq("client_id", user.id)
+				.eq("owner_id", user.id)
 				.eq("is_personal_workspace", true)
 				.maybeSingle();
 			if (cancelled) return;

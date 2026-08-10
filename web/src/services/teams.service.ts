@@ -1,4 +1,4 @@
-﻿import apiClient from "@/api/axios";
+import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
 function maybeRewriteRateSchemaError(message: string): string {
@@ -515,9 +515,9 @@ export interface TeamProjectAttachment {
 		start_date: string | null;
 		custom_start_date: string | null;
 		banner_url: string | null;
-		client_id: string | null;
+		owner_id: string | null;
 		consultant_id: string | null;
-		client: {
+		owner: {
 			id: string;
 			display_name: string | null;
 			avatar_url: string | null;

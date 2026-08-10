@@ -185,12 +185,12 @@ export class Harness {
   }
 
   async createProject(
-    clientId: string,
+    ownerId: string,
     title = 'itest project',
   ): Promise<string> {
     const { data, error } = await this.admin
       .from('projects')
-      .insert({ title: `${title} ${this.runId}`, client_id: clientId })
+      .insert({ title: `${title} ${this.runId}`, owner_id: ownerId })
       .select('id')
       .single();
     if (error || !data)

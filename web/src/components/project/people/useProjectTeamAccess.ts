@@ -25,7 +25,7 @@ export function useProjectTeamAccess(projectId: string) {
 		}
 
 		const isProjectPrincipal =
-			project.client_id === userId || project.consultant_id === userId;
+			project.owner_id === userId || project.consultant_id === userId;
 		const membership = (membersQuery.data ?? []).find(
 			(member) => member.user_id === userId,
 		);

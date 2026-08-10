@@ -160,7 +160,7 @@ SELECT is(
   'idempotent replay records only one usage'
 );
 
-INSERT INTO public.projects(id, title, client_id)
+INSERT INTO public.projects(id, title, owner_id)
 VALUES (
   '92000000-0000-4000-8000-000000000001',
   'Template project',

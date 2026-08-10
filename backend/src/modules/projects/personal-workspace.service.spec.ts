@@ -70,7 +70,7 @@ describe('PersonalWorkspaceService', () => {
         data: {
           id: 'ws-1',
           title: "Alex's Workspace",
-          client_id: 'user-1',
+          owner_id: 'user-1',
           is_personal_workspace: true,
           status: 'active',
         },
@@ -110,7 +110,7 @@ describe('PersonalWorkspaceService', () => {
         data: {
           id: 'ws-2',
           title: "Alex's Workspace",
-          client_id: 'user-2',
+          owner_id: 'user-2',
           is_personal_workspace: true,
           status: 'active',
         },
@@ -142,7 +142,7 @@ describe('PersonalWorkspaceService', () => {
           data: {
             id: 'ws-3',
             title: "Sam's Workspace",
-            client_id: 'user-3',
+            owner_id: 'user-3',
             is_personal_workspace: true,
             status: 'active',
           },
@@ -177,7 +177,7 @@ describe('PersonalWorkspaceService', () => {
         data: {
           id: 'ws-4',
           title: "My's Workspace",
-          client_id: 'user-4',
+          owner_id: 'user-4',
           is_personal_workspace: true,
           status: 'active',
         },

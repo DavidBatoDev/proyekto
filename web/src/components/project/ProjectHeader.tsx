@@ -240,7 +240,7 @@ export function ProjectHeader() {
 		: user?.id && project
 			? user.id === project.consultant_id
 				? "CONSULTANT"
-				: user.id === project.client_id
+				: user.id === project.owner_id
 					? "CLIENT"
 					: "MEMBER"
 			: undefined;

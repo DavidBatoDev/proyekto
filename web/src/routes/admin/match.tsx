@@ -29,7 +29,7 @@ type Project = {
   category?: string;
   skills?: string[];
   created_at: string;
-  client?: { id: string; display_name?: string; email: string };
+  owner?: { id: string; display_name?: string; email: string };
   consultant?: { id: string; display_name?: string; email: string } | null;
 };
 
@@ -114,11 +114,11 @@ function ProjectCard({
           <div className="flex items-center gap-1.5 mt-1.5">
             <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
               <span className="text-[10px] font-bold text-gray-500">
-                {initials(project.client?.display_name ?? project.client?.email ?? "C")}
+                {initials(project.owner?.display_name ?? project.owner?.email ?? "O")}
               </span>
             </div>
             <p className="text-xs text-gray-500 truncate">
-              {project.client?.display_name ?? project.client?.email}
+              {project.owner?.display_name ?? project.owner?.email}
             </p>
           </div>
         </div>
