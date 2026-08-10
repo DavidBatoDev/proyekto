@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-07 · **Status:** draft
+> **Last updated:** 2026-08-09 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows that happen to share a `client_id`, and an agency running delivery for six
@@ -362,6 +362,11 @@ Every one is expand-only. Apply to prod via the Supabase MCP `apply_migration` t
 confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migration` skill.
 
 ## Decisions to review
+
+> **2026-08-09 reconciliation:** `account_role` deliberately reverses the removal of
+> account identity in `20260804170019`, but not the switchable `persona_type` model
+> rejected here. It is a non-switchable profile fact and does not auto-provision an
+> organization. The progressive organization design therefore remains compatible.
 
 | # | Decision | Rejected alternative |
 | --- | --- | --- |

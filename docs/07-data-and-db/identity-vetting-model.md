@@ -1,9 +1,9 @@
 # Identity & Vetting Model
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Proyekto is a **managed** platform, not an open marketplace — before a user can
-manage projects as a Consultant or be hired as a Freelancer, the platform must know
+manage projects as a Consultant or be hired as Talent, the platform must know
 their full professional identity. That identity lives in `profiles` plus a set of
 **`user_*`** sub-entity tables. This is the permanent identity layer regardless of
 which responsibilities the user has on a project.
@@ -14,8 +14,9 @@ which responsibilities the user has on a project.
 
 ## The tables
 
-`profiles` is the core record (1:1 with `auth.users`, carrying `headline`,
-verification/discovery flags, and guest fields). Everything else attaches to it:
+`profiles` is the core record (1:1 with `auth.users`, carrying the durable
+`client | talent | consultant` account role, `headline`, verification/discovery
+flags, and guest fields). Everything else attaches to it:
 
 | Table | Holds | Cardinality |
 | --- | --- | --- |
@@ -69,8 +70,9 @@ service layer; RLS is defense-in-depth.
    (`application_status`) plus their `user_verifications` records.
 2. An admin reviews the full identity (all `user_*` tables) in the admin console and
    sets each required `user_verifications.status = 'verified'`.
-3. The application is approved only when every required verification passes; that
-   flips the capability flag the marketplace and `ConsultantOnlyGuard` read.
+3. The application is approved only when every required verification passes. The
+   backend provisions a personal team, sets `role='consultant'`, and flips
+   `is_consultant_verified`; both facts are required by `ConsultantOnlyGuard`.
 
 The admin-side procedure is the [Admin vetting playbook](../12-runbooks/README.md);
 the backing modules are `profile`, `applications`, and `admin`

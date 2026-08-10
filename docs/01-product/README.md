@@ -1,11 +1,11 @@
 # Product & Concepts
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 How Proyekto works in plain language, before any code. **Proyekto is a managed work
 delivery platform** — it combines the speed of freelance hiring with the structure
 of agency execution by putting a vetted **Consultant** layer between Clients and
-Freelancers, so vision, planning, collaboration, and accountability all live in one
+Talent, so vision, planning, collaboration, and accountability all live in one
 workspace.
 
 > If you're new to Proyekto, read these in order: [roles and capabilities](./personas.md) →
@@ -16,7 +16,7 @@ workspace.
 | Doc | What's in it |
 | --- | --- |
 | [invoice-lifecycle.md](./invoice-lifecycle.md) | Drafting, issuing, delivery, payments, corrections, and receivables reporting |
-| [personas.md](./personas.md) | Client, Consultant, Freelancer, Admin — contextual roles and their authorization sources |
+| [personas.md](./personas.md) | Client, Talent, Consultant, Admin — account identities and authorization sources |
 | [project-lifecycle.md](./project-lifecycle.md) | Idea → project → roadmap → team → delivery → billing → done |
 | [roadmap-and-milestones.md](./roadmap-and-milestones.md) | The Epic → Feature → Task model, the two views, date & progress rules |
 | [glossary.md](./glossary.md) | Product-wide vocabulary |

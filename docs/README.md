@@ -1,9 +1,9 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-07 · **Status:** current (all 14 sections written)
+> **Last updated:** 2026-08-09 · **Status:** current (all 14 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
-work-delivery platform with a Consultant layer between Clients and Freelancers,
+work-delivery platform with a Consultant layer between Clients and Talent,
 an AI-assisted roadmap engine, meetings, chat, payments, and a mobile app.
 
 > Proyekto spans **six deployable units** — a React web app, a NestJS API, a

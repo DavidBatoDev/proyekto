@@ -1,13 +1,13 @@
 # Client Structure
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
-There is no `clients` table, and adding one has never been necessary — because Proyekto has
-no account-level role enum at all. `persona_type` was dropped in
-`20260804170019_remove_active_persona.sql`, and with it the last place a person could be
-"a client" globally. What remains is three narrow, purpose-built facts, each owned by a
-different table, each answering a different question. This page names them and shows where
-they disagree.
+There is no `clients` table. Proyekto now records `profiles.role='client'` as durable
+account identity, but that identity does not grant project access or identify a contract
+counterparty. The retired switchable `persona_type` was dropped in
+`20260804170019_remove_active_persona.sql`; `account_role` deliberately restores identity,
+not an “acting as” mode. Three project/contract facts still answer narrower questions and
+can disagree with the account role.
 
 ## The three kinds of client
 
@@ -75,6 +75,7 @@ erDiagram
     profiles {
         uuid id PK
         text email
+        enum role "client | talent | consultant"
         bool is_consultant_verified
         bool is_guest
     }
@@ -149,14 +150,15 @@ Consequences worth internalizing:
 
 Three reasons, all still valid:
 
-1. **Roles are contextual.** A person funds one project, contributes work to another, and
-   leads a third. A `clients` table would need a row per relationship anyway — which is what
-   `project_access` already is.
+1. **Account identity is not a relationship.** `profiles.role='client'` says what kind of
+   account was created; a project's client and permissions still require `projects` and
+   `project_access`. A `clients` table would duplicate that relationship data.
 2. **The external case has no identity to key on.** An email-only counterparty cannot have a
    row in a table that foreign-keys to `profiles`, and giving them shadow profiles was
    rejected when `contract_signature_links` was designed.
-3. **`persona_type` proved the cost.** A global account mode created an "acting as what?"
-   question on every request and was deleted.
+3. **`persona_type` proved the cost of a switchable mode.** `account_role` is server-owned
+   and non-switchable, so it avoids the “acting as what?” branch while supporting signup
+   identity and role-aware capability checks.
 
 What *is* missing is a **parent** for projects — the ability to say "these four projects all
 belong to ImHereTravels." That is a different problem from "who is the client on this

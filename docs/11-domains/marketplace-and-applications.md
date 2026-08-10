@@ -1,6 +1,6 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
@@ -18,12 +18,13 @@ A user applies to become a verified consultant; an admin reviews and approves.
   [Data → identity model](../07-data-and-db/identity-vetting-model.md) and the
   [Admin vetting playbook](../12-runbooks/README.md).
 
-Approval flips the durable `is_consultant_verified` capability flag that gates the
-marketplace.
+Consultant-lane accounts have `role='consultant'` before approval but no consultant
+powers. Approval idempotently provisions their personal team, sets consultant role
+for applicants promoted from another lane, and flips `is_consultant_verified`.
 
 ## Marketplace
 
-Verified consultants discover and invite freelancers into their projects.
+Active consultants discover and invite public Talent accounts into their projects.
 
 | Endpoint | Guard | Purpose |
 | --- | --- | --- |
@@ -36,9 +37,9 @@ Discovery draws on the profile sub-entities (`user_rate_settings`, `user_stats`,
 `user_specializations`, `user_skills`) so consultants can filter by skill, niche,
 rate, and availability. Invites reuse `project_invites`.
 
-> **The verification gate:** the consultant-only routes are gated by
-> `ConsultantOnlyGuard`, which checks `profiles.is_consultant_verified` — a
-> durable capability. See
+> **The active-consultant gate:** consultant-only routes require both
+> `profiles.role='consultant'` and `is_consultant_verified=true` through the shared
+> predicate. Freelancer discovery separately filters `role='talent'`. See
 > [Backend → auth & guards](../03-backend/auth-and-guards.md) and
 > [Product → personas](../01-product/personas.md).
 

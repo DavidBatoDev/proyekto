@@ -1,15 +1,16 @@
 # Glossary
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
 
 | Term | Meaning |
 | --- | --- |
-| **Participant role** | A responsibility held in context, such as Client, Consultant, Freelancer, or Admin; it is not a global account mode. |
-| **Consultant layer** | Proyekto's defining idea: a vetted project lead between Client and Freelancers who owns delivery. |
-| **Verified consultant** | A user who passed vetting; `profiles.is_consultant_verified` gates consultant-only surfaces. |
+| **Account role** | Durable `profiles.role` identity: `client`, `talent`, or `consultant`. It is server-owned and not a switchable persona. |
+| **Talent** | The account identity for people doing scoped delivery work; legacy code may still call this “freelancer.” |
+| **Consultant layer** | Proyekto's defining idea: a vetted project lead between Client and Talent who owns delivery. |
+| **Active consultant** | A Consultant account that passed vetting: `role='consultant' AND is_consultant_verified=true`. |
 | **Project** | The delivery container: roadmap + team + chat + meetings + billing. |
 | **Brief** | A project's structured intent (mission/vision, summary, custom fields) — `project_briefs`. |
 | **Roadmap** | The plan for a project — a tree of epics, features, and tasks. One per project (`roadmaps.project_id` is `UNIQUE`); [a proposal](../13-proposals/organizations-and-services.md#resolving-1-roadmap--1-service) would relax this to one per service. |
@@ -21,7 +22,7 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Team** | A reusable group of people; attached to projects and curated per project. |
 | **`project_access`** | The authorization row — exactly one per (project, user) since `20260507000130` — carrying a `share_role` (`owner > admin > editor > commenter > viewer`), an `origin` label, and a capabilities delta. |
 | **Origin** | The *source* of an access grant, not a rank: `client`, `consultant`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. Patches permissions via `ORIGIN_DELTAS`. |
-| **Client** | The participant who pays. Not a table — assembled from `projects.client_id`, `project_access.origin='client'`, and the `contracts.client_*` snapshot. See [Clients](../11-domains/clients/README.md). |
+| **Client** | An account identity for people commissioning work. A project's actual client relationship still comes from `projects.client_id`, `project_access.origin='client'`, and contract snapshots. See [Clients](../11-domains/clients/README.md). |
 | **External client** | A contract counterparty with no account, existing only as `contracts.client_*` strings, who signs via a tokenized link. |
 | **Contract** | The service agreement for a project (`contracts`) — parties, commercial terms, term dates, clause set, and a jsonb services catalog. |
 | **Activation** | The gated `draft → active` flip, guarded by a seven-item derived checklist so billing never starts without a price and a rate. |

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product Context
 
-Proyekto is a managed work-delivery platform for digital projects: Clients fund the work, vetted Consultants lead delivery (the platform's differentiator), Freelancers execute, Admins govern the platform. Accounts have no global role mode: consultant capability comes from the durable profiles.is_consultant_verified flag, platform administration from admin_profiles, and per-project access from the share_role ladder (owner > admin > editor > commenter > viewer). Anonymous guests can build a roadmap before signup and migrate it to a real account.
+Proyekto is a managed work-delivery platform for digital projects: Clients fund the work, vetted Consultants lead delivery (the platform's differentiator), Talent executes, and Admins govern the platform. Every profile has a durable, non-switchable `profiles.role` identity (`client | talent | consultant`); active consultant capability requires both consultant role and `is_consultant_verified`. Platform administration remains in `admin_profiles`, and per-project access remains in the `share_role` ladder (owner > admin > editor > commenter > viewer). Anonymous guests can build a roadmap before signup and migrate it to a real account.
 
 Brand rule: the product is "Proyekto" in ALL user-facing copy - "Prodigy" and the prdigy/ folder name are legacy only.
 

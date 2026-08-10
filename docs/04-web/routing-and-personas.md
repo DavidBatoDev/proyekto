@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -29,6 +29,12 @@ gating done in route `beforeLoad` hooks and project components.
 Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,
 `notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `project-posting`,
 `command-center`.
+
+Signup always presents explicit Client, Talent, and Consultant lanes. Password and
+OAuth continuations persist the lane; an incomplete OAuth account without one chooses
+its durable role at `/welcome` before the existing welcome deck. Explicit lanes send
+no duplicate intent. Transitional `client_freelancer` continuations remain readable
+and are normalized before the canonical onboarding settings are persisted.
 
 > **No `client/` route subtree.** Client-facing surfaces live under `project/`,
 > `dashboard`, and the public `contract/sign/$token` page — `web/src/routes/client/`
@@ -64,9 +70,9 @@ Gating happens in three places:
   `useAuthStore.getState().isAuthenticated` synchronously and
   `throw redirect({ to: "/auth/login", search: { redirect } })` if not. Auth pages
   reverse-guard (already-authenticated users are bounced away).
-- **Consultant verification** — `consultant/marketplace` and `consultant/templates`
-  add a `beforeLoad` check that redirects to `/dashboard` unless
-  `profile.is_consultant_verified`.
+- **Active consultant** — `consultant/marketplace` and `consultant/templates`
+  add a `beforeLoad` check that redirects unless `isActiveConsultant(profile)`
+  confirms consultant role plus verification.
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
   exactly five route bodies — `roadmap`, `work-items`, `resources`, `chat/$chatRef`, and

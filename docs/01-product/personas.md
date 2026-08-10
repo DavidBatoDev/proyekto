@@ -1,13 +1,13 @@
 # Roles and Capabilities
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
-Proyekto supports four participant roles without a global account mode. A person can
-fund one project, contribute work to another, and lead a third without switching
-their profile into a different state.
+Proyekto gives every account one durable identity: **Client**, **Talent**, or
+**Consultant**. It is selected during signup and is not a user-switchable mode. Admin
+authority and project responsibilities remain independent of this account identity.
 
 > Proyekto's differentiator is the **Consultant layer** between Clients and
-> Freelancers: vetted project leads turn a freelance hire into managed delivery.
+> Talent: vetted project leads turn a freelance hire into managed delivery.
 
 ## Participant roles
 
@@ -15,15 +15,16 @@ their profile into a different state.
 | --- | --- | --- |
 | **Client** | The person paying for the work | Defines goals, approves direction, tracks project health, funds delivery |
 | **Consultant** | The vetted project lead | Translates the client's vision into a roadmap, assembles the team, owns delivery |
-| **Freelancer** | The person doing scoped work | Delivers tasks/features, logs time, updates progress |
+| **Talent** | The person doing scoped work | Delivers tasks/features, logs time, updates progress |
 | **Admin** | Platform staff | Vets consultants, governs quality, resolves matchmaking |
 
-These are contextual responsibilities, not values stored on `profiles`. The app has
-no role switcher and no account-level role enum.
+The first three values are stored in `profiles.role` as the `account_role` enum.
+"Freelancer" remains in legacy code identifiers and compatibility data; the
+user-facing account identity is **Talent**. Admin is deliberately not an account
+role: it comes from `admin_profiles`.
 
-> **The one exception is `project_access.origin`** — the only place in the schema where
-> the string `'client'` is stored as a fact about a person. It is a *source label* for a
-> grant, not an identity, and it is only ever assigned to the person who **created** the
+> **Do not confuse identity with `project_access.origin`.** Its `'client'` value is a
+> *source label* for a project grant, not an account role, and it is only assigned to the person who **created** the
 > project: `respondInvite` hardcodes `origin: 'invited'`, so an invited client does not
 > get it. See [Feature Domains → clients](../11-domains/clients/README.md) for the full
 > model, the resolved permission matrix, and the client user flows.
@@ -32,17 +33,21 @@ no role switcher and no account-level role enum.
 
 Different data answers different authorization questions:
 
-- `profiles.is_consultant_verified` grants the durable consultant capability used
-  by consultant-only marketplace and hiring surfaces.
+- `profiles.role` records durable account identity.
+- `role='consultant' AND is_consultant_verified=true` grants active consultant
+  capability used by consultant-only marketplace, finance, and leadership surfaces.
 - An active `admin_profiles` row grants platform administration access.
 - `project_access.role` and its capability overrides determine what a member can do
   inside a project. The default ladder is
   `owner > admin > editor > commenter > viewer`.
-- `profiles.is_public` controls whether a freelancer profile is discoverable.
-- Onboarding lane and intent are retained in profile settings for provisioning and
-  product guidance; they do not authorize requests.
+- `profiles.is_public` controls whether a Talent profile is discoverable.
+- Canonical onboarding stores the explicit Client, Talent, or Consultant lane without
+  a second intent field. The two-boolean intent survives only at the transitional
+  `client_freelancer` API/continuation boundary and is resolved before persistence;
+  `profiles.role` is the identity source of truth.
 
-Creating or funding a project does not require selecting a Client account mode.
+This foundation does not yet restrict ordinary Client-versus-Talent project actions
+or provide separate dashboards. Project access remains contextual.
 Consultant access is earned through the identity/vetting flow: a
 `consultant_applications` record, admin review of the full `user_*` identity, and
 approval. See [Data → identity model](../07-data-and-db/identity-vetting-model.md)

@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -33,7 +33,9 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | `can_view_roadmap` / `can_edit_roadmap` / `can_access_roadmap` | Roadmap access |
 | `get_user_roadmap_effective_role(...)` | Roadmap role resolution |
 | `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access |
-| `is_admin()`, `is_verified_consultant(uid)`, `is_project_member(project_id)` | Role gates |
+| `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
+| `is_active_consultant(uid)` | Consultant role plus completed vetting |
+| `is_verified_consultant(uid)` | Compatibility alias for `is_active_consultant` |
 
 The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 
@@ -43,7 +45,8 @@ The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 | --- | --- |
 | `tg_project_team_members_sync_shares` | Curating a team member fans out to a `project_access` row |
 | `tg_team_members_block_owner_delete` | You can't remove a team's owner |
-| `tg_team_members_check_consultant_for_rate` | Rate rules require a verified consultant |
+| `tg_team_member_rates_check_consultant` | Team-member rates require an active consultant owner |
+| `profiles_protect_privileged_columns` | Browser sessions cannot write `profiles.role` or `is_consultant_verified` |
 | `tg_project_teams_sync_primary` | Keeps a project's primary team consistent |
 | `handle_new_user()` | Creates a `profiles` row when `auth.users` gains a row |
 

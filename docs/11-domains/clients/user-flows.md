@@ -1,6 +1,6 @@
 # Client User Flows
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Four paths bring a client into contact with a project: they create it, they are invited to
 it, they sign its contract from outside the product, or they arrive as a guest and convert.
@@ -114,8 +114,9 @@ Security properties, quoted from `20260730093000_contract_signature_links.sql`:
 
 An anonymous visitor builds a roadmap before signing up, identified by an `x-guest-user-id`
 header against a `profiles` row with `is_guest = true`. On signup the roadmap migrates to the
-real account; converting it to a project runs the **client-mode** path, so the new user
-becomes `admin` + `origin='client'` on their own project. Guests are blocked from
+real account; converting it to a project grants the creator `admin` + `origin='client'`
+on that project. This project-scoped origin is independent of whether signup selected the
+Client, Talent, or Consultant account role. Guests are blocked from
 `POST /projects/from-roadmap` and `POST /roadmaps/migrate` until they have an account. See
 [guests.md](../guests.md).
 

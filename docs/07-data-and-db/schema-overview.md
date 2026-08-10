@@ -1,10 +1,10 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **230 migrations** spanning
-2025-12-11 → 2026-08-05. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **237 migrations** spanning
+2025-12-11 → 2026-08-09. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -20,7 +20,7 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 
 | Table | Purpose |
 | --- | --- |
-| `profiles` | Core user record (1:1 `auth.users`); verification/discovery flags, onboarding settings, guest fields |
+| `profiles` | Core 27-column user record (1:1 `auth.users`); durable `account_role`, verification/discovery flags, canonical onboarding settings (`lane` + `completed_at`, no persisted intent), guest fields |
 | `admin_profiles` | Staff authority layer (`admin_access_level`) |
 | `consultant_applications` | Applications to become a verified consultant |
 | `user_verifications`, `user_identity_documents` | KYC / trust records |
@@ -108,6 +108,7 @@ The status/type language of the app is Postgres enums. The load-bearing ones:
 
 | Enum | Values |
 | --- | --- |
+| `account_role` | client, talent, consultant |
 | `project_status` | draft, active, paused, completed, archived, bidding |
 | `roadmap_status` | draft, active, paused, completed, archived |
 | `epic_status` | backlog, planned, in_progress, in_review, completed, on_hold |

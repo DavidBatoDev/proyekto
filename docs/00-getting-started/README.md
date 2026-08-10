@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 Everything you need to clone Proyekto, install each package, and run the stack
 locally. The three services you'll usually run are **web**, **backend**, and
@@ -15,7 +15,7 @@ locally. The three services you'll usually run are **web**, **backend**, and
 | --- | --- |
 | [setup.md](./setup.md) | Prerequisites, clone, per-package install, first run, database |
 | [local-development.md](./local-development.md) | Day-to-day commands, ports, tests, gotchas |
-| [environment-variables.md](./environment-variables.md) | Cross-service env map + where values come from |
+| [environment-variables.md](./environment-variables.md) | Cross-service env map, feature flags, and where values come from |
 
 ## The 60-second version
 

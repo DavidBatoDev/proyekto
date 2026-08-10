@@ -1,9 +1,9 @@
 # Client ↔ Consultant Interaction
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 The Consultant layer is Proyekto's differentiator: a vetted project lead sitting between the
-Client and the Freelancers, so a freelance hire becomes managed delivery. This page documents
+Client and Talent, so a freelance hire becomes managed delivery. This page documents
 what that separation actually enforces, how money flows through it, and answers the standing
 question about inviting an individual contractor who belongs to no team.
 
@@ -27,7 +27,7 @@ mechanisms carry it, with very different strengths.
 flowchart LR
     CL["Client<br/><i>origin: client</i>"]
     CO["Consultant<br/><i>origin: consultant</i>"]
-    FL["Freelancers<br/><i>team-curated</i>"]
+    FL["Talent<br/><i>team-curated</i>"]
 
     CL <-->|"chat.message_consultants ✅"| CO
     CO <-->|"chat.message_freelancers ✅<br/>(granted by origin delta)"| FL

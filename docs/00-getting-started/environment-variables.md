@@ -1,6 +1,6 @@
 # Environment Variables
 
-> **Last updated:** 2026-08-04 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
@@ -58,7 +58,7 @@ Only public values — no secrets. See [Web → state & services](../04-web/READ
 
 > **Build-time, not runtime.** Every `VITE_*` value is baked into the bundle by Vite
 > when `npm run build` runs in `web-deploy.yml`, reading the committed
-> `web/.env.production`. Cloudflare holds **no** web env config — the `proyekto-web`
+> `web/.env.production`. Cloudflare holds **no** runtime web env config — the `proyekto-web`
 > Worker only serves static files. The three vars added on 2026-08-04
 > (`VITE_UPLOAD_WORKER_URL`, `VITE_THEME_SYSTEM_ENABLED=true`,
 > `VITE_STOCK_PHOTOS_ENABLED=false`) were never set on Vercel either; they were
@@ -104,7 +104,7 @@ run `/mcp` in an interactive Claude Code session to authorize them.
 | Unit | Source |
 | --- | --- |
 | Backend / agent | GCP **Secret Manager** (`--set-secrets`) + plain `--set-env-vars` |
-| Web | `web/.env.production` (baked into the Vite build in `web-deploy.yml`; no runtime config on Cloudflare) |
+| Web | `web/.env.production` (baked into `web-deploy.yml`; no runtime config on Cloudflare) |
 | Realtime | `wrangler secret put` + `wrangler.toml` vars |
 | Edge functions | Supabase project secrets |
 

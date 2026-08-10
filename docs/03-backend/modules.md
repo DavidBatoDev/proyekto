@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -14,7 +14,7 @@ R2**, not Supabase Storage.
 
 | Module | Purpose | Key tables |
 | --- | --- | --- |
-| `auth` | Auth + first-login bootstrap (profile, workspace, teams) | `profiles` |
+| `auth` | Auth + immutable account-role onboarding; provisions a workspace or consultant team from persisted role | `profiles` |
 | `users` | Own-account read/update | `profiles` |
 | `profile` | Full consultant/freelancer profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
@@ -23,11 +23,11 @@ R2**, not Supabase Storage.
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
-| `consultants` | Public consultant directory | `profiles` |
+| `consultants` | Active-consultant directory (`role` + verification) | `profiles` |
 | `applications` | Consultant/freelancer application submission | `consultant_applications` |
 | `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
-| `admin` | Admin console — vetting, roles, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
+| `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
 | `payments` | Wallet + **legacy** escrow/checkpoints (partly dead) | `wallets` (+ dropped `payment_checkpoints`, `transactions`) |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
@@ -164,7 +164,7 @@ SDK), not Supabase Storage. Routes `PRIVATE_BUCKETS` (`identity_documents`,
 (e.g. `avatars`) is public over `cdn.proyekto.tech`. `UploadsService` is co-located
 in the controller and exported to `payouts`. See [Storage & Media](../08-storage-media/README.md).
 
-**`marketplace`** — freelancer discovery drawing on profile sub-entities
+**`marketplace`** — talent discovery (legacy freelancer naming in code) drawing on profile sub-entities
 (`user_rate_settings`, `user_stats`, `user_specializations`, `user_skills`) and the
 hiring flow (`project_invites`). Consultant-only routes use `ConsultantOnlyGuard`.
 

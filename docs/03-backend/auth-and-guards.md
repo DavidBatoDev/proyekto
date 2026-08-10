@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -8,17 +8,23 @@ and the authenticated user is attached to `request.user`. The primary guard,
 `SupabaseAuthGuard`, verifies the Supabase JWT **locally** (fast, no network) with a
 fallback to a Supabase call, and also accepts a guest-session header.
 
+Account onboarding accepts an explicit `client`, `talent`, or `consultant` lane
+without an `intent` payload. Only the compatibility lane `client_freelancer`
+requires the old `{ client, freelancer }` discriminator; the repository resolves it
+to a canonical role and persists only that canonical lane plus `completed_at`.
+
 ## The guards
 
 | Guard | File | Gates on |
 | --- | --- | --- |
 | `SupabaseAuthGuard` | `supabase-auth.guard.ts` | A valid Supabase JWT **or** a valid `x-guest-user-id` header |
 | `AdminGuard` | `admin.guard.ts` | An active row in `admin_profiles` for the user |
-| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | `profiles.is_consultant_verified` (a durable capability flag) |
+| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | Active consultant: `profiles.role='consultant'` and `is_consultant_verified=true` |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
 | `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`), an OAuth 2.1 access token, **or** a Supabase session JWT — gates the `/mcp` endpoint |
 
-`ConsultantOnlyGuard` gates consultant-only marketplace routes. Two more guards
+`ConsultantOnlyGuard` uses the shared `isActiveConsultant` predicate and gates
+consultant-only marketplace, finance, and template routes. Two more guards
 come from outside `common/`:
 > `ThrottlerGuard` (`@nestjs/throttler`, on guest endpoints and on the MCP OAuth
 > `/oauth/token` · `/register` · `/revoke` endpoints) and `OtaPublishGuard`

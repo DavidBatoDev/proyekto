@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-08-09 · **Status:** current
 
 The Client is the person paying for the work — and the only participant Proyekto has
 **no table for**. There is no `clients` table. "Client" is assembled at runtime from three
@@ -65,7 +65,7 @@ name a completely different legal entity than the `client_id` profile.
 
 | Term | Meaning |
 | --- | --- |
-| **Client** | A participant role, not an account mode. Assembled from the three facts above. |
+| **Client account** | A profile with durable `profiles.role='client'`; it does not itself grant project access. |
 | **Origin** | `project_access.origin` — the *source* of a grant, not a role. Direct values: `client`, `consultant`, `invited`, `personal_workspace`, `legacy`. Team-derived: `team:<team_id>`. |
 | **Origin delta** | A permission patch applied by origin regardless of role. `client` loses `chat.message_freelancers`; `consultant` gains the operator toolkit. |
 | **External client** | A contract counterparty with no `profiles` row. Exists only as `contracts.client_*` strings. |
@@ -76,10 +76,12 @@ name a completely different legal entity than the `client_id` profile.
 ## Known gaps
 
 - **No profile-completeness gate.** Nothing checks `user_portfolios`, identity verification,
-  or profile completeness before a person joins a team or accepts a project invite. The only
-  durable hard gate in the product is `profiles.is_consultant_verified`, and it gates
-  consultant-only surfaces, not participation. A completeness gate has been requested but is
-  not designed.
+  or profile completeness before a person joins a team or accepts a project invite. The
+  durable consultant hard gate is active-consultant status (`role` plus verification); it
+  gates consultant-only surfaces, not ordinary participation.
+- **Client/Talent action enforcement is deferred.** The role foundation separates signup
+  identity and discovery classification, but shared project actions and dashboards are not
+  yet restricted by Client versus Talent role.
 - **No client-side onboarding.** When a consultant adds a client, the client must grant access
   to external systems (analytics, domain, social accounts). That happens in chat today and is
   not tracked. Designed in
