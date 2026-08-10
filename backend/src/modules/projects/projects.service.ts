@@ -32,6 +32,7 @@ import {
   type ProjectRole,
 } from './authorization/project-authorization.service';
 import { MissingPermissionException } from './authorization/missing-permission.exception';
+import { isActiveConsultant } from '../../common/auth/consultant-capability';
 import {
   AddProjectMemberDto,
   CreateProjectFromRoadmapDto,
@@ -857,9 +858,9 @@ export class ProjectsService {
       return { project, roadmap };
     }
 
-    if (!profile.is_consultant_verified) {
+    if (!isActiveConsultant(profile)) {
       throw new ForbiddenException(
-        'Consultant mode requires a verified consultant account.',
+        'Consultant mode requires an active consultant account.',
       );
     }
 
@@ -1330,11 +1331,11 @@ export class ProjectsService {
       );
     }
 
-    const isVerified =
-      await this.projectsRepo.isConsultantVerified(newConsultantId);
-    if (!isVerified) {
+    const targetIsActiveConsultant =
+      await this.projectsRepo.isActiveConsultant(newConsultantId);
+    if (!targetIsActiveConsultant) {
       throw new BadRequestException(
-        'Selected member is not a verified consultant.',
+        'Selected member is not an active consultant.',
       );
     }
 

@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
 import type { AuthRepository } from './repositories/auth.repository.interface';
 import { CompleteOnboardingDto, UpdateProfileDto } from './dto/auth.dto';
@@ -16,6 +22,7 @@ import {
 } from '../profile/freelancer-eligibility.service';
 import { TeamsService } from '../teams/teams.service';
 import { EmailOtpService } from './email-otp.service';
+import type { OnboardingSelection } from './onboarding-role';
 
 export interface CompleteOnboardingResult {
   profile: Profile;
@@ -53,13 +60,21 @@ export class AuthService {
     userId: string,
     dto: CompleteOnboardingDto,
   ): Promise<CompleteOnboardingResult> {
-    const profile = await this.authRepo.completeOnboarding(userId, {
-      lane: dto.lane,
-      intent: dto.intent,
-    });
+    let selection: OnboardingSelection;
+    if (dto.lane === 'client_freelancer') {
+      if (!dto.intent) {
+        throw new BadRequestException(
+          'Legacy client_freelancer onboarding requires intent',
+        );
+      }
+      selection = { lane: dto.lane, intent: dto.intent };
+    } else {
+      selection = { lane: dto.lane };
+    }
+    const profile = await this.authRepo.completeOnboarding(userId, selection);
 
-    // Lane-scoped provisioning: consultants get a personal team, clients
-    // keep the personal workspace project. Either path is idempotent on
+    // Role-scoped provisioning: use the persisted identity returned by the
+    // repository, never the caller's replayable lane. Either path is idempotent on
     // re-run. If provisioning throws, the onboarding state is already
     // persisted — surface the error so the client can retry without
     // rolling back the onboarding/lane writes.
@@ -67,7 +82,7 @@ export class AuthService {
     let personal_team_id: string | null = null;
 
     try {
-      if (dto.lane === 'consultant') {
+      if (profile.role === 'consultant') {
         const team = await this.teamsService.provisionPersonalTeam(userId);
         personal_team_id = team.id;
       } else {
@@ -76,7 +91,7 @@ export class AuthService {
       }
     } catch (err) {
       this.logger.error(
-        `Failed to provision lane-scoped artifact for ${userId} (lane=${dto.lane}) after onboarding: ${
+        `Failed to provision role-scoped artifact for ${userId} (role=${profile.role}) after onboarding: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

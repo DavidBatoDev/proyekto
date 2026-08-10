@@ -41,7 +41,10 @@ function fakeSupabase(input: {
         maybeSingle() {
           if (table === 'profiles') {
             return Promise.resolve({
-              data: { is_consultant_verified: input.verified ?? true },
+              data: {
+                role: 'consultant',
+                is_consultant_verified: input.verified ?? true,
+              },
               error: null,
             });
           }

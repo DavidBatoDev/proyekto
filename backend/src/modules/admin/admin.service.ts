@@ -9,12 +9,14 @@ import {
   MatchCandidatesQueryDto,
   RejectApplicationDto,
 } from './dto/admin.dto';
+import { TeamsService } from '../teams/teams.service';
 
 @Injectable()
 export class AdminService {
   constructor(
     @Inject(ADMIN_REPOSITORY) private readonly adminRepo: AdminRepository,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   getAdminProfile(userId: string) {
@@ -27,11 +29,16 @@ export class AdminService {
     return this.adminRepo.getApplicationDetail(id);
   }
   async approveApplication(id: string) {
+    const applicantUserId = await this.adminRepo.getApplicationUserId(id);
+    // Provision before granting active consultant capability. An orphaned
+    // personal team is harmless and retryable; an active consultant without
+    // the required team is not.
+    await this.teamsService.provisionPersonalTeam(applicantUserId);
     const approved = await this.adminRepo.approveApplication(id);
     const approvedUserId =
       approved && typeof approved === 'object' && 'user_id' in approved
         ? (approved.user_id as string | undefined)
-        : undefined;
+        : applicantUserId;
 
     await Promise.all([
       this.cacheInvalidation.invalidateConsultantsCache(approvedUserId),

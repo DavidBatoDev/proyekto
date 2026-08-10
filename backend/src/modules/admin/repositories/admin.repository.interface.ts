@@ -2,6 +2,7 @@ export interface AdminRepository {
   getAdminProfile(userId: string): Promise<unknown>;
   listApplications(filters: { status?: string }): Promise<unknown[]>;
   getApplicationDetail(id: string): Promise<unknown>;
+  getApplicationUserId(id: string): Promise<string>;
   approveApplication(id: string): Promise<unknown>;
   rejectApplication(id: string, reason?: string): Promise<unknown>;
   listAdmins(): Promise<unknown[]>;

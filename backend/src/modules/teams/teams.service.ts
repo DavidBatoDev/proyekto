@@ -16,6 +16,7 @@ import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { isEmailSuppressed } from '../notifications/email/email-suppression';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import { isActiveConsultant } from '../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
 import {
@@ -829,17 +830,17 @@ export class TeamsService {
   async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('is_consultant_verified')
+      .select('role, is_consultant_verified')
       .eq('id', team.owner_id)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!data?.is_consultant_verified) {
+    if (!isActiveConsultant(data)) {
       throw new MissingPermissionException({
         path: null,
         requiredRole: 'consultant',
         label: 'manage team rates',
         message:
-          'Team owner must be a verified consultant to set rate / billing fields.',
+          'Team owner must be an active consultant to set rate / billing fields.',
       });
     }
   }

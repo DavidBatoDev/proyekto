@@ -23,7 +23,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     let q = this.supabase
       .from('consultant_applications')
       .select(
-        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, is_consultant_verified)',
+        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, role, is_consultant_verified)',
       )
       .order('created_at', { ascending: false });
     if (filters.status) q = q.eq('status', filters.status);
@@ -101,6 +101,7 @@ export class SupabaseAdminRepository implements AdminRepository {
             email: profileData.email,
             avatar_url: profileData.avatar_url,
             headline: profileData.headline,
+            role: profileData.role,
             is_consultant_verified: Boolean(profileData.is_consultant_verified),
           }
         : undefined,
@@ -119,6 +120,22 @@ export class SupabaseAdminRepository implements AdminRepository {
     };
   }
 
+  async getApplicationUserId(id: string): Promise<string> {
+    const result = (await this.supabase
+      .from('consultant_applications')
+      .select('user_id')
+      .eq('id', id)
+      .single()) as unknown as {
+      data: { user_id: string } | null;
+      error: { message: string } | null;
+    };
+    const { data, error } = result;
+    if (error || !data?.user_id) {
+      throw new NotFoundException('Application not found');
+    }
+    return data.user_id as string;
+  }
+
   async approveApplication(id: string) {
     const { data: app } = await this.supabase
       .from('consultant_applications')
@@ -127,10 +144,14 @@ export class SupabaseAdminRepository implements AdminRepository {
       .single();
     if (!app) throw new NotFoundException('Application not found');
 
-    await this.supabase
+    const profileUpdate = (await this.supabase
       .from('profiles')
-      .update({ is_consultant_verified: true })
-      .eq('id', (app as Record<string, string>).user_id);
+      .update({ role: 'consultant', is_consultant_verified: true })
+      .eq('id', (app as Record<string, string>).user_id)) as unknown as {
+      error: { message: string } | null;
+    };
+    const { error: profileError } = profileUpdate;
+    if (profileError) throw new Error(profileError.message);
 
     const { data, error } = await this.supabase
       .from('consultant_applications')
@@ -220,13 +241,14 @@ export class SupabaseAdminRepository implements AdminRepository {
       .select(
         `
         id, display_name, first_name, last_name, email, avatar_url, headline, country,
-        is_consultant_verified,
+        role, is_consultant_verified,
         rate_settings:user_rate_settings(*),
         stats:user_stats(*),
         specializations:user_specializations(*),
         skills:user_skills(*, skill:skills(*))
       `,
       )
+      .eq('role', 'consultant')
       .eq('is_consultant_verified', true);
 
     if (!candidates) return [];

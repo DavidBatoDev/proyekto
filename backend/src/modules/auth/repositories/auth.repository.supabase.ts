@@ -2,8 +2,23 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AuthRepository } from './auth.repository.interface';
-import { Profile } from '../../../common/entities';
-import { OnboardingLane } from '../dto/auth.dto';
+import type { AccountRole, Profile } from '../../../common/entities';
+import {
+  canonicalOnboardingSettings,
+  type OnboardingSelection,
+  resolveOnboardingRole,
+} from '../onboarding-role';
+
+interface RepositoryResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface ExistingOnboardingProfile {
+  settings: unknown;
+  role: AccountRole | null;
+  has_completed_onboarding: boolean | null;
+}
 
 @Injectable()
 export class SupabaseAuthRepository implements AuthRepository {
@@ -12,76 +27,87 @@ export class SupabaseAuthRepository implements AuthRepository {
   ) {}
 
   async getProfile(userId: string): Promise<Profile | null> {
-    const { data, error } = await this.supabase
+    const result = (await this.supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .single()) as unknown as RepositoryResult<Profile>;
 
-    if (error) return null;
-    return data as Profile;
+    if (result.error) return null;
+    return result.data;
   }
 
   async completeOnboarding(
     userId: string,
-    dto: {
-      lane: OnboardingLane;
-      intent: { freelancer: boolean; client: boolean };
-    },
+    selection: OnboardingSelection,
   ): Promise<Profile> {
-    const { data: existingProfile, error: existingError } = await this.supabase
+    const existingResult = (await this.supabase
       .from('profiles')
-      .select('settings')
+      .select('settings, role, has_completed_onboarding')
       .eq('id', userId)
-      .single();
+      .single()) as unknown as RepositoryResult<ExistingOnboardingProfile>;
 
-    if (existingError) throw new Error(existingError.message);
+    if (existingResult.error) throw new Error(existingResult.error.message);
+    if (!existingResult.data) throw new Error('Profile not found');
+    const existingProfile = existingResult.data;
 
     const existingSettings =
-      existingProfile &&
       typeof existingProfile.settings === 'object' &&
       existingProfile.settings !== null
         ? (existingProfile.settings as Record<string, unknown>)
         : {};
 
+    if (existingProfile.has_completed_onboarding === true) {
+      const profile = await this.getProfile(userId);
+      if (!profile) throw new Error('Profile not found');
+      return profile;
+    }
+
+    const role = resolveOnboardingRole(
+      existingProfile.role as AccountRole | null | undefined,
+      selection,
+    );
+
     const updatePayload: Record<string, unknown> = {
+      role,
       has_completed_onboarding: true,
       settings: {
         ...existingSettings,
-        onboarding: {
-          lane: dto.lane,
-          intent: {
-            freelancer: Boolean(dto.intent?.freelancer),
-            client: Boolean(dto.intent?.client),
-          },
-          completed_at: new Date().toISOString(),
-        },
+        onboarding: canonicalOnboardingSettings(role, new Date().toISOString()),
       },
     };
 
-    const { data, error } = await this.supabase
+    const updateResult = (await this.supabase
       .from('profiles')
       .update(updatePayload)
       .eq('id', userId)
+      .or('has_completed_onboarding.eq.false,has_completed_onboarding.is.null')
       .select()
-      .single();
+      .maybeSingle()) as unknown as RepositoryResult<Profile>;
 
-    if (error) throw new Error(error.message);
-    return data as Profile;
+    if (updateResult.error) throw new Error(updateResult.error.message);
+    if (updateResult.data) return updateResult.data;
+
+    // A concurrent completion won the conditional update. Return its durable
+    // identity so provisioning follows the persisted role, not this request.
+    const profile = await this.getProfile(userId);
+    if (!profile) throw new Error('Profile not found');
+    return profile;
   }
 
   async updateProfile(
     userId: string,
     dto: Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'bio'>>,
   ): Promise<Profile> {
-    const { data, error } = await this.supabase
+    const result = (await this.supabase
       .from('profiles')
       .update(dto)
       .eq('id', userId)
       .select()
-      .single();
+      .single()) as unknown as RepositoryResult<Profile>;
 
-    if (error) throw new Error(error.message);
-    return data as Profile;
+    if (result.error) throw new Error(result.error.message);
+    if (!result.data) throw new Error('Profile not found');
+    return result.data;
   }
 }

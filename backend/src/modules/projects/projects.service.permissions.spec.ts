@@ -411,7 +411,7 @@ describe('ProjectsService (permissions)', () => {
         user_id: 'member-2',
         role: 'member',
       }),
-      isConsultantVerified: jest.fn().mockResolvedValue(true),
+      isActiveConsultant: jest.fn().mockResolvedValue(true),
       reassignConsultant: jest
         .fn()
         .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),
@@ -447,7 +447,7 @@ describe('ProjectsService (permissions)', () => {
         user_id: 'member-2',
         role: 'member',
       }),
-      isConsultantVerified: jest.fn().mockResolvedValue(false),
+      isActiveConsultant: jest.fn().mockResolvedValue(false),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -483,7 +483,7 @@ describe('ProjectsService (permissions)', () => {
         user_id: 'member-2',
         role: 'member',
       }),
-      isConsultantVerified: jest.fn().mockResolvedValue(true),
+      isActiveConsultant: jest.fn().mockResolvedValue(true),
       reassignConsultant: jest
         .fn()
         .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),

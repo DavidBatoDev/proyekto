@@ -9,13 +9,11 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { AuthenticatedRequest } from '../interfaces/authenticated-request.interface';
+import { isActiveConsultant } from '../auth/consultant-capability';
 
 /**
- * Gate marketplace and other consultant-only surfaces by the
- * `is_consultant_verified` capability flag.
- *
- * Per specs/platform-foundations/requirements.md soft-isolation rule:
- * Verification is the durable trust signal used for consultant capabilities.
+ * Gate consultant-only surfaces by durable consultant identity plus completed
+ * vetting. Neither the role nor the verification flag grants access alone.
  *
  * Mirrors the philosophy of the existing `MarketplaceService.ensureConsultant`
  * helper but moves the check to the API surface so it's loud and
@@ -36,13 +34,13 @@ export class ConsultantOnlyGuard implements CanActivate {
 
     const { data: profile, error } = await this.supabaseAdmin
       .from('profiles')
-      .select('id, is_consultant_verified')
+      .select('id, role, is_consultant_verified')
       .eq('id', request.user.id)
       .maybeSingle();
 
-    if (error || !profile?.is_consultant_verified) {
+    if (error || !isActiveConsultant(profile)) {
       throw new ForbiddenException(
-        'Consultant verification required to access this resource',
+        'Active consultant access is required for this resource',
       );
     }
     return true;

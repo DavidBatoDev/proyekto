@@ -28,8 +28,9 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, role, is_consultant_verified, created_at',
           )
+          .eq('role', 'consultant')
           .eq('is_consultant_verified', true);
         return data || [];
       },
@@ -45,9 +46,10 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, role, is_consultant_verified, created_at',
           )
           .eq('id', id)
+          .eq('role', 'consultant')
           .eq('is_consultant_verified', true)
           .single();
         if (!data) throw new NotFoundException('Consultant not found');

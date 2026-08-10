@@ -1,4 +1,5 @@
 import {
+  AccountRole,
   Project,
   ProjectResourceFolder,
   ProjectResourceLink,
@@ -32,6 +33,7 @@ export type ProjectResourcesPayload = {
 
 export interface ProjectsRepository {
   getCreatorProfileForProjectCreation(userId: string): Promise<{
+    role: AccountRole;
     is_consultant_verified: boolean;
   } | null>;
   findByUser(userId: string): Promise<Project[]>;
@@ -60,7 +62,7 @@ export interface ProjectsRepository {
   ): Promise<Project>;
   assignConsultant(projectId: string, consultantId: string): Promise<Project>;
   isOwner(projectId: string, userId: string): Promise<boolean>;
-  isConsultantVerified(userId: string): Promise<boolean>;
+  isActiveConsultant(userId: string): Promise<boolean>;
   addMember(projectId: string, dto: AddProjectMemberDto): Promise<unknown>;
   getProfileDisplayName(userId: string): Promise<string | null>;
   getInviterProfile(

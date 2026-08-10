@@ -22,6 +22,7 @@ import {
   RespondInviteDto,
 } from './dto/marketplace.dto';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { isActiveConsultant } from '../../common/auth/consultant-capability';
 
 export interface MarketplaceFreelancerCard {
   id: string;
@@ -85,11 +86,11 @@ export class MarketplaceService {
   private async ensureConsultant(userId: string): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, is_consultant_verified')
+      .select('id, role, is_consultant_verified')
       .eq('id', userId)
       .single();
 
-    if (error || !data || !data.is_consultant_verified) {
+    if (error || !isActiveConsultant(data)) {
       throw new ForbiddenException('Consultant access required');
     }
   }

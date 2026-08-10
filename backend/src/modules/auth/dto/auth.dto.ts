@@ -1,15 +1,17 @@
 import {
   IsBoolean,
+  IsDefined,
   IsEnum,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class CompleteOnboardingIntentDto {
+class LegacyOnboardingIntentDto {
   @IsBoolean()
   freelancer: boolean;
 
@@ -17,16 +19,22 @@ class CompleteOnboardingIntentDto {
   client: boolean;
 }
 
-export type OnboardingLane = 'client_freelancer' | 'consultant';
+export type OnboardingLane =
+  | 'client'
+  | 'talent'
+  | 'consultant'
+  | 'client_freelancer';
 
 export class CompleteOnboardingDto {
-  @IsEnum(['client_freelancer', 'consultant'])
+  @IsEnum(['client', 'talent', 'consultant', 'client_freelancer'])
   lane: OnboardingLane;
 
+  @ValidateIf((dto: CompleteOnboardingDto) => dto.lane === 'client_freelancer')
+  @IsDefined()
   @IsObject()
   @ValidateNested()
-  @Type(() => CompleteOnboardingIntentDto)
-  intent: CompleteOnboardingIntentDto;
+  @Type(() => LegacyOnboardingIntentDto)
+  intent?: LegacyOnboardingIntentDto;
 }
 
 export class UpdateProfileDto {

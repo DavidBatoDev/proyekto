@@ -10,20 +10,32 @@ describe('AdminService cache consistency', () => {
   };
 
   const adminRepo = {
+    getApplicationUserId: jest.fn(),
     approveApplication: jest.fn(),
     assignConsultant: jest.fn(),
   };
 
-  const service = new AdminService(adminRepo as any, cacheInvalidation as any);
+  const teamsService = {
+    provisionPersonalTeam: jest.fn().mockResolvedValue({ id: 'team-1' }),
+  };
+
+  const service = new AdminService(
+    adminRepo as any,
+    cacheInvalidation as any,
+    teamsService as any,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('invalidates consultant + marketplace caches after approval', async () => {
+    adminRepo.getApplicationUserId.mockResolvedValueOnce('user-1');
     adminRepo.approveApplication.mockResolvedValueOnce({ user_id: 'user-1' });
 
     await service.approveApplication('application-1');
+
+    expect(teamsService.provisionPersonalTeam).toHaveBeenCalledWith('user-1');
 
     expect(cacheInvalidation.invalidateConsultantsCache).toHaveBeenCalledWith(
       'user-1',

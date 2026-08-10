@@ -1,14 +1,11 @@
 import { Profile } from '../../../common/entities';
-import { OnboardingLane } from '../dto/auth.dto';
+import type { OnboardingSelection } from '../onboarding-role';
 
 export interface AuthRepository {
   getProfile(userId: string): Promise<Profile | null>;
   completeOnboarding(
     userId: string,
-    data: {
-      lane: OnboardingLane;
-      intent: { freelancer: boolean; client: boolean };
-    },
+    data: OnboardingSelection,
   ): Promise<Profile>;
   updateProfile(
     userId: string,
