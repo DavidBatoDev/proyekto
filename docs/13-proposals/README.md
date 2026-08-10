@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-07 · **Status:** draft
+> **Last updated:** 2026-08-10 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Everything else in `docs/` describes
 shipped behaviour and is verified against source; this section is the one place where that
@@ -34,6 +34,7 @@ If you only read one page, read
 | [client-access-handover.md](./client-access-handover.md) | Feature 1 — a tracked checklist for the external-system access a client must grant at onboarding |
 | [organizations-and-services.md](./organizations-and-services.md) | Feature 2a — an Organization tier above projects, a real `services` table, and the resolution of `1 Roadmap = 1 Service` vs. `roadmaps.project_id UNIQUE` |
 | [delivery-tree-visualization.md](./delivery-tree-visualization.md) | Feature 2b — a zoomable Org → Project → Service → Roadmap tree |
+| [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) | Monetization — 4-tier per-seat pricing for the Execution and Marketplace platforms, Shopify-style add-ons (Time/Finance), entitlement architecture, edge cases E1–E14 |
 
 ## Why these three
 
