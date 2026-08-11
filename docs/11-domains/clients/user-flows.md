@@ -115,8 +115,8 @@ Security properties, quoted from `20260730093000_contract_signature_links.sql`:
 An anonymous visitor builds a roadmap before signing up, identified by an `x-guest-user-id`
 header against a `profiles` row with `is_guest = true`. On signup the roadmap migrates to the
 real account; converting it to a project grants the creator `admin` + `origin='client'`
-on that project. This project-scoped origin is independent of whether signup selected the
-Client, Talent, or Consultant account role. Guests are blocked from
+on that project. This origin is purely project-scoped — signup is lane-free and stores
+no account role. Guests are blocked from
 `POST /projects/from-roadmap` and `POST /roadmaps/migrate` until they have an account. See
 [Guests](../guests/README.md).
 

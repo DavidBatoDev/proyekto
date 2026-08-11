@@ -11,14 +11,14 @@ not automatically protected; each surface has its own gate.
 | Route | Purpose | Gate |
 | --- | --- | --- |
 | `/consultant` | Consultant landing page | Public |
-| `/consultant/browse` | Browse active consultant directory | Public API filtered by role + verification |
-| `/consultant/$profileId` | View an active consultant profile | Public API filtered by role + verification |
+| `/consultant/browse` | Browse active consultant directory | Public API filtered by `is_consultant_verified` |
+| `/consultant/$profileId` | View an active consultant profile | Public API filtered by `is_consultant_verified` |
 
 ## Application and shared routes
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/consultant/apply` | Create and submit a consultant application | Authentication; not restricted by account role |
+| `/consultant/apply` | Create and submit a consultant application | Authentication; open to any account |
 | `/dashboard` | Shared project and workspace dashboard | Authentication |
 | `/teams/*` | Personal/reusable teams, invites, rates, and time | Team membership and operation-specific checks |
 | `/project/$projectId/*` | Delivery workspace | Resolved project access and backend permission checks |
@@ -50,7 +50,7 @@ The common consultant assignment is project owner, so all project tabs are avail
 | Time | Review team logs and prepare payable work |
 | Settings | Configure project, content, permissions, teams, and time behavior |
 
-Project owner access, not the Consultant account role by itself, makes these tabs available.
+Project owner access, not the consultant capability by itself, makes these tabs available.
 
 ## Backend-only protected areas
 

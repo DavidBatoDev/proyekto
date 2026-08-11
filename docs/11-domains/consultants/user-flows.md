@@ -2,29 +2,27 @@
 
 > **Last updated:** 2026-08-10 · **Status:** current
 
-The Consultant flow deliberately separates identity, vetting, and project authority. Signup
-creates the identity and team; approval unlocks product capability; project creation or
-assignment establishes authority over a specific engagement.
+The Consultant flow deliberately separates vetting from project authority. Signup is
+the same lane-free flow as everyone else's; approval unlocks product capability;
+project creation or assignment establishes authority over a specific engagement.
 
-## 1. Signup and team provisioning
+## 1. Signup
 
 ```text
-Choose Consultant
-  -> profiles.role='consultant'
-  -> is_consultant_verified=false
-  -> canonical onboarding settings
-  -> personal team provisioned
-  -> Consultant welcome deck
+Lane-free 4-step signup (Account -> Password -> Profile -> Verify)
+  -> settings.onboarding = { completed_at }
+  -> personal workspace provisioned
+  -> single welcome deck
 ```
 
-If OAuth has no continuation lane, `/welcome` asks for a role before completing onboarding.
-The role cannot be changed by replaying onboarding after completion.
+There is no consultant signup lane and no role selection at `/welcome` — nothing
+about an account marks it as a consultant before vetting.
 
 ## 2. Apply and receive approval
 
 The applicant saves a draft, submits required experience and niche information, and waits for
 admin review. Approval provisions the personal team idempotently, changes application status,
-sets Consultant role, and enables verification. Rejection leaves consultant powers disabled.
+and sets `is_consultant_verified=true`. Rejection leaves consultant powers disabled.
 
 ## 3. Create or join a project
 

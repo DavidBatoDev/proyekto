@@ -18,9 +18,9 @@ A user applies to become a verified consultant; an admin reviews and approves.
 [Data → identity model](../../07-data-and-db/identity-vetting-model.md) and the
 [Admin vetting playbook](../../12-runbooks/README.md).
 
-Consultant-lane accounts have `role='consultant'` before approval but no consultant
-powers. Approval idempotently provisions their personal team, sets consultant role
-for applicants promoted from another lane, and flips `is_consultant_verified`.
+Any authenticated account may apply — there is no account role and no consultant
+signup lane. Approval idempotently provisions the applicant's personal team and flips
+`is_consultant_verified`, the single account-level capability.
 
 ## Marketplace
 
@@ -37,10 +37,13 @@ Discovery draws on the profile sub-entities (`user_rate_settings`, `user_stats`,
 `user_specializations`, `user_skills`) so consultants can filter by skill, niche,
 rate, and availability. Invites reuse `project_invites`.
 
-> **The active-consultant gate:** consultant-only routes require both
-> `profiles.role='consultant'` and `is_consultant_verified=true` through the shared
-> predicate. The current freelancer query filters `is_public=true` but does **not** yet
-> enforce `role='talent'`; `POST /marketplace/go-live` has the same gap. See
+> **The active-consultant gate:** consultant-only routes require
+> `profiles.is_consultant_verified=true` through the shared predicate — vetting is
+> the only account-level capability. The freelancer query filters `is_public=true`
+> with no eligibility enforcement, and `POST /marketplace/go-live` has the same gap;
+> marketplace enrollment records are the designed fix
+> ([Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
+> See
 > [Talent → discovery and delivery](../talent/discovery-and-delivery.md),
 > [Backend → auth & guards](../../03-backend/auth-and-guards.md), and
 > [Product → personas](../../01-product/personas.md).
@@ -52,7 +55,7 @@ rate, and availability. Invites reuse `project_invites`.
   [Admin vetting playbook](../../12-runbooks/README.md).
 - **Teams** — hired freelancers land in project teams; see
   [Teams and Time](../teams-and-time/README.md).
-- **Role deep dives** — see [Talent](../talent/README.md) and
+- **Position deep dives** — see [Talent](../talent/README.md) and
   [Consultants](../consultants/README.md) for the complete account-to-delivery flows.
 
 ## Code locations

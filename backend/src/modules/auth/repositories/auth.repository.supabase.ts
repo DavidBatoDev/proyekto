@@ -2,12 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AuthRepository } from './auth.repository.interface';
-import type { AccountRole, Profile } from '../../../common/entities';
-import {
-  canonicalOnboardingSettings,
-  type OnboardingSelection,
-  resolveOnboardingRole,
-} from '../onboarding-role';
+import type { Profile } from '../../../common/entities';
 
 interface RepositoryResult<T> {
   data: T | null;
@@ -16,7 +11,6 @@ interface RepositoryResult<T> {
 
 interface ExistingOnboardingProfile {
   settings: unknown;
-  role: AccountRole | null;
   has_completed_onboarding: boolean | null;
 }
 
@@ -37,13 +31,10 @@ export class SupabaseAuthRepository implements AuthRepository {
     return result.data;
   }
 
-  async completeOnboarding(
-    userId: string,
-    selection: OnboardingSelection,
-  ): Promise<Profile> {
+  async completeOnboarding(userId: string): Promise<Profile> {
     const existingResult = (await this.supabase
       .from('profiles')
-      .select('settings, role, has_completed_onboarding')
+      .select('settings, has_completed_onboarding')
       .eq('id', userId)
       .single()) as unknown as RepositoryResult<ExistingOnboardingProfile>;
 
@@ -63,17 +54,11 @@ export class SupabaseAuthRepository implements AuthRepository {
       return profile;
     }
 
-    const role = resolveOnboardingRole(
-      existingProfile.role as AccountRole | null | undefined,
-      selection,
-    );
-
     const updatePayload: Record<string, unknown> = {
-      role,
       has_completed_onboarding: true,
       settings: {
         ...existingSettings,
-        onboarding: canonicalOnboardingSettings(role, new Date().toISOString()),
+        onboarding: { completed_at: new Date().toISOString() },
       },
     };
 
@@ -88,8 +73,8 @@ export class SupabaseAuthRepository implements AuthRepository {
     if (updateResult.error) throw new Error(updateResult.error.message);
     if (updateResult.data) return updateResult.data;
 
-    // A concurrent completion won the conditional update. Return its durable
-    // identity so provisioning follows the persisted role, not this request.
+    // A concurrent completion won the conditional update. Return the persisted
+    // profile so the caller works from durable state, not this request.
     const profile = await this.getProfile(userId);
     if (!profile) throw new Error('Profile not found');
     return profile;

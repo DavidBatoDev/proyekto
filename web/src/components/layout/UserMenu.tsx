@@ -65,11 +65,7 @@ export default function UserMenu() {
 	};
 	const accountLabel = isActiveConsultant(profile)
 		? "Verified consultant"
-		: profile?.role === "consultant"
-			? "Consultant"
-			: profile?.role === "client"
-				? "Client"
-				: "Talent";
+		: "Member";
 
 	return (
 		<div className="relative overflow-visible" ref={dropdownRef}>

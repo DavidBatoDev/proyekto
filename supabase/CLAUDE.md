@@ -4,7 +4,7 @@ Local context for the database unit. Cross-cutting rules live in the root CLAUDE
 
 ## Hard rules
 
-- migrations/ is the source of truth for the DB schema (~192 timestamped files and counting).
+- migrations/ is the source of truth for the DB schema (~241 timestamped files and counting).
 - Tracked migrations are IMMUTABLE - they may already be applied. Never edit an existing migration (a hook blocks it); always create a NEW file: `YYYYMMDDHHMMSS_short_description.sql` (UTC timestamp).
 - Latest-function-body rule: when redefining a SQL function, grep the function name across migrations/ and start from the body in the NEWEST migration that defines it. A stale copy once silently broke upsert_full_roadmap.
 - New tables get their RLS policies in the same migration. This schema has a history of RLS-recursion incidents - before writing self-referential policies (profiles, project_access, team membership), review the past recursion-fix migrations.

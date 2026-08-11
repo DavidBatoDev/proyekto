@@ -23,7 +23,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     let q = this.supabase
       .from('consultant_applications')
       .select(
-        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, role, is_consultant_verified)',
+        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, is_consultant_verified)',
       )
       .order('created_at', { ascending: false });
     if (filters.status) q = q.eq('status', filters.status);
@@ -101,7 +101,6 @@ export class SupabaseAdminRepository implements AdminRepository {
             email: profileData.email,
             avatar_url: profileData.avatar_url,
             headline: profileData.headline,
-            role: profileData.role,
             is_consultant_verified: Boolean(profileData.is_consultant_verified),
           }
         : undefined,
@@ -146,7 +145,7 @@ export class SupabaseAdminRepository implements AdminRepository {
 
     const profileUpdate = (await this.supabase
       .from('profiles')
-      .update({ role: 'consultant', is_consultant_verified: true })
+      .update({ is_consultant_verified: true })
       .eq('id', (app as Record<string, string>).user_id)) as unknown as {
       error: { message: string } | null;
     };
@@ -241,14 +240,13 @@ export class SupabaseAdminRepository implements AdminRepository {
       .select(
         `
         id, display_name, first_name, last_name, email, avatar_url, headline, country,
-        role, is_consultant_verified,
+        is_consultant_verified,
         rate_settings:user_rate_settings(*),
         stats:user_stats(*),
         specializations:user_specializations(*),
         skills:user_skills(*, skill:skills(*))
       `,
       )
-      .eq('role', 'consultant')
       .eq('is_consultant_verified', true);
 
     if (!candidates) return [];

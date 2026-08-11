@@ -1,6 +1,6 @@
 # Runbook: Admin Vetting Playbook
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 How an **Admin** uses the identity/vetting data to approve (or reject) a **Consultant**
 application. The data model is in
@@ -10,7 +10,7 @@ operational procedure over it.
 ```
 signs up ─► completes profile ─► "Apply as Consultant"
         ─► admin reviews user_* identity data
-             ├─ approve ─► personal team + role=consultant + verified=true
+             ├─ approve ─► personal team + is_consultant_verified=true
              └─ reject  ─► user_verifications.notes explain why (user can resubmit)
 ```
 
@@ -40,15 +40,16 @@ The admin console loads the applicant's `user_*` records. Work through them:
 ## Approve
 
 Prefer the console action (`POST /admin/applications/:id/approve`), which provisions
-the personal team before activating the consultant. The profile mutation is:
+the personal team before activating the consultant. The profile mutation is a single
+capability flip — there is no role column to write:
 
 ```sql
 UPDATE public.profiles
-SET role = 'consultant', is_consultant_verified = true
+SET is_consultant_verified = true
 WHERE id = '<applicant_id>';
 ```
 
-The user can then act as `consultant` and be assigned to projects.
+The user is then an active consultant and can be assigned to projects.
 
 ## Reject
 
@@ -75,8 +76,7 @@ JOIN user_skills us ON us.user_id = p.id
 JOIN skills s ON s.id = us.skill_id AND s.name = 'React'
 LEFT JOIN user_rate_settings urs ON urs.user_id = p.id
 LEFT JOIN user_stats stat ON stat.user_id = p.id
-WHERE p.role = 'consultant'
-  AND p.is_consultant_verified = true
+WHERE p.is_consultant_verified = true
   AND urs.availability != 'unavailable'
 ORDER BY stat.avg_rating DESC, stat.jobs_completed DESC;
 ```

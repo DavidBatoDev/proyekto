@@ -70,7 +70,6 @@ export type ApplicationStatus =
   | 'approved'
   | 'rejected';
 export type AdminAccessLevel = 'support' | 'moderator' | 'super_admin';
-export type AccountRole = 'client' | 'talent' | 'consultant';
 export type AvailabilityStatus =
   | 'available'
   | 'partially_available'
@@ -121,7 +120,6 @@ export interface Profile {
   city?: string;
   zip_code?: string;
   date_of_birth?: string;
-  role: AccountRole;
   is_consultant_verified: boolean;
   is_email_verified: boolean;
   has_completed_onboarding: boolean;

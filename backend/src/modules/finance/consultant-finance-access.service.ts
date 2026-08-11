@@ -107,7 +107,7 @@ export class ConsultantFinanceAccessService {
   private async assertVerified(callerId: string): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('role, is_consultant_verified')
+      .select('is_consultant_verified')
       .eq('id', callerId)
       .maybeSingle();
     if (error || !isActiveConsultant(data)) {

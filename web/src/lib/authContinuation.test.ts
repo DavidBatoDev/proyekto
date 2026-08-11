@@ -98,7 +98,7 @@ describe("auth continuation storage", () => {
 		expect(getAuthContinuation()?.postSignupWelcomeRequired).toBe(true);
 	});
 
-	it("reads intent from a legacy continuation", () => {
+	it("still parses a legacy continuation carrying lane/intent extras", () => {
 		sessionStore.setItem(
 			AUTH_CONTINUATION_KEY,
 			JSON.stringify({
@@ -110,7 +110,7 @@ describe("auth continuation storage", () => {
 			}),
 		);
 
-		expect(getAuthContinuation()?.intent).toBe("freelancer");
+		expect(getAuthContinuation()?.source).toBe("signup");
 	});
 
 	it("drops stale continuation state", () => {

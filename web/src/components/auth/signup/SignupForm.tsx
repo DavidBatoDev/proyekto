@@ -9,14 +9,9 @@ import {
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
 import { hasPendingProjectFromRoadmapIntent } from "@/lib/guestRoadmapConversion";
-import {
-	type AccountRole,
-	buildOnboardingPayload,
-	normalizeSignupLane,
-} from "@/lib/onboardingLane";
 import { runGuestMigrationIfNeeded } from "@/services/migration.service";
 import { useToast } from "../../../hooks/useToast";
-import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
+import { completeOnboarding } from "../../../lib/auth-api";
 import {
 	confirmEmailVerificationCode,
 	requestEmailVerificationCode,
@@ -25,7 +20,6 @@ import { supabase } from "../../../lib/supabase";
 import { fetchProfile, profileKeys } from "../../../queries/profile";
 import { useAuthStore } from "../../../stores/authStore";
 import { SignupStepAccount } from "./SignupStepAccount";
-import { SignupStepLane } from "./SignupStepLane";
 import { SignupStepPassword } from "./SignupStepPassword";
 import { SignupStepProfile } from "./SignupStepProfile";
 
@@ -53,8 +47,6 @@ export function SignupForm(_props: SignupFormProps) {
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/auth/signup" }) as {
 		redirect?: string;
-		intent?: "client" | "freelancer";
-		lane?: OnboardingLane;
 		email?: string;
 	};
 	const toast = useToast();
@@ -64,48 +56,17 @@ export function SignupForm(_props: SignupFormProps) {
 	const getStored = (key: string, fallback = "") =>
 		sessionStorage.getItem(key) ?? fallback;
 
-	// ── Lane resolution ──────────────────────────────────────────────────────
-	// Priority: explicit ?lane= search param wins (homepage CTA pre-selects),
-	// then sessionStorage (carried across multi-step wizard reloads), then
-	// default. Lane is editable from Step 1 (the lane picker); whatever the
-	// user lands on is persisted to sessionStorage so the wizard survives
-	// refreshes without losing the choice.
-	const resolveLane = (): AccountRole => {
-		const normalize = (candidate: OnboardingLane): AccountRole =>
-			normalizeSignupLane(candidate, search.intent);
-		if (search.lane) {
-			const resolved = normalize(search.lane);
-			sessionStorage.setItem("signup_lane", resolved);
-			return resolved;
-		}
-		const stored = sessionStorage.getItem("signup_lane");
-		if (
-			stored === "client_freelancer" ||
-			stored === "client" ||
-			stored === "talent" ||
-			stored === "consultant"
-		) {
-			return normalize(stored);
-		}
-		const fallback: AccountRole =
-			search.intent === "freelancer" ? "talent" : "client";
-		sessionStorage.setItem("signup_lane", fallback);
-		return fallback;
-	};
-	const [lane, setLaneState] = useState<AccountRole>(() => resolveLane());
-	const setLane = (next: AccountRole) => {
-		sessionStorage.setItem("signup_lane", next);
-		setLaneState(next);
-	};
-
-	// ── Step state (1=Lane, 2=Account, 3=Password, 4=Profile, 5=Verify) ─────
-	const [step, setStepState] = useState<1 | 2 | 3 | 4 | 5>(() => {
+	// ── Step state (1=Account, 2=Password, 3=Profile, 4=Verify) ─────────────
+	const [step, setStepState] = useState<1 | 2 | 3 | 4>(() => {
 		const saved = parseInt(sessionStorage.getItem("signupStep") ?? "1");
-		return (saved as 1 | 2 | 3 | 4 | 5) || 1;
+		// Sessions saved by the old 5-step wizard (with the lane picker) may
+		// hold 5; the only old step that must survive is verify.
+		if (saved === 5) return 4;
+		return saved >= 1 && saved <= 4 ? (saved as 1 | 2 | 3 | 4) : 1;
 	});
-	const [prevStep, setPrevStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+	const [prevStep, setPrevStep] = useState<1 | 2 | 3 | 4>(1);
 
-	const setStep = (n: 1 | 2 | 3 | 4 | 5) => {
+	const setStep = (n: 1 | 2 | 3 | 4) => {
 		setPrevStep(step);
 		sessionStorage.setItem("signupStep", n.toString());
 		setStepState(n);
@@ -167,28 +128,22 @@ export function SignupForm(_props: SignupFormProps) {
 		].forEach((k) => sessionStorage.removeItem(k));
 	};
 
-	// ── Step 1 → 2 (lane picked, advance to account) ────────────────────────
-	const handleLaneNext = () => {
-		// Lane is already persisted by setLane(); just advance.
-		setStep(2);
-	};
-
-	// ── Step 2 → 3 (name + email captured, advance to password) ─────────────
+	// ── Step 1 → 2 (name + email captured, advance to password) ─────────────
 	const handleAccountNext = () => {
 		sessionStorage.setItem("signup_firstName", firstName);
 		sessionStorage.setItem("signup_lastName", lastName);
 		sessionStorage.setItem("signup_email", email);
-		setStep(3);
+		setStep(2);
 	};
 
-	// ── Step 3 → 4 (password validated, advance to profile) ─────────────────
+	// ── Step 2 → 3 (password validated, advance to profile) ─────────────────
 	const handlePasswordNext = () => {
 		sessionStorage.setItem("signup_password", password);
 		sessionStorage.setItem("signup_confirmPassword", confirmPassword);
-		setStep(4);
+		setStep(3);
 	};
 
-	// ── Step 2 submit (profile → create account + verify) ───────────────────
+	// ── Step 3 submit (profile → create account + verify) ───────────────────
 	const handleProfileSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!acceptedTerms) {
@@ -216,7 +171,6 @@ export function SignupForm(_props: SignupFormProps) {
 				redirectTo: search.redirect,
 				source: "signup",
 				authMethod: "password",
-				lane,
 			});
 
 			// 1. Create the Supabase auth user
@@ -252,7 +206,7 @@ export function SignupForm(_props: SignupFormProps) {
 			await signOut();
 
 			// 4. Advance to email verification step (only after account is created)
-			setStep(5);
+			setStep(4);
 
 			// 5. Send verification email — errors handled inside; user can resend
 			try {
@@ -285,13 +239,13 @@ export function SignupForm(_props: SignupFormProps) {
 			} else {
 				toast.error(msg || "Signup failed");
 			}
-			setStep(4);
+			setStep(3);
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
-	// ── Step 3: verify code ──────────────────────────────────────────────────
+	// ── Step 4: verify code ──────────────────────────────────────────────────
 	const handleVerificationSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!verificationCode) {
@@ -326,7 +280,7 @@ export function SignupForm(_props: SignupFormProps) {
 			}
 
 			try {
-				await completeOnboarding(buildOnboardingPayload(lane, search.intent));
+				await completeOnboarding();
 			} catch (onboardingErr) {
 				// Non-fatal — settings can be retried from /welcome on next visit.
 				// Still log it so we notice if it's a recurring failure.
@@ -334,8 +288,8 @@ export function SignupForm(_props: SignupFormProps) {
 			}
 
 			// Refetch profile AFTER completeOnboarding so the auth store carries
-			// the lane the welcome page will read. Doing it before is the race
-			// that caused /welcome to render the wrong deck on first visit.
+			// has_completed_onboarding for the welcome page. Doing it before is
+			// the race that caused /welcome to misrender on first visit.
 			if (authData.user) {
 				try {
 					const fresh = await fetchProfile(authData.user.id);
@@ -435,22 +389,12 @@ export function SignupForm(_props: SignupFormProps) {
 				</div>
 			)}
 
-			{/* Each step renders its own header (Lane, Account, Password, Profile).
+			{/* Each step renders its own header (Account, Password, Profile).
           The Verify step has its own self-contained UI below. */}
 
 			{/* Animated step panels */}
 			<AnimatePresence mode="wait">
 				{step === 1 && (
-					<motion.div key="step-lane" {...motionProps}>
-						<SignupStepLane
-							lane={lane}
-							setLane={setLane}
-							onNext={handleLaneNext}
-						/>
-					</motion.div>
-				)}
-
-				{step === 2 && (
 					<motion.div key="step-account" {...motionProps}>
 						<SignupStepAccount
 							firstName={firstName}
@@ -460,14 +404,12 @@ export function SignupForm(_props: SignupFormProps) {
 							email={email}
 							setEmail={setEmail}
 							onNext={handleAccountNext}
-							onBack={() => setStep(1)}
 							authRedirect={search.redirect}
-							authLane={lane}
 						/>
 					</motion.div>
 				)}
 
-				{step === 3 && (
+				{step === 2 && (
 					<motion.div key="step-password" {...motionProps}>
 						<SignupStepPassword
 							password={password}
@@ -475,12 +417,12 @@ export function SignupForm(_props: SignupFormProps) {
 							confirmPassword={confirmPassword}
 							setConfirmPassword={setConfirmPassword}
 							onNext={handlePasswordNext}
-							onBack={() => setStep(2)}
+							onBack={() => setStep(1)}
 						/>
 					</motion.div>
 				)}
 
-				{step === 4 && (
+				{step === 3 && (
 					<motion.div key="step-profile" {...motionProps}>
 						<SignupStepProfile
 							gender={gender}
@@ -497,14 +439,14 @@ export function SignupForm(_props: SignupFormProps) {
 							setZipCode={setZipCode}
 							acceptedTerms={acceptedTerms}
 							setAcceptedTerms={setAcceptedTerms}
-							onBack={() => setStep(3)}
+							onBack={() => setStep(2)}
 							onSubmit={handleProfileSubmit}
 							isLoading={isLoading}
 						/>
 					</motion.div>
 				)}
 
-				{step === 5 && (
+				{step === 4 && (
 					<motion.div key="step-verify" {...motionProps}>
 						{/* ── Verification screen ── */}
 						<div
@@ -660,7 +602,7 @@ export function SignupForm(_props: SignupFormProps) {
 									type="button"
 									onClick={() => {
 										setVerificationCode("");
-										setStep(4);
+										setStep(3);
 									}}
 									style={{
 										background: "none",

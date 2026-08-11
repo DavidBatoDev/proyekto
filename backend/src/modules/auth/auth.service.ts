@@ -1,13 +1,7 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
 import type { AuthRepository } from './repositories/auth.repository.interface';
-import { CompleteOnboardingDto, UpdateProfileDto } from './dto/auth.dto';
+import { UpdateProfileDto } from './dto/auth.dto';
 import {
   EmailVerificationConfirmDto,
   EmailVerificationRequestDto,
@@ -20,9 +14,7 @@ import {
   FreelancerEligibilityService,
   type FreelancerRequirement,
 } from '../profile/freelancer-eligibility.service';
-import { TeamsService } from '../teams/teams.service';
 import { EmailOtpService } from './email-otp.service';
-import type { OnboardingSelection } from './onboarding-role';
 
 export interface CompleteOnboardingResult {
   profile: Profile;
@@ -42,7 +34,6 @@ export class AuthService {
     @Inject(AUTH_REPOSITORY) private readonly authRepo: AuthRepository,
     private readonly personalWorkspaceService: PersonalWorkspaceService,
     private readonly freelancerEligibility: FreelancerEligibilityService,
-    private readonly teamsService: TeamsService,
     private readonly emailOtpService: EmailOtpService,
   ) {}
 
@@ -56,42 +47,24 @@ export class AuthService {
     return { ...profile, missingFreelancerRequirements: missing };
   }
 
-  async completeOnboarding(
-    userId: string,
-    dto: CompleteOnboardingDto,
-  ): Promise<CompleteOnboardingResult> {
-    let selection: OnboardingSelection;
-    if (dto.lane === 'client_freelancer') {
-      if (!dto.intent) {
-        throw new BadRequestException(
-          'Legacy client_freelancer onboarding requires intent',
-        );
-      }
-      selection = { lane: dto.lane, intent: dto.intent };
-    } else {
-      selection = { lane: dto.lane };
-    }
-    const profile = await this.authRepo.completeOnboarding(userId, selection);
+  async completeOnboarding(userId: string): Promise<CompleteOnboardingResult> {
+    const profile = await this.authRepo.completeOnboarding(userId);
 
-    // Role-scoped provisioning: use the persisted identity returned by the
-    // repository, never the caller's replayable lane. Either path is idempotent on
-    // re-run. If provisioning throws, the onboarding state is already
-    // persisted — surface the error so the client can retry without
-    // rolling back the onboarding/lane writes.
+    // Every user gets a personal workspace — there is no signup lane, so no
+    // role-scoped provisioning. Idempotent on re-run. If provisioning throws,
+    // the onboarding state is already persisted — surface the error so the
+    // client can retry without rolling back the onboarding write.
+    // personal_team_id stays in the response shape for older clients; it is
+    // always null now (consultants create teams after vetting, not at signup).
     let personal_workspace_id: string | null = null;
-    let personal_team_id: string | null = null;
+    const personal_team_id: string | null = null;
 
     try {
-      if (profile.role === 'consultant') {
-        const team = await this.teamsService.provisionPersonalTeam(userId);
-        personal_team_id = team.id;
-      } else {
-        const workspace = await this.personalWorkspaceService.provision(userId);
-        personal_workspace_id = workspace.id;
-      }
+      const workspace = await this.personalWorkspaceService.provision(userId);
+      personal_workspace_id = workspace.id;
     } catch (err) {
       this.logger.error(
-        `Failed to provision role-scoped artifact for ${userId} (role=${profile.role}) after onboarding: ${
+        `Failed to provision personal workspace for ${userId} after onboarding: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

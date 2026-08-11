@@ -14,7 +14,7 @@ R2**, not Supabase Storage.
 
 | Module | Purpose | Key tables |
 | --- | --- | --- |
-| `auth` | Auth + immutable account-role onboarding; provisions a workspace or consultant team from persisted role | `profiles` |
+| `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a personal workspace for every user | `profiles` |
 | `users` | Own-account read/update | `profiles` |
 | `profile` | Full consultant/freelancer profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
@@ -23,7 +23,7 @@ R2**, not Supabase Storage.
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
-| `consultants` | Active-consultant directory (`role` + verification) | `profiles` |
+| `consultants` | Active-consultant directory (`is_consultant_verified`) | `profiles` |
 | `applications` | Consultant/freelancer application submission | `consultant_applications` |
 | `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
@@ -48,10 +48,12 @@ R2**, not Supabase Storage.
 
 ## Identity & accounts
 
-**`auth`** — Supabase-backed auth (session + email OTP) and new-user bootstrapping:
-on first login it creates the `profiles` row, a personal workspace, and default
-teams. Imports `ProjectsModule`, `ProfileModule`, `TeamsModule`. Files:
-`auth.service.ts`, `email-otp.service.ts`.
+**`auth`** — Supabase-backed auth (session + email OTP) and lane-free onboarding:
+`PATCH /auth/onboarding/complete` takes an empty body, writes
+`settings.onboarding = { completed_at }`, and provisions a personal workspace for
+every user (no team at signup — that happens at vetting approval). Imports
+`ProjectsModule`, `ProfileModule`, `TeamsModule`. Files: `auth.service.ts`,
+`email-otp.service.ts`.
 
 **`users`** — thin own-account CRUD over `profiles` (`GET/PATCH /users/me`, plus a
 public `GET /users/:id`).

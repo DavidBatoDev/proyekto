@@ -52,7 +52,6 @@ export interface ConsultantApplication {
 		email: string;
 		avatar_url?: string;
 		headline?: string;
-		role: "client" | "talent" | "consultant";
 		is_consultant_verified: boolean;
 	};
 }
@@ -121,7 +120,6 @@ export interface ConsultantProfile {
 	phone_number?: string | null;
 	country?: string | null;
 	city?: string | null;
-	role: "client" | "talent" | "consultant";
 	is_consultant_verified: boolean;
 	skills: UserSkill[];
 	languages: UserLanguage[];
