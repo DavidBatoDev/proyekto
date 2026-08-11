@@ -64,10 +64,6 @@ export class AdminService {
     return this.adminRepo.getMatchCandidates(query);
   }
   async matchAssign(dto: MatchAssignDto) {
-    const assigned = await this.adminRepo.assignConsultant(
-      dto.project_id,
-      dto.consultant_id,
-    );
     await this.authorization.grant({
       projectId: dto.project_id,
       userId: dto.consultant_id,
@@ -75,6 +71,7 @@ export class AdminService {
       origin: 'consultant',
       grantedBy: dto.consultant_id,
     });
+    const assigned = await this.adminRepo.assignConsultant(dto.project_id);
     await this.cacheInvalidation.invalidateAllDashboardCache();
     return assigned;
   }

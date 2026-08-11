@@ -25,7 +25,7 @@ export function ProjectSettingsLayout({
 		queryKey: ["project", projectId],
 		queryFn: () => projectService.get(projectId),
 	});
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
 
 	// Settings is project CONFIGURATION only. Everything about people —
 	// members, permissions, attached teams, invites — is the Team page now, so

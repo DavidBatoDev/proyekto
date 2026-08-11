@@ -181,7 +181,7 @@ function SettingsGeneralPage() {
 	const [consultantSelectEntered, setConsultantSelectEntered] = useState(false);
 
 	const isOwner = Boolean(user?.id && project?.owner_id === user.id);
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
 	const canReassignConsultant = isOwner || isConsultant;
 	const currentMember = useMemo(
 		() => members.find((member) => member.user_id === user?.id) ?? null,
@@ -285,10 +285,10 @@ function SettingsGeneralPage() {
 			members.filter(
 				(member) =>
 					Boolean(member.user_id) &&
-					member.user_id !== project?.consultant_id &&
+					member.user_id !== project?.consultant?.id &&
 					member.user?.is_consultant_verified === true,
 			),
-		[members, project?.consultant_id],
+		[members, project?.consultant?.id],
 	);
 
 	const selectedOwnerMember = useMemo(

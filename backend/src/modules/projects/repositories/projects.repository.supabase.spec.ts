@@ -4,7 +4,7 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
   it('sorts by updated_at desc, not created_at', async () => {
     const projectsBuilder = {
       select: jest.fn().mockReturnThis(),
-      or: jest.fn().mockResolvedValue({
+      eq: jest.fn().mockResolvedValue({
         data: [
           {
             id: 'p1',

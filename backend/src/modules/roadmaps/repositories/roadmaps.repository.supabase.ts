@@ -100,10 +100,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       { data: principalProjects, error: principalError },
       { data: memberProjects, error: memberError },
     ] = await Promise.all([
-      this.db
-        .from('projects')
-        .select('id')
-        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
+      this.db.from('projects').select('id').eq('owner_id', userId),
       // Slice 3b: project membership now lives in project_shares.
       this.db.from('project_access').select('project_id').eq('user_id', userId),
     ]);
@@ -143,7 +140,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .from('projects')
       .select('id')
       .eq('id', projectId)
-      .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`)
+      .eq('owner_id', userId)
       .maybeSingle();
 
     if (projectError) throw new Error(projectError.message);

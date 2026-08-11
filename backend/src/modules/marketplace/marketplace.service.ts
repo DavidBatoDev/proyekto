@@ -281,7 +281,7 @@ export class MarketplaceService {
 
     const { data: project, error: projectError } = await this.supabase
       .from('projects')
-      .select('id, consultant_id')
+      .select('id')
       .eq('id', dto.projectId)
       .single();
 
@@ -290,9 +290,7 @@ export class MarketplaceService {
     }
 
     // Anyone with admin+ role on the project can send marketplace invites.
-    // Replaces the legacy `project.consultant_id === userId` check, which
-    // tied invite authority to the consultant_id column. Personal-workspace
-    // owners (no consultant assigned) and project admins can both invite.
+    // Project admins can invite regardless of how their access originated.
     // The caller still must hold the consultant capability flag (enforced
     // above by ensureConsultant) to be allowed to *find* freelancers in the
     // marketplace bench in the first place.

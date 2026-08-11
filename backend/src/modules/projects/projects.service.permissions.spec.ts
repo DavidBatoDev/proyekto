@@ -9,9 +9,8 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     title: 'Project One',
     status: 'draft',
     owner_id: 'client-1',
-    consultant_id: 'consultant-1',
-    platform_fee_percent: 10,
-    consultant_fee_percent: 15,
+    consultant: { id: 'consultant-1' },
+    has_client: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -42,6 +41,7 @@ describe('ProjectsService (permissions)', () => {
     assertActionOutranks: jest.fn().mockResolvedValue(undefined),
     resolvePermissions: jest.fn(),
     roleSatisfies: jest.fn(),
+    getProjectConsultantId: jest.fn().mockResolvedValue('consultant-1'),
     grant: jest.fn(),
     revoke: jest.fn(),
   };
@@ -240,7 +240,7 @@ describe('ProjectsService (permissions)', () => {
     const repo = {
       findById: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant_id: undefined })),
+        .mockResolvedValue(buildProject({ consultant: undefined })),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
@@ -404,18 +404,16 @@ describe('ProjectsService (permissions)', () => {
     const repo = {
       findById: jest
         .fn()
-        .mockResolvedValue(
-          buildProject({ owner_id: 'owner-1', consultant_id: 'consultant-1' }),
-        ),
+        .mockResolvedValue(buildProject({ owner_id: 'owner-1' })),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
         id: 'member-row-2',
         user_id: 'member-2',
         role: 'member',
       }),
       isActiveConsultant: jest.fn().mockResolvedValue(true),
-      reassignConsultant: jest
+      update: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),
+        .mockResolvedValue(buildProject({ consultant: { id: 'member-2' } })),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -461,9 +459,7 @@ describe('ProjectsService (permissions)', () => {
 
   it('rejects consultant reassignment when selected member is already consultant', async () => {
     const repo = {
-      findById: jest
-        .fn()
-        .mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+      findById: jest.fn().mockResolvedValue(buildProject()),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -476,20 +472,25 @@ describe('ProjectsService (permissions)', () => {
 
   it('reassigns consultant when owner selects a verified project member', async () => {
     const repo = {
-      findById: jest
-        .fn()
-        .mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+      findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
         id: 'member-row-2',
         user_id: 'member-2',
         role: 'member',
       }),
       isActiveConsultant: jest.fn().mockResolvedValue(true),
-      reassignConsultant: jest
+      update: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant_id: 'member-2' })),
+        .mockResolvedValue(buildProject({ consultant: { id: 'member-2' } })),
     };
-    const service = buildService(repo, ownerAuth());
+    const grant = jest.fn().mockResolvedValue(undefined);
+    const revoke = jest.fn().mockResolvedValue(undefined);
+    const service = buildService(repo, {
+      ...ownerAuth(),
+      getProjectConsultantId: jest.fn().mockResolvedValue('consultant-1'),
+      grant,
+      revoke,
+    });
 
     const updated = await service.reassignProjectConsultant(
       'project-1',
@@ -499,12 +500,22 @@ describe('ProjectsService (permissions)', () => {
       },
     );
 
-    expect(updated.consultant_id).toBe('member-2');
-    expect(repo.reassignConsultant).toHaveBeenCalledWith(
+    expect(updated.consultant?.id).toBe('member-2');
+    expect(grant).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 'member-2',
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: 'client-1',
+    });
+    expect(revoke).toHaveBeenCalledWith(
       'project-1',
-      'client-1',
       'consultant-1',
-      'member-2',
+      undefined,
+      { allowConsultantRemoval: true },
+    );
+    expect(grant.mock.invocationCallOrder[0]).toBeLessThan(
+      revoke.mock.invocationCallOrder[0],
     );
   });
 

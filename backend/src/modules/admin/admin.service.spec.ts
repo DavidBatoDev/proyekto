@@ -65,6 +65,10 @@ describe('AdminService cache consistency', () => {
       origin: 'consultant',
       grantedBy: 'consultant-1',
     });
+    expect(adminRepo.assignConsultant).toHaveBeenCalledWith('project-1');
+    expect(authorization.grant.mock.invocationCallOrder[0]).toBeLessThan(
+      adminRepo.assignConsultant.mock.invocationCallOrder[0],
+    );
     expect(cacheInvalidation.invalidateAllDashboardCache).toHaveBeenCalledTimes(
       1,
     );

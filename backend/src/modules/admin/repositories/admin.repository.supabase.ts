@@ -2,6 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AdminRepository } from './admin.repository.interface';
+import { synthesizeProjectConsultant } from '../../projects/repositories/project-payload.mapper';
 
 @Injectable()
 export class SupabaseAdminRepository implements AdminRepository {
@@ -330,26 +331,29 @@ export class SupabaseAdminRepository implements AdminRepository {
       .sort((a, b) => Number(b.match_score ?? 0) - Number(a.match_score ?? 0));
   }
 
-  async assignConsultant(projectId: string, consultantId: string) {
+  async assignConsultant(projectId: string) {
     const { data, error } = await this.supabase
       .from('projects')
-      .update({ consultant_id: consultantId, status: 'active' })
+      .update({ status: 'active' })
       .eq('id', projectId)
-      .select()
+      .select(
+        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
+      )
       .single();
     if (error || !data) throw new NotFoundException('Project not found');
 
-    return data;
+    return synthesizeProjectConsultant(data as Record<string, unknown>);
   }
 
   async listProjects() {
     const { data } = await this.supabase
       .from('projects')
       .select(
-        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url)',
+        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
       )
       .order('created_at', { ascending: false });
-    return data || [];
+    const projects = (data ?? []) as unknown as Array<Record<string, unknown>>;
+    return projects.map((project) => synthesizeProjectConsultant(project));
   }
 
   async listUsers() {

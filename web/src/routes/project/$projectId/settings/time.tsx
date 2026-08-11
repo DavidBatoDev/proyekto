@@ -47,7 +47,7 @@ function ProjectTimeSettings() {
 		queryFn: () => projectService.get(projectId),
 	});
 	const project = projectQuery.data;
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],

@@ -18,6 +18,7 @@ import {
   type ContractRow,
 } from '../contracts/contracts.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
 
 export interface InvoiceRunResult {
@@ -69,6 +70,7 @@ export class InvoiceSchedulerService {
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
     private readonly financeAccess: ConsultantFinanceAccessService,
+    private readonly projectAuth: ProjectAuthorizationService,
   ) {}
 
   async runDueInvoices(
@@ -361,13 +363,9 @@ export class InvoiceSchedulerService {
     periodStart: string,
     periodEnd: string,
   ): Promise<void> {
-    const { data: project } = await this.supabase
-      .from('projects')
-      .select('consultant_id, title')
-      .eq('id', contract.project_id)
-      .maybeSingle();
-    const consultantId = (project as { consultant_id: string | null } | null)
-      ?.consultant_id;
+    const consultantId = await this.projectAuth.getProjectConsultantId(
+      contract.project_id,
+    );
     if (!consultantId) return;
 
     try {

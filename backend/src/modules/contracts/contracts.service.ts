@@ -8,6 +8,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
   addDays,
   BillingPeriod,
@@ -159,6 +160,7 @@ export class ContractsService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly notifications: NotificationsService,
+    private readonly projectAuth: ProjectAuthorizationService,
   ) {}
 
   async listByProject(
@@ -1140,17 +1142,19 @@ export class ContractsService {
   ): Promise<void> {
     const { data: project } = await this.supabase
       .from('projects')
-      .select('owner_id, consultant_id, title')
+      .select('owner_id, title')
       .eq('id', contract.project_id)
       .maybeSingle();
     const row = project as {
       owner_id: string | null;
-      consultant_id: string | null;
       title: string | null;
     } | null;
+    const consultantId = await this.projectAuth.getProjectConsultantId(
+      contract.project_id,
+    );
 
     const recipients = new Set<string>();
-    if (row?.consultant_id) recipients.add(row.consultant_id);
+    if (consultantId) recipients.add(consultantId);
     if (contract.client_user_id) recipients.add(contract.client_user_id);
     else if (row?.owner_id) recipients.add(row.owner_id);
     recipients.delete(actorId);

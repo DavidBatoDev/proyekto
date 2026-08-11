@@ -27,6 +27,13 @@ export const PROJECT_ROLES = [
 ] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
+export function roleSatisfies(
+  actual: ProjectRole,
+  required: ProjectRole,
+): boolean {
+  return PROJECT_ROLES.indexOf(actual) >= PROJECT_ROLES.indexOf(required);
+}
+
 export interface ProjectShare {
   id: string;
   project_id: string;
@@ -64,15 +71,23 @@ export class ProjectAuthorizationService {
   ) {}
 
   /** The project's consultant (cannot be removed) — null if none assigned. */
-  private async getProjectConsultantId(
-    projectId: string,
-  ): Promise<string | null> {
-    const { data } = await this.supabase
-      .from('projects')
-      .select('consultant_id')
-      .eq('id', projectId)
+  async getProjectConsultantId(projectId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('project_access')
+      .select('user_id, has_direct_grant, granted_at')
+      .eq('project_id', projectId)
+      .eq('origin', 'consultant')
+      .order('has_direct_grant', { ascending: false })
+      .order('granted_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
-    return (data?.consultant_id as string | null) ?? null;
+    if (error) {
+      this.logger.error(
+        `getProjectConsultantId(${projectId}) failed: ${error.message}`,
+      );
+      throw new Error(error.message);
+    }
+    return (data?.user_id as string | null) ?? null;
   }
 
   /**
@@ -132,7 +147,7 @@ export class ProjectAuthorizationService {
    * Pure comparison — true when `actual` is at least as strong as `required`.
    */
   roleSatisfies(actual: ProjectRole, required: ProjectRole): boolean {
-    return PROJECT_ROLES.indexOf(actual) >= PROJECT_ROLES.indexOf(required);
+    return roleSatisfies(actual, required);
   }
 
   /**
@@ -392,6 +407,7 @@ export class ProjectAuthorizationService {
     projectId: string,
     userId: string,
     origin?: string,
+    opts?: { allowConsultantRemoval?: boolean },
   ): Promise<void> {
     const { data: row } = await this.supabase
       .from('project_access')
@@ -402,7 +418,9 @@ export class ProjectAuthorizationService {
     if (!row) return;
 
     // The consultant cannot be removed from a project (PRD guarantee).
-    const consultantId = await this.getProjectConsultantId(projectId);
+    const consultantId = opts?.allowConsultantRemoval
+      ? null
+      : await this.getProjectConsultantId(projectId);
     if (consultantId && userId === consultantId) {
       throw new MissingPermissionException({
         path: null,

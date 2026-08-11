@@ -236,7 +236,7 @@ export function ProjectHeader() {
 	const viewingAs = isRoadmapOnly
 		? undefined
 		: user?.id && project
-			? user.id === project.consultant_id
+			? user.id === project.consultant?.id
 				? "CONSULTANT"
 				: user.id === project.owner_id
 					? "CLIENT"

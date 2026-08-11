@@ -9,7 +9,6 @@ export interface ConsultantFinanceProject {
   status: string;
   currency: string | null;
   owner_id: string | null;
-  consultant_id: string;
   created_at: string;
 }
 
@@ -28,9 +27,7 @@ export class ConsultantFinanceAccessService {
     const [projectResult, accessResult] = await Promise.all([
       this.supabase
         .from('projects')
-        .select(
-          'id, title, status, currency, owner_id, consultant_id, created_at',
-        )
+        .select('id, title, status, currency, owner_id, created_at')
         .eq('id', projectId)
         .maybeSingle(),
       this.supabase
@@ -84,9 +81,7 @@ export class ConsultantFinanceAccessService {
 
     let query = this.supabase
       .from('projects')
-      .select(
-        'id, title, status, currency, owner_id, consultant_id, created_at',
-      )
+      .select('id, title, status, currency, owner_id, created_at')
       .in('id', projectIds)
       .order('updated_at', { ascending: false });
 

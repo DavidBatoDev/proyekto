@@ -268,12 +268,14 @@ export class ProjectActivationService {
     const timePath = `/project/${projectId}/settings/time`;
     const teamsPath = `/project/${projectId}/settings/teams`;
 
-    const [contract, economics, teamRows, project] = await Promise.all([
-      this.contracts.getLiveContract(projectId),
-      this.getEconomicsRow(projectId),
-      this.getCuratedMembers(projectId),
-      this.getProject(projectId),
-    ]);
+    const [contract, economics, teamRows, project, consultantId] =
+      await Promise.all([
+        this.contracts.getLiveContract(projectId),
+        this.getEconomicsRow(projectId),
+        this.getCuratedMembers(projectId),
+        this.getProject(projectId),
+        this.projectAuth.getProjectConsultantId(projectId),
+      ]);
 
     // Existing agreements now have a focused document route. When there is no
     // live agreement yet, the project-filtered list resolves its latest draft
@@ -411,7 +413,7 @@ export class ProjectActivationService {
 
     // 6 — someone to bill.
     const ownerIdentified = Boolean(
-      project?.owner_id && project.owner_id !== project.consultant_id,
+      project?.owner_id && project.owner_id !== consultantId,
     );
     const clientOnContract = Boolean(
       contract?.client_user_id ||
@@ -475,18 +477,16 @@ export class ProjectActivationService {
 
   private async getProject(projectId: string): Promise<{
     owner_id: string | null;
-    consultant_id: string | null;
     status: string | null;
   } | null> {
     const { data } = await this.supabase
       .from('projects')
-      .select('owner_id, consultant_id, status')
+      .select('owner_id, status')
       .eq('id', projectId)
       .maybeSingle();
     return (
       (data as {
         owner_id: string | null;
-        consultant_id: string | null;
         status: string | null;
       } | null) ?? null
     );

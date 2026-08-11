@@ -34,6 +34,14 @@ import type {
   ProjectResourcesPayload,
 } from './projects.repository.interface';
 import { isActiveConsultant } from '../../../common/auth/consultant-capability';
+import {
+  type ProjectRole,
+  roleSatisfies,
+} from '../authorization/project-authorization.service';
+import { synthesizeProjectConsultant } from './project-payload.mapper';
+
+const PROJECT_MEMBER_COMPAT_SELECT =
+  'members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -86,13 +94,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data } = await this.supabase
       .from('project_access')
       .select(
-        'project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email))',
+        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT})`,
       )
       .eq('user_id', userId);
 
     return (data || [])
       .map((r: Record<string, unknown>) => r.project)
-      .filter(Boolean) as Project[];
+      .filter(Boolean)
+      .map((project) => synthesizeProjectConsultant(project as Project));
   }
 
   async findDashboardByUser(userId: string): Promise<Project[]> {
@@ -100,14 +109,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       this.supabase
         .from('projects')
         .select(
-          '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)',
+          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT}`,
         )
-        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
+        .eq('owner_id', userId),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
         .from('project_access')
         .select(
-          'project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email))',
+          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT})`,
         )
         .eq('user_id', userId),
     ]);
@@ -122,10 +131,15 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     const memberProjects = (memberResult.data || [])
       .map((row: Record<string, unknown>) => row.project)
-      .filter(Boolean) as Project[];
+      .filter(Boolean)
+      .map((project) => synthesizeProjectConsultant(project as Project));
+
+    const ownedProjects = (ownedResult.data || []).map((project) =>
+      synthesizeProjectConsultant(project as Project),
+    );
 
     const deduped = new Map<string, Project>();
-    for (const project of [...(ownedResult.data || []), ...memberProjects]) {
+    for (const project of [...ownedProjects, ...memberProjects]) {
       deduped.set(project.id, project);
     }
 
@@ -154,7 +168,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         `
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
-        consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
         members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
@@ -163,23 +176,19 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (error || !data) return null;
 
-    return data as Project & {
-      client?: unknown;
-      consultant?: unknown;
-      members?: unknown[];
-    };
+    return synthesizeProjectConsultant(
+      data as Project & { members?: unknown[] },
+    );
   }
 
   async create(userId: string, dto: CreateProjectDto): Promise<Project> {
     const projectPayload = this.toProjectsTablePayload(dto);
-    const isConsultantMode = dto.creation_mode === 'consultant';
 
     const { data: project, error } = await this.supabase
       .from('projects')
       .insert({
         ...projectPayload,
         owner_id: userId,
-        consultant_id: isConsultantMode ? userId : undefined,
       })
       .select()
       .single();
@@ -209,11 +218,13 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .from('projects')
       .update(projectPayload)
       .eq('id', id)
-      .select()
+      .select('id')
       .single();
     if (error || !data)
       throw new Error(error?.message ?? 'Failed to update project');
-    return data as Project;
+    const updated = await this.findById(id);
+    if (!updated) throw new NotFoundException('Project not found');
+    return updated;
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -248,7 +259,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data: currentProject, error: currentProjectError } =
       await this.supabase
         .from('projects')
-        .select('id, consultant_id')
+        .select('id')
         .eq('id', projectId)
         .single();
 
@@ -261,7 +272,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         .from('projects')
         .update({ owner_id: newOwnerId })
         .eq('id', projectId)
-        .select()
+        .select('id')
         .single();
 
     if (updateProjectError || !updatedProject) {
@@ -273,61 +284,29 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     // Slice 3b: project_members syncing dropped. project_shares is the
     // source of truth and is updated at the service layer via
     // ProjectAuthorizationService.grant/revoke on transferOwner.
-    return updatedProject as Project;
-  }
-
-  async reassignConsultant(
-    projectId: string,
-    ownerId: string,
-    previousConsultantId: string | null,
-    newConsultantId: string,
-  ): Promise<Project> {
-    const { data: updatedProject, error: updateProjectError } =
-      await this.supabase
-        .from('projects')
-        .update({ consultant_id: newConsultantId, status: 'active' })
-        .eq('id', projectId)
-        .select()
-        .single();
-
-    if (updateProjectError || !updatedProject) {
-      throw new BadRequestException(
-        updateProjectError?.message || 'Failed to reassign consultant.',
-      );
-    }
-
-    // Slice 3b: project_members syncing dropped. project_shares is updated
-    // at the service layer via ProjectsService.reassignProjectConsultant.
-    return updatedProject as Project;
-  }
-
-  async assignConsultant(
-    projectId: string,
-    consultantId: string,
-  ): Promise<Project> {
-    const { data, error } = await this.supabase
-      .from('projects')
-      .update({ consultant_id: consultantId, status: 'active' })
-      .eq('id', projectId)
-      .select()
-      .single();
-
-    if (error || !data) throw new NotFoundException('Project not found');
-
-    // Slice 3b: project_members write dropped. project_shares is updated at
-    // the service layer (ProjectsService.assignConsultant grants owner role).
-
-    return data as Project;
+    const updated = await this.findById(projectId);
+    if (!updated) throw new NotFoundException('Project not found');
+    return updated;
   }
 
   async isOwner(projectId: string, userId: string): Promise<boolean> {
-    const { data } = await this.supabase
-      .from('projects')
-      .select('id')
-      .eq('id', projectId)
-      .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`)
-      .single();
-    return !!data;
+    const [projectResult, accessResult] = await Promise.all([
+      this.supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .eq('owner_id', userId)
+        .maybeSingle(),
+      this.supabase
+        .from('project_access')
+        .select('role')
+        .eq('project_id', projectId)
+        .eq('user_id', userId),
+    ]);
+    if (projectResult.data) return true;
+    return (accessResult.data ?? []).some((row) =>
+      roleSatisfies(row.role as ProjectRole, 'owner'),
+    );
   }
 
   async isActiveConsultant(userId: string): Promise<boolean> {
@@ -347,7 +326,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ): Promise<unknown> {
     const { data: projectRow } = await this.supabase
       .from('projects')
-      .select('id, owner_id, consultant_id')
+      .select('id, owner_id')
       .eq('id', projectId)
       .single();
 

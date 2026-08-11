@@ -16,6 +16,10 @@ import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { isEmailSuppressed } from '../notifications/email/email-suppression';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import {
+  type ProjectConsultantCompatibility,
+  synthesizeProjectConsultant,
+} from '../projects/repositories/project-payload.mapper';
 import { isActiveConsultant } from '../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
@@ -39,6 +43,22 @@ export interface TeamMemberPreview {
   email: string | null;
   first_name: string | null;
   last_name: string | null;
+}
+
+export interface TeamAttachedProject extends ProjectConsultantCompatibility {
+  id: string;
+  title: string | null;
+  status: string | null;
+  start_date: string | null;
+  custom_start_date: string | null;
+  banner_url: string | null;
+  owner_id: string | null;
+  owner: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
+  members?: unknown[];
 }
 
 export interface TeamRow {
@@ -518,21 +538,7 @@ export class TeamsService {
       attached_at: string;
       viewer_has_access: boolean;
       viewer_role: string | null;
-      project: {
-        id: string;
-        title: string | null;
-        status: string | null;
-        start_date: string | null;
-        custom_start_date: string | null;
-        banner_url: string | null;
-        owner_id: string | null;
-        consultant_id: string | null;
-        owner: {
-          id: string;
-          display_name: string | null;
-          avatar_url: string | null;
-        } | null;
-      } | null;
+      project: TeamAttachedProject | null;
     }>
   > {
     const team = await this.fetchTeamOrThrow(teamId);
@@ -542,8 +548,9 @@ export class TeamsService {
       .select(
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
-           id, title, status, start_date, custom_start_date, banner_url, owner_id, consultant_id,
-           owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url)
+           id, title, status, start_date, custom_start_date, banner_url, owner_id,
+           owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url),
+           members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))
          )`,
       )
       .eq('team_id', teamId)
@@ -554,21 +561,10 @@ export class TeamsService {
       team_id: string;
       is_primary: boolean;
       attached_at: string;
-      project: {
-        id: string;
-        title: string | null;
-        status: string | null;
-        start_date: string | null;
-        custom_start_date: string | null;
-        banner_url: string | null;
-        owner_id: string | null;
-        consultant_id: string | null;
-        owner: {
-          id: string;
-          display_name: string | null;
-          avatar_url: string | null;
-        } | null;
-      } | null;
+      project: Omit<
+        TeamAttachedProject,
+        keyof ProjectConsultantCompatibility
+      > | null;
     }>;
     const projectIds = rows.map((r) => r.project_id).filter(Boolean);
     let accessSet = new Set<string>();
@@ -579,11 +575,18 @@ export class TeamsService {
         .select('project_id, role')
         .eq('user_id', callerId)
         .in('project_id', projectIds);
-      accessSet = new Set((accessRows ?? []).map((r) => r.project_id));
-      roleMap = new Map((accessRows ?? []).map((r) => [r.project_id, r.role]));
+      const typedAccessRows = (accessRows ?? []) as unknown as Array<{
+        project_id: string;
+        role: string;
+      }>;
+      accessSet = new Set(typedAccessRows.map((row) => row.project_id));
+      roleMap = new Map(
+        typedAccessRows.map((row) => [row.project_id, row.role]),
+      );
     }
     return rows.map((r) => ({
       ...r,
+      project: r.project ? synthesizeProjectConsultant(r.project) : null,
       viewer_has_access: accessSet.has(r.project_id),
       viewer_role: roleMap.get(r.project_id) ?? null,
     }));

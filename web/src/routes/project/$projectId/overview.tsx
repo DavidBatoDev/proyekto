@@ -210,7 +210,7 @@ function OverviewPage() {
 	const memberRole = (currentMember?.role ?? "").toLowerCase();
 	const isOwnerOnProject =
 		user?.id !== undefined &&
-		(project?.owner_id === user.id || project?.consultant_id === user.id);
+		(project?.owner_id === user.id || project?.consultant?.id === user.id);
 	const canEditOverview =
 		isOwnerOnProject ||
 		["owner", "admin", "editor", "client", "consultant"].includes(memberRole);
@@ -337,7 +337,7 @@ function OverviewPage() {
 								(project as unknown as { is_personal_workspace?: boolean })
 									.is_personal_workspace,
 							)}
-							hasConsultant={Boolean(project.consultant_id)}
+							hasConsultant={Boolean(project.consultant?.id)}
 						/>
 						<div className="app-slide-up">
 							<OverviewBanner

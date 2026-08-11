@@ -9,6 +9,7 @@ import { MailerService } from '../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { UploadsService } from '../uploads/uploads.controller';
 import {
   ContractsService,
@@ -187,6 +188,7 @@ export class InvoicesService {
     private readonly composition: InvoiceCompositionService,
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
+    private readonly projectAuth: ProjectAuthorizationService,
   ) {}
 
   async listProjectInvoices(
@@ -875,14 +877,14 @@ export class InvoicesService {
 
     const { data } = await this.supabase
       .from('projects')
-      .select('owner_id, consultant_id')
+      .select('owner_id')
       .eq('id', invoice.project_id)
       .maybeSingle();
-    const project = data as {
-      owner_id: string | null;
-      consultant_id: string | null;
-    } | null;
-    if (project?.owner_id && project.owner_id !== project.consultant_id) {
+    const project = data as { owner_id: string | null } | null;
+    const consultantId = await this.projectAuth.getProjectConsultantId(
+      invoice.project_id,
+    );
+    if (project?.owner_id && project.owner_id !== consultantId) {
       return;
     }
 

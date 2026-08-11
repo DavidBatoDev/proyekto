@@ -1,16 +1,15 @@
 import {
-	createFileRoute,
-	Link,
-	redirect,
-	useNavigate,
-} from "@tanstack/react-router";
-import {
 	useMutation,
 	useQueries,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+	createFileRoute,
+	Link,
+	redirect,
+	useNavigate,
+} from "@tanstack/react-router";
 import {
 	Check,
 	ChevronRight,
@@ -24,20 +23,22 @@ import {
 	Users,
 	X,
 } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	PositionBadge,
 	ProjectStatusBadge,
 	RoleBadge,
 } from "@/components/common/SemanticBadge";
-import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { ModalPortal } from "@/components/common/ModalPortal";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useToast } from "@/hooks/useToast";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { projectService } from "@/services/project.service";
 import {
 	cancelTeamInvite,
 	getTeam,
@@ -46,15 +47,14 @@ import {
 	listTeamInvites,
 	listTeamMembers,
 	listTeamProjects,
-	removeTeamMember,
-	updateTeamMember,
 	type ProjectTeamMember,
+	removeTeamMember,
 	type TeamInvite,
 	type TeamMember,
 	type TeamRole,
+	updateTeamMember,
 } from "@/services/teams.service";
-import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
-import { projectService } from "@/services/project.service";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
 /**
  * Blue chip for the free-form member position (e.g. "Backend Developer").
@@ -550,7 +550,7 @@ function TeamDetailPage() {
 										canSetStatus={
 											!!user?.id &&
 											(row.project.owner_id === user.id ||
-												row.project.consultant_id === user.id)
+												row.project.consultant?.id === user.id)
 										}
 										members={projectMembersMap.get(row.project.id)}
 									/>

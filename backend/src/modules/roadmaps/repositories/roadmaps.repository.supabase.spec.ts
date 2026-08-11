@@ -4,7 +4,7 @@ describe('RoadmapsRepositorySupabase findPreviews', () => {
   it('merge-sorts owned + shared roadmaps by updated_at desc across both blocks', async () => {
     const projectsBuilder = {
       select: jest.fn().mockReturnThis(),
-      or: jest.fn().mockResolvedValue({ data: [], error: null }),
+      eq: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
     const projectAccessBuilder = {
       select: jest.fn().mockReturnThis(),

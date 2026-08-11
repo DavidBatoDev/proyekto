@@ -19,7 +19,7 @@ export interface AdminRepository {
     minRate?: number;
     maxRate?: number;
   }): Promise<unknown[]>;
-  assignConsultant(projectId: string, consultantId: string): Promise<unknown>;
+  assignConsultant(projectId: string): Promise<unknown>;
   listProjects(): Promise<unknown[]>;
   listUsers(): Promise<unknown[]>;
 }

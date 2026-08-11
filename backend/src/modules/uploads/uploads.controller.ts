@@ -71,13 +71,17 @@ const BUCKET_CONFIG: Record<
   task_attachments: {
     maxSize: 5 * 1024 * 1024,
     allowedTypes: [
-      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain', 'text/csv',
+      'text/plain',
+      'text/csv',
       'application/zip',
       'application/octet-stream',
     ],
@@ -85,13 +89,17 @@ const BUCKET_CONFIG: Record<
   chat_attachments: {
     maxSize: 25 * 1024 * 1024,
     allowedTypes: [
-      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain', 'text/csv',
+      'text/plain',
+      'text/csv',
       'application/zip',
       'application/octet-stream',
     ],
@@ -99,7 +107,10 @@ const BUCKET_CONFIG: Record<
 };
 
 /** Buckets that must NOT be publicly readable — uploaded to the private R2 bucket. */
-const PRIVATE_BUCKETS = new Set<string>(['identity_documents', 'payout_proofs']);
+const PRIVATE_BUCKETS = new Set<string>([
+  'identity_documents',
+  'payout_proofs',
+]);
 
 /**
  * Minimal shape of a multer file (we don't depend on @types/multer).
@@ -120,11 +131,7 @@ export class UploadsService {
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
   ) {}
 
-  async uploadFile(
-    userId: string,
-    bucketName: string,
-    file: UploadedFileLike,
-  ) {
+  async uploadFile(userId: string, bucketName: string, file: UploadedFileLike) {
     if (!file) throw new BadRequestException('No file provided');
 
     const config = BUCKET_CONFIG[bucketName];
@@ -210,7 +217,10 @@ export class UploadsService {
    * viewer before calling this — the returned URL grants time-limited read
    * access.
    */
-  async getPrivateSignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
+  async getPrivateSignedUrl(
+    key: string,
+    expiresInSeconds = 300,
+  ): Promise<string> {
     if (!key) throw new BadRequestException('No object key provided');
     return getSignedUrl(
       this.r2,
@@ -245,23 +255,6 @@ export class UploadsService {
   }
 
   async updateProjectBanner(userId: string, dto: ConfirmProjectBannerDto) {
-    // Verify the user is the client or consultant on this project
-    const { data: project, error: projectError } = await this.supabase
-      .from('projects')
-      .select('id, owner_id, consultant_id')
-      .eq('id', dto.project_id)
-      .single();
-
-    if (projectError || !project) {
-      throw new BadRequestException('Project not found');
-    }
-
-    const p = project as {
-      id: string;
-      owner_id: string;
-      consultant_id: string | null;
-    };
-
     // Slice 3b: project_shares is the source of truth for project authz.
     // Banner edits require admin+ role.
     let canEdit = false;

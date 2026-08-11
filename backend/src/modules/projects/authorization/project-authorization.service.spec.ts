@@ -19,6 +19,8 @@ function thenable(response: { data?: any; error?: any; count?: number }) {
     'update',
     'delete',
     'eq',
+    'order',
+    'limit',
     'maybeSingle',
     'single',
   ];
@@ -54,10 +56,18 @@ function buildService(...queued: ReturnType<typeof thenable>[]) {
   };
 }
 
-// consultant-lookup stub used by revoke (getProjectConsultantId). Pass the
-// consultant id, or null when the target isn't the consultant.
+// Consultant-of-record lookup used by revoke.
 const consultantLookup = (consultantId: string | null) =>
-  thenable({ data: { consultant_id: consultantId }, error: null });
+  thenable({
+    data: consultantId
+      ? {
+          user_id: consultantId,
+          has_direct_grant: true,
+          granted_at: '2026-08-11T00:00:00Z',
+        }
+      : null,
+    error: null,
+  });
 
 describe('ProjectAuthorizationService', () => {
   describe('roleSatisfies (role hierarchy)', () => {
@@ -106,6 +116,29 @@ describe('ProjectAuthorizationService', () => {
       await expect(service.getUserProjectRole('u1', 'p1')).rejects.toThrow(
         'db down',
       );
+    });
+  });
+
+  describe('getProjectConsultantId', () => {
+    it('orders direct grants before the newest consultant grant', async () => {
+      const query = consultantLookup('direct-consultant');
+      const { service } = buildService(query);
+
+      await expect(service.getProjectConsultantId('p1')).resolves.toBe(
+        'direct-consultant',
+      );
+      expect(query.order).toHaveBeenNthCalledWith(1, 'has_direct_grant', {
+        ascending: false,
+      });
+      expect(query.order).toHaveBeenNthCalledWith(2, 'granted_at', {
+        ascending: false,
+      });
+      expect(query.limit).toHaveBeenCalledWith(1);
+    });
+
+    it('returns null when there is no consultant access row', async () => {
+      const { service } = buildService(consultantLookup(null));
+      await expect(service.getProjectConsultantId('p1')).resolves.toBeNull();
     });
   });
 
@@ -281,6 +314,19 @@ describe('ProjectAuthorizationService', () => {
       await expect(service.revoke('p1', 'u1')).rejects.toThrow(
         /consultant cannot be removed/i,
       );
+    });
+
+    it('allows explicit consultant removal during reassignment', async () => {
+      const { service } = buildService(
+        thenable({ data: { role: 'editor' }, error: null }),
+        thenable({ error: null }),
+        thenable({ error: null }),
+      );
+      await expect(
+        service.revoke('p1', 'u1', undefined, {
+          allowConsultantRemoval: true,
+        }),
+      ).resolves.toBeUndefined();
     });
 
     it('refuses to remove the last owner', async () => {

@@ -220,10 +220,7 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
         .from('project_access')
         .select('project_id')
         .eq('user_id', userId),
-      this.supabase
-        .from('projects')
-        .select('id')
-        .or(`owner_id.eq.${userId},consultant_id.eq.${userId}`),
+      this.supabase.from('projects').select('id').eq('owner_id', userId),
     ]);
     const ids = new Set<string>();
     for (const row of accessRes.data || []) {

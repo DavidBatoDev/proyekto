@@ -43,7 +43,6 @@ export class PersonalWorkspaceService {
       .from('projects')
       .insert({
         owner_id: userId,
-        consultant_id: null,
         is_personal_workspace: true,
         title,
         status: 'active',
@@ -151,5 +150,4 @@ export class PersonalWorkspaceService {
       'My';
     return `${name}'s Workspace`;
   }
-
 }

@@ -2,8 +2,8 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { ProjectBottomNav } from "@/components/project/ProjectBottomNav";
+import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import {
 	useLinkedRoadmapQuery,
 	useProjectDetailQuery,
@@ -61,7 +61,7 @@ function ProjectLayout() {
 	// Project access is now governed entirely by project_shares.role via the
 	// backend's ProjectAuthorizationService. The Overview tab shows a
 	// non-blocking "Bring in a consultant" card when a marketplace project
-	// has no consultant_id yet (rendered inside the overview component, not
+	// has no consultant of record yet (rendered inside the overview component, not
 	// at this route shell). Personal workspaces never show the card.
 
 	const shell = (

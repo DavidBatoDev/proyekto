@@ -857,7 +857,10 @@ export class ProjectsService {
         project.title,
       );
       await this.invalidateDashboardCache();
-      return { project, roadmap };
+      return {
+        project: await this.getProjectOrThrow(project.id),
+        roadmap,
+      };
     }
 
     if (!isActiveConsultant(profile)) {
@@ -915,7 +918,10 @@ export class ProjectsService {
       project.title,
     );
     await this.invalidateDashboardCache();
-    return { project, roadmap };
+    return {
+      project: await this.getProjectOrThrow(project.id),
+      roadmap,
+    };
   }
 
   async createProjectFromRoadmap(
@@ -1059,7 +1065,7 @@ export class ProjectsService {
 
       await this.invalidateDashboardCache();
       return {
-        project,
+        project: await this.getProjectOrThrow(project.id),
         roadmap: linkedRoadmap as { id: string; name: string },
       };
     } catch (error) {
@@ -1316,10 +1322,6 @@ export class ProjectsService {
     projectId: string,
     consultantId: string,
   ): Promise<Project> {
-    const project = await this.projectsRepo.assignConsultant(
-      projectId,
-      consultantId,
-    );
     // Auto-grant: assigned consultant becomes project owner.
     // The pre-existing client (admin role) is unchanged — owner > admin so
     // the consultant naturally outranks the client. Multi-owner projects
@@ -1332,6 +1334,9 @@ export class ProjectsService {
       grantedBy: consultantId,
     });
     await this.safeSync(projectId, consultantId);
+    const project = await this.projectsRepo.update(projectId, {
+      status: 'active',
+    });
     await this.invalidateDashboardCache();
     return project;
   }
@@ -1351,7 +1356,8 @@ export class ProjectsService {
     }
 
     const newConsultantId = dto.new_consultant_id;
-    const previousConsultantId = project.consultant_id ?? null;
+    const previousConsultantId =
+      await this.authorization.getProjectConsultantId(projectId);
 
     if (newConsultantId === previousConsultantId) {
       throw new BadRequestException(
@@ -1379,13 +1385,6 @@ export class ProjectsService {
       );
     }
 
-    const updatedProject = await this.projectsRepo.reassignConsultant(
-      projectId,
-      project.owner_id,
-      previousConsultantId,
-      newConsultantId,
-    );
-
     // Sync project_shares with the consultant change:
     // - new consultant gets owner role with origin='consultant'
     // - previous consultant (if any) is revoked. Last-owner protection in
@@ -1402,7 +1401,12 @@ export class ProjectsService {
     await this.safeSync(projectId, newConsultantId);
     if (previousConsultantId && previousConsultantId !== newConsultantId) {
       try {
-        await this.authorization.revoke(projectId, previousConsultantId);
+        await this.authorization.revoke(
+          projectId,
+          previousConsultantId,
+          undefined,
+          { allowConsultantRemoval: true },
+        );
         await this.safeSync(projectId, previousConsultantId);
       } catch (err) {
         // Last-owner protection — leave the previous consultant in place
@@ -1416,6 +1420,10 @@ export class ProjectsService {
         );
       }
     }
+
+    const updatedProject = await this.projectsRepo.update(projectId, {
+      status: 'active',
+    });
 
     await this.emitNotification({
       user_id: newConsultantId,
@@ -1603,13 +1611,15 @@ export class ProjectsService {
       });
     }
 
+    const consultantId =
+      await this.authorization.getProjectConsultantId(projectId);
     if (
       callerId === project.owner_id &&
-      project.consultant_id &&
-      project.consultant_id !== callerId
+      consultantId &&
+      consultantId !== callerId
     ) {
       await this.emitNotification({
-        user_id: project.consultant_id,
+        user_id: consultantId,
         project_id: projectId,
         type_name: 'project_updated',
         actor_id: callerId,
@@ -1915,17 +1925,19 @@ export class ProjectsService {
       await this.safeSync(projectId, targetMember.user_id);
     }
 
+    const consultantId =
+      await this.authorization.getProjectConsultantId(projectId);
     if (
       callerId === project.owner_id &&
-      project.consultant_id &&
-      project.consultant_id !== callerId
+      consultantId &&
+      consultantId !== callerId
     ) {
       const removedMemberName = targetMember.user_id
         ? await this.projectsRepo.getProfileDisplayName(targetMember.user_id)
         : null;
 
       await this.emitNotification({
-        user_id: project.consultant_id,
+        user_id: consultantId,
         project_id: projectId,
         type_name: 'project_updated',
         actor_id: callerId,
@@ -1948,7 +1960,9 @@ export class ProjectsService {
   ): Promise<{ unassigned_task_count: number }> {
     const project = await this.getProjectOrThrow(projectId);
 
-    if (callerId === project.owner_id || callerId === project.consultant_id) {
+    const consultantId =
+      await this.authorization.getProjectConsultantId(projectId);
+    if (callerId === project.owner_id || callerId === consultantId) {
       throw new MissingPermissionException({
         path: null,
         message:
