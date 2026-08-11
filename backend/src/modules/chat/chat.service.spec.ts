@@ -693,6 +693,31 @@ describe('ChatService', () => {
     expect(createMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects a named consultant without a project_access permission row', async () => {
+    const room = buildRoom({
+      id: 'room-chan',
+      project_id: 'project-1',
+      type: 'channel',
+      slug: 'general',
+    });
+    const resolveProjectRole = jest.fn().mockResolvedValue('consultant');
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(room),
+      resolveProjectRole,
+    });
+    const service = makeService(repo, {
+      resolvePermissions: jest.fn().mockResolvedValue(null),
+    });
+
+    await expect(
+      service.sendChannelMessage('project-1', 'consultant-1', {
+        room_id: 'room-chan',
+        content: 'hello',
+      }),
+    ).rejects.toThrow('permission to post');
+    expect(resolveProjectRole).not.toHaveBeenCalled();
+  });
+
   // ── Attachments ───────────────────────────────────────────────────────────
   it('rejects a channel message with neither content nor attachments', async () => {
     const room = buildRoom({

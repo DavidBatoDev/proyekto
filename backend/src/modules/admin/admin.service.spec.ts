@@ -19,10 +19,15 @@ describe('AdminService cache consistency', () => {
     provisionPersonalTeam: jest.fn().mockResolvedValue({ id: 'team-1' }),
   };
 
+  const authorization = {
+    grant: jest.fn().mockResolvedValue({ id: 'access-1' }),
+  };
+
   const service = new AdminService(
     adminRepo as any,
     cacheInvalidation as any,
     teamsService as any,
+    authorization as any,
   );
 
   beforeEach(() => {
@@ -53,6 +58,13 @@ describe('AdminService cache consistency', () => {
       consultant_id: 'consultant-1',
     });
 
+    expect(authorization.grant).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 'consultant-1',
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: 'consultant-1',
+    });
     expect(cacheInvalidation.invalidateAllDashboardCache).toHaveBeenCalledTimes(
       1,
     );

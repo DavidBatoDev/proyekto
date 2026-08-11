@@ -10,6 +10,7 @@ import {
   RejectApplicationDto,
 } from './dto/admin.dto';
 import { TeamsService } from '../teams/teams.service';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 
 @Injectable()
 export class AdminService {
@@ -17,6 +18,7 @@ export class AdminService {
     @Inject(ADMIN_REPOSITORY) private readonly adminRepo: AdminRepository,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly teamsService: TeamsService,
+    private readonly authorization: ProjectAuthorizationService,
   ) {}
 
   getAdminProfile(userId: string) {
@@ -66,6 +68,13 @@ export class AdminService {
       dto.project_id,
       dto.consultant_id,
     );
+    await this.authorization.grant({
+      projectId: dto.project_id,
+      userId: dto.consultant_id,
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: dto.consultant_id,
+    });
     await this.cacheInvalidation.invalidateAllDashboardCache();
     return assigned;
   }

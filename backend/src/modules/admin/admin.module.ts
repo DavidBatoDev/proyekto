@@ -4,9 +4,10 @@ import { AdminService } from './admin.service';
 import { SupabaseAdminRepository } from './repositories/admin.repository.supabase';
 import { ADMIN_REPOSITORY } from './admin.service';
 import { TeamsModule } from '../teams/teams.module';
+import { AuthorizationModule } from '../projects/authorization/authorization.module';
 
 @Module({
-  imports: [TeamsModule],
+  imports: [TeamsModule, AuthorizationModule],
   controllers: [AdminController],
   providers: [
     AdminService,

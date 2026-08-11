@@ -339,24 +339,6 @@ export class SupabaseAdminRepository implements AdminRepository {
       .single();
     if (error || !data) throw new NotFoundException('Project not found');
 
-    // Slice 3b: assigned consultant gets owner role on project_shares
-    // (matches the auto-grant rules in design.md). Upsert handles both
-    // first-time grant and re-grant if the consultant already has a row.
-    const { error: shareError } = await this.supabase
-      .from('project_access')
-      .upsert(
-        {
-          project_id: projectId,
-          user_id: consultantId,
-          role: 'owner',
-          origin: 'consultant',
-          granted_by: consultantId,
-        },
-        { onConflict: 'project_id,user_id' },
-      );
-
-    if (shareError) throw new Error(shareError.message);
-
     return data;
   }
 

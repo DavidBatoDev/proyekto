@@ -17,6 +17,7 @@ function fakeSupabase(input: {
   projects?: (typeof project)[];
   accessCount?: number;
   accessRows?: Array<{ project_id: string }>;
+  eqCalls?: Array<[string, unknown]>;
 }): SupabaseClient {
   return {
     from(table: string) {
@@ -26,7 +27,8 @@ function fakeSupabase(input: {
           head = options?.head === true;
           return builder;
         },
-        eq() {
+        eq(column: string, value: unknown) {
+          input.eqCalls?.push([column, value]);
           return builder;
         },
         in() {
@@ -54,8 +56,15 @@ function fakeSupabase(input: {
         },
         then(resolve: (value: unknown) => unknown) {
           if (table === 'projects') {
+            const allowed = new Set(
+              (input.accessRows ?? [{ project_id: project.id }]).map(
+                (row) => row.project_id,
+              ),
+            );
             return Promise.resolve({
-              data: input.projects ?? [project],
+              data: (input.projects ?? [project]).filter((row) =>
+                allowed.has(row.id),
+              ),
               error: null,
             }).then(resolve);
           }
@@ -85,17 +94,20 @@ describe('ConsultantFinanceAccessService', () => {
     ).rejects.toThrow('Finance project not found');
   });
 
-  it('requires a matching project_access row', async () => {
+  it('requires an owner access row with consultant origin', async () => {
+    const eqCalls: Array<[string, unknown]> = [];
     const service = new ConsultantFinanceAccessService(
-      fakeSupabase({ accessCount: 0 }),
+      fakeSupabase({ accessCount: 0, eqCalls }),
     );
 
     await expect(
       service.assertProject('consultant-1', project.id),
     ).rejects.toThrow('Finance project not found');
+    expect(eqCalls).toContainEqual(['role', 'owner']);
+    expect(eqCalls).toContainEqual(['origin', 'consultant']);
   });
 
-  it('intersects consultant-owned projects with project_access', async () => {
+  it('lists only owner/consultant-origin project_access rows', async () => {
     const inaccessible = {
       ...project,
       id: '22222222-2222-4222-8222-222222222222',
@@ -110,5 +122,16 @@ describe('ConsultantFinanceAccessService', () => {
     await expect(service.listProjects('consultant-1')).resolves.toEqual([
       project,
     ]);
+  });
+
+  it('excludes a client-origin admin even when the caller is verified', async () => {
+    const eqCalls: Array<[string, unknown]> = [];
+    const service = new ConsultantFinanceAccessService(
+      fakeSupabase({ accessRows: [], eqCalls }),
+    );
+
+    await expect(service.listProjects('client-admin-1')).resolves.toEqual([]);
+    expect(eqCalls).toContainEqual(['role', 'owner']);
+    expect(eqCalls).toContainEqual(['origin', 'consultant']);
   });
 });

@@ -32,13 +32,14 @@ export class ConsultantFinanceAccessService {
           'id, title, status, currency, owner_id, consultant_id, created_at',
         )
         .eq('id', projectId)
-        .eq('consultant_id', callerId)
         .maybeSingle(),
       this.supabase
         .from('project_access')
         .select('id', { count: 'exact', head: true })
         .eq('project_id', projectId)
-        .eq('user_id', callerId),
+        .eq('user_id', callerId)
+        .eq('role', 'owner')
+        .eq('origin', 'consultant'),
     ]);
 
     if (
@@ -64,12 +65,29 @@ export class ConsultantFinanceAccessService {
   ): Promise<ConsultantFinanceProject[]> {
     await this.assertVerified(callerId);
 
+    const { data: accessRows, error: accessError } = await this.supabase
+      .from('project_access')
+      .select('project_id')
+      .eq('user_id', callerId)
+      .eq('role', 'owner')
+      .eq('origin', 'consultant');
+    if (accessError) throw new Error(accessError.message);
+
+    const projectIds = Array.from(
+      new Set(
+        (accessRows ?? [])
+          .map((row: { project_id: string }) => row.project_id)
+          .filter(Boolean),
+      ),
+    );
+    if (projectIds.length === 0) return [];
+
     let query = this.supabase
       .from('projects')
       .select(
         'id, title, status, currency, owner_id, consultant_id, created_at',
       )
-      .eq('consultant_id', callerId)
+      .in('id', projectIds)
       .order('updated_at', { ascending: false });
 
     if (filters.project_id) query = query.eq('id', filters.project_id);
@@ -86,22 +104,7 @@ export class ConsultantFinanceAccessService {
 
     const { data: projects, error } = await query;
     if (error) throw new Error(error.message);
-    if (!projects?.length) return [];
-
-    const ids = projects.map((project: { id: string }) => project.id);
-    const { data: accessRows, error: accessError } = await this.supabase
-      .from('project_access')
-      .select('project_id')
-      .eq('user_id', callerId)
-      .in('project_id', ids);
-    if (accessError) throw new Error(accessError.message);
-
-    const accessible = new Set(
-      (accessRows ?? []).map((row: { project_id: string }) => row.project_id),
-    );
-    return (projects as ConsultantFinanceProject[]).filter((project) =>
-      accessible.has(project.id),
-    );
+    return (projects ?? []) as ConsultantFinanceProject[];
   }
 
   private async assertVerified(callerId: string): Promise<void> {

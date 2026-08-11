@@ -94,9 +94,7 @@ describe('ProjectAuthorizationService', () => {
     });
 
     it('returns null when no grant exists', async () => {
-      const { service } = buildService(
-        thenable({ data: [], error: null }),
-      );
+      const { service } = buildService(thenable({ data: [], error: null }));
       const role = await service.getUserProjectRole('u1', 'p1');
       expect(role).toBeNull();
     });
@@ -140,12 +138,10 @@ describe('ProjectAuthorizationService', () => {
     });
 
     it('throws ForbiddenException when there is no grant at all', async () => {
-      const { service } = buildService(
-        thenable({ data: [], error: null }),
+      const { service } = buildService(thenable({ data: [], error: null }));
+      await expect(service.assertRole('u1', 'p1', 'viewer')).rejects.toThrow(
+        /not a member of this project/,
       );
-      await expect(
-        service.assertRole('u1', 'p1', 'viewer'),
-      ).rejects.toThrow(/not a member of this project/);
     });
   });
 
@@ -223,6 +219,46 @@ describe('ProjectAuthorizationService', () => {
           has_direct_grant: true,
         }),
       );
+      expect(queued[1].update).toHaveBeenCalledWith(
+        expect.not.objectContaining({ origin: expect.anything() }),
+      );
+    });
+
+    it('promotes an existing row to consultant origin', async () => {
+      const existing = {
+        id: 's1',
+        role: 'editor',
+        origin: 'invited',
+        capabilities: {},
+      };
+      const updated = {
+        ...existing,
+        project_id: 'p1',
+        user_id: 'u1',
+        role: 'owner',
+        origin: 'consultant',
+        has_direct_grant: true,
+      };
+      const { service, queued } = buildService(
+        thenable({ data: existing, error: null }),
+        thenable({ data: updated, error: null }),
+      );
+
+      await service.grant({
+        projectId: 'p1',
+        userId: 'u1',
+        role: 'owner',
+        origin: 'consultant',
+        grantedBy: 'u1',
+      });
+
+      expect(queued[1].update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'owner',
+          origin: 'consultant',
+          has_direct_grant: true,
+        }),
+      );
     });
   });
 
@@ -268,9 +304,7 @@ describe('ProjectAuthorizationService', () => {
     });
 
     it('is a no-op when the share row does not exist', async () => {
-      const { service } = buildService(
-        thenable({ data: null, error: null }),
-      );
+      const { service } = buildService(thenable({ data: null, error: null }));
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
     });
   });

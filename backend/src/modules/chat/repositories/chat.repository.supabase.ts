@@ -27,11 +27,6 @@ const ROOM_COLUMNS =
 const MESSAGE_COLUMNS =
   'id, room_id, project_id, sender_id, content, attachments, mentions, edited_at, deleted_at, reply_to_id, created_at, updated_at';
 
-type ProjectRoleData = {
-  owner_id: string;
-  consultant_id: string | null;
-};
-
 type ProjectMemberRow = {
   user_id: string | null;
   role?: string | null;
@@ -68,39 +63,6 @@ type TeamSummaryRow = {
   id: string;
   name: string;
   avatar_url: string | null;
-};
-
-type RawProjectSelect = {
-  owner_id: string;
-  consultant_id: string | null;
-  owner?:
-    | {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-      }
-    | Array<{
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-      }>
-    | null;
-  consultant?:
-    | {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-      }
-    | Array<{
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-      }>
-    | null;
 };
 
 type RawParticipantRow = {
@@ -146,38 +108,16 @@ export class SupabaseChatRepository implements ChatRepository {
     return Array.isArray(value) ? (value[0] ?? null) : value;
   }
 
-  private normalizeRole(params: {
-    userId: string;
-    project: ProjectRoleData;
-    memberRole?: string | null;
-  }): ChatRole {
-    if (params.userId === params.project.consultant_id) return 'consultant';
-    if (params.userId === params.project.owner_id) return 'client';
-
-    const role = String(params.memberRole ?? '')
-      .trim()
-      .toLowerCase();
-    if (role === 'consultant') return 'consultant';
-    if (role === 'client') return 'client';
+  private roleFromOrigin(origin?: string | null): ChatRole {
+    if (origin === 'consultant') return 'consultant';
+    if (
+      origin === 'client' ||
+      origin === 'personal_workspace' ||
+      origin === 'legacy'
+    ) {
+      return 'client';
+    }
     return 'freelancer';
-  }
-
-  private async getProjectRoleData(
-    projectId: string,
-  ): Promise<ProjectRoleData | null> {
-    const { data, error } = await this.supabase
-      .from('projects')
-      .select('owner_id, consultant_id')
-      .eq('id', projectId)
-      .maybeSingle();
-
-    if (error || !data) return null;
-
-    return {
-      owner_id: String(data.owner_id),
-      consultant_id:
-        typeof data.consultant_id === 'string' ? data.consultant_id : null,
-    };
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
@@ -188,20 +128,13 @@ export class SupabaseChatRepository implements ChatRepository {
       .eq('user_id', userId)
       .limit(1);
 
-    if (!error && data && data.length > 0) return true;
-
-    const project = await this.getProjectRoleData(projectId);
-    if (!project) return false;
-    return project.owner_id === userId || project.consultant_id === userId;
+    return !error && Boolean(data && data.length > 0);
   }
 
   async resolveProjectRole(
     projectId: string,
     userId: string,
   ): Promise<ChatRole | null> {
-    const project = await this.getProjectRoleData(projectId);
-    if (!project) return null;
-
     const { data, error } = await this.supabase
       .from('project_access')
       .select('role, origin')
@@ -210,47 +143,22 @@ export class SupabaseChatRepository implements ChatRepository {
 
     if (error) return null;
 
-    if (!data || data.length === 0) {
-      if (userId === project.owner_id || userId === project.consultant_id) {
-        return this.normalizeRole({ userId, project, memberRole: null });
-      }
-      return null;
-    }
+    if (!data || data.length === 0) return null;
 
+    const accessRows = data as Array<{
+      role: string | null;
+      origin: string | null;
+    }>;
     const preferred =
-      data.find((row) => !(row.origin ?? '').startsWith('team:')) ?? data[0];
+      accessRows.find((row) => !(row.origin ?? '').startsWith('team:')) ??
+      accessRows[0];
 
-    const memberRole =
-      preferred.origin === 'consultant'
-        ? 'consultant'
-        : preferred.origin === 'client' ||
-            preferred.origin === 'personal_workspace'
-          ? 'client'
-          : 'member';
-
-    return this.normalizeRole({
-      userId,
-      project,
-      memberRole,
-    });
+    return this.roleFromOrigin(preferred.origin);
   }
 
   async listProjectMemberCandidates(
     projectId: string,
   ): Promise<ChatMemberCandidate[]> {
-    const projectQuery = this.supabase
-      .from('projects')
-      .select(
-        `
-        owner_id,
-        consultant_id,
-        owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email),
-        consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)
-      `,
-      )
-      .eq('id', projectId)
-      .single();
-
     const membersQuery = this.supabase
       .from('project_access')
       .select(
@@ -276,20 +184,14 @@ export class SupabaseChatRepository implements ChatRepository {
       .eq('project_id', projectId);
 
     const [
-      { data: projectData, error: projectError },
       { data: memberRows, error: membersError },
       { data: curatedMemberRows, error: curatedMembersError },
       { data: projectTeamRows, error: projectTeamsError },
     ] = await Promise.all([
-      projectQuery,
       membersQuery,
       curatedMembersQuery,
       projectTeamsQuery,
     ]);
-
-    if (projectError || !projectData) {
-      throw new Error(projectError?.message || 'Project not found');
-    }
 
     if (membersError) {
       throw new Error(membersError.message);
@@ -342,56 +244,9 @@ export class SupabaseChatRepository implements ChatRepository {
       return teamId ? (teamById.get(teamId) ?? null) : null;
     };
 
-    const rawProject = projectData as unknown as RawProjectSelect;
-    const project = {
-      owner_id: String(rawProject.owner_id),
-      consultant_id:
-        typeof rawProject.consultant_id === 'string'
-          ? rawProject.consultant_id
-          : null,
-    } satisfies ProjectRoleData;
-
     const map = new Map<string, ChatMemberCandidate>();
-    const ownerProfile = this.pickSingle(rawProject.owner);
-    if (ownerProfile?.id) {
-      map.set(ownerProfile.id, {
-        user_id: ownerProfile.id,
-        role: this.normalizeRole({
-          userId: ownerProfile.id,
-          project,
-          memberRole: 'client',
-        }),
-        access_role: 'client',
-        position: 'Client',
-        team: teamForUser(ownerProfile.id),
-        user: ownerProfile,
-      });
-    }
-
-    const consultantProfile = this.pickSingle(rawProject.consultant);
-    if (consultantProfile?.id) {
-      map.set(consultantProfile.id, {
-        user_id: consultantProfile.id,
-        role: this.normalizeRole({
-          userId: consultantProfile.id,
-          project,
-          memberRole: 'consultant',
-        }),
-        access_role: 'consultant',
-        position: 'Consultant',
-        team: teamForUser(consultantProfile.id),
-        user: consultantProfile,
-      });
-    }
-
     for (const row of (memberRows || []) as ProjectMemberRow[]) {
       if (!row.user_id) continue;
-      const memberRole =
-        row.origin === 'consultant'
-          ? 'consultant'
-          : row.origin === 'client' || row.origin === 'personal_workspace'
-            ? 'client'
-            : 'member';
 
       const existing = map.get(row.user_id);
       if (existing) {
@@ -409,11 +264,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
       map.set(row.user_id, {
         user_id: row.user_id,
-        role: this.normalizeRole({
-          userId: row.user_id,
-          project,
-          memberRole,
-        }),
+        role: this.roleFromOrigin(row.origin),
         access_role: (row.role ??
           'member') as ChatMemberCandidate['access_role'],
         position: row.position?.trim() || null,
@@ -435,30 +286,6 @@ export class SupabaseChatRepository implements ChatRepository {
   async usersShareAnyProject(userA: string, userB: string): Promise<boolean> {
     if (userA === userB) return false;
 
-    // Either user is a client/consultant on a project the other belongs to.
-    const { data: projectsForA, error: projErr } = await this.supabase
-      .from('projects')
-      .select('id, owner_id, consultant_id')
-      .or(`owner_id.eq.${userA},consultant_id.eq.${userA}`);
-
-    if (!projErr && projectsForA) {
-      for (const p of projectsForA) {
-        if (p.owner_id === userB || p.consultant_id === userB) return true;
-      }
-    }
-
-    const { data: projectsForB, error: projErrB } = await this.supabase
-      .from('projects')
-      .select('id, owner_id, consultant_id')
-      .or(`owner_id.eq.${userB},consultant_id.eq.${userB}`);
-
-    if (!projErrB && projectsForB) {
-      for (const p of projectsForB) {
-        if (p.owner_id === userA || p.consultant_id === userA) return true;
-      }
-    }
-
-    // Both appear in project_access for some shared project.
     const { data: accessA, error: accessErr } = await this.supabase
       .from('project_access')
       .select('project_id')

@@ -1,9 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import {
@@ -245,10 +240,7 @@ export class ProjectAuthorizationService {
     const callerRole = await this.getUserProjectRole(callerId, projectId);
     if (callerRole === 'owner') return;
 
-    const targetPerms = await this.resolvePermissions(
-      targetUserId,
-      projectId,
-    );
+    const targetPerms = await this.resolvePermissions(targetUserId, projectId);
     if (targetPerms && getPermission(targetPerms, gate)) {
       throw new ForbiddenException(
         'This member has equal authority on this project. Only a project owner can edit or remove them.',
@@ -261,8 +253,8 @@ export class ProjectAuthorizationService {
    * user_id) — one row per user. On conflict we do not demote: the
    * stored role becomes max(existing, new). Capabilities are
    * OR-unioned. `has_direct_grant` is always set true (this is a
-   * direct grant). The origin label is preserved on conflict (treat
-   * it as the original primary-source label).
+   * direct grant). The origin label is preserved on conflict except
+   * when a consultant assignment promotes it to `consultant`.
    */
   async grant(params: GrantParams): Promise<ProjectShare> {
     const incomingRole = params.role;
@@ -297,14 +289,19 @@ export class ProjectAuthorizationService {
         incomingCaps,
       );
 
+      const updatePayload: Record<string, unknown> = {
+        role: targetRole,
+        capabilities: mergedCaps,
+        has_direct_grant: true,
+        granted_by: params.grantedBy,
+      };
+      if (params.origin === 'consultant') {
+        updatePayload.origin = 'consultant';
+      }
+
       const { data, error } = await this.supabase
         .from('project_access')
-        .update({
-          role: targetRole,
-          capabilities: mergedCaps,
-          has_direct_grant: true,
-          granted_by: params.grantedBy,
-        })
+        .update(updatePayload)
         .eq('id', stored.id)
         .select('*')
         .single();
@@ -432,7 +429,11 @@ export class ProjectAuthorizationService {
       action: 'access.revoked',
       entityType: 'project_access',
       entityId: null,
-      metadata: { target_user_id: userId, origin: origin ?? 'direct', role: row.role },
+      metadata: {
+        target_user_id: userId,
+        origin: origin ?? 'direct',
+        role: row.role,
+      },
     });
 
     if (origin && origin.startsWith('team:')) {

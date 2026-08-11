@@ -18,6 +18,7 @@ import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
 import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { CreateGuestDto } from './dto/guest.dto';
 
 @Injectable()
@@ -102,6 +103,7 @@ export class GuestsController {
   }
 
   @Post('cleanup')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   cleanup() {
     return this.guestsService.cleanup();
