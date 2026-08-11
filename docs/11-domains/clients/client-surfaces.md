@@ -1,6 +1,6 @@
 # Client Surfaces
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 There is **no client route subtree**. Every surface a client reaches is a shared route
 that renders differently, or hides entirely, based on resolved permissions. This page is the
@@ -36,7 +36,7 @@ bypasses it so anonymous guests can build a roadmap.
 
 ## Project tabs
 
-`web/src/routes/project/$projectId/` — the layout wraps children in `ProtectedRoute`
+`web/src/routes/_execution/project/$projectId/` — the layout wraps children in `ProtectedRoute`
 (authentication only).
 
 | Route | Gate | Client at `viewer` | Client at `admin` |

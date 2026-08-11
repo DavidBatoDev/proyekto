@@ -95,6 +95,6 @@ its owner.
 - **Web gate:** [`web/src/components/common/RequireProjectAccess.tsx`](../../../web/src/components/common/RequireProjectAccess.tsx)
 - **Web permission mirrors:** [`web/src/components/project/permissions/`](../../../web/src/components/project/permissions/)
   (`permissionCatalog.ts`, `roleTemplates.ts`) — hand-maintained, must track the backend
-- **Public signing route:** [`web/src/routes/contract/sign/$token.tsx`](../../../web/src/routes/contract/sign/$token.tsx)
+- **Public signing route:** [`web/src/routes/_marketplace/contract/sign/$token.tsx`](../../../web/src/routes/_marketplace/contract/sign/$token.tsx)
 - **DB:** `supabase/migrations/20260507000020_rename_project_shares_to_project_access.sql`,
   `20260724100000_create_contracts.sql`, `20260730093000_contract_signature_links.sql`

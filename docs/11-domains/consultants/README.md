@@ -60,4 +60,4 @@ browser session (a privileged-columns trigger blocks anon/authenticated writes).
 - **Predicate and guard:** [`backend/src/common/auth/consultant-capability.ts`](../../../backend/src/common/auth/consultant-capability.ts), [`backend/src/common/guards/consultant-only.guard.ts`](../../../backend/src/common/guards/consultant-only.guard.ts)
 - **Applications and approval:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
 - **Consultant directory:** [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/)
-- **Web:** [`web/src/routes/consultant/`](../../../web/src/routes/consultant/), [`web/src/routes/finance/`](../../../web/src/routes/finance/)
+- **Web:** public consultant pages remain in [`web/src/routes/consultant/`](../../../web/src/routes/consultant/); marketplace actions are in [`web/src/routes/_marketplace/consultant/`](../../../web/src/routes/_marketplace/consultant/), with finance in [`web/src/routes/_marketplace/finance/`](../../../web/src/routes/_marketplace/finance/)

@@ -98,7 +98,7 @@ that does not produce that failure does not belong in the blocker set.
 `project_invites` plus `project_access.origin = 'invited'` is exactly "one person, one
 project, no team." `ORIGIN_DELTAS.invited` is `{}` — a pure role baseline with no extra
 capabilities. This has shipped and is the path behind
-[`/invites`](../../../web/src/routes/invites.tsx).
+[`/invites`](../../../web/src/routes/_execution/invites.tsx).
 
 > **⚠️ But there is a silent footgun.** A directly-invited person has no `project_team_members`
 > row. `ProjectActivationService.getCuratedMembers()` reads *only* `project_team_members`, so

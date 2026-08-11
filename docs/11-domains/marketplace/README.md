@@ -61,4 +61,4 @@ rate, and availability. Invites reuse `project_invites`.
 ## Code locations
 
 - **Backend:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/), [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
-- **Web:** `web/src/routes/consultant/`, `web/src/routes/freelancer/`, `web/src/components/marketplace/`
+- **Web:** `web/src/routes/_marketplace/consultant/`, `web/src/routes/_marketplace/freelancer/`, `web/src/components/marketplace/` (public consultant marketing routes remain ungrouped)

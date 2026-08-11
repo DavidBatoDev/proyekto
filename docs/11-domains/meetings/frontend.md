@@ -1,6 +1,6 @@
 # Frontend
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 React 19 + TanStack Router/Query + Tailwind. Everything lives under
 [`web/src/components/meetings/`](../../../web/src/components/meetings/) plus the pure
@@ -13,7 +13,7 @@ fights Tailwind v4 tokens). Token classes only (`bg-primary`, `text-primary`,
 
 ## Route & top‑level state
 
-[`web/src/routes/meetings.tsx`](../../../web/src/routes/meetings.tsx) (`/meetings`,
+[`web/src/routes/_execution/meetings.tsx`](../../../web/src/routes/_execution/meetings.tsx) (`/meetings`,
 auth‑gated) owns just the editor open/close state and renders `CalendarShell` +
 one `MeetingEditorModal`:
 

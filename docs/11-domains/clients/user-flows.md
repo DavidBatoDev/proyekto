@@ -65,7 +65,7 @@ Details that matter:
   with no access row — recoverable from the project's team settings UI.
 - **Uniqueness** is `(project_id, invitee_id)`, so re-inviting an existing invitee updates
   rather than duplicates.
-- The invitee-side surface is [`/invites`](../../../web/src/routes/invites.tsx);
+- The invitee-side surface is [`/invites`](../../../web/src/routes/_execution/invites.tsx);
   `/freelancer/invites` redirects there. The login round-trip preserves `?inviteId=`.
 
 ## 2. External client signing

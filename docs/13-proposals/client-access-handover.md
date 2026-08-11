@@ -318,7 +318,7 @@ requires both `onboarding.manage` and `resources.upload`.
 
 ## Web
 
-Route `web/src/routes/project/$projectId/onboarding.tsx`, wrapped in `RequireProjectAccess`,
+Route `web/src/routes/_execution/project/$projectId/onboarding.tsx`, wrapped in `RequireProjectAccess`,
 added to `ProjectSidebar.tsx` under Collaborate and mirrored in `ProjectBottomNav.tsx`. The
 path must also go into `Header.tsx` `validPaths` or the header breaks on it.
 

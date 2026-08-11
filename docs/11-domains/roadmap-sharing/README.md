@@ -44,7 +44,7 @@ share tokens, and invited emails. See
 ## Code locations
 
 - **Backend:** [`backend/src/modules/execution/roadmap-shares/`](../../../backend/src/modules/execution/roadmap-shares/)
-- **Web:** `web/src/routes/roadmap/shared/`, `web/src/routes/roadmap/shared-with-me.tsx`
+- **Web:** `web/src/routes/_execution/roadmap/shared/`, `web/src/routes/_execution/roadmap/shared-with-me.tsx`
 
 ## See also
 

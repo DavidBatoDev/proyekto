@@ -52,7 +52,7 @@ The meetings feature spans three runtimes plus one external scheduler:
 
 | Area | Files |
 | --- | --- |
-| Route | [`routes/meetings.tsx`](../../../web/src/routes/meetings.tsx) — owns editor open/close state |
+| Route | [`routes/_execution/meetings.tsx`](../../../web/src/routes/_execution/meetings.tsx) — owns editor open/close state |
 | Calendar shell | [`components/meetings/calendar/CalendarShell.tsx`](../../../web/src/components/meetings/calendar/CalendarShell.tsx) — toolbar, view state, fetch window |
 | Views | `calendar/views/{Day,Week,Month,Year}View.tsx`, `TimeGrid.tsx`, `CurrentTimeLine.tsx`, `MiniMonth.tsx`, `AgendaPanel.tsx` |
 | Event render | `calendar/EventBlock.tsx` (time grid), `calendar/EventChip.tsx` (month) |

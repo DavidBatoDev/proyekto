@@ -63,7 +63,7 @@ only read one page, read [architecture.md](./architecture.md).
 ## Code locations
 
 - **Web:** [`web/src/components/meetings/`](../../../web/src/components/meetings/),
-  [`web/src/routes/meetings.tsx`](../../../web/src/routes/meetings.tsx),
+  [`web/src/routes/_execution/meetings.tsx`](../../../web/src/routes/_execution/meetings.tsx),
   [`web/src/lib/{recurrence,datetime}.ts`](../../../web/src/lib/),
   [`web/src/services/meetings.service.ts`](../../../web/src/services/meetings.service.ts),
   [`web/src/hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts)

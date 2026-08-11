@@ -49,7 +49,7 @@ file is cited so the cost of the change is visible.
 
 | Pitch-deck feature | Reality |
 | --- | --- |
-| **Post/bid a project** | Does not exist. `'bidding'` was added to the `project_status` enum (`20260216000000_add_bidding_status.sql`) and never used — no `bids` table, no UI. `web/src/routes/project-posting.tsx` is a project-creation wizard, not a public listing. |
+| **Post/bid a project** | Does not exist. `'bidding'` was added to the `project_status` enum (`20260216000000_add_bidding_status.sql`) and never used — no `bids` table, no UI. `web/src/routes/_marketplace/project-posting.tsx` is a project-creation wizard, not a public listing. |
 | **Sell a roadmap** | Half exists. The template marketplace (`roadmap_public_templates`, versions, ratings, usages — `20260714100000_...`) has publish (consultant-only), browse, and instantiate — but **no price column, no purchase, no revenue share**. Selling is a monetization layer on an existing distribution surface. |
 | **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→freelancer *invites* only (`backend/src/modules/marketplace/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
 
@@ -119,7 +119,7 @@ candidates are already per-team surfaces:
 
 1. **Time add-on** → prices the existing `teams.time_tracking_enabled` flag. Zero new
    enforcement code for the core gate; the settings toggle
-   (`web/src/routes/teams/$teamId/settings/time.tsx`) becomes "enable = purchase".
+   (`web/src/routes/_execution/teams/$teamId/settings/time.tsx`) becomes "enable = purchase".
 2. **Finance add-on** → today Finance is free for every verified consultant
    (`finance.controller.ts` class-level `ConsultantOnlyGuard`). Pricing it means the guard
    chain becomes `ConsultantOnlyGuard` **and** `EntitlementGuard('finance')`. Decide the
