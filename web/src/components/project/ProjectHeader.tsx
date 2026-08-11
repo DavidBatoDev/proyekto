@@ -118,8 +118,6 @@ export function ProjectHeader() {
 			to: "/auth/signup",
 			search: {
 				redirect: "/welcome",
-				intent: "client",
-				lane: "client_freelancer",
 			},
 		});
 	};

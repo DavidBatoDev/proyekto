@@ -113,7 +113,6 @@ export interface ProjectMember {
 		email?: string;
 		first_name?: string;
 		last_name?: string;
-		role?: "client" | "talent" | "consultant";
 		is_consultant_verified?: boolean;
 	};
 }

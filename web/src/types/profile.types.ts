@@ -3,28 +3,16 @@
  * Types related to user profiles
  */
 
-import type { AccountRole } from "@/lib/onboardingLane";
 import type { AppearancePreferencesV1 } from "@/theme/types";
 
-export interface LegacyOnboardingIntent {
-	freelancer: boolean;
-	client: boolean;
-}
-
-interface CanonicalOnboardingSettings {
-	lane: AccountRole;
+/**
+ * New rows carry only completed_at; lane is legacy data from the retired
+ * signup-lane era and is never read for authorization.
+ */
+export interface OnboardingSettings {
 	completed_at: string; // ISO timestamp
+	lane?: "client_freelancer" | "client" | "talent" | "consultant";
 }
-
-interface LegacyOnboardingSettings {
-	lane: "client_freelancer";
-	intent: LegacyOnboardingIntent;
-	completed_at: string; // ISO timestamp
-}
-
-export type OnboardingSettings =
-	| CanonicalOnboardingSettings
-	| LegacyOnboardingSettings;
 
 // Profile settings JSONB type
 export interface ProfileSettings {
@@ -40,7 +28,6 @@ export interface Profile {
 	display_name: string | null;
 	avatar_url: string | null;
 	banner_url: string | null;
-	role: AccountRole;
 	is_consultant_verified: boolean;
 	is_public: boolean;
 	bio: string | null;

@@ -4,23 +4,14 @@
 
 import type { Profile } from "../types/profile.types";
 
-export function isConsultant(profile: Profile | null | undefined): boolean {
-	return profile?.role === "consultant";
-}
-
-export function isClient(profile: Profile | null | undefined): boolean {
-	return profile?.role === "client";
-}
-
-export function isTalent(profile: Profile | null | undefined): boolean {
-	return profile?.role === "talent";
-}
-
-/** Check whether consultant identity and vetting grant the capability. */
+/**
+ * Check whether completed vetting grants the consultant capability. The one
+ * account-level gate — there is no account role.
+ */
 export function isActiveConsultant(
 	profile: Profile | null | undefined,
 ): boolean {
-	return isConsultant(profile) && profile?.is_consultant_verified === true;
+	return profile?.is_consultant_verified === true;
 }
 
 /** @deprecated Use isActiveConsultant. */
