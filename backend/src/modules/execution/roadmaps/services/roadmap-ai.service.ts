@@ -26,7 +26,7 @@ import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repo
 import { ROADMAP_PATCH_REPOSITORY } from './roadmap-patch.service';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
-import { AuditService } from '../../../audit/audit.service';
+import { AuditService } from '../../../shared/audit/audit.service';
 import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
@@ -64,7 +64,7 @@ import type {
   SemanticDiffDto,
 } from '../dto/roadmap-ai.dto';
 import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service';
-import { RealtimePublisher } from '../../../realtime/realtime-publisher.service';
+import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
 
 type Severity = 'error' | 'warning';

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SupabaseModule } from '../../../config/supabase.module';
-import { NotificationsModule } from '../../notifications/notifications.module';
-import { UploadsModule } from '../../uploads/uploads.module';
+import { NotificationsModule } from '../../shared/notifications/notifications.module';
+import { UploadsModule } from '../../shared/uploads/uploads.module';
 import { PayoutsController } from './payouts.controller';
 import { PayoutsService } from './payouts.service';
 

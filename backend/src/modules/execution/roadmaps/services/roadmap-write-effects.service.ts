@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RealtimePublisher } from '../../../realtime/realtime-publisher.service';
+import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import {
   RoadmapActivityService,
   type ActivityEvent,

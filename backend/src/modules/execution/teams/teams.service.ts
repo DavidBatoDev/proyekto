@@ -13,8 +13,8 @@ import {
   type SendMailResult,
 } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { isEmailSuppressed } from '../../notifications/email/email-suppression';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import {
   type ProjectConsultantCompatibility,

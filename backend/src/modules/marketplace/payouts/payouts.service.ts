@@ -8,8 +8,8 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { NotificationsService } from '../../notifications/notifications.service';
-import { UploadsService } from '../../uploads/uploads.controller';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   CreatePayoutDto,
   CreatePayoutMethodDto,

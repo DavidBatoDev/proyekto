@@ -1,7 +1,7 @@
 import { ChatService } from './chat.service';
-import type { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import type { RealtimePublisher } from '../../shared/realtime/realtime-publisher.service';
 import type { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
-import type { AuditService } from '../../audit/audit.service';
+import type { AuditService } from '../../shared/audit/audit.service';
 import type {
   ChatRepository,
   ChatRoom,
@@ -138,13 +138,13 @@ describe('ChatService', () => {
       // Default: no live notification, so a DM notifies.
       findLiveChatRoomNotification: jest.fn().mockResolvedValue(null),
       ...overrides,
-    }) as unknown as import('../../notifications/notifications.service').NotificationsService;
+    }) as unknown as import('../../shared/notifications/notifications.service').NotificationsService;
 
   const buildKnowledgeOutbox = () =>
     ({
       enqueue: jest.fn(),
       isEnabled: jest.fn().mockReturnValue(false),
-    }) as unknown as import('../../knowledge/knowledge-outbox.service').KnowledgeOutboxService;
+    }) as unknown as import('../../shared/knowledge/knowledge-outbox.service').KnowledgeOutboxService;
 
   const makeService = (
     repo: ChatRepository,

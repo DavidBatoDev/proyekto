@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../../../common/mail/mail.module';
 import { FinanceModule } from '../finance/finance.module';
-import { NotificationsModule } from '../../notifications/notifications.module';
+import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
-import { UploadsModule } from '../../uploads/uploads.module';
+import { UploadsModule } from '../../shared/uploads/uploads.module';
 import { ContractSignatureLinksController } from './contract-signature-links.controller';
 import { ContractSignatureLinksService } from './contract-signature-links.service';
 import { ContractsController } from './contracts.controller';

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
-import { isEmailSuppressed } from '../../../notifications/email/email-suppression';
+import { isEmailSuppressed } from '../../../shared/notifications/email/email-suppression';
 import { ProjectAuthorizationService } from '../../projects/authorization/project-authorization.service';
 import { INVITES_PATH } from '../../projects/invites-path';
 import { ProjectsService } from '../../projects/projects.service';

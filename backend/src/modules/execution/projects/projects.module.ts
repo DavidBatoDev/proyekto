@@ -3,7 +3,7 @@ import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { SupabaseProjectsRepository } from './repositories/projects.repository.supabase';
 import { PROJECTS_REPOSITORY } from './projects.service';
-import { NotificationsModule } from '../../notifications/notifications.module';
+import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { PersonalWorkspaceService } from './personal-workspace.service';
 import { AuthorizationModule } from './authorization/authorization.module';
 import { ProjectAccessSyncModule } from './access-sync/access-sync.module';

@@ -17,7 +17,7 @@ import {
   ContractsService,
   type ContractRow,
 } from '../contracts/contracts.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
 

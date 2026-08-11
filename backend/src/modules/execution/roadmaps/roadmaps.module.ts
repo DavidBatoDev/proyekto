@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../projects/projects.module';
-import { NotificationsModule } from '../../notifications/notifications.module';
+import { NotificationsModule } from '../../shared/notifications/notifications.module';
 
 // Controllers
 import { RoadmapsController } from './controllers/roadmaps.controller';

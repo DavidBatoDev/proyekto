@@ -13,17 +13,17 @@ import {
   RoadmapAuthorizationService,
   type RoadmapWriteContext,
 } from './roadmap-authorization.service';
-import { NotificationsService } from '../../../notifications/notifications.service';
+import { NotificationsService } from '../../../shared/notifications/notifications.service';
 import { htmlToText } from '../../../../common/utils/html-to-text.util';
 import {
   extractMentionedEmails,
   extractMentionedUserIds,
 } from '../utils/mention-parser';
 import { RoadmapMentionInviteService } from './roadmap-mention-invite.service';
-import { MENTION_EXCERPT_MAX_CHARS } from '../../../notifications/notification-content';
+import { MENTION_EXCERPT_MAX_CHARS } from '../../../shared/notifications/notification-content';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
-import { ACTIVITY_ACTIONS } from '../../../audit/activity-actions';
+import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { FEATURES_REPOSITORY } from './features.service';
 import { TASKS_REPOSITORY } from './tasks.service';
 

@@ -10,7 +10,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
   CreateMeetingDto,

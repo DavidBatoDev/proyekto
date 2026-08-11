@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import {
   AppCacheStatus,
   RedisDataCacheService,

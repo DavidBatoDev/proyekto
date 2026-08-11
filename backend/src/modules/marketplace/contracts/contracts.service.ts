@@ -7,7 +7,7 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import {
   addDays,

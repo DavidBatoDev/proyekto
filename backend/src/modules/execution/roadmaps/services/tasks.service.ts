@@ -1,7 +1,7 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
-import { NotificationsService } from '../../../notifications/notifications.service';
+import { NotificationsService } from '../../../shared/notifications/notifications.service';
 import type { ITasksRepository } from '../repositories/tasks.repository.interface';
 import {
   CreateTaskDto,
@@ -17,7 +17,7 @@ import { getPermission } from '../../projects/permissions/project-permissions';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
-import { ACTIVITY_ACTIONS } from '../../../audit/activity-actions';
+import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { FeatureStatusSyncService } from './derive-feature-status';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');

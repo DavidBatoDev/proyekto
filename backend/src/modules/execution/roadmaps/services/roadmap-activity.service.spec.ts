@@ -1,5 +1,5 @@
 import { RoadmapActivityService } from './roadmap-activity.service';
-import { ACTIVITY_ACTIONS } from '../../../audit/activity-actions';
+import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 
 /** `flag` mirrors the raw env value; undefined = unset = the default. */
 function build(flag?: string) {

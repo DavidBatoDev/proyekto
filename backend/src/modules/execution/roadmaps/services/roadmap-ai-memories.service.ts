@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
-import { KnowledgeOutboxService } from '../../../knowledge/knowledge-outbox.service';
-import { KnowledgeSearchService } from '../../../knowledge/knowledge-search.service';
+import { KnowledgeOutboxService } from '../../../shared/knowledge/knowledge-outbox.service';
+import { KnowledgeSearchService } from '../../../shared/knowledge/knowledge-search.service';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
 import type {

@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuditService } from '../../../audit/audit.service';
+import { AuditService } from '../../../shared/audit/audit.service';
 import {
   ACTIVITY_ACTIONS,
   type ActivityAction,
   type ActivityEntityType,
-} from '../../../audit/activity-actions';
+} from '../../../shared/audit/activity-actions';
 import type { RoadmapWriteContext } from './roadmap-authorization.service';
 
 /** Longest a text value may be before we store lengths instead of content. */

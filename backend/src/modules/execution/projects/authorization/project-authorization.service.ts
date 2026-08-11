@@ -8,7 +8,7 @@ import {
   resolvePermissions,
 } from '../permissions/project-permissions';
 import { MissingPermissionException } from './missing-permission.exception';
-import { AuditService } from '../../../audit/audit.service';
+import { AuditService } from '../../../shared/audit/audit.service';
 
 /**
  * Roles in descending strength order. Higher index = stronger role.

@@ -15,9 +15,9 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import { MailerService } from '../../../common/mail/mailer.service';
-import { AuditService } from '../../audit/audit.service';
-import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
-import { isEmailSuppressed } from '../../notifications/email/email-suppression';
+import { AuditService } from '../../shared/audit/audit.service';
+import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
+import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { INVITES_PATH } from './invites-path';
 import { buildInviteEmail } from './project-invite-email.template';
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
@@ -56,7 +56,7 @@ import {
 } from './dto/project.dto';
 import { Project } from '../../../common/entities';
 import { ProjectActivationService } from '../../marketplace/contracts/project-activation.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
 import { TeamTimeService } from '../team-time/team-time.service';

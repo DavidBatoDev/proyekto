@@ -12,7 +12,7 @@ import {
   type RoadmapWriteContext,
 } from '../roadmaps/services/roadmap-authorization.service';
 import { RoadmapActivityService } from '../roadmaps/services/roadmap-activity.service';
-import { ACTIVITY_ACTIONS } from '../../audit/activity-actions';
+import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 
 export const ROADMAP_SHARES_REPOSITORY = Symbol('ROADMAP_SHARES_REPOSITORY');
 

@@ -117,7 +117,7 @@ class EnvironmentVariables {
   // Notification email needs no env flags: notification_types.email_eligible is
   // the single gate, it is per-type, and flipping it takes effect without a
   // deploy. Rate and batch limits are constants in
-  // modules/notifications/email/notification-email-worker.service.ts.
+  // modules/shared/notifications/email/notification-email-worker.service.ts.
 
   @IsString()
   GMAIL_CLIENT_ID: string;

@@ -20,7 +20,7 @@ import {
   TimeLogReviewDecision,
   UpdateTimeLogDto,
 } from './dto/team-time.dto';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 
 const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,

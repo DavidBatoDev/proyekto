@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser } from '../../../../common/interfaces/authenticated-request.interface';
-import { KnowledgeSearchService } from '../../../knowledge/knowledge-search.service';
+import { KnowledgeSearchService } from '../../../shared/knowledge/knowledge-search.service';
 import type {
   RoadmapAiKnowledgeSearchQueryDto,
   RoadmapAiKnowledgeSearchResponseDto,

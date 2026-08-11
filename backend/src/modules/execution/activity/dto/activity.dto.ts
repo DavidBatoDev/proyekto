@@ -16,7 +16,7 @@ import {
   ACTION_FAMILIES,
   ACTIVITY_ACTIONS,
   ACTIVITY_ENTITY_TYPES,
-} from '../../../audit/activity-actions';
+} from '../../../shared/audit/activity-actions';
 
 export const ACTIVITY_DEFAULT_LIMIT = 50;
 export const ACTIVITY_MAX_LIMIT = 100;

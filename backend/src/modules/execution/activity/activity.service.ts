@@ -7,7 +7,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { getPermission } from '../projects/permissions/project-permissions';
-import { ACTIVITY_ACTIONS, actionFamily } from '../../audit/activity-actions';
+import { ACTIVITY_ACTIONS, actionFamily } from '../../shared/audit/activity-actions';
 import {
   ACTIVITY_DEFAULT_LIMIT,
   ACTIVITY_MAX_LIMIT,

@@ -8,7 +8,7 @@ import {
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
-import { ACTIVITY_ACTIONS } from '../../../audit/activity-actions';
+import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 
 export const MILESTONES_REPOSITORY = Symbol('MILESTONES_REPOSITORY');
 

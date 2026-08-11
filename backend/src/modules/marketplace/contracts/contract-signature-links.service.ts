@@ -20,7 +20,7 @@ import {
 import { renderTextEmail } from '../../../common/mail/templates/text';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
-import { UploadsService } from '../../uploads/uploads.controller';
+import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   ContractRow,
   ContractsService,

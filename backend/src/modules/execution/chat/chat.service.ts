@@ -29,12 +29,12 @@ import type {
 import {
   type ChatEventKind,
   RealtimePublisher,
-} from '../../realtime/realtime-publisher.service';
-import { AuditService } from '../../audit/audit.service';
-import { KnowledgeOutboxService } from '../../knowledge/knowledge-outbox.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+} from '../../shared/realtime/realtime-publisher.service';
+import { AuditService } from '../../shared/audit/audit.service';
+import { KnowledgeOutboxService } from '../../shared/knowledge/knowledge-outbox.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { truncatePromptText } from '../../../common/utils/html-to-text.util';
-import { MENTION_EXCERPT_MAX_CHARS } from '../../notifications/notification-content';
+import { MENTION_EXCERPT_MAX_CHARS } from '../../shared/notifications/notification-content';
 
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
 const EVERYONE_MENTION_ID = 'everyone';

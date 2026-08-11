@@ -21,7 +21,7 @@ import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repo
 import { RoadmapJsonPatchProcessor } from '../patch/roadmap-json-patch.processor';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
-import { RealtimePublisher } from '../../../realtime/realtime-publisher.service';
+import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
 
 export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');

@@ -8,9 +8,9 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { MailerService } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
-import { UploadsService } from '../../uploads/uploads.controller';
+import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   ContractsService,
   type ContractRow,

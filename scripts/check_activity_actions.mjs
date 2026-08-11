@@ -1,7 +1,7 @@
 /**
  * Guards the project activity-log vocabulary.
  *
- * `backend/src/modules/audit/activity-actions.ts` is the source of truth and
+ * `backend/src/modules/shared/audit/activity-actions.ts` is the source of truth and
  * is hand-mirrored into `web/src/components/project/logs/activityCatalog.ts`
  * (the same convention the far larger permission catalog already uses — there
  * is no shared TS package in this monorepo, and creating one for ~75 string
@@ -26,7 +26,7 @@ const root = path.resolve(__dirname, '..');
 
 const backendActionsPath = path.join(
   root,
-  'backend/src/modules/audit/activity-actions.ts',
+  'backend/src/modules/shared/audit/activity-actions.ts',
 );
 const webCatalogPath = path.join(
   root,
