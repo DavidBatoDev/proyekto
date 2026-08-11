@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -56,7 +56,7 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 | GET | /api/projects/roadmap-link-candidates | Supabase | Linkable roadmaps |
 | POST | /api/projects | Supabase | Create project |
 | POST | /api/projects/from-roadmap | Supabase | Create from roadmap (blocks guests) |
-| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update / delete |
+| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update / guarded delete (active finance records block) |
 | POST | /api/projects/:id/transfer-owner | Supabase | Transfer ownership |
 | POST | /api/projects/:id/reassign-consultant | Supabase | Reassign consultant |
 | POST | /api/projects/:id/assign-consultant | +AdminGuard | Admin-assign consultant |
@@ -172,7 +172,7 @@ logs/summary,projects,members}` and per-project rate/tasks). All `Supabase`.
 | POST | /api/guests/create | Public +Throttler (5/60s) | Create guest user |
 | GET | /api/guests/by-session/:sessionId | Public +Throttler (30/60s) | Find guest by session |
 | GET | /api/guests/pending/:sessionId | Public | Check pending guest data |
-| POST | /api/guests/cleanup | Supabase | Clean up old guests |
+| POST | /api/guests/cleanup | +AdminGuard | Clean up old guests |
 
 ## admin · `admin` (all `+AdminGuard` except `/me`)
 
@@ -202,8 +202,8 @@ Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payou
 
 `GET /invoices/project/:projectId`, `POST /invoices`, `GET/PATCH /invoices/:id`,
 `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`. Authenticated
-invoice operations are restricted to the verified consultant of record with a
-matching `project_access` row. Client delivery is by attached PDF; the in-app
+invoice operations require verified consultant capability and an exact
+`project_access` owner row with consultant origin. Client delivery is by attached PDF; the in-app
 notification returns the client to the project overview.
 
 ## finance · `finance`
@@ -216,8 +216,8 @@ The consultant-only portfolio behind `/finance`:
 | GET | /api/finance/contracts | +ConsultantOnly | Filtered cross-project contract list |
 | GET | /api/finance/invoices | +ConsultantOnly | Filtered cross-project invoice list |
 
-All three endpoints return only projects where the caller is
-`projects.consultant_id` **and** has a `project_access` row. Filters cover search,
+All three endpoints return only projects where the caller has active consultant capability
+and a `project_access` row with `role=owner` and `origin=consultant`. Filters cover search,
 project, project status, currency, date range, and the relevant contract or
 invoice status. Totals are never converted across currencies.
 

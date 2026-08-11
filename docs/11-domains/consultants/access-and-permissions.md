@@ -1,6 +1,6 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
 grant access to every project. Project authority still requires `project_access`. When the
@@ -16,7 +16,10 @@ person is the named consultant, Proyekto grants owner access with a consultant-o
 | Consultant joins only by invite/team | Receives the ordinary invited/team project role; not automatically the named consultant |
 
 `projects.consultant_id` is a relationship pointer. The owner access grant is the
-authorization record.
+authorization record. Reassignment promotes an existing invited/team access row to
+`origin=consultant` while preserving the stronger of its stored and incoming roles. Finance
+requires the resulting exact `owner` + `consultant` access pair as well as active consultant
+capability; a client-origin admin or owner is not admitted.
 
 ## Consultant origin delta
 

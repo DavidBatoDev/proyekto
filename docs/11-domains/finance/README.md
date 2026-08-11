@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Money in Proyekto flows through three modules — but only two of them are live. The
 **payouts** and **invoices** modules are the shipped financial path; the older
@@ -38,11 +38,18 @@ PDF.
 
 | Table | Holds |
 | --- | --- |
+| `contracts` | Commercial agreement and immutable party/project-title snapshots |
 | `invoices` | Invoice header (`status` = draft \| issued \| sent \| paid \| void) |
 | `invoice_line_items` | Lines (`source_type` = manual \| time_log) |
 | `invoice_documents` | Generated PDFs (storage path) |
 
 HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.
+
+Finance access requires active consultant capability plus a `project_access` row with
+`role=owner` and `origin=consultant`; the legacy `projects.consultant_id` pointer is not an
+authorization gate. Project deletion is refused while contracts are sent/signed/active or
+invoices are issued/sent. Drafts are discarded; ended/cancelled contracts and paid/void
+invoices survive with `project_id=NULL` and their project-title snapshots intact.
 
 ## Wallets (partial)
 

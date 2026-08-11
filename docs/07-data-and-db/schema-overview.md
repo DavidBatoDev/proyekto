@@ -1,10 +1,10 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **241 migrations** spanning
-2025-12-11 → 2026-08-10. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **244 migrations** spanning
+2025-12-11 → 2026-08-11. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -34,7 +34,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | Table | Purpose |
 | --- | --- |
 | `projects` | Top-level project (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `consultant_id`, `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id` |
-| `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + `origin` label + capabilities jsonb + `has_direct_grant` |
+| `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + authorization-relevant `origin` + capabilities jsonb + `has_direct_grant` |
 | `project_invites` | Email invite flow |
 | `project_briefs` | Structured brief (mission/vision, summary) |
 | `project_resource_folders`, `project_resource_links` | Resource hyperlinks |
@@ -59,7 +59,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `teams`, `team_members`, `team_invites` | Reusable teams + roster + invites |
 | `project_teams`, `project_team_members` | Attach a team to a project; curation fans out to `project_access` via trigger |
 | `team_member_rates` | Per-member (per-project) rate cards |
-| `task_time_logs`, `time_log_comments` | Billable time logs + threads |
+| `task_time_logs`, `time_log_comments` | Billable time logs + threads; project/task/member FKs sever with `SET NULL`, while member name and rates remain snapshotted |
 
 ### Money
 
@@ -67,9 +67,9 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | --- | --- |
 | `wallets` | User balances (available + escrow) |
 | `payout_methods`, `payouts` | The **active** money path — manual payouts grouping approved time logs |
-| `invoices`, `invoice_line_items`, `invoice_documents` | Invoice generation + PDFs |
+| `invoices`, `invoice_line_items`, `invoice_documents` | Invoice generation + PDFs; terminal invoices survive project deletion with a project-title snapshot |
 | `invoice_payments`, `invoice_events` | Payment recording/reversal and the invoice audit trail |
-| `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). Snapshots both parties, carries `client_hourly_rate` (**client-facing**, never the internal cost rate), a `clauses` jsonb, and a **`services` jsonb catalog** picked into invoice lines |
+| `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). Snapshots both parties and the project title; terminal rows survive project deletion; carries `client_hourly_rate` (**client-facing**, never the internal cost rate), clauses, and services |
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
 | `finance_project_settings` | Company % vs team % revenue split and allocation mode per project (CHECK sums to 100) |
 | `finance_member_allocations` | Each member's slice of a project's team pool — **internal, never reaches a client** |
@@ -134,7 +134,7 @@ projects.id ◄─ project_access.project_id ─► profiles.id     (authorizati
 projects.id ─1:1─► roadmaps.project_id
 roadmaps.id ◄─ roadmap_epics ◄─ roadmap_features ◄─ roadmap_tasks
 roadmap_milestones ◄─ milestone_features ─► roadmap_features   (M:N)
-roadmap_tasks ◄─ task_time_logs ─► payouts (payout_id)
+roadmap_tasks ◄─ task_time_logs ─► payouts (payout_id)       (severable task/project/member FKs)
 teams.id ◄─ team_members ─► profiles ;  project_teams ─► projects
                 └─ project_team_members ──(trigger)──► project_access
 meetings ─► meeting_series ;  meetings ◄─ meeting_participants

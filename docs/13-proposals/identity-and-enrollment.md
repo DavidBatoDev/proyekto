@@ -1,9 +1,10 @@
 # Identity and Enrollment
 
-> **⚠️ Proposed — not built.** Phase 1 (dropping `profiles.role`, simplified signup) is landing
-> now; the enrollment tables and the marketplace/execution split they serve are not built.
+> **⚠️ Proposed — partially built.** Phase 1 (dropping `profiles.role`, simplified signup)
+> and Phase 2 durability fixes are shipped; the enrollment tables and the full
+> marketplace/execution split are not built.
 
-> **Last updated:** 2026-08-10 · **Status:** draft
+> **Last updated:** 2026-08-11 · **Status:** draft
 
 Proyekto has tried to answer "what kind of user is this?" twice — first with a switchable
 `persona_type` (removed in `20260804170019_remove_active_persona.sql`), then with a durable
@@ -139,7 +140,7 @@ separate ceremony, never at signup.
 | Legacy `role='talent'` users | Get a one-time go-live prompt. No silent `freelancer_profiles` seeding |
 | Verification revoked between proposal and signing | `is_active_consultant()` re-checked inside the signing transaction |
 
-## Phase 1 — what lands now
+## Phase 1 — shipped
 
 The immediate, in-flight slice: delete `profiles.role` and simplify signup. Everything the
 column touches (verified against source and against the production database 2026-08-10):
@@ -163,12 +164,16 @@ it.
 
 | Phase | Lands | Notes |
 | --- | --- | --- |
-| **P1** | Role deletion + simplified signup | In flight now |
-| **P2** | Durability fixes | Flip `contracts.project_id` CASCADE (a signed contract must outlive its project — `20260724100000_create_contracts.sql:19`), fix `task_time_logs` deletion semantics, remove the chat marketplace-role fallback (`chat.service.ts:432`) after backfilling `project_access` |
+| **P1** | Role deletion + simplified signup | Shipped 2026-08-11 |
+| **P2** | Durability fixes | Shipped 2026-08-11: contracts, invoices, and time logs survive severed relationships with snapshots; chat and finance authorization use `project_access`; project deletion blocks active financial records |
 | **P3** | Marketplace/execution reorganization | Routes and modules into `execution/*` / `marketplace/*` / shared; drop `projects.consultant_id` + fee columns (values snapshotted first); `consultant_profiles` + `freelancer_profiles` created here, absorbing `is_consultant_verified` behind the unchanged predicate |
 | **P4** | Link layer | `engagements` (project ↔ contract, severable, the only legal cross-domain FK), team connections, time-log → contract billing mapping, client read-only projection |
 
 Phases 1–3 are justified as standalone correctness work; only P4 is new product surface.
+
+Phase 3 still owns display-only `consultant_id` joins, notification routing and visibility
+unions, web UI gates, the `project_invites` insert policy, leave/revoke consultant guards,
+fee snapshots and column drops, and removal of `ConsultantFinanceProject.consultant_id`.
 
 ## Blast radius
 

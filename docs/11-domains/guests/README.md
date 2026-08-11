@@ -1,6 +1,6 @@
 # Guests
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Anonymous users can build a roadmap **before signing up** — typically from the hero
 chat — and their work migrates to a real account when they register. There's no
@@ -38,7 +38,7 @@ On signup, the guest's roadmap(s) migrate to the new authenticated user:
 ## Housekeeping
 
 Old guest profiles are cleaned up via the `cleanup_old_guest_users` RPC
-(`POST /guests/cleanup`, any authenticated user). Guest session validity is checked by
+(`POST /guests/cleanup`, administrators only). Guest session validity is checked by
 `is_valid_guest_session`.
 
 ## Code locations
