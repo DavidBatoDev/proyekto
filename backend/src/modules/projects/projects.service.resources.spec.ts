@@ -72,10 +72,13 @@ describe('ProjectsService (resources)', () => {
       dataCache as any,
       cacheInvalidation as any,
       { get: jest.fn() } as any,
-      { provisionDefaultChannels: jest.fn().mockResolvedValue(undefined) } as any,
+      {
+        provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
+      } as any,
       { assertActivationReady: jest.fn() } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
       { log: jest.fn() } as any, // AuditService
+      { stopRunningLogsForProject: jest.fn() } as any,
     );
   };
 
@@ -160,4 +163,3 @@ describe('ProjectsService (resources)', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
-

@@ -40,6 +40,7 @@ import {
 export interface ContractRow {
   id: string;
   project_id: string;
+  project_title_snapshot: string | null;
   version: number;
   contract_number: string | null;
   status: ContractStatus;
@@ -968,11 +969,15 @@ export class ContractsService {
 
     const { data: project } = await this.supabase
       .from('projects')
-      .select('owner_id')
+      .select('owner_id, title')
       .eq('id', projectId)
       .maybeSingle();
-    const ownerId = (project as { owner_id: string | null } | null)
-      ?.owner_id;
+    const projectRow = project as {
+      owner_id: string | null;
+      title: string | null;
+    } | null;
+    const ownerId = projectRow?.owner_id;
+    seeded.project_title_snapshot = projectRow?.title ?? null;
     // A consultant-created project lists the creator as its own client until a
     // real client is transferred in; seeding that as the counterparty would be
     // misleading, so skip it.

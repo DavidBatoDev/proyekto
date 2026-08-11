@@ -27,6 +27,7 @@ const TIME_LOG_SELECT = `
   duration_seconds, break_minutes, break_seconds, paused_at,
   status, reviewed_by, reviewed_at, review_note, source,
   rate_snapshot, rate_type_snapshot, currency_snapshot, work_type_snapshot,
+  member_display_name_snapshot,
   created_at, updated_at,
   task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type, status),
   member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email),
@@ -91,6 +92,7 @@ export interface TimeLogRow {
   rate_snapshot: number;
   currency_snapshot: string;
   work_type_snapshot: TaskWorkType;
+  member_display_name_snapshot: string | null;
   created_at: string;
   updated_at: string;
   limit_context?: TimeLogLimitContext;
@@ -282,6 +284,8 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     const resolvedRate = this.pickRateForWorkType(rate, workType);
+    const memberDisplayNameSnapshot =
+      await this.resolveMemberDisplayNameSnapshot(callerId);
 
     const { data, error } = await this.supabase
       .from('task_time_logs')
@@ -297,6 +301,7 @@ export class TeamTimeService {
         rate_type_snapshot: rate?.rate_type ?? 'hourly',
         currency_snapshot: rate?.currency ?? 'USD',
         work_type_snapshot: workType,
+        member_display_name_snapshot: memberDisplayNameSnapshot,
       })
       .select(TIME_LOG_SELECT)
       .single();
@@ -364,7 +369,10 @@ export class TeamTimeService {
    * Total break seconds for a log as of `asOf`, including an in-progress
    * pause. Stopping mid-break must not silently discard that interval.
    */
-  private foldPause(log: TimeLogRow, asOf: Date): number {
+  private foldPause(
+    log: Pick<TimeLogRow, 'break_seconds' | 'paused_at'>,
+    asOf: Date,
+  ): number {
     const banked = Math.max(0, log.break_seconds ?? 0);
     if (!log.paused_at) return banked;
     const pausedAt = new Date(log.paused_at).getTime();
@@ -382,27 +390,11 @@ export class TeamTimeService {
       throw new BadRequestException('This log is already stopped.');
     }
     const endedAt = dto.ended_at ?? new Date().toISOString();
-    // Server-stored break wins. `dto.break_minutes` is only a fallback for
-    // older clients that tracked break time locally.
-    const storedBreak = this.foldPause(log, new Date(endedAt));
-    const breakSeconds =
-      storedBreak > 0 ? storedBreak : Math.max(0, dto.break_minutes ?? 0) * 60;
-    const grossDuration = Math.max(
-      0,
-      Math.floor(
-        (new Date(endedAt).getTime() - new Date(log.started_at).getTime()) /
-          1000,
-      ),
+    const updatePayload = this.stoppedTimerPatch(
+      log,
+      endedAt,
+      dto.break_minutes,
     );
-    const netDuration = Math.max(0, grossDuration - breakSeconds);
-    const updatePayload: Record<string, unknown> = {
-      ended_at: endedAt,
-      duration_seconds: netDuration,
-      break_seconds: breakSeconds,
-      break_minutes: Math.round(breakSeconds / 60),
-      paused_at: null,
-      updated_at: new Date().toISOString(),
-    };
     const res = await this.supabase
       .from('task_time_logs')
       .update(updatePayload)
@@ -427,6 +419,85 @@ export class TeamTimeService {
       );
     }
     return this.attachLimitContext(row);
+  }
+
+  /** End every running timer before its project relationship is severed. */
+  async stopRunningLogsForProject(projectId: string): Promise<number> {
+    const { data, error } = await this.supabase
+      .from('task_time_logs')
+      .select('id, started_at, paused_at, break_seconds')
+      .eq('project_id', projectId)
+      .is('ended_at', null);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<
+      Pick<TimeLogRow, 'id' | 'started_at' | 'paused_at' | 'break_seconds'>
+    >;
+    if (rows.length === 0) return 0;
+
+    const endedAt = new Date().toISOString();
+    await Promise.all(
+      rows.map(async (row) => {
+        const { error: updateError } = await this.supabase
+          .from('task_time_logs')
+          .update(this.stoppedTimerPatch(row, endedAt))
+          .eq('id', row.id)
+          .is('ended_at', null);
+        if (updateError) throw new Error(updateError.message);
+      }),
+    );
+    return rows.length;
+  }
+
+  private stoppedTimerPatch(
+    log: Pick<TimeLogRow, 'started_at' | 'paused_at' | 'break_seconds'>,
+    endedAt: string,
+    fallbackBreakMinutes = 0,
+  ): Record<string, unknown> {
+    // Server-stored break wins. The fallback supports older clients that kept
+    // break time locally before paused timer state was persisted.
+    const storedBreak = this.foldPause(log, new Date(endedAt));
+    const breakSeconds =
+      storedBreak > 0 ? storedBreak : Math.max(0, fallbackBreakMinutes) * 60;
+    const grossDuration = Math.max(
+      0,
+      Math.floor(
+        (new Date(endedAt).getTime() - new Date(log.started_at).getTime()) /
+          1000,
+      ),
+    );
+    return {
+      ended_at: endedAt,
+      duration_seconds: Math.max(0, grossDuration - breakSeconds),
+      break_seconds: breakSeconds,
+      break_minutes: Math.round(breakSeconds / 60),
+      paused_at: null,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  private async resolveMemberDisplayNameSnapshot(
+    userId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('display_name, first_name, last_name, email')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+
+    const profile = data as {
+      display_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    };
+    const composed = [profile.first_name, profile.last_name]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return profile.display_name?.trim() || composed || profile.email || null;
   }
 
   async updateLog(
@@ -585,6 +656,8 @@ export class TeamTimeService {
       rate,
     );
     const resolvedRate = this.pickRateForWorkType(rate, workType);
+    const memberDisplayNameSnapshot =
+      await this.resolveMemberDisplayNameSnapshot(callerId);
 
     const insertPayload: Record<string, unknown> = {
       project_id: dto.project_id,
@@ -602,6 +675,7 @@ export class TeamTimeService {
       work_type_snapshot: workType,
       break_minutes: breakMins,
       break_seconds: breakMins * 60,
+      member_display_name_snapshot: memberDisplayNameSnapshot,
     };
 
     const res = await this.supabase

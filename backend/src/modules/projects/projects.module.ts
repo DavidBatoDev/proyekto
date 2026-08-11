@@ -10,6 +10,7 @@ import { ProjectAccessSyncModule } from './access-sync/access-sync.module';
 import { TeamsModule } from '../teams/teams.module';
 import { ChatModule } from '../chat/chat.module';
 import { ContractsModule } from '../contracts/contracts.module';
+import { TeamTimeModule } from '../team-time/team-time.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ContractsModule } from '../contracts/contracts.module';
     // ContractsModule depends only on AuthorizationModule, so this direction is
     // acyclic — ProjectsService can use the activation gate without a forwardRef.
     ContractsModule,
+    TeamTimeModule,
   ],
   controllers: [ProjectsController],
   providers: [

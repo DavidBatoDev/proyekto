@@ -109,6 +109,7 @@ describe('ProjectsService — invite email honours the suppression list', () => 
       { assertActivationReady: jest.fn() } as any,
       mailer as any,
       { log: jest.fn() } as any,
+      { stopRunningLogsForProject: jest.fn() } as any,
     );
 
     return { service, mailer, inviteByEmail };

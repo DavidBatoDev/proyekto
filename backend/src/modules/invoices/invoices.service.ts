@@ -41,6 +41,7 @@ export interface InvoiceParty {
 export interface InvoiceRow {
   id: string;
   project_id: string;
+  project_title_snapshot: string | null;
   contract_id: string | null;
   issuer_user_id: string;
   recipient_user_id: string | null;
@@ -226,7 +227,10 @@ export class InvoicesService {
     callerId: string,
     dto: CreateInvoiceDto,
   ): Promise<InvoiceWithLines> {
-    await this.financeAccess.assertProject(callerId, dto.project_id);
+    const project = await this.financeAccess.assertProject(
+      callerId,
+      dto.project_id,
+    );
 
     // A live contract governs pricing whenever one exists — the client rate,
     // the parties on the document, and the payment terms all come from it.
@@ -245,6 +249,7 @@ export class InvoicesService {
       .from('invoices')
       .insert({
         project_id: dto.project_id,
+        project_title_snapshot: project.title,
         contract_id: dto.contract_id ?? contract?.id ?? null,
         issuer_user_id: callerId,
         recipient_user_id:
@@ -283,7 +288,9 @@ export class InvoicesService {
     });
     await this.replaceInvoiceLineItems(invoice.id, lines);
     await this.refreshTotals(invoice.id);
-    await this.recordEvent(invoice.id, 'created', callerId, { origin: 'manual' });
+    await this.recordEvent(invoice.id, 'created', callerId, {
+      origin: 'manual',
+    });
     return this.getInvoiceInternal(invoice.id);
   }
 
@@ -311,6 +318,7 @@ export class InvoicesService {
       .from('invoices')
       .insert({
         project_id: contract.project_id,
+        project_title_snapshot: contract.project_title_snapshot,
         contract_id: contract.id,
         issuer_user_id: contract.created_by,
         recipient_user_id: contract.client_user_id,
@@ -485,7 +493,10 @@ export class InvoicesService {
       .update({ issue_date: issueDate, updated_at: now })
       .eq('id', invoiceId);
     if (dateErr) throw new BadRequestException(dateErr.message);
-    await this.renderAndStorePdf(await this.getInvoiceInternal(invoiceId), callerId);
+    await this.renderAndStorePdf(
+      await this.getInvoiceInternal(invoiceId),
+      callerId,
+    );
 
     const { error } = await this.supabase
       .from('invoices')
@@ -496,7 +507,9 @@ export class InvoicesService {
       })
       .eq('id', invoiceId);
     if (error) throw new BadRequestException(error.message);
-    await this.recordEvent(invoiceId, 'issued', callerId, { issue_date: issueDate });
+    await this.recordEvent(invoiceId, 'issued', callerId, {
+      issue_date: issueDate,
+    });
 
     try {
       if (invoice.recipient_user_id && invoice.recipient_user_id !== callerId) {
@@ -631,8 +644,7 @@ export class InvoicesService {
       .select('owner_id')
       .eq('id', invoice.project_id)
       .maybeSingle();
-    const ownerId = (project as { owner_id: string | null } | null)
-      ?.owner_id;
+    const ownerId = (project as { owner_id: string | null } | null)?.owner_id;
     if (!ownerId) return { email: null, source: 'none' };
 
     const { data: client } = await this.supabase
@@ -682,11 +694,15 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     await this.financeAccess.assertProject(callerId, invoice.project_id);
     if (invoice.status === 'draft' || invoice.status === 'void') {
-      throw new BadRequestException('Payments can only be recorded against an issued invoice.');
+      throw new BadRequestException(
+        'Payments can only be recorded against an issued invoice.',
+      );
     }
     const amount = roundMoney(dto.amount);
     if (amount > invoice.balance_due + 0.0001) {
-      throw new BadRequestException('Payment cannot exceed the remaining invoice balance.');
+      throw new BadRequestException(
+        'Payment cannot exceed the remaining invoice balance.',
+      );
     }
     const { error } = await this.supabase.from('invoice_payments').insert({
       invoice_id: invoiceId,
@@ -715,19 +731,31 @@ export class InvoicesService {
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     await this.financeAccess.assertProject(callerId, invoice.project_id);
-    if (invoice.status === 'void') throw new BadRequestException('A void invoice has no reversible payments.');
+    if (invoice.status === 'void')
+      throw new BadRequestException(
+        'A void invoice has no reversible payments.',
+      );
     const { data: payment, error: paymentErr } = await this.supabase
-      .from('invoice_payments').select('*').eq('id', paymentId).eq('invoice_id', invoiceId).maybeSingle();
+      .from('invoice_payments')
+      .select('*')
+      .eq('id', paymentId)
+      .eq('invoice_id', invoiceId)
+      .maybeSingle();
     if (paymentErr) throw new Error(paymentErr.message);
     if (!payment) throw new NotFoundException('Payment not found');
     if ((payment as InvoicePaymentRow).reverses_payment_id) {
       throw new BadRequestException('A reversal cannot be reversed.');
     }
     const { data: existingReversal } = await this.supabase
-      .from('invoice_payments').select('id').eq('reverses_payment_id', paymentId).maybeSingle();
-    if (existingReversal) throw new BadRequestException('This payment has already been reversed.');
+      .from('invoice_payments')
+      .select('id')
+      .eq('reverses_payment_id', paymentId)
+      .maybeSingle();
+    if (existingReversal)
+      throw new BadRequestException('This payment has already been reversed.');
     const trimmedReason = reason.trim();
-    if (!trimmedReason) throw new BadRequestException('A reversal reason is required.');
+    if (!trimmedReason)
+      throw new BadRequestException('A reversal reason is required.');
     const { error } = await this.supabase.from('invoice_payments').insert({
       invoice_id: invoiceId,
       amount: Number((payment as InvoicePaymentRow).amount),
@@ -738,7 +766,10 @@ export class InvoicesService {
     });
     if (error) throw new BadRequestException(error.message);
     await this.refreshPaymentState(invoiceId);
-    await this.recordEvent(invoiceId, 'payment_reversed', callerId, { payment_id: paymentId, reason: trimmedReason });
+    await this.recordEvent(invoiceId, 'payment_reversed', callerId, {
+      payment_id: paymentId,
+      reason: trimmedReason,
+    });
     return this.getInvoiceInternal(invoiceId);
   }
 
@@ -750,37 +781,87 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     await this.financeAccess.assertProject(callerId, invoice.project_id);
     if (invoice.status !== 'issued') {
-      throw new BadRequestException('Only unpaid issued invoices can be voided and replaced. Reverse payments first.');
+      throw new BadRequestException(
+        'Only unpaid issued invoices can be voided and replaced. Reverse payments first.',
+      );
     }
     const trimmedReason = reason.trim();
-    if (!trimmedReason) throw new BadRequestException('A void reason is required.');
+    if (!trimmedReason)
+      throw new BadRequestException('A void reason is required.');
     const number = await this.nextInvoiceNumber(invoice.project_id, null);
     const now = new Date().toISOString();
     const { data: replacement, error: replacementErr } = await this.supabase
-      .from('invoices').insert({
-        project_id: invoice.project_id, contract_id: invoice.contract_id,
-        issuer_user_id: callerId, recipient_user_id: invoice.recipient_user_id,
-        number, status: 'draft', currency: invoice.currency, issue_date: null,
-        due_date: invoice.due_date, period_start: invoice.period_start, period_end: invoice.period_end,
-        origin: 'manual', hours_detail_level: invoice.hours_detail_level,
-        bill_to: invoice.bill_to, issued_by: invoice.issued_by, payment_method: invoice.payment_method,
-        notes: invoice.notes, attach_hours: false, replaces_invoice_id: invoice.id,
-      }).select('*').single();
-    if (replacementErr || !replacement) throw new BadRequestException(replacementErr?.message ?? 'Could not create replacement invoice.');
-    await this.replaceInvoiceLineItems(String((replacement as InvoiceRow).id), invoice.line_items.map((line) => ({
-      source_type: line.source_type, source_log_id: line.source_log_id, description: line.description,
-      quantity: Number(line.quantity), unit_rate: Number(line.unit_rate), amount: Number(line.amount),
-      metadata: line.metadata, position: line.position,
-    })));
+      .from('invoices')
+      .insert({
+        project_id: invoice.project_id,
+        contract_id: invoice.contract_id,
+        project_title_snapshot: invoice.project_title_snapshot,
+        issuer_user_id: callerId,
+        recipient_user_id: invoice.recipient_user_id,
+        number,
+        status: 'draft',
+        currency: invoice.currency,
+        issue_date: null,
+        due_date: invoice.due_date,
+        period_start: invoice.period_start,
+        period_end: invoice.period_end,
+        origin: 'manual',
+        hours_detail_level: invoice.hours_detail_level,
+        bill_to: invoice.bill_to,
+        issued_by: invoice.issued_by,
+        payment_method: invoice.payment_method,
+        notes: invoice.notes,
+        attach_hours: false,
+        replaces_invoice_id: invoice.id,
+      })
+      .select('*')
+      .single();
+    if (replacementErr || !replacement)
+      throw new BadRequestException(
+        replacementErr?.message ?? 'Could not create replacement invoice.',
+      );
+    await this.replaceInvoiceLineItems(
+      String((replacement as InvoiceRow).id),
+      invoice.line_items.map((line) => ({
+        source_type: line.source_type,
+        source_log_id: line.source_log_id,
+        description: line.description,
+        quantity: Number(line.quantity),
+        unit_rate: Number(line.unit_rate),
+        amount: Number(line.amount),
+        metadata: line.metadata,
+        position: line.position,
+      })),
+    );
     await this.refreshTotals(String((replacement as InvoiceRow).id));
-    const { error: voidErr } = await this.supabase.from('invoices').update({
-      status: 'void', void_reason: trimmedReason, voided_by: callerId, voided_at: now,
-      replaced_by_invoice_id: (replacement as InvoiceRow).id, updated_at: now,
-    }).eq('id', invoiceId);
+    const { error: voidErr } = await this.supabase
+      .from('invoices')
+      .update({
+        status: 'void',
+        void_reason: trimmedReason,
+        voided_by: callerId,
+        voided_at: now,
+        replaced_by_invoice_id: (replacement as InvoiceRow).id,
+        updated_at: now,
+      })
+      .eq('id', invoiceId);
     if (voidErr) throw new BadRequestException(voidErr.message);
-    await this.recordEvent(invoiceId, 'voided', callerId, { reason: trimmedReason, replacement_invoice_id: (replacement as InvoiceRow).id });
-    await this.recordEvent(String((replacement as InvoiceRow).id), 'replacement_created', callerId, { replaces_invoice_id: invoiceId });
-    return { voided: await this.getInvoiceInternal(invoiceId), replacement: await this.getInvoiceInternal(String((replacement as InvoiceRow).id)) };
+    await this.recordEvent(invoiceId, 'voided', callerId, {
+      reason: trimmedReason,
+      replacement_invoice_id: (replacement as InvoiceRow).id,
+    });
+    await this.recordEvent(
+      String((replacement as InvoiceRow).id),
+      'replacement_created',
+      callerId,
+      { replaces_invoice_id: invoiceId },
+    );
+    return {
+      voided: await this.getInvoiceInternal(invoiceId),
+      replacement: await this.getInvoiceInternal(
+        String((replacement as InvoiceRow).id),
+      ),
+    };
   }
 
   /**
@@ -822,7 +903,9 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     await this.financeAccess.assertProject(callerId, invoice.project_id);
     if (invoice.status !== 'draft' && invoice.pdf_path) {
-      throw new BadRequestException('Issued invoices use their finalized PDF and cannot be regenerated.');
+      throw new BadRequestException(
+        'Issued invoices use their finalized PDF and cannot be regenerated.',
+      );
     }
     const stored = await this.renderAndStorePdf(invoice, callerId);
     if (invoice.status !== 'draft') {
@@ -1020,7 +1103,11 @@ export class InvoicesService {
 
     const paymentRows = (payments ?? []) as InvoicePaymentRow[];
     const amountPaid = paymentRows.reduce(
-      (sum, payment) => sum + (payment.reverses_payment_id ? -Number(payment.amount) : Number(payment.amount)),
+      (sum, payment) =>
+        sum +
+        (payment.reverses_payment_id
+          ? -Number(payment.amount)
+          : Number(payment.amount)),
       0,
     );
     const total = Number((invoice as InvoiceRow).total ?? 0);
@@ -1036,16 +1123,22 @@ export class InvoicesService {
         amount: Number(item.amount ?? 0),
       })),
       documents: (docs ?? []) as InvoiceDocumentRow[],
-      payments: paymentRows.map((payment) => ({ ...payment, amount: Number(payment.amount) })),
+      payments: paymentRows.map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount),
+      })),
       events: (events ?? []) as InvoiceEventRow[],
       amount_paid: roundMoney(amountPaid),
       balance_due: roundMoney(Math.max(0, total - amountPaid)),
-      payment_count: paymentRows.filter((payment) => !payment.reverses_payment_id).length,
+      payment_count: paymentRows.filter(
+        (payment) => !payment.reverses_payment_id,
+      ).length,
       is_overdue:
         !['draft', 'void', 'paid'].includes((invoice as InvoiceRow).status) &&
         total - amountPaid > 0 &&
         Boolean((invoice as InvoiceRow).due_date) &&
-        String((invoice as InvoiceRow).due_date) < new Date().toISOString().slice(0, 10),
+        String((invoice as InvoiceRow).due_date) <
+          new Date().toISOString().slice(0, 10),
     };
     return parsed;
   }
@@ -1058,11 +1151,14 @@ export class InvoicesService {
         : invoice.amount_paid > 0
           ? 'partially_paid'
           : 'issued';
-    const { error } = await this.supabase.from('invoices').update({
-      status,
-      paid_at: status === 'paid' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', invoiceId);
+    const { error } = await this.supabase
+      .from('invoices')
+      .update({
+        status,
+        paid_at: status === 'paid' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId);
     if (error) throw new BadRequestException(error.message);
   }
 

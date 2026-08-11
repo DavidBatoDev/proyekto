@@ -59,6 +59,7 @@ import { ProjectActivationService } from '../contracts/project-activation.servic
 import { NotificationsService } from '../notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
+import { TeamTimeService } from '../team-time/team-time.service';
 import {
   type PermissionPath,
   type ProjectPermissions,
@@ -124,6 +125,7 @@ export class ProjectsService {
     private readonly activation: ProjectActivationService,
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
+    private readonly teamTime: TeamTimeService,
   ) {}
 
   /**
@@ -1074,6 +1076,7 @@ export class ProjectsService {
         }
 
         try {
+          // Rollback-only: this just-created project cannot have durable finance records.
           await this.projectsRepo.deleteProject(project.id);
         } catch (rollbackError) {
           this.logger.error(
@@ -1146,6 +1149,7 @@ export class ProjectsService {
         }`,
       );
       try {
+        // Rollback-only: this just-created project cannot have durable finance records.
         await this.projectsRepo.deleteProject(projectId);
       } catch (rollbackErr) {
         this.logger.error(
@@ -1201,6 +1205,42 @@ export class ProjectsService {
         label: 'delete this project',
       });
     }
+
+    const [contractResult, invoiceResult] = await Promise.all([
+      this.supabase
+        .from('contracts')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .in('status', ['sent', 'signed', 'active']),
+      this.supabase
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .in('status', ['issued', 'sent']),
+    ]);
+    if (contractResult.error) throw new Error(contractResult.error.message);
+    if (invoiceResult.error) throw new Error(invoiceResult.error.message);
+    if ((contractResult.count ?? 0) > 0 || (invoiceResult.count ?? 0) > 0) {
+      throw new BadRequestException(
+        'Cannot delete this project while it has sent, signed, or active contracts or issued or sent invoices. End or cancel contracts and pay or void invoices, then try again.',
+      );
+    }
+
+    await this.teamTime.stopRunningLogsForProject(id);
+
+    const { error: invoiceDeleteError } = await this.supabase
+      .from('invoices')
+      .delete()
+      .eq('project_id', id)
+      .eq('status', 'draft');
+    if (invoiceDeleteError) throw new Error(invoiceDeleteError.message);
+
+    const { error: contractDeleteError } = await this.supabase
+      .from('contracts')
+      .delete()
+      .eq('project_id', id)
+      .eq('status', 'draft');
+    if (contractDeleteError) throw new Error(contractDeleteError.message);
 
     await this.projectsRepo.deleteProject(id);
     await this.invalidateDashboardCache();

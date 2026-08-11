@@ -61,6 +61,7 @@ function fakeSupabase(rows: FakeLog[]): SupabaseClient {
 const BASE_CONTRACT: ContractRow = {
   id: 'contract-1',
   project_id: 'project-1',
+  project_title_snapshot: 'Project One',
   version: 1,
   contract_number: 'BS2026-001',
   status: 'active',
