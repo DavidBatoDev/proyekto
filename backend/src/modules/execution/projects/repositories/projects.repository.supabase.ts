@@ -38,10 +38,10 @@ import {
   type ProjectRole,
   roleSatisfies,
 } from '../authorization/project-authorization.service';
-import { synthesizeProjectConsultant } from './project-payload.mapper';
+import { attachProjectClientFlag } from './project-payload.mapper';
 
-const PROJECT_MEMBER_COMPAT_SELECT =
-  'members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
+const PROJECT_MEMBER_SELECT =
+  'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -94,14 +94,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data } = await this.supabase
       .from('project_access')
       .select(
-        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT})`,
+        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
       )
       .eq('user_id', userId);
 
     return (data || [])
       .map((r: Record<string, unknown>) => r.project)
       .filter(Boolean)
-      .map((project) => synthesizeProjectConsultant(project as Project));
+      .map((project) => attachProjectClientFlag(project as Project));
   }
 
   async findDashboardByUser(userId: string): Promise<Project[]> {
@@ -109,14 +109,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       this.supabase
         .from('projects')
         .select(
-          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT}`,
+          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}`,
         )
         .eq('owner_id', userId),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
         .from('project_access')
         .select(
-          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_COMPAT_SELECT})`,
+          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
         )
         .eq('user_id', userId),
     ]);
@@ -132,10 +132,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const memberProjects = (memberResult.data || [])
       .map((row: Record<string, unknown>) => row.project)
       .filter(Boolean)
-      .map((project) => synthesizeProjectConsultant(project as Project));
+      .map((project) => attachProjectClientFlag(project as Project));
 
     const ownedProjects = (ownedResult.data || []).map((project) =>
-      synthesizeProjectConsultant(project as Project),
+      attachProjectClientFlag(project as Project),
     );
 
     const deduped = new Map<string, Project>();
@@ -176,7 +176,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (error || !data) return null;
 
-    return synthesizeProjectConsultant(
+    return attachProjectClientFlag(
       data as Project & { members?: unknown[] },
     );
   }

@@ -19,6 +19,10 @@ import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { useToast } from "@/hooks/useToast";
 import { CURRENCIES } from "@/lib/currency";
+import {
+	getProjectConsultantMember,
+	isProjectConsultant,
+} from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import {
 	type Project,
@@ -27,7 +31,9 @@ import {
 } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/project/$projectId/settings/general")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/settings/general",
+)({
 	component: SettingsGeneralPage,
 });
 
@@ -181,7 +187,8 @@ function SettingsGeneralPage() {
 	const [consultantSelectEntered, setConsultantSelectEntered] = useState(false);
 
 	const isOwner = Boolean(user?.id && project?.owner_id === user.id);
-	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
+	const consultantMember = getProjectConsultantMember(project);
+	const isConsultant = isProjectConsultant(project, user?.id);
 	const canReassignConsultant = isOwner || isConsultant;
 	const currentMember = useMemo(
 		() => members.find((member) => member.user_id === user?.id) ?? null,
@@ -285,10 +292,10 @@ function SettingsGeneralPage() {
 			members.filter(
 				(member) =>
 					Boolean(member.user_id) &&
-					member.user_id !== project?.consultant?.id &&
+					member.user_id !== consultantMember?.user_id &&
 					member.user?.is_consultant_verified === true,
 			),
-		[members, project?.consultant?.id],
+		[members, consultantMember?.user_id],
 	);
 
 	const selectedOwnerMember = useMemo(

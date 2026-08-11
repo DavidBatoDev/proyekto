@@ -9,7 +9,6 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     title: 'Project One',
     status: 'draft',
     owner_id: 'client-1',
-    consultant: { id: 'consultant-1' },
     has_client: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -240,7 +239,7 @@ describe('ProjectsService (permissions)', () => {
     const repo = {
       findById: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant: undefined })),
+        .mockResolvedValue(buildProject()),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
@@ -413,7 +412,7 @@ describe('ProjectsService (permissions)', () => {
       isActiveConsultant: jest.fn().mockResolvedValue(true),
       update: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant: { id: 'member-2' } })),
+        .mockResolvedValue(buildProject()),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -481,7 +480,7 @@ describe('ProjectsService (permissions)', () => {
       isActiveConsultant: jest.fn().mockResolvedValue(true),
       update: jest
         .fn()
-        .mockResolvedValue(buildProject({ consultant: { id: 'member-2' } })),
+        .mockResolvedValue(buildProject()),
     };
     const grant = jest.fn().mockResolvedValue(undefined);
     const revoke = jest.fn().mockResolvedValue(undefined);
@@ -499,8 +498,6 @@ describe('ProjectsService (permissions)', () => {
         new_consultant_id: 'member-2',
       },
     );
-
-    expect(updated.consultant?.id).toBe('member-2');
     expect(grant).toHaveBeenCalledWith({
       projectId: 'project-1',
       userId: 'member-2',

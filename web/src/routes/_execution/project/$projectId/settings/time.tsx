@@ -10,6 +10,7 @@ import { useState } from "react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { RateBudgetCalculator } from "@/components/team-time/RateBudgetCalculator";
 import { useToast } from "@/hooks/useToast";
+import { isProjectConsultant } from "@/lib/projectAccess";
 import { projectService } from "@/services/project.service";
 import {
 	listCuratedMembers,
@@ -22,7 +23,9 @@ import {
 } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/project/$projectId/settings/time")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/settings/time",
+)({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
@@ -47,7 +50,7 @@ function ProjectTimeSettings() {
 		queryFn: () => projectService.get(projectId),
 	});
 	const project = projectQuery.data;
-	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
+	const isConsultant = isProjectConsultant(project, user?.id);
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],

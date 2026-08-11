@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import { AdminRepository } from './admin.repository.interface';
-import { synthesizeProjectConsultant } from '../../../execution/projects/repositories/project-payload.mapper';
+import { attachProjectClientFlag } from '../../../execution/projects/repositories/project-payload.mapper';
 
 @Injectable()
 export class SupabaseAdminRepository implements AdminRepository {
@@ -337,23 +337,23 @@ export class SupabaseAdminRepository implements AdminRepository {
       .update({ status: 'active' })
       .eq('id', projectId)
       .select(
-        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
+        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
       )
       .single();
     if (error || !data) throw new NotFoundException('Project not found');
 
-    return synthesizeProjectConsultant(data as Record<string, unknown>);
+    return attachProjectClientFlag(data as Record<string, unknown>);
   }
 
   async listProjects() {
     const { data } = await this.supabase
       .from('projects')
       .select(
-        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
+        '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
       )
       .order('created_at', { ascending: false });
     const projects = (data ?? []) as unknown as Array<Record<string, unknown>>;
-    return projects.map((project) => synthesizeProjectConsultant(project));
+    return projects.map((project) => attachProjectClientFlag(project));
   }
 
   async listUsers() {

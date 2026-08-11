@@ -28,6 +28,10 @@ import {
 	useProjectMembersQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
+import {
+	getProjectConsultantMember,
+	hasProjectAdminAccess,
+} from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import { projectService } from "@/services/project.service";
 import { uploadService } from "@/services/upload.service";
@@ -124,9 +128,11 @@ function StatusBadgeSelector({
 	);
 }
 
-export const Route = createFileRoute("/_execution/project/$projectId/overview")({
-	component: OverviewPage,
-});
+export const Route = createFileRoute("/_execution/project/$projectId/overview")(
+	{
+		component: OverviewPage,
+	},
+);
 
 function OverviewPage() {
 	const { projectId } = Route.useParams();
@@ -201,22 +207,16 @@ function OverviewPage() {
 		[roadmapFullQuery.data],
 	);
 
-	// Edit gate: anyone who is the project's client/consultant of record, or
-	// who holds an editor-or-higher role on project_shares, may edit the
-	// brief sections. Earlier this only matched literal "client"/"consultant"
-	// role strings, which excluded owners/admins/editors with full
-	// permissions.
+	// Edit gate: anyone holding an editor-or-higher role on project_access may
+	// edit the brief sections.
 	const currentMember = members.find((member) => member.user_id === user?.id);
 	const memberRole = (currentMember?.role ?? "").toLowerCase();
-	const isOwnerOnProject =
-		user?.id !== undefined &&
-		(project?.owner_id === user.id || project?.consultant?.id === user.id);
+	const isOwnerOnProject = hasProjectAdminAccess(project, user?.id);
 	const canEditOverview =
-		isOwnerOnProject ||
-		["owner", "admin", "editor", "client", "consultant"].includes(memberRole);
+		isOwnerOnProject || ["owner", "admin", "editor"].includes(memberRole);
 
-	// The activation guide is a home base for "make this project live". Only the
-	// owner/consultant sees it, and only while the project isn't active yet.
+	// The activation guide is a home base for "make this project live". Only
+	// project admins see it, and only while the project isn't active yet.
 	const showActivationGuide = isOwnerOnProject && project?.status !== "active";
 	const activationChecklist = useActivationChecklist(projectId, {
 		enabled: showActivationGuide,
@@ -337,7 +337,7 @@ function OverviewPage() {
 								(project as unknown as { is_personal_workspace?: boolean })
 									.is_personal_workspace,
 							)}
-							hasConsultant={Boolean(project.consultant?.id)}
+							hasConsultant={Boolean(getProjectConsultantMember(project))}
 						/>
 						<div className="app-slide-up">
 							<OverviewBanner
@@ -365,7 +365,6 @@ function OverviewPage() {
 							<OverviewContent
 								projectTitle={project.title}
 								ownerName={project.owner?.display_name}
-								consultantName={project.consultant?.display_name}
 								summaryHtml={summaryHtml}
 								customFields={customFields}
 								canEdit={canEditOverview}

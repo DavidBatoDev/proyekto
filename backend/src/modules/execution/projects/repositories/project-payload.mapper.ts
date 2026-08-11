@@ -1,6 +1,4 @@
-export interface ProjectConsultantCompatibility {
-  consultant_id: string | null;
-  consultant: Record<string, unknown> | null;
+export interface ProjectClientFlag {
   has_client: boolean;
 }
 
@@ -9,7 +7,6 @@ interface ProjectAccessMemberRow {
   origin?: unknown;
   has_direct_grant?: unknown;
   granted_at?: unknown;
-  user?: Record<string, unknown> | null;
 }
 
 function timestamp(value: unknown): number {
@@ -18,19 +15,10 @@ function timestamp(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/**
- * Mobile compatibility shim for the retired projects.consultant_id column.
- * The consultant of record is derived from project_access and their profile
- * comes from the already-embedded member row.
- */
-export function synthesizeProjectConsultant<T extends object>(
-  project: T,
-): T & ProjectConsultantCompatibility {
-  const record = project as Record<string, unknown>;
-  const members = Array.isArray(record.members)
-    ? (record.members as ProjectAccessMemberRow[])
-    : [];
-  const consultantMember = members
+function consultantOfRecordId(
+  members: ProjectAccessMemberRow[],
+): string | null {
+  const consultant = members
     .filter(
       (member) =>
         member.origin === 'consultant' && typeof member.user_id === 'string',
@@ -42,15 +30,25 @@ export function synthesizeProjectConsultant<T extends object>(
       if (directDelta !== 0) return directDelta;
       return timestamp(b.granted_at) - timestamp(a.granted_at);
     })[0];
-  const consultantId =
-    typeof consultantMember?.user_id === 'string'
-      ? consultantMember.user_id
-      : null;
+  return typeof consultant?.user_id === 'string' ? consultant.user_id : null;
+}
+
+/**
+ * `has_client` answers "is there a party to bill other than the delivery
+ * lead" — the owner is someone other than the consultant of record. The
+ * consultant is never a field on the project: participants are `project_access`
+ * rows, and callers that need one read the row whose origin is 'consultant'.
+ */
+export function attachProjectClientFlag<T extends object>(
+  project: T,
+): T & ProjectClientFlag {
+  const record = project as Record<string, unknown>;
+  const members = Array.isArray(record.members)
+    ? (record.members as ProjectAccessMemberRow[])
+    : [];
 
   return {
     ...project,
-    consultant_id: consultantId,
-    consultant: consultantMember?.user ?? null,
-    has_client: record.owner_id !== consultantId,
+    has_client: record.owner_id !== consultantOfRecordId(members),
   };
 }

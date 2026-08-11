@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { Clock, Settings } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { isProjectConsultant } from "@/lib/projectAccess";
 import { projectService } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
@@ -25,7 +26,7 @@ export function ProjectSettingsLayout({
 		queryKey: ["project", projectId],
 		queryFn: () => projectService.get(projectId),
 	});
-	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
+	const isConsultant = isProjectConsultant(project, user?.id);
 
 	// Settings is project CONFIGURATION only. Everything about people —
 	// members, permissions, attached teams, invites — is the Team page now, so

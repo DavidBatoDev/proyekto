@@ -17,8 +17,8 @@ import { isEmailSuppressed } from '../../shared/notifications/email/email-suppre
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import {
-  type ProjectConsultantCompatibility,
-  synthesizeProjectConsultant,
+  type ProjectClientFlag,
+  attachProjectClientFlag,
 } from '../projects/repositories/project-payload.mapper';
 import { isActiveConsultant } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
@@ -45,7 +45,7 @@ export interface TeamMemberPreview {
   last_name: string | null;
 }
 
-export interface TeamAttachedProject extends ProjectConsultantCompatibility {
+export interface TeamAttachedProject extends ProjectClientFlag {
   id: string;
   title: string | null;
   status: string | null;
@@ -563,7 +563,7 @@ export class TeamsService {
       attached_at: string;
       project: Omit<
         TeamAttachedProject,
-        keyof ProjectConsultantCompatibility
+        keyof ProjectClientFlag
       > | null;
     }>;
     const projectIds = rows.map((r) => r.project_id).filter(Boolean);
@@ -586,7 +586,7 @@ export class TeamsService {
     }
     return rows.map((r) => ({
       ...r,
-      project: r.project ? synthesizeProjectConsultant(r.project) : null,
+      project: r.project ? attachProjectClientFlag(r.project) : null,
       viewer_has_access: accessSet.has(r.project_id),
       viewer_role: roleMap.get(r.project_id) ?? null,
     }));

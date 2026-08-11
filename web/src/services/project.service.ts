@@ -47,17 +47,9 @@ export interface Project {
 	currency?: string;
 	banner_url?: string;
 	owner_id: string;
-	/** @deprecated Compatibility shim for one mobile OTA cycle. */
-	consultant_id?: string | null;
 	/** True when the project owner is distinct from the consultant of record. */
 	has_client: boolean;
 	owner?: {
-		id: string;
-		display_name?: string;
-		avatar_url?: string;
-		email?: string;
-	};
-	consultant?: {
 		id: string;
 		display_name?: string;
 		avatar_url?: string;

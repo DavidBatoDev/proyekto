@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import { profileService } from "@/services/profile.service";
 import { projectService } from "@/services/project.service";
 import { useAuthStore } from "@/stores/authStore";
@@ -30,8 +31,8 @@ export function InviteModal({
 		enabled: open,
 	});
 
-	const projects = (projectsQuery.data || []).filter(
-		(project) => project.consultant?.id === user?.id,
+	const projects = (projectsQuery.data || []).filter((project) =>
+		hasProjectAdminAccess(project, user?.id),
 	);
 
 	useEffect(() => {

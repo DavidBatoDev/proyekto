@@ -550,7 +550,9 @@ function TeamDetailPage() {
 										canSetStatus={
 											!!user?.id &&
 											(row.project.owner_id === user.id ||
-												row.project.consultant?.id === user.id)
+												["owner", "admin"].includes(
+													(row.viewer_role ?? "").toLowerCase(),
+												))
 										}
 										members={projectMembersMap.get(row.project.id)}
 									/>

@@ -18,7 +18,6 @@ describe('ProjectsService — invite email honours the suppression list', () => 
     title: 'Analytical Engine',
     status: 'active',
     owner_id: 'client-1',
-    consultant: { id: 'consultant-1' },
     has_client: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

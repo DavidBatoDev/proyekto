@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, Circle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useActivationChecklist } from "@/hooks/useActivationChecklist";
+import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import type { Project } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 import { ActivationGuide, checklistProgress } from "./ActivationGuide";
@@ -26,9 +27,7 @@ export function ActivationHeaderPill({
 
 	// Owner/consultant of record only, and only while not yet active.
 	const canManage = Boolean(
-		user?.id &&
-			project &&
-			(project.owner_id === user.id || project.consultant?.id === user.id),
+		user?.id && project && hasProjectAdminAccess(project, user.id),
 	);
 	const active = project?.status === "active";
 	const enabled = canManage && !active && Boolean(projectId);
