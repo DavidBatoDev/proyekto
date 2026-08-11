@@ -1,8 +1,8 @@
 # Identity and Enrollment
 
-> **⚠️ Proposed — partially built.** Phase 1 (dropping `profiles.role`, simplified signup)
-> and Phase 2 durability fixes are shipped; the enrollment tables and the full
-> marketplace/execution split are not built.
+> **⚠️ Proposed — partially built.** Phases 1–3 shipped the role deletion, durability
+> fixes, consultant-of-record migration, and marketplace/execution code organization.
+> The enrollment tables and engagement link layer are not built.
 
 > **Last updated:** 2026-08-11 · **Status:** draft
 
@@ -136,7 +136,7 @@ separate ceremony, never at signup.
 | Account deletion | `profiles` soft-deletes/anonymizes; contracts and invoices retain party references (legal retention) |
 | Self-dealing | `CHECK (client_user_id <> consultant_user_id)` on `contracts` |
 | Parties share a roster relationship (fee-circumvention vector) | Flag for admin review at contract creation — not a hard block; legitimate cases exist |
-| Legacy `projects.consultant_id` backfill | Into engagement links with `status='legacy'` — **never** fabricated as signed contracts |
+| Consultant-origin project access backfill | Into engagement links with `status='legacy'` — **never** fabricated as signed contracts |
 | Legacy `role='talent'` users | Get a one-time go-live prompt. No silent `freelancer_profiles` seeding |
 | Verification revoked between proposal and signing | `is_active_consultant()` re-checked inside the signing transaction |
 
@@ -151,7 +151,7 @@ column touches (verified against source and against the production database 2026
 | `public.is_active_consultant()` (`20260809131000_consultant_capability_predicate.sql`) | Rewritten to check `is_consultant_verified` alone (latest-body rule) |
 | `tg_profiles_protect_privileged_columns` (`20260809163000_restrict_profile_privileged_trigger.sql`) | Rewritten to protect only `is_consultant_verified` |
 | `backend/src/common/auth/consultant-capability.ts` | Predicate drops the `role === 'consultant'` clause |
-| `backend/src/modules/auth/auth.service.ts` | Signup/onboarding stops accepting or writing a role/lane |
+| `backend/src/modules/shared/auth/auth.service.ts` | Signup/onboarding stops accepting or writing a role/lane |
 | `web/src/lib/auth-utils.ts` | `isClient`/`isTalent` deleted; `isActiveConsultant` keeps only the boolean |
 | Web signup + `/welcome` | Lane selection removed; single-lane signup → redirect to execution |
 | `ConsultantOnlyGuard` call sites | Unchanged in phase 1 (the guard reads the predicate). Retargeting to marketplace-only boundaries is phase 3 |
@@ -166,14 +166,14 @@ it.
 | --- | --- | --- |
 | **P1** | Role deletion + simplified signup | Shipped 2026-08-11 |
 | **P2** | Durability fixes | Shipped 2026-08-11: contracts, invoices, and time logs survive severed relationships with snapshots; chat and finance authorization use `project_access`; project deletion blocks active financial records |
-| **P3** | Marketplace/execution reorganization | Routes and modules into `execution/*` / `marketplace/*` / shared; drop `projects.consultant_id` + fee columns (values snapshotted first); `consultant_profiles` + `freelancer_profiles` created here, absorbing `is_consultant_verified` behind the unchanged predicate |
+| **P3** | Marketplace/execution reorganization | Shipped 2026-08-11: routes and modules grouped into `execution/*` / `marketplace/*` / shared; consultant-of-record moved to `project_access`; `projects.consultant_id` and unused fee columns dropped; dead payments surface removed |
 | **P4** | Link layer | `engagements` (project ↔ contract, severable, the only legal cross-domain FK), team connections, time-log → contract billing mapping, client read-only projection |
 
 Phases 1–3 are justified as standalone correctness work; only P4 is new product surface.
 
-Phase 3 still owns display-only `consultant_id` joins, notification routing and visibility
-unions, web UI gates, the `project_invites` insert policy, leave/revoke consultant guards,
-fee snapshots and column drops, and removal of `ConsultantFinanceProject.consultant_id`.
+The enrollment-table work remains proposed. Phase 3 deliberately retained
+`is_consultant_verified` and all `ConsultantOnlyGuard` surfaces; replacing that capability
+with `consultant_profiles` belongs to a later marketplace-enrollment implementation.
 
 ## Blast radius
 

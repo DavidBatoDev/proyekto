@@ -1,6 +1,6 @@
 # Client ↔ Consultant Interaction
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The Consultant layer is Proyekto's differentiator: a vetted project lead sitting between the
 Client and Talent, so a freelance hire becomes managed delivery. This page documents
@@ -74,7 +74,7 @@ items gating the billing flip. Two concern the client directly.
 **`client_identified`** — severity `blocker`. Satisfied by *either*:
 
 ```ts
-ownerIdentified   = project.owner_id && project.owner_id !== project.consultant_id
+ownerIdentified   = project.owner_id && project.owner_id !== consultantOfRecordId
 clientOnContract  = contract.client_user_id || contract.client_email || contract.client_name
 ok = ownerIdentified || clientOnContract
 ```
@@ -126,7 +126,7 @@ A `warning`-severity checklist item surfacing unbilled direct members is propose
 
 | Guarantee | Enforced? |
 | --- | --- |
-| The consultant cannot be removed from a project | ✅ `revoke()` compares against `projects.consultant_id` |
+| The consultant cannot be removed from a project | ✅ `revoke()` resolves the consultant-origin access row before removal |
 | The last owner cannot be removed | ✅ `countOwners()` must exceed 1 |
 | The project owner's access cannot be removed | ❌ **no guard** — the owner may retain no access row |
 | A client cannot see internal cost rates | ✅ by role defaults + the separate `/finance` consultant guard |

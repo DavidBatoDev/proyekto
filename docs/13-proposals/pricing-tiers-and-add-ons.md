@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-10 · **Status:** draft
+> **Last updated:** 2026-08-11 · **Status:** draft
 
 Proyekto today has **no monetization layer at all**: no plans, no subscriptions, no payment
 processor, no entitlements, no usage caps. This page designs one. It splits the product into
@@ -18,12 +18,11 @@ file is cited so the cost of the change is visible.
 
 ### Nothing that bills a user
 
-- **No** `subscriptions` / `plans` / `tiers` / `entitlements` / `usage` / `seats` table in
-  any of the 240 migrations.
-- **No** Stripe/Paddle/etc. SDK anywhere. `backend/src/modules/payments/` is the internal
-  client-escrow ledger (`wallets`, `transactions`), not platform billing. Every occurrence
-  of "billing" in the repo means **contract billing period**
-  (`backend/src/modules/contracts/billing-period.ts`), never a platform subscription.
+- **No** `subscriptions` / `plans` / `tiers` / `entitlements` / `usage` / `seats` table.
+- **No** Stripe/Paddle/etc. SDK anywhere. The old payments backend was deleted after its
+  `transactions` table had already been dropped; the retained `wallets` table is not
+  platform billing. Every occurrence of "billing" in the repo means **contract billing period**
+  (`backend/src/modules/marketplace/contracts/billing-period.ts`), never a platform subscription.
 - **No** product caps: no max projects, roadmaps, teams, members, or AI messages — anywhere
   (no DB constraint, no RLS, no backend check).
 - **AI chat is unmetered and unthrottled.** `roadmap-ai.controller.ts` carries only
@@ -52,7 +51,7 @@ file is cited so the cost of the change is visible.
 | --- | --- |
 | **Post/bid a project** | Does not exist. `'bidding'` was added to the `project_status` enum (`20260216000000_add_bidding_status.sql`) and never used — no `bids` table, no UI. `web/src/routes/project-posting.tsx` is a project-creation wizard, not a public listing. |
 | **Sell a roadmap** | Half exists. The template marketplace (`roadmap_public_templates`, versions, ratings, usages — `20260714100000_...`) has publish (consultant-only), browse, and instantiate — but **no price column, no purchase, no revenue share**. Selling is a monetization layer on an existing distribution surface. |
-| **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→freelancer *invites* only (`backend/src/modules/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
+| **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→freelancer *invites* only (`backend/src/modules/marketplace/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
 
 ## The two platforms, four tiers
 

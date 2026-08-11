@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The Client is the person paying for the work — a **position on a contract, not an
 account attribute**. There is no `clients` table and no account role (`profiles.role`
@@ -70,7 +70,7 @@ its owner.
 | **Signing link** | A 256-bit single-use bearer token (`contract_signature_links`) letting an external client sign without an account. |
 | **Soft isolation** | The rule that a client and the freelance pool cannot DM each other; the consultant mediates. |
 | **Project owner** | The profile referenced by `projects.owner_id`. Ownership is contextual and implies nothing else about the account. |
-| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `owner_id` is the workspace user and `consultant_id IS NULL`. |
+| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `owner_id` is the workspace user and the owner access has `origin='personal_workspace'`. |
 
 ## Known gaps
 
@@ -88,9 +88,9 @@ its owner.
 
 ## Code locations
 
-- **Authorization:** [`backend/src/modules/projects/authorization/project-authorization.service.ts`](../../../backend/src/modules/projects/authorization/project-authorization.service.ts),
-  [`backend/src/modules/projects/permissions/project-permissions.ts`](../../../backend/src/modules/projects/permissions/project-permissions.ts)
-- **Contracts & signing:** [`backend/src/modules/contracts/`](../../../backend/src/modules/contracts/)
+- **Authorization:** [`backend/src/modules/execution/projects/authorization/project-authorization.service.ts`](../../../backend/src/modules/execution/projects/authorization/project-authorization.service.ts),
+  [`backend/src/modules/execution/projects/permissions/project-permissions.ts`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts)
+- **Contracts & signing:** [`backend/src/modules/marketplace/contracts/`](../../../backend/src/modules/marketplace/contracts/)
   (`contract-signature-links.service.ts`, `project-activation.service.ts`)
 - **Web gate:** [`web/src/components/common/RequireProjectAccess.tsx`](../../../web/src/components/common/RequireProjectAccess.tsx)
 - **Web permission mirrors:** [`web/src/components/project/permissions/`](../../../web/src/components/project/permissions/)

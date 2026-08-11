@@ -1,6 +1,6 @@
 # Talent
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Talent are the people who deliver project work — a **market position, not an account
 attribute** (there is no stored account role; `profiles.role` was dropped 2026-08-10).
@@ -69,8 +69,8 @@ Signup (lane-free)
 
 ## Code locations
 
-- **Onboarding:** [`backend/src/modules/auth/`](../../../backend/src/modules/auth/)
-- **Profile quality:** [`backend/src/modules/profile/freelancer-eligibility.service.ts`](../../../backend/src/modules/profile/freelancer-eligibility.service.ts)
-- **Discovery and invites:** [`backend/src/modules/marketplace/`](../../../backend/src/modules/marketplace/)
-- **Teams and time:** [`backend/src/modules/teams/`](../../../backend/src/modules/teams/), [`backend/src/modules/team-time/`](../../../backend/src/modules/team-time/)
+- **Onboarding:** [`backend/src/modules/shared/auth/`](../../../backend/src/modules/shared/auth/)
+- **Profile quality:** [`backend/src/modules/marketplace/profile/freelancer-eligibility.service.ts`](../../../backend/src/modules/marketplace/profile/freelancer-eligibility.service.ts)
+- **Discovery and invites:** [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/)
+- **Teams and time:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/), [`backend/src/modules/execution/team-time/`](../../../backend/src/modules/execution/team-time/)
 - **Web:** [`web/src/routes/freelancer/`](../../../web/src/routes/freelancer/), [`web/src/routes/teams/`](../../../web/src/routes/teams/)

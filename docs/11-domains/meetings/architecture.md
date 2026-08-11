@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The meetings feature spans three runtimes plus one external scheduler:
 
@@ -63,7 +63,7 @@ The meetings feature spans three runtimes plus one external scheduler:
 | Data layer | [`services/meetings.service.ts`](../../../web/src/services/meetings.service.ts), [`hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts), `queries/meetings.ts` |
 | Shared | `components/common/{AnchoredPopover,ModalPortal}.tsx` |
 
-### Backend (`backend/src/modules/meetings/`)
+### Backend (`backend/src/modules/execution/meetings/`)
 
 | File | Responsibility |
 | --- | --- |

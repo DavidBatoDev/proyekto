@@ -180,18 +180,6 @@ logs/summary,projects,members}` and per-project rate/tasks). All `Supabase`.
 list/grant/revoke, `GET /admin/match-candidates` + `POST /admin/match-assign`,
 `GET /admin/projects`, `GET /admin/users`.
 
-## payments · `payments`
-
-Project checkpoints (`GET /payments/project/:projectId`, `POST /payments`,
-`PATCH /payments/:id/complete`), escrow (`:id/fund`, `/release`, `/refund`), wallet
-(`GET /payments/wallet[/transactions]`), and `POST /payments/wallet/admin/deposit`
-(`+AdminGuard`).
-
-> **⚠️** The checkpoint/escrow routes query the **dropped** `payment_checkpoints` /
-> `transactions` tables and are effectively dead. Live money flows through
-> [`payouts`](#payouts--payout-methods--payouts) and [`invoices`](#invoices--invoices).
-> See [Data → schema overview](../07-data-and-db/schema-overview.md).
-
 ## payouts · `payout-methods` / `payouts`
 
 Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payouts`

@@ -1,6 +1,6 @@
 # Recurrence & timezones
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 This is the correctness core of the feature. Two rules govern everything:
 
@@ -12,7 +12,7 @@ This is the correctness core of the feature. Two rules govern everything:
    shifts.
 
 Both are covered by unit tests: `web/src/lib/{recurrence,datetime}.test.ts` and
-`backend/src/modules/meetings/recurrence.spec.ts` (incl. a DST‑crossing case),
+`backend/src/modules/execution/meetings/recurrence.spec.ts` (incl. a DST‑crossing case),
 and end‑to‑end by the QA driver (see [operations.md](./operations.md#qa-driver)).
 
 ---
@@ -106,7 +106,7 @@ interface RecurrenceRule {
 
 ## 3. DST‑correct expansion (server)
 
-[`backend/src/modules/meetings/recurrence.ts`](../../../backend/src/modules/meetings/recurrence.ts)
+[`backend/src/modules/execution/meetings/recurrence.ts`](../../../backend/src/modules/execution/meetings/recurrence.ts)
 is the authoritative expander. The trick is **floating expansion + per‑occurrence
 UTC conversion**:
 

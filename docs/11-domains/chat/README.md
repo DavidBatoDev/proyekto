@@ -33,8 +33,8 @@ Reads use RPCs (`chat_latest_messages_by_room`, `chat_search_room_messages`,
 
 ## Authorization
 
-Chat access derives only from `project_access` membership — neither `projects.owner_id`
-nor `projects.consultant_id` is an authorization fallback. Persona comes from access origin:
+Chat access derives only from `project_access` membership; `projects.owner_id` is not an
+authorization fallback. Persona comes from access origin:
 `consultant` is consultant; `client`, `personal_workspace`, and `legacy` are client; every
 other origin (including `team:*`) is freelancer. This is enforced by SQL helpers
 (`project_chat_is_member`, `project_chat_role`, `project_chat_can_dm`,
@@ -64,5 +64,5 @@ Realtime otherwise. See [Realtime](../../06-realtime/README.md) and
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/chat/`](../../../backend/src/modules/chat/)
+- **Backend:** [`backend/src/modules/execution/chat/`](../../../backend/src/modules/execution/chat/)
 - **Web:** `web/src/components/chat/`, `web/src/services/chat.service.ts`, `web/src/hooks/useChatRealtime.ts`

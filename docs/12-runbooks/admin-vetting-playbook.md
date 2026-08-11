@@ -1,6 +1,6 @@
 # Runbook: Admin Vetting Playbook
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 How an **Admin** uses the identity/vetting data to approve (or reject) a **Consultant**
 application. The data model is in
@@ -83,6 +83,6 @@ ORDER BY stat.avg_rating DESC, stat.jobs_completed DESC;
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/admin/`](../../backend/src/modules/admin/), [`backend/src/modules/applications/`](../../backend/src/modules/applications/)
+- **Backend:** [`backend/src/modules/shared/admin/`](../../backend/src/modules/shared/admin/), [`backend/src/modules/marketplace/applications/`](../../backend/src/modules/marketplace/applications/)
 - **Web:** `web/src/routes/admin/`
 - **Data model:** [Data → identity model](../07-data-and-db/identity-vetting-model.md)

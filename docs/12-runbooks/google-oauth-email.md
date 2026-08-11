@@ -1,6 +1,6 @@
 # Runbook: Google OAuth Email
 
-> **Last updated:** 2026-08-03 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 All outbound transactional email — signup verification, password reset, project
 invites, invoices — is sent by the **backend**
@@ -106,6 +106,6 @@ to Secret Manager and redeploy.
 ## Code locations
 
 - **Mailer:** [`backend/src/common/mail/mailer.service.ts`](../../backend/src/common/mail/mailer.service.ts) · senders in [`mail-senders.ts`](../../backend/src/common/mail/mail-senders.ts) · health in [`mail-health.controller.ts`](../../backend/src/common/mail/mail-health.controller.ts)
-- **Callers:** [`auth/email-otp.service.ts`](../../backend/src/modules/auth/email-otp.service.ts) (verification + reset), [`projects.service.ts`](../../backend/src/modules/projects/projects.service.ts) (invites), [`invoices.service.ts`](../../backend/src/modules/invoices/invoices.service.ts)
+- **Callers:** [`auth/email-otp.service.ts`](../../backend/src/modules/shared/auth/email-otp.service.ts) (verification + reset), [`projects.service.ts`](../../backend/src/modules/execution/projects/projects.service.ts) (invites), [`invoices.service.ts`](../../backend/src/modules/marketplace/invoices/invoices.service.ts)
 - **Token tooling:** [`scripts/gmail_auth.mjs`](../../scripts/gmail_auth.mjs)
 - **Backend Gmail env:** [Backend → configuration](../03-backend/configuration.md)

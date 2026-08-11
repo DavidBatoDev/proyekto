@@ -1,6 +1,6 @@
 # Consultants
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Consultants are Proyekto's vetted delivery operators. There is no consultant account
 identity — consultant capability begins at admin approval and nowhere else. The
@@ -58,6 +58,6 @@ browser session (a privileged-columns trigger blocks anon/authenticated writes).
 ## Code locations
 
 - **Predicate and guard:** [`backend/src/common/auth/consultant-capability.ts`](../../../backend/src/common/auth/consultant-capability.ts), [`backend/src/common/guards/consultant-only.guard.ts`](../../../backend/src/common/guards/consultant-only.guard.ts)
-- **Applications and approval:** [`backend/src/modules/applications/`](../../../backend/src/modules/applications/), [`backend/src/modules/admin/`](../../../backend/src/modules/admin/)
-- **Consultant directory:** [`backend/src/modules/consultants/`](../../../backend/src/modules/consultants/)
+- **Applications and approval:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
+- **Consultant directory:** [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/)
 - **Web:** [`web/src/routes/consultant/`](../../../web/src/routes/consultant/), [`web/src/routes/finance/`](../../../web/src/routes/finance/)

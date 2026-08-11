@@ -32,14 +32,14 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | `get_user_project_role(uid, project_id) → share_role` | Canonical project role |
 | `can_view_roadmap` / `can_edit_roadmap` / `can_access_roadmap` | Roadmap access |
 | `get_user_roadmap_effective_role(...)` | Roadmap role resolution |
-| `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access from `project_access`; no `projects.consultant_id` fallback |
+| `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access and persona from `project_access` |
 | `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
 | `is_active_consultant(uid)` | Completed vetting: `is_consultant_verified IS TRUE` (there is no account role) |
 | `is_verified_consultant(uid)` | Compatibility alias for `is_active_consultant` |
 
 The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
-Finance RLS likewise no longer grants access from `projects.consultant_id`; its existing
-`project_access` predicates and explicit contract owner/client branches remain in force.
+Finance RLS uses consultant-origin owner rows in `project_access`; explicit contract
+owner/client branches remain in force where applicable.
 
 ## Triggers enforcing invariants
 

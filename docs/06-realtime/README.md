@@ -1,6 +1,6 @@
 # Realtime
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Collaborative realtime — the roadmap canvas and chat — runs on a **Cloudflare Worker
 + Durable Objects** service (`realtime/`), replacing Supabase Realtime. The backend
@@ -30,6 +30,6 @@ change.
 ## Code locations
 
 - **Worker:** [`realtime/`](../../realtime/) (`src/index.ts`, `src/room.ts`, `src/types.ts`), [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
-- **Backend:** [`backend/src/modules/realtime/`](../../backend/src/modules/realtime/) (publisher + authorize controller)
+- **Backend:** [`backend/src/modules/shared/realtime/`](../../backend/src/modules/shared/realtime/) (publisher + authorize controller)
 - **Web:** [`web/src/lib/realtime.ts`](../../web/src/lib/realtime.ts), [`web/src/config/featureFlags.ts`](../../web/src/config/featureFlags.ts)
 - **Deploy:** [`.github/workflows/realtime-deploy.yml`](../../.github/workflows/realtime-deploy.yml)

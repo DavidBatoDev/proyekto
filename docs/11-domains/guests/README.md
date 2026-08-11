@@ -43,7 +43,7 @@ Old guest profiles are cleaned up via the `cleanup_old_guest_users` RPC
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/guests/`](../../../backend/src/modules/guests/)
+- **Backend:** [`backend/src/modules/shared/guests/`](../../../backend/src/modules/shared/guests/)
 - **RPCs:** `create_guest_user`, `get_guest_user_id`, `is_valid_guest_session`, `cleanup_old_guest_users`
 - **Web:** `web/src/services/migration.service.ts`
 

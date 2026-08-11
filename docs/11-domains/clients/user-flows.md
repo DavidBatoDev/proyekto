@@ -1,6 +1,6 @@
 # Client User Flows
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Four paths bring a client into contact with a project: they create it, they are invited to
 it, they sign its contract from outside the product, or they arrive as a guest and convert.
@@ -133,7 +133,8 @@ Revocation is `ProjectAuthorizationService.revoke()`, with three modes and two h
 Two guards refuse regardless of caller:
 
 - **The consultant cannot be removed** from a project — a product guarantee, enforced by
-  comparing against `projects.consultant_id`.
+  resolving the consultant-origin `project_access` row before revocation. Reassignment uses
+  an explicit internal bypass only after granting the replacement.
 - **The last owner cannot be removed.** `countOwners()` must exceed 1.
 
 There is no equivalent guard for the project owner's access row: removing it leaves the

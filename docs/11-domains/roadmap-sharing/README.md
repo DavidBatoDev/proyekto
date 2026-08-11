@@ -1,6 +1,6 @@
 # Roadmap Sharing
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 A roadmap can be shared outside its project — a Google-Docs-style tokenized link that
 grants read-only or comment access without a full project membership. Recipients see
@@ -43,7 +43,7 @@ share tokens, and invited emails. See
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/roadmap-shares/`](../../../backend/src/modules/roadmap-shares/)
+- **Backend:** [`backend/src/modules/execution/roadmap-shares/`](../../../backend/src/modules/execution/roadmap-shares/)
 - **Web:** `web/src/routes/roadmap/shared/`, `web/src/routes/roadmap/shared-with-me.tsx`
 
 ## See also
