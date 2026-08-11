@@ -9,7 +9,6 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     title: 'Project One',
     status: 'draft',
     owner_id: 'client-1',
-    consultant_id: 'consultant-1',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
