@@ -3,8 +3,8 @@
 > **Last updated:** 2026-08-11 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **244 migrations** spanning
-2025-12-11 → 2026-08-11. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **248 migrations** spanning
+2025-12-11 → 2026-08-12. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -33,7 +33,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `projects` | Top-level project (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `consultant_id`, `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id` |
+| `projects` | Top-level project (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id`, `currency`, `budget_range` |
 | `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + authorization-relevant `origin` + capabilities jsonb + `has_direct_grant` |
 | `project_invites` | Email invite flow |
 | `project_briefs` | Structured brief (mission/vision, summary) |
@@ -76,9 +76,9 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 > **⚠️ Dead tables:** `payment_checkpoints` (initial schema) and `transactions`
 > (escrow migration) were **dropped** on 2026-01-11 (`20260111000000_drop_old_project_tables.sql`)
-> and never recreated. The `payments` module's checkpoint/escrow code still queries
-> them and would fail at runtime — it's vestigial. The live financial flow is
-> **payouts + invoices** (with `wallets` for balances). See
+> and never recreated. The dead backend surface and its remaining escrow RPCs were
+> removed in Phase 3. The live financial flow is **payouts + invoices**; `wallets`
+> remains because `create_wallet_for_user` is part of new-user provisioning. See
 > [Backend → modules](../03-backend/modules.md).
 
 ### Collaboration
@@ -129,7 +129,7 @@ text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/voi
 
 ```
 auth.users.id ─1:1─► profiles.id
-profiles.id ◄─ projects.owner_id / consultant_id
+profiles.id ◄─ projects.owner_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
 projects.id ─1:1─► roadmaps.project_id
 roadmaps.id ◄─ roadmap_epics ◄─ roadmap_features ◄─ roadmap_tasks

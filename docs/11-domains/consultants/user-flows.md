@@ -1,6 +1,6 @@
 # Consultant User Flows
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The Consultant flow deliberately separates vetting from project authority. Signup is
 the same lane-free flow as everyone else's; approval unlocks product capability;
@@ -27,7 +27,8 @@ and sets `is_consultant_verified=true`. Rejection leaves consultant powers disab
 ## 3. Create or join a project
 
 An active consultant can create in consultant mode. The project is forced to draft, the
-creator becomes the named consultant and owner, and an optional personal/reusable team can be
+creator becomes consultant-of-record through an owner access row with
+`origin='consultant'`, and an optional personal/reusable team can be
 attached with the consultant as the initial curated member.
 
 For client-created projects, assignment grants the selected active consultant owner access.
@@ -61,9 +62,8 @@ instantiation are broader; authoring operations are guarded.
 ```text
 privileged caller selects existing project member
   -> verify replacement is active consultant
-  -> update projects.consultant_id
   -> grant replacement owner + consultant origin
-  -> attempt to revoke previous consultant
+  -> revoke previous consultant with reassignment bypass
   -> preserve previous owner if last-owner guard requires it
 ```
 

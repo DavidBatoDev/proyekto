@@ -1,6 +1,6 @@
 # The Operations Schema
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Roadmap edits crossing the agent↔backend boundary conform to a single shared
 contract: [`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json).
@@ -38,7 +38,7 @@ reference them before they have real ids.
 | --- | --- |
 | **Agent (Python)** | `RoadmapOperation.model_validate` + `validate_operation_contract` (semantic checks — e.g. `mark_status.status_invalid`, `update_node.mutation_missing`, `shift_dates.delta_days_out_of_range`). The runtime tool schema's per-op `anyOf` branches are generated from the Pydantic model. |
 | **Agent tests** | [`agent/tests/test_operation_contracts.py`](../../agent/tests/test_operation_contracts.py) — contract + handle-expansion tests, run via the Node wrapper. |
-| **Backend (NestJS)** | DTO union types in [`roadmap-ai.dto.ts`](../../backend/src/modules/roadmaps/dto/roadmap-ai.dto.ts) (`RoadmapAiOperationType`, `RoadmapNodeType`, `RoadmapAiOperationDto`). |
+| **Backend (NestJS)** | DTO union types in [`roadmap-ai.dto.ts`](../../backend/src/modules/execution/roadmaps/dto/roadmap-ai.dto.ts) (`RoadmapAiOperationType`, `RoadmapNodeType`, `RoadmapAiOperationDto`). |
 
 ## The parity checker
 

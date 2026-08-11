@@ -46,7 +46,7 @@ import {
 import { useRoadmapStore, type CanvasViewMode } from "@/stores/roadmapStore";
 import { useUser } from "@/stores/authStore";
 import { useShallow } from "zustand/react/shallow";
-import { findTaskById } from "@/routes/project/$projectId/work-items/workItemsOptimistic";
+import { findTaskById } from "@/routes/_execution/project/$projectId/work-items/workItemsOptimistic";
 import type { RoadmapPerformanceMode } from "../models/types";
 import {
 	dismissGuestRoadmapCta,

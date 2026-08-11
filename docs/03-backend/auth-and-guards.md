@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -10,7 +10,7 @@ fallback to a Supabase call, and also accepts a guest-session header.
 
 Account onboarding is **lane-free**: `PATCH /api/auth/onboarding/complete` takes an
 empty body and writes only `settings.onboarding = { completed_at }`. The DTO
-([`auth.dto.ts`](../../backend/src/modules/auth/dto/auth.dto.ts)) still declares
+([`auth.dto.ts`](../../backend/src/modules/shared/auth/dto/auth.dto.ts)) still declares
 optional `lane` and `intent` fields as accepted-but-ignored legacy — the global
 `forbidNonWhitelisted` ValidationPipe would 400 older web/mobile bundles otherwise.
 Every user gets a personal workspace at onboarding; nobody gets an auto-created
@@ -75,7 +75,7 @@ user can check whether they're an admin.
 ## McpAuthGuard & PAT / OAuth auth
 
 The [MCP server](./mcp.md) has its own guard,
-[`McpAuthGuard`](../../backend/src/modules/mcp/mcp-auth.guard.ts), because it
+[`McpAuthGuard`](../../backend/src/modules/shared/mcp/mcp-auth.guard.ts), because it
 authenticates MCP hosts (Claude Code, Codex, the hosted Claude surfaces) rather
 than the web/mobile app. It runs a kill switch plus three credential checks in
 order, attaching both `request.user` and `request.mcpScopes`:
@@ -142,7 +142,7 @@ authorization (owner/permission checks) — controllers never decide access. See
 
 Guards only prove *who* the caller is; per-roadmap access is decided in the service
 layer by `RoadmapAuthorizationService`
-([`roadmap-authorization.service.ts`](../../backend/src/modules/roadmaps/services/roadmap-authorization.service.ts)).
+([`roadmap-authorization.service.ts`](../../backend/src/modules/execution/roadmaps/services/roadmap-authorization.service.ts)).
 Given any child id (task/feature/epic/milestone) it walks up to the owning roadmap,
 then to its project, and asserts a **`RoadmapPermission`** — a subset of the project
 permission catalog (`roadmap.edit`, `roadmap.assign`, `roadmap.create_tasks`,

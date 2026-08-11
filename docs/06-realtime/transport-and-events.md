@@ -1,6 +1,6 @@
 # Transport & Events
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 How events get from a backend write to a browser: the backend (and agent) **publish**
 to the Worker, which routes to a Durable Object that **fans out** to connected
@@ -22,7 +22,7 @@ automatic fallback to Supabase Realtime.
 1. **A domain service triggers a publish.** Chat → `realtime.publishChatEvent(...)`;
    roadmap canvas/AI → `realtime.publishRoadmapChange(roadmapId, fromUserId)`.
 2. **The publisher fans out.**
-   [`realtime-publisher.service.ts`](../../backend/src/modules/realtime/realtime-publisher.service.ts)
+   [`realtime-publisher.service.ts`](../../backend/src/modules/shared/realtime/realtime-publisher.service.ts)
    POSTs to `${REALTIME_WORKER_URL}/publish` with an `x-realtime-token` header —
    roadmap events to `roadmap:{id}` (`data_changed`), chat events to `user:{userId}`
    (`chat`). It's **fire-and-forget**, never throws, and is a **no-op unless both
@@ -43,7 +43,7 @@ polling stays authoritative.
 2. **The Worker authorizes the upgrade** — `verifyToken` (Supabase JWT via JWKS or
    `SUPABASE_JWT_SECRET`). `user:` rooms are self-scoped; other rooms
    `POST {BACKEND_AUTHORIZE_URL}` →
-   [`realtime.controller.ts`](../../backend/src/modules/realtime/realtime.controller.ts)
+   [`realtime.controller.ts`](../../backend/src/modules/shared/realtime/realtime.controller.ts)
    `@Post('authorize')` → `canViewRoadmap` / `canAccessRoom`. The upgrade is then
    forwarded to the DO with `x-user-id` / `x-room-type` headers.
 3. **Hooks invalidate on events** — roadmap:

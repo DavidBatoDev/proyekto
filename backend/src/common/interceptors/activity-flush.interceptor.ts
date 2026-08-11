@@ -7,7 +7,7 @@ import {
 import { Observable, from, throwError } from 'rxjs';
 import { catchError, concatMap, map } from 'rxjs/operators';
 import { activityStorage } from '../activity/activity-context';
-import { AuditService } from '../../modules/audit/audit.service';
+import { AuditService } from '../../modules/shared/audit/audit.service';
 
 /**
  * Flushes the request's buffered activity rows as one multi-row insert.

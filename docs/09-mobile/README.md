@@ -1,6 +1,6 @@
 # Mobile
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The Android and iOS apps are the `web/` app wrapped with **Capacitor** — same
 codebase, running in a native WebView. Push is **FCM**, and product changes ship
@@ -31,6 +31,6 @@ changes.
 ## Code locations
 
 - **Native shells:** [`web/android/`](../../web/android/), [`web/ios/`](../../web/ios/), [`web/capacitor.config.ts`](../../web/capacitor.config.ts)
-- **Backend:** [`backend/src/modules/push/`](../../backend/src/modules/push/), [`backend/src/modules/mobile-updates/`](../../backend/src/modules/mobile-updates/)
+- **Backend:** [`backend/src/modules/shared/push/`](../../backend/src/modules/shared/push/), [`backend/src/modules/shared/mobile-updates/`](../../backend/src/modules/shared/mobile-updates/)
 - **CI:** `android-release.yml`, `mobile-ota-deploy.yml` in [`.github/workflows/`](../../.github/workflows/)
 - **Guide:** [`web/MOBILE.md`](../../web/MOBILE.md)

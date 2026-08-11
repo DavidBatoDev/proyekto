@@ -143,8 +143,7 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 	const canIssue = invoiceHasClient({
 		recipientUserId: existing?.recipient_user_id,
 		billToEmail: billTo.email,
-		projectOwnerId: projectQuery.data?.owner_id,
-		projectConsultantId: projectQuery.data?.consultant_id,
+		projectHasClient: projectQuery.data?.has_client,
 	});
 
 	const previewLines = lines.map((l) => ({

@@ -1,6 +1,6 @@
 # Storage & Media
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 File storage is on **Cloudflare R2** — two buckets (`proyekto-media` public,
 `proyekto-private`), served publicly over `cdn.proyekto.tech`, with uploads going
@@ -28,6 +28,6 @@ files migrate off Supabase Storage.
 ## Code locations
 
 - **Worker upload:** [`realtime/src/index.ts`](../../realtime/src/index.ts), [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
-- **Backend (dormant):** [`backend/src/modules/uploads/`](../../backend/src/modules/uploads/), [`backend/src/config/r2.module.ts`](../../backend/src/config/r2.module.ts)
+- **Backend (dormant):** [`backend/src/modules/shared/uploads/`](../../backend/src/modules/shared/uploads/), [`backend/src/config/r2.module.ts`](../../backend/src/config/r2.module.ts)
 - **Migration script:** [`scripts/migrate_storage_to_r2.sh`](../../scripts/migrate_storage_to_r2.sh)
 - **Web:** `web/src/services/upload.service.ts`

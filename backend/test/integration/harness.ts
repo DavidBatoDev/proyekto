@@ -29,8 +29,8 @@ import { CachePolicyInterceptor } from '../../src/common/interceptors/cache-poli
 import { RequestLoggingInterceptor } from '../../src/common/interceptors/request-logging.interceptor';
 import { RequestTimeoutInterceptor } from '../../src/common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from '../../src/common/interceptors/response.interceptor';
-import { RealtimePublisher } from '../../src/modules/realtime/realtime-publisher.service';
-import { KnowledgeOutboxService } from '../../src/modules/knowledge/knowledge-outbox.service';
+import { RealtimePublisher } from '../../src/modules/shared/realtime/realtime-publisher.service';
+import { KnowledgeOutboxService } from '../../src/modules/shared/knowledge/knowledge-outbox.service';
 
 export function requireEnv(name: string): string {
   const value = process.env[name];

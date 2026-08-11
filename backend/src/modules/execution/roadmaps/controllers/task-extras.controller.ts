@@ -1,0 +1,125 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SupabaseAuthGuard } from '../../../../common/guards/supabase-auth.guard';
+import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../../../common/interfaces/authenticated-request.interface';
+import { TaskExtrasService } from '../services/task-extras.service';
+import {
+  AddCommentDto,
+  UpdateCommentDto,
+  AddAttachmentDto,
+  AddDependencyDto,
+} from '../dto/roadmaps.dto';
+
+@Controller('tasks')
+@UseGuards(SupabaseAuthGuard)
+export class TaskExtrasController {
+  constructor(private readonly taskExtrasService: TaskExtrasService) {}
+
+  @Get(':taskId/comments')
+  getComments(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.findComments(taskId, user.id);
+  }
+
+  /**
+   * Throttled because a comment can now invite strangers by email. The DB-level
+   * per-actor cap is the real control; this is the coarse backstop in front of
+   * it. `@UseGuards(ThrottlerGuard)` is required — no APP_GUARD binds the
+   * throttler globally, so `@Throttle` alone is inert.
+   */
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post(':taskId/comments')
+  addComment(
+    @Param('taskId') taskId: string,
+    @Body() dto: AddCommentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.addComment(taskId, dto, user.id);
+  }
+
+  @Patch(':taskId/comments/:commentId')
+  updateComment(
+    @Param('commentId') commentId: string,
+    @Body() dto: UpdateCommentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.updateComment(commentId, dto, user.id);
+  }
+
+  @Delete(':taskId/comments/:commentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.deleteComment(commentId, user.id);
+  }
+
+  @Get(':taskId/attachments')
+  getAttachments(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.findAttachments(taskId, user.id);
+  }
+
+  @Post(':taskId/attachments')
+  addAttachment(
+    @Param('taskId') taskId: string,
+    @Body() dto: AddAttachmentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.addAttachment(taskId, dto, user.id);
+  }
+
+  @Delete(':taskId/attachments/:attachmentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteAttachment(
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.deleteAttachment(attachmentId, user.id);
+  }
+
+  @Get(':taskId/dependencies')
+  getDependencies(
+    @Param('taskId') taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.getDependencies(taskId, user.id);
+  }
+
+  @Post(':taskId/dependencies')
+  addDependency(
+    @Param('taskId') taskId: string,
+    @Body() dto: AddDependencyDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.addDependency(taskId, dto.blocking_task_id, user.id);
+  }
+
+  @Delete(':taskId/dependencies/:dependencyId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeDependency(
+    @Param('taskId') taskId: string,
+    @Param('dependencyId') dependencyId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.removeDependency(taskId, dependencyId, user.id);
+  }
+}

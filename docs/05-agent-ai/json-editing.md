@@ -1,6 +1,6 @@
 # JSON Dev-Mode Editing
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Besides the AI assistant and the canvas, a roadmap can be edited **directly as JSON**
 — useful for bulk changes, scripting, and debugging. The roadmap top bar's `JSON`
@@ -89,5 +89,5 @@ roadmap_features[] → roadmap_tasks[]`.
 ## Code locations
 
 - **Web:** `web/src/components/roadmap/panels/JSONRoadmapSidePanel.tsx`, `RoadmapTopBar.tsx`, `web/src/services/roadmap.service.ts`
-- **Backend:** [`roadmap-patch.controller.ts`](../../backend/src/modules/roadmaps/controllers/roadmap-patch.controller.ts), `roadmap-patch.service.ts`, `roadmap-patch.repository.supabase.ts`
+- **Backend:** [`roadmap-patch.controller.ts`](../../backend/src/modules/execution/roadmaps/controllers/roadmap-patch.controller.ts), `roadmap-patch.service.ts`, `roadmap-patch.repository.supabase.ts`
 - **RPC:** `upsert_full_roadmap` (see [migrations-workflow.md](../07-data-and-db/migrations-workflow.md))

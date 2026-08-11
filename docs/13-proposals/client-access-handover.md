@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-10 · **Status:** draft
+> **Last updated:** 2026-08-11 · **Status:** draft
 
 When a consultant starts work, the client has to hand over access to a pile of external
 systems: the Canva brand kit, Google Drive, GA4, Google Tag Manager, Search Console, the
@@ -318,7 +318,7 @@ requires both `onboarding.manage` and `resources.upload`.
 
 ## Web
 
-Route `web/src/routes/project/$projectId/onboarding.tsx`, wrapped in `RequireProjectAccess`,
+Route `web/src/routes/_execution/project/$projectId/onboarding.tsx`, wrapped in `RequireProjectAccess`,
 added to `ProjectSidebar.tsx` under Collaborate and mirrored in `ProjectBottomNav.tsx`. The
 path must also go into `Header.tsx` `validPaths` or the header breaks on it.
 
@@ -377,7 +377,7 @@ fixPath:  /project/${projectId}/settings/teams
 
 ## Activity and notifications
 
-New action family in `backend/src/modules/audit/activity-actions.ts`:
+New action family in `backend/src/modules/shared/audit/activity-actions.ts`:
 `onboarding.checklist_created`, `.checklist_sent`, `.item_added`, `.item_removed`,
 `.item_state_changed`, `.item_verified`, `.item_blocked`, `.promoted_to_resource`.
 `ACTIVITY_ENTITY_TYPES` gains `onboarding_item` and `onboarding_checklist`.

@@ -1,6 +1,6 @@
 # OTA Updates
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Because the mobile app is a web bundle in a native shell, almost all changes can ship
 **over-the-air** — no app-store review. OTA is self-hosted: `@capgo/capacitor-updater`
@@ -67,7 +67,7 @@ apply on the next cold start, not mid-session.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/mobile-updates/`](../../backend/src/modules/mobile-updates/)
+- **Backend:** [`backend/src/modules/shared/mobile-updates/`](../../backend/src/modules/shared/mobile-updates/)
 - **CI:** [`.github/workflows/mobile-ota-deploy.yml`](../../.github/workflows/mobile-ota-deploy.yml)
 - **Web:** `web/src/main.tsx` (`notifyAppReady`), Capgo plugin config
 - **Full guide:** [`web/MOBILE.md`](../../web/MOBILE.md) §9

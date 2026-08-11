@@ -1,6 +1,6 @@
 # Client Structure
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 There is no `clients` table — and no client *account* of any kind. Proyekto stores no
 account role: the switchable `persona_type` was dropped in
@@ -48,15 +48,14 @@ the tokenized signing page. See
 [user-flows.md](./user-flows.md#external-client-signing).
 
 The activation checklist keeps the stable `client_identified` key. Today it accepts either
-a project owner distinct from the consultant or a client named on the contract; the owner
-fallback is role-neutral compatibility behavior.
+a project owner distinct from the consultant-of-record (`project_access.origin='consultant'`)
+or a client named on the contract; the owner fallback is role-neutral compatibility behavior.
 
 ### 3. Personal workspace
 
 A `projects` row with `is_personal_workspace = true`, auto-provisioned on first login. The
 invariant, from `20260503000020_add_personal_workspace_to_projects.sql`: `owner_id` is the
-workspace user,
-`consultant_id IS NULL`, at most one per user (partial unique index). The owner holds
+workspace user and there is at most one per user (partial unique index). The owner holds
 `origin = 'personal_workspace'`, whose delta grants **every** permission path.
 
 ## Tables that touch the client
@@ -64,7 +63,6 @@ workspace user,
 ```mermaid
 erDiagram
     profiles ||--o{ projects : "owner_id (NOT NULL)"
-    profiles ||--o{ projects : "consultant_id (nullable)"
     profiles ||--o{ project_access : user_id
     projects ||--o{ project_access : project_id
     projects ||--|| contracts : "one live contract"
@@ -81,7 +79,6 @@ erDiagram
     projects {
         uuid id PK
         uuid owner_id FK "NOT NULL"
-        uuid consultant_id FK "nullable"
         bool is_personal_workspace
     }
     project_access {

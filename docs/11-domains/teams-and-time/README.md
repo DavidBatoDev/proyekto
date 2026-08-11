@@ -57,8 +57,8 @@ team ──attach──► project_teams ──curate──► project_team_memb
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/teams/`](../../../backend/src/modules/teams/) (3 controllers), [`backend/src/modules/team-time/`](../../../backend/src/modules/team-time/)
-- **Web:** `web/src/routes/teams/`, `web/src/components/team/`, `web/src/components/team-time/`
+- **Backend:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/) (3 controllers), [`backend/src/modules/execution/team-time/`](../../../backend/src/modules/execution/team-time/)
+- **Web:** `web/src/routes/_execution/teams/`, `web/src/components/team/`, `web/src/components/team-time/`
 
 ## See also
 

@@ -1,6 +1,6 @@
 # Client User Flows
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Four paths bring a client into contact with a project: they create it, they are invited to
 it, they sign its contract from outside the product, or they arrive as a guest and convert.
@@ -65,7 +65,7 @@ Details that matter:
   with no access row — recoverable from the project's team settings UI.
 - **Uniqueness** is `(project_id, invitee_id)`, so re-inviting an existing invitee updates
   rather than duplicates.
-- The invitee-side surface is [`/invites`](../../../web/src/routes/invites.tsx);
+- The invitee-side surface is [`/invites`](../../../web/src/routes/_execution/invites.tsx);
   `/freelancer/invites` redirects there. The login round-trip preserves `?inviteId=`.
 
 ## 2. External client signing
@@ -133,7 +133,8 @@ Revocation is `ProjectAuthorizationService.revoke()`, with three modes and two h
 Two guards refuse regardless of caller:
 
 - **The consultant cannot be removed** from a project — a product guarantee, enforced by
-  comparing against `projects.consultant_id`.
+  resolving the consultant-origin `project_access` row before revocation. Reassignment uses
+  an explicit internal bypass only after granting the replacement.
 - **The last owner cannot be removed.** `countOwners()` must exceed 1.
 
 There is no equivalent guard for the project owner's access row: removing it leaves the

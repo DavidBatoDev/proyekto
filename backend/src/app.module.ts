@@ -10,38 +10,37 @@ import { ThrottlerStorageRedisService } from './config/throttler-storage.service
 import { RedisModule } from './config/redis.module';
 import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
 
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
-import { ProfileModule } from './modules/profile/profile.module';
-import { ProjectsModule } from './modules/projects/projects.module';
-import { PaymentsModule } from './modules/payments/payments.module';
-import { PayoutsModule } from './modules/payouts/payouts.module';
-import { AdminModule } from './modules/admin/admin.module';
-import { ConsultantsModule } from './modules/consultants/consultants.module';
-import { ApplicationsModule } from './modules/applications/applications.module';
-import { UploadsModule } from './modules/uploads/uploads.module';
-import { GuestsModule } from './modules/guests/guests.module';
-import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
-import { RoadmapTemplatesModule } from './modules/roadmap-templates/roadmap-templates.module';
-import { RoadmapSharesModule } from './modules/roadmap-shares/roadmap-shares.module';
-import { MarketplaceModule } from './modules/marketplace/marketplace.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
-import { PushModule } from './modules/push/push.module';
-import { MobileUpdatesModule } from './modules/mobile-updates/mobile-updates.module';
-import { ChatModule } from './modules/chat/chat.module';
-import { TeamsModule } from './modules/teams/teams.module';
-import { TeamTimeModule } from './modules/team-time/team-time.module';
-import { MeetingsModule } from './modules/meetings/meetings.module';
-import { InvoicesModule } from './modules/invoices/invoices.module';
-import { ContractsModule } from './modules/contracts/contracts.module';
-import { FinancialsModule } from './modules/financials/financials.module';
-import { FinanceModule } from './modules/finance/finance.module';
-import { RealtimeModule } from './modules/realtime/realtime.module';
-import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { ActivityModule } from './modules/activity/activity.module';
-import { KnowledgeModule } from './modules/knowledge/knowledge.module';
-import { McpModule } from './modules/mcp/mcp.module';
+import { AuthModule } from './modules/shared/auth/auth.module';
+import { UsersModule } from './modules/shared/users/users.module';
+import { ProfileModule } from './modules/marketplace/profile/profile.module';
+import { ProjectsModule } from './modules/execution/projects/projects.module';
+import { PayoutsModule } from './modules/marketplace/payouts/payouts.module';
+import { AdminModule } from './modules/shared/admin/admin.module';
+import { ConsultantsModule } from './modules/marketplace/consultants/consultants.module';
+import { ApplicationsModule } from './modules/marketplace/applications/applications.module';
+import { UploadsModule } from './modules/shared/uploads/uploads.module';
+import { GuestsModule } from './modules/shared/guests/guests.module';
+import { RoadmapsModule } from './modules/execution/roadmaps/roadmaps.module';
+import { RoadmapTemplatesModule } from './modules/marketplace/roadmap-templates/roadmap-templates.module';
+import { RoadmapSharesModule } from './modules/execution/roadmap-shares/roadmap-shares.module';
+import { MarketplaceModule } from './modules/marketplace/marketplace/marketplace.module';
+import { NotificationsModule } from './modules/shared/notifications/notifications.module';
+import { PushModule } from './modules/shared/push/push.module';
+import { MobileUpdatesModule } from './modules/shared/mobile-updates/mobile-updates.module';
+import { ChatModule } from './modules/execution/chat/chat.module';
+import { TeamsModule } from './modules/execution/teams/teams.module';
+import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
+import { MeetingsModule } from './modules/execution/meetings/meetings.module';
+import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
+import { ContractsModule } from './modules/marketplace/contracts/contracts.module';
+import { FinancialsModule } from './modules/marketplace/financials/financials.module';
+import { FinanceModule } from './modules/marketplace/finance/finance.module';
+import { RealtimeModule } from './modules/shared/realtime/realtime.module';
+import { RealtimePublisherModule } from './modules/shared/realtime/realtime-publisher.module';
+import { AuditModule } from './modules/shared/audit/audit.module';
+import { ActivityModule } from './modules/execution/activity/activity.module';
+import { KnowledgeModule } from './modules/shared/knowledge/knowledge.module';
+import { McpModule } from './modules/shared/mcp/mcp.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -69,7 +68,6 @@ import { AppController } from './app.controller';
     UsersModule,
     ProfileModule,
     ProjectsModule,
-    PaymentsModule,
     PayoutsModule,
     AdminModule,
     ConsultantsModule,

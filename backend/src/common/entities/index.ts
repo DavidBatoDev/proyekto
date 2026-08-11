@@ -148,9 +148,12 @@ export interface Project {
   description?: string;
   status: ProjectStatus;
   owner_id: string;
-  consultant_id?: string;
-  platform_fee_percent: number;
-  consultant_fee_percent: number;
+  /** Deprecated OTA compatibility field; synthesized from project_access. */
+  consultant_id?: string | null;
+  /** Deprecated OTA compatibility profile; sourced from the members embed. */
+  consultant?: (Partial<Profile> & Pick<Profile, 'id'>) | null;
+  /** Whether the project owner differs from the consultant of record. */
+  has_client?: boolean;
   category?: string;
   project_state?: string;
   skills?: unknown[];

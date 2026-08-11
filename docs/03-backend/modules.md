@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -9,6 +9,18 @@ tables each owns, and notable dependencies. Table names are verified from the
 actual `.from('…')` calls — the identity domain uses **`user_*`** tables (the only
 `consultant_*` table is `consultant_applications`), and file storage is **Cloudflare
 R2**, not Supabase Storage.
+
+Modules are grouped by platform responsibility:
+
+```text
+modules/
+|-- execution/    projects, roadmaps, chat, meetings, teams, time, activity
+|-- marketplace/  contracts, invoices, finance, payouts, discovery, profiles
+`-- shared/       auth, users, admin, notifications, infrastructure adapters
+```
+
+`AppModule` imports each feature module directly from these groups; there are no
+group-level barrel modules.
 
 ## At a glance
 
@@ -28,7 +40,6 @@ R2**, not Supabase Storage.
 | `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
-| `payments` | Wallet + **legacy** escrow/checkpoints (partly dead) | `wallets` (+ dropped `payment_checkpoints`, `transactions`) |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
 | `contracts` | Service agreements, the services catalog, signing (in-app + tokenized link), amendments, project activation | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
@@ -117,12 +128,6 @@ Clones a template into a new `roadmaps` graph.
 
 **`team-time`** — task time logs (`task_time_logs`) + `time_log_comments`, with
 rate resolution for billing.
-
-**`payments`** — an internal wallet (`wallets`) plus a **vestigial** escrow/checkpoint
-path. Its `payment_checkpoints` and `transactions` tables were dropped on 2026-01-11
-and never recreated, so the fund/release/refund routes are dead code against missing
-tables; only the wallet reads work. The live money flow is `payouts` + `invoices`.
-See [Data → schema overview](../07-data-and-db/schema-overview.md).
 
 **`payouts`** — freelancer payout methods (`payout_methods`) and payout requests
 (`payouts`) aggregating billable time; proof documents go to the **private R2

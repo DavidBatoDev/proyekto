@@ -117,7 +117,7 @@ export function ProjectContract({
 		enabled: Boolean(contract?.project_id),
 	});
 	const project = projectQuery.data;
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+	const isConsultant = Boolean(user?.id && project?.consultant?.id === user.id);
 	const [activeStep, setActiveStep] = useState<StepKey>(
 		initialStep ?? "parties",
 	);

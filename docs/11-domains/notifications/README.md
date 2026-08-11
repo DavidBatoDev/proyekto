@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -346,8 +346,8 @@ domain event  ─►  NotificationsService.createNotification(...)  ─►  noti
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/notifications/`](../../../backend/src/modules/notifications/), [`backend/src/modules/push/`](../../../backend/src/modules/push/)
-- **Email:** [`notifications/email/`](../../../backend/src/modules/notifications/email/) — worker, registry, preferences service
+- **Backend:** [`backend/src/modules/shared/notifications/`](../../../backend/src/modules/shared/notifications/), [`backend/src/modules/shared/push/`](../../../backend/src/modules/shared/push/)
+- **Email:** [`notifications/email/`](../../../backend/src/modules/shared/notifications/email/) — worker, registry, preferences service
 - **Templates:** [`backend/src/common/mail/templates/`](../../../backend/src/common/mail/templates/) — shared layout; delivery via [`transport/`](../../../backend/src/common/mail/transport/)
 - **Migrations:** `supabase/migrations/20260804090000_notification_email_outbox.sql` (machinery), `20260804120000_activate_mention_email.sql` (activation)
 - **Web:** `web/src/services/notifications.service.ts`, `web/src/services/pushNotifications.ts`

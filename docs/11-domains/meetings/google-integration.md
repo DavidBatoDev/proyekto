@@ -1,6 +1,6 @@
 # Google Calendar / Meet integration
 
-> **Last updated:** 2026-07-11 · **Status:** current · ships **dark** behind a flag
+> **Last updated:** 2026-08-11 · **Status:** current · ships **dark** behind a flag
 
 Per‑user Google Calendar / Meet OAuth (meetings **Phase 5**). A user connects
 their own Google account once; thereafter choosing **Google Meet** in the event
@@ -26,7 +26,7 @@ Realtime dark‑ship pattern.
   created on their calendar.
 - **Raw `fetch`** to Google endpoints (no `googleapis` dependency) — mirrors the
   existing Gmail integration in
-  [`auth/email-otp.service.ts`](../../../backend/src/modules/auth/email-otp.service.ts).
+  [`auth/email-otp.service.ts`](../../../backend/src/modules/shared/auth/email-otp.service.ts).
 
 ## OAuth flow
 
@@ -88,7 +88,7 @@ New migration
 ### Refresh‑token encryption
 
 Refresh tokens are encrypted with **AES‑256‑GCM** before storage
-([`token-crypto.ts`](../../../backend/src/modules/meetings/google/token-crypto.ts)),
+([`token-crypto.ts`](../../../backend/src/modules/execution/meetings/google/token-crypto.ts)),
 keyed by a base64 32‑byte `GOOGLE_TOKEN_ENC_KEY`. Stored form:
 `gcmv1:<iv>:<tag>:<ciphertext>`. If the key is unset (local/dark), tokens are
 stored as plaintext with a one‑time warning — **set the key in production.**
@@ -127,10 +127,10 @@ provider *to or from* Google Meet on an in‑place edit is rejected (`400`) —
 recreate the series.
 
 Key files:
-[`google/google-oauth.service.ts`](../../../backend/src/modules/meetings/google/google-oauth.service.ts),
-[`google/google-calendar.service.ts`](../../../backend/src/modules/meetings/google/google-calendar.service.ts),
-[`google/google.controller.ts`](../../../backend/src/modules/meetings/google/google.controller.ts),
-[`meetings.service.ts`](../../../backend/src/modules/meetings/meetings.service.ts)
+[`google/google-oauth.service.ts`](../../../backend/src/modules/execution/meetings/google/google-oauth.service.ts),
+[`google/google-calendar.service.ts`](../../../backend/src/modules/execution/meetings/google/google-calendar.service.ts),
+[`google/google.controller.ts`](../../../backend/src/modules/execution/meetings/google/google.controller.ts),
+[`meetings.service.ts`](../../../backend/src/modules/execution/meetings/meetings.service.ts)
 (`provisionVideo` / `resolveVideoForEdit` / `propagateGoogleForOccurrence` / `safeGoogle`).
 
 ## Frontend

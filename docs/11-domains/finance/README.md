@@ -2,15 +2,14 @@
 
 > **Last updated:** 2026-08-11 · **Status:** current
 
-Money in Proyekto flows through three modules — but only two of them are live. The
-**payouts** and **invoices** modules are the shipped financial path; the older
-**payments** (escrow/checkpoints) module is largely vestigial after its tables were
-dropped. `wallets` still exist for balances.
+Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
+payments/escrow backend surface was removed in Phase 3. `wallets` remains as
+provisioned balance storage, but it has no HTTP module.
 
 > **⚠️ Read this first:** `payment_checkpoints` and `transactions` were **dropped**
-> on 2026-01-11 and never recreated. The `payments` module's fund/release/refund
-> escrow code queries those missing tables and is effectively dead. Treat
-> **payouts + invoices** as the real money system. See
+> on 2026-01-11 and never recreated. Phase 3 removed the dead backend module and
+> the remaining `fund_escrow` / `refund_escrow` functions. Treat **payouts +
+> invoices** as the real money system. See
 > [Data → schema overview](../../07-data-and-db/schema-overview.md).
 
 ## Payouts (live)
@@ -46,17 +45,16 @@ PDF.
 HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.
 
 Finance access requires active consultant capability plus a `project_access` row with
-`role=owner` and `origin=consultant`; the legacy `projects.consultant_id` pointer is not an
-authorization gate. Project deletion is refused while contracts are sent/signed/active or
+`role=owner` and `origin=consultant`; that access row is also the consultant-of-record.
+Project deletion is refused while contracts are sent/signed/active or
 invoices are issued/sent. Drafts are discarded; ended/cancelled contracts and paid/void
 invoices survive with `project_id=NULL` and their project-title snapshots intact.
 
-## Wallets (partial)
+## Wallets (retained storage)
 
-`wallets` (available + escrow balance per user) still exist and the `GET
-/payments/wallet[/transactions]` reads work. The escrow *mutation* RPCs
-(`fund_escrow`, `release_milestone`, `refund_escrow`) reference the dropped
-`transactions`/`payment_checkpoints` tables and are dead.
+`wallets` (available + escrow balance per user) still exists because
+`create_wallet_for_user` participates in new-user provisioning. There is no payments
+controller or wallet HTTP API; changing that table or trigger is a separate decision.
 
 ## How money connects to work
 
@@ -70,5 +68,5 @@ payouts and invoices.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/payouts/`](../../../backend/src/modules/payouts/), [`backend/src/modules/invoices/`](../../../backend/src/modules/invoices/), [`backend/src/modules/payments/`](../../../backend/src/modules/payments/) (legacy)
+- **Backend:** [`backend/src/modules/marketplace/payouts/`](../../../backend/src/modules/marketplace/payouts/), [`backend/src/modules/marketplace/invoices/`](../../../backend/src/modules/marketplace/invoices/)
 - **Payout RPCs:** `create_payout_and_mark_paid`, `void_payout_and_revert` (see [migrations-workflow.md](../../07-data-and-db/migrations-workflow.md))

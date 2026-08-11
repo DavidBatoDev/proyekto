@@ -1,6 +1,6 @@
 # Client Access and Permissions
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 A client's 45 permissions are never stored. They are recomputed on every check from three
 layers, and only the *delta* from the baseline is persisted — so role templates can evolve
@@ -17,7 +17,7 @@ resolvePermissions(role, origin, capabilities)
   ⊕ capabilities             // per-member overrides; flat paths win
 ```
 
-— [`project-permissions.ts:515`](../../../backend/src/modules/projects/permissions/project-permissions.ts)
+— [`project-permissions.ts:515`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts)
 
 ```mermaid
 flowchart LR
@@ -107,7 +107,7 @@ default mode; `viewer + client` is a typical invited stakeholder.
 | `time.view_team_logs` | ❌ | ✅ | ✅ |
 
 Derived from `buildRoleDefault()` and `ORIGIN_DELTAS` in
-[`project-permissions.ts`](../../../backend/src/modules/projects/permissions/project-permissions.ts).
+[`project-permissions.ts`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts).
 Regenerate rather than transcribe if the file changes.
 
 > **On money and time.** A client at `admin` sees `time.view_team_logs` because *admin*
