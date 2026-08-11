@@ -2,9 +2,10 @@
 
 > **Last updated:** 2026-08-10 · **Status:** current
 
-Consultant vetting is a state machine layered on top of account identity. The role records
-who the account is; the verification flag records whether consultant powers are active. All
-authorization sites must evaluate both through the shared predicate.
+Consultant vetting is a state machine whose outcome is a single capability bit:
+`profiles.is_consultant_verified`. There is no account identity underneath it — the
+flag alone records whether consultant powers are active, and all authorization sites
+must evaluate it through the shared predicate.
 
 ## Application lifecycle
 
@@ -29,7 +30,6 @@ The application service and admin service divide responsibility:
 resolve applicant user
   -> provision personal team (idempotent)
   -> mark application approved
-  -> set profiles.role='consultant'
   -> set profiles.is_consultant_verified=true
   -> invalidate consultant discovery caches
 ```
@@ -62,20 +62,20 @@ granting access.
 | Use Finance portfolio, contracts, and invoices | Controller-wide guard |
 | Create, publish, revise, unlist, archive, and analyze own templates | Endpoint guards |
 | Perform consultant-sensitive rate ownership operations | Database trigger/helper |
-| Appear in public consultant directory | Role and verification query filters |
+| Appear in public consultant directory | `is_consultant_verified` query filter |
 
-## What unverified Consultants can still do
+## What applicants can still do
 
-An unverified Consultant is an ordinary authenticated user with Consultant identity. They can
-complete profiles, manage shared account settings, accept project or team invites, and use any
-project permissions explicitly granted to them. They cannot use the operator capabilities in
-the table above.
+An applicant awaiting approval is an ordinary authenticated user. They can complete
+profiles, manage shared account settings, accept project or team invites, and use any
+project permissions explicitly granted to them. They cannot use the operator
+capabilities in the table above.
 
 ## Privileged-field protection
 
-Authenticated and anonymous database sessions cannot change role or consultant verification.
-The profiles trigger rejects protected updates and forces safe insert values. The backend
-service role performs admin approval writes.
+Authenticated and anonymous database sessions cannot change `is_consultant_verified` —
+the profiles trigger rejects protected updates and forces `false` on insert. The
+backend service role performs admin approval writes.
 
 ## See also
 

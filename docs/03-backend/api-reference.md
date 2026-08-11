@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-08-10 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -27,7 +27,7 @@ row says otherwise, the route requires a Supabase JWT
 | POST | /api/auth/password-reset/request | Public | Request password reset |
 | POST | /api/auth/password-reset/confirm | Public | Confirm password reset |
 | GET | /api/auth/profile | Supabase | Current user's profile |
-| PATCH | /api/auth/onboarding/complete | Supabase | Mark onboarding complete |
+| PATCH | /api/auth/onboarding/complete | Supabase | Mark onboarding complete (empty body; legacy `lane`/`intent` accepted-but-ignored) |
 | PATCH | /api/auth/profile | Supabase | Update profile |
 
 ## users · `users`

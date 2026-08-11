@@ -7,13 +7,17 @@ One deep dive per user-facing feature domain — the companions to the
 [Backend module list](../03-backend/modules.md). Each page covers what the feature
 does, its data model, its HTTP surface, and where the code lives.
 
-## Account roles
+## Participant positions
+
+There is no stored account role — client, talent, and consultant are **market
+positions** (per contract), and the only account-level capability is consultant
+vetting. See [Product → roles and capabilities](../01-product/personas.md).
 
 | Doc | What's in it |
 | --- | --- |
-| [clients/](./clients/README.md) | The client role — structure, permission resolution, user flows, surfaces, and the consultant handoff (a full sub-set) |
-| [talent/](./talent/README.md) | The Talent role — identity, discovery, project access, delivery, time, and payout boundaries (a full sub-set) |
-| [consultants/](./consultants/README.md) | The Consultant role — identity, vetting, active capabilities, project operation, and role-specific surfaces (a full sub-set) |
+| [clients/](./clients/README.md) | The client position — structure, permission resolution, user flows, surfaces, and the consultant handoff (a full sub-set) |
+| [talent/](./talent/README.md) | The Talent position — discovery, project access, delivery, time, and payout boundaries (a full sub-set) |
+| [consultants/](./consultants/README.md) | The Consultant position — vetting, active capabilities, project operation, and consultant-only surfaces (a full sub-set) |
 
 ## Delivery lifecycle
 

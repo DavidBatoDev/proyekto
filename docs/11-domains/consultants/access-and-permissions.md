@@ -50,7 +50,7 @@ admin later demotes the stored project role while keeping the origin.
 
 ## Team authority is separate
 
-Consultant account identity does not make the person owner of every team. Their personal team
+The consultant capability does not make the person owner of every team. Their personal team
 does make them its owner, while other teams require an explicit `team_members` role. Project
 team management requires resolved project permissions in addition to team-level checks.
 
