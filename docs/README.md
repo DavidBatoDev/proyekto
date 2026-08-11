@@ -38,9 +38,9 @@ site, so links are relative filesystem paths. Every page carries a
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | **current** |
 | 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | **current** |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | **current** |
-| 11 | [Feature Domains](./11-domains/README.md) | Account roles, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
+| 11 | [Feature Domains](./11-domains/README.md) | Participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
-| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree | **draft** |
+| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree, identity & enrollment | **draft** |
 
 > **⚠️ Section 13 is the one exception to the current-state rule.** Everything in `00`–`12`
 > describes shipped behaviour. `13-proposals/` holds designs that do not exist yet; every page

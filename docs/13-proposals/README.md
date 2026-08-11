@@ -34,9 +34,10 @@ If you only read one page, read
 | [client-access-handover.md](./client-access-handover.md) | Feature 1 — a tracked checklist for the external-system access a client must grant at onboarding |
 | [organizations-and-services.md](./organizations-and-services.md) | Feature 2a — an Organization tier above projects, a real `services` table, and the resolution of `1 Roadmap = 1 Service` vs. `roadmaps.project_id UNIQUE` |
 | [delivery-tree-visualization.md](./delivery-tree-visualization.md) | Feature 2b — a zoomable Org → Project → Service → Roadmap tree |
+| [identity-and-enrollment.md](./identity-and-enrollment.md) | Feature 3 — deleting `profiles.role`, role-free execution, and three opt-in marketplace enrollment tables; the identity foundation of the marketplace/execution split |
 | [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) | Monetization — 4-tier per-seat pricing for the Execution and Marketplace platforms, Shopify-style add-ons (Time/Finance), entitlement architecture, edge cases E1–E14 |
 
-## Why these three
+## Why these five
 
 They come from one observation: Proyekto models *delivery* well and *the client relationship*
 barely at all. There is no client parent, no record of what a client has handed over, and no
@@ -55,6 +56,19 @@ flowchart LR
 
 The access handover is independent and can ship first. The tree depends on organizations and
 services existing.
+
+The fourth proposal answers a different question — *who is anyone?* — and cuts the other
+way: [identity-and-enrollment.md](./identity-and-enrollment.md) deletes the `account_role`
+identity that the 2026-08-09 reconciliation in
+[organizations-and-services.md](./organizations-and-services.md) noted, replacing it with
+marketplace enrollment tables. The two compose: both are progressive, opt-in, and
+auto-provision nothing. Its phase 1 (dropping `profiles.role`, single-lane signup) is
+landing now; the enrollment tables are unbuilt.
+
+The fifth, [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md), is the
+monetization layer over both platforms. It was drafted against the pre-deletion
+`profiles.role` state and needs a reconciliation pass against identity-and-enrollment
+(its hooks table and edge case E14 still cite `profiles.role`).
 
 ## Sequencing
 
@@ -89,7 +103,10 @@ Checked against the whole tree before choosing. Words already spent elsewhere an
 | **Agency** (as a table name) | describes only the provider side; a table named `agencies` holding a client company would be a lie |
 
 Chosen: **Organization** (zero prior occurrences in `docs/`) with a `kind` enum, and **Access
-Handover** for the checklist.
+Handover** for the checklist. **Enrollment** (also zero prior occurrences) is reserved by
+[identity-and-enrollment.md](./identity-and-enrollment.md) for the opt-in marketplace
+capability rows — deliberately not "role", "persona", or "profile type", all of which are
+spent (and burned) elsewhere.
 
 ## See also
 
