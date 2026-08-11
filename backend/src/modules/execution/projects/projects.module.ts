@@ -9,7 +9,7 @@ import { AuthorizationModule } from './authorization/authorization.module';
 import { ProjectAccessSyncModule } from './access-sync/access-sync.module';
 import { TeamsModule } from '../teams/teams.module';
 import { ChatModule } from '../chat/chat.module';
-import { ContractsModule } from '../../contracts/contracts.module';
+import { ContractsModule } from '../../marketplace/contracts/contracts.module';
 import { TeamTimeModule } from '../team-time/team-time.module';
 
 @Module({

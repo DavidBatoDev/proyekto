@@ -55,7 +55,7 @@ import {
   UpdateProjectResourceLinkDto,
 } from './dto/project.dto';
 import { Project } from '../../../common/entities';
-import { ProjectActivationService } from '../../contracts/project-activation.service';
+import { ProjectActivationService } from '../../marketplace/contracts/project-activation.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';

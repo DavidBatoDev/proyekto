@@ -16,7 +16,7 @@ import {
   renderEmailLayout,
   renderParagraph,
 } from '../src/common/mail/templates/layout';
-import { buildInvoiceEmailHtml } from '../src/modules/invoices/invoice-email.template';
+import { buildInvoiceEmailHtml } from '../src/modules/marketplace/invoices/invoice-email.template';
 import { renderNotificationEmail } from '../src/modules/notifications/email/notification-email-registry';
 import { buildInviteEmail } from '../src/modules/execution/projects/project-invite-email.template';
 import { buildTeamInviteEmail } from '../src/modules/execution/teams/team-invite-email.template';

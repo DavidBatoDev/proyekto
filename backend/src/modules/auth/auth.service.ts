@@ -13,7 +13,7 @@ import { PersonalWorkspaceService } from '../execution/projects/personal-workspa
 import {
   FreelancerEligibilityService,
   type FreelancerRequirement,
-} from '../profile/freelancer-eligibility.service';
+} from '../marketplace/profile/freelancer-eligibility.service';
 import { EmailOtpService } from './email-otp.service';
 
 export interface CompleteOnboardingResult {

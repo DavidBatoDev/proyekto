@@ -1,4 +1,4 @@
-import { buildInvoiceEmailHtml } from '../../../modules/invoices/invoice-email.template';
+import { buildInvoiceEmailHtml } from '../../../modules/marketplace/invoices/invoice-email.template';
 import { buildInviteEmail } from '../../../modules/execution/projects/project-invite-email.template';
 
 /**
