@@ -3,7 +3,7 @@
 > **Last updated:** 2026-08-11 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **247 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **248 migrations** spanning
 2025-12-11 → 2026-08-12. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
