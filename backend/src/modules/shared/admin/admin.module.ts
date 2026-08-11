@@ -5,9 +5,10 @@ import { SupabaseAdminRepository } from './repositories/admin.repository.supabas
 import { ADMIN_REPOSITORY } from './admin.service';
 import { TeamsModule } from '../../execution/teams/teams.module';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TeamsModule, AuthorizationModule],
+  imports: [TeamsModule, AuthorizationModule, NotificationsModule],
   controllers: [AdminController],
   providers: [
     AdminService,

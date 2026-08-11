@@ -4,11 +4,10 @@ import { AuthService } from './auth.service';
 import { SupabaseAuthRepository } from './repositories/auth.repository.supabase';
 import { AUTH_REPOSITORY } from './auth.service';
 import { ProjectsModule } from '../../execution/projects/projects.module';
-import { ProfileModule } from '../../marketplace/profile/profile.module';
 import { EmailOtpService } from './email-otp.service';
 
 @Module({
-  imports: [ProjectsModule, ProfileModule],
+  imports: [ProjectsModule],
   controllers: [AuthController],
   providers: [
     AuthService,

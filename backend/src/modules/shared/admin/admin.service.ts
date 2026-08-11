@@ -7,10 +7,14 @@ import {
   GrantAdminDto,
   MatchAssignDto,
   MatchCandidatesQueryDto,
+  ReinstateConsultantDto,
   RejectApplicationDto,
+  RevokeConsultantDto,
+  SuspendConsultantDto,
 } from './dto/admin.dto';
 import { TeamsService } from '../../execution/teams/teams.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AdminService {
@@ -19,6 +23,7 @@ export class AdminService {
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly teamsService: TeamsService,
     private readonly authorization: ProjectAuthorizationService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   getAdminProfile(userId: string) {
@@ -30,26 +35,114 @@ export class AdminService {
   getApplicationDetail(id: string) {
     return this.adminRepo.getApplicationDetail(id);
   }
-  async approveApplication(id: string) {
+  async approveApplication(id: string, reviewedBy: string) {
     const applicantUserId = await this.adminRepo.getApplicationUserId(id);
     // Provision before granting active consultant capability. An orphaned
     // personal team is harmless and retryable; an active consultant without
     // the required team is not.
     await this.teamsService.provisionPersonalTeam(applicantUserId);
-    const approved = await this.adminRepo.approveApplication(id);
-    const approvedUserId =
-      approved && typeof approved === 'object' && 'user_id' in approved
-        ? (approved.user_id as string | undefined)
-        : applicantUserId;
+    const approved = await this.adminRepo.approveApplication(id, reviewedBy);
+    const approvedUserId = this.userIdFromResult(approved) ?? applicantUserId;
 
     await Promise.all([
       this.cacheInvalidation.invalidateConsultantsCache(approvedUserId),
       this.cacheInvalidation.invalidateMarketplaceFreelancersCache(),
     ]);
+    await this.emitNotification({
+      user_id: approvedUserId,
+      type_name: 'consultant_application_approved',
+      actor_id: reviewedBy,
+      content: {
+        message: 'Your consultant application has been approved.',
+      },
+      link_url: `/profile/${approvedUserId}`,
+    });
     return approved;
   }
-  rejectApplication(id: string, dto: RejectApplicationDto) {
-    return this.adminRepo.rejectApplication(id, dto.reason);
+  async rejectApplication(
+    id: string,
+    reviewedBy: string,
+    dto: RejectApplicationDto,
+  ) {
+    const rejected = await this.adminRepo.rejectApplication(
+      id,
+      reviewedBy,
+      dto.reason,
+    );
+    const rejectedUserId = this.userIdFromResult(rejected);
+    if (rejectedUserId) {
+      await this.emitNotification({
+        user_id: rejectedUserId,
+        type_name: 'consultant_application_rejected',
+        actor_id: reviewedBy,
+        content: {
+          message: 'Your consultant application was not approved.',
+          reason: dto.reason ?? null,
+        },
+        link_url: '/consultant/apply',
+      });
+    }
+    return rejected;
+  }
+  listConsultants() {
+    return this.adminRepo.listConsultants();
+  }
+  async suspendConsultant(
+    userId: string,
+    changedBy: string,
+    dto: SuspendConsultantDto,
+  ) {
+    const enrollment = await this.adminRepo.suspendConsultant(
+      userId,
+      changedBy,
+      dto.reason,
+    );
+    await this.afterConsultantTransition(
+      userId,
+      changedBy,
+      'consultant_suspended',
+      'Your consultant access has been suspended.',
+      dto.reason,
+    );
+    return enrollment;
+  }
+  async reinstateConsultant(
+    userId: string,
+    changedBy: string,
+    dto: ReinstateConsultantDto,
+  ) {
+    const enrollment = await this.adminRepo.reinstateConsultant(
+      userId,
+      changedBy,
+      dto.reason,
+    );
+    await this.afterConsultantTransition(
+      userId,
+      changedBy,
+      'consultant_reinstated',
+      'Your consultant access has been reinstated.',
+      dto.reason,
+    );
+    return enrollment;
+  }
+  async revokeConsultant(
+    userId: string,
+    changedBy: string,
+    dto: RevokeConsultantDto,
+  ) {
+    const enrollment = await this.adminRepo.revokeConsultant(
+      userId,
+      changedBy,
+      dto.reason,
+    );
+    await this.afterConsultantTransition(
+      userId,
+      changedBy,
+      'consultant_revoked',
+      'Your consultant access has been revoked.',
+      dto.reason,
+    );
+    return enrollment;
   }
   listAdmins() {
     return this.adminRepo.listAdmins();
@@ -80,5 +173,43 @@ export class AdminService {
   }
   listUsers() {
     return this.adminRepo.listUsers();
+  }
+
+  private userIdFromResult(value: unknown): string | null {
+    if (!value || typeof value !== 'object' || !('user_id' in value)) {
+      return null;
+    }
+    return typeof value.user_id === 'string' ? value.user_id : null;
+  }
+
+  private async afterConsultantTransition(
+    userId: string,
+    changedBy: string,
+    typeName: string,
+    message: string,
+    reason?: string,
+  ): Promise<void> {
+    await Promise.all([
+      this.cacheInvalidation.invalidateConsultantsCache(userId),
+      this.cacheInvalidation.invalidateMarketplaceFreelancersCache(),
+    ]);
+    await this.emitNotification({
+      user_id: userId,
+      type_name: typeName,
+      actor_id: changedBy,
+      content: { message, reason: reason ?? null },
+      link_url: `/profile/${userId}`,
+    });
+  }
+
+  private async emitNotification(
+    payload: Parameters<NotificationsService['createNotification']>[0],
+  ): Promise<void> {
+    try {
+      await this.notifications.createNotification(payload);
+    } catch {
+      // The durable enrollment transition is authoritative; notification
+      // delivery is best-effort and must not turn a successful action into 500.
+    }
   }
 }

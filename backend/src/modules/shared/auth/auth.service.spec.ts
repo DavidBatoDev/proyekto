@@ -1,16 +1,19 @@
 import { AuthService } from './auth.service';
 import type { AuthRepository } from './repositories/auth.repository.interface';
 import type { PersonalWorkspaceService } from '../../execution/projects/personal-workspace.service';
-import type { Profile } from '../../../common/entities';
 import type { EmailOtpService } from './email-otp.service';
+import type { AuthProfile } from './repositories/auth.repository.interface';
 
-function buildProfile(overrides: Partial<Profile> = {}): Profile {
+function buildProfile(overrides: Partial<AuthProfile> = {}): AuthProfile {
   return {
     id: 'user-1',
     email: 'a@b.com',
     display_name: 'A',
     avatar_url: null,
+    consultant_status: null,
+    freelancer_status: null,
     is_consultant_verified: false,
+    is_public: false,
     bio: null,
     has_completed_onboarding: true,
     is_email_verified: true,
@@ -18,13 +21,12 @@ function buildProfile(overrides: Partial<Profile> = {}): Profile {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
-  } as Profile;
+  } as AuthProfile;
 }
 
 function buildService(
   repoOverrides: Partial<AuthRepository>,
   workspaceOverrides: Partial<PersonalWorkspaceService> = {},
-  eligibilityOverrides: { check?: jest.Mock } = {},
 ) {
   const repo = repoOverrides as AuthRepository;
   const provisionWorkspace = jest.fn().mockResolvedValue({
@@ -39,11 +41,6 @@ function buildService(
     findForUser: jest.fn(),
     ...workspaceOverrides,
   } as unknown as PersonalWorkspaceService;
-  const eligibilityService = {
-    check:
-      eligibilityOverrides.check ??
-      jest.fn().mockResolvedValue({ eligible: false, missing: [] }),
-  } as any;
   const emailOtpService = {
     requestEmailVerification: jest.fn(),
     confirmEmailVerification: jest.fn(),
@@ -51,12 +48,7 @@ function buildService(
     confirmPasswordReset: jest.fn(),
   } as unknown as EmailOtpService;
   return {
-    service: new AuthService(
-      repo,
-      workspaceService,
-      eligibilityService,
-      emailOtpService,
-    ),
+    service: new AuthService(repo, workspaceService, emailOtpService),
     provisionWorkspace,
   };
 }
@@ -68,7 +60,7 @@ describe('AuthService.completeOnboarding', () => {
 
   it('completes onboarding and provisions a personal workspace for every user', async () => {
     const completeOnboarding = jest
-      .fn<Promise<Profile>, [string]>()
+      .fn<Promise<AuthProfile>, [string]>()
       .mockResolvedValue(buildProfile());
 
     const { service, provisionWorkspace } = buildService({
@@ -85,8 +77,13 @@ describe('AuthService.completeOnboarding', () => {
 
   it('provisions a workspace even for a verified consultant (no team at signup)', async () => {
     const completeOnboarding = jest
-      .fn<Promise<Profile>, [string]>()
-      .mockResolvedValue(buildProfile({ is_consultant_verified: true }));
+      .fn<Promise<AuthProfile>, [string]>()
+      .mockResolvedValue(
+        buildProfile({
+          consultant_status: 'verified',
+          is_consultant_verified: true,
+        }),
+      );
 
     const { service, provisionWorkspace } = buildService({
       completeOnboarding,
@@ -100,7 +97,7 @@ describe('AuthService.completeOnboarding', () => {
 
   it('surfaces a workspace provisioning failure', async () => {
     const completeOnboarding = jest
-      .fn<Promise<Profile>, [string]>()
+      .fn<Promise<AuthProfile>, [string]>()
       .mockResolvedValue(buildProfile());
     const provision = jest
       .fn()

@@ -104,6 +104,14 @@ export type SpecializationCategory =
   | 'blockchain'
   | 'other';
 
+export type ConsultantEnrollmentStatus =
+  | 'pending'
+  | 'verified'
+  | 'suspended'
+  | 'revoked';
+
+export type FreelancerEnrollmentStatus = 'active' | 'paused';
+
 export interface Profile {
   id: string;
   email?: string;
@@ -120,7 +128,8 @@ export interface Profile {
   city?: string;
   zip_code?: string;
   date_of_birth?: string;
-  is_consultant_verified: boolean;
+  consultant_status?: ConsultantEnrollmentStatus | null;
+  freelancer_status?: FreelancerEnrollmentStatus | null;
   is_email_verified: boolean;
   has_completed_onboarding: boolean;
   settings: Record<string, unknown>;

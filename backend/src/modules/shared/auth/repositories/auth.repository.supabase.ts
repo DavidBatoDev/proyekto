@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
-import { AuthRepository } from './auth.repository.interface';
+import { AuthRepository, type AuthProfile } from './auth.repository.interface';
+import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
 import type { Profile } from '../../../../common/entities';
 
 interface RepositoryResult<T> {
@@ -20,18 +21,24 @@ export class SupabaseAuthRepository implements AuthRepository {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
 
-  async getProfile(userId: string): Promise<Profile | null> {
+  async getProfile(userId: string): Promise<AuthProfile | null> {
     const result = (await this.supabase
       .from('profiles')
-      .select('*')
+      .select(
+        '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+      )
       .eq('id', userId)
-      .single()) as unknown as RepositoryResult<Profile>;
+      .single()) as unknown as RepositoryResult<Record<string, unknown>>;
 
     if (result.error) return null;
-    return result.data;
+    return result.data
+      ? (attachMarketplaceEnrollmentFields(
+          result.data,
+        ) as unknown as AuthProfile)
+      : null;
   }
 
-  async completeOnboarding(userId: string): Promise<Profile> {
+  async completeOnboarding(userId: string): Promise<AuthProfile> {
     const existingResult = (await this.supabase
       .from('profiles')
       .select('settings, has_completed_onboarding')
@@ -67,11 +74,15 @@ export class SupabaseAuthRepository implements AuthRepository {
       .update(updatePayload)
       .eq('id', userId)
       .or('has_completed_onboarding.eq.false,has_completed_onboarding.is.null')
-      .select()
-      .maybeSingle()) as unknown as RepositoryResult<Profile>;
+      .select('id')
+      .maybeSingle()) as unknown as RepositoryResult<{ id: string }>;
 
     if (updateResult.error) throw new Error(updateResult.error.message);
-    if (updateResult.data) return updateResult.data;
+    if (updateResult.data) {
+      const profile = await this.getProfile(userId);
+      if (!profile) throw new Error('Profile not found');
+      return profile;
+    }
 
     // A concurrent completion won the conditional update. Return the persisted
     // profile so the caller works from durable state, not this request.
@@ -83,16 +94,18 @@ export class SupabaseAuthRepository implements AuthRepository {
   async updateProfile(
     userId: string,
     dto: Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'bio'>>,
-  ): Promise<Profile> {
+  ): Promise<AuthProfile> {
     const result = (await this.supabase
       .from('profiles')
       .update(dto)
       .eq('id', userId)
-      .select()
-      .single()) as unknown as RepositoryResult<Profile>;
+      .select('id')
+      .single()) as unknown as RepositoryResult<{ id: string }>;
 
     if (result.error) throw new Error(result.error.message);
     if (!result.data) throw new Error('Profile not found');
-    return result.data;
+    const profile = await this.getProfile(userId);
+    if (!profile) throw new Error('Profile not found');
+    return profile;
   }
 }

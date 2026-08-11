@@ -70,4 +70,26 @@ describe('attachProjectClientFlag', () => {
     expect(project).not.toHaveProperty('consultant');
     expect(project.has_client).toBe(true);
   });
+
+  it('synthesizes consultant badge fields on member profiles', () => {
+    const project = attachProjectClientFlag({
+      id: 'project-1',
+      owner_id: 'client-1',
+      members: [
+        {
+          user_id: 'consultant-1',
+          origin: 'consultant',
+          user: {
+            id: 'consultant-1',
+            consultant_profile: [{ status: 'verified' }],
+          },
+        },
+      ],
+    });
+
+    expect(project.members[0].user).toMatchObject({
+      consultant_status: 'verified',
+      is_consultant_verified: true,
+    });
+  });
 });

@@ -20,7 +20,7 @@ import {
   type ProjectClientFlag,
   attachProjectClientFlag,
 } from '../projects/repositories/project-payload.mapper';
-import { isActiveConsultant } from '../../../common/auth/consultant-capability';
+import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
 import {
@@ -561,10 +561,7 @@ export class TeamsService {
       team_id: string;
       is_primary: boolean;
       attached_at: string;
-      project: Omit<
-        TeamAttachedProject,
-        keyof ProjectClientFlag
-      > | null;
+      project: Omit<TeamAttachedProject, keyof ProjectClientFlag> | null;
     }>;
     const projectIds = rows.map((r) => r.project_id).filter(Boolean);
     let accessSet = new Set<string>();
@@ -831,13 +828,11 @@ export class TeamsService {
 
   // Public so the team-member-rates service can reuse the same gate.
   async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .select('is_consultant_verified')
-      .eq('id', team.owner_id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!isActiveConsultant(data)) {
+    const isActive = await isActiveConsultantEnrollment(
+      this.supabase,
+      team.owner_id,
+    );
+    if (!isActive) {
       throw new MissingPermissionException({
         path: null,
         requiredRole: 'consultant',

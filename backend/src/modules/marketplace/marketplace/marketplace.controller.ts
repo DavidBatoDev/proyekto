@@ -61,6 +61,16 @@ export class MarketplaceController {
     return this.marketplaceService.goLive(user.id);
   }
 
+  @Post('pause')
+  pause(@CurrentUser() user: AuthenticatedUser) {
+    return this.marketplaceService.pause(user.id);
+  }
+
+  @Get('go-live/eligibility')
+  getGoLiveEligibility(@CurrentUser() user: AuthenticatedUser) {
+    return this.marketplaceService.getGoLiveEligibility(user.id);
+  }
+
   @Post('invite')
   @UseGuards(ConsultantOnlyGuard)
   inviteFreelancer(

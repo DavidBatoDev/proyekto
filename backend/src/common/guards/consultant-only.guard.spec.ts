@@ -7,38 +7,36 @@ function contextFor(user?: { id: string }) {
   } as any;
 }
 
-function supabaseFor(profile: unknown) {
+function supabaseFor(count: number, error: { message: string } | null = null) {
   const builder = {
     select: jest.fn(() => builder),
     eq: jest.fn(() => builder),
-    maybeSingle: jest.fn().mockResolvedValue({ data: profile, error: null }),
+    then: (resolve: (value: unknown) => unknown) =>
+      Promise.resolve({ count, error }).then(resolve),
   };
   return { from: jest.fn(() => builder) } as any;
 }
 
 describe('ConsultantOnlyGuard', () => {
   it('allows a verified consultant', async () => {
-    const guard = new ConsultantOnlyGuard(
-      supabaseFor({ is_consultant_verified: true }),
-    );
+    const guard = new ConsultantOnlyGuard(supabaseFor(1));
     await expect(guard.canActivate(contextFor({ id: 'user-1' }))).resolves.toBe(
       true,
     );
   });
 
   it.each([
-    { is_consultant_verified: false },
-    { is_consultant_verified: null },
-    null,
-  ])('rejects without verification: %p', async (profile) => {
-    const guard = new ConsultantOnlyGuard(supabaseFor(profile));
+    { count: 0, error: null },
+    { count: 1, error: { message: 'db down' } },
+  ])('rejects without active enrollment: %p', async ({ count, error }) => {
+    const guard = new ConsultantOnlyGuard(supabaseFor(count, error));
     await expect(
       guard.canActivate(contextFor({ id: 'user-1' })),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects an unauthenticated request', async () => {
-    const guard = new ConsultantOnlyGuard(supabaseFor(null));
+    const guard = new ConsultantOnlyGuard(supabaseFor(0));
     await expect(guard.canActivate(contextFor())).rejects.toBeInstanceOf(
       UnauthorizedException,
     );

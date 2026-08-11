@@ -3,8 +3,28 @@ export interface AdminRepository {
   listApplications(filters: { status?: string }): Promise<unknown[]>;
   getApplicationDetail(id: string): Promise<unknown>;
   getApplicationUserId(id: string): Promise<string>;
-  approveApplication(id: string): Promise<unknown>;
-  rejectApplication(id: string, reason?: string): Promise<unknown>;
+  approveApplication(id: string, reviewedBy: string): Promise<unknown>;
+  rejectApplication(
+    id: string,
+    reviewedBy: string,
+    reason?: string,
+  ): Promise<unknown>;
+  listConsultants(): Promise<unknown[]>;
+  suspendConsultant(
+    userId: string,
+    changedBy: string,
+    reason: string,
+  ): Promise<unknown>;
+  reinstateConsultant(
+    userId: string,
+    changedBy: string,
+    reason?: string,
+  ): Promise<unknown>;
+  revokeConsultant(
+    userId: string,
+    changedBy: string,
+    reason: string,
+  ): Promise<unknown>;
   listAdmins(): Promise<unknown[]>;
   grantAdmin(
     userId: string,

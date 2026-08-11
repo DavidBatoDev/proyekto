@@ -1,9 +1,11 @@
 import {
   IsEnum,
   IsNumber,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -12,7 +14,28 @@ export class ApplicationsQueryDto {
 }
 
 export class RejectApplicationDto {
-  @IsString() @IsOptional() reason?: string;
+  @IsString() @IsOptional() @MaxLength(1000) reason?: string;
+}
+
+export class SuspendConsultantDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason: string;
+}
+
+export class ReinstateConsultantDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class RevokeConsultantDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason: string;
 }
 
 export class MatchCandidatesQueryDto {

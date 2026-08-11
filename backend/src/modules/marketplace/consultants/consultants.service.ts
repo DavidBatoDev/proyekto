@@ -6,6 +6,7 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
+import { attachMarketplaceEnrollmentFields } from '../../../common/auth/consultant-capability';
 
 export const CONSULTANTS_REPOSITORY = Symbol('CONSULTANTS_REPOSITORY');
 
@@ -28,10 +29,12 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!inner(status)',
           )
-          .eq('is_consultant_verified', true);
-        return data || [];
+          .eq('consultant_profile.status', 'verified');
+        return (data || []).map((profile) =>
+          attachMarketplaceEnrollmentFields(profile),
+        );
       },
       { onStatus: options?.onCacheStatus },
     );
@@ -45,13 +48,13 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!inner(status)',
           )
           .eq('id', id)
-          .eq('is_consultant_verified', true)
+          .eq('consultant_profile.status', 'verified')
           .single();
         if (!data) throw new NotFoundException('Consultant not found');
-        return data;
+        return attachMarketplaceEnrollmentFields(data);
       },
       { onStatus: options?.onCacheStatus },
     );

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
@@ -22,7 +23,8 @@ import {
   RespondInviteDto,
 } from './dto/marketplace.dto';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
-import { isActiveConsultant } from '../../../common/auth/consultant-capability';
+import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
+import { FreelancerEligibilityService } from '../profile/freelancer-eligibility.service';
 
 export interface MarketplaceFreelancerCard {
   id: string;
@@ -71,6 +73,7 @@ export class MarketplaceService {
     private readonly authorization: ProjectAuthorizationService,
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    private readonly freelancerEligibility: FreelancerEligibilityService,
   ) {}
 
   private async emitNotification(
@@ -84,13 +87,9 @@ export class MarketplaceService {
   }
 
   private async ensureConsultant(userId: string): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .select('id, is_consultant_verified')
-      .eq('id', userId)
-      .single();
+    const isActive = await isActiveConsultantEnrollment(this.supabase, userId);
 
-    if (error || !isActiveConsultant(data)) {
+    if (!isActive) {
       throw new ForbiddenException('Consultant access required');
     }
   }
@@ -109,8 +108,10 @@ export class MarketplaceService {
       async () => {
         let profilesQuery = this.supabase
           .from('profiles')
-          .select('id, display_name, avatar_url, headline, is_email_verified')
-          .eq('is_public', true);
+          .select(
+            'id, display_name, avatar_url, headline, is_email_verified, freelancer_profile:freelancer_profiles!inner(status)',
+          )
+          .eq('freelancer_profile.status', 'active');
 
         if (query.search) {
           const escaped = query.search.replace(/[%_]/g, '');
@@ -243,12 +244,32 @@ export class MarketplaceService {
     );
   }
 
-  async goLive(userId: string): Promise<{ is_public: boolean }> {
+  async getGoLiveEligibility(userId: string) {
+    return this.freelancerEligibility.check(userId);
+  }
+
+  async goLive(userId: string): Promise<{ is_public: true; status: 'active' }> {
+    const eligibility = await this.freelancerEligibility.check(userId);
+    if (!eligibility.eligible) {
+      throw new BadRequestException({
+        message: 'Complete your freelancer profile before going live.',
+        missing: eligibility.missing,
+      });
+    }
+
+    const now = new Date().toISOString();
     const { data, error } = await this.supabase
-      .from('profiles')
-      .update({ is_public: true })
-      .eq('id', userId)
-      .select('is_public')
+      .from('freelancer_profiles')
+      .upsert(
+        {
+          user_id: userId,
+          status: 'active',
+          went_live_at: now,
+          paused_at: null,
+        },
+        { onConflict: 'user_id' },
+      )
+      .select('status')
       .single();
 
     if (error || !data) {
@@ -266,7 +287,26 @@ export class MarketplaceService {
     });
 
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
-    return { is_public: data.is_public as boolean };
+    return { is_public: true, status: 'active' };
+  }
+
+  async pause(userId: string): Promise<{ is_public: false; status: 'paused' }> {
+    const { data, error } = await this.supabase
+      .from('freelancer_profiles')
+      .update({
+        status: 'paused',
+        paused_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .select('status')
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Freelancer profile is not live.');
+
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return { is_public: false, status: 'paused' };
   }
 
   async inviteFreelancer(
@@ -297,12 +337,13 @@ export class MarketplaceService {
     await this.authorization.assertRole(userId, dto.projectId, 'admin');
 
     const { data: invitee, error: inviteeError } = await this.supabase
-      .from('profiles')
-      .select('id, is_public')
-      .eq('id', dto.inviteeId)
-      .single();
+      .from('freelancer_profiles')
+      .select('user_id')
+      .eq('user_id', dto.inviteeId)
+      .eq('status', 'active')
+      .maybeSingle();
 
-    if (inviteeError || !invitee || !invitee.is_public) {
+    if (inviteeError || !invitee) {
       throw new BadRequestException('Invitee is not available in marketplace.');
     }
 
@@ -336,7 +377,7 @@ export class MarketplaceService {
         invite_id: data.id,
         message: dto.message || null,
       },
-      link_url: '/freelancer/marketplace/invites',
+      link_url: '/invites',
     });
 
     return {

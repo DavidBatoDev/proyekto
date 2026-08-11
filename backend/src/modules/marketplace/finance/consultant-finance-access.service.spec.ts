@@ -40,14 +40,6 @@ function fakeSupabase(input: {
           return builder;
         },
         maybeSingle() {
-          if (table === 'profiles') {
-            return Promise.resolve({
-              data: {
-                is_consultant_verified: input.verified ?? true,
-              },
-              error: null,
-            });
-          }
           return Promise.resolve({
             data: input.project === undefined ? project : input.project,
             error: null,
@@ -69,7 +61,16 @@ function fakeSupabase(input: {
           }
           return Promise.resolve(
             head
-              ? { data: null, error: null, count: input.accessCount ?? 1 }
+              ? {
+                  data: null,
+                  error: null,
+                  count:
+                    table === 'consultant_profiles'
+                      ? input.verified === false
+                        ? 0
+                        : 1
+                      : (input.accessCount ?? 1),
+                }
               : {
                   data: input.accessRows ?? [{ project_id: project.id }],
                   error: null,

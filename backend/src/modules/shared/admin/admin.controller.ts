@@ -20,7 +20,10 @@ import {
   GrantAdminDto,
   MatchAssignDto,
   MatchCandidatesQueryDto,
+  ReinstateConsultantDto,
   RejectApplicationDto,
+  RevokeConsultantDto,
+  SuspendConsultantDto,
 } from './dto/admin.dto';
 
 @Controller('admin')
@@ -47,8 +50,11 @@ export class AdminController {
 
   @Post('applications/:id/approve')
   @UseGuards(AdminGuard)
-  approveApplication(@Param('id') id: string) {
-    return this.adminService.approveApplication(id);
+  approveApplication(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.adminService.approveApplication(id, user.id);
   }
 
   @Post('applications/:id/reject')
@@ -56,8 +62,45 @@ export class AdminController {
   rejectApplication(
     @Param('id') id: string,
     @Body() dto: RejectApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.adminService.rejectApplication(id, dto);
+    return this.adminService.rejectApplication(id, user.id, dto);
+  }
+
+  @Get('consultants')
+  @UseGuards(AdminGuard)
+  listConsultants() {
+    return this.adminService.listConsultants();
+  }
+
+  @Post('consultants/:userId/suspend')
+  @UseGuards(AdminGuard)
+  suspendConsultant(
+    @Param('userId') userId: string,
+    @Body() dto: SuspendConsultantDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.adminService.suspendConsultant(userId, user.id, dto);
+  }
+
+  @Post('consultants/:userId/reinstate')
+  @UseGuards(AdminGuard)
+  reinstateConsultant(
+    @Param('userId') userId: string,
+    @Body() dto: ReinstateConsultantDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.adminService.reinstateConsultant(userId, user.id, dto);
+  }
+
+  @Post('consultants/:userId/revoke')
+  @UseGuards(AdminGuard)
+  revokeConsultant(
+    @Param('userId') userId: string,
+    @Body() dto: RevokeConsultantDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.adminService.revokeConsultant(userId, user.id, dto);
   }
 
   @Get('admins')

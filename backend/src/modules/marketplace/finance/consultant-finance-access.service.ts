@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { isActiveConsultant } from '../../../common/auth/consultant-capability';
+import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 
 export interface ConsultantFinanceProject {
   id: string;
@@ -103,12 +103,11 @@ export class ConsultantFinanceAccessService {
   }
 
   private async assertVerified(callerId: string): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .select('is_consultant_verified')
-      .eq('id', callerId)
-      .maybeSingle();
-    if (error || !isActiveConsultant(data)) {
+    const isActive = await isActiveConsultantEnrollment(
+      this.supabase,
+      callerId,
+    );
+    if (!isActive) {
       throw new NotFoundException('Finance project not found');
     }
   }

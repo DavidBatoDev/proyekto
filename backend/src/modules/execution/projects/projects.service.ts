@@ -32,7 +32,7 @@ import {
   type ProjectRole,
 } from './authorization/project-authorization.service';
 import { MissingPermissionException } from './authorization/missing-permission.exception';
-import { isActiveConsultant } from '../../../common/auth/consultant-capability';
+import { consultantFlagFromEmbed } from '../../../common/auth/consultant-capability';
 import {
   AddProjectMemberDto,
   CreateProjectFromRoadmapDto,
@@ -863,7 +863,7 @@ export class ProjectsService {
       };
     }
 
-    if (!isActiveConsultant(profile)) {
+    if (!consultantFlagFromEmbed(profile.consultant_profile)) {
       throw new ForbiddenException(
         'Consultant mode requires an active consultant account.',
       );

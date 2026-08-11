@@ -18,6 +18,8 @@ import {
   UserStats,
   UserIdentityDocument,
 } from '../../../../common/entities';
+import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
+import type { MarketplaceProfile } from './profile.repository.interface';
 
 @Injectable()
 export class SupabaseProfileRepository implements ProfileRepository {
@@ -40,7 +42,13 @@ export class SupabaseProfileRepository implements ProfileRepository {
       rateSettingsResult,
       identityDocsResult,
     ] = await Promise.all([
-      this.supabase.from('profiles').select('*').eq('id', userId).single(),
+      this.supabase
+        .from('profiles')
+        .select(
+          '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+        )
+        .eq('id', userId)
+        .single(),
       this.supabase
         .from('user_skills')
         .select('*, skill:skills(*)')
@@ -84,7 +92,9 @@ export class SupabaseProfileRepository implements ProfileRepository {
     if (!profileResult.data) return null;
 
     return {
-      profile: profileResult.data as Profile,
+      profile: attachMarketplaceEnrollmentFields(
+        profileResult.data,
+      ) as MarketplaceProfile,
       skills: (skillsResult.data || []) as UserSkill[],
       languages: (languagesResult.data || []) as UserLanguage[],
       educations: (educationsResult.data || []) as UserEducation[],

@@ -14,9 +14,12 @@ import {
   UserStats,
   UserIdentityDocument,
 } from '../../../../common/entities';
+import type { MarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
+
+export type MarketplaceProfile = Profile & MarketplaceEnrollmentFields;
 
 export interface FullProfile {
-  profile: Profile;
+  profile: MarketplaceProfile;
   skills: UserSkill[];
   languages: UserLanguage[];
   educations: UserEducation[];

@@ -32,7 +32,7 @@ export type ProjectResourcesPayload = {
 
 export interface ProjectsRepository {
   getCreatorProfileForProjectCreation(userId: string): Promise<{
-    is_consultant_verified: boolean;
+    consultant_profile: unknown;
   } | null>;
   findByUser(userId: string): Promise<Project[]>;
   findDashboardByUser(userId: string): Promise<Project[]>;

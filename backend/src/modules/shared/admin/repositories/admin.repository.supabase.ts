@@ -1,8 +1,28 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import { AdminRepository } from './admin.repository.interface';
 import { attachProjectClientFlag } from '../../../execution/projects/repositories/project-payload.mapper';
+import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
+
+type ConsultantEnrollmentStatus =
+  | 'pending'
+  | 'verified'
+  | 'suspended'
+  | 'revoked';
+
+const CONSULTANT_ENROLLMENT_SELECT =
+  'user_id, status, application_id, verified_at, suspended_at, revoked_at, status_reason, status_changed_by, created_at, updated_at, profile:profiles!consultant_profiles_user_id_fkey(id, display_name, first_name, last_name, email, avatar_url, headline)';
+
+interface RepositoryResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
 
 @Injectable()
 export class SupabaseAdminRepository implements AdminRepository {
@@ -24,13 +44,21 @@ export class SupabaseAdminRepository implements AdminRepository {
     let q = this.supabase
       .from('consultant_applications')
       .select(
-        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, is_consultant_verified)',
+        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, consultant_profile:consultant_profiles(status))',
       )
       .order('created_at', { ascending: false });
     if (filters.status) q = q.eq('status', filters.status);
-    const { data, error } = await q;
+    const { data, error } = (await q) as unknown as RepositoryResult<
+      Record<string, unknown>[]
+    >;
     if (error) throw new Error(error.message);
-    return data || [];
+    return (data || []).map((application) => ({
+      ...application,
+      applicant:
+        application.applicant && typeof application.applicant === 'object'
+          ? attachMarketplaceEnrollmentFields(application.applicant)
+          : application.applicant,
+    }));
   }
 
   async getApplicationDetail(id: string) {
@@ -56,7 +84,13 @@ export class SupabaseAdminRepository implements AdminRepository {
       identityDocs,
       rateSettings,
     ] = await Promise.all([
-      this.supabase.from('profiles').select('*').eq('id', userId).single(),
+      this.supabase
+        .from('profiles')
+        .select(
+          '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+        )
+        .eq('id', userId)
+        .single(),
       this.supabase
         .from('user_skills')
         .select('*, skill:skills(*)')
@@ -88,8 +122,11 @@ export class SupabaseAdminRepository implements AdminRepository {
         .single(),
     ]);
 
-    const profileData =
-      (profile.data as Record<string, unknown> | null) ?? null;
+    const profileData = profile.data
+      ? attachMarketplaceEnrollmentFields(
+          profile.data as Record<string, unknown>,
+        )
+      : null;
 
     return {
       ...(app as Record<string, unknown>),
@@ -102,7 +139,8 @@ export class SupabaseAdminRepository implements AdminRepository {
             email: profileData.email,
             avatar_url: profileData.avatar_url,
             headline: profileData.headline,
-            is_consultant_verified: Boolean(profileData.is_consultant_verified),
+            consultant_status: profileData.consultant_status,
+            is_consultant_verified: profileData.is_consultant_verified,
           }
         : undefined,
       vetting: {
@@ -133,49 +171,122 @@ export class SupabaseAdminRepository implements AdminRepository {
     if (error || !data?.user_id) {
       throw new NotFoundException('Application not found');
     }
-    return data.user_id as string;
+    return data.user_id;
   }
 
-  async approveApplication(id: string) {
-    const { data: app } = await this.supabase
+  async approveApplication(id: string, reviewedBy: string) {
+    const appResult = (await this.supabase
       .from('consultant_applications')
       .select('user_id')
       .eq('id', id)
-      .single();
+      .single()) as unknown as RepositoryResult<{ user_id: string }>;
+    const app = appResult.data;
     if (!app) throw new NotFoundException('Application not found');
 
-    const profileUpdate = (await this.supabase
-      .from('profiles')
-      .update({ is_consultant_verified: true })
-      .eq('id', (app as Record<string, string>).user_id)) as unknown as {
+    const now = new Date().toISOString();
+    const userId = app.user_id;
+    const enrollmentUpsert = (await this.supabase
+      .from('consultant_profiles')
+      .upsert(
+        {
+          user_id: userId,
+          status: 'verified',
+          application_id: id,
+          verified_at: now,
+          suspended_at: null,
+          revoked_at: null,
+          status_reason: null,
+          status_changed_by: reviewedBy,
+        },
+        { onConflict: 'user_id' },
+      )) as unknown as {
       error: { message: string } | null;
     };
-    const { error: profileError } = profileUpdate;
-    if (profileError) throw new Error(profileError.message);
+    if (enrollmentUpsert.error) {
+      throw new Error(enrollmentUpsert.error.message);
+    }
 
-    const { data, error } = await this.supabase
+    const result = (await this.supabase
       .from('consultant_applications')
-      .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      .update({
+        status: 'approved',
+        reviewed_at: now,
+        reviewed_by: reviewedBy,
+        rejection_reason: null,
+      })
       .eq('id', id)
       .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
+      .single()) as unknown as RepositoryResult<Record<string, unknown>>;
+    if (result.error) throw new Error(result.error.message);
+    return result.data;
   }
 
-  async rejectApplication(id: string, reason?: string) {
-    const { data, error } = await this.supabase
+  async rejectApplication(id: string, reviewedBy: string, reason?: string) {
+    const result = (await this.supabase
       .from('consultant_applications')
       .update({
         status: 'rejected',
         rejection_reason: reason,
         reviewed_at: new Date().toISOString(),
+        reviewed_by: reviewedBy,
       })
       .eq('id', id)
       .select()
-      .single();
+      .single()) as unknown as RepositoryResult<Record<string, unknown>>;
+    if (result.error) throw new Error(result.error.message);
+    return result.data;
+  }
+
+  async listConsultants(): Promise<unknown[]> {
+    const { data, error } = await this.supabase
+      .from('consultant_profiles')
+      .select(CONSULTANT_ENROLLMENT_SELECT)
+      .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return data;
+    return data || [];
+  }
+
+  suspendConsultant(userId: string, changedBy: string, reason: string) {
+    return this.transitionConsultant(
+      userId,
+      ['verified'],
+      {
+        status: 'suspended',
+        suspended_at: new Date().toISOString(),
+        revoked_at: null,
+        status_reason: reason,
+        status_changed_by: changedBy,
+      },
+      'Only verified consultants can be suspended.',
+    );
+  }
+
+  reinstateConsultant(userId: string, changedBy: string, reason?: string) {
+    return this.transitionConsultant(
+      userId,
+      ['suspended'],
+      {
+        status: 'verified',
+        suspended_at: null,
+        status_reason: reason ?? null,
+        status_changed_by: changedBy,
+      },
+      'Only suspended consultants can be reinstated.',
+    );
+  }
+
+  revokeConsultant(userId: string, changedBy: string, reason: string) {
+    return this.transitionConsultant(
+      userId,
+      ['verified', 'suspended'],
+      {
+        status: 'revoked',
+        revoked_at: new Date().toISOString(),
+        status_reason: reason,
+        status_changed_by: changedBy,
+      },
+      'Only verified or suspended consultants can be revoked.',
+    );
   }
 
   async listAdmins() {
@@ -241,14 +352,14 @@ export class SupabaseAdminRepository implements AdminRepository {
       .select(
         `
         id, display_name, first_name, last_name, email, avatar_url, headline, country,
-        is_consultant_verified,
+        consultant_profile:consultant_profiles!inner(status),
         rate_settings:user_rate_settings(*),
         stats:user_stats(*),
         specializations:user_specializations(*),
         skills:user_skills(*, skill:skills(*))
       `,
       )
-      .eq('is_consultant_verified', true);
+      .eq('consultant_profile.status', 'verified');
 
     if (!candidates) return [];
 
@@ -256,7 +367,8 @@ export class SupabaseAdminRepository implements AdminRepository {
     const normalizedQ = q?.trim().toLowerCase();
 
     const scoredCandidates = (candidates as Record<string, unknown>[]).map(
-      (c) => {
+      (candidate) => {
+        const c = attachMarketplaceEnrollmentFields(candidate);
         const candidateSkillNames: string[] = Array.isArray(c.skills)
           ? (c.skills as Record<string, unknown>[]).map((s) => {
               const skill = s.skill as Record<string, string> | undefined;
@@ -357,10 +469,52 @@ export class SupabaseAdminRepository implements AdminRepository {
   }
 
   async listUsers() {
-    const { data } = await this.supabase
+    const result = (await this.supabase
       .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    return data || [];
+      .select(
+        '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+      )
+      .order('created_at', {
+        ascending: false,
+      })) as unknown as RepositoryResult<Record<string, unknown>[]>;
+    return (result.data || []).map((profile) =>
+      attachMarketplaceEnrollmentFields(profile),
+    );
+  }
+
+  private async transitionConsultant(
+    userId: string,
+    allowedStatuses: ConsultantEnrollmentStatus[],
+    patch: Record<string, unknown>,
+    illegalMessage: string,
+  ): Promise<unknown> {
+    const { data: current, error: currentError } = await this.supabase
+      .from('consultant_profiles')
+      .select('status')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (currentError) throw new Error(currentError.message);
+    if (!current)
+      throw new NotFoundException('Consultant enrollment not found');
+
+    const currentStatus = current.status as ConsultantEnrollmentStatus;
+    if (!allowedStatuses.includes(currentStatus)) {
+      throw new ConflictException(illegalMessage);
+    }
+
+    const { data, error } = await this.supabase
+      .from('consultant_profiles')
+      .update(patch)
+      .eq('user_id', userId)
+      .eq('status', currentStatus)
+      .select(CONSULTANT_ENROLLMENT_SELECT)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) {
+      throw new ConflictException(
+        'Consultant enrollment changed; refresh and try again.',
+      );
+    }
+    return data;
   }
 }

@@ -8,22 +8,14 @@ import {
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
 } from './dto/email-auth.dto';
-import { Profile } from '../../../common/entities';
 import { PersonalWorkspaceService } from '../../execution/projects/personal-workspace.service';
-import {
-  FreelancerEligibilityService,
-  type FreelancerRequirement,
-} from '../../marketplace/profile/freelancer-eligibility.service';
 import { EmailOtpService } from './email-otp.service';
+import type { AuthProfile } from './repositories/auth.repository.interface';
 
 export interface CompleteOnboardingResult {
-  profile: Profile;
+  profile: AuthProfile;
   personal_workspace_id: string | null;
   personal_team_id: string | null;
-}
-
-export interface ProfileWithEligibility extends Profile {
-  missingFreelancerRequirements: FreelancerRequirement[];
 }
 
 @Injectable()
@@ -33,18 +25,13 @@ export class AuthService {
   constructor(
     @Inject(AUTH_REPOSITORY) private readonly authRepo: AuthRepository,
     private readonly personalWorkspaceService: PersonalWorkspaceService,
-    private readonly freelancerEligibility: FreelancerEligibilityService,
     private readonly emailOtpService: EmailOtpService,
   ) {}
 
-  async getProfile(userId: string): Promise<ProfileWithEligibility> {
+  async getProfile(userId: string): Promise<AuthProfile> {
     const profile = await this.authRepo.getProfile(userId);
     if (!profile) throw new NotFoundException('Profile not found');
-    // Attach the freelancer-eligibility checklist so the dashboard sidebar
-    // can show what's left without a separate roundtrip. Cheap (4 small
-    // lookups) and re-evaluated per request.
-    const { missing } = await this.freelancerEligibility.check(userId);
-    return { ...profile, missingFreelancerRequirements: missing };
+    return profile;
   }
 
   async completeOnboarding(userId: string): Promise<CompleteOnboardingResult> {
@@ -74,7 +61,10 @@ export class AuthService {
     return { profile, personal_workspace_id, personal_team_id };
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<Profile> {
+  async updateProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<AuthProfile> {
     return this.authRepo.updateProfile(userId, dto);
   }
 

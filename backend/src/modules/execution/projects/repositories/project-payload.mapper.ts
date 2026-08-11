@@ -2,11 +2,14 @@ export interface ProjectClientFlag {
   has_client: boolean;
 }
 
+import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
+
 interface ProjectAccessMemberRow {
   user_id?: unknown;
   origin?: unknown;
   has_direct_grant?: unknown;
   granted_at?: unknown;
+  user?: unknown;
 }
 
 function timestamp(value: unknown): number {
@@ -46,9 +49,17 @@ export function attachProjectClientFlag<T extends object>(
   const members = Array.isArray(record.members)
     ? (record.members as ProjectAccessMemberRow[])
     : [];
+  const mappedMembers = members.map((member) => ({
+    ...member,
+    user:
+      member.user && typeof member.user === 'object'
+        ? attachMarketplaceEnrollmentFields(member.user)
+        : member.user,
+  }));
 
   return {
     ...project,
+    ...(Array.isArray(record.members) ? { members: mappedMembers } : {}),
     has_client: record.owner_id !== consultantOfRecordId(members),
   };
 }

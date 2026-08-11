@@ -5,9 +5,10 @@ import { UsersRepository } from './users.repository.interface';
 import { Profile } from '../../../../common/entities';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import type { AppearancePreferences } from '../dto/appearance-preferences.dto';
+import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
 
 const PUBLIC_FIELDS =
-  'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at';
+  'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)';
 
 @Injectable()
 export class SupabaseUsersRepository implements UsersRepository {
@@ -18,10 +19,12 @@ export class SupabaseUsersRepository implements UsersRepository {
   async findById(id: string): Promise<Profile | null> {
     const { data } = await this.supabase
       .from('profiles')
-      .select('*')
+      .select(
+        '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+      )
       .eq('id', id)
       .single();
-    return (data as Profile) || null;
+    return data ? (attachMarketplaceEnrollmentFields(data) as Profile) : null;
   }
 
   async findPublicById(id: string): Promise<Partial<Profile> | null> {
@@ -30,7 +33,9 @@ export class SupabaseUsersRepository implements UsersRepository {
       .select(PUBLIC_FIELDS)
       .eq('id', id)
       .single();
-    return (data as Partial<Profile>) || null;
+    return data
+      ? (attachMarketplaceEnrollmentFields(data) as Partial<Profile>)
+      : null;
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<Profile> {
@@ -38,10 +43,13 @@ export class SupabaseUsersRepository implements UsersRepository {
       .from('profiles')
       .update(dto)
       .eq('id', id)
-      .select()
+      .select('id')
       .single();
     if (error) throw new Error(error.message);
-    return data as Profile;
+    if (!data) throw new Error('Profile not found');
+    const profile = await this.findById(id);
+    if (!profile) throw new Error('Profile not found');
+    return profile;
   }
 
   async updateAppearancePreferences(
