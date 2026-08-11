@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { KNOWLEDGE_SEARCH_SOURCE_TYPES } from '../../roadmaps/dto/roadmap-ai-knowledge.dto';
+import { KNOWLEDGE_SEARCH_SOURCE_TYPES } from '../../execution/roadmaps/dto/roadmap-ai-knowledge.dto';
 import {
   clampLimit,
   defineTool,

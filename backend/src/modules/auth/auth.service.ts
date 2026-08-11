@@ -9,7 +9,7 @@ import {
   PasswordResetRequestDto,
 } from './dto/email-auth.dto';
 import { Profile } from '../../common/entities';
-import { PersonalWorkspaceService } from '../projects/personal-workspace.service';
+import { PersonalWorkspaceService } from '../execution/projects/personal-workspace.service';
 import {
   FreelancerEligibilityService,
   type FreelancerRequirement,

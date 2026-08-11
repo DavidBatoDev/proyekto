@@ -21,7 +21,7 @@ import {
   MarketplaceQueryDto,
   RespondInviteDto,
 } from './dto/marketplace.dto';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ProjectAuthorizationService } from '../execution/projects/authorization/project-authorization.service';
 import { isActiveConsultant } from '../../common/auth/consultant-capability';
 
 export interface MarketplaceFreelancerCard {

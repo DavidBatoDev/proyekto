@@ -9,8 +9,8 @@ import {
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
-import { RoadmapAuthorizationService } from '../roadmaps/services/roadmap-authorization.service';
-import { ChatService } from '../chat/chat.service';
+import { RoadmapAuthorizationService } from '../execution/roadmaps/services/roadmap-authorization.service';
+import { ChatService } from '../execution/chat/chat.service';
 import { AuthorizeRealtimeDto } from './dto/authorize.dto';
 
 type ParsedRoom =

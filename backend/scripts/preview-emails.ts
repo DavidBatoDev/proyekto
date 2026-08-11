@@ -18,8 +18,8 @@ import {
 } from '../src/common/mail/templates/layout';
 import { buildInvoiceEmailHtml } from '../src/modules/invoices/invoice-email.template';
 import { renderNotificationEmail } from '../src/modules/notifications/email/notification-email-registry';
-import { buildInviteEmail } from '../src/modules/projects/project-invite-email.template';
-import { buildTeamInviteEmail } from '../src/modules/teams/team-invite-email.template';
+import { buildInviteEmail } from '../src/modules/execution/projects/project-invite-email.template';
+import { buildTeamInviteEmail } from '../src/modules/execution/teams/team-invite-email.template';
 
 const OUT = join(__dirname, '..', 'tmp', 'email-preview');
 mkdirSync(OUT, { recursive: true });

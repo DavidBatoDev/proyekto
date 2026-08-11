@@ -1,5 +1,5 @@
 import { buildInvoiceEmailHtml } from '../../../modules/invoices/invoice-email.template';
-import { buildInviteEmail } from '../../../modules/projects/project-invite-email.template';
+import { buildInviteEmail } from '../../../modules/execution/projects/project-invite-email.template';
 
 /**
  * Byte-for-byte guard on the two branded email bodies.

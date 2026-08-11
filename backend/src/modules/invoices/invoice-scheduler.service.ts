@@ -18,7 +18,7 @@ import {
   type ContractRow,
 } from '../contracts/contracts.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ProjectAuthorizationService } from '../execution/projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
 
 export interface InvoiceRunResult {

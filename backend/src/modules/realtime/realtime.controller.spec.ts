@@ -1,7 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { RealtimeController } from './realtime.controller';
-import type { RoadmapAuthorizationService } from '../roadmaps/services/roadmap-authorization.service';
-import type { ChatService } from '../chat/chat.service';
+import type { RoadmapAuthorizationService } from '../execution/roadmaps/services/roadmap-authorization.service';
+import type { ChatService } from '../execution/chat/chat.service';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 
 describe('RealtimeController', () => {

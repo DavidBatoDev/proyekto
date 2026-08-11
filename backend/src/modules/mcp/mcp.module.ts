@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ProjectsModule } from '../projects/projects.module';
-import { RoadmapsModule } from '../roadmaps/roadmaps.module';
-import { ChatModule } from '../chat/chat.module';
+import { ProjectsModule } from '../execution/projects/projects.module';
+import { RoadmapsModule } from '../execution/roadmaps/roadmaps.module';
+import { ChatModule } from '../execution/chat/chat.module';
 import { McpController } from './mcp.controller';
 import { McpTokensController } from './mcp-tokens.controller';
 import { McpAuthGuard } from './mcp-auth.guard';

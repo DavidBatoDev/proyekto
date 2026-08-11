@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { ProjectAuthorizationService } from '../execution/projects/authorization/project-authorization.service';
 import { ContractsService } from './contracts.service';
 import {
   AllocationMode,

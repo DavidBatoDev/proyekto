@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { getPermission } from '../../projects/permissions/project-permissions';
+import { getPermission } from '../../execution/projects/permissions/project-permissions';
 import {
   McpToolError,
   assertProjectViewer,

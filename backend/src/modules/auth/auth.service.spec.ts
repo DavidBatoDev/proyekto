@@ -1,6 +1,6 @@
 import { AuthService } from './auth.service';
 import type { AuthRepository } from './repositories/auth.repository.interface';
-import type { PersonalWorkspaceService } from '../projects/personal-workspace.service';
+import type { PersonalWorkspaceService } from '../execution/projects/personal-workspace.service';
 import type { Profile } from '../../common/entities';
 import type { EmailOtpService } from './email-otp.service';
 

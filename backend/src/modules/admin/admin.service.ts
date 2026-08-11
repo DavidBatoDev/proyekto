@@ -9,8 +9,8 @@ import {
   MatchCandidatesQueryDto,
   RejectApplicationDto,
 } from './dto/admin.dto';
-import { TeamsService } from '../teams/teams.service';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { TeamsService } from '../execution/teams/teams.service';
+import { ProjectAuthorizationService } from '../execution/projects/authorization/project-authorization.service';
 
 @Injectable()
 export class AdminService {

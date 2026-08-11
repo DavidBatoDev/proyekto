@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AdminRepository } from './admin.repository.interface';
-import { synthesizeProjectConsultant } from '../../projects/repositories/project-payload.mapper';
+import { synthesizeProjectConsultant } from '../../execution/projects/repositories/project-payload.mapper';
 
 @Injectable()
 export class SupabaseAdminRepository implements AdminRepository {

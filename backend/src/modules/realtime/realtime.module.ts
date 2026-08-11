@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RealtimeController } from './realtime.controller';
-import { RoadmapsModule } from '../roadmaps/roadmaps.module';
-import { ChatModule } from '../chat/chat.module';
+import { RoadmapsModule } from '../execution/roadmaps/roadmaps.module';
+import { ChatModule } from '../execution/chat/chat.module';
 
 /**
  * Hosts the connection-authorize endpoint the realtime Worker calls. Imports
