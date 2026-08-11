@@ -1,6 +1,6 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
@@ -10,8 +10,10 @@ and hires freelancers). The gate between them is consultant verification.
 
 A user applies to become a verified consultant; an admin reviews and approves.
 
-- **Table:** `consultant_applications` (`application_status` = draft \| submitted \|
-  under_review \| approved \| rejected). This is the only `consultant_*` table.
+- **Application table:** `consultant_applications` (`application_status` = draft \|
+  submitted \| under_review \| approved \| rejected).
+- **Capability table:** `consultant_profiles` (`pending` \| `verified` \|
+  `suspended` \| `revoked`). It is created at approval, not submission.
 - **HTTP:** `GET /applications/me`, `POST /applications` (upsert), `POST
   /applications/submit`.
 - **Review** happens in the admin console over the full `user_*` identity — see
@@ -19,8 +21,9 @@ A user applies to become a verified consultant; an admin reviews and approves.
 [Admin vetting playbook](../../12-runbooks/README.md).
 
 Any authenticated account may apply — there is no account role and no consultant
-signup lane. Approval idempotently provisions the applicant's personal team and flips
-`is_consultant_verified`, the single account-level capability.
+signup lane. Approval idempotently provisions the applicant's personal team and
+upserts a verified consultant enrollment with the application and reviewing admin.
+The admin console can suspend, reinstate, revoke, and re-approve that retained row.
 
 ## Marketplace
 
@@ -29,7 +32,9 @@ Active consultants discover and invite public Talent accounts into their project
 | Endpoint | Guard | Purpose |
 | --- | --- | --- |
 | `GET /marketplace/freelancers` | `ConsultantOnlyGuard` | Browse the freelancer pool |
-| `POST /marketplace/go-live` | Supabase | A freelancer opts into being discoverable |
+| `GET /marketplace/go-live/eligibility` | Supabase | Preflight the server-enforced go-live requirements |
+| `POST /marketplace/go-live` | Supabase | Create or resume an active freelancer enrollment |
+| `POST /marketplace/pause` | Supabase | Pause marketplace discovery without deleting history |
 | `POST /marketplace/invite` | `ConsultantOnlyGuard` | Invite a freelancer to a project |
 | `GET/PATCH /marketplace/invites[/me,/:id/respond]` | Supabase | List / respond to invites |
 
@@ -37,12 +42,12 @@ Discovery draws on the profile sub-entities (`user_rate_settings`, `user_stats`,
 `user_specializations`, `user_skills`) so consultants can filter by skill, niche,
 rate, and availability. Invites reuse `project_invites`.
 
-> **The active-consultant gate:** consultant-only routes require
-> `profiles.is_consultant_verified=true` through the shared predicate — vetting is
-> the only account-level capability. The freelancer query filters `is_public=true`
-> with no eligibility enforcement, and `POST /marketplace/go-live` has the same gap;
-> marketplace enrollment records are the designed fix
-> ([Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
+> **The enrollment gates:** consultant-only routes require
+> `consultant_profiles.status='verified'` through the shared predicate. The freelancer
+> pool and direct invite precondition require `freelancer_profiles.status='active'`.
+> Go-live enforces the same eligibility checklist server-side; pause and resume are
+> status transitions, never row deletion. `user_rate_settings` remains the shared
+> rate card for both marketplace paths.
 > See
 > [Talent → discovery and delivery](../talent/discovery-and-delivery.md),
 > [Backend → auth & guards](../../03-backend/auth-and-guards.md), and

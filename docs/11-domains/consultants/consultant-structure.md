@@ -1,17 +1,17 @@
 # Consultant Structure
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
-There is no role-specific consultant profile table. The only `consultant_*` table is
-`consultant_applications`, which records a vetting workflow rather than identity. The public
-profile is assembled from `profiles` and shared `user_*` records, while project authority is
-stored separately.
+`consultant_profiles` stores the lifecycle of the vetted marketplace capability.
+It does not duplicate the public profile: presentation and professional facts remain
+in `profiles`, shared `user_*` records, and `user_rate_settings`. Project authority
+is stored separately.
 
 ## Data model
 
 ```text
 profiles
-  |-- is_consultant_verified        the one account-level capability
+  +-- consultant_profiles           verified / suspended / revoked capability
   |
   +-- consultant_applications       vetting workflow
   +-- user_*                        professional identity
@@ -21,7 +21,7 @@ profiles
 
 | Fact | Answers |
 | --- | --- |
-| `profiles.is_consultant_verified` | Did admin vetting succeed? |
+| `consultant_profiles.status` | Is consultant marketplace capability verified, suspended, or revoked? |
 | `consultant_applications.status` | Where is the application workflow? |
 | `project_access.origin='consultant'` | Who is consultant-of-record and which project permission delta applies? |
 | `teams.owner_id` / `team_members.role` | Who controls this reusable team? |
@@ -29,7 +29,7 @@ profiles
 These fields can disagree. A verified consultant can be a project member without carrying
 consultant origin, and changing the consultant-of-record requires an explicit
 project-access grant. There is no account-level "consultant identity" separate from
-the capability — `profiles.role` was dropped 2026-08-10 (see
+the enrollment — `profiles.role` was dropped 2026-08-10 (see
 [Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
 
 ## Provisioning
@@ -42,16 +42,14 @@ verification, so an active consultant never exists without their required team.
 ## Public directory
 
 `GET /consultants` and `GET /consultants/:id` are public and return only profiles with
-`is_consultant_verified=true`. The directory is therefore an active-consultant
+a verified consultant enrollment. The directory is therefore an active-consultant
 projection, not a list of applicants.
 
-## Server-owned privileged field
+## Server-owned enrollment
 
-A `BEFORE INSERT OR UPDATE` trigger (`tg_profiles_protect_privileged_columns`)
-protects `profiles.is_consultant_verified` — its only guarded column — from `anon`
-and `authenticated` sessions. Browser inserts are coerced to `false` and browser
-updates that change the field are rejected. Service-role backend writes and
-migrations remain authorized.
+RLS gives the owner and admins read access, but no authenticated owner-write policy.
+Approval and admin lifecycle endpoints use the service-role backend. The retained row,
+timestamps, reason, reviewing application, and changing admin form the lifecycle audit.
 
 ## Project identity is separate
 

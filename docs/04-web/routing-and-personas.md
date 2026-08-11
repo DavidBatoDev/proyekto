@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -13,7 +13,7 @@ gating done in route `beforeLoad` hooks and project components.
 | Subtree | Covers |
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
-| `admin/` | Layout `admin.tsx` + `applications`, `match`, `approve-admin`, `settings` |
+| `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
 | `consultant/` | `browse`, `marketplace`, `templates`, `apply`, `$profileId` |
 | `freelancer/` | `invites`, `go-live` |
 | `profile/` | `profile/$profileId` |
@@ -75,8 +75,7 @@ Gating happens in three places:
   reverse-guard (already-authenticated users are bounced away).
 - **Active consultant** — `consultant/marketplace` and `consultant/templates`
   add a `beforeLoad` check that redirects unless `isActiveConsultant(profile)`
-  confirms completed vetting (`profiles.is_consultant_verified` — the only
-  account-level capability; there is no account role).
+  confirms a verified `consultant_profiles` enrollment (there is no account role).
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
   exactly five route bodies — `roadmap`, `work-items`, `resources`, `chat/$chatRef`, and

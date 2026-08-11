@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `freelancer` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -10,7 +10,7 @@ dashboard subtree.
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/freelancer/go-live` | Complete professional data and set the profile public | Authentication only |
+| `/freelancer/go-live` | Complete professional data and activate marketplace enrollment | Authentication plus server eligibility |
 | `/freelancer/invites` | Legacy URL forwarding to `/invites` | Redirect |
 | `/invites` | Review and respond to project invites | Authentication and invite ownership |
 
@@ -43,7 +43,7 @@ Talent project visibility is controlled entirely by `project_access`.
 ## Active-consultant-only surfaces
 
 Unvetted users are blocked from these by the shared predicate
-(`is_consultant_verified IS TRUE`, server-managed via a privileged-columns trigger):
+(`consultant_profiles.status='verified'`, server-managed through enrollment APIs):
 
 | Route or API | Gate |
 | --- | --- |

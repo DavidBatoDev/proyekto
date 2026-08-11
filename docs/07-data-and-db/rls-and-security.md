@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -34,8 +34,13 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | `get_user_roadmap_effective_role(...)` | Roadmap role resolution |
 | `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access and persona from `project_access` |
 | `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
-| `is_active_consultant(uid)` | Completed vetting: `is_consultant_verified IS TRUE` (there is no account role) |
-| `is_verified_consultant(uid)` | Compatibility alias for `is_active_consultant` |
+| `is_active_consultant(uid)` | Verified consultant enrollment: `consultant_profiles.status = 'verified'` |
+| `is_active_freelancer(uid)` | Active public-pool enrollment: `freelancer_profiles.status = 'active'` |
+
+Both enrollment predicates are `SECURITY DEFINER` with `search_path = public`.
+They deliberately avoid `profiles`: querying `profiles` from its own policy recurses,
+and querying the owner-readable enrollment tables as the caller would hide other
+users' rows.
 
 The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 Finance RLS uses consultant-origin owner rows in `project_access`; explicit contract
@@ -48,7 +53,6 @@ owner/client branches remain in force where applicable.
 | `tg_project_team_members_sync_shares` | Curating a team member fans out to a `project_access` row |
 | `tg_team_members_block_owner_delete` | You can't remove a team's owner |
 | `tg_team_member_rates_check_consultant` | Team-member rates require an active consultant owner |
-| `profiles_protect_privileged_columns` | Browser sessions cannot write `profiles.is_consultant_verified` (its only guarded column since `profiles.role` was dropped, `20260810160000`) |
 | `tg_project_teams_sync_primary` | Keeps a project's primary team consistent |
 | `handle_new_user()` | Creates a `profiles` row when `auth.users` gains a row |
 
@@ -57,6 +61,9 @@ owner/client branches remain in force where applicable.
 Some tables are written **only** by the backend (service role); their RLS SELECT
 policies are defense-in-depth allows, and there is no client write path:
 
+- `consultant_profiles`, `freelancer_profiles` — owners may read their enrollment
+  and admins may manage all rows, but authenticated callers get no direct INSERT or
+  UPDATE policy. Approval and self-service go-live/pause use the service-role API.
 - `project_activity_log` — the audit trail (service-role writes only), fed via the
   `@Global` `AuditService`. Domains append their own dotted actions; e.g. roadmap AI
   commit/rollback of a project-linked roadmap writes `roadmap.committed` /

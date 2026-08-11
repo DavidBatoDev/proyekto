@@ -1,17 +1,17 @@
 # Consultants
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Consultants are Proyekto's vetted delivery operators. There is no consultant account
 identity — consultant capability begins at admin approval and nowhere else. The
 canonical predicate is:
 
-```ts
-profile.is_consultant_verified === true
+```text
+consultant_profiles.status = 'verified'
 ```
 
-The code calls that state an **active consultant**. It is the only account-level
-capability, and it protects talent discovery, consultant project creation, finance,
+The code calls that state an **active consultant**. The enrollment protects talent
+discovery, consultant project creation, finance,
 template publishing, rate-sensitive operations, and the public consultant directory.
 
 ## Capability lifecycle
@@ -20,18 +20,19 @@ template publishing, rate-sensitive operations, and the public consultant direct
 Signup (lane-free, same as everyone)
   -> application draft -> submitted -> admin review
   -> admin provisions personal team (idempotent)
-  -> is_consultant_verified=true
+  -> consultant_profiles.status='verified'
   -> active-consultant tools unlock
 ```
 
-Verification is a server-managed capability bit and cannot be self-granted by a
-browser session (a privileged-columns trigger blocks anon/authenticated writes).
+Verification is a server-managed enrollment and cannot be self-granted by a browser
+session. Admins can suspend, reinstate, revoke, and re-approve it; the row is never
+deleted.
 
 ## Documentation index
 
 | Doc | What's in it |
 | --- | --- |
-| [consultant-structure.md](./consultant-structure.md) | The capability bit, application, public directory, project ownership, and the absence of a consultant profile table |
+| [consultant-structure.md](./consultant-structure.md) | Enrollment state, application, public directory, and project ownership |
 | [vetting-and-capabilities.md](./vetting-and-capabilities.md) | Application states, approval, the shared active predicate, and protected operations |
 | [access-and-permissions.md](./access-and-permissions.md) | Consultant project origin, owner grants, additive operator permissions, and reassignment |
 | [user-flows.md](./user-flows.md) | Signup through approval, project creation, talent hiring, delivery, billing, and reassignment |
@@ -41,7 +42,7 @@ browser session (a privileged-columns trigger blocks anon/authenticated writes).
 
 | Term | Meaning |
 | --- | --- |
-| **Active consultant** | An account with `is_consultant_verified=true`; there is no unverified "consultant account" state. |
+| **Active consultant** | An account with `consultant_profiles.status='verified'`; there is no declared consultant account role. |
 | **Consultant application** | Vetting record in `consultant_applications`; not the consultant's profile. |
 | **Consultant origin** | `project_access.origin='consultant'`, an additive project-permission delta rather than account identity. |
 | **Personal team** | Idempotently provisioned team used as the consultant's delivery container. |
@@ -52,6 +53,8 @@ browser session (a privileged-columns trigger blocks anon/authenticated writes).
   use, with active-only items hidden or redirected individually.
 - An applicant awaiting approval can still use ordinary authenticated and
   project-member surfaces. Only consultant powers require the active predicate.
+- Suspension and revocation stop new consultant-only actions while leaving existing
+  project access and execution work intact.
 - The application endpoints are open to any authenticated user by design — vetting,
   not a declared identity, is the gate.
 

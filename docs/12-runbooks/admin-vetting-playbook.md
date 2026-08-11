@@ -1,6 +1,6 @@
 # Runbook: Admin Vetting Playbook
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 How an **Admin** uses the identity/vetting data to approve (or reject) a **Consultant**
 application. The data model is in
@@ -10,7 +10,7 @@ operational procedure over it.
 ```
 signs up ─► completes profile ─► "Apply as Consultant"
         ─► admin reviews user_* identity data
-             ├─ approve ─► personal team + is_consultant_verified=true
+             ├─ approve ─► personal team + consultant_profiles.status='verified'
              └─ reject  ─► user_verifications.notes explain why (user can resubmit)
 ```
 
@@ -39,17 +39,22 @@ The admin console loads the applicant's `user_*` records. Work through them:
 
 ## Approve
 
-Prefer the console action (`POST /admin/applications/:id/approve`), which provisions
-the personal team before activating the consultant. The profile mutation is a single
-capability flip — there is no role column to write:
+Use the console action (`POST /admin/applications/:id/approve`), which provisions
+the personal team before activating the consultant, records `reviewed_by`, upserts
+the enrollment, sends the notification, and invalidates discovery caches. Do not
+replace it with a direct SQL update.
 
-```sql
-UPDATE public.profiles
-SET is_consultant_verified = true
-WHERE id = '<applicant_id>';
+The Consultants admin page also exposes lifecycle actions:
+
+```text
+verified  -> suspended
+suspended -> verified
+verified or suspended -> revoked
+re-approval -> verified
 ```
 
-The user is then an active consultant and can be assigned to projects.
+Every transition records the changing admin and reason, retains the row, notifies the
+consultant, and invalidates consultant and marketplace discovery caches.
 
 ## Reject
 
@@ -71,13 +76,14 @@ a future algorithm. A representative query:
 ```sql
 SELECT p.id, p.display_name, urs.hourly_rate, stat.avg_rating, stat.jobs_completed
 FROM profiles p
+JOIN consultant_profiles cp
+  ON cp.user_id = p.id AND cp.status = 'verified'
 JOIN user_specializations sp ON sp.user_id = p.id AND sp.category = 'fintech'
 JOIN user_skills us ON us.user_id = p.id
 JOIN skills s ON s.id = us.skill_id AND s.name = 'React'
 LEFT JOIN user_rate_settings urs ON urs.user_id = p.id
 LEFT JOIN user_stats stat ON stat.user_id = p.id
-WHERE p.is_consultant_verified = true
-  AND urs.availability != 'unavailable'
+WHERE urs.availability != 'unavailable'
 ORDER BY stat.avg_rating DESC, stat.jobs_completed DESC;
 ```
 

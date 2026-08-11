@@ -1,6 +1,6 @@
 # Talent Discovery and Delivery
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Discovery and paid delivery use different data. The marketplace advertises a public profile;
 teams and project curation establish who actually works; rates and approved time establish
@@ -9,8 +9,8 @@ authorization or payroll record.
 
 ## Marketplace card assembly
 
-`GET /marketplace/freelancers` is active-consultant-only. It begins with public profiles,
-then joins related data in application code.
+`GET /marketplace/freelancers` is active-consultant-only. It begins with profiles
+that have an active freelancer enrollment, then joins related data in application code.
 
 | Source | Card fields |
 | --- | --- |
@@ -23,17 +23,15 @@ then joins related data in application code.
 Search covers display name and headline. Filters cover availability, specialization, and
 skill. Sorting supports rating descending and rate ascending or descending.
 
-> **Eligibility gap.** The query uses `is_public=true` and nothing else — go-live has
-> no server-side eligibility check, so `is_public` proves opting in, not readiness.
-> There is deliberately no identity filter (accounts have no role); marketplace
-> enrollment records are the designed fix
-> ([Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
+Go-live enforces verified identity, complete rate settings, portfolio evidence, and
+basic profile fields on the server. The enrollment remains an opt-in availability
+declaration rather than account identity; it can be paused and resumed.
 
 ## Invite boundary
 
 Only active consultants can browse and send marketplace invites. Sending also requires
-admin-or-higher project authority, rejects self-invites, and rejects profiles that are not
-public. Accepting grants editor access with `origin='invited'`.
+admin-or-higher project authority, rejects self-invites, and rejects profiles without
+an active freelancer enrollment. Accepting grants editor access with `origin='invited'`.
 
 ## Rate boundary
 

@@ -1,6 +1,6 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
 grant access to every project. Project authority still requires `project_access`. When the

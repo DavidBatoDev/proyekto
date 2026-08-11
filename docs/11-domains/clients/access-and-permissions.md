@@ -1,6 +1,6 @@
 # Client Access and Permissions
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 A client's 45 permissions are never stored. They are recomputed on every check from three
 layers, and only the *delta* from the baseline is persisted — so role templates can evolve
@@ -74,7 +74,7 @@ Two paths, both in `ProjectsService.createProject`:
 | `creation_mode` | Role granted | Origin | Notes |
 | --- | --- | --- | --- |
 | `'client'` (**default**) | `admin` | `client` | No owner exists until a consultant joins |
-| `'consultant'` | `owner` | `consultant` | Requires active consultant (`is_consultant_verified`); forces `status: 'draft'` |
+| `'consultant'` | `owner` | `consultant` | Requires `consultant_profiles.status='verified'`; forces `status: 'draft'` |
 
 A client invited to an existing project instead gets whatever `project_invites.default_role`
 says, with `origin` set by the grant call — see [user-flows.md](./user-flows.md).

@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -22,12 +22,14 @@ team (consultants create teams after vetting, not at signup).
 | --- | --- | --- |
 | `SupabaseAuthGuard` | `supabase-auth.guard.ts` | A valid Supabase JWT **or** a valid `x-guest-user-id` header |
 | `AdminGuard` | `admin.guard.ts` | An active row in `admin_profiles` for the user |
-| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | Active consultant: `profiles.is_consultant_verified = true` (vetting is the one account-level capability — there is no account role column) |
+| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | Active consultant: `consultant_profiles.status = 'verified'` (there is no account role column) |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
 | `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`), an OAuth 2.1 access token, **or** a Supabase session JWT — gates the `/mcp` endpoint |
 
-`ConsultantOnlyGuard` uses the shared `isActiveConsultant` predicate and gates
-consultant-only marketplace, finance, and template routes. Two more guards
+`ConsultantOnlyGuard` uses the shared `isActiveConsultantEnrollment` predicate and
+fails closed unless a verified enrollment exists. Suspension or revocation therefore
+removes access to consultant-only marketplace, finance, and template routes without
+changing execution membership. Two more guards
 come from outside `common/`:
 > `ThrottlerGuard` (`@nestjs/throttler`, on guest endpoints and on the MCP OAuth
 > `/oauth/token` · `/register` · `/revoke` endpoints) and `OtaPublishGuard`

@@ -23,7 +23,7 @@ Local context for the backend unit. Cross-cutting rules live in the root CLAUDE.
 - Repository pattern: interface (`*.repository.interface.ts`) + Supabase impl (`*.repository.supabase.ts`). Update both together.
 - DTOs use class-validator. The global ValidationPipe runs whitelist + forbidNonWhitelisted - any request field not declared on the DTO makes the request 400. New fields MUST be added to the DTO.
 - ResponseInterceptor wraps every response in an envelope - controllers return raw data; never hand-wrap responses.
-- Guards: SupabaseAuthGuard (default auth), ConsultantOnlyGuard (active-consultant surfaces, requiring `profiles.is_consultant_verified` — there is no account role column). Every new route needs a guard unless it is deliberately public.
+- Guards: SupabaseAuthGuard (default auth), ConsultantOnlyGuard (active-consultant surfaces, requiring `consultant_profiles.status='verified'` through the shared enrollment predicate — there is no account role column). Every new route needs a guard unless it is deliberately public.
 
 ## Entry points and config
 

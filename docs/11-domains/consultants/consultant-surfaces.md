@@ -1,6 +1,6 @@
 # Consultant Surfaces
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Consultant routes fall into three groups: public marketing/discovery, authenticated
 application and shared work, and active-consultant operator tools. A `/consultant/*` path is
@@ -11,8 +11,8 @@ not automatically protected; each surface has its own gate.
 | Route | Purpose | Gate |
 | --- | --- | --- |
 | `/consultant` | Consultant landing page | Public |
-| `/consultant/browse` | Browse active consultant directory | Public API filtered by `is_consultant_verified` |
-| `/consultant/$profileId` | View an active consultant profile | Public API filtered by `is_consultant_verified` |
+| `/consultant/browse` | Browse active consultant directory | Public API joined to `consultant_profiles.status='verified'` |
+| `/consultant/$profileId` | View an active consultant profile | Public API joined to `consultant_profiles.status='verified'` |
 
 ## Application and shared routes
 

@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 The Client is the person paying for the work — a **position on a contract, not an
 account attribute**. There is no `clients` table and no account role (`profiles.role`
@@ -76,7 +76,8 @@ its owner.
 
 - **No profile-completeness gate.** Nothing checks `user_portfolios`, identity verification,
   or profile completeness before a person joins a team or accepts a project invite. The one
-  account-level hard gate is active-consultant status (`is_consultant_verified`); it
+  marketplace hard gate is active-consultant status
+  (`consultant_profiles.status='verified'`); it
   gates consultant-only surfaces, not ordinary participation.
 - **No client-side onboarding.** When a consultant adds a client, the client must grant access
   to external systems (analytics, domain, social accounts). That happens in chat today and is

@@ -1,11 +1,11 @@
 # Talent
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Talent are the people who deliver project work — a **market position, not an account
 attribute** (there is no stored account role; `profiles.role` was dropped 2026-08-10).
 Being talent on a project comes from project access and team curation; being
-discoverable comes from `profiles.is_public`.
+discoverable comes from `freelancer_profiles.status='active'`.
 
 This folder is the source of truth for the Talent journey from signup through discovery,
 delivery, time logging, and payout. Code and older routes still use the word `freelancer`;
@@ -15,14 +15,14 @@ user-facing identity and new documentation use **Talent**.
 
 | Fact | Answers |
 | --- | --- |
-| `profiles.is_public` | May the profile appear in the freelancer marketplace query? |
+| `freelancer_profiles.status` | Is the profile active in, or paused from, the freelancer marketplace? |
 | `team_members.role` | What may the person administer inside a reusable team? |
 | `project_access.role`, `origin`, `capabilities` | What may the person do on one project? |
 
 None implies another, and no account-level fact says "this account is talent": the
 same person may own a team, pay for one project, and deliver another. The `go-live`
-endpoint makes any authenticated profile public — there is deliberately no identity
-gate, only (missing) profile-eligibility checks.
+endpoint is open to any authenticated account, but the server enforces profile
+eligibility before creating or resuming the enrollment.
 
 ## Typical delivery path
 
@@ -30,7 +30,7 @@ gate, only (missing) profile-eligibility checks.
 Signup (lane-free)
   -> personal workspace
   -> complete profile, rates, portfolio, and identity
-  -> go live (`is_public=true`)
+  -> go live (`freelancer_profiles.status='active'`)
   -> active consultant sends a project invite
   -> Talent accepts and receives project editor access
   -> work is assigned and time is logged
@@ -52,18 +52,17 @@ Signup (lane-free)
 | Term | Meaning |
 | --- | --- |
 | **Talent** | The market position of delivering scoped work. Not an account attribute; legacy code often says "freelancer". |
-| **Go live** | Set `profiles.is_public=true`, making the profile eligible for the current marketplace query. |
+| **Go live** | Pass the eligibility check and create or resume an active freelancer enrollment. |
 | **Marketplace invite** | A `project_invites` row sent by an active consultant to a public profile. |
 | **Curation** | Selecting a team member for a project through `project_team_members`; this creates project access. |
 | **Internal rate** | The Talent member's cost rate from `team_member_rates`, snapshotted onto time logs and never shown to clients. |
 
-## Known gaps
+## Enrollment behavior
 
-- `POST /marketplace/go-live` does not check server-side profile eligibility before
-  setting `is_public=true`.
-- `GET /marketplace/freelancers` filters only on `is_public=true` — any public profile
-  enters the pool. Marketplace enrollment records are the designed fix; see
-  [Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md).
+- `GET /marketplace/go-live/eligibility` powers the profile preflight checklist.
+- `POST /marketplace/go-live` enforces the checklist and upserts `active`.
+- `POST /marketplace/pause` retains the row as `paused`; go-live resumes it.
+- Discovery and direct marketplace invites require `active`.
 - A directly invited worker can log work without being curated through a team; activation
   and payout rate checks only see `project_team_members`, so paid delivery should use teams.
 

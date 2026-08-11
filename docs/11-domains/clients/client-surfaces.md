@@ -1,6 +1,6 @@
 # Client Surfaces
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 There is **no client route subtree**. Every surface a client reaches is a shared route
 that renders differently, or hides entirely, based on resolved permissions. This page is the
@@ -77,7 +77,7 @@ Two notes on the exceptions:
 | `/settings/{appearance,notifications,mcp-tokens}` | ✅ | auth |
 | `/profile/$profileId` | ✅ | auth |
 | `/finance/*` | ❌ **effectively no** | Backend `@UseGuards(SupabaseAuthGuard, ConsultantOnlyGuard)` on `/api/finance` — the page loads but every query 403s |
-| `/consultant/{marketplace,templates}` | ❌ | `beforeLoad` redirects unless vetting is complete (`isActiveConsultant`: `is_consultant_verified`) |
+| `/consultant/{marketplace,templates}` | ❌ | `beforeLoad` redirects unless the computed auth payload reports a verified consultant enrollment |
 | `/project-posting` | ✅ | auth — this is how a client posts a project |
 | `/contract/sign/$token` | ✅ **no account needed** | Bearer token only; service-role read |
 | `/admin/*` | ❌ | `adminMe` query in the layout → "Access Denied" |

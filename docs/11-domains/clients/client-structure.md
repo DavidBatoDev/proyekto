@@ -1,6 +1,6 @@
 # Client Structure
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 There is no `clients` table — and no client *account* of any kind. Proyekto stores no
 account role: the switchable `persona_type` was dropped in
@@ -73,7 +73,6 @@ erDiagram
     profiles {
         uuid id PK
         text email
-        bool is_consultant_verified
         bool is_guest
     }
     projects {

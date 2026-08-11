@@ -1,6 +1,6 @@
 # Talent User Flows
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 The Talent journey crosses three independent transitions: creating the account, becoming
 discoverable, and receiving delivery access. Finishing one never silently completes another.
@@ -36,8 +36,10 @@ certifications, languages, and licenses.
 | `portfolio` | At least one portfolio row |
 | `profile_basics` | Headline, bio, and country |
 
-The checklist is informational. The go-live API currently sets `is_public=true` without
-enforcing the checklist.
+The checklist is available through `GET /marketplace/go-live/eligibility`. The
+go-live API enforces it before creating or resuming
+`freelancer_profiles.status='active'`. The profile page can pause an active row and
+resume it through the same eligibility-enforced go-live path.
 
 ## 3. Go live and receive an invite
 
@@ -82,8 +84,9 @@ generation. Client invoices use the contract's client rate, never the Talent rat
 ## 7. Apply as a consultant
 
 Application endpoints are available to any authenticated user. Admin approval
-provisions a personal team idempotently, then sets `is_consultant_verified=true` —
-the single account-level capability. Users cannot perform this promotion themselves.
+provisions a personal team idempotently, then upserts
+`consultant_profiles.status='verified'` with reviewer provenance. Users cannot
+perform this promotion themselves.
 
 ## See also
 

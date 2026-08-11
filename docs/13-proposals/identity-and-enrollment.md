@@ -1,10 +1,10 @@
 # Identity and Enrollment
 
-> **⚠️ Proposed — partially built.** Phases 1–3 shipped the role deletion, durability
-> fixes, consultant-of-record migration, and marketplace/execution code organization.
-> The enrollment tables and engagement link layer are not built.
+> **Partially shipped.** Phases 1–3 and the consultant/freelancer enrollment tables
+> are live in source. `client_profiles`, contract-seat enforcement, and the Phase 4
+> engagement link layer remain proposed.
 
-> **Last updated:** 2026-08-11 · **Status:** draft
+> **Last updated:** 2026-08-12 · **Status:** draft
 
 Proyekto has tried to answer "what kind of user is this?" twice — first with a switchable
 `persona_type` (removed in `20260804170019_remove_active_persona.sql`), then with a durable
@@ -58,7 +58,6 @@ erDiagram
 
     profiles {
         uuid id PK
-        bool is_consultant_verified "absorbed by consultant_profiles later"
     }
     consultant_profiles {
         uuid user_id PK-FK
@@ -82,15 +81,24 @@ erDiagram
 | --- | --- | --- | --- |
 | `profiles` | The human: identity, avatar, settings. Universal — every user, no role column | Signup (`handle_new_user()`) | User |
 | `admin_profiles` | Platform administration capability. **Already exists**; the pattern the others copy | Manual grant | Platform |
-| `consultant_profiles` | Vetted seller capability + storefront (absorbs `is_consultant_verified`, application/vetting output, `user_rate_settings`) | Submitting the consultant application → `pending`; vetting → `verified` | **Admin-granted**: `pending → verified → suspended/revoked` |
+| `consultant_profiles` | Vetted seller capability and lifecycle audit (replaces `is_consultant_verified`; shared storefront/rate data stays in `user_*`) | Admin approval creates or re-verifies the row | **Admin-granted**: `verified → suspended/revoked`, `suspended → verified`, re-approval → `verified` |
 | `freelancer_profiles` | Public availability declaration — gates the *public pool only*; roster membership never requires it | Completing the go-live flow | **Self-service**: `active ⇄ paused` |
 | `client_profiles` | Billing entity (company, address, tax) | *Deferred* — system-creates on first published posting or funded contract, when an invoice actually needs it | System; lapses |
 
-An **enrollment** is a deliberate act (apply, go live, publish) that creates one of these
+An **enrollment** is a deliberate act (approval, go live, publish) that creates one of these
 rows. Enrollments are **non-exclusive** (one user may hold all three), **stateful**
-(pausable, revocable — never a permanent declaration), and **never created silently** (no
-signup checkbox, no auto-enrollment during backfill). They are marketplace-side tables;
+(pausable, revocable — never a permanent declaration), and **never inferred from unrelated
+behavior**. The rollout backfilled only accounts that had already been explicitly approved
+or had explicitly gone live. They are marketplace-side tables;
 execution code never joins against them.
+
+Two implementation refinements are intentional:
+
+- `user_rate_settings` remains the shared per-user rate card because consultant
+  matchmaking and freelancer discovery both depend on it.
+- A consultant enrollment is created at approval, not application submission. Pending
+  workflow state remains solely in `consultant_applications`, avoiding two competing
+  state machines.
 
 ## The rule that replaces `profiles.role`
 
@@ -106,11 +114,9 @@ execution code never joins against them.
   two valid forms.
 
 The no-bypass rules survive intact because they were never identity checks: the freelancer
-pool is visible **only** to verified consultants (the strictest gate in the system),
-proposals come only from consultants, and no contract path exists whose consultant seat an
-unverified user can fill — enforced at the database by the FK from
-`contracts.consultant_user_id` into `consultant_profiles` plus a verified-status check
-inside the signing transaction.
+pool is visible **only** to verified consultants (the strictest gate in the system), and
+proposals come only from consultants. Contract-seat FK enforcement remains Phase 4;
+today the shared active-consultant gates cover consultant actions.
 
 ## Signup and enrollment moments
 
@@ -125,7 +131,7 @@ separate ceremony, never at signup.
 | Post a project | Anyone can draft | **Publishing** = client-enrollment moment |
 | Freelancer pool + postings board | **Verified consultants only** | Proposing, roster invites — consultants only |
 | Go live / find work | Anyone sees the pitch | **Completing go-live** creates `freelancer_profiles` |
-| Become a consultant | Anyone | **Submitting the application** creates `consultant_profiles` (`pending`) |
+| Become a consultant | Anyone | Submission creates application state; **admin approval** creates a verified `consultant_profiles` row |
 
 ## Edge-case policies (decided, not open)
 
@@ -137,7 +143,7 @@ separate ceremony, never at signup.
 | Self-dealing | `CHECK (client_user_id <> consultant_user_id)` on `contracts` |
 | Parties share a roster relationship (fee-circumvention vector) | Flag for admin review at contract creation — not a hard block; legitimate cases exist |
 | Consultant-origin project access backfill | Into engagement links with `status='legacy'` — **never** fabricated as signed contracts |
-| Legacy `role='talent'` users | Get a one-time go-live prompt. No silent `freelancer_profiles` seeding |
+| Existing public profiles | Backfilled only when `is_public=true`, preserving a prior explicit go-live choice |
 | Verification revoked between proposal and signing | `is_active_consultant()` re-checked inside the signing transaction |
 
 ## Phase 1 — shipped
@@ -167,18 +173,17 @@ it.
 | **P1** | Role deletion + simplified signup | Shipped 2026-08-11 |
 | **P2** | Durability fixes | Shipped 2026-08-11: contracts, invoices, and time logs survive severed relationships with snapshots; chat and finance authorization use `project_access`; project deletion blocks active financial records |
 | **P3** | Marketplace/execution reorganization | Shipped 2026-08-11: routes and modules grouped into `execution/*` / `marketplace/*` / shared; consultant-of-record moved to `project_access`; `projects.consultant_id` and unused fee columns dropped; dead payments surface removed |
+| **Enrollment** | Consultant and freelancer lifecycle tables | Shipped 2026-08-12: verified/suspended/revoked consultant capability, eligibility-enforced active/paused freelancer discovery, legacy flags retired |
 | **P4** | Link layer | `engagements` (project ↔ contract, severable, the only legal cross-domain FK), team connections, time-log → contract billing mapping, client read-only projection |
 
-Phases 1–3 are justified as standalone correctness work; only P4 is new product surface.
-
-The enrollment-table work remains proposed. Phase 3 deliberately retained
-`is_consultant_verified` and all `ConsultantOnlyGuard` surfaces; replacing that capability
-with `consultant_profiles` belongs to a later marketplace-enrollment implementation.
+Phases 1–3 and enrollment are standalone correctness work; only P4 is new product
+surface. Current mechanics live in
+[Data: identity and vetting](../07-data-and-db/identity-vetting-model.md).
 
 ## Blast radius
 
-This proposal contradicts, and will require rewriting when it ships, the current-state
-docs built on the `account_role` model — chiefly
+The shipped phases required rewriting the current-state
+docs built on the `account_role` and profile-flag models — chiefly
 [01-product/personas.md](../01-product/personas.md) ("`profiles.role` is the identity
 source of truth"), [04-web/routing-and-personas.md](../04-web/routing-and-personas.md)
 (the three signup lanes), [03-backend/auth-and-guards.md](../03-backend/auth-and-guards.md)
@@ -188,7 +193,8 @@ source of truth"), [04-web/routing-and-personas.md](../04-web/routing-and-person
 [11-domains](../11-domains/README.md) (clients, talent, consultants hubs), and the
 [glossary](../01-product/glossary.md) "Account role" entry. Phase 1's doc sweep updates
 the pages made false by the deletion; the enrollment-model pages move to their owning
-sections when each phase ships, per this section's rules.
+sections when each phase ships, per this section's rules. The remaining blast radius
+is limited to `client_profiles`, engagement links, and contract-seat enforcement.
 
 ## Decisions to review
 
@@ -203,7 +209,7 @@ sections when each phase ships, per this section's rules.
 | --- | --- | --- |
 | 1 | Delete `profiles.role` outright | Renaming it to a `signup_intent` personalization column — considered at length; deferred because simplified signup asks no intent question yet. May return as a nullable, switchable, never-authz column if onboarding personalization needs it |
 | 2 | Three separate enrollment tables | One polymorphic `marketplace_profiles` with `type` — sparse columns, mixed state machines, no clean consultant-seat FK |
-| 3 | Enrollment at first marketplace act, inline | Enrollment at signup — recreates the lane problem one screen later, at peak drop-off |
+| 3 | Enrollment at approval (consultant) or go-live (freelancer), inline | Enrollment at signup — recreates the lane problem one screen later, at peak drop-off |
 | 4 | Roster membership independent of `freelancer_profiles` | Auto-enrolling roster invitees — silent enrollment, the failure mode the model exists to prevent |
 | 5 | `client_profiles` deferred until billing needs it | Building it now — `contracts.client_user_id` covers every current need |
 | 6 | Contract positions immutable after signing | Editable party columns — a historical record must not be rewritable |

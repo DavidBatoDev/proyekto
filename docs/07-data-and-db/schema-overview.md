@@ -1,9 +1,9 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **248 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **250 migrations** spanning
 2025-12-11 → 2026-08-12. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -20,9 +20,11 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 
 | Table | Purpose |
 | --- | --- |
-| `profiles` | Core 26-column user record (1:1 `auth.users`); **no role column** — `is_consultant_verified` is the one account-level capability, plus discovery flags, onboarding settings (`completed_at` only; `lane` is optional legacy data on historical rows), guest fields |
+| `profiles` | Core 24-column user record (1:1 `auth.users`); **no role or marketplace-capability flags**; carries identity, onboarding settings (`completed_at` only; `lane` is optional legacy data on historical rows), and guest fields |
 | `admin_profiles` | Staff authority layer (`admin_access_level`) |
 | `consultant_applications` | Applications to become a verified consultant |
+| `consultant_profiles` | Stateful consultant enrollment (`pending`, `verified`, `suspended`, `revoked`), linked to the approving application when one exists; rows are retained as vetting history |
+| `freelancer_profiles` | Stateful marketplace availability (`active`, `paused`); only active rows appear in the freelancer pool |
 | `user_verifications`, `user_identity_documents` | KYC / trust records |
 | `user_skills`, `user_languages`, `user_educations`, `user_certifications`, `user_licenses`, `user_experiences`, `user_portfolios`, `user_specializations`, `user_rate_settings`, `user_stats` | Profile sub-entities |
 | `skills`, `languages` | Reference catalogs |
@@ -129,6 +131,8 @@ text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/voi
 
 ```
 auth.users.id ─1:1─► profiles.id
+profiles.id ─1:0..1─► consultant_profiles.user_id
+profiles.id ─1:0..1─► freelancer_profiles.user_id
 profiles.id ◄─ projects.owner_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
 projects.id ─1:1─► roadmaps.project_id
@@ -152,7 +156,7 @@ Business logic that must be atomic lives in Postgres functions (SECURITY DEFINER
 | `chat_latest_messages_by_room`, `chat_search_room_messages` | Chat reads |
 | `handle_new_user()` | Trigger — creates a `profiles` row on signup |
 | `get_user_project_role`, `can_view_roadmap`, `can_edit_roadmap` | Authorization helpers (see [rls-and-security.md](./rls-and-security.md)) |
-| `fund_escrow`, `release_milestone`, `refund_escrow` | **Legacy/dead** — reference the dropped `payment_checkpoints` |
+| `is_active_consultant`, `is_active_freelancer` | RLS-safe marketplace enrollment predicates; both are `SECURITY DEFINER` and never query `profiles` |
 
 ## See also
 

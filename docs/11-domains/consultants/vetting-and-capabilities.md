@@ -1,11 +1,10 @@
 # Consultant Vetting and Capabilities
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
-Consultant vetting is a state machine whose outcome is a single capability bit:
-`profiles.is_consultant_verified`. There is no account identity underneath it — the
-flag alone records whether consultant powers are active, and all authorization sites
-must evaluate it through the shared predicate.
+Consultant vetting produces a stateful `consultant_profiles` enrollment. There is no
+account identity underneath it: only `status='verified'` grants consultant powers,
+and all authorization sites evaluate that state through the shared predicate.
 
 ## Application lifecycle
 
@@ -29,9 +28,10 @@ The application service and admin service divide responsibility:
 ```text
 resolve applicant user
   -> provision personal team (idempotent)
-  -> mark application approved
-  -> set profiles.is_consultant_verified=true
+  -> upsert verified enrollment + reviewer provenance
+  -> mark application approved + reviewed_by
   -> invalidate consultant discovery caches
+  -> notify applicant
 ```
 
 Provisioning happens before capability is granted. If later approval work fails, an orphaned
@@ -42,15 +42,14 @@ without their required team.
 
 | Layer | Implementation |
 | --- | --- |
-| Backend helper | `isActiveConsultant(profile)` |
+| Backend helper | `isActiveConsultantEnrollment(supabase, userId)` |
 | Backend controller guard | `ConsultantOnlyGuard` |
 | Database helper | `is_active_consultant(uuid)` |
-| Compatibility database helper | `is_verified_consultant(uuid)` delegates to the active helper |
-| Web helper | `isActiveConsultant(profile)` |
+| Web compatibility helper | `isActiveConsultant(profile)` reads the computed auth payload boolean |
 
-The legacy name `isVerifiedConsultant` remains only as a deprecated web alias. Raw
-`is_consultant_verified` is still appropriate for displaying a vetting badge, but not for
-granting access.
+Auth and profile payloads compute `is_consultant_verified` from the enrollment for
+older mobile bundles. It is a wire-compatibility field, not a database column or an
+authorization source. New readers also receive `consultant_status`.
 
 ## Capabilities requiring active status
 
@@ -62,7 +61,7 @@ granting access.
 | Use Finance portfolio, contracts, and invoices | Controller-wide guard |
 | Create, publish, revise, unlist, archive, and analyze own templates | Endpoint guards |
 | Perform consultant-sensitive rate ownership operations | Database trigger/helper |
-| Appear in public consultant directory | `is_consultant_verified` query filter |
+| Appear in public consultant directory | Inner join to verified `consultant_profiles` |
 
 ## What applicants can still do
 
@@ -71,11 +70,12 @@ profiles, manage shared account settings, accept project or team invites, and us
 project permissions explicitly granted to them. They cannot use the operator
 capabilities in the table above.
 
-## Privileged-field protection
+## Lifecycle administration
 
-Authenticated and anonymous database sessions cannot change `is_consultant_verified` —
-the profiles trigger rejects protected updates and forces `false` on insert. The
-backend service role performs admin approval writes.
+Authenticated users have no direct write policy on `consultant_profiles`. Admin APIs
+allow only `verified -> suspended`, `suspended -> verified`, and
+`verified|suspended -> revoked`; illegal transitions fail clearly. Re-approval upserts
+`verified` and clears suspension, revocation, and reason fields. Rows are never deleted.
 
 ## See also
 

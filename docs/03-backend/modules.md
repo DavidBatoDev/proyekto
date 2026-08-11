@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -35,9 +35,9 @@ group-level barrel modules.
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
-| `consultants` | Active-consultant directory (`is_consultant_verified`) | `profiles` |
+| `consultants` | Active-consultant directory | `profiles`, `consultant_profiles` |
 | `applications` | Consultant/freelancer application submission | `consultant_applications` |
-| `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
+| `marketplace` | Freelancer enrollment, discovery + hiring invites | `freelancer_profiles`, `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
@@ -76,7 +76,8 @@ sub-entity, each in its own `user_*` table: `user_skills`, `user_languages`,
 `user_identity_documents` — plus catalog tables `skills`, `languages`.
 `freelancer-eligibility.service.ts` gates who can go live.
 
-**`consultants`** — public read-only directory over `profiles` (no repository).
+**`consultants`** — public read-only directory over profiles with a verified
+`consultant_profiles` enrollment (no repository).
 
 **`applications`** — consultant/freelancer application submit + status; writes
 `consultant_applications`. Its `ApplicationsService` is co-located in the controller file.

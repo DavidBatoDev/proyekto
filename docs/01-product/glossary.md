@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -10,7 +10,8 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Account role** | **Removed** (2026-08-10). Accounts have no stored role — `profiles.role` and the `account_role` enum were dropped. Client/talent/consultant are per-contract positions; see [Proposals → identity and enrollment](../13-proposals/identity-and-enrollment.md). |
 | **Talent** | The market position of people doing scoped delivery work; legacy code may still call this “freelancer.” Not an account attribute. |
 | **Consultant layer** | Proyekto's defining idea: a vetted project lead between Client and Talent who owns delivery. |
-| **Active consultant** | An account that passed vetting: `profiles.is_consultant_verified = true` — the only account-level capability. |
+| **Active consultant** | An account with `consultant_profiles.status='verified'`. Suspension and revocation remove marketplace capability without changing execution access. |
+| **Active freelancer** | An account with `freelancer_profiles.status='active'`; this controls public-pool discovery and can be paused or resumed by the owner. |
 | **Project** | The delivery container: roadmap + team + chat + meetings + billing. |
 | **Brief** | A project's structured intent (mission/vision, summary, custom fields) — `project_briefs`. |
 | **Roadmap** | The plan for a project — a tree of epics, features, and tasks. One per project (`roadmaps.project_id` is `UNIQUE`); [a proposal](../13-proposals/organizations-and-services.md#resolving-1-roadmap--1-service) would relax this to one per service. |

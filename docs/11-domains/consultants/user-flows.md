@@ -1,6 +1,6 @@
 # Consultant User Flows
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 The Consultant flow deliberately separates vetting from project authority. Signup is
 the same lane-free flow as everyone else's; approval unlocks product capability;
@@ -21,8 +21,12 @@ about an account marks it as a consultant before vetting.
 ## 2. Apply and receive approval
 
 The applicant saves a draft, submits required experience and niche information, and waits for
-admin review. Approval provisions the personal team idempotently, changes application status,
-and sets `is_consultant_verified=true`. Rejection leaves consultant powers disabled.
+admin review. Approval provisions the personal team idempotently, upserts a verified
+consultant enrollment with reviewer provenance, changes application status, and notifies
+the applicant. Rejection records the reviewer and reason and sends the rejection notice.
+
+Admins may later suspend, reinstate, or revoke the retained enrollment. Those changes
+take effect at every shared consultant predicate without changing active project access.
 
 ## 3. Create or join a project
 
