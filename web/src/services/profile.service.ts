@@ -4,6 +4,10 @@
  */
 
 import apiClient from "@/api/axios";
+import type {
+	ConsultantEnrollmentStatus,
+	FreelancerEnrollmentStatus,
+} from "@/types/profile.types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -210,6 +214,8 @@ export interface FullProfile {
 	zip_code: string | null;
 	gender: string | null;
 	date_of_birth: string | null;
+	consultant_status: ConsultantEnrollmentStatus | null;
+	freelancer_status: FreelancerEnrollmentStatus | null;
 	is_consultant_verified: boolean;
 	is_public: boolean;
 	created_at: string;
@@ -241,7 +247,17 @@ export interface UpdateProfileData {
 	gender?: string | null;
 	date_of_birth?: string | null;
 	avatar_url?: string | null;
-	is_public?: boolean;
+}
+
+export type FreelancerRequirement =
+	| "identity"
+	| "rate_settings"
+	| "portfolio"
+	| "profile_basics";
+
+export interface FreelancerEligibility {
+	eligible: boolean;
+	missing: FreelancerRequirement[];
 }
 
 export interface MarketplaceFreelancerCard {
@@ -540,8 +556,20 @@ class ProfileService {
 		return data.data;
 	}
 
-	async goLive(): Promise<{ is_public: boolean }> {
+	async goLive(): Promise<{ is_public: true; status: "active" }> {
 		const { data } = await apiClient.post(`${this.marketplaceBase}/go-live`);
+		return data.data;
+	}
+
+	async pause(): Promise<{ is_public: false; status: "paused" }> {
+		const { data } = await apiClient.post(`${this.marketplaceBase}/pause`);
+		return data.data;
+	}
+
+	async getGoLiveEligibility(): Promise<FreelancerEligibility> {
+		const { data } = await apiClient.get(
+			`${this.marketplaceBase}/go-live/eligibility`,
+		);
 		return data.data;
 	}
 

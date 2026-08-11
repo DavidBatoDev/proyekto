@@ -21,6 +21,14 @@ export interface ProfileSettings {
 	[key: string]: any; // Allow for future settings
 }
 
+export type ConsultantEnrollmentStatus =
+	| "pending"
+	| "verified"
+	| "suspended"
+	| "revoked";
+
+export type FreelancerEnrollmentStatus = "active" | "paused";
+
 // Profile interface
 export interface Profile {
 	id: string;
@@ -28,7 +36,11 @@ export interface Profile {
 	display_name: string | null;
 	avatar_url: string | null;
 	banner_url: string | null;
+	consultant_status: ConsultantEnrollmentStatus | null;
+	freelancer_status: FreelancerEnrollmentStatus | null;
+	/** Computed compatibility field for older mobile bundles. */
 	is_consultant_verified: boolean;
+	/** Computed compatibility field for older mobile bundles. */
 	is_public: boolean;
 	bio: string | null;
 	headline: string | null; // short professional tagline

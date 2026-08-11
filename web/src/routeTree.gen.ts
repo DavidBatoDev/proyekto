@@ -36,6 +36,7 @@ import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-pas
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminMatchRouteImport } from './routes/admin/match'
+import { Route as AdminConsultantsRouteImport } from './routes/admin/consultants'
 import { Route as AdminApproveAdminRouteImport } from './routes/admin/approve-admin'
 import { Route as AdminApplicationsRouteImport } from './routes/admin/applications'
 import { Route as MarketplaceProjectPostingRouteImport } from './routes/_marketplace/project-posting'
@@ -232,6 +233,11 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
 const AdminMatchRoute = AdminMatchRouteImport.update({
   id: '/match',
   path: '/match',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminConsultantsRoute = AdminConsultantsRouteImport.update({
+  id: '/consultants',
+  path: '/consultants',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminApproveAdminRoute = AdminApproveAdminRouteImport.update({
@@ -622,6 +628,7 @@ export interface FileRoutesByFullPath {
   '/project-posting': typeof MarketplaceProjectPostingRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
+  '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -711,6 +718,7 @@ export interface FileRoutesByTo {
   '/project-posting': typeof MarketplaceProjectPostingRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
+  '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -803,6 +811,7 @@ export interface FileRoutesById {
   '/_marketplace/project-posting': typeof MarketplaceProjectPostingRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
+  '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -896,6 +905,7 @@ export interface FileRouteTypes {
     | '/project-posting'
     | '/admin/applications'
     | '/admin/approve-admin'
+    | '/admin/consultants'
     | '/admin/match'
     | '/admin/settings'
     | '/auth/callback'
@@ -985,6 +995,7 @@ export interface FileRouteTypes {
     | '/project-posting'
     | '/admin/applications'
     | '/admin/approve-admin'
+    | '/admin/consultants'
     | '/admin/match'
     | '/admin/settings'
     | '/auth/callback'
@@ -1076,6 +1087,7 @@ export interface FileRouteTypes {
     | '/_marketplace/project-posting'
     | '/admin/applications'
     | '/admin/approve-admin'
+    | '/admin/consultants'
     | '/admin/match'
     | '/admin/settings'
     | '/auth/callback'
@@ -1367,6 +1379,13 @@ declare module '@tanstack/react-router' {
       path: '/match'
       fullPath: '/admin/match'
       preLoaderRoute: typeof AdminMatchRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/consultants': {
+      id: '/admin/consultants'
+      path: '/consultants'
+      fullPath: '/admin/consultants'
+      preLoaderRoute: typeof AdminConsultantsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/approve-admin': {
@@ -2064,6 +2083,7 @@ const MarketplaceRouteWithChildren = MarketplaceRoute._addFileChildren(
 interface AdminRouteChildren {
   AdminApplicationsRoute: typeof AdminApplicationsRoute
   AdminApproveAdminRoute: typeof AdminApproveAdminRoute
+  AdminConsultantsRoute: typeof AdminConsultantsRoute
   AdminMatchRoute: typeof AdminMatchRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -2072,6 +2092,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminApplicationsRoute: AdminApplicationsRoute,
   AdminApproveAdminRoute: AdminApproveAdminRoute,
+  AdminConsultantsRoute: AdminConsultantsRoute,
   AdminMatchRoute: AdminMatchRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminIndexRoute: AdminIndexRoute,

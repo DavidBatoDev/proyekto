@@ -26,6 +26,11 @@ export type ApplicationStatus =
 	| "approved"
 	| "rejected";
 export type AdminAccessLevel = "support" | "moderator" | "super_admin";
+export type ConsultantEnrollmentStatus =
+	| "pending"
+	| "verified"
+	| "suspended"
+	| "revoked";
 
 export interface ConsultantApplication {
 	id: string;
@@ -52,6 +57,7 @@ export interface ConsultantApplication {
 		email: string;
 		avatar_url?: string;
 		headline?: string;
+		consultant_status: ConsultantEnrollmentStatus | null;
 		is_consultant_verified: boolean;
 	};
 }
@@ -121,6 +127,7 @@ export interface ConsultantProfile {
 	country?: string | null;
 	city?: string | null;
 	is_consultant_verified: boolean;
+	consultant_status: ConsultantEnrollmentStatus | null;
 	skills: UserSkill[];
 	languages: UserLanguage[];
 	educations: UserEducation[];
@@ -130,6 +137,28 @@ export interface ConsultantProfile {
 	specializations: UserSpecialization[];
 	portfolios: UserPortfolio[];
 	rate_settings: UserRateSettings | null;
+}
+
+export interface AdminConsultantEnrollment {
+	user_id: string;
+	status: ConsultantEnrollmentStatus;
+	application_id: string | null;
+	verified_at: string | null;
+	suspended_at: string | null;
+	revoked_at: string | null;
+	status_reason: string | null;
+	status_changed_by: string | null;
+	created_at: string;
+	updated_at: string;
+	profile: {
+		id: string;
+		display_name?: string | null;
+		first_name?: string | null;
+		last_name?: string | null;
+		email: string;
+		avatar_url?: string | null;
+		headline?: string | null;
+	} | null;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -164,6 +193,44 @@ class AdminService {
 
 	async rejectApplication(id: string, reason?: string): Promise<void> {
 		await apiClient.post(`${this.base}/applications/${id}/reject`, { reason });
+	}
+
+	async getConsultants(): Promise<AdminConsultantEnrollment[]> {
+		const { data } = await apiClient.get(`${this.base}/consultants`);
+		return data.data ?? [];
+	}
+
+	async suspendConsultant(
+		userId: string,
+		reason: string,
+	): Promise<AdminConsultantEnrollment> {
+		const { data } = await apiClient.post(
+			`${this.base}/consultants/${userId}/suspend`,
+			{ reason },
+		);
+		return data.data;
+	}
+
+	async reinstateConsultant(
+		userId: string,
+		reason?: string,
+	): Promise<AdminConsultantEnrollment> {
+		const { data } = await apiClient.post(
+			`${this.base}/consultants/${userId}/reinstate`,
+			{ reason },
+		);
+		return data.data;
+	}
+
+	async revokeConsultant(
+		userId: string,
+		reason: string,
+	): Promise<AdminConsultantEnrollment> {
+		const { data } = await apiClient.post(
+			`${this.base}/consultants/${userId}/revoke`,
+			{ reason },
+		);
+		return data.data;
 	}
 
 	// —— Admin Management ————————————————————————————————

@@ -108,6 +108,7 @@ export interface ProjectMember {
 		email?: string;
 		first_name?: string;
 		last_name?: string;
+		consultant_status?: "pending" | "verified" | "suspended" | "revoked" | null;
 		is_consultant_verified?: boolean;
 	};
 }
