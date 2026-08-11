@@ -10,7 +10,7 @@ dashboard subtree.
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/freelancer/go-live` | Complete professional data and set the profile public | Authentication; no account-role gate |
+| `/freelancer/go-live` | Complete professional data and set the profile public | Authentication only |
 | `/freelancer/invites` | Legacy URL forwarding to `/invites` | Redirect |
 | `/invites` | Review and respond to project invites | Authentication and invite ownership |
 
@@ -23,13 +23,13 @@ dashboard subtree.
 | `/teams`, `/teams/$teamId/*` | Yes according to team membership and team role |
 | `/work-items`, `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
 | `/settings/*` | Yes; account settings |
-| `/project-posting` | Yes; can create in client mode because Client/Talent action separation is deferred |
+| `/project-posting` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
 | `/consultant/apply` | Yes; authenticated application flow |
 | `/consultant/browse`, `/consultant/$profileId` | Public consultant discovery |
 
 ## Project routes
 
-Talent project visibility is controlled by `project_access`, not account role.
+Talent project visibility is controlled entirely by `project_access`.
 
 | Project surface | Typical marketplace `editor` access |
 | --- | --- |
@@ -42,8 +42,8 @@ Talent project visibility is controlled by `project_access`, not account role.
 
 ## Active-consultant-only surfaces
 
-Talent is blocked from these even if an old verification flag were accidentally true, because
-the shared predicate also requires `role='consultant'`:
+Unvetted users are blocked from these by the shared predicate
+(`is_consultant_verified IS TRUE`, server-managed via a privileged-columns trigger):
 
 | Route or API | Gate |
 | --- | --- |

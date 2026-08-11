@@ -17,9 +17,9 @@ function supabaseFor(profile: unknown) {
 }
 
 describe('ConsultantOnlyGuard', () => {
-  it('allows only consultant role plus verification', async () => {
+  it('allows a verified consultant', async () => {
     const guard = new ConsultantOnlyGuard(
-      supabaseFor({ role: 'consultant', is_consultant_verified: true }),
+      supabaseFor({ is_consultant_verified: true }),
     );
     await expect(guard.canActivate(contextFor({ id: 'user-1' }))).resolves.toBe(
       true,
@@ -27,10 +27,10 @@ describe('ConsultantOnlyGuard', () => {
   });
 
   it.each([
-    { role: 'consultant', is_consultant_verified: false },
-    { role: 'talent', is_consultant_verified: true },
-    { role: 'client', is_consultant_verified: true },
-  ])('rejects incomplete consultant capability: %p', async (profile) => {
+    { is_consultant_verified: false },
+    { is_consultant_verified: null },
+    null,
+  ])('rejects without verification: %p', async (profile) => {
     const guard = new ConsultantOnlyGuard(supabaseFor(profile));
     await expect(
       guard.canActivate(contextFor({ id: 'user-1' })),

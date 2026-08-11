@@ -7,17 +7,19 @@ discoverable, and receiving delivery access. Finishing one never silently comple
 
 ## 1. Signup
 
+Signup is lane-free — no role choice exists anywhere in the wizard:
+
 ```text
-Choose Talent
-  -> completeOnboarding({ lane: 'talent' })
-  -> profiles.role='talent'
-  -> canonical onboarding settings stored
+4-step signup (Account -> Password -> Profile -> Verify)
+  -> completeOnboarding({})            # empty body; legacy lane/intent ignored
+  -> settings.onboarding = { completed_at }
   -> personal workspace provisioned
-  -> shared welcome deck
+  -> single welcome deck
 ```
 
-OAuth users without a saved lane select Client, Talent, or Consultant on `/welcome` before
-onboarding completes. Old `client_freelancer` continuations are normalized for compatibility.
+OAuth callbacks complete onboarding unconditionally; `/welcome` has no role
+selection. Nothing about the account marks it as talent — see
+[talent-structure.md](./talent-structure.md#signup-result).
 
 ## 2. Build the professional profile
 
@@ -35,7 +37,7 @@ certifications, languages, and licenses.
 | `profile_basics` | Headline, bio, and country |
 
 The checklist is informational. The go-live API currently sets `is_public=true` without
-enforcing the checklist or Talent role.
+enforcing the checklist.
 
 ## 3. Go live and receive an invite
 
@@ -79,10 +81,9 @@ generation. Client invoices use the contract's client rate, never the Talent rat
 
 ## 7. Apply as a consultant
 
-Application endpoints are available to authenticated users. A Talent account may create and
-submit a consultant application. Admin approval provisions a personal team idempotently,
-sets `role='consultant'`, and sets `is_consultant_verified=true`. Users cannot perform this
-promotion themselves.
+Application endpoints are available to any authenticated user. Admin approval
+provisions a personal team idempotently, then sets `is_consultant_verified=true` —
+the single account-level capability. Users cannot perform this promotion themselves.
 
 ## See also
 

@@ -4,9 +4,6 @@
 
 import { apiClient } from "@/api";
 import type { Profile, ProfileUpdateData } from "../types";
-import type { CompleteOnboardingPayload } from "./onboardingLane";
-
-export type { OnboardingLane } from "./onboardingLane";
 
 export interface CompleteOnboardingResult {
 	profile: Profile;
@@ -15,13 +12,12 @@ export interface CompleteOnboardingResult {
 }
 
 /**
- * Complete onboarding through the server-owned identity path. A network or
+ * Complete onboarding through the server-owned path. Lane-free: the server
+ * records completion and provisions the personal workspace. A network or
  * backend failure deliberately leaves onboarding incomplete and retryable.
  */
-export async function completeOnboarding(
-	data: CompleteOnboardingPayload,
-): Promise<CompleteOnboardingResult> {
-	const response = await apiClient.patch("/api/auth/onboarding/complete", data);
+export async function completeOnboarding(): Promise<CompleteOnboardingResult> {
+	const response = await apiClient.patch("/api/auth/onboarding/complete", {});
 	return response.data;
 }
 

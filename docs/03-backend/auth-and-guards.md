@@ -8,10 +8,13 @@ and the authenticated user is attached to `request.user`. The primary guard,
 `SupabaseAuthGuard`, verifies the Supabase JWT **locally** (fast, no network) with a
 fallback to a Supabase call, and also accepts a guest-session header.
 
-Account onboarding accepts an explicit `client`, `talent`, or `consultant` lane
-without an `intent` payload. Only the compatibility lane `client_freelancer`
-requires the old `{ client, freelancer }` discriminator; the repository resolves it
-to a canonical role and persists only that canonical lane plus `completed_at`.
+Account onboarding is **lane-free**: `PATCH /api/auth/onboarding/complete` takes an
+empty body and writes only `settings.onboarding = { completed_at }`. The DTO
+([`auth.dto.ts`](../../backend/src/modules/auth/dto/auth.dto.ts)) still declares
+optional `lane` and `intent` fields as accepted-but-ignored legacy — the global
+`forbidNonWhitelisted` ValidationPipe would 400 older web/mobile bundles otherwise.
+Every user gets a personal workspace at onboarding; nobody gets an auto-created
+team (consultants create teams after vetting, not at signup).
 
 ## The guards
 
@@ -19,7 +22,7 @@ to a canonical role and persists only that canonical lane plus `completed_at`.
 | --- | --- | --- |
 | `SupabaseAuthGuard` | `supabase-auth.guard.ts` | A valid Supabase JWT **or** a valid `x-guest-user-id` header |
 | `AdminGuard` | `admin.guard.ts` | An active row in `admin_profiles` for the user |
-| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | Active consultant: `profiles.role='consultant'` and `is_consultant_verified=true` |
+| `ConsultantOnlyGuard` | `consultant-only.guard.ts` | Active consultant: `profiles.is_consultant_verified = true` (vetting is the one account-level capability — there is no account role column) |
 | `CronSecretGuard` | `cron-secret.guard.ts` | A constant-time match of the `x-cron-secret` header against `MEETINGS_CRON_SECRET` |
 | `McpAuthGuard` | `mcp/mcp-auth.guard.ts` | `MCP_ENABLED` kill switch, then a Proyekto PAT (`Bearer pk_…`), an OAuth 2.1 access token, **or** a Supabase session JWT — gates the `/mcp` endpoint |
 

@@ -368,6 +368,11 @@ confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migrati
 > account identity in `20260804170019`, but not the switchable `persona_type` model
 > rejected here. It is a non-switchable profile fact and does not auto-provision an
 > organization. The progressive organization design therefore remains compatible.
+>
+> **2026-08-10 follow-up:** `account_role` is itself being removed by
+> [identity-and-enrollment.md](./identity-and-enrollment.md). None of the seven decisions
+> below depend on account identity, and enrollment keeps the progressive, no-auto-provision
+> philosophy — the organization design is unaffected.
 
 | # | Decision | Rejected alternative |
 | --- | --- | --- |

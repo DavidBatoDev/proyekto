@@ -3,7 +3,7 @@
 > **Last updated:** 2026-08-10 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **240 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **241 migrations** spanning
 2025-12-11 → 2026-08-10. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -20,7 +20,7 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 
 | Table | Purpose |
 | --- | --- |
-| `profiles` | Core 27-column user record (1:1 `auth.users`); durable `account_role`, verification/discovery flags, canonical onboarding settings (`lane` + `completed_at`, no persisted intent), guest fields |
+| `profiles` | Core 26-column user record (1:1 `auth.users`); **no role column** — `is_consultant_verified` is the one account-level capability, plus discovery flags, onboarding settings (`completed_at` only; `lane` is optional legacy data on historical rows), guest fields |
 | `admin_profiles` | Staff authority layer (`admin_access_level`) |
 | `consultant_applications` | Applications to become a verified consultant |
 | `user_verifications`, `user_identity_documents` | KYC / trust records |
@@ -108,7 +108,6 @@ The status/type language of the app is Postgres enums. The load-bearing ones:
 
 | Enum | Values |
 | --- | --- |
-| `account_role` | client, talent, consultant |
 | `project_status` | draft, active, paused, completed, archived, bidding |
 | `roadmap_status` | draft, active, paused, completed, archived |
 | `epic_status` | backlog, planned, in_progress, in_review, completed, on_hold |
@@ -120,7 +119,9 @@ The status/type language of the app is Postgres enums. The load-bearing ones:
 | `admin_access_level` | support, moderator, super_admin |
 
 Note `feature_status` was **dropped** (`20260514120000`) — feature status is now
-derived from child task statuses in application code. Invoice/payout statuses are
+derived from child task statuses in application code — and `account_role` was
+**dropped with `profiles.role`** (`20260810160000`): there is no account-role enum.
+Invoice/payout statuses are
 text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/void;
 `payouts.status`: recorded/void).
 

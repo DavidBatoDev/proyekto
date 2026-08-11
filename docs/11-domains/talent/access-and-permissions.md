@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-08-10 · **Status:** current
 
-Talent account identity does not grant project capabilities. A Talent participant receives a
+Nothing account-level grants project capabilities. A Talent participant receives a
 project role through a direct invite or team curation, then the shared permission resolver
 combines that role with an origin delta and explicit capability overrides.
 

@@ -1,5 +1,4 @@
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
-import type { OnboardingLane } from "@/lib/onboardingLane";
 
 export const AUTH_CONTINUATION_KEY = "proyekto_auth_continuation";
 
@@ -7,15 +6,11 @@ const AUTH_CONTINUATION_TTL_MS = 30 * 60 * 1000;
 
 export type AuthContinuationSource = "login" | "signup";
 export type AuthContinuationMethod = "password" | "google";
-export type AuthContinuationLane = OnboardingLane;
-export type AuthContinuationIntent = "client" | "freelancer";
 
 export interface AuthContinuation {
 	redirectTo?: string;
 	source: AuthContinuationSource;
 	authMethod: AuthContinuationMethod;
-	lane?: AuthContinuationLane;
-	intent?: AuthContinuationIntent;
 	postSignupWelcomeRequired?: boolean;
 	createdAt: string;
 }
@@ -60,22 +55,6 @@ function isAuthContinuation(value: unknown): value is AuthContinuation {
 	) {
 		return false;
 	}
-	if (
-		candidate.lane !== undefined &&
-		candidate.lane !== "client_freelancer" &&
-		candidate.lane !== "client" &&
-		candidate.lane !== "talent" &&
-		candidate.lane !== "consultant"
-	) {
-		return false;
-	}
-	if (
-		candidate.intent !== undefined &&
-		candidate.intent !== "client" &&
-		candidate.intent !== "freelancer"
-	) {
-		return false;
-	}
 	return typeof candidate.createdAt === "string";
 }
 
@@ -87,13 +66,11 @@ export function rememberAuthContinuation({
 	redirectTo,
 	source,
 	authMethod,
-	lane,
 	postSignupWelcomeRequired,
 }: {
 	redirectTo?: string | null;
 	source: AuthContinuationSource;
 	authMethod: AuthContinuationMethod;
-	lane?: AuthContinuationLane;
 	postSignupWelcomeRequired?: boolean;
 }): AuthContinuation | null {
 	const storage = getStorage();
@@ -106,7 +83,6 @@ export function rememberAuthContinuation({
 		createdAt: new Date().toISOString(),
 		postSignupWelcomeRequired: postSignupWelcomeRequired ?? source === "signup",
 		...(safeRedirect ? { redirectTo: safeRedirect } : {}),
-		...(lane ? { lane } : {}),
 	};
 
 	storage.setItem(AUTH_CONTINUATION_KEY, JSON.stringify(continuation));

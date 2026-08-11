@@ -33,7 +33,6 @@ import type {
   ProjectResourceFolderWithLinks,
   ProjectResourcesPayload,
 } from './projects.repository.interface';
-import type { AccountRole } from '../../../common/entities';
 import { isActiveConsultant } from '../../../common/auth/consultant-capability';
 
 @Injectable()
@@ -43,19 +42,17 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ) {}
 
   async getCreatorProfileForProjectCreation(userId: string): Promise<{
-    role: AccountRole;
     is_consultant_verified: boolean;
   } | null> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('role, is_consultant_verified')
+      .select('is_consultant_verified')
       .eq('id', userId)
       .single();
 
     if (error || !data) return null;
 
     return {
-      role: data.role as AccountRole,
       is_consultant_verified: data.is_consultant_verified === true,
     };
   }
@@ -158,7 +155,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, role, is_consultant_verified))
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -336,7 +333,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async isActiveConsultant(userId: string): Promise<boolean> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('role, is_consultant_verified')
+      .select('is_consultant_verified')
       .eq('id', userId)
       .maybeSingle();
 
@@ -393,7 +390,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, role, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -729,7 +726,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const selectShape =
-      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, role, is_consultant_verified)';
+      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
 
     if (Object.keys(patch).length === 0) {
       const { data: current } = await this.supabase

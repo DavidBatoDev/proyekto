@@ -2,13 +2,14 @@
 
 > **Last updated:** 2026-08-10 · **Status:** current
 
-The Client is the person paying for the work. There is no `clients` table: a client account
-is a `profiles` row with `role='client'`, project participation is an access-row origin, and
-the legal payer is snapshotted on the contract. Project ownership is deliberately separate:
-`projects.owner_id` may point to a Client, Talent, or Consultant account.
+The Client is the person paying for the work — a **position on a contract, not an
+account attribute**. There is no `clients` table and no account role (`profiles.role`
+was dropped 2026-08-10): project participation is an access-row origin, and the legal
+payer is snapshotted on the contract. Project ownership is deliberately separate:
+`projects.owner_id` may point to any account.
 
-This folder is the source of truth for how the client role works end to end. If you only
-read one page, read [client-structure.md](./client-structure.md).
+This folder is the source of truth for how the client position works end to end. If you
+only read one page, read [client-structure.md](./client-structure.md).
 
 > **⚠️ Diagram exception.** [STYLE.md](../../STYLE.md) mandates ASCII diagrams. This folder
 > and [13-proposals](../../13-proposals/README.md) use **Mermaid** instead — the flows here
@@ -19,13 +20,13 @@ read one page, read [client-structure.md](./client-structure.md).
 
 | Fact | Answers | Nullable |
 | --- | --- | --- |
-| `profiles.role = 'client'` | "What is this account's primary identity?" | No |
 | `project_access.origin = 'client'` | "What may this person do here?" | Yes — no row means no access |
 | `contracts.client_name` / `client_email` / `client_user_id` | "Who is on the hook to pay?" | Yes — all of them |
 
 They are set at different times by different code paths and **are not kept in sync**.
-`projects.owner_id` answers only who owns the project container and grants no account-wide
-client identity. A project's contract may name a different legal entity from its owner.
+There is no account-level client fact: `projects.owner_id` answers only who owns the
+project container, and a project's contract may name a different legal entity from
+its owner.
 
 ## What a client can do
 
@@ -62,24 +63,21 @@ client identity. A project's contract may name a different legal entity from its
 
 | Term | Meaning |
 | --- | --- |
-| **Client account** | A profile with durable `profiles.role='client'`; it does not itself grant project access. |
+| **Client** | The paying position on a project/contract. Not an account attribute — there is no account role. |
 | **Origin** | `project_access.origin` — the *source* of a grant, not a role. Direct values: `client`, `consultant`, `invited`, `personal_workspace`, `legacy`. Team-derived: `team:<team_id>`. |
 | **Origin delta** | A permission patch applied by origin regardless of role. `client` loses `chat.message_freelancers`; `consultant` gains the operator toolkit. |
 | **External client** | A contract counterparty with no `profiles` row. Exists only as `contracts.client_*` strings. |
 | **Signing link** | A 256-bit single-use bearer token (`contract_signature_links`) letting an external client sign without an account. |
 | **Soft isolation** | The rule that a client and the freelance pool cannot DM each other; the consultant mediates. |
-| **Project owner** | The profile referenced by `projects.owner_id`. Ownership is contextual and does not change `profiles.role`. |
+| **Project owner** | The profile referenced by `projects.owner_id`. Ownership is contextual and implies nothing else about the account. |
 | **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `owner_id` is the workspace user and `consultant_id IS NULL`. |
 
 ## Known gaps
 
 - **No profile-completeness gate.** Nothing checks `user_portfolios`, identity verification,
-  or profile completeness before a person joins a team or accepts a project invite. The
-  durable consultant hard gate is active-consultant status (`role` plus verification); it
+  or profile completeness before a person joins a team or accepts a project invite. The one
+  account-level hard gate is active-consultant status (`is_consultant_verified`); it
   gates consultant-only surfaces, not ordinary participation.
-- **Client/Talent action enforcement is deferred.** The role foundation separates signup
-  identity and discovery classification, but shared project actions and dashboards are not
-  yet restricted by Client versus Talent role.
 - **No client-side onboarding.** When a consultant adds a client, the client must grant access
   to external systems (analytics, domain, social accounts). That happens in chat today and is
   not tracked. Designed in

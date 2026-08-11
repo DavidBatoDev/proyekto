@@ -210,7 +210,6 @@ export interface FullProfile {
 	zip_code: string | null;
 	gender: string | null;
 	date_of_birth: string | null;
-	role: "client" | "talent" | "consultant";
 	is_consultant_verified: boolean;
 	is_public: boolean;
 	created_at: string;

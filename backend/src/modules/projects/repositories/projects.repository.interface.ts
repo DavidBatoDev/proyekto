@@ -1,5 +1,4 @@
 import {
-  AccountRole,
   Project,
   ProjectResourceFolder,
   ProjectResourceLink,
@@ -33,7 +32,6 @@ export type ProjectResourcesPayload = {
 
 export interface ProjectsRepository {
   getCreatorProfileForProjectCreation(userId: string): Promise<{
-    role: AccountRole;
     is_consultant_verified: boolean;
   } | null>;
   findByUser(userId: string): Promise<Project[]>;
