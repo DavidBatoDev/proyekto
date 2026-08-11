@@ -1,14 +1,16 @@
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { lazy, Suspense } from "react";
 import Header from "../components/layout/Header";
 import { MigrationHandler } from "../components/migration";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
 import { ConfirmProvider } from "../hooks/useConfirm";
 import { usePushNotifications } from "../hooks/usePushNotifications";
-import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
+
+const DevelopmentDevtools = import.meta.env.DEV
+	? lazy(() => import("../integrations/tanstack-query/DevelopmentDevtools"))
+	: null;
 
 interface MyRouterContext {
 	queryClient: QueryClient;
@@ -29,18 +31,11 @@ function RootLayout() {
 				<Outlet />
 				<FloatingActiveTimer />
 				<MigrationHandler />
-				<TanStackDevtools
-					config={{
-						position: "bottom-right",
-					}}
-					plugins={[
-						{
-							name: "Tanstack Router",
-							render: <TanStackRouterDevtoolsPanel />,
-						},
-						TanStackQueryDevtools,
-					]}
-				/>
+				{DevelopmentDevtools && (
+					<Suspense fallback={null}>
+						<DevelopmentDevtools />
+					</Suspense>
+				)}
 			</ConfirmProvider>
 		</ToastProvider>
 	);
