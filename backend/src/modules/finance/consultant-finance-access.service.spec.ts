@@ -42,7 +42,6 @@ function fakeSupabase(input: {
           if (table === 'profiles') {
             return Promise.resolve({
               data: {
-                role: 'consultant',
                 is_consultant_verified: input.verified ?? true,
               },
               error: null,

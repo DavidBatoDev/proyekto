@@ -54,7 +54,10 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CompleteOnboardingDto,
   ) {
-    return this.authService.completeOnboarding(user.id, dto);
+    // Body is validated for legacy-client compatibility but deliberately
+    // unused — onboarding no longer records a lane or role.
+    void dto;
+    return this.authService.completeOnboarding(user.id);
   }
 
   @Patch('profile')

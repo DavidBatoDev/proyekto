@@ -144,9 +144,9 @@ export class TeamsService {
   ) {}
 
   /**
-   * Idempotently create the user's single personal team. Called by
-   * AuthService.completeOnboarding for consultant-lane signups. Returns
-   * the existing personal team on re-runs (partial unique index on
+   * Idempotently create the user's single personal team. No longer called at
+   * onboarding (signup is lane-free); kept for consultant flows post-vetting.
+   * Returns the existing personal team on re-runs (partial unique index on
    * teams(owner_id) WHERE is_personal is the source of truth).
    */
   async provisionPersonalTeam(userId: string): Promise<TeamRow> {
@@ -830,7 +830,7 @@ export class TeamsService {
   async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('role, is_consultant_verified')
+      .select('is_consultant_verified')
       .eq('id', team.owner_id)
       .maybeSingle();
     if (error) throw new Error(error.message);

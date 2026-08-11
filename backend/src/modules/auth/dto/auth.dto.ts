@@ -1,40 +1,26 @@
 import {
-  IsBoolean,
-  IsDefined,
-  IsEnum,
+  IsIn,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
-  ValidateIf,
-  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-
-class LegacyOnboardingIntentDto {
-  @IsBoolean()
-  freelancer: boolean;
-
-  @IsBoolean()
-  client: boolean;
-}
-
-export type OnboardingLane =
-  | 'client'
-  | 'talent'
-  | 'consultant'
-  | 'client_freelancer';
 
 export class CompleteOnboardingDto {
-  @IsEnum(['client', 'talent', 'consultant', 'client_freelancer'])
-  lane: OnboardingLane;
+  /**
+   * Legacy compatibility only. Older web/mobile bundles still send a signup
+   * lane; the global ValidationPipe runs forbidNonWhitelisted, so the field
+   * must stay declared or those clients 400. The value is ignored — onboarding
+   * no longer records a role or lane.
+   */
+  @IsOptional()
+  @IsIn(['client', 'talent', 'consultant', 'client_freelancer'])
+  lane?: string;
 
-  @ValidateIf((dto: CompleteOnboardingDto) => dto.lane === 'client_freelancer')
-  @IsDefined()
+  /** Legacy compatibility only (client_freelancer intent). Ignored. */
+  @IsOptional()
   @IsObject()
-  @ValidateNested()
-  @Type(() => LegacyOnboardingIntentDto)
-  intent?: LegacyOnboardingIntentDto;
+  intent?: Record<string, unknown>;
 }
 
 export class UpdateProfileDto {

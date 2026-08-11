@@ -7,7 +7,7 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import type { AppearancePreferences } from '../dto/appearance-preferences.dto';
 
 const PUBLIC_FIELDS =
-  'id, display_name, avatar_url, banner_url, headline, bio, country, city, role, is_consultant_verified, created_at';
+  'id, display_name, avatar_url, banner_url, headline, bio, country, city, is_consultant_verified, created_at';
 
 @Injectable()
 export class SupabaseUsersRepository implements UsersRepository {

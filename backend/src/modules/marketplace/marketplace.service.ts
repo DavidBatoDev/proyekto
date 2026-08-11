@@ -86,7 +86,7 @@ export class MarketplaceService {
   private async ensureConsultant(userId: string): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, role, is_consultant_verified')
+      .select('id, is_consultant_verified')
       .eq('id', userId)
       .single();
 
