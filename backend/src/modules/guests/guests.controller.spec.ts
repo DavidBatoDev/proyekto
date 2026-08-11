@@ -2,6 +2,7 @@
  * Handler references here are metadata lookup targets only; they are never
  * invoked, so `this` scoping is irrelevant. */
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { GuestsController } from './guests.controller';
 
 // Metadata keys: '__guards__' is @nestjs/common's GUARDS_METADATA; the
@@ -35,11 +36,22 @@ describe('GuestsController rate-limit wiring', () => {
       GuestsController.prototype.getPending,
       GuestsController.prototype.cleanup,
     ]) {
-      expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toBeUndefined();
       expect(
         Reflect.getMetadata(THROTTLER_LIMIT_DEFAULT, handler),
       ).toBeUndefined();
     }
+    expect(
+      Reflect.getMetadata(
+        GUARDS_METADATA,
+        GuestsController.prototype.getPending,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('restricts cleanup to admins', () => {
+    expect(
+      Reflect.getMetadata(GUARDS_METADATA, GuestsController.prototype.cleanup),
+    ).toContain(AdminGuard);
   });
 
   it('no longer exposes the insecure migrate endpoint', () => {
