@@ -162,6 +162,12 @@ export function formatLogEnd(started: Date, ended: Date): string {
 		: SHORT_DATE_TIME_FORMATTER.format(ended);
 }
 
+/** Break total in whole minutes, rounded down. Empty string when there's no break. */
+export function formatBreakMinutes(seconds: number): string {
+	const minutes = Math.floor(seconds / 60);
+	return minutes > 0 ? `${minutes}m break` : "";
+}
+
 /**
  * Logs longer than this are almost always a timer someone forgot to stop.
  * Used to flag them in the UI and to confirm before recording on stop.

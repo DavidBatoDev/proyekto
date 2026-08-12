@@ -66,6 +66,17 @@ export interface TimeLogComment {
 	author?: ProfileMini | null;
 }
 
+/** One work or break interval within a log's timer session. */
+export interface TimeLogSegment {
+	id: string;
+	log_id: string;
+	kind: "work" | "break";
+	started_at: string;
+	/** Null while this is the currently running interval. */
+	ended_at: string | null;
+	created_at: string;
+}
+
 export interface TimeLogDaySummary {
 	day: string;
 	total_logs: number;
@@ -368,6 +379,18 @@ export const teamTimeService = {
 			return res.data.data;
 		} catch (e) {
 			throw extractError(e, "Failed to review time logs");
+		}
+	},
+
+	/** The work/break interval timeline for one log, oldest first. */
+	async listLogSegments(logId: string): Promise<TimeLogSegment[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<TimeLogSegment[]>>(
+				`/api/team-time/logs/${logId}/segments`,
+			);
+			return res.data.data ?? [];
+		} catch (e) {
+			throw extractError(e, "Failed to fetch log segments");
 		}
 	},
 

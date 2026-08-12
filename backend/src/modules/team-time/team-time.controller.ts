@@ -101,6 +101,14 @@ export class TeamTimeController {
     return this.service.reviewLog(user.id, logId, dto);
   }
 
+  @Get('logs/:logId/segments')
+  listLogSegments(
+    @Param('logId') logId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listLogSegments(user.id, logId);
+  }
+
   @Get('logs/:logId/comments')
   listLogComments(
     @Param('logId') logId: string,
