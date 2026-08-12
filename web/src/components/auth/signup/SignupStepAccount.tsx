@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-	type AuthContinuationLane,
 	clearAuthContinuation,
 	rememberAuthContinuation,
 } from "@/lib/authContinuation";
@@ -23,7 +22,6 @@ interface SignupStepAccountProps {
 	onNext: () => void;
 	onBack?: () => void;
 	authRedirect?: string;
-	authLane?: AuthContinuationLane;
 }
 
 function GoogleIcon() {
@@ -61,7 +59,6 @@ export function SignupStepAccount({
 	onNext,
 	onBack,
 	authRedirect,
-	authLane,
 }: SignupStepAccountProps) {
 	const toast = useToast();
 	const [errors, setErrors] = useState<FieldErrors>({
@@ -76,7 +73,6 @@ export function SignupStepAccount({
 				redirectTo: authRedirect,
 				source: "signup",
 				authMethod: "google",
-				lane: authLane,
 			});
 
 			const { error } = await supabase.auth.signInWithOAuth({

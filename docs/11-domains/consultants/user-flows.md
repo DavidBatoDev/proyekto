@@ -1,35 +1,34 @@
 # Consultant User Flows
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
-The Consultant flow deliberately separates identity, vetting, and project authority. Signup
-creates the identity and team; approval unlocks product capability; project creation or
-assignment establishes authority over a specific engagement.
+The Consultant flow deliberately separates vetting from project authority. Signup is
+the same lane-free flow as everyone else's; approval unlocks product capability;
+project creation or assignment establishes authority over a specific engagement.
 
-## 1. Signup and team provisioning
+## 1. Signup
 
 ```text
-Choose Consultant
-  -> profiles.role='consultant'
-  -> is_consultant_verified=false
-  -> canonical onboarding settings
-  -> personal team provisioned
-  -> Consultant welcome deck
+Lane-free 4-step signup (Account -> Password -> Profile -> Verify)
+  -> settings.onboarding = { completed_at }
+  -> personal workspace provisioned
+  -> single welcome deck
 ```
 
-If OAuth has no continuation lane, `/welcome` asks for a role before completing onboarding.
-The role cannot be changed by replaying onboarding after completion.
+There is no consultant signup lane and no role selection at `/welcome` — nothing
+about an account marks it as a consultant before vetting.
 
 ## 2. Apply and receive approval
 
 The applicant saves a draft, submits required experience and niche information, and waits for
 admin review. Approval provisions the personal team idempotently, changes application status,
-sets Consultant role, and enables verification. Rejection leaves consultant powers disabled.
+and sets `is_consultant_verified=true`. Rejection leaves consultant powers disabled.
 
 ## 3. Create or join a project
 
 An active consultant can create in consultant mode. The project is forced to draft, the
-creator becomes the named consultant and owner, and an optional personal/reusable team can be
+creator becomes consultant-of-record through an owner access row with
+`origin='consultant'`, and an optional personal/reusable team can be
 attached with the consultant as the initial curated member.
 
 For client-created projects, assignment grants the selected active consultant owner access.
@@ -63,9 +62,8 @@ instantiation are broader; authoring operations are guarded.
 ```text
 privileged caller selects existing project member
   -> verify replacement is active consultant
-  -> update projects.consultant_id
   -> grant replacement owner + consultant origin
-  -> attempt to revoke previous consultant
+  -> revoke previous consultant with reassignment bypass
   -> preserve previous owner if last-owner guard requires it
 ```
 

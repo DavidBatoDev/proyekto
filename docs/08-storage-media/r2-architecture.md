@@ -1,6 +1,6 @@
 # R2 Architecture
 
-> **Last updated:** 2026-08-04 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 All file storage is on **Cloudflare R2** — two buckets, a public CDN domain, and a
 deliberate upload path. Reads are simple (public assets serve over
@@ -65,7 +65,7 @@ See [Backend → modules (uploads)](../03-backend/modules.md) and
 - **Worker:** [`realtime/src/index.ts`](../../realtime/src/index.ts) (`POST /uploads`,
   `handleUpload`, `UPLOAD_BUCKETS`), [`realtime/wrangler.toml`](../../realtime/wrangler.toml)
   (`MEDIA`/`PRIVATE` bindings, `R2_PUBLIC_BASE_URL`).
-- **Backend proxy (dormant):** [`backend/src/modules/uploads/uploads.controller.ts`](../../backend/src/modules/uploads/uploads.controller.ts),
+- **Backend proxy (dormant):** [`backend/src/modules/shared/uploads/uploads.controller.ts`](../../backend/src/modules/shared/uploads/uploads.controller.ts),
   [`backend/src/config/r2.module.ts`](../../backend/src/config/r2.module.ts)
   (the `R2_CLIENT` S3 client with `requestChecksumCalculation: WHEN_REQUIRED`).
 - **Web:** `web/src/services/upload.service.ts` → `VITE_UPLOAD_WORKER_URL`.

@@ -1,6 +1,6 @@
 # Cross-Service Flows
 
-> **Last updated:** 2026-07-19 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Three request lifecycles that cross service boundaries: **roadmap AI editing**
 (the most load-bearing), **meetings scheduling**, and **realtime / chat**. Each is
@@ -51,7 +51,7 @@ A lean diff comes back so the UI can refresh without a full payload.
    `x-trace-id` links live trace polling.
 2. **web → backend (parallel, not the edit path).** Chat history is persisted
    separately via `POST/GET /api/roadmaps/:id/ai-sessions*`
-   ([`roadmap-ai-sessions.controller.ts`](../../backend/src/modules/roadmaps/controllers/roadmap-ai-sessions.controller.ts)).
+   ([`roadmap-ai-sessions.controller.ts`](../../backend/src/modules/execution/roadmaps/controllers/roadmap-ai-sessions.controller.ts)).
    This is bookkeeping, independent of the edit.
 3. **agent receives + hydrates.** `app.main` routes to
    [`agent/app/api/routes/sessions.py`](../../agent/app/api/routes/sessions.py)
@@ -65,14 +65,14 @@ A lean diff comes back so the UI can refresh without a full payload.
    [`nest_client.py`](../../agent/app/core/nest_client.py) calls
    `GET {NEST_API_BASE_URL}/roadmaps/:id/ai/context/*` (summary, members, search,
    resolve, features, tasks, nodes), served by
-   [`roadmap-ai.controller.ts`](../../backend/src/modules/roadmaps/controllers/roadmap-ai.controller.ts).
+   [`roadmap-ai.controller.ts`](../../backend/src/modules/execution/roadmaps/controllers/roadmap-ai.controller.ts).
    The caller's auth header is forwarded.
 6. **agent → backend (commit).** On `edit_plan`, `execute_auto_commit` →
    `POST /roadmaps/:id/ai/commit` with the staged `operations`, a `revision_token`,
    an `idempotency_key`, and **`include_roadmap: false`** (the lean path). May run
    inline or in the background when `AGENT_ASYNC_AUTO_COMMIT_ENABLED` is set.
 7. **backend applies to Supabase.** `RoadmapAiService.commit()`
-   ([`roadmap-ai.service.ts`](../../backend/src/modules/roadmaps/services/roadmap-ai.service.ts)):
+   ([`roadmap-ai.service.ts`](../../backend/src/modules/execution/roadmaps/services/roadmap-ai.service.ts)):
    `assertCanEditRoadmap` first, then the idempotency replay guard (runs *after*
    authz, scoped by `userId` + `sha256(operations)` — a key reused with different
    operations returns 409 `IDEMPOTENCY_KEY_REUSED`); 409 `STALE_REVISION` on token
@@ -147,7 +147,7 @@ subscribe with a thin WS client that mirrors the old Supabase channel API.
    `roadmap-patch.service.ts`, and the epic/feature/task/milestone services →
    `realtime.publishRoadmapChange(roadmapId, fromUserId)`.
 2. **Publisher fans out.**
-   [`realtime-publisher.service.ts`](../../backend/src/modules/realtime/realtime-publisher.service.ts):
+   [`realtime-publisher.service.ts`](../../backend/src/modules/shared/realtime/realtime-publisher.service.ts):
    roadmap events go to room `roadmap:{id}` (`data_changed`); chat events go to a
    per-recipient `user:{userId}` room (`chat`). `POST {REALTIME_WORKER_URL}/publish`
    with `x-realtime-token`. **A dormant no-op unless both `REALTIME_WORKER_URL` and
@@ -165,7 +165,7 @@ subscribe with a thin WS client that mirrors the old Supabase channel API.
 6. **Worker authorizes the upgrade.** `verifyToken` (Supabase JWT via JWKS or
    `SUPABASE_JWT_SECRET`); `user:` rooms are self-scoped, others call
    `POST {BACKEND_AUTHORIZE_URL}` →
-   [`realtime.controller.ts`](../../backend/src/modules/realtime/realtime.controller.ts)
+   [`realtime.controller.ts`](../../backend/src/modules/shared/realtime/realtime.controller.ts)
    `@Post('authorize')` → `canViewRoadmap` / `canAccessRoom`.
 7. **Hooks invalidate on events.** Roadmap:
    [`useRoadmapDataSync.ts`](../../web/src/hooks/useRoadmapDataSync.ts) /

@@ -1,6 +1,6 @@
 # Invoice Lifecycle
 
-> **Last updated:** 2026-08-05 · **Status:** draft
+> **Last updated:** 2026-08-11 · **Status:** draft
 
 Proyekto invoices are the client-facing side of project billing. A contract supplies commercial terms, completed work becomes client-priced line items, and the consultant reviews every document before it can reach the client. Payment happens outside Proyekto; the consultant records the result here so billed, collected, and outstanding money stay distinct.
 
@@ -37,7 +37,7 @@ Contract terms or a manual request
 | Scheduled draft | Recurring contract period | Requires a signed or active contract. The scheduler creates a draft only; it never emails a client. |
 | Attached hours | Time-based or hybrid work | Requires a live contract so hours are priced at the client rate. Only approved or paid real-work logs are included, net of breaks. |
 
-Internal team rate snapshots, team allocation, and member identity never appear on a client invoice. See the [backend invoice service](../../backend/src/modules/invoices/invoices.service.ts) and [composition service](../../backend/src/modules/invoices/invoice-composition.service.ts).
+Internal team rate snapshots, team allocation, and member identity never appear on a client invoice. See the [backend invoice service](../../backend/src/modules/marketplace/invoices/invoices.service.ts) and [composition service](../../backend/src/modules/marketplace/invoices/invoice-composition.service.ts).
 
 ## States and actions
 

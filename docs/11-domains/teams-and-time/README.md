@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -34,13 +34,16 @@ Billable work is logged against tasks, reviewed, then rolled into payouts/invoic
 
 | Table | Holds |
 | --- | --- |
-| `task_time_logs` | A time log (start/stop or manual), rate/currency snapshot, paid status, optional `payout_id` |
+| `task_time_logs` | A time log (start/stop or manual), member/rate/currency snapshots, paid status, optional `payout_id` |
 | `time_log_comments` | Comment threads on a log |
 
 - **Lifecycle:** start / stop / manual entry → review (per-log or bulk) → grouped into
   a payout. HTTP under `/team-time`
 ([Backend → api reference](../../03-backend/api-reference.md#team-time--team-time)).
 - **Rate resolution** pulls from `team_member_rates` (per member, per project).
+- **Durability:** deleting a project or task, or removing a member profile, severs the
+  corresponding nullable FK instead of deleting the log. Running project timers are stopped
+  before project deletion, and the member display-name snapshot preserves attribution.
 - Approved logs feed the money domain — see
   [Finance](../finance/README.md).
 
@@ -54,8 +57,8 @@ team ──attach──► project_teams ──curate──► project_team_memb
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/teams/`](../../../backend/src/modules/teams/) (3 controllers), [`backend/src/modules/team-time/`](../../../backend/src/modules/team-time/)
-- **Web:** `web/src/routes/teams/`, `web/src/components/team/`, `web/src/components/team-time/`
+- **Backend:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/) (3 controllers), [`backend/src/modules/execution/team-time/`](../../../backend/src/modules/execution/team-time/)
+- **Web:** `web/src/routes/_execution/teams/`, `web/src/components/team/`, `web/src/components/team-time/`
 
 ## See also
 

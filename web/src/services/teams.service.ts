@@ -516,7 +516,7 @@ export interface TeamProjectAttachment {
 		custom_start_date: string | null;
 		banner_url: string | null;
 		owner_id: string | null;
-		consultant_id: string | null;
+		has_client: boolean;
 		owner: {
 			id: string;
 			display_name: string | null;

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { AuditEntry } from '../../modules/audit/audit.service';
+import type { AuditEntry } from '../../modules/shared/audit/audit.service';
 
 /**
  * Per-request activity buffer.

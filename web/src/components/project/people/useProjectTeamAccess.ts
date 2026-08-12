@@ -3,6 +3,7 @@ import {
 	useProjectDetailQuery,
 	useProjectMembersQuery,
 } from "@/hooks/useProjectQueries";
+import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import { useUser } from "@/stores/authStore";
 
 const ADMIN_ROLES = new Set(["owner", "admin", "consultant", "client"]);
@@ -24,8 +25,7 @@ export function useProjectTeamAccess(projectId: string) {
 			return { role: null, isFreelancer: false, canViewAdmin: false };
 		}
 
-		const isProjectPrincipal =
-			project.owner_id === userId || project.consultant_id === userId;
+		const isProjectPrincipal = hasProjectAdminAccess(project, userId);
 		const membership = (membersQuery.data ?? []).find(
 			(member) => member.user_id === userId,
 		);

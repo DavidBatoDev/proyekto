@@ -1,6 +1,6 @@
 # Client Access and Permissions
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 A client's 45 permissions are never stored. They are recomputed on every check from three
 layers, and only the *delta* from the baseline is persisted — so role templates can evolve
@@ -17,7 +17,7 @@ resolvePermissions(role, origin, capabilities)
   ⊕ capabilities             // per-member overrides; flat paths win
 ```
 
-— [`project-permissions.ts:515`](../../../backend/src/modules/projects/permissions/project-permissions.ts)
+— [`project-permissions.ts:515`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts)
 
 ```mermaid
 flowchart LR
@@ -74,7 +74,7 @@ Two paths, both in `ProjectsService.createProject`:
 | `creation_mode` | Role granted | Origin | Notes |
 | --- | --- | --- | --- |
 | `'client'` (**default**) | `admin` | `client` | No owner exists until a consultant joins |
-| `'consultant'` | `owner` | `consultant` | Requires active consultant (`role` + verification); forces `status: 'draft'` |
+| `'consultant'` | `owner` | `consultant` | Requires active consultant (`is_consultant_verified`); forces `status: 'draft'` |
 
 A client invited to an existing project instead gets whatever `project_invites.default_role`
 says, with `origin` set by the grant call — see [user-flows.md](./user-flows.md).
@@ -107,7 +107,7 @@ default mode; `viewer + client` is a typical invited stakeholder.
 | `time.view_team_logs` | ❌ | ✅ | ✅ |
 
 Derived from `buildRoleDefault()` and `ORIGIN_DELTAS` in
-[`project-permissions.ts`](../../../backend/src/modules/projects/permissions/project-permissions.ts).
+[`project-permissions.ts`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts).
 Regenerate rather than transcribe if the file changes.
 
 > **On money and time.** A client at `admin` sees `time.view_team_logs` because *admin*

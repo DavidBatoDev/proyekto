@@ -12,8 +12,9 @@ import { AuthenticatedRequest } from '../interfaces/authenticated-request.interf
 import { isActiveConsultant } from '../auth/consultant-capability';
 
 /**
- * Gate consultant-only surfaces by durable consultant identity plus completed
- * vetting. Neither the role nor the verification flag grants access alone.
+ * Gate consultant-only surfaces on completed vetting
+ * (profiles.is_consultant_verified). Vetting is the one account-level
+ * capability; there is no account role.
  *
  * Mirrors the philosophy of the existing `MarketplaceService.ensureConsultant`
  * helper but moves the check to the API surface so it's loud and
@@ -34,7 +35,7 @@ export class ConsultantOnlyGuard implements CanActivate {
 
     const { data: profile, error } = await this.supabaseAdmin
       .from('profiles')
-      .select('id, role, is_consultant_verified')
+      .select('id, is_consultant_verified')
       .eq('id', request.user.id)
       .maybeSingle();
 

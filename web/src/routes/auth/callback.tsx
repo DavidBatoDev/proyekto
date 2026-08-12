@@ -4,13 +4,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
 	clearAuthContinuation,
-	getAuthContinuation,
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
-import {
-	buildOnboardingPayload,
-	normalizeSignupLane,
-} from "@/lib/onboardingLane";
 import { useToast } from "../../hooks/useToast";
 import { completeOnboarding } from "../../lib/auth-api";
 import { supabase } from "../../lib/supabase";
@@ -29,7 +24,6 @@ function AuthCallbackPage() {
 	useEffect(() => {
 		const finalizeOAuth = async () => {
 			try {
-				const continuation = getAuthContinuation();
 				const callbackRedirect =
 					typeof window === "undefined"
 						? null
@@ -134,23 +128,13 @@ function AuthCallbackPage() {
 					navigate({ to: destination, replace: true });
 				} else {
 					// Google users never ran the signup-time onboarding step that the
-					// password flow runs. Complete it idempotently, then show Welcome once.
-					// If signup started from a specific lane, the continuation preserves it.
-					const needsRoleSelection = !continuation?.lane;
-					if (!needsRoleSelection) {
-						const lane = normalizeSignupLane(
-							continuation?.lane ?? "client_freelancer",
-							continuation?.intent,
-						);
-
-						try {
-							await completeOnboarding(
-								buildOnboardingPayload(lane, continuation?.intent),
-							);
-						} catch (err) {
-							// Non-fatal: /welcome retries a known lane or asks the user to choose.
-							console.error("OAuth onboarding completion failed:", err);
-						}
+					// password flow runs. Complete it idempotently, then show Welcome
+					// once. Lane-free: there is nothing to select first.
+					try {
+						await completeOnboarding();
+					} catch (err) {
+						// Non-fatal: /welcome retries on next visit.
+						console.error("OAuth onboarding completion failed:", err);
 					}
 					// Seed the profile the same way the password signup flow does
 					// (SignupForm.tsx), so /welcome renders immediately instead of hanging

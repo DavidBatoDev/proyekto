@@ -70,7 +70,6 @@ export type ApplicationStatus =
   | 'approved'
   | 'rejected';
 export type AdminAccessLevel = 'support' | 'moderator' | 'super_admin';
-export type AccountRole = 'client' | 'talent' | 'consultant';
 export type AvailabilityStatus =
   | 'available'
   | 'partially_available'
@@ -121,7 +120,6 @@ export interface Profile {
   city?: string;
   zip_code?: string;
   date_of_birth?: string;
-  role: AccountRole;
   is_consultant_verified: boolean;
   is_email_verified: boolean;
   has_completed_onboarding: boolean;
@@ -150,9 +148,8 @@ export interface Project {
   description?: string;
   status: ProjectStatus;
   owner_id: string;
-  consultant_id?: string;
-  platform_fee_percent: number;
-  consultant_fee_percent: number;
+  /** Whether the project owner differs from the consultant of record. */
+  has_client?: boolean;
   category?: string;
   project_state?: string;
   skills?: unknown[];

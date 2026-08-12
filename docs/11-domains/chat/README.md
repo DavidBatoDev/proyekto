@@ -1,6 +1,6 @@
 # Chat
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Project-scoped chat: flexible **channels**, **direct messages**, reactions, stars,
 and a per-project **activity feed**. It's Slack-style — channels are created per
@@ -33,8 +33,10 @@ Reads use RPCs (`chat_latest_messages_by_room`, `chat_search_room_messages`,
 
 ## Authorization
 
-Chat access derives from project membership — you don't join a project channel
-unless you have access to the project. This is enforced by SQL helpers
+Chat access derives only from `project_access` membership; `projects.owner_id` is not an
+authorization fallback. Persona comes from access origin:
+`consultant` is consultant; `client`, `personal_workspace`, and `legacy` are client; every
+other origin (including `team:*`) is freelancer. This is enforced by SQL helpers
 (`project_chat_is_member`, `project_chat_role`, `project_chat_can_dm`,
 `project_chat_users_share_any_project`) and in the `ChatService`. See
   [Data → RLS & security](../../07-data-and-db/rls-and-security.md).
@@ -62,5 +64,5 @@ Realtime otherwise. See [Realtime](../../06-realtime/README.md) and
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/chat/`](../../../backend/src/modules/chat/)
+- **Backend:** [`backend/src/modules/execution/chat/`](../../../backend/src/modules/execution/chat/)
 - **Web:** `web/src/components/chat/`, `web/src/services/chat.service.ts`, `web/src/hooks/useChatRealtime.ts`

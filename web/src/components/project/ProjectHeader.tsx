@@ -24,6 +24,7 @@ import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectMod
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import { isProjectConsultant } from "@/lib/projectAccess";
 import { type Project, projectService } from "@/services/project.service";
 import {
 	getTeam,
@@ -118,8 +119,6 @@ export function ProjectHeader() {
 			to: "/auth/signup",
 			search: {
 				redirect: "/welcome",
-				intent: "client",
-				lane: "client_freelancer",
 			},
 		});
 	};
@@ -238,7 +237,7 @@ export function ProjectHeader() {
 	const viewingAs = isRoadmapOnly
 		? undefined
 		: user?.id && project
-			? user.id === project.consultant_id
+			? isProjectConsultant(project, user.id)
 				? "CONSULTANT"
 				: user.id === project.owner_id
 					? "CLIENT"

@@ -23,9 +23,11 @@ then joins related data in application code.
 Search covers display name and headline. Filters cover availability, specialization, and
 skill. Sorting supports rating descending and rate ascending or descending.
 
-> **Current role-filter gap.** The query uses `is_public=true` but does not add
-> `role='talent'`. The go-live endpoint also lacks that role check. Documentation and callers
-> must not treat `is_public` as proof of Talent identity until the backend enforces both.
+> **Eligibility gap.** The query uses `is_public=true` and nothing else — go-live has
+> no server-side eligibility check, so `is_public` proves opting in, not readiness.
+> There is deliberately no identity filter (accounts have no role); marketplace
+> enrollment records are the designed fix
+> ([Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
 
 ## Invite boundary
 

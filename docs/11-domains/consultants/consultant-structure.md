@@ -1,6 +1,6 @@
 # Consultant Structure
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 There is no role-specific consultant profile table. The only `consultant_*` table is
 `consultant_applications`, which records a vetting workflow rather than identity. The public
@@ -11,63 +11,55 @@ stored separately.
 
 ```text
 profiles
-  |-- role='consultant'
-  |-- is_consultant_verified
+  |-- is_consultant_verified        the one account-level capability
   |
   +-- consultant_applications       vetting workflow
   +-- user_*                        professional identity
   +-- teams / team_members          reusable delivery organization
-  +-- projects.consultant_id        named project consultant
-  +-- project_access                actual project authorization
+  +-- project_access                authorization + consultant-of-record
 ```
 
 | Fact | Answers |
 | --- | --- |
-| `profiles.role='consultant'` | Did the account select or receive Consultant identity? |
 | `profiles.is_consultant_verified` | Did admin vetting succeed? |
 | `consultant_applications.status` | Where is the application workflow? |
-| `projects.consultant_id` | Who is the named consultant on this project? |
-| `project_access.origin='consultant'` | Which project permission delta applies? |
+| `project_access.origin='consultant'` | Who is consultant-of-record and which project permission delta applies? |
 | `teams.owner_id` / `team_members.role` | Who controls this reusable team? |
 
-These fields can temporarily disagree. A Consultant account can be unverified; a verified
-Consultant can be a project member without being `projects.consultant_id`; and changing the
-named consultant requires an explicit project-access grant.
+These fields can disagree. A verified consultant can be a project member without carrying
+consultant origin, and changing the consultant-of-record requires an explicit
+project-access grant. There is no account-level "consultant identity" separate from
+the capability — `profiles.role` was dropped 2026-08-10 (see
+[Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
 
-## Signup provisioning
+## Provisioning
 
-Consultant onboarding writes canonical settings and provisions a personal team:
-
-```text
-role                         = consultant
-is_consultant_verified       = false
-settings.onboarding.lane     = consultant
-provisioned artifact         = personal team
-```
-
-Client and Talent onboarding provision a personal workspace instead. Admin approval calls
-personal-team provisioning again before verification; the operation is idempotent and avoids
-creating an active consultant without their required team.
+Signup is lane-free and identical for everyone: onboarding writes
+`settings.onboarding.completed_at` and provisions a personal **workspace**. The
+personal **team** is provisioned at admin approval, idempotently and before
+verification, so an active consultant never exists without their required team.
 
 ## Public directory
 
-`GET /consultants` and `GET /consultants/:id` are public and return only profiles satisfying
-both `role='consultant'` and `is_consultant_verified=true`. The directory is therefore an
-active-consultant projection, not a list of every Consultant account or application.
+`GET /consultants` and `GET /consultants/:id` are public and return only profiles with
+`is_consultant_verified=true`. The directory is therefore an active-consultant
+projection, not a list of applicants.
 
-## Server-owned privileged fields
+## Server-owned privileged field
 
-A `BEFORE INSERT OR UPDATE` trigger protects `profiles.role` and
-`is_consultant_verified` from `anon` and `authenticated` sessions. Browser inserts are
-coerced to safe defaults and browser updates that change either field are rejected.
-Service-role backend writes and migrations remain authorized.
+A `BEFORE INSERT OR UPDATE` trigger (`tg_profiles_protect_privileged_columns`)
+protects `profiles.is_consultant_verified` — its only guarded column — from `anon`
+and `authenticated` sessions. Browser inserts are coerced to `false` and browser
+updates that change the field are rejected. Service-role backend writes and
+migrations remain authorized.
 
 ## Project identity is separate
 
 Creating in consultant mode or being assigned as consultant grants project `owner` access
-with `origin='consultant'`. `projects.consultant_id` names the relationship; the access row
-enforces it. Project reassignment validates that the replacement is already a member and an
-active consultant before updating both sides.
+with `origin='consultant'`. That access row both names and authorizes the relationship.
+If legacy data contains multiple consultant-origin rows, direct grants win, then the most
+recent `granted_at`. Project reassignment validates that the replacement is already a member
+and an active consultant before granting the new row and revoking the previous relationship.
 
 ## See also
 

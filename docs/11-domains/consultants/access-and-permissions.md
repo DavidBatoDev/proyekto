@@ -1,22 +1,25 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
 grant access to every project. Project authority still requires `project_access`. When the
-person is the named consultant, Proyekto grants owner access with a consultant-origin delta.
+person is consultant-of-record, Proyekto grants owner access with a consultant-origin delta.
 
 ## Project creation and assignment
 
 | Path | Result |
 | --- | --- |
-| Active consultant creates in consultant mode | Draft project, creator becomes `consultant_id`, project `owner`, origin `consultant` |
+| Active consultant creates in consultant mode | Draft project, creator receives project `owner`, origin `consultant` |
 | Consultant assigned to client-created project | Named consultant receives `owner` + origin `consultant` |
 | Consultant reassigned | Replacement must already be a member and active; receives `owner` + consultant origin |
 | Consultant joins only by invite/team | Receives the ordinary invited/team project role; not automatically the named consultant |
 
-`projects.consultant_id` is a relationship pointer. The owner access grant is the
-authorization record.
+The consultant-origin owner access grant is both the relationship pointer and the
+authorization record. Reassignment promotes an existing invited/team access row to
+`origin=consultant` while preserving the stronger of its stored and incoming roles. Finance
+requires the resulting exact `owner` + `consultant` access pair as well as active consultant
+capability; a client-origin admin or owner is not admitted.
 
 ## Consultant origin delta
 
@@ -50,7 +53,7 @@ admin later demotes the stored project role while keeping the origin.
 
 ## Team authority is separate
 
-Consultant account identity does not make the person owner of every team. Their personal team
+The consultant capability does not make the person owner of every team. Their personal team
 does make them its owner, while other teams require an explicit `team_members` role. Project
 team management requires resolved project permissions in addition to team-level checks.
 

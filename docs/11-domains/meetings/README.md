@@ -1,6 +1,6 @@
 # Meetings & Scheduling
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Native meeting scheduling for Proyekto — a Google‑Calendar‑style calendar with a
 rich event editor, **recurring RRULE series**, **DST‑correct timezones**, branded
@@ -63,11 +63,11 @@ only read one page, read [architecture.md](./architecture.md).
 ## Code locations
 
 - **Web:** [`web/src/components/meetings/`](../../../web/src/components/meetings/),
-  [`web/src/routes/meetings.tsx`](../../../web/src/routes/meetings.tsx),
+  [`web/src/routes/_execution/meetings.tsx`](../../../web/src/routes/_execution/meetings.tsx),
   [`web/src/lib/{recurrence,datetime}.ts`](../../../web/src/lib/),
   [`web/src/services/meetings.service.ts`](../../../web/src/services/meetings.service.ts),
   [`web/src/hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts)
-- **Backend:** [`backend/src/modules/meetings/`](../../../backend/src/modules/meetings/)
-  (Google OAuth / Calendar in [`meetings/google/`](../../../backend/src/modules/meetings/google/))
+- **Backend:** [`backend/src/modules/execution/meetings/`](../../../backend/src/modules/execution/meetings/)
+  (Google OAuth / Calendar in [`meetings/google/`](../../../backend/src/modules/execution/meetings/google/))
 - **DB:** [`supabase/migrations/2026070612*`, `2026070813*`, `2026070814*`, `2026070815*`, `2026071110*`](../../../supabase/migrations/)
 - **QA driver:** [`web/playwright/meetings-qa.mjs`](../../../web/playwright/meetings-qa.mjs)

@@ -47,14 +47,9 @@ export interface Project {
 	currency?: string;
 	banner_url?: string;
 	owner_id: string;
-	consultant_id?: string;
+	/** True when the project owner is distinct from the consultant of record. */
+	has_client: boolean;
 	owner?: {
-		id: string;
-		display_name?: string;
-		avatar_url?: string;
-		email?: string;
-	};
-	consultant?: {
 		id: string;
 		display_name?: string;
 		avatar_url?: string;
@@ -113,7 +108,6 @@ export interface ProjectMember {
 		email?: string;
 		first_name?: string;
 		last_name?: string;
-		role?: "client" | "talent" | "consultant";
 		is_consultant_verified?: boolean;
 	};
 }

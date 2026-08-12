@@ -30,11 +30,14 @@ Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbo
 `notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `project-posting`,
 `command-center`.
 
-Signup always presents explicit Client, Talent, and Consultant lanes. Password and
-OAuth continuations persist the lane; an incomplete OAuth account without one chooses
-its durable role at `/welcome` before the existing welcome deck. Explicit lanes send
-no duplicate intent. Transitional `client_freelancer` continuations remain readable
-and are normalized before the canonical onboarding settings are persisted.
+Signup is **lane-free**: a 4-step wizard (Account → Password → Profile → Verify) in
+[`SignupForm.tsx`](../../web/src/components/auth/signup/SignupForm.tsx) with no role
+or lane selection anywhere. `/welcome` shows a single deck (project setup + invites)
+with no role picker, and the OAuth callback completes onboarding unconditionally —
+there is no stored account role to choose. The old lane step, `SignupStepLane.tsx`,
+and `onboardingLane.ts` are deleted; see
+[Proposals → identity and enrollment](../13-proposals/identity-and-enrollment.md)
+for the rationale.
 
 > **No `client/` route subtree.** Client-facing surfaces live under `project/`,
 > `dashboard`, and the public `contract/sign/$token` page — `web/src/routes/client/`
@@ -72,7 +75,8 @@ Gating happens in three places:
   reverse-guard (already-authenticated users are bounced away).
 - **Active consultant** — `consultant/marketplace` and `consultant/templates`
   add a `beforeLoad` check that redirects unless `isActiveConsultant(profile)`
-  confirms consultant role plus verification.
+  confirms completed vetting (`profiles.is_consultant_verified` — the only
+  account-level capability; there is no account role).
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
   exactly five route bodies — `roadmap`, `work-items`, `resources`, `chat/$chatRef`, and

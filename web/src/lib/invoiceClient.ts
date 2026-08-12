@@ -7,17 +7,11 @@
 export function invoiceHasClient(opts: {
 	recipientUserId?: string | null;
 	billToEmail?: string | null;
-	projectOwnerId?: string | null;
-	projectConsultantId?: string | null;
+	projectHasClient?: boolean;
 }): boolean {
 	if (opts.recipientUserId) return true;
 	if (opts.billToEmail?.trim()) return true;
-	if (
-		opts.projectOwnerId &&
-		opts.projectOwnerId !== opts.projectConsultantId
-	) {
-		return true;
-	}
+	if (opts.projectHasClient) return true;
 	return false;
 }
 

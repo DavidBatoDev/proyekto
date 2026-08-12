@@ -1,11 +1,11 @@
 # MCP Server
 
-> **Last updated:** 2026-07-29 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
 **and** write a user's Proyekto data over a standard JSON-RPC endpoint. It lives
-in the `mcp` backend module ([`backend/src/modules/mcp/`](../../backend/src/modules/mcp/))
+in the `mcp` backend module ([`backend/src/modules/shared/mcp/`](../../backend/src/modules/shared/mcp/))
 and reuses the existing project / roadmap / chat / knowledge / task domain
 services **in-process**, so every tool re-checks live authorization on each call
 — a scope on the token is necessary but never sufficient. **Phases 1–4 are
@@ -63,7 +63,7 @@ which fits Cloud Run's per-request lifecycle.
 ## Auth
 
 Three credential paths plus a kill switch, all handled by `McpAuthGuard`
-([`mcp-auth.guard.ts`](../../backend/src/modules/mcp/mcp-auth.guard.ts)).
+([`mcp-auth.guard.ts`](../../backend/src/modules/shared/mcp/mcp-auth.guard.ts)).
 Identity is **always** derived from the token, never from tool inputs.
 
 | Path | Credential | Scopes granted |
@@ -101,7 +101,7 @@ exactly as in Phases 1–2.
 ## Scopes
 
 Coarse OAuth-style grants
-([`mcp-scopes.ts`](../../backend/src/modules/mcp/mcp-scopes.ts)) — nine of them,
+([`mcp-scopes.ts`](../../backend/src/modules/shared/mcp/mcp-scopes.ts)) — nine of them,
 five read and four write, carried either on a PAT or in an OAuth access token.
 PAT issuance rejects any unknown scope string and the OAuth server drops any it
 doesn't recognize, so a credential can't carry a grant no tool honors. Every tool
@@ -121,7 +121,7 @@ requires **both** its scope **and** the live Proyekto project/roadmap permission
 
 The OAuth server advertises the currently **enabled** scopes **plus
 `offline_access`** (`supportedScopes()` in
-[`oauth-config.service.ts`](../../backend/src/modules/mcp/oauth/oauth-config.service.ts);
+[`oauth-config.service.ts`](../../backend/src/modules/shared/mcp/oauth/oauth-config.service.ts);
 the `OAUTH_SUPPORTED_SCOPES` constant beside it is the *static* universe, kept
 for validation and tests). `offline_access` is the standard OAuth signal *"give
 me a refresh token"*, **not** a Proyekto permission: it is honoured by minting a
@@ -138,7 +138,7 @@ consent screen **on deploy, with no activation step**. For writes that post text
 real people read, that breaks the staged-rollout rule.
 
 So the flag is resolved in exactly one place —
-[`mcp-capabilities.service.ts`](../../backend/src/modules/mcp/mcp-capabilities.service.ts)
+[`mcp-capabilities.service.ts`](../../backend/src/modules/shared/mcp/mcp-capabilities.service.ts)
 — and read at four points; the first three are the enforcement, the fourth only
 keeps the UI honest:
 
@@ -164,7 +164,7 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Twenty-eight tools in [`tools/*.tools.ts`](../../backend/src/modules/mcp/tools/) —
+Twenty-eight tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
 sixteen read, twelve write. Three of the twelve (the chat writes) register only
 while `MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag unset advertises
 **twenty-five**. Each tool reuses an existing domain service that carries its own
@@ -196,7 +196,7 @@ service DTO).
 
 #### AI-session reads
 
-[`ai-sessions.tools.ts`](../../backend/src/modules/mcp/tools/ai-sessions.tools.ts)
+[`ai-sessions.tools.ts`](../../backend/src/modules/shared/mcp/tools/ai-sessions.tools.ts)
 is **owner-only by construction**, at two layers: `RoadmapAiSessionsService`
 checks roadmap view access *and* filters every query on `user_id = caller`. It is
 therefore not a way to see what anyone else asked the planner.
@@ -214,13 +214,13 @@ withheld here is the most sensitive payload in the schema.
 
 Twelve write tools — seven from Phase 2, the three Phase-4 chat writes, and the
 two epic/feature comment tools
-([`comment-write.tools.ts`](../../backend/src/modules/mcp/tools/comment-write.tools.ts))
+([`comment-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/comment-write.tools.ts))
 — each requiring its `*:write` scope **and** the live Proyekto permission. Structural
 roadmap changes go through the
 **preview → commit → revert** lifecycle on `RoadmapAiService`
-([`roadmap-write.tools.ts`](../../backend/src/modules/mcp/tools/roadmap-write.tools.ts));
+([`roadmap-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/roadmap-write.tools.ts));
 task writes take the **direct `TasksService` path**
-([`task-write.tools.ts`](../../backend/src/modules/mcp/tools/task-write.tools.ts))
+([`task-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/task-write.tools.ts))
 so they reconcile the multi-assignee join table and fire `task_assigned`
 notifications, which the roadmap-ops path does not. Every task write also emits a
 best-effort `mcp.task_*` row to `project_activity_log`. Tools that delete,
@@ -256,7 +256,7 @@ operation shapes.
 
 #### Chat writes
 
-[`chat-write.tools.ts`](../../backend/src/modules/mcp/tools/chat-write.tools.ts)
+[`chat-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/chat-write.tools.ts)
 is **channel messages only**, and dark behind `MCP_CHAT_WRITE_ENABLED`.
 `ChatService.sendChannelMessage` enforces the real capability
 (`chat.send_messages`, commenter and above, with a consultant/client fallback for
@@ -367,7 +367,7 @@ index), `roadmap_id`, `project_id`, `actor_id`, `status`, the `operations` array
   and fills forward, so `markChangeHistoryStatus` is a no-op for any change that
   predates it.
 
-On [`RoadmapAiService`](../../backend/src/modules/roadmaps/services/roadmap-ai.service.ts):
+On [`RoadmapAiService`](../../backend/src/modules/execution/roadmaps/services/roadmap-ai.service.ts):
 `recordChangeHistory` (insert, from `commit`) and `markChangeHistoryStatus` (flip
 to `discarded` from `discard`, back to `applied` from `rollback`) are both
 fire-and-forget and tolerate failure — the history is an observability surface,
@@ -386,7 +386,7 @@ column from the projection unless asked.
 
 ## Resources & prompts
 
-**Resources** ([`resources.ts`](../../backend/src/modules/mcp/resources.ts)) — an
+**Resources** ([`resources.ts`](../../backend/src/modules/shared/mcp/resources.ts)) — an
 addressable mirror of the read tools for hosts that prefetch/cite by id, backed
 by the same authorized façade (nothing cached):
 
@@ -394,7 +394,7 @@ by the same authorized façade (nothing cached):
 - `proyekto://projects/{projectId}`
 - `proyekto://roadmaps/{roadmapId}/summary`
 
-**Prompts** ([`prompts.ts`](../../backend/src/modules/mcp/prompts.ts)) — reusable
+**Prompts** ([`prompts.ts`](../../backend/src/modules/shared/mcp/prompts.ts)) — reusable
 templates that steer the host model through the tools; they never act on their
 own: `review_project_health`, `summarize_overdue_or_blocked`,
 `draft_roadmap_change`, `summarize_recent_discussions`. Only
@@ -408,7 +408,7 @@ injection guard.
 
 ## OAuth 2.1 authorization server
 
-Phase 3, in [`oauth/`](../../backend/src/modules/mcp/oauth/). Proyekto is its own
+Phase 3, in [`oauth/`](../../backend/src/modules/shared/mcp/oauth/). Proyekto is its own
 authorization server: it issues the tokens rather than delegating to Supabase
 Auth, because the resource being protected is `/mcp` and the token has to be
 audience-bound to it.
@@ -470,8 +470,8 @@ connect at all.
 
 Protocol endpoints, served at the domain **root** because clients read their
 locations from the discovery documents
-([`well-known.controller.ts`](../../backend/src/modules/mcp/oauth/well-known.controller.ts),
-[`oauth.controller.ts`](../../backend/src/modules/mcp/oauth/oauth.controller.ts)).
+([`well-known.controller.ts`](../../backend/src/modules/shared/mcp/oauth/well-known.controller.ts),
+[`oauth.controller.ts`](../../backend/src/modules/shared/mcp/oauth/oauth.controller.ts)).
 All are unauthenticated — a public client is authenticated by PKCE.
 
 | Method | Path | Purpose |
@@ -490,7 +490,7 @@ pending-request TTL and by CIMD caching.
 
 First-party endpoints — our own API, so they keep the `/api` prefix and run under
 `SupabaseAuthGuard`
-([`oauth-grants.controller.ts`](../../backend/src/modules/mcp/oauth/oauth-grants.controller.ts)).
+([`oauth-grants.controller.ts`](../../backend/src/modules/shared/mcp/oauth/oauth-grants.controller.ts)).
 The approving user is always the authenticated caller, never a body-supplied id.
 
 | Method | Path | Purpose |
@@ -524,7 +524,7 @@ both flags are load-bearing. Drop either and it silently falls back to DCR.
 **Redirect URIs** match exactly, with one exception: for loopback hosts RFC 8252
 §7.3 requires the **port to be ignored**, because a CLI binds an ephemeral port
 per session (`redirectUriMatches` in
-[`oauth-client.service.ts`](../../backend/src/modules/mcp/oauth/oauth-client.service.ts)).
+[`oauth-client.service.ts`](../../backend/src/modules/shared/mcp/oauth/oauth-client.service.ts)).
 Protocol, host and path must still match. The values the specs exercise are
 `https://claude.ai/api/mcp/auth_callback` for hosted Claude and the
 `http://localhost/callback` + `http://127.0.0.1/callback` pair for Claude Code —
@@ -590,11 +590,11 @@ get-then-delete would both succeed.
 - **Flat RFC 6749 bodies.** `{"error":"invalid_grant","error_description":"…"}`,
   not the app's `{ error: { message, status, … } }` envelope. That needs a
   controller-scoped
-  [`OAuthExceptionFilter`](../../backend/src/modules/mcp/oauth/oauth-exception.filter.ts):
+  [`OAuthExceptionFilter`](../../backend/src/modules/shared/mcp/oauth/oauth-exception.filter.ts):
   `@RawResponse()` is read by `ResponseInterceptor` and so only affects
   **success** responses, which an exception bypasses entirely.
 - **No class-validator DTOs on the protocol endpoints.** The request shapes in
-  [`dto/oauth.types.ts`](../../backend/src/modules/mcp/oauth/dto/oauth.types.ts)
+  [`dto/oauth.types.ts`](../../backend/src/modules/shared/mcp/oauth/dto/oauth.types.ts)
   are plain interfaces, so the global `ValidationPipe` skips them — a class
   metatype under `forbidNonWhitelisted` would 400 the RFC 8707 `resource`
   parameter and any vendor extension. Validation is by hand in `OAuthService`.
@@ -616,7 +616,7 @@ get-then-delete would both succeed.
 ## PAT management
 
 Personal Access Tokens are issued/listed/revoked over normal Supabase-session
-routes ([`mcp-tokens.controller.ts`](../../backend/src/modules/mcp/mcp-tokens.controller.ts)),
+routes ([`mcp-tokens.controller.ts`](../../backend/src/modules/shared/mcp/mcp-tokens.controller.ts)),
 owner-scoped by the caller's id (never a body-supplied user id) and gated by
 `MCP_ENABLED`.
 
@@ -709,7 +709,7 @@ flip with no Secret Manager work.
   screen, rotating refresh tokens, and "Connected apps". Gated by
   `MCP_OAUTH_ENABLED` on top of `MCP_ENABLED`; **activation was a separate step**
   (create the secret, then set the repo var). Per the doc comment on
-  [`mcp-capabilities.service.ts`](../../backend/src/modules/mcp/mcp-capabilities.service.ts),
+  [`mcp-capabilities.service.ts`](../../backend/src/modules/shared/mcp/mcp-capabilities.service.ts),
   both `MCP_ENABLED` and `MCP_OAUTH_ENABLED` are now on in prod — which is
   exactly why Phase 4b needed a flag of its own.
 - **Phase 4 (current)** — landed in two parts.

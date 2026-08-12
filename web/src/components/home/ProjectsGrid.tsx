@@ -151,16 +151,6 @@ export function ProjectsGrid() {
 					event: "*",
 					schema: "public",
 					table: "projects",
-					filter: `consultant_id=eq.${user.id}`,
-				},
-				invalidateProjects,
-			)
-			.on(
-				"postgres_changes",
-				{
-					event: "*",
-					schema: "public",
-					table: "projects",
 				},
 				invalidateProjects,
 			)
@@ -510,7 +500,9 @@ export function ProjectCard({
 							<p className="text-[12px] font-semibold text-slate-600 sm:text-[14px]">
 								NEXT UP
 							</p>
-							<p className="text-[12px] text-slate-900 sm:text-[14px]">• {nextUp}</p>
+							<p className="text-[12px] text-slate-900 sm:text-[14px]">
+								• {nextUp}
+							</p>
 						</div>
 						{dueDate && (
 							<div className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">

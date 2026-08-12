@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -10,11 +10,23 @@ actual `.from('…')` calls — the identity domain uses **`user_*`** tables (th
 `consultant_*` table is `consultant_applications`), and file storage is **Cloudflare
 R2**, not Supabase Storage.
 
+Modules are grouped by platform responsibility:
+
+```text
+modules/
+|-- execution/    projects, roadmaps, chat, meetings, teams, time, activity
+|-- marketplace/  contracts, invoices, finance, payouts, discovery, profiles
+`-- shared/       auth, users, admin, notifications, infrastructure adapters
+```
+
+`AppModule` imports each feature module directly from these groups; there are no
+group-level barrel modules.
+
 ## At a glance
 
 | Module | Purpose | Key tables |
 | --- | --- | --- |
-| `auth` | Auth + immutable account-role onboarding; provisions a workspace or consultant team from persisted role | `profiles` |
+| `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a personal workspace for every user | `profiles` |
 | `users` | Own-account read/update | `profiles` |
 | `profile` | Full consultant/freelancer profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
@@ -23,12 +35,11 @@ R2**, not Supabase Storage.
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
-| `consultants` | Active-consultant directory (`role` + verification) | `profiles` |
+| `consultants` | Active-consultant directory (`is_consultant_verified`) | `profiles` |
 | `applications` | Consultant/freelancer application submission | `consultant_applications` |
 | `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
-| `payments` | Wallet + **legacy** escrow/checkpoints (partly dead) | `wallets` (+ dropped `payment_checkpoints`, `transactions`) |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
 | `contracts` | Service agreements, the services catalog, signing (in-app + tokenized link), amendments, project activation | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
@@ -48,10 +59,12 @@ R2**, not Supabase Storage.
 
 ## Identity & accounts
 
-**`auth`** — Supabase-backed auth (session + email OTP) and new-user bootstrapping:
-on first login it creates the `profiles` row, a personal workspace, and default
-teams. Imports `ProjectsModule`, `ProfileModule`, `TeamsModule`. Files:
-`auth.service.ts`, `email-otp.service.ts`.
+**`auth`** — Supabase-backed auth (session + email OTP) and lane-free onboarding:
+`PATCH /auth/onboarding/complete` takes an empty body, writes
+`settings.onboarding = { completed_at }`, and provisions a personal workspace for
+every user (no team at signup — that happens at vetting approval). Imports
+`ProjectsModule`, `ProfileModule`, `TeamsModule`. Files: `auth.service.ts`,
+`email-otp.service.ts`.
 
 **`users`** — thin own-account CRUD over `profiles` (`GET/PATCH /users/me`, plus a
 public `GET /users/:id`).
@@ -115,12 +128,6 @@ Clones a template into a new `roadmaps` graph.
 
 **`team-time`** — task time logs (`task_time_logs`) + `time_log_comments`, with
 rate resolution for billing.
-
-**`payments`** — an internal wallet (`wallets`) plus a **vestigial** escrow/checkpoint
-path. Its `payment_checkpoints` and `transactions` tables were dropped on 2026-01-11
-and never recreated, so the fund/release/refund routes are dead code against missing
-tables; only the wallet reads work. The live money flow is `payouts` + `invoices`.
-See [Data → schema overview](../07-data-and-db/schema-overview.md).
 
 **`payouts`** — freelancer payout methods (`payout_methods`) and payout requests
 (`payouts`) aggregating billable time; proof documents go to the **private R2

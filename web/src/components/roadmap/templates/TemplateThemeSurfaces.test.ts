@@ -6,7 +6,7 @@ const TEMPLATE_SURFACES = [
 	"routes/roadmap-templates/index.tsx",
 	"routes/roadmap-templates/$slug.tsx",
 	"routes/consultant/templates.tsx",
-	"routes/project/$projectId/roadmap/create.tsx",
+	"routes/_execution/project/$projectId/roadmap/create.tsx",
 	"components/root/TemplatesSection.tsx",
 	"components/root/TemplateEntryCard.tsx",
 	"components/home/RoadmapPreviewCard.tsx",
@@ -34,7 +34,7 @@ describe("roadmap template theme surfaces", () => {
 		const source = readFileSync(
 			resolve(
 				process.cwd(),
-				"src/routes/project/$projectId/roadmap/create.tsx",
+				"src/routes/_execution/project/$projectId/roadmap/create.tsx",
 			),
 			"utf8",
 		);

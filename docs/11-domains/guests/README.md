@@ -1,6 +1,6 @@
 # Guests
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 Anonymous users can build a roadmap **before signing up** — typically from the hero
 chat — and their work migrates to a real account when they register. There's no
@@ -9,8 +9,8 @@ separate guest table: a guest is just a `profiles` row flagged `is_guest`.
 ## How a guest exists
 
 - A guest is created via the `create_guest_user` RPC, producing a `profiles` row with
-  `is_guest = true`, a `guest_session_id`, and the safe default `role='talent'`.
-  The authenticated conversion signup persists the role the user actually selects.
+  `is_guest = true` and a `guest_session_id`. There is no role to assign — accounts
+  carry no role, before or after conversion.
 - The client identifies as that guest with an **`x-guest-user-id`** header (not a
   JWT). `SupabaseAuthGuard` accepts it, verifying the session is a real guest profile
   and **not older than 30 days**. See
@@ -38,12 +38,12 @@ On signup, the guest's roadmap(s) migrate to the new authenticated user:
 ## Housekeeping
 
 Old guest profiles are cleaned up via the `cleanup_old_guest_users` RPC
-(`POST /guests/cleanup`, any authenticated user). Guest session validity is checked by
+(`POST /guests/cleanup`, administrators only). Guest session validity is checked by
 `is_valid_guest_session`.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/guests/`](../../../backend/src/modules/guests/)
+- **Backend:** [`backend/src/modules/shared/guests/`](../../../backend/src/modules/shared/guests/)
 - **RPCs:** `create_guest_user`, `get_guest_user_id`, `is_valid_guest_session`, `cleanup_old_guest_users`
 - **Web:** `web/src/services/migration.service.ts`
 

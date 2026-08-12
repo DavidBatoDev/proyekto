@@ -3,40 +3,24 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
 	ArrowLeft,
 	ArrowRight,
-	BookOpen,
-	BriefcaseBusiness,
 	Check,
 	CheckCircle2,
-	Clock,
-	Crown,
 	Plus,
 	Sparkles,
 	Trash2,
-	UserCheck,
-	UserRound,
 	Users,
-	Wallet,
 	Workflow,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/api";
-import { LaneCard } from "@/components/auth/signup/SignupStepLane";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { useToast } from "@/hooks/useToast";
 import { completeOnboarding } from "@/lib/auth-api";
-import {
-	clearAuthContinuation,
-	getAuthContinuation,
-} from "@/lib/authContinuation";
+import { clearAuthContinuation } from "@/lib/authContinuation";
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
-import {
-	type AccountRole,
-	buildOnboardingPayload,
-	normalizeSignupLane,
-} from "@/lib/onboardingLane";
 import { supabase } from "@/lib/supabase";
 import { useAppearanceStore } from "@/stores/appearanceStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -54,7 +38,7 @@ export const Route = createFileRoute("/welcome")({
 	component: WelcomePage,
 });
 
-// ─── Page shell — branches on lane ──────────────────────────────────────────
+// ─── Page shell ─────────────────────────────────────────────────────────────
 
 function WelcomePage() {
 	useProfileQuery(); // ensures profile is fetched and synced to the store on fresh loads
@@ -63,16 +47,6 @@ function WelcomePage() {
 		useState<typeof storedProfile>(null);
 	const profile = completedProfile ?? storedProfile;
 	const ensuredCompletionRef = useRef(false);
-	const onboarding = profile?.settings?.onboarding;
-	const continuation = getAuthContinuation();
-	const pendingLane = onboarding?.lane ?? continuation?.lane;
-	const pendingIntent =
-		onboarding?.lane === "client_freelancer"
-			? onboarding.intent
-			: continuation?.intent;
-	const needsRoleSelection = Boolean(
-		profile && !profile.has_completed_onboarding && !pendingLane,
-	);
 
 	// Backstop: anyone who reaches /welcome without onboarding persisted (e.g. the
 	// OAuth callback's completion call failed, or a legacy account that got stuck
@@ -81,14 +55,10 @@ function WelcomePage() {
 	// itself needs, so the user is never re-trapped on /welcome. Best-effort: the
 	// tour renders regardless of the result.
 	useEffect(() => {
-		if (!profile || ensuredCompletionRef.current || needsRoleSelection) return;
+		if (!profile || ensuredCompletionRef.current) return;
 		if (profile.has_completed_onboarding) return;
 		ensuredCompletionRef.current = true;
-		const lane = normalizeSignupLane(
-			pendingLane ?? "client_freelancer",
-			pendingIntent,
-		);
-		void completeOnboarding(buildOnboardingPayload(lane, pendingIntent))
+		void completeOnboarding()
 			.then((result) => {
 				setCompletedProfile(result.profile);
 				useAuthStore.setState({ profile: result.profile });
@@ -100,11 +70,11 @@ function WelcomePage() {
 					err,
 				);
 			});
-	}, [profile, pendingLane, pendingIntent, needsRoleSelection]);
+	}, [profile]);
 
-	// Wait for profile hydration before deciding the lane. Guessing a default
-	// here causes a flicker between decks when the user lands on /welcome
-	// immediately after signup (profile arrives async via onAuthStateChange).
+	// Wait for profile hydration before rendering. Guessing here causes a
+	// flicker when the user lands on /welcome immediately after signup
+	// (profile arrives async via onAuthStateChange).
 	if (!profile) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -113,109 +83,12 @@ function WelcomePage() {
 		);
 	}
 
-	if (needsRoleSelection) {
-		return (
-			<RoleSelectStep
-				onComplete={(nextProfile) => {
-					setCompletedProfile(nextProfile);
-					useAuthStore.setState({ profile: nextProfile });
-				}}
-			/>
-		);
-	}
-
 	const firstName =
 		(profile.first_name as string | undefined) ||
 		profile.display_name ||
 		"there";
 
-	if (profile.role === "consultant") {
-		return <ConsultantWelcomeDeck firstName={firstName} />;
-	}
 	return <ClientFreelancerWelcomeDeck firstName={firstName} />;
-}
-
-function RoleSelectStep({
-	onComplete,
-}: {
-	onComplete: (
-		profile: NonNullable<ReturnType<typeof useAuthStore.getState>["profile"]>,
-	) => void;
-}) {
-	const [selected, setSelected] = useState<AccountRole | null>(null);
-	const [isSaving, setIsSaving] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	const save = async () => {
-		if (!selected || isSaving) return;
-		setIsSaving(true);
-		setError(null);
-		try {
-			const result = await completeOnboarding({ lane: selected });
-			onComplete(result.profile);
-		} catch (cause) {
-			setError(
-				cause instanceof Error
-					? cause.message
-					: "We couldn't save your account role. Please try again.",
-			);
-		} finally {
-			setIsSaving(false);
-		}
-	};
-
-	return (
-		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
-			<div className="w-full max-w-5xl rounded-3xl border border-border bg-card p-6 shadow-xl sm:p-10">
-				<div className="mb-7 text-center">
-					<h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-						Choose your Proyekto account
-					</h1>
-					<p className="mt-2 text-sm text-muted-foreground">
-						This identity is permanent. Project permissions are assigned
-						separately.
-					</p>
-				</div>
-				<div className="grid gap-3 sm:grid-cols-3">
-					<LaneCard
-						label="I'm a client"
-						description="Plan and fund projects with a vetted delivery lead."
-						icon={BriefcaseBusiness}
-						tone="primary"
-						selected={selected === "client"}
-						onClick={() => setSelected("client")}
-					/>
-					<LaneCard
-						label="I'm talent"
-						description="Contribute your skills to project delivery teams."
-						icon={UserRound}
-						tone="slate"
-						selected={selected === "talent"}
-						onClick={() => setSelected("talent")}
-					/>
-					<LaneCard
-						label="I'm a consultant"
-						description="Apply to lead engagements; consultant tools unlock after vetting."
-						icon={Crown}
-						tone="amber"
-						selected={selected === "consultant"}
-						onClick={() => setSelected("consultant")}
-					/>
-				</div>
-				{error && (
-					<p className="mt-4 text-center text-sm text-destructive">{error}</p>
-				)}
-				<Button
-					type="button"
-					onClick={save}
-					disabled={!selected || isSaving}
-					className="mt-7 w-full"
-				>
-					{isSaving ? "Saving..." : "Continue"}
-				</Button>
-			</div>
-		</div>
-	);
 }
 
 // ─── Client/Freelancer deck ─────────────────────────────────────────────────
@@ -477,117 +350,6 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 				<CloseConfirmModal
 					title="Skip the welcome tour?"
 					description="You can always come back to set up your workspace later from your dashboard."
-					onCancel={() => setShowCloseConfirm(false)}
-					onConfirm={() => navigateAfterWelcome(navigate)}
-				/>
-			)}
-		</DeckShell>
-	);
-}
-
-// ─── Consultant deck ────────────────────────────────────────────────────────
-
-// Ordered step keys; the "theme" step is flag-gated (see CFStep above).
-type ConsultantStep = "welcome" | "benefits" | "theme" | "expect";
-
-function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
-	const navigate = useNavigate();
-
-	const steps = useMemo<ConsultantStep[]>(() => {
-		const list: ConsultantStep[] = ["welcome", "benefits"];
-		if (featureFlags.themeSystem) list.push("theme");
-		list.push("expect");
-		return list;
-	}, []);
-	const [index, setIndex] = useState(0);
-	const [direction, setDirection] = useState<1 | -1>(1);
-	const current = steps[index];
-	const goNext = () => {
-		if (index < steps.length - 1) {
-			setDirection(1);
-			setIndex(index + 1);
-		}
-	};
-	const goBack = () => {
-		if (index > 0) {
-			setDirection(-1);
-			setIndex(index - 1);
-		}
-	};
-
-	const startApplication = () => {
-		clearAuthContinuation();
-		navigate({ to: "/consultant/apply" });
-	};
-
-	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-	const handleClose = () => {
-		if (index === 0) setShowCloseConfirm(true);
-		else goBack();
-	};
-
-	return (
-		<DeckShell
-			stepper={
-				<Stepper
-					current={index + 1}
-					total={steps.length}
-					onClose={handleClose}
-				/>
-			}
-			footer={
-				<>
-					Want to use Proyekto as a client first?{" "}
-					<button
-						type="button"
-						onClick={() => navigateAfterWelcome(navigate)}
-						className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
-					>
-						Open my workspace →
-					</button>
-				</>
-			}
-		>
-			<AnimatePresence mode="wait" initial={false} custom={direction}>
-				{current === "welcome" && (
-					<SlideOneConsultant
-						key="c-1"
-						firstName={firstName}
-						onNext={goNext}
-						direction={direction}
-					/>
-				)}
-				{current === "benefits" && (
-					<SlideTwoConsultant
-						key="c-2"
-						onBack={goBack}
-						onNext={goNext}
-						direction={direction}
-					/>
-				)}
-				{current === "theme" && (
-					<SlideTheme
-						key="c-theme"
-						onBack={goBack}
-						onNext={goNext}
-						direction={direction}
-					/>
-				)}
-				{current === "expect" && (
-					<SlideThreeConsultant
-						key="c-3"
-						onBack={goBack}
-						onStart={startApplication}
-						direction={direction}
-					/>
-				)}
-			</AnimatePresence>
-
-			{showCloseConfirm && (
-				<CloseConfirmModal
-					title="Apply later?"
-					description="You can pick up the application anytime from your dashboard. Your workspace is ready in the meantime."
-					confirmLabel="Open workspace"
 					onCancel={() => setShowCloseConfirm(false)}
 					onConfirm={() => navigateAfterWelcome(navigate)}
 				/>
@@ -969,205 +731,6 @@ function SlideFourCF({
 					</Button>
 				</div>
 			</div>
-		</motion.div>
-	);
-}
-
-// ─── Consultant Slide 1: Welcome ────────────────────────────────────────────
-
-function SlideOneConsultant({
-	firstName,
-	onNext,
-	direction,
-}: {
-	firstName: string;
-	onNext: () => void;
-	direction: 1 | -1;
-}) {
-	return (
-		<motion.div
-			custom={direction}
-			variants={slideVariants}
-			initial="enter"
-			animate="center"
-			exit="exit"
-			transition={slideTransition}
-			className="text-center"
-		>
-			<div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
-				<Crown className="h-6 w-6 text-amber-600" />
-			</div>
-			<h1 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				Welcome to Proyekto, {firstName}.
-			</h1>
-			<p className="mx-auto mt-3 max-w-md text-balance text-sm text-slate-600 sm:text-base">
-				Let's get you ready to apply.
-			</p>
-			<div className="mt-10 flex justify-center">
-				<Button
-					variant="contained"
-					colorScheme="primary"
-					onClick={onNext}
-					className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
-				>
-					Get started
-					<ArrowRight className="ml-2 h-4 w-4" />
-				</Button>
-			</div>
-		</motion.div>
-	);
-}
-
-// ─── Consultant Slide 2: What you're applying for ───────────────────────────
-
-const consultantBenefits = [
-	{
-		icon: Sparkles,
-		title: "Client workspace + AI planning",
-		description:
-			"Roadmap canvas, chat, files, time tracking. White-glove enough for your enterprise clients.",
-	},
-	{
-		icon: Users,
-		title: "Vetted talent bench",
-		description:
-			"Search and propose freelancers your clients can't see directly. Identity, portfolio, and rate verified by us.",
-	},
-	{
-		icon: Wallet,
-		title: "Escrow, contracts, invoicing",
-		description:
-			"Built-in commercial layer. Stop chasing wire transfers and reconciling spreadsheets.",
-	},
-];
-
-function SlideTwoConsultant({
-	onBack,
-	onNext,
-	direction,
-}: {
-	onBack: () => void;
-	onNext: () => void;
-	direction: 1 | -1;
-}) {
-	return (
-		<motion.div
-			custom={direction}
-			variants={slideVariants}
-			initial="enter"
-			animate="center"
-			exit="exit"
-			transition={slideTransition}
-		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				What you're applying for
-			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				If approved, you'll get the operator's toolkit.
-			</p>
-
-			<div className="mx-auto mt-8 max-w-xl space-y-3">
-				{consultantBenefits.map((b) => {
-					const Icon = b.icon;
-					return (
-						<article
-							key={b.title}
-							className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
-						>
-							<span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-								<Icon className="h-5 w-5" />
-							</span>
-							<div>
-								<h3 className="text-base font-semibold text-slate-900">
-									{b.title}
-								</h3>
-								<p className="mt-1 text-sm leading-relaxed text-slate-600">
-									{b.description}
-								</p>
-							</div>
-						</article>
-					);
-				})}
-			</div>
-
-			<NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
-		</motion.div>
-	);
-}
-
-// ─── Consultant Slide 3: What to expect → Start application ─────────────────
-
-const consultantExpectations = [
-	{
-		icon: Clock,
-		title: "5-step application — about 15 minutes",
-		description:
-			"Identity, experience, profile sections, a short cover letter, and references.",
-	},
-	{
-		icon: UserCheck,
-		title: "Reviewed by a human within 5 business days",
-		description:
-			"Every application is read by our team. We'll email you with a decision.",
-	},
-	{
-		icon: BookOpen,
-		title: "Save and resume — no need to finish in one sitting",
-		description:
-			"Drafts auto-save. Come back from any device to pick up where you left off.",
-	},
-];
-
-function SlideThreeConsultant({
-	onBack,
-	onStart,
-	direction,
-}: {
-	onBack: () => void;
-	onStart: () => void;
-	direction: 1 | -1;
-}) {
-	return (
-		<motion.div
-			custom={direction}
-			variants={slideVariants}
-			initial="enter"
-			animate="center"
-			exit="exit"
-			transition={slideTransition}
-		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				What to expect
-			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				Quick application, fast decision.
-			</p>
-
-			<div className="mx-auto mt-8 max-w-xl space-y-3">
-				{consultantExpectations.map((e) => {
-					const Icon = e.icon;
-					return (
-						<article
-							key={e.title}
-							className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
-						>
-							<span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-								<Icon className="h-5 w-5" />
-							</span>
-							<div>
-								<h3 className="text-base font-semibold text-slate-900">
-									{e.title}
-								</h3>
-								<p className="mt-1 text-sm leading-relaxed text-slate-600">
-									{e.description}
-								</p>
-							</div>
-						</article>
-					);
-				})}
-			</div>
-
-			<NavRow onBack={onBack} onNext={onStart} nextLabel="Start application" />
 		</motion.div>
 	);
 }

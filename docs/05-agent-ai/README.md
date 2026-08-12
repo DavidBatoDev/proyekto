@@ -1,6 +1,6 @@
 # Agent & Roadmap AI
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-11 · **Status:** current
 
 The Python FastAPI agent that powers conversational roadmap editing. It has a single
 brain — a tool-calling loop over one OpenAI model — that reads roadmap context
@@ -39,4 +39,4 @@ web app calls it directly; it calls back into the backend to commit.
 - **Session store:** [`agent/app/core/session_store.py`](../../agent/app/core/session_store.py)
 - **Backend callback client:** [`agent/app/core/nest_client.py`](../../agent/app/core/nest_client.py)
 - **Shared contract:** [`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json)
-- **Backend AI endpoints:** [`backend/src/modules/roadmaps/controllers/roadmap-ai.controller.ts`](../../backend/src/modules/roadmaps/controllers/roadmap-ai.controller.ts)
+- **Backend AI endpoints:** [`backend/src/modules/execution/roadmaps/controllers/roadmap-ai.controller.ts`](../../backend/src/modules/execution/roadmaps/controllers/roadmap-ai.controller.ts)

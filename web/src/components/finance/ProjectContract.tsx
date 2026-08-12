@@ -67,6 +67,7 @@ import {
 	type InvoiceCadence,
 } from "@/lib/contract-term";
 import { CURRENCIES } from "@/lib/currency";
+import { isProjectConsultant } from "@/lib/projectAccess";
 import {
 	type BillingTiming,
 	type Contract,
@@ -117,7 +118,7 @@ export function ProjectContract({
 		enabled: Boolean(contract?.project_id),
 	});
 	const project = projectQuery.data;
-	const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+	const isConsultant = isProjectConsultant(project, user?.id);
 	const [activeStep, setActiveStep] = useState<StepKey>(
 		initialStep ?? "parties",
 	);

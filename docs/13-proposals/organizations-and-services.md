@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-10 · **Status:** draft
+> **Last updated:** 2026-08-11 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows whose client relationship is repeated in access and contract data, and an
@@ -162,7 +162,7 @@ the role-neutral project owner, not the client organization or billing counterpa
 | Reader | Why it matters |
 | --- | --- |
 | `projects(owner_id) WHERE is_personal_workspace` partial unique index | the personal-workspace identity |
-| `canAccessProject` — `.or('owner_id.eq.X,consultant_id.eq.X')` | roadmap access |
+| `canAccessProject` — owner/access membership resolution | roadmap access |
 | `listRoadmapLinkCandidates` | guest-roadmap conversion |
 | `ProjectActivationService` `client_identified` | the activation blocker |
 | RLS policies across the tree | defence in depth |
@@ -368,6 +368,11 @@ confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migrati
 > account identity in `20260804170019`, but not the switchable `persona_type` model
 > rejected here. It is a non-switchable profile fact and does not auto-provision an
 > organization. The progressive organization design therefore remains compatible.
+>
+> **2026-08-10 follow-up:** `account_role` is itself being removed by
+> [identity-and-enrollment.md](./identity-and-enrollment.md). None of the seven decisions
+> below depend on account identity, and enrollment keeps the progressive, no-auto-provision
+> philosophy — the organization design is unaffected.
 
 | # | Decision | Rejected alternative |
 | --- | --- | --- |
