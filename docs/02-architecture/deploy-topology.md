@@ -137,7 +137,7 @@ The same `web/` build feeds the mobile pipelines below.
 - **Database:** Supabase Postgres 15, **live ref `byvbnkpiselvvulsvxgo`, region
   Singapore**. Schema is driven by `supabase/migrations/` (source of truth), applied
   with the Supabase CLI or, for the Singapore prod project, the Supabase MCP
-  `apply_migration` (CLI `db push` fails SASL there).
+  `apply_migration` (the audited production path; local `db push` is prohibited).
 - **Terraform** (`infra/`) provisions Supabase storage buckets (`project-files`,
   `avatars`) + policies, the Cloudflare edge for `api.proyekto.tech`, and the
   apex→www redirect ruleset (`cloudflare_ruleset.apex_redirect`). It does **not**

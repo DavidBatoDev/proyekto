@@ -64,8 +64,8 @@ Never commit tokens/passwords — pass them as `TF_VAR_*` environment variables.
 ## Database schema is separate
 
 Schema changes are **not** Terraform — they're Supabase migrations applied with the
-CLI or, for the Singapore prod project, the Supabase MCP `apply_migration` (CLI
-`db push` fails SASL there). See
+CLI or, for the Singapore prod project, the Supabase MCP `apply_migration` (local
+`db push` is prohibited for production). See
 [Data → migrations workflow](../07-data-and-db/migrations-workflow.md).
 
 ## See also

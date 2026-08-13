@@ -1,6 +1,6 @@
 # Configuration
 
-> **Last updated:** 2026-07-25 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 All environment variables are **validated at boot** by `validateEnv`
 ([`config/env.validation.ts`](../../backend/src/config/env.validation.ts)) using
@@ -19,7 +19,7 @@ without it; everything else has a default or is optional.
 
 | Var | Default | Notes |
 | --- | --- | --- |
-| `NODE_ENV` | `development` | `development` \| `production` \| `test` |
+| `NODE_ENV` | `production` | `development` \| `production` \| `test`; `npm run dev` sets development explicitly |
 | `PORT` | `3001` | 8080 in the Cloud Run container |
 | `REQUEST_TIMEOUT_MS` | `25000` | Global request timeout → 408 |
 | `SLOW_REQUEST_THRESHOLD_MS` | `1500` | Logs a warning past this |
@@ -141,7 +141,8 @@ environment.
 
 ## Local setup
 
-A first-run guide belongs in [Getting Started](../00-getting-started/README.md)
-(planned). The short version: `cd backend`, copy `.env.example` → `.env`, fill the
-required Supabase / R2 / Gmail values, `npm install`, `npm run dev`
-(`http://localhost:3001/api`).
+The first-run guide lives in [Getting Started](../00-getting-started/setup.md).
+The short version: `cd backend`, copy `.env.example` to ignored
+`.env.development.local`, fill the development Supabase / R2 / Gmail values,
+`npm install`, then `npm run dev` (`http://localhost:3001/api`). Production is the
+default when `NODE_ENV` is absent; the dev command sets it explicitly.

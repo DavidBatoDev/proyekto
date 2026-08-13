@@ -45,7 +45,8 @@ Scripts auto-load .env in order: cwd -> scripts/.env -> repo root .env -> backen
 
 - Staged rollouts: user-visible features ship dark behind telemetry/feature flags and activate in phases (realtime transport flags are the model). Do not bundle activation with the initial land unless asked.
 - CI is deploy-only - there are no PR test gates. Local checks (tests, typechecks, schema validators, the canary) are the only quality gate; the /deploy-preflight skill is the pre-push checklist.
-- NEVER `supabase db push` to prod - it fails with SASL (stale local password) and the correct path is the Supabase MCP apply_migration tool. See supabase/CLAUDE.md.
+- NEVER `supabase db push` to prod. The audited production path is the Supabase MCP `apply_migration` tool, regardless of which local credentials are available. See supabase/CLAUDE.md.
+- Supabase production (`byvbnkpiselvvulsvxgo`) and hosted development (`vyiedlwasdwmjbztqznl`) are separate projects. `db:dev:check` compares normalized `public` schemas; `db:dev:mirror` is a confirmed, backup-first schema-only operation that may erase dev rows in rebuilt tables. It does not clone production data, Auth users/sessions, Storage objects, migration history, credentials, or project settings. Do not expand a schema-mirror request into copying any of those resources.
 
 ## Architecture Notes
 

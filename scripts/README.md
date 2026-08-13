@@ -2,6 +2,28 @@
 
 Utility scripts are run directly from this folder using Node `.mjs` files.
 
+## Supabase Development Sync
+
+The guarded sync compares normalized `public` schema dumps from the live
+production and development projects:
+
+```bash
+node scripts/sync_supabase_dev.mjs check
+node scripts/sync_supabase_dev.mjs apply
+node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl
+```
+
+Copy `scripts/.env.example` to ignored `scripts/.env` and provide the production
+and development database passwords. `apply` dry-runs and applies repository
+migrations plus the safe seed to hosted dev. `mirror` creates schema and data backups,
+generates a live dev-to-prod catalog delta, and applies it only to the explicit
+development project in transactional passes. It can erase development data when
+tables must be rebuilt, never copies production rows or auth users, and never
+accepts the production project as a mutation target. Docker Desktop must be
+running. Successful mirror runs retain their rollback artifacts in the operating
+system's temporary directory; remove them after validation because the data dump
+may contain sensitive development records.
+
 ## Resolve Lookup Benchmark
 
 Run from repo root:

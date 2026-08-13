@@ -16,9 +16,8 @@ Migrations, deploy, secrets, QA, and troubleshooting for the meetings feature.
 ## Migrations
 
 Source of truth: [`supabase/migrations/`](../../../supabase/migrations/) (repo root).
-Apply to prod SG via the **Supabase MCP `apply_migration`** — `supabase db push`
-fails SASL auth because the local `backend/.env` password is the old Mumbai DB's,
-not SG's.
+Apply to prod SG via the **Supabase MCP `apply_migration`**. Local
+`supabase db push` is prohibited for production even when credentials are available.
 
 Meeting migrations, in order:
 
