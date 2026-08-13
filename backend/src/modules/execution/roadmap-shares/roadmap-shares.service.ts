@@ -16,6 +16,15 @@ import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 
 export const ROADMAP_SHARES_REPOSITORY = Symbol('ROADMAP_SHARES_REPOSITORY');
 
+export interface RoadmapPreviewMetadata {
+  roadmapId: string;
+  projectId: string | null;
+  roadmapName: string;
+  nodeId: string;
+  nodeType: 'epic' | 'feature' | 'task';
+  title: string;
+}
+
 @Injectable()
 export class RoadmapSharesService {
   constructor(
@@ -24,6 +33,24 @@ export class RoadmapSharesService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly activity: RoadmapActivityService,
   ) {}
+
+  async getPreviewMetadata(
+    roadmapId: string,
+    nodeId: string,
+  ): Promise<RoadmapPreviewMetadata> {
+    const metadata = await this.repo.findPreviewMetadata(roadmapId, nodeId);
+    if (!metadata) {
+      throw new NotFoundException('Roadmap item not found');
+    }
+    return {
+      roadmapId: metadata.roadmap_id,
+      projectId: metadata.project_id,
+      roadmapName: metadata.roadmap_name,
+      nodeId: metadata.node_id,
+      nodeType: metadata.node_type,
+      title: metadata.node_title,
+    };
+  }
 
   async getShareByRoadmap(roadmapId: string) {
     return this.repo.findByRoadmap(roadmapId);

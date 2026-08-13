@@ -1,43 +1,44 @@
+import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
+import { motion } from "framer-motion";
 import {
+	Calendar,
+	CheckCircle2,
+	ChevronDown,
+	Copy,
+	Edit2,
+	Link2,
+	List,
+	Maximize2,
+	Plus,
+	Trash2,
+} from "lucide-react";
+import {
+	type DragEvent,
 	memo,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type DragEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { motion } from "framer-motion";
-import {
-	Edit2,
-	Trash2,
-	CheckCircle2,
-	ChevronDown,
-	List,
-	Plus,
-	Calendar,
-	Maximize2,
-	Copy,
-	Link2,
-} from "lucide-react";
-import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
-import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useToast } from "@/hooks/useToast";
-import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
-import { TaskListModal } from "../modals/TaskListModal";
-import {
-	calculateFeatureProgressFromTasks,
-	getCompletedTaskCount,
-} from "../shared/featureProgress";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import { useToast } from "@/hooks/useToast";
+import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import {
 	EditingAvatars,
 	EditingTaskAvatar,
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
+import { TaskListModal } from "../modals/TaskListModal";
+import {
+	calculateFeatureProgressFromTasks,
+	getCompletedTaskCount,
+} from "../shared/featureProgress";
+import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -427,7 +428,11 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 			toast.error("Can't build a link outside a roadmap.");
 			return;
 		}
-		const url = `${window.location.origin}/project/${projectId}/roadmap/${roadmapId}?nodeId=${canonicalId}&view=roadmapView`;
+		const url = buildRoadmapPreviewUrl(
+			window.location.origin,
+			roadmapId,
+			canonicalId,
+		);
 		navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
 	};

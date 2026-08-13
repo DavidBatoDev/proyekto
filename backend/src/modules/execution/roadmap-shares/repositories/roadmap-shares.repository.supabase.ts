@@ -5,9 +5,64 @@ import { IRoadmapSharesRepository } from './roadmap-shares.repository.interface'
 import { CreateShareDto, AddShareCommentDto } from '../dto/roadmap-shares.dto';
 import { randomBytes } from 'crypto';
 
+interface PreviewRoadmapRow {
+  id: string;
+  project_id: string | null;
+  name: string;
+}
+
+interface PreviewNodeRow {
+  id: string;
+  title: string;
+  roadmap_id: string;
+}
+
+interface QueryResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
 @Injectable()
 export class RoadmapSharesRepositorySupabase implements IRoadmapSharesRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
+
+  async findPreviewMetadata(roadmapId: string, nodeId: string) {
+    const { data: roadmap, error: roadmapError } = (await this.db
+      .from('roadmaps')
+      .select('id, project_id, name')
+      .eq('id', roadmapId)
+      .maybeSingle()) as QueryResult<PreviewRoadmapRow>;
+    if (roadmapError) throw new Error(roadmapError.message);
+    if (!roadmap) return null;
+
+    const lookups = [
+      { table: 'roadmap_epics', type: 'epic' as const },
+      { table: 'roadmap_features', type: 'feature' as const },
+      { table: 'roadmap_tasks', type: 'task' as const },
+    ];
+
+    for (const lookup of lookups) {
+      const { data: node, error: nodeError } = (await this.db
+        .from(lookup.table)
+        .select('id, title, roadmap_id')
+        .eq('id', nodeId)
+        .eq('roadmap_id', roadmapId)
+        .maybeSingle()) as QueryResult<PreviewNodeRow>;
+      if (nodeError) throw new Error(nodeError.message);
+      if (node) {
+        return {
+          roadmap_id: roadmap.id,
+          project_id: roadmap.project_id ?? null,
+          roadmap_name: roadmap.name,
+          node_id: node.id,
+          node_type: lookup.type,
+          node_title: node.title,
+        };
+      }
+    }
+
+    return null;
+  }
 
   async findByRoadmap(roadmapId: string): Promise<any | null> {
     const { data, error } = await this.db
