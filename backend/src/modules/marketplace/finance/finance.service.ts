@@ -28,6 +28,9 @@ export class FinanceService {
   ) {}
 
   async getPortfolio(callerId: string, filters: FinanceFiltersDto) {
+    // P4a exposes severed contracts and invoices in their dedicated lists.
+    // Folding them into portfolio totals needs an engagement-level bucket and
+    // remains deferred to P4b.
     const projects = await this.access.listProjects(callerId, filters);
     if (projects.length === 0) {
       return { projects: [], totals_by_currency: [] };
@@ -108,14 +111,22 @@ export class FinanceService {
       paidByInvoice.set(
         payment.invoice_id,
         (paidByInvoice.get(payment.invoice_id) ?? 0) +
-          (payment.reverses_payment_id ? -Number(payment.amount) : Number(payment.amount)),
+          (payment.reverses_payment_id
+            ? -Number(payment.amount)
+            : Number(payment.amount)),
       );
     }
 
     const currencies = new Map<string, CurrencyAccumulator>();
     const perProject = new Map<
       string,
-      { revenue: number; collected: number; outstanding: number; cost: number; invoice_count: number }
+      {
+        revenue: number;
+        collected: number;
+        outstanding: number;
+        cost: number;
+        invoice_count: number;
+      }
     >();
     const ensureCurrency = (currency: string): CurrencyAccumulator => {
       const key = currency.toUpperCase();
@@ -227,23 +238,34 @@ export class FinanceService {
 
   async listContracts(callerId: string, query: FinanceContractsQueryDto) {
     const projects = await this.access.listProjects(callerId, query);
-    if (projects.length === 0) return { items: [], total: 0 };
     const projectById = new Map(
       projects.map((project) => [project.id, project]),
     );
+    const projectIds = projects.map((project) => project.id);
+    const includeSevered = !query.project_id && !query.project_status;
+    if (projectIds.length === 0 && !includeSevered) {
+      return { items: [], total: 0 };
+    }
     const offset = (query.page - 1) * query.limit;
     let contractsQuery = this.supabase
       .from('contracts')
       .select(
-        'id, project_id, contract_number, status, version, currency, billing_mode, recurring_fee, client_name, service_start_date, service_end_date, created_at, updated_at',
+        'id, project_id, project_title_snapshot, consultant_user_id, contract_number, status, version, currency, billing_mode, recurring_fee, client_name, service_start_date, service_end_date, created_at, updated_at',
         { count: 'exact' },
-      )
-      .in(
-        'project_id',
-        projects.map((project) => project.id),
       )
       .order('updated_at', { ascending: false })
       .range(offset, offset + query.limit - 1);
+    if (projectIds.length > 0 && includeSevered) {
+      contractsQuery = contractsQuery.or(
+        `project_id.in.(${projectIds.join(',')}),and(project_id.is.null,consultant_user_id.eq.${callerId})`,
+      );
+    } else if (projectIds.length > 0) {
+      contractsQuery = contractsQuery.in('project_id', projectIds);
+    } else {
+      contractsQuery = contractsQuery
+        .is('project_id', null)
+        .eq('consultant_user_id', callerId);
+    }
     if (query.contract_status) {
       contractsQuery = contractsQuery.eq('status', query.contract_status);
     }
@@ -269,23 +291,55 @@ export class FinanceService {
 
   async listInvoices(callerId: string, query: FinanceInvoicesQueryDto) {
     const projects = await this.access.listProjects(callerId, query);
-    if (projects.length === 0) return { items: [], total: 0 };
     const projectById = new Map(
       projects.map((project) => [project.id, project]),
     );
+    const projectIds = projects.map((project) => project.id);
+    const includeSevered = !query.project_id && !query.project_status;
+    if (projectIds.length === 0 && !includeSevered) {
+      return { items: [], total: 0 };
+    }
+    const { data: seatedContracts, error: seatedContractsError } =
+      includeSevered
+        ? await this.supabase
+            .from('contracts')
+            .select('id')
+            .or(
+              `consultant_user_id.eq.${callerId},and(consultant_user_id.is.null,created_by.eq.${callerId})`,
+            )
+        : { data: [], error: null };
+    if (seatedContractsError) {
+      throw new Error(seatedContractsError.message);
+    }
+    const seatedContractIds = (
+      (seatedContracts ?? []) as Array<{ id: string }>
+    ).map((row) => row.id);
     const offset = (query.page - 1) * query.limit;
     let invoicesQuery = this.supabase
       .from('invoices')
       .select(
-        'id, project_id, contract_id, number, status, currency, total, origin, issue_date, due_date, period_start, period_end, created_at, updated_at',
+        'id, project_id, project_title_snapshot, contract_id, issuer_user_id, number, status, currency, total, origin, issue_date, due_date, period_start, period_end, created_at, updated_at',
         { count: 'exact' },
-      )
-      .in(
-        'project_id',
-        projects.map((project) => project.id),
       )
       .order('updated_at', { ascending: false })
       .range(offset, offset + query.limit - 1);
+    const severedArms = [
+      `and(project_id.is.null,issuer_user_id.eq.${callerId})`,
+      ...(seatedContractIds.length > 0
+        ? [
+            `and(project_id.is.null,contract_id.in.(${seatedContractIds.join(',')}))`,
+          ]
+        : []),
+    ];
+    if (projectIds.length > 0 && includeSevered) {
+      invoicesQuery = invoicesQuery.or(
+        `project_id.in.(${projectIds.join(',')}),${severedArms.join(',')}`,
+      );
+    } else if (projectIds.length > 0) {
+      invoicesQuery = invoicesQuery.in('project_id', projectIds);
+    } else {
+      invoicesQuery = invoicesQuery.or(severedArms.join(','));
+    }
     if (query.invoice_status) {
       invoicesQuery = invoicesQuery.eq('status', query.invoice_status);
     }
@@ -311,7 +365,13 @@ export class FinanceService {
   private toProjectSummary(
     project: ConsultantFinanceProject,
     totals:
-      | { revenue: number; collected: number; outstanding: number; cost: number; invoice_count: number }
+      | {
+          revenue: number;
+          collected: number;
+          outstanding: number;
+          cost: number;
+          invoice_count: number;
+        }
       | undefined,
     contracts: Map<string, { id: string; status: string; version: number }>,
   ) {
@@ -341,9 +401,14 @@ function marginPercent(revenue: number, margin: number): number | null {
   return Math.round((margin / revenue) * 1000) / 10;
 }
 
-function isMissingReceivablesSchema(error: { code?: string; message?: string }): boolean {
+function isMissingReceivablesSchema(error: {
+  code?: string;
+  message?: string;
+}): boolean {
   return (
     error.code === 'PGRST205' ||
-    error.message?.includes("Could not find the table 'public.invoice_payments'") === true
+    error.message?.includes(
+      "Could not find the table 'public.invoice_payments'",
+    ) === true
   );
 }

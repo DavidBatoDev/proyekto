@@ -70,4 +70,17 @@ describe('InvoiceSchedulerService notifications', () => {
 
     expect(notifications.createNotification).not.toHaveBeenCalled();
   });
+
+  it('does not notify for a severed contract', async () => {
+    await notifyDraftReady(
+      { ...contract, project_id: null },
+      'invoice-1',
+      'INV-001',
+      '2026-08-01',
+      '2026-08-31',
+    );
+
+    expect(projectAuth.getProjectConsultantId).not.toHaveBeenCalled();
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
 });

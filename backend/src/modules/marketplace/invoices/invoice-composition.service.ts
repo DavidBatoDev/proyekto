@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type { ContractRow } from '../contracts/contracts.service';
@@ -71,6 +71,11 @@ export class InvoiceCompositionService {
     periodEnd: string,
     hoursDetailLevel: HoursDetailLevel,
   ): Promise<{ lines: ComposedLine[]; hours: BillableHours }> {
+    if (!contract.project_id) {
+      throw new BadRequestException(
+        'A removed project cannot be used to recompose invoice hours.',
+      );
+    }
     const hours = await this.getBillableHours(
       contract.project_id,
       periodStart,

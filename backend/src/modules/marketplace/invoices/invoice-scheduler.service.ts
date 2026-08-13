@@ -321,6 +321,8 @@ export class InvoiceSchedulerService {
    * `lastBillablePeriod`, which enforces the real invoice date.
    */
   private async findBillableContracts(today: string): Promise<ContractRow[]> {
+    // Scheduler billing correctly follows the current live project contract;
+    // severed contracts are durable history, not future billing configuration.
     const { data, error } = await this.supabase
       .from('contracts')
       .select('*, project:projects!contracts_project_id_fkey(status)')
@@ -363,6 +365,9 @@ export class InvoiceSchedulerService {
     periodStart: string,
     periodEnd: string,
   ): Promise<void> {
+    // Scheduled billing requires a live project; severed contracts remain
+    // historical records and deliberately fall out of scheduler scans.
+    if (!contract.project_id) return;
     const consultantId = await this.projectAuth.getProjectConsultantId(
       contract.project_id,
     );

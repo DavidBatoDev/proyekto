@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
@@ -40,8 +42,9 @@ import {
 
 export interface ContractRow {
   id: string;
-  project_id: string;
+  project_id: string | null;
   project_title_snapshot: string | null;
+  consultant_user_id: string | null;
   version: number;
   contract_number: string | null;
   status: ContractStatus;
@@ -183,8 +186,21 @@ export class ContractsService {
     contractId: string,
   ): Promise<ContractWithSchedule> {
     const row = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(callerId, row.project_id);
+    await this.assertContractRead(callerId, row);
     return this.withSchedule(row);
+  }
+
+  /** Internal exact-row lookup for invoice provenance. No caller authorization. */
+  async getContractById(contractId: string): Promise<ContractRow | null> {
+    const response = await this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .maybeSingle();
+    const data: unknown = response.data;
+    const error = response.error;
+    if (error) throw new Error(error.message);
+    return (data as ContractRow | null) ?? null;
   }
 
   /**
@@ -223,6 +239,7 @@ export class ContractsService {
 
     const insert: Record<string, unknown> = {
       project_id: projectId,
+      consultant_user_id: callerId,
       version,
       status: 'draft',
       created_by: callerId,
@@ -254,7 +271,10 @@ export class ContractsService {
     dto: UpdateContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(existing),
+    );
 
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
@@ -299,7 +319,10 @@ export class ContractsService {
   /** Drafts have no legal force yet and may be discarded by the consultant. */
   async deleteContract(callerId: string, contractId: string): Promise<void> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(existing),
+    );
     if (existing.status !== 'draft') {
       throw new BadRequestException('Only draft contracts can be deleted.');
     }
@@ -326,7 +349,10 @@ export class ContractsService {
     dto: AmendContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(existing),
+    );
 
     if (dto.scope === 'this') {
       throw new BadRequestException(
@@ -483,7 +509,7 @@ export class ContractsService {
       .insert({
         ...carried,
         ...patch,
-        version: await this.nextVersion(existing.project_id),
+        version: await this.nextVersion(this.requireProjectId(existing)),
         status: 'draft',
         supersedes_contract_id: existing.id,
         amendment_effective_date: effectiveFrom,
@@ -516,7 +542,7 @@ export class ContractsService {
     dto: SignContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertCanManageSignature(callerId, existing, dto.party);
+    await this.assertCanSign(callerId, existing, dto.party);
     return this.stampSignature(existing, dto, callerId);
   }
 
@@ -526,7 +552,7 @@ export class ContractsService {
    * Split out of `signContract` so the public token-bearer path can reuse the
    * exact same semantics — both-signed detection, the supersede step, the
    * counterparty notification — without re-deriving them. The token IS the
-   * authorization there, so it must not call `assertCanManageSignature`; that
+   * authorization there, so it must not call `assertCanSign`; that
    * is the only difference between the two entry points, and keeping one
    * implementation is what stops them drifting.
    */
@@ -538,6 +564,20 @@ export class ContractsService {
     const contractId = existing.id;
     const isClientParty = dto.party === 'client';
 
+    if (existing.project_id === null) {
+      throw new BadRequestException(
+        'A contract for a removed project cannot be signed.',
+      );
+    }
+    const consultantId = existing.consultant_user_id ?? existing.created_by;
+    const consultantIsActive = consultantId
+      ? await isActiveConsultantEnrollment(this.supabase, consultantId)
+      : false;
+    if (!consultantIsActive) {
+      throw new ConflictException(
+        'The consultant on this contract is no longer verified. Reinstate or re-approve them before signing.',
+      );
+    }
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
         `A ${existing.status} contract cannot be signed.`,
@@ -554,70 +594,42 @@ export class ContractsService {
     const signatureScale = clampSignatureScale(dto.signature_scale);
     const offsetX = clampSignatureOffset(dto.signature_offset_x);
     const offsetY = clampSignatureOffset(dto.signature_offset_y);
-    const patch: Record<string, unknown> = isClientParty
-      ? {
-          signed_by_client_at: now,
-          signed_by_client_name: dto.signer_name.trim(),
-          signed_by_client_signature_url: signatureUrl,
-          signed_by_client_signature_scale: signatureScale,
-          signed_by_client_signature_offset_x: offsetX,
-          signed_by_client_signature_offset_y: offsetY,
-        }
-      : {
-          signed_by_consultant_at: now,
-          signed_by_consultant_name: dto.signer_name.trim(),
-          signed_by_consultant_signature_url: signatureUrl,
-          signed_by_consultant_signature_scale: signatureScale,
-          signed_by_consultant_signature_offset_x: offsetX,
-          signed_by_consultant_signature_offset_y: offsetY,
-        };
-
-    const consultantSigned = isClientParty
-      ? Boolean(existing.signed_by_consultant_at)
-      : true;
-    const clientSigned = isClientParty
-      ? true
-      : Boolean(existing.signed_by_client_at);
-    const bothSigned = consultantSigned && clientSigned;
-    if (bothSigned) {
-      patch.status = 'signed';
-    } else if (existing.status === 'draft') {
-      patch.status = 'sent';
+    const response = await this.supabase.rpc('sign_contract_and_flip', {
+      p_contract_id: contractId,
+      p_party: isClientParty ? 'client' : 'consultant',
+      p_signer_name: dto.signer_name.trim(),
+      p_signature_url: signatureUrl,
+      p_scale: signatureScale,
+      p_offset_x: offsetX,
+      p_offset_y: offsetY,
+      p_signed_at: now,
+    });
+    const data: unknown = response.data;
+    const error = response.error;
+    if (error?.message.includes('CONSULTANT_ENROLLMENT_INACTIVE')) {
+      throw new ConflictException(
+        'The consultant on this contract is no longer verified. Reinstate or re-approve them before signing.',
+      );
     }
 
-    // Superseding: a project may hold only ONE live (signed/active) contract
-    // (uq_contracts_live_per_project). When this signature makes a NEW version
-    // live, retire any previous live contract first — otherwise the partial
-    // unique index rejects the update. This is the amendment path the schema was
-    // designed for: a new version supersedes the old, which becomes `ended`.
-    if (patch.status === 'signed') {
-      const { error: supersedeError } = await this.supabase
-        .from('contracts')
-        .update({ status: 'ended', updated_at: now })
-        .eq('project_id', existing.project_id)
-        .neq('id', contractId)
-        .in('status', ['signed', 'active']);
-      if (supersedeError) {
-        throw new BadRequestException(supersedeError.message);
-      }
-    }
-
-    const { data, error } = await this.supabase
-      .from('contracts')
-      .update({ ...patch, updated_at: now })
-      .eq('id', contractId)
-      .select('*')
-      .single();
+    // The RPC owns superseding and the final status transition while the row is
+    // locked, so concurrent consultant/client stamps cannot strand two
+    // signatures on a contract that is still marked sent.
     if (error || !data) {
       throw new BadRequestException(
         error?.message ?? 'Failed to sign contract.',
       );
     }
-    const updated = data as ContractRow;
+    const updated = (Array.isArray(data) ? data[0] : data) as
+      | ContractRow
+      | undefined;
+    if (!updated) {
+      throw new BadRequestException('Failed to sign contract.');
+    }
 
     // A token-bearing signer has no account, so there is nobody to exclude
     // from the notification — everyone on the project should hear about it.
-    if (bothSigned) {
+    if (existing.status !== 'signed' && updated.status === 'signed') {
       await this.notifyCounterparty(actorId ?? '', updated);
     }
     return this.withSchedule(updated);
@@ -626,7 +638,7 @@ export class ContractsService {
   /**
    * Sign as the holder of a valid signature link. Authorization already
    * happened when the token was resolved, so this deliberately skips
-   * `assertCanManageSignature` — see `stampSignature`.
+   * `assertCanSign` — see `stampSignature`.
    */
   async signAsTokenBearer(
     contract: ContractRow,
@@ -646,7 +658,7 @@ export class ContractsService {
     dto: UpdateSignaturePlacementDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertCanManageSignature(callerId, existing, dto.party);
+    await this.assertConsultantSignature(callerId, existing);
 
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
@@ -701,7 +713,7 @@ export class ContractsService {
     dto: UnsignContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertCanManageSignature(callerId, existing, dto.party);
+    await this.assertConsultantSignature(callerId, existing);
 
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
@@ -746,17 +758,62 @@ export class ContractsService {
     return this.withSchedule(data as ContractRow);
   }
 
-  /**
-   * Authenticated signature management belongs to the consultant of record.
-   * Clients sign through ContractSignatureLinksService's public token flow.
-   */
-  private async assertCanManageSignature(
+  private async assertCanSign(
     callerId: string,
     existing: ContractRow,
     party: 'consultant' | 'client',
   ): Promise<void> {
-    void party;
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    const consultantId = existing.consultant_user_id ?? existing.created_by;
+    if (party === 'consultant') {
+      if (callerId === consultantId) return;
+      throw new NotFoundException('Contract not found');
+    }
+    if (callerId === existing.client_user_id) return;
+    if (existing.project_id) {
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', existing.project_id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const ownerId = (data as { owner_id: string | null } | null)?.owner_id;
+      if (callerId === ownerId && ownerId !== consultantId) return;
+    }
+    throw new NotFoundException('Contract not found');
+  }
+
+  private async assertConsultantSignature(
+    callerId: string,
+    existing: ContractRow,
+  ): Promise<void> {
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(existing),
+    );
+    if (callerId !== (existing.consultant_user_id ?? existing.created_by)) {
+      throw new NotFoundException('Contract not found');
+    }
+  }
+
+  private async assertContractRead(
+    callerId: string,
+    contract: ContractRow,
+  ): Promise<void> {
+    const consultantId = contract.consultant_user_id ?? contract.created_by;
+    if (callerId === consultantId || callerId === contract.client_user_id) {
+      return;
+    }
+    if (contract.project_id) {
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', contract.project_id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const ownerId = (data as { owner_id: string | null } | null)?.owner_id;
+      if (callerId === ownerId && ownerId !== consultantId) return;
+    }
+    throw new NotFoundException('Contract not found');
   }
 
   /**
@@ -799,8 +856,9 @@ export class ContractsService {
 
   /** The primary team's cut-off config, so client billing lines up with payouts. */
   async getTeamPayPeriodConfig(
-    projectId: string,
+    projectId: string | null,
   ): Promise<PayPeriodConfig | null> {
+    if (!projectId) return null;
     const team = await this.getPrimaryTeam(projectId);
     return team?.pay_period_config ?? null;
   }
@@ -810,8 +868,9 @@ export class ContractsService {
    * its business identity on contracts and invoices.
    */
   private async getPrimaryTeam(
-    projectId: string,
+    projectId: string | null,
   ): Promise<PrimaryTeamRow | null> {
+    if (!projectId) return null;
     const { data: project } = await this.supabase
       .from('projects')
       .select('primary_team_id')
@@ -846,14 +905,14 @@ export class ContractsService {
   }
 
   private async getContractRow(contractId: string): Promise<ContractRow> {
-    const { data, error } = await this.supabase
-      .from('contracts')
-      .select('*')
-      .eq('id', contractId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await this.getContractById(contractId);
     if (!data) throw new NotFoundException('Contract not found');
-    return data as ContractRow;
+    return data;
+  }
+
+  private requireProjectId(contract: ContractRow): string {
+    if (!contract.project_id) throw new NotFoundException('Project not found');
+    return contract.project_id;
   }
 
   private async nextVersion(projectId: string): Promise<number> {
@@ -1099,7 +1158,8 @@ export class ContractsService {
     teamId?: string,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    const projectId = this.requireProjectId(existing);
+    await this.financeAccess.assertProject(callerId, projectId);
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         'This contract is no longer editable. Remove the signatures to change it.',
@@ -1108,7 +1168,7 @@ export class ContractsService {
 
     const patch = await this.resolveProviderBlock(
       existing.created_by ?? callerId,
-      existing.project_id,
+      projectId,
       kind,
       teamId,
     );
@@ -1140,6 +1200,7 @@ export class ContractsService {
     actorId: string,
     contract: ContractRow,
   ): Promise<void> {
+    if (!contract.project_id) return;
     const { data: project } = await this.supabase
       .from('projects')
       .select('owner_id, title')

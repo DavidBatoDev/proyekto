@@ -146,7 +146,10 @@ export class ContractSignatureLinksService {
     contractId: string,
   ): Promise<SignatureLinkSummary | null> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(callerId, contract.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(contract),
+    );
 
     const row = await this.activeLinkRow(contractId);
     return row ? this.toSummary(row) : null;
@@ -184,7 +187,10 @@ export class ContractSignatureLinksService {
     dto: CreateSignatureLinkDto,
   ): Promise<SignatureLinkSummary> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(callerId, contract.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(contract),
+    );
 
     if (contract.status === 'ended' || contract.status === 'cancelled') {
       throw new BadRequestException(
@@ -242,7 +248,10 @@ export class ContractSignatureLinksService {
 
   async revokeLink(callerId: string, contractId: string): Promise<void> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(callerId, contract.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireProjectId(contract),
+    );
 
     // Capture the recipient before revoking — afterwards the active-link query
     // returns nothing and we would have nobody to notify.
@@ -436,11 +445,13 @@ export class ContractSignatureLinksService {
     contract: ContractRow,
     link: SignatureLinkRow,
   ): Promise<PublicContractView> {
-    const { data: project } = await this.supabase
-      .from('projects')
-      .select('title')
-      .eq('id', contract.project_id)
-      .maybeSingle();
+    const { data: project } = contract.project_id
+      ? await this.supabase
+          .from('projects')
+          .select('title')
+          .eq('id', contract.project_id)
+          .maybeSingle()
+      : { data: null };
 
     return {
       id: contract.id,
@@ -497,10 +508,16 @@ export class ContractSignatureLinksService {
         contract.signed_by_client_signature_offset_y,
       periods: await this.contracts.resolvePeriods(contract),
       project_title:
-        (project as { title: string | null } | null)?.title ?? null,
+        (project as { title: string | null } | null)?.title ??
+        contract.project_title_snapshot,
       expires_at: link.expires_at,
       already_signed: Boolean(contract.signed_by_client_at),
     };
+  }
+
+  private requireProjectId(contract: ContractRow): string {
+    if (!contract.project_id) throw new NotFoundException('Project not found');
+    return contract.project_id;
   }
 
   /**
