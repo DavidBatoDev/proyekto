@@ -533,8 +533,16 @@ export class ProjectsService {
       status_counts: Record<string, number>;
     };
   }> {
+    const feeVisibleProjectIds = new Set<string>();
     if (query.project_id) {
       await this.authorization.assertRole(userId, query.project_id, 'viewer');
+      const permissions = await this.authorization.resolvePermissions(
+        userId,
+        query.project_id,
+      );
+      if (permissions?.time.view_team_logs) {
+        feeVisibleProjectIds.add(query.project_id);
+      }
     }
     if (query.team_id) {
       const { data: team, error: teamErr } = await this.supabase
@@ -566,9 +574,28 @@ export class ProjectsService {
     } else {
       const { data: accessRows, error: accessErr } = await this.supabase
         .from('project_access')
-        .select('project_id')
+        .select('project_id, role, origin, capabilities')
         .eq('user_id', userId);
       if (accessErr) throw new Error(accessErr.message);
+      for (const row of (accessRows ?? []) as Array<{
+        project_id: string;
+        role: ProjectRole;
+        origin: string | null;
+        capabilities: Record<string, unknown> | null;
+      }>) {
+        const origin =
+          row.origin && !row.origin.startsWith('team:')
+            ? (row.origin as ProjectShareOrigin)
+            : null;
+        const permissions = resolvePermissions(
+          row.role,
+          origin,
+          row.capabilities,
+        );
+        if (permissions.time.view_team_logs) {
+          feeVisibleProjectIds.add(row.project_id);
+        }
+      }
       projectIds = Array.from(
         new Set(
           (accessRows ?? []).map(
@@ -655,7 +682,9 @@ export class ProjectsService {
       statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
       const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
       totalSeconds += seconds;
-      totalFees += (seconds / 3600) * Number(row.rate_snapshot ?? 0);
+      if (feeVisibleProjectIds.has(row.project_id)) {
+        totalFees += (seconds / 3600) * Number(row.rate_snapshot ?? 0);
+      }
     }
 
     const rateKeys = Array.from(

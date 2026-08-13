@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -41,7 +42,7 @@ export interface InvoiceParty {
 
 export interface InvoiceRow {
   id: string;
-  project_id: string;
+  project_id: string | null;
   project_title_snapshot: string | null;
   contract_id: string | null;
   issuer_user_id: string;
@@ -167,7 +168,7 @@ export interface InvoiceRecipient {
 function invoicePdfPath(
   invoice: Pick<InvoiceRow, 'project_id' | 'id'>,
 ): string {
-  return `invoice_documents/${invoice.project_id}/${invoice.id}/invoice.pdf`;
+  return `invoice_documents/${invoice.project_id ?? 'severed'}/${invoice.id}/invoice.pdf`;
 }
 
 interface ComposeLinesInput {
@@ -234,9 +235,19 @@ export class InvoicesService {
       dto.project_id,
     );
 
-    // A live contract governs pricing whenever one exists — the client rate,
-    // the parties on the document, and the payment terms all come from it.
-    const contract = await this.contracts.getLiveContract(dto.project_id);
+    // An explicitly selected contract is exact invoice provenance. Without
+    // one, manual creation correctly uses the project's current live contract.
+    const contract = dto.contract_id
+      ? await this.contracts.getContractById(dto.contract_id)
+      : await this.contracts.getLiveContract(dto.project_id);
+    if (dto.contract_id && !contract) {
+      throw new BadRequestException('The selected contract does not exist.');
+    }
+    if (contract && contract.project_id !== dto.project_id) {
+      throw new BadRequestException(
+        'The selected contract does not belong to this project.',
+      );
+    }
     const currency = (
       dto.currency ??
       contract?.currency ??
@@ -312,6 +323,9 @@ export class InvoicesService {
     dueDate: string,
     issueDate: string,
   ): Promise<InvoiceWithLines | null> {
+    // Scheduler queries embed a live project. Keep the service fail-closed if a
+    // severed contract is ever passed directly.
+    if (!contract.project_id) return null;
     const number = await this.nextInvoiceNumber(contract.project_id, contract);
     const detail: HoursDetailLevel =
       contract.billing_mode === 'retainer' ? 'none' : 'summary';
@@ -369,8 +383,36 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.assertInvoiceRead(callerId, invoice);
     return invoice;
+  }
+
+  private async assertInvoiceRead(
+    callerId: string,
+    invoice: InvoiceRow,
+  ): Promise<void> {
+    if (invoice.project_id) {
+      await this.financeAccess.assertProject(callerId, invoice.project_id);
+      return;
+    }
+    if (invoice.issuer_user_id === callerId) return;
+    if (invoice.contract_id) {
+      const contract = await this.contracts.getContractById(
+        invoice.contract_id,
+      );
+      if (
+        callerId ===
+        (contract?.consultant_user_id ?? contract?.created_by ?? null)
+      ) {
+        return;
+      }
+    }
+    throw new NotFoundException('Invoice not found');
+  }
+
+  private requireInvoiceProjectId(invoice: InvoiceRow): string {
+    if (!invoice.project_id) throw new NotFoundException('Project not found');
+    return invoice.project_id;
   }
 
   async updateInvoice(
@@ -379,7 +421,10 @@ export class InvoicesService {
     dto: UpdateInvoiceDto,
   ): Promise<InvoiceWithLines> {
     const existing = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, existing.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(existing),
+    );
     if (existing.status !== 'draft') {
       throw new BadRequestException(
         'Only draft invoices can be edited. Issue a replacement if a sent invoice needs correction.',
@@ -427,16 +472,63 @@ export class InvoicesService {
 
     if (shouldRebuildLines) {
       const contract = existing.contract_id
-        ? await this.contracts.getLiveContract(existing.project_id)
+        ? await this.contracts.getContractById(existing.contract_id)
         : null;
-      const rebuilt = await this.composeInvoiceLines(existing, contract, {
-        line_items: dto.line_items,
-        attach_hours: dto.attach_hours ?? existing.attach_hours,
-        hours_from: dto.hours_from ?? existing.period_start ?? undefined,
-        hours_to: dto.hours_to ?? existing.period_end ?? undefined,
-        hours_detail_level:
-          dto.hours_detail_level ?? existing.hours_detail_level ?? 'summary',
-      });
+      const attachHours = dto.attach_hours ?? existing.attach_hours;
+      const existingManualLines = existing.line_items
+        .filter((line) => line.source_type === 'manual')
+        .map((line) => ({
+          description: line.description,
+          quantity: Number(line.quantity),
+          unit_rate: Number(line.unit_rate),
+        }));
+      let rebuilt: ComposedLine[];
+      if (existing.contract_id && !contract) {
+        const requiresContractRecompose =
+          attachHours &&
+          (dto.attach_hours === true ||
+            dto.hours_from !== undefined ||
+            dto.hours_to !== undefined ||
+            dto.hours_detail_level !== undefined ||
+            dto.hours_member_user_id !== undefined);
+        if (requiresContractRecompose) {
+          throw new ConflictException(
+            'The contract used to price this invoice is no longer available. Existing priced lines were preserved.',
+          );
+        }
+        rebuilt = await this.composeInvoiceLines(existing, null, {
+          line_items: dto.line_items ?? existingManualLines,
+          attach_hours: false,
+          hours_detail_level:
+            dto.hours_detail_level ?? existing.hours_detail_level ?? 'summary',
+        });
+        if (attachHours) {
+          rebuilt.push(
+            ...existing.line_items
+              .filter((line) => line.source_type !== 'manual')
+              .map((line) => ({
+                source_type: line.source_type,
+                source_log_id: line.source_log_id,
+                description: line.description,
+                quantity: Number(line.quantity),
+                unit_rate: Number(line.unit_rate),
+                amount: Number(line.amount),
+                metadata: line.metadata,
+                position: 0,
+              })),
+          );
+          rebuilt = rebuilt.map((line, position) => ({ ...line, position }));
+        }
+      } else {
+        rebuilt = await this.composeInvoiceLines(existing, contract, {
+          line_items: dto.line_items ?? existingManualLines,
+          attach_hours: attachHours,
+          hours_from: dto.hours_from ?? existing.period_start ?? undefined,
+          hours_to: dto.hours_to ?? existing.period_end ?? undefined,
+          hours_detail_level:
+            dto.hours_detail_level ?? existing.hours_detail_level ?? 'summary',
+        });
+      }
       await this.replaceInvoiceLineItems(invoiceId, rebuilt);
       await this.refreshTotals(invoiceId);
     }
@@ -451,7 +543,10 @@ export class InvoicesService {
    */
   async deleteInvoice(callerId: string, invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -472,7 +567,8 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    const projectId = this.requireInvoiceProjectId(invoice);
+    await this.financeAccess.assertProject(callerId, projectId);
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -517,7 +613,7 @@ export class InvoicesService {
       if (invoice.recipient_user_id && invoice.recipient_user_id !== callerId) {
         await this.notifications.createNotification({
           user_id: invoice.recipient_user_id,
-          project_id: invoice.project_id,
+          project_id: projectId,
           actor_id: callerId,
           type_name: 'invoice_issued',
           content: {
@@ -527,7 +623,7 @@ export class InvoicesService {
             currency: invoice.currency,
             message: `Invoice ${invoice.number} has been issued.`,
           },
-          link_url: `/project/${invoice.project_id}/overview`,
+          link_url: `/project/${projectId}/overview`,
         });
       }
     } catch {
@@ -666,7 +762,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceRecipient> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     return this.resolveRecipient(invoice);
   }
 
@@ -679,7 +778,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceEmailDelivery> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Only issued invoices can be sent to the client.',
@@ -694,7 +796,10 @@ export class InvoicesService {
     dto: RecordInvoicePaymentDto,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Payments can only be recorded against an issued invoice.',
@@ -732,7 +837,10 @@ export class InvoicesService {
     reason: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     if (invoice.status === 'void')
       throw new BadRequestException(
         'A void invoice has no reversible payments.',
@@ -781,7 +889,8 @@ export class InvoicesService {
     reason: string,
   ): Promise<{ voided: InvoiceWithLines; replacement: InvoiceWithLines }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    const projectId = this.requireInvoiceProjectId(invoice);
+    await this.financeAccess.assertProject(callerId, projectId);
     if (invoice.status !== 'issued') {
       throw new BadRequestException(
         'Only unpaid issued invoices can be voided and replaced. Reverse payments first.',
@@ -790,12 +899,12 @@ export class InvoicesService {
     const trimmedReason = reason.trim();
     if (!trimmedReason)
       throw new BadRequestException('A void reason is required.');
-    const number = await this.nextInvoiceNumber(invoice.project_id, null);
+    const number = await this.nextInvoiceNumber(projectId, null);
     const now = new Date().toISOString();
     const { data: replacement, error: replacementErr } = await this.supabase
       .from('invoices')
       .insert({
-        project_id: invoice.project_id,
+        project_id: projectId,
         contract_id: invoice.contract_id,
         project_title_snapshot: invoice.project_title_snapshot,
         issuer_user_id: callerId,
@@ -875,15 +984,15 @@ export class InvoicesService {
     const billToEmail = (invoice.bill_to as InvoiceParty | null)?.email?.trim();
     if (invoice.recipient_user_id || billToEmail) return;
 
+    const projectId = this.requireInvoiceProjectId(invoice);
     const { data } = await this.supabase
       .from('projects')
       .select('owner_id')
-      .eq('id', invoice.project_id)
+      .eq('id', projectId)
       .maybeSingle();
     const project = data as { owner_id: string | null } | null;
-    const consultantId = await this.projectAuth.getProjectConsultantId(
-      invoice.project_id,
-    );
+    const consultantId =
+      await this.projectAuth.getProjectConsultantId(projectId);
     if (project?.owner_id && project.owner_id !== consultantId) {
       return;
     }
@@ -903,7 +1012,10 @@ export class InvoicesService {
     generated_at: string;
   }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     if (invoice.status !== 'draft' && invoice.pdf_path) {
       throw new BadRequestException(
         'Issued invoices use their finalized PDF and cannot be regenerated.',
@@ -1031,7 +1143,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<{ url: string; expires_in: number }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(callerId, invoice.project_id);
+    await this.financeAccess.assertProject(
+      callerId,
+      this.requireInvoiceProjectId(invoice),
+    );
     if (!invoice.pdf_path) {
       throw new NotFoundException(
         'This invoice has no generated PDF yet. Generate it first.',

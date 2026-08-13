@@ -439,8 +439,9 @@ export const ORIGIN_DELTAS: Record<
   // pool directly — the consultant mediates (per soft-isolation design).
   client: {
     'chat.message_freelancers': false,
-    // They fund the work, so the billing surfaces stay open to them — but
-    // not Time, which is the delivery team's cost side.
+    'time.view_team_logs': false,
+    // They fund the work, so billing stays open; team-wide Time is the
+    // delivery cost side. access.time still exposes their own logs.
   },
   // Consultants get the operator toolkit additively, regardless of role.
   consultant: {
