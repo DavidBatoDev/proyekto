@@ -1,8 +1,10 @@
+import { useNavigate } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
 	ExternalLink,
+	Eye,
 	FolderKanban,
 	Pencil,
 	Play,
@@ -19,10 +21,12 @@ import type {
 import { BillableAmount } from "./BillableAmount";
 import { type ActionMenuItem, RowActionsMenu } from "./RowActionsMenu";
 import {
+	formatBreakMinutes,
 	formatLogEnd,
 	formatLogStart,
 	initialsFromName,
 	isUnusuallyLongLog,
+	liveBreakSecondsFromLog,
 	liveDurationSecondsFromLog,
 	statusBadgeClass,
 	useLiveNowMs,
@@ -327,6 +331,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	const isRunning = !log.ended_at;
 	const nowMs = useLiveNowMs(isRunning);
 	const isReadOnly = isMemberReadOnlyStatus(log.status);
+	const navigate = useNavigate();
 
 	const seconds = liveDurationSecondsFromLog(log, nowMs);
 	const hours = seconds / 3600;
@@ -343,6 +348,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 		: ended
 			? formatLogEnd(started, ended)
 			: "—";
+	const breakLabel = formatBreakMinutes(liveBreakSecondsFromLog(log, nowMs));
 
 	const taskTitle =
 		log.task?.title ||
@@ -359,6 +365,18 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 				icon: <Square className="h-3.5 w-3.5" />,
 				onSelect: () => void onStopLog(log.id),
 				disabled: isRowPending,
+			});
+		}
+		if (log.team_id) {
+			items.push({
+				id: "view-timeline",
+				label: "View work & break timeline",
+				icon: <Eye className="h-3.5 w-3.5" />,
+				onSelect: () =>
+					void navigate({
+						to: "/teams/$teamId/time/log/$logId",
+						params: { teamId: log.team_id as string, logId: log.id },
+					}),
 			});
 		}
 		items.push(
@@ -401,6 +419,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 		hasActiveLog,
 		canOpenInRoadmap,
 		log,
+		navigate,
 		onStopLog,
 		onOpenTaskModal,
 		onEditLog,
@@ -455,6 +474,12 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 						{startedLabel} –{" "}
 						{isRunning ? <span className="text-primary">now</span> : endedLabel}
 					</span>
+					{breakLabel && (
+						<>
+							<span>·</span>
+							<span className="tabular-nums">{breakLabel}</span>
+						</>
+					)}
 				</div>
 			</div>
 

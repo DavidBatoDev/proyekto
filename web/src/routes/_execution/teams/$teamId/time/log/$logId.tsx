@@ -1,19 +1,23 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, MessageSquarePlus } from "lucide-react";
-import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
-import { DashboardShell } from "@/components/layout/DashboardShell";
-import { MemberDisplay } from "@/components/common/MemberDisplay";
-import { useToast } from "@/hooks/useToast";
-import { useAuthStore, useUser } from "@/stores/authStore";
-import { getTeam, listTeamMembers } from "@/services/teams.service";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { Coffee, Loader2, MessageSquarePlus, Timer } from "lucide-react";
+import { useState } from "react";
 import {
-	teamTimeService,
+	AppSectionHeader,
+	AppSurfaceCard,
+} from "@/components/common/AppPrimitives";
+import { MemberDisplay } from "@/components/common/MemberDisplay";
+import { DashboardShell } from "@/components/layout/DashboardShell";
+import { useToast } from "@/hooks/useToast";
+import {
 	type TaskTimeLog,
 	type TimeLogReviewDecision,
+	type TimeLogSegment,
 	type TimeLogStatus,
+	teamTimeService,
 } from "@/services/team-time.service";
+import { getTeam, listTeamMembers } from "@/services/teams.service";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/teams/$teamId/time/log/$logId")({
 	beforeLoad: () => {
@@ -44,9 +48,9 @@ function StatusChip({ status }: { status: TimeLogStatus }) {
 			? "bg-emerald-100 text-emerald-700 border-emerald-200"
 			: status === "paid"
 				? "bg-indigo-100 text-indigo-700 border-indigo-200"
-			: status === "rejected"
-				? "bg-rose-100 text-rose-700 border-rose-200"
-				: "bg-amber-100 text-amber-800 border-amber-200";
+				: status === "rejected"
+					? "bg-rose-100 text-rose-700 border-rose-200"
+					: "bg-amber-100 text-amber-800 border-amber-200";
 	return (
 		<span
 			className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone}`}
@@ -69,6 +73,41 @@ function FieldRow({
 				{label}
 			</div>
 			<div className="col-span-2 text-sm text-slate-900">{children}</div>
+		</div>
+	);
+}
+
+function SegmentRow({ segment }: { segment: TimeLogSegment }) {
+	const isBreak = segment.kind === "break";
+	const started = new Date(segment.started_at);
+	const ended = segment.ended_at ? new Date(segment.ended_at) : null;
+	const seconds = ended
+		? Math.max(0, Math.floor((ended.getTime() - started.getTime()) / 1000))
+		: null;
+	return (
+		<div
+			className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
+				isBreak ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"
+			}`}
+		>
+			{isBreak ? (
+				<Coffee className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+			) : (
+				<Timer className="h-3.5 w-3.5 shrink-0 text-sky-600" />
+			)}
+			<span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+				{isBreak ? "Break" : "Work"}
+			</span>
+			<span className="text-sm text-slate-800">
+				{started.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+				{" – "}
+				{ended
+					? ended.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+					: "now"}
+			</span>
+			<span className="ml-auto text-xs tabular-nums text-slate-500">
+				{seconds === null ? "running" : formatDuration(seconds)}
+			</span>
 		</div>
 	);
 }
@@ -97,6 +136,10 @@ function TeamTimeLogDetailRoute() {
 		queryKey: ["team-time", "log", logId, "comments"],
 		queryFn: () => teamTimeService.listLogComments(logId),
 	});
+	const segmentsQuery = useQuery({
+		queryKey: ["team-time", "log", logId, "segments"],
+		queryFn: () => teamTimeService.listLogSegments(logId),
+	});
 
 	const reviewMutation = useMutation({
 		mutationFn: (decision: TimeLogReviewDecision) =>
@@ -116,11 +159,14 @@ function TeamTimeLogDetailRoute() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 	const commentMutation = useMutation({
-		mutationFn: () => teamTimeService.createLogComment(logId, commentBody.trim()),
+		mutationFn: () =>
+			teamTimeService.createLogComment(logId, commentBody.trim()),
 		onSuccess: () => {
 			toast.success("Comment added");
 			setCommentBody("");
-			qc.invalidateQueries({ queryKey: ["team-time", "log", logId, "comments"] });
+			qc.invalidateQueries({
+				queryKey: ["team-time", "log", logId, "comments"],
+			});
 			qc.invalidateQueries({ queryKey: ["team-time", "log", logId] });
 			qc.invalidateQueries({ queryKey: ["team-time", teamId] });
 		},
@@ -222,10 +268,7 @@ function TeamTimeLogDetailRoute() {
 					</FieldRow>
 					<FieldRow label="Duration">{formatDuration(seconds)}</FieldRow>
 					<FieldRow label="Rate">
-						{formatMoney(
-							Number(log.rate_snapshot ?? 0),
-							log.currency_snapshot,
-						)}{" "}
+						{formatMoney(Number(log.rate_snapshot ?? 0), log.currency_snapshot)}{" "}
 						/ hour
 					</FieldRow>
 					<FieldRow label="Amount">
@@ -251,7 +294,7 @@ function TeamTimeLogDetailRoute() {
 										}}
 									/>
 								) : (
-									log.reviewed_by ?? "—"
+									(log.reviewed_by ?? "—")
 								)}
 							</FieldRow>
 						</>
@@ -260,6 +303,35 @@ function TeamTimeLogDetailRoute() {
 						<FieldRow label="Review note">{log.review_note}</FieldRow>
 					)}
 				</AppSurfaceCard>
+
+				{log.source === "timer" && (
+					<AppSurfaceCard>
+						<div className="space-y-3 p-4">
+							<div className="flex items-center gap-2">
+								<Timer className="h-4 w-4 text-slate-600" />
+								<h3 className="text-sm font-semibold text-slate-900">
+									Work & break timeline
+								</h3>
+							</div>
+							{segmentsQuery.isPending ? (
+								<div className="text-sm text-slate-500">
+									Loading timeline...
+								</div>
+							) : (segmentsQuery.data ?? []).length === 0 ? (
+								<div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+									No segment history for this log — it predates per-pause
+									tracking or its times were edited manually.
+								</div>
+							) : (
+								<div className="space-y-1.5">
+									{(segmentsQuery.data ?? []).map((segment) => (
+										<SegmentRow key={segment.id} segment={segment} />
+									))}
+								</div>
+							)}
+						</div>
+					</AppSurfaceCard>
+				)}
 
 				{canReview && (
 					<AppSurfaceCard>
@@ -316,10 +388,13 @@ function TeamTimeLogDetailRoute() {
 						</div>
 						<div className="space-y-2">
 							{commentsQuery.isPending ? (
-								<div className="text-sm text-slate-500">Loading comments...</div>
+								<div className="text-sm text-slate-500">
+									Loading comments...
+								</div>
 							) : (commentsQuery.data ?? []).length === 0 ? (
 								<div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-									No comments yet. Use this thread for disputes or clarifications.
+									No comments yet. Use this thread for disputes or
+									clarifications.
 								</div>
 							) : (
 								(commentsQuery.data ?? []).map((comment) => (
@@ -330,7 +405,10 @@ function TeamTimeLogDetailRoute() {
 										<div className="flex items-center justify-between gap-2">
 											<div className="text-xs font-semibold text-slate-700">
 												{comment.author?.display_name ||
-													[comment.author?.first_name, comment.author?.last_name]
+													[
+														comment.author?.first_name,
+														comment.author?.last_name,
+													]
 														.filter(Boolean)
 														.join(" ")
 														.trim() ||

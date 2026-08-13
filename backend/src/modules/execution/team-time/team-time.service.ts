@@ -69,6 +69,8 @@ const TIME_LOG_COMMENT_SELECT = `
   )
 `;
 
+const TIME_LOG_SEGMENT_SELECT = `id, log_id, kind, started_at, ended_at, created_at`;
+
 export interface TimeLogRow {
   id: string;
   project_id: string;
@@ -98,6 +100,15 @@ export interface TimeLogRow {
   limit_context?: TimeLogLimitContext;
   day_review_summary?: TimeLogDaySummary;
   review_comments?: TimeLogCommentRow[];
+}
+
+export interface TimeLogSegmentRow {
+  id: string;
+  log_id: string;
+  kind: 'work' | 'break';
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
 }
 
 export interface TimeLogCommentRow {
@@ -284,6 +295,7 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     const resolvedRate = this.pickRateForWorkType(rate, workType);
+    const startedAt = new Date().toISOString();
     const memberDisplayNameSnapshot =
       await this.resolveMemberDisplayNameSnapshot(callerId);
 
@@ -294,7 +306,7 @@ export class TeamTimeService {
         task_id: taskId,
         member_user_id: callerId,
         team_id: rate?.team_id ?? null,
-        started_at: new Date().toISOString(),
+        started_at: startedAt,
         status: 'pending',
         source: 'timer',
         rate_snapshot: resolvedRate,
@@ -308,7 +320,9 @@ export class TeamTimeService {
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to start timer');
     }
-    return this.attachLimitContext(data as unknown as TimeLogRow);
+    const row = data as unknown as TimeLogRow;
+    await this.openSegment(row.id, 'work', startedAt);
+    return this.attachLimitContext(row);
   }
 
   /**
@@ -334,6 +348,8 @@ export class TeamTimeService {
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to pause timer');
     }
+    await this.closeOpenSegment(logId, now);
+    await this.openSegment(logId, 'break', now);
     return this.attachLimitContext(data as unknown as TimeLogRow);
   }
 
@@ -362,7 +378,47 @@ export class TeamTimeService {
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to resume timer');
     }
+    await this.closeOpenSegment(logId, now.toISOString());
+    await this.openSegment(logId, 'work', now.toISOString());
     return this.attachLimitContext(data as unknown as TimeLogRow);
+  }
+
+  /**
+   * Open a new work/break segment on a log. Best-effort: the segment
+   * timeline is a display-only supplement to the row's own started_at/
+   * ended_at/break_seconds fields, so a failure here must not fail the
+   * timer action itself.
+   */
+  private async openSegment(
+    logId: string,
+    kind: 'work' | 'break',
+    startedAt: string,
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from('task_time_log_segments')
+      .insert({ log_id: logId, kind, started_at: startedAt });
+    if (error) {
+      this.logger.warn(
+        `Failed to open ${kind} segment for log ${logId}: ${error.message}`,
+      );
+    }
+  }
+
+  /** Close whichever segment is currently open on a log, if any. Best-effort. */
+  private async closeOpenSegment(
+    logId: string,
+    endedAt: string,
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from('task_time_log_segments')
+      .update({ ended_at: endedAt })
+      .eq('log_id', logId)
+      .is('ended_at', null);
+    if (error) {
+      this.logger.warn(
+        `Failed to close open segment for log ${logId}: ${error.message}`,
+      );
+    }
   }
 
   /**
@@ -407,6 +463,7 @@ export class TeamTimeService {
     if (!row) {
       throw new Error('Failed to stop timer');
     }
+    await this.closeOpenSegment(logId, endedAt);
     try {
       await this.notifyApprovalRequested(row, callerId);
     } catch (notifyError) {
@@ -597,6 +654,24 @@ export class TeamTimeService {
     if (res.error || !res.data) {
       throw new Error(res.error?.message ?? 'Failed to update log');
     }
+    // A manual correction to the boundaries invalidates the recorded
+    // work/break timeline (it no longer necessarily fits inside the new
+    // started_at/ended_at) — drop it rather than show stale segments.
+    if (
+      dto.started_at !== undefined ||
+      dto.ended_at !== undefined ||
+      dto.break_minutes !== undefined
+    ) {
+      const { error: clearError } = await this.supabase
+        .from('task_time_log_segments')
+        .delete()
+        .eq('log_id', logId);
+      if (clearError) {
+        this.logger.warn(
+          `Failed to clear stale segments for log ${logId}: ${clearError.message}`,
+        );
+      }
+    }
     return this.attachLimitContext(res.data as unknown as TimeLogRow);
   }
 
@@ -722,6 +797,21 @@ export class TeamTimeService {
     const rows = (data ?? []) as unknown as TimeLogRow[];
     if (!rows[0]) return null;
     return this.attachLimitContext(rows[0]);
+  }
+
+  /** The work/break interval timeline for one log, oldest first. */
+  async listLogSegments(
+    callerId: string,
+    logId: string,
+  ): Promise<TimeLogSegmentRow[]> {
+    await this.assertCanViewLog(callerId, logId);
+    const { data, error } = await this.supabase
+      .from('task_time_log_segments')
+      .select(TIME_LOG_SEGMENT_SELECT)
+      .eq('log_id', logId)
+      .order('started_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as TimeLogSegmentRow[];
   }
 
   async listLogComments(
