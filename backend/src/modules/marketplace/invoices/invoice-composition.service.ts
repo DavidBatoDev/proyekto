@@ -30,7 +30,6 @@ interface TimeLogRow {
   id: string;
   started_at: string;
   duration_seconds: number | null;
-  break_minutes: number | null;
   status: string;
   work_type_snapshot: string;
   task: Array<{ title: string | null }> | { title: string | null } | null;
@@ -155,9 +154,9 @@ export class InvoiceCompositionService {
    * excludes `pending`/`rejected` logs, so a client is only ever billed for
    * time the consultant has signed off on.
    *
-   * Billable time is NET of breaks: `duration_seconds` less `break_minutes`.
-   * A member who logs an 8-hour session with a 60-minute break worked 7 billable
-   * hours, and billing the gross would overcharge the client.
+   * `duration_seconds` is already NET of breaks on every write path. The
+   * `break_minutes`/`break_seconds` columns are audit and display mirrors; using
+   * either here would subtract the same break twice and undercharge the client.
    */
   async getBillableHours(
     projectId: string,
@@ -167,7 +166,7 @@ export class InvoiceCompositionService {
     const { data, error } = await this.supabase
       .from('task_time_logs')
       .select(
-        'id, started_at, duration_seconds, break_minutes, status, work_type_snapshot, task:roadmap_tasks!task_time_logs_task_id_fkey(title)',
+        'id, started_at, duration_seconds, status, work_type_snapshot, task:roadmap_tasks!task_time_logs_task_id_fkey(title)',
       )
       .eq('project_id', projectId)
       .in('status', ['approved', 'paid'])
@@ -183,10 +182,7 @@ export class InvoiceCompositionService {
     let total = 0;
 
     for (const row of rows) {
-      const gross = Math.max(0, Number(row.duration_seconds ?? 0)) / 3600;
-      const breaks = Math.max(0, Number(row.break_minutes ?? 0)) / 60;
-      // Clamp at zero: a break longer than the session is bad data, not a credit.
-      const net = Math.max(0, gross - breaks);
+      const net = Math.max(0, Number(row.duration_seconds ?? 0)) / 3600;
       if (net === 0) continue;
 
       total += net;

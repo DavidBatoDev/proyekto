@@ -206,14 +206,14 @@ describe('getBillableHours', () => {
     expect(hours).toEqual({ totalHours: 0, byDay: [], byTask: [] });
   });
 
-  // An 8-hour session with a 60-minute break is 7 billable hours; billing the
-  // gross duration would overcharge the client.
-  it('deducts break time from billable hours', async () => {
+  // The writer has already reduced an 8-hour span with a 60-minute break to
+  // seven net hours. The rounded break mirror must not be deducted again.
+  it('does not subtract breaks twice from net duration', async () => {
     const hours = await service([
       {
         id: 'log-break',
         started_at: '2026-08-04T09:00:00.000Z',
-        duration_seconds: 8 * 3600,
+        duration_seconds: 7 * 3600,
         break_minutes: 60,
         status: 'approved',
         work_type_snapshot: 'real_work',
@@ -227,14 +227,14 @@ describe('getBillableHours', () => {
     expect(hours.byTask).toEqual([{ task: 'Long session', hours: 7 }]);
   });
 
-  // Bad data, not a credit — a break longer than the session must not produce
-  // negative hours that silently reduce the invoice total.
-  it('clamps at zero when the break exceeds the session', async () => {
+  // Monetary calculations use the exact net seconds, not the rounded display
+  // mirror, even when legacy/bad data leaves that mirror inconsistent.
+  it('ignores an inconsistent break_minutes mirror', async () => {
     const hours = await service([
       {
         id: 'log-overbreak',
         started_at: '2026-08-04T09:00:00.000Z',
-        duration_seconds: 3600,
+        duration_seconds: 30 * 60,
         break_minutes: 120,
         status: 'approved',
         work_type_snapshot: 'real_work',
@@ -243,8 +243,8 @@ describe('getBillableHours', () => {
       },
     ]).getBillableHours('project-1', '2026-08-01', '2026-08-15');
 
-    expect(hours.totalHours).toBe(0);
-    expect(hours.byDay).toEqual([]);
+    expect(hours.totalHours).toBe(0.5);
+    expect(hours.byDay).toEqual([{ day: '2026-08-04', hours: 0.5 }]);
   });
 });
 

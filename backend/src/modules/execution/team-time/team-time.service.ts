@@ -80,7 +80,7 @@ export interface TimeLogRow {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
-  /** Rounded mirror of break_seconds, kept for invoicing and manual edits. */
+  /** Rounded display/edit mirror; never use this for monetary calculations. */
   break_minutes: number;
   /** Accumulated break time in seconds — the source of truth. */
   break_seconds: number;
@@ -146,6 +146,7 @@ export interface ReviewLogsBulkResult {
 
 export interface ResolvedTeamRate {
   team_id: string;
+  time_tracking_enabled: boolean;
   rate_type: 'hourly' | 'fixed';
   hourly_rate: number;
   training_hourly_rate: number;
@@ -153,6 +154,36 @@ export interface ResolvedTeamRate {
   weekly_limit_hours: number | null;
   monthly_limit_hours: number | null;
   overtime_requires_approval: boolean;
+}
+
+interface TeamRateLookupRow {
+  rate_type: 'hourly' | 'fixed' | null;
+  hourly_rate: number | string | null;
+  training_hourly_rate: number | string | null;
+  currency: string | null;
+  weekly_limit_hours: number | string | null;
+  monthly_limit_hours: number | string | null;
+  overtime_requires_approval: boolean | null;
+}
+
+/**
+ * Fail closed on the exact team selected to own a new or rerouted time log.
+ * An enabled contributor team must not authorize a log that resolves to a
+ * different, disabled primary team.
+ */
+export function assertResolvedTeamTimeTrackingEnabled(
+  rate: ResolvedTeamRate | null,
+): asserts rate is ResolvedTeamRate {
+  if (!rate) {
+    throw new ForbiddenException(
+      'No delivery team could be resolved for this time log. Curate the member onto an attached team first.',
+    );
+  }
+  if (!rate.time_tracking_enabled) {
+    throw new ForbiddenException(
+      'Time tracking is not enabled for the team selected for this work. The team owner must enable it in team settings.',
+    );
+  }
 }
 
 /** A task as the timer picker sees it: flat, with its epic/feature titles. */
@@ -274,8 +305,6 @@ export class TeamTimeService {
     if (taskId) {
       workType = await this.assertTaskInProject(taskId, dto.project_id);
     }
-    await this.assertProjectHasTimeTrackingTeam(dto.project_id);
-
     const { data: runningRows, error: runningError } = await this.supabase
       .from('task_time_logs')
       .select('id')
@@ -294,6 +323,7 @@ export class TeamTimeService {
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
+    assertResolvedTeamTimeTrackingEnabled(rate);
     const resolvedRate = this.pickRateForWorkType(rate, workType);
     const startedAt = new Date().toISOString();
     const memberDisplayNameSnapshot =
@@ -305,13 +335,13 @@ export class TeamTimeService {
         project_id: dto.project_id,
         task_id: taskId,
         member_user_id: callerId,
-        team_id: rate?.team_id ?? null,
+        team_id: rate.team_id,
         started_at: startedAt,
         status: 'pending',
         source: 'timer',
         rate_snapshot: resolvedRate,
-        rate_type_snapshot: rate?.rate_type ?? 'hourly',
-        currency_snapshot: rate?.currency ?? 'USD',
+        rate_type_snapshot: rate.rate_type,
+        currency_snapshot: rate.currency,
         work_type_snapshot: workType,
         member_display_name_snapshot: memberDisplayNameSnapshot,
       })
@@ -595,20 +625,22 @@ export class TeamTimeService {
             taskContext.project_id,
             callerId,
           );
+          assertResolvedTeamTimeTrackingEnabled(rate);
           patch.project_id = taskContext.project_id;
-          patch.team_id = rate?.team_id ?? null;
+          patch.team_id = rate.team_id;
           patch.rate_snapshot = this.pickRateForWorkType(
             rate,
             taskContext.work_type,
           );
-          patch.currency_snapshot = rate?.currency ?? 'USD';
+          patch.currency_snapshot = rate.currency;
           patch.work_type_snapshot = taskContext.work_type;
         } else {
           const rate = await this.resolveTeamRate(log.project_id, callerId);
+          assertResolvedTeamTimeTrackingEnabled(rate);
           patch.project_id = log.project_id;
-          patch.team_id = rate?.team_id ?? null;
+          patch.team_id = rate.team_id;
           patch.rate_snapshot = this.pickRateForWorkType(rate, 'real_work');
-          patch.currency_snapshot = rate?.currency ?? 'USD';
+          patch.currency_snapshot = rate.currency;
           patch.work_type_snapshot = 'real_work';
         }
       }
@@ -699,8 +731,6 @@ export class TeamTimeService {
     if (taskId) {
       workType = await this.assertTaskInProject(taskId, dto.project_id);
     }
-    await this.assertProjectHasTimeTrackingTeam(dto.project_id);
-
     const start = new Date(dto.started_at).getTime();
     const end = new Date(dto.ended_at).getTime();
     if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
@@ -710,10 +740,8 @@ export class TeamTimeService {
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
-    await this.assertWithinRetroactiveWindow(
-      rate?.team_id ?? null,
-      dto.started_at,
-    );
+    assertResolvedTeamTimeTrackingEnabled(rate);
+    await this.assertWithinRetroactiveWindow(rate.team_id, dto.started_at);
 
     const breakMins = Math.max(0, dto.break_minutes ?? 0);
     const grossSeconds = Math.floor((end - start) / 1000);
@@ -723,7 +751,7 @@ export class TeamTimeService {
     // their rate requires approval for overtime. (Timers only warn — you can't
     // un-stop a running timer — so this guard lives on the manual path.)
     await this.assertHourCapAllows(
-      rate?.team_id ?? null,
+      rate.team_id,
       dto.project_id,
       callerId,
       dto.started_at,
@@ -738,15 +766,15 @@ export class TeamTimeService {
       project_id: dto.project_id,
       task_id: taskId,
       member_user_id: callerId,
-      team_id: rate?.team_id ?? null,
+      team_id: rate.team_id,
       started_at: dto.started_at,
       ended_at: dto.ended_at,
       duration_seconds: netSeconds,
       status: 'pending',
       source: 'manual',
       rate_snapshot: resolvedRate,
-      rate_type_snapshot: rate?.rate_type ?? 'hourly',
-      currency_snapshot: rate?.currency ?? 'USD',
+      rate_type_snapshot: rate.rate_type,
+      currency_snapshot: rate.currency,
       work_type_snapshot: workType,
       break_minutes: breakMins,
       break_seconds: breakMins * 60,
@@ -2289,16 +2317,21 @@ export class TeamTimeService {
 
     if (!chosenTeamId) return null;
 
-    const { data: rateRow, error: rateErr } = await this.supabase
-      .from('team_member_rates')
-      .select(
-        'rate_type, hourly_rate, training_hourly_rate, currency, weekly_limit_hours, monthly_limit_hours, overtime_requires_approval',
-      )
-      .eq('team_id', chosenTeamId)
-      .eq('user_id', userId)
-      .eq('project_id', projectId)
-      .is('end_date', null)
-      .maybeSingle();
+    const [rateResponse, team] = await Promise.all([
+      this.supabase
+        .from('team_member_rates')
+        .select(
+          'rate_type, hourly_rate, training_hourly_rate, currency, weekly_limit_hours, monthly_limit_hours, overtime_requires_approval',
+        )
+        .eq('team_id', chosenTeamId)
+        .eq('user_id', userId)
+        .eq('project_id', projectId)
+        .is('end_date', null)
+        .maybeSingle(),
+      this.fetchTeamWithFlag(chosenTeamId),
+    ]);
+    const rateRow = rateResponse.data as TeamRateLookupRow | null;
+    const rateErr = rateResponse.error;
     if (rateErr) throw new Error(rateErr.message);
 
     // When the member has no rate row yet, fall back to the PROJECT's currency
@@ -2309,6 +2342,7 @@ export class TeamTimeService {
 
     return {
       team_id: chosenTeamId,
+      time_tracking_enabled: team.time_tracking_enabled,
       rate_type:
         (rateRow?.rate_type as 'hourly' | 'fixed' | undefined) ?? 'hourly',
       hourly_rate: Number(rateRow?.hourly_rate ?? 0),
@@ -2390,30 +2424,6 @@ export class TeamTimeService {
     if (memErr) throw new Error(memErr.message);
     if (!count) {
       throw new ForbiddenException('You are not a member of this team.');
-    }
-  }
-
-  /**
-   * Refuse log mutations on projects whose primary/contributor teams do
-   * not have time tracking enabled. Looked up by joining
-   * project_teams → teams; passes if at least one attached team has the
-   * flag on (the rate resolver will pick a flagged-on team if both exist).
-   */
-  private async assertProjectHasTimeTrackingTeam(
-    projectId: string,
-  ): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('project_teams')
-      .select('team:teams!project_teams_team_id_fkey(time_tracking_enabled)')
-      .eq('project_id', projectId);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as unknown as Array<{
-      team: { time_tracking_enabled: boolean } | null;
-    }>;
-    if (!rows.some((r) => r.team?.time_tracking_enabled)) {
-      throw new ForbiddenException(
-        'Time tracking is not enabled for any team attached to this project.',
-      );
     }
   }
 
