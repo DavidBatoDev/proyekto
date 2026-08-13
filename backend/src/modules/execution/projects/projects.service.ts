@@ -1770,7 +1770,8 @@ export class ProjectsService {
       callerId,
       'members.edit_permissions',
     );
-    return this.projectsRepo.getRolePermissions(projectId, role);
+    void role;
+    return null;
   }
 
   async updateRolePermissions(
@@ -1778,21 +1779,14 @@ export class ProjectsService {
     projectId: string,
     dto: UpdateRolePermissionsDto,
   ): Promise<void> {
-    // Tech-debt cleanup: legacy role-template editing is a no-op now since
-    // permissions are derived from project_shares.role. We still gate the
-    // endpoint behind admin+ to keep the API contract stable for the
-    // frontend, but the persisted role_permissions_json (if any) is just
-    // metadata — not used for authz.
+    // Keep the legacy endpoint as an authorized no-op for older clients.
+    // Authorization is derived from project_access and member capabilities.
     await this.assertProjectPermission(
       projectId,
       callerId,
       'members.edit_permissions',
     );
-    await this.projectsRepo.updateRoleMemberPermissions(
-      projectId,
-      dto.role,
-      dto.permissions as unknown as ProjectPermissions,
-    );
+    void dto;
   }
 
   async listProjectResources(

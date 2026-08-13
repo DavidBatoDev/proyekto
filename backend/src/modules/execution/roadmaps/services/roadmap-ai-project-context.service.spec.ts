@@ -124,13 +124,7 @@ describe('RoadmapAiProjectContextService', () => {
       id: 'project-1',
       title: 'Apollo',
       status: 'active',
-      category: 'Web',
-      project_state: 'codebase',
       duration: '3 months',
-      budget_range: '$5k-$10k',
-      funding_status: 'bootstrapped',
-      start_date: 'immediately',
-      skills: ['TypeScript', { name: 'Postgres' }],
     });
     const briefQuery = query({
       version: 3,
@@ -193,13 +187,7 @@ describe('RoadmapAiProjectContextService', () => {
         id: 'project-1',
         title: 'Apollo',
         status: 'active',
-        category: 'Web',
-        project_state: 'codebase',
         duration: '3 months',
-        budget_range: '$5k-$10k',
-        funding_status: 'bootstrapped',
-        start_date: 'immediately',
-        skills: ['TypeScript', 'Postgres'],
       },
       brief_excerpt: 'Build & launch.',
       has_full_brief: true,
@@ -233,6 +221,9 @@ describe('RoadmapAiProjectContextService', () => {
       ascending: false,
     });
     expect(briefQuery.limit).toHaveBeenCalledWith(1);
+    expect(projectQuery.select).toHaveBeenCalledWith(
+      'id, title, status, duration',
+    );
   });
 
   it('returns a plain-text full brief with hard caps and normalized custom fields', async () => {

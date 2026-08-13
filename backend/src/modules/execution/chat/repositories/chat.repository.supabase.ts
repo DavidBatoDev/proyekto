@@ -432,13 +432,13 @@ export class SupabaseChatRepository implements ChatRepository {
 
   async getProjectIsPersonal(projectId: string): Promise<boolean> {
     const { data, error } = await this.supabase
-      .from('projects')
-      .select('is_personal_workspace')
-      .eq('id', projectId)
+      .from('personal_workspaces')
+      .select('project_id')
+      .eq('project_id', projectId)
       .maybeSingle();
 
     if (error || !data) return false;
-    return Boolean(data.is_personal_workspace);
+    return true;
   }
 
   async listProjectChannels(projectId: string): Promise<ChatRoom[]> {

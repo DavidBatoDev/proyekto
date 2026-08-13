@@ -6,14 +6,7 @@ export interface CreateProjectData {
 	title: string;
 	brief?: string;
 	description?: string;
-	category?: string;
-	project_state?: string;
-	skills?: string[];
 	duration?: string;
-	budget_range?: string;
-	funding_status?: string;
-	start_date?: string;
-	custom_start_date?: string;
 	currency?: string;
 	status?: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";
 	/**
@@ -34,14 +27,22 @@ export interface Project {
 	title: string;
 	brief?: string;
 	description?: string;
-	category?: string;
-	project_state?: string;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	category?: string | null;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	project_state?: string | null;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
 	skills?: string[];
 	duration?: string;
-	budget_range?: string;
-	funding_status?: string;
-	start_date?: string;
-	custom_start_date?: string;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	budget_range?: string | null;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	funding_status?: string | null;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	start_date?: string | null;
+	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
+	custom_start_date?: string | null;
+	is_personal_workspace?: boolean;
 	status: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";
 	/** Default currency for new rates/contracts/invoices + project time display. */
 	currency?: string;
@@ -1010,58 +1011,6 @@ class ProjectService {
 		if (!response.ok) {
 			const err = await response.json();
 			throw new Error(extractApiErrorMessage(err, "Failed to cancel invite"));
-		}
-	}
-
-	async getRolePermissions(
-		projectId: string,
-		role: string,
-	): Promise<ProjectPermissions | null> {
-		const {
-			data: { session },
-		} = await supabase.auth.getSession();
-		if (!session) return null;
-
-		const apiRole = role === "freelancer" ? "member" : role;
-		const response = await fetch(
-			`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/permissions/role?role=${apiRole}`,
-			{
-				headers: { Authorization: `Bearer ${session.access_token}` },
-			},
-		);
-		if (!response.ok) return null;
-		const result = await response.json();
-		const payload = result.data ?? result;
-		return (payload ?? null) as ProjectPermissions | null;
-	}
-
-	async updateRolePermissions(
-		projectId: string,
-		role: string,
-		permissions: ProjectPermissions,
-	): Promise<void> {
-		const {
-			data: { session },
-		} = await supabase.auth.getSession();
-		if (!session) throw new Error("Authentication required");
-
-		const response = await fetch(
-			`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/permissions/role`,
-			{
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${session.access_token}`,
-				},
-				body: JSON.stringify({ role, permissions }),
-			},
-		);
-
-		if (!response.ok) {
-			const err = await response.json();
-			throw new Error(
-				extractApiErrorMessage(err, "Failed to update role permissions"),
-			);
 		}
 	}
 

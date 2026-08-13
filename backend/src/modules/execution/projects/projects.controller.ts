@@ -327,6 +327,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/permissions/role')
+  @HttpCode(HttpStatus.NO_CONTENT)
   updateRolePermissions(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,

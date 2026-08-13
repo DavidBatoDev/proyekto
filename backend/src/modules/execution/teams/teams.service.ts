@@ -49,8 +49,6 @@ export interface TeamAttachedProject extends ProjectClientFlag {
   id: string;
   title: string | null;
   status: string | null;
-  start_date: string | null;
-  custom_start_date: string | null;
   banner_url: string | null;
   owner_id: string | null;
   owner: {
@@ -548,7 +546,7 @@ export class TeamsService {
       .select(
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
-           id, title, status, start_date, custom_start_date, banner_url, owner_id,
+           id, title, status, banner_url, owner_id,
            owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url),
            members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))
          )`,

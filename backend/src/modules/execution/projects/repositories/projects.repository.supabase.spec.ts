@@ -47,3 +47,45 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
     expect(result.map((p) => p.id)).toEqual(['p1', 'p2']);
   });
 });
+
+describe('SupabaseProjectsRepository create', () => {
+  it('stores the submitted description as version one of the project brief', async () => {
+    const single = jest.fn().mockResolvedValue({
+      data: { id: 'project-1', title: 'Apollo' },
+      error: null,
+    });
+    const projectInsert = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({ single }),
+    });
+    const briefInsert = jest.fn().mockResolvedValue({ error: null });
+    const from = jest.fn((table: string) => {
+      if (table === 'projects') return { insert: projectInsert };
+      if (table === 'project_briefs') return { insert: briefInsert };
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    const repo = new SupabaseProjectsRepository({ from } as never);
+
+    await repo.create('user-1', {
+      title: 'Apollo',
+      description: '  Build the launch experience.  ',
+      category: 'legacy-client-field',
+      skills: ['legacy-client-field'],
+    });
+
+    expect(projectInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner_id: 'user-1',
+        title: 'Apollo',
+      }),
+    );
+    expect(projectInsert.mock.calls[0]?.[0]).not.toHaveProperty('category');
+    expect(projectInsert.mock.calls[0]?.[0]).not.toHaveProperty('skills');
+    expect(briefInsert).toHaveBeenCalledWith({
+      project_id: 'project-1',
+      project_summary: 'Build the launch experience.',
+      custom_fields: [],
+      updated_by: 'user-1',
+      version: 1,
+    });
+  });
+});

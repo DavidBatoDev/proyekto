@@ -128,15 +128,6 @@ export interface ProjectsRepository {
     memberId: string,
     position: string | null,
   ): Promise<unknown>;
-  updateRoleMemberPermissions(
-    projectId: string,
-    role: string,
-    permissions: ProjectPermissions,
-  ): Promise<void>;
-  getRolePermissions(
-    projectId: string,
-    role: string,
-  ): Promise<ProjectPermissions | null>;
   listProjectResources(projectId: string): Promise<ProjectResourcesPayload>;
   createProjectResourceFolder(
     projectId: string,

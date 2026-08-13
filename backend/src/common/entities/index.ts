@@ -159,14 +159,16 @@ export interface Project {
   owner_id: string;
   /** Whether the project owner differs from the consultant of record. */
   has_client?: boolean;
-  category?: string;
-  project_state?: string;
+  /** Compatibility projection derived from personal_workspaces. */
+  is_personal_workspace?: boolean;
+  category?: string | null;
+  project_state?: string | null;
   skills?: unknown[];
   duration?: string;
-  budget_range?: string;
-  funding_status?: string;
-  start_date?: string;
-  custom_start_date?: string;
+  budget_range?: string | null;
+  funding_status?: string | null;
+  start_date?: string | null;
+  custom_start_date?: string | null;
   created_at: string;
   updated_at: string;
 }

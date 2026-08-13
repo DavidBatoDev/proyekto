@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-11 · **Status:** draft
+> **Last updated:** 2026-08-13 · **Status:** draft
 
 Proyekto today has **no monetization layer at all**: no plans, no subscriptions, no payment
 processor, no entitlements, no usage caps. This page designs one. It splits the product into
@@ -195,8 +195,8 @@ Rules, in order of importance:
 - **E2 — Guests.** Guest roadmap building (`create_guest_user()`, 30-day cleanup) is the
   top-of-funnel and must stay outside any limit check; the guest→real migration lands the
   roadmap under Free-tier counting.
-- **E3 — Personal teams & personal workspaces.** `teams.is_personal` and
-  `projects.is_personal_workspace` never count toward team/project quotas and can never
+- **E3 — Personal teams & personal workspaces.** `teams.is_personal` and projects linked
+  through `personal_workspaces` never count toward team/project quotas and can never
   hold a subscription — otherwise every consultant signup instantly consumes the Free
   team allowance.
 - **E4 — Multi-team membership.** A freelancer in three paid teams is **three seats paid by

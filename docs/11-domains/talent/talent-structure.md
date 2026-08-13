@@ -1,6 +1,6 @@
 # Talent Structure
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 There is no account-level talent identity. `freelancer_profiles` is a marketplace
 availability enrollment, not a person type —
@@ -43,9 +43,10 @@ profiles.has_completed_onboarding = true
 profiles.settings.onboarding      = { completed_at: ... }
 ```
 
-The backend then provisions a personal workspace for every user; nobody gets a
-personal team at signup (consultants get one at vetting approval). Onboarding is
-idempotent, and the legacy `lane`/`intent` request fields are accepted but ignored.
+The backend then provisions a personal workspace project for every user and records its
+identity in `personal_workspaces`; nobody gets a personal team at signup (consultants get
+one at vetting approval). Onboarding is idempotent, and the legacy `lane`/`intent` request
+fields are accepted but ignored.
 
 ## Profile data
 

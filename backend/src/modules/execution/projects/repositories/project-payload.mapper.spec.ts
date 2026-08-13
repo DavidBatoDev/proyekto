@@ -92,4 +92,25 @@ describe('attachProjectClientFlag', () => {
       is_consultant_verified: true,
     });
   });
+
+  it('derives the personal-workspace compatibility flag from the junction', () => {
+    const project = attachProjectClientFlag({
+      id: 'workspace-1',
+      owner_id: 'user-1',
+      personal_workspace: [{ user_id: 'user-1' }],
+    });
+
+    expect(project).toMatchObject({
+      is_personal_workspace: true,
+      category: null,
+      project_state: null,
+      skills: [],
+      budget_range: null,
+      funding_status: null,
+      start_date: null,
+      custom_start_date: null,
+      role_permissions_json: {},
+    });
+    expect(project).not.toHaveProperty('personal_workspace');
+  });
 });

@@ -3,7 +3,7 @@
 > **Last updated:** 2026-08-13 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **252 migrations** spanning
+[`supabase/migrations/`](../../supabase/migrations/) — **255 migrations** spanning
 2025-12-11 → 2026-08-13. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -35,10 +35,11 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `projects` | Top-level project (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `is_personal_workspace` (auto-provisioned per-user workspace, ≤1 each via partial unique index), `primary_team_id`, `currency`, `budget_range` |
+| `projects` | Lean execution container (`project_status`). Key columns: `owner_id` (**NOT NULL** → `profiles`), `primary_team_id`, `currency`, and `duration`; marketplace/listing metadata does not live here |
+| `personal_workspaces` | One-to-one identity link from a user to the project provisioned as their personal workspace; authorization still comes only from `project_access` |
 | `project_access` | **Authorization source of truth** (renamed from `project_shares`); **exactly one row per (project, user)** since `20260507000130` → `share_role` + authorization-relevant `origin` + capabilities jsonb + `has_direct_grant` |
 | `project_invites` | Email invite flow |
-| `project_briefs` | Structured brief (mission/vision, summary) |
+| `project_briefs` | Versioned structured brief; the project-creation description is stored as version 1 |
 | `project_resource_folders`, `project_resource_links` | Resource hyperlinks |
 | `project_activity_log` | Project audit trail (service-role writes) |
 

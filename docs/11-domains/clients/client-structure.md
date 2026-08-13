@@ -1,6 +1,6 @@
 # Client Structure
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 There is no `clients` table — and no client *account* of any kind. Proyekto stores no
 account role: the switchable `persona_type` was dropped in
@@ -53,9 +53,9 @@ or a client named on the contract; the owner fallback is role-neutral compatibil
 
 ### 3. Personal workspace
 
-A `projects` row with `is_personal_workspace = true`, auto-provisioned on first login. The
-invariant, from `20260503000020_add_personal_workspace_to_projects.sql`: `owner_id` is the
-workspace user and there is at most one per user (partial unique index). The owner holds
+A project linked through `personal_workspaces`, auto-provisioned on first login. The
+junction has `user_id` as its primary key and `project_id` as a unique foreign key, so each
+user and project participate in at most one personal-workspace identity. The owner holds
 `origin = 'personal_workspace'`, whose delta grants **every** permission path.
 
 ## Tables that touch the client
@@ -63,6 +63,8 @@ workspace user and there is at most one per user (partial unique index). The own
 ```mermaid
 erDiagram
     profiles ||--o{ projects : "owner_id (NOT NULL)"
+    profiles ||--o| personal_workspaces : user_id
+    projects ||--o| personal_workspaces : project_id
     profiles ||--o{ project_access : user_id
     projects ||--o{ project_access : project_id
     projects ||--|| contracts : "one live contract"
@@ -78,7 +80,10 @@ erDiagram
     projects {
         uuid id PK
         uuid owner_id FK "NOT NULL"
-        bool is_personal_workspace
+    }
+    personal_workspaces {
+        uuid user_id PK
+        uuid project_id FK "UNIQUE"
     }
     project_access {
         uuid project_id FK

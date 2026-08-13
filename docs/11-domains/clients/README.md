@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 The Client is the person paying for the work — a **position on a contract, not an
 account attribute**. There is no `clients` table and no account role (`profiles.role`
@@ -70,7 +70,7 @@ its owner.
 | **Signing link** | A 256-bit single-use bearer token (`contract_signature_links`) letting an external client sign without an account. |
 | **Soft isolation** | The rule that a client and the freelance pool cannot DM each other; the consultant mediates. |
 | **Project owner** | The profile referenced by `projects.owner_id`. Ownership is contextual and implies nothing else about the account. |
-| **Personal workspace** | A `projects` row with `is_personal_workspace = true`, where `owner_id` is the workspace user and the owner access has `origin='personal_workspace'`. |
+| **Personal workspace** | A project linked to its user through `personal_workspaces`; the owner access has `origin='personal_workspace'`. |
 
 ## Known gaps
 
