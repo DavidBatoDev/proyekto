@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-11 · **Status:** draft
+> **Last updated:** 2026-08-13 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows whose client relationship is repeated in access and contract data, and an
@@ -161,7 +161,7 @@ the role-neutral project owner, not the client organization or billing counterpa
 
 | Reader | Why it matters |
 | --- | --- |
-| `projects(owner_id) WHERE is_personal_workspace` partial unique index | the personal-workspace identity |
+| `personal_workspaces(user_id, project_id)` one-to-one junction | the personal-workspace identity |
 | `canAccessProject` — owner/access membership resolution | roadmap access |
 | `listRoadmapLinkCandidates` | guest-roadmap conversion |
 | `ProjectActivationService` `client_identified` | the activation blocker |

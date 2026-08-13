@@ -328,24 +328,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     minRate?: number;
     maxRate?: number;
   }): Promise<unknown[]> {
-    // Get project skills for scoring when a project is selected
-    const { project_id, q, niche, availability, minRate, maxRate } = filters;
-
-    let project: Record<string, unknown> | null = null;
-    if (project_id) {
-      const { data } = await this.supabase
-        .from('projects')
-        .select('skills')
-        .eq('id', project_id)
-        .single();
-      project = (data as Record<string, unknown> | null) ?? null;
-    }
-
-    const projectSkills: string[] = Array.isArray(
-      (project as Record<string, unknown>)?.skills,
-    )
-      ? ((project as Record<string, unknown[]>).skills as string[])
-      : [];
+    const { q, niche, availability, minRate, maxRate } = filters;
 
     const { data: candidates } = await this.supabase
       .from('profiles')
@@ -363,24 +346,12 @@ export class SupabaseAdminRepository implements AdminRepository {
 
     if (!candidates) return [];
 
-    // Score candidates by skill overlap
     const normalizedQ = q?.trim().toLowerCase();
 
     const scoredCandidates = (candidates as Record<string, unknown>[]).map(
       (candidate) => {
         const c = attachMarketplaceEnrollmentFields(candidate);
-        const candidateSkillNames: string[] = Array.isArray(c.skills)
-          ? (c.skills as Record<string, unknown>[]).map((s) => {
-              const skill = s.skill as Record<string, string> | undefined;
-              return skill?.name?.toLowerCase() ?? '';
-            })
-          : [];
-
-        const overlap = projectSkills.filter((ps) =>
-          candidateSkillNames.includes(String(ps).toLowerCase()),
-        ).length;
-
-        return { ...c, match_score: overlap } as Record<string, unknown>;
+        return { ...c, match_score: 0 } as Record<string, unknown>;
       },
     );
 

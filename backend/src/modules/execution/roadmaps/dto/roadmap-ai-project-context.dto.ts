@@ -27,13 +27,7 @@ export interface RoadmapAiProjectDto {
   id: string;
   title: string;
   status: string;
-  category: string | null;
-  project_state: string | null;
   duration: string | null;
-  budget_range: string | null;
-  funding_status: string | null;
-  start_date: string | null;
-  skills: string[];
 }
 
 export interface RoadmapAiProjectContextMemberDto {

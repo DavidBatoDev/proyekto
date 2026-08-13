@@ -4,12 +4,9 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
  * Redirect. Permissions have their own dedicated page now, under the Team
  * section rather than Settings.
  *
- * A bookmarked `?memberId=` lands on that person's access drawer on the
- * Members page — the old link meant "show me what this person can do", and
- * the drawer answers that better than the raw matrix did. `?role=` still
- * opens the role-template editor on the new Permissions page, which has no
- * lighter equivalent. The old `?tab=` values named tabs that no longer
- * exist, so they are dropped rather than mapped.
+ * A bookmarked `?memberId=` lands on that person's permission editor. Legacy
+ * `?role=` and `?tab=` values named views that no longer exist, so they are
+ * accepted during parsing and dropped during the redirect.
  */
 export const Route = createFileRoute(
 	"/_execution/project/$projectId/settings/permissions",
@@ -22,13 +19,6 @@ export const Route = createFileRoute(
 		tab: (search.tab as string) || undefined,
 	}),
 	beforeLoad: ({ params, search }) => {
-		if (search.role) {
-			throw redirect({
-				to: "/project/$projectId/team/permissions",
-				params: { projectId: params.projectId },
-				search: { role: search.role },
-			});
-		}
 		throw redirect({
 			to: "/project/$projectId/team",
 			params: { projectId: params.projectId },

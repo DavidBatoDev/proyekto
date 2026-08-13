@@ -1,208 +1,95 @@
 import { PersonalWorkspaceService } from './personal-workspace.service';
 
-/**
- * Builds a minimal Supabase client double whose `.from(table)` returns
- * a chainable query builder driven by per-call handlers.
- *
- * Each test wires up the handlers it needs; unused tables throw on access.
- */
-type Handler = jest.Mock;
-
-interface QueryStub {
-  select: Handler;
-  insert: Handler;
-  eq: Handler;
-  maybeSingle: Handler;
-  single: Handler;
-}
-
-function makeQueryStub(): QueryStub {
-  const stub: any = {};
-  stub.select = jest.fn(() => stub);
-  stub.insert = jest.fn(() => stub);
-  stub.eq = jest.fn(() => stub);
-  stub.maybeSingle = jest.fn();
-  stub.single = jest.fn();
-  return stub as QueryStub;
-}
-
-function buildService(
-  tables: Record<string, QueryStub>,
-  authorizationOverrides: Partial<Record<string, jest.Mock>> = {},
-): PersonalWorkspaceService {
-  const supabase: any = {
-    from: (table: string) => {
-      if (!tables[table]) {
+function buildService(options?: {
+  rpcData?: unknown;
+  rpcError?: { message: string } | null;
+  mappingData?: unknown;
+}) {
+  const query: any = {
+    select: jest.fn(() => query),
+    eq: jest.fn(() => query),
+    maybeSingle: jest.fn().mockResolvedValue({
+      data: options?.mappingData ?? null,
+      error: null,
+    }),
+  };
+  const supabase = {
+    rpc: jest.fn().mockResolvedValue({
+      data: options?.rpcData ?? null,
+      error: options?.rpcError ?? null,
+    }),
+    from: jest.fn((table: string) => {
+      if (table !== 'personal_workspaces') {
         throw new Error(`Unexpected table access: ${table}`);
       }
-      return tables[table];
-    },
-  };
-  // Default authorization stub: grant() succeeds, returns a fake share row.
-  const authorization = {
-    grant: jest.fn().mockResolvedValue({
-      id: 'share-1',
-      project_id: 'p',
-      user_id: 'u',
-      role: 'owner',
-      origin: 'personal_workspace',
-      capabilities: {},
-      granted_by: 'u',
-      granted_at: '2026-05-03T00:00:00Z',
+      return query;
     }),
-    getUserProjectRole: jest.fn(),
-    assertRole: jest.fn(),
-    roleSatisfies: jest.fn(),
-    revoke: jest.fn(),
-    ...authorizationOverrides,
-  } as any;
+  };
   const chatService = {
     provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
-  } as any;
-  return new PersonalWorkspaceService(supabase, authorization, chatService);
+  };
+  return {
+    service: new PersonalWorkspaceService(
+      supabase as never,
+      chatService as never,
+    ),
+    supabase,
+    query,
+    chatService,
+  };
 }
 
 describe('PersonalWorkspaceService', () => {
-  describe('provision()', () => {
-    it('returns the existing workspace when one is already present (idempotent)', async () => {
-      const projects = makeQueryStub();
-      projects.maybeSingle.mockResolvedValueOnce({
-        data: {
-          id: 'ws-1',
-          title: "Alex's Workspace",
-          owner_id: 'user-1',
-          is_personal_workspace: true,
-          status: 'active',
-        },
-        error: null,
-      });
-
-      const service = buildService({ projects });
-      const result = await service.provision('user-1');
-
-      expect(result.id).toBe('ws-1');
-      expect(projects.insert).not.toHaveBeenCalled();
+  it('provisions through the race-safe database RPC', async () => {
+    const workspace = {
+      id: 'ws-1',
+      title: "Alex's Workspace",
+      owner_id: 'user-1',
+      status: 'active',
+    };
+    const { service, supabase, chatService } = buildService({
+      rpcData: [workspace],
     });
 
-    it('creates a new workspace and grants the owner share when none exists', async () => {
-      const projects = makeQueryStub();
-      const profiles = makeQueryStub();
-      const grantSpy = jest.fn().mockResolvedValue({
-        id: 'share-2',
-        project_id: 'ws-2',
-        user_id: 'user-2',
-        role: 'owner',
-        origin: 'personal_workspace',
-        capabilities: {},
-        granted_by: 'user-2',
-        granted_at: '2026-05-04T00:00:00Z',
-      });
-
-      // findExisting -> not found
-      projects.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
-      // buildDefaultTitle -> profile lookup
-      profiles.maybeSingle.mockResolvedValueOnce({
-        data: { first_name: 'Alex', display_name: null },
-        error: null,
-      });
-      // insert project -> success
-      projects.single.mockResolvedValueOnce({
-        data: {
-          id: 'ws-2',
-          title: "Alex's Workspace",
-          owner_id: 'user-2',
-          is_personal_workspace: true,
-          status: 'active',
-        },
-        error: null,
-      });
-
-      const service = buildService({ projects, profiles }, { grant: grantSpy });
-      const result = await service.provision('user-2');
-
-      expect(result.title).toBe("Alex's Workspace");
-      expect(grantSpy).toHaveBeenCalledWith({
-        projectId: 'ws-2',
-        userId: 'user-2',
-        role: 'owner',
-        origin: 'personal_workspace',
-        grantedBy: 'user-2',
-      });
+    await expect(service.provision('user-1')).resolves.toEqual(workspace);
+    expect(supabase.rpc).toHaveBeenCalledWith('provision_personal_workspace', {
+      p_user_id: 'user-1',
     });
-
-    it('falls back to the surviving row on partial-unique-index race (23505)', async () => {
-      const projects = makeQueryStub();
-      const profiles = makeQueryStub();
-
-      // First findExisting -> not found
-      projects.maybeSingle
-        .mockResolvedValueOnce({ data: null, error: null })
-        // Second findExisting after race -> the survivor
-        .mockResolvedValueOnce({
-          data: {
-            id: 'ws-3',
-            title: "Sam's Workspace",
-            owner_id: 'user-3',
-            is_personal_workspace: true,
-            status: 'active',
-          },
-          error: null,
-        });
-      profiles.maybeSingle.mockResolvedValueOnce({
-        data: { first_name: 'Sam' },
-        error: null,
-      });
-      // Insert -> unique violation
-      projects.single.mockResolvedValueOnce({
-        data: null,
-        error: { code: '23505', message: 'duplicate key' },
-      });
-
-      const service = buildService({ projects, profiles });
-      const result = await service.provision('user-3');
-
-      expect(result.id).toBe('ws-3');
-    });
-
-    it("falls back to 'My' when neither first_name nor display_name is set", async () => {
-      const projects = makeQueryStub();
-      const profiles = makeQueryStub();
-
-      projects.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
-      profiles.maybeSingle.mockResolvedValueOnce({
-        data: { first_name: null, display_name: null },
-        error: null,
-      });
-      projects.single.mockResolvedValueOnce({
-        data: {
-          id: 'ws-4',
-          title: "My's Workspace",
-          owner_id: 'user-4',
-          is_personal_workspace: true,
-          status: 'active',
-        },
-        error: null,
-      });
-
-      const service = buildService({ projects, profiles });
-
-      await service.provision('user-4');
-
-      // Verify the title written to the insert payload
-      const insertCall = projects.insert.mock.calls[0][0];
-      expect(insertCall.title).toBe("My's Workspace");
-    });
+    expect(chatService.provisionDefaultChannels).toHaveBeenCalledWith(
+      'ws-1',
+      'user-1',
+      'personal',
+    );
   });
 
-  describe('findForUser()', () => {
-    it('returns null when the user has no workspace', async () => {
-      const projects = makeQueryStub();
-      projects.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
-
-      const service = buildService({ projects });
-      const result = await service.findForUser('user-x');
-
-      expect(result).toBeNull();
+  it('surfaces RPC failures', async () => {
+    const { service } = buildService({
+      rpcError: { message: 'provision failed' },
     });
+
+    await expect(service.provision('user-1')).rejects.toThrow(
+      'provision failed',
+    );
+  });
+
+  it('looks up the workspace through the normalized mapping', async () => {
+    const workspace = {
+      id: 'ws-2',
+      title: "Sam's Workspace",
+      owner_id: 'user-2',
+      status: 'active',
+    };
+    const { service, supabase, query } = buildService({
+      mappingData: { project: workspace },
+    });
+
+    await expect(service.findForUser('user-2')).resolves.toEqual(workspace);
+    expect(supabase.from).toHaveBeenCalledWith('personal_workspaces');
+    expect(query.eq).toHaveBeenCalledWith('user_id', 'user-2');
+  });
+
+  it('returns null when the user has no workspace mapping', async () => {
+    const { service } = buildService();
+    await expect(service.findForUser('user-x')).resolves.toBeNull();
   });
 });

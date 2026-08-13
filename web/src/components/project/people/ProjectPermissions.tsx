@@ -1,8 +1,8 @@
 /**
- * The per-member/per-role permission-matrix editor, mounted by
- * `/project/:id/team/permissions` whenever `?memberId=` or `?role=` is set.
+ * The per-member permission-matrix editor, mounted by
+ * `/project/:id/team/permissions` whenever `?memberId=` is set.
  */
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, HelpCircle, Search } from "lucide-react";
@@ -21,7 +21,6 @@ import {
 	type RolePresetKey,
 } from "@/components/project/permissions/roleTemplates";
 import { useToast } from "@/hooks/useToast";
-import { projectKeys } from "@/queries/project";
 import {
 	PermissionDependencyError,
 	type ProjectMember,
@@ -149,16 +148,6 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
 	["logs", "view_sensitive", "logs", "view"],
 	["time", "view_team_logs", "access", "time"],
 ];
-
-function isValidPermissions(obj: unknown): obj is ProjectPermissions {
-	return (
-		typeof obj === "object" &&
-		obj !== null &&
-		"access" in obj &&
-		"roadmap" in obj &&
-		typeof (obj as Record<string, unknown>).access === "object"
-	);
-}
 
 function enforceDeps(permissions: ProjectPermissions): ProjectPermissions {
 	const result = structuredClone(permissions) as unknown as Record<
@@ -381,26 +370,17 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
 	},
 };
 
-const ROLE_DISPLAY: Record<string, string> = {
-	consultant: "Consultant",
-	client: "Client",
-	freelancer: "Freelancer",
-};
-
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export function ProjectPermissionsEditor({
 	projectId,
 	memberId,
-	role,
 }: {
 	projectId: string;
-	memberId?: string;
-	role?: string;
+	memberId: string;
 }) {
 	const navigate = useNavigate();
 	const toast = useToast();
-	const queryClient = useQueryClient();
 
 	const [permissions, setPermissions] = useState<ProjectPermissions | null>(
 		null,
@@ -417,9 +397,8 @@ export function ProjectPermissionsEditor({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const isRoleMode = !!role && !memberId;
-	const isMemberMode = !!memberId;
-	const isConsultantRole = role === "consultant";
+	const isMemberMode = true;
+	const isConsultantRole = member?.origin === "consultant";
 
 	useEffect(() => {
 		let cancelled = false;
@@ -433,26 +412,7 @@ export function ProjectPermissionsEditor({
 			setSiblings([]);
 
 			try {
-				if (isRoleMode && role) {
-					const hardcoded = ROLE_TEMPLATES[role];
-					if (!hardcoded) throw new Error(`Unknown role: ${role}`);
-					const hardcodedNorm = enforceDeps(structuredClone(hardcoded));
-
-					// Fetch any saved overrides for this role from the backend.
-					const saved = await projectService.getRolePermissions(
-						projectId,
-						role,
-					);
-					const loaded = isValidPermissions(saved)
-						? enforceDeps(structuredClone(saved))
-						: structuredClone(hardcodedNorm);
-
-					if (!cancelled) {
-						setPermissions(loaded);
-						setInitialPermissions(structuredClone(loaded));
-						setDefaultPermissions(structuredClone(hardcodedNorm));
-					}
-				} else if (isMemberMode && memberId) {
+				if (memberId) {
 					const [perms, members] = await Promise.all([
 						projectService.getMemberPermissions(projectId, memberId),
 						projectService.getMembers(projectId),
@@ -468,13 +428,9 @@ export function ProjectPermissionsEditor({
 									? "client"
 									: "freelancer";
 						const fallbackTemplate = ROLE_TEMPLATES[templateKey];
-						const savedRoleTemplate = await projectService.getRolePermissions(
-							projectId,
-							templateKey,
+						resolvedDefaultTemplate = enforceDeps(
+							structuredClone(fallbackTemplate),
 						);
-						resolvedDefaultTemplate = isValidPermissions(savedRoleTemplate)
-							? enforceDeps(structuredClone(savedRoleTemplate))
-							: enforceDeps(structuredClone(fallbackTemplate));
 					}
 
 					if (!cancelled) {
@@ -499,7 +455,7 @@ export function ProjectPermissionsEditor({
 						}
 					}
 				} else {
-					throw new Error("No role or member specified.");
+					throw new Error("No member specified.");
 				}
 			} catch (e) {
 				if (!cancelled)
@@ -515,7 +471,7 @@ export function ProjectPermissionsEditor({
 		return () => {
 			cancelled = true;
 		};
-	}, [projectId, role, memberId]);
+	}, [projectId, memberId]);
 
 	const setPermission = (
 		section: SectionKey,
@@ -570,27 +526,7 @@ export function ProjectPermissionsEditor({
 		setSaving(true);
 		setError(null);
 		try {
-			if (isRoleMode && role) {
-				const apiRole = role === "freelancer" ? "member" : role;
-				await projectService.updateRolePermissions(
-					projectId,
-					apiRole,
-					permissions,
-				);
-				queryClient.setQueryData(
-					projectKeys.rolePermissions(projectId, role),
-					structuredClone(permissions),
-				);
-				void queryClient.invalidateQueries({
-					queryKey: projectKeys.rolePermissions(projectId, role),
-				});
-				void queryClient.invalidateQueries({
-					queryKey: projectKeys.members(projectId),
-				});
-				toast.success(
-					`${ROLE_DISPLAY[role] ?? role} permissions updated for all members.`,
-				);
-			} else if (isMemberMode && memberId) {
+			if (memberId) {
 				try {
 					await projectService.updateMemberPermissions(
 						projectId,
@@ -690,15 +626,11 @@ export function ProjectPermissionsEditor({
 		return map;
 	}, [siblingTeamQueries]);
 
-	const pageTitle = isRoleMode
-		? `${ROLE_DISPLAY[role ?? ""] ?? role} Default Permissions`
-		: member
-			? `${member.user?.display_name || member.user?.email || "Member"} — Permissions`
-			: "Member Permissions";
+	const pageTitle = member
+		? `${member.user?.display_name || member.user?.email || "Member"} — Permissions`
+		: "Member Permissions";
 
-	const pageSubtitle = isRoleMode
-		? `Changes apply to all ${ROLE_DISPLAY[role ?? ""] ?? role} members in this project.`
-		: "Custom overrides for this specific member.";
+	const pageSubtitle = "Custom overrides for this specific member.";
 
 	return (
 		<>

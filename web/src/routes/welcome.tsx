@@ -143,18 +143,21 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 		let cancelled = false;
 		(async () => {
 			const { data, error } = await supabase
-				.from("projects")
-				.select("id, title")
-				.eq("owner_id", user.id)
-				.eq("is_personal_workspace", true)
+				.from("personal_workspaces")
+				.select("project:projects(id, title)")
+				.eq("user_id", user.id)
 				.maybeSingle();
 			if (cancelled) return;
-			if (error || !data) {
+			const project = data?.project as
+				| { id: string; title: string | null }
+				| null
+				| undefined;
+			if (error || !project) {
 				setWorkspaceLoadFailed(true);
 				return;
 			}
-			setWorkspaceId(data.id as string);
-			setWorkspaceTitle((data.title as string) ?? "");
+			setWorkspaceId(project.id);
+			setWorkspaceTitle(project.title ?? "");
 		})();
 		return () => {
 			cancelled = true;

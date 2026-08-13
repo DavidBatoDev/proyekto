@@ -333,10 +333,7 @@ function OverviewPage() {
 							</div>
 						)}
 						<BringInAConsultantCard
-							isPersonalWorkspace={Boolean(
-								(project as unknown as { is_personal_workspace?: boolean })
-									.is_personal_workspace,
-							)}
+							isPersonalWorkspace={Boolean(project.is_personal_workspace)}
 							hasConsultant={Boolean(getProjectConsultantMember(project))}
 						/>
 						<div className="app-slide-up">

@@ -33,7 +33,6 @@ function buildService(
     id: 'ws-1',
     title: 'Workspace',
     owner_id: 'user-1',
-    is_personal_workspace: true,
     status: 'active',
   });
   const workspaceService = {

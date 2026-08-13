@@ -286,11 +286,7 @@ function ProjectsSection({
 										? "Review project brief"
 										: "Add project brief"
 								}
-								dueDate={
-									card.project.custom_start_date ||
-									card.project.start_date ||
-									null
-								}
+								dueDate={null}
 								className={revealClassName}
 								style={revealStyle}
 							/>

@@ -38,7 +38,6 @@ const CUSTOM_FIELD_VALUE_MAX_CHARS = 500;
 const COMPACT_CUSTOM_FIELD_KEY_LIMIT = 20;
 const COMPACT_MEMBER_LIMIT = 15;
 const COMPACT_TEAM_LIMIT = 8;
-const PROJECT_SKILL_LIMIT = 20;
 const RESOURCE_FOLDER_LIMIT = 50;
 const RESOURCE_LINK_LIMIT = 50;
 const RESOURCE_DESCRIPTION_MAX_CHARS = 500;
@@ -125,17 +124,9 @@ export class RoadmapAiProjectContextService {
 
     const details = [
       project.status ? `status: ${project.status}` : '',
-      project.category ? `category: ${project.category}` : '',
-      project.project_state ? `state: ${project.project_state}` : '',
       project.duration ? `duration: ${project.duration}` : '',
-      project.budget_range ? `budget: ${project.budget_range}` : '',
-      project.start_date ? `start: ${project.start_date}` : '',
     ].filter(Boolean);
     if (details.length) lines.push(`Details: ${details.join(' | ')}`);
-
-    if (project.skills.length) {
-      lines.push(`Skills: ${project.skills.join(', ')}`);
-    }
 
     const excerpt = htmlToText(
       brief.projectSummary,
@@ -450,10 +441,7 @@ export class RoadmapAiProjectContextService {
   ): Promise<RoadmapAiProjectDto | null> {
     const { data, error } = await this.db
       .from('projects')
-      .select(
-        'id, title, status, category, project_state, duration, budget_range, ' +
-          'funding_status, start_date, skills',
-      )
+      .select('id, title, status, duration')
       .eq('id', projectId)
       .maybeSingle();
     this.throwOnQueryError(error);
@@ -468,22 +456,7 @@ export class RoadmapAiProjectContextService {
       title: truncatePromptText(title, MEETING_TITLE_MAX_CHARS),
       status:
         this.truncatedString(row.status, SHORT_LABEL_MAX_CHARS) ?? 'draft',
-      category: this.truncatedString(row.category, DISPLAY_NAME_MAX_CHARS),
-      project_state: this.truncatedString(
-        row.project_state,
-        DISPLAY_NAME_MAX_CHARS,
-      ),
       duration: this.truncatedString(row.duration, DISPLAY_NAME_MAX_CHARS),
-      budget_range: this.truncatedString(
-        row.budget_range,
-        DISPLAY_NAME_MAX_CHARS,
-      ),
-      funding_status: this.truncatedString(
-        row.funding_status,
-        DISPLAY_NAME_MAX_CHARS,
-      ),
-      start_date: this.truncatedString(row.start_date, SHORT_LABEL_MAX_CHARS),
-      skills: this.normalizeProjectSkills(row.skills),
     };
   }
 
@@ -744,26 +717,6 @@ export class RoadmapAiProjectContextService {
       participant.user_id ??
       ''
     }`;
-  }
-
-  private normalizeProjectSkills(value: unknown): string[] {
-    if (!Array.isArray(value)) return [];
-    const skills: string[] = [];
-    for (const raw of value) {
-      let name = this.readTrimmedString(raw);
-      if (!name) {
-        const row = this.asRecord(raw);
-        name =
-          this.readTrimmedString(row?.name) ??
-          this.readTrimmedString(row?.label) ??
-          this.readTrimmedString(row?.title) ??
-          this.readTrimmedString(row?.value);
-      }
-      if (!name || skills.includes(name)) continue;
-      skills.push(truncatePromptText(name, CUSTOM_FIELD_KEY_MAX_CHARS));
-      if (skills.length >= PROJECT_SKILL_LIMIT) break;
-    }
-    return skills;
   }
 
   private normalizeCustomFields(

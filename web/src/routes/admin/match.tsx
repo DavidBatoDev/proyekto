@@ -43,10 +43,6 @@ type Project = {
 	title: string;
 	description?: string;
 	status?: string;
-	budget_min?: number;
-	budget_max?: number;
-	category?: string;
-	skills?: string[];
 	created_at: string;
 	owner?: { id: string; display_name?: string; email: string };
 	members?: ProjectAccessMember[];
@@ -193,20 +189,7 @@ function ProjectCard({
 				</div>
 			</div>
 
-			<div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-				<div className="flex items-center gap-2">
-					{project.category && (
-						<span className="text-[10px] font-semibold tracking-wide text-gray-500 uppercase bg-gray-100 px-2 py-0.5 rounded">
-							{project.category.replace(/_/g, " ")}
-						</span>
-					)}
-					{(project.budget_min ?? project.budget_max) && (
-						<span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-							${project.budget_min ?? "?"}–${project.budget_max ?? "?"}
-						</span>
-					)}
-				</div>
-
+			<div className="mt-4 flex justify-end">
 				{getProjectConsultantMember(project) ? (
 					<span className="shrink-0 flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
 						<CheckCircle2 className="w-3 h-3" /> Matched

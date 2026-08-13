@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-10 · **Status:** draft
+> **Last updated:** 2026-08-13 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Everything else in `docs/` describes
 shipped behaviour and is verified against source; this section is the one place where that
@@ -97,7 +97,7 @@ Checked against the whole tree before choosing. Words already spent elsewhere an
 
 | Rejected | Because it already means |
 | --- | --- |
-| **Workspace** | `projects.is_personal_workspace` — a project row |
+| **Workspace** | `personal_workspaces` — the one-to-one identity link for a user's workspace project |
 | **Portfolio** | `user_portfolios` (profile showcase) **and** the Finance portfolio (`/api/finance/portfolio`) |
 | **Resources** | `project_resource_folders` / `project_resource_links` + the project Resources tab |
 | **Agency** (as a table name) | describes only the provider side; a table named `agencies` holding a client company would be a lie |

@@ -4,29 +4,24 @@ import { ProjectPermissionsEditor } from "@/components/project/people/ProjectPer
 import { ProjectTeamAdminGate } from "@/components/project/people/ProjectTeamAdminGate";
 import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 
-export const Route = createFileRoute("/_execution/project/$projectId/team/permissions")({
-	validateSearch: (
-		search: Record<string, unknown>,
-	): { memberId?: string; role?: string } => ({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/team/permissions",
+)({
+	validateSearch: (search: Record<string, unknown>): { memberId?: string } => ({
 		memberId: (search.memberId as string) || undefined,
-		role: (search.role as string) || undefined,
 	}),
 	component: RouteComponent,
 });
 
 function RouteComponent() {
 	const { projectId } = Route.useParams();
-	const { memberId, role } = Route.useSearch();
+	const { memberId } = Route.useSearch();
 
 	return (
 		<TeamPageLayout projectId={projectId}>
 			<ProjectTeamAdminGate projectId={projectId}>
-				{memberId || role ? (
-					<ProjectPermissionsEditor
-						projectId={projectId}
-						memberId={memberId}
-						role={role}
-					/>
+				{memberId ? (
+					<ProjectPermissionsEditor projectId={projectId} memberId={memberId} />
 				) : (
 					<PermissionsLanding projectId={projectId} />
 				)}

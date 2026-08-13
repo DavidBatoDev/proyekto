@@ -42,6 +42,8 @@ import { attachProjectClientFlag } from './project-payload.mapper';
 
 const PROJECT_MEMBER_SELECT =
   'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))';
+const PERSONAL_WORKSPACE_SELECT =
+  'personal_workspace:personal_workspaces(user_id)';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -72,17 +74,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (dto.title !== undefined) payload.title = dto.title;
     if (dto.status !== undefined) payload.status = dto.status;
-    if (dto.category !== undefined) payload.category = dto.category;
-    if (dto.project_state !== undefined)
-      payload.project_state = dto.project_state;
-    if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.duration !== undefined) payload.duration = dto.duration;
-    if (dto.budget_range !== undefined) payload.budget_range = dto.budget_range;
-    if (dto.funding_status !== undefined)
-      payload.funding_status = dto.funding_status;
-    if (dto.start_date !== undefined) payload.start_date = dto.start_date;
-    if (dto.custom_start_date !== undefined)
-      payload.custom_start_date = dto.custom_start_date;
     if (dto.currency !== undefined)
       payload.currency = dto.currency.toUpperCase() || 'USD';
 
@@ -94,7 +86,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data } = await this.supabase
       .from('project_access')
       .select(
-        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
+        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT})`,
       )
       .eq('user_id', userId);
 
@@ -109,14 +101,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       this.supabase
         .from('projects')
         .select(
-          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}`,
+          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT}`,
         )
         .eq('owner_id', userId),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
         .from('project_access')
         .select(
-          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
+          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT})`,
         )
         .eq('user_id', userId),
     ]);
@@ -168,7 +160,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         `
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))),
+        personal_workspace:personal_workspaces(user_id)
       `,
       )
       .eq('id', id)
@@ -182,23 +175,43 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async create(userId: string, dto: CreateProjectDto): Promise<Project> {
     const projectPayload = this.toProjectsTablePayload(dto);
 
-    const { data: project, error } = await this.supabase
+    const { data: project, error } = (await this.supabase
       .from('projects')
       .insert({
         ...projectPayload,
         owner_id: userId,
       })
       .select()
-      .single();
+      .single()) as unknown as {
+      data: Project | null;
+      error: { message: string } | null;
+    };
 
     if (error || !project)
       throw new Error(error?.message ?? 'Failed to create project');
+
+    const summary = dto.description?.trim();
+    if (summary) {
+      const { error: briefError } = (await this.supabase
+        .from('project_briefs')
+        .insert({
+          project_id: project.id,
+          project_summary: summary,
+          custom_fields: [],
+          updated_by: userId,
+          version: 1,
+        })) as unknown as { error: { message: string } | null };
+      if (briefError) {
+        await this.supabase.from('projects').delete().eq('id', project.id);
+        throw new Error(briefError.message || 'Failed to create project brief');
+      }
+    }
 
     // Slice 3b: project_members write removed. project_shares write happens
     // in ProjectsService.createProject (admin role for client mode, owner
     // role for consultant mode) via ProjectAuthorizationService.grant.
 
-    return project as Project;
+    return project;
   }
 
   async update(id: string, dto: UpdateProjectDto): Promise<Project> {
@@ -494,55 +507,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('status', 'pending');
 
     if (error) throw new BadRequestException(error.message);
-  }
-
-  async updateRoleMemberPermissions(
-    projectId: string,
-    role: string,
-    permissions: ProjectPermissions,
-  ): Promise<void> {
-    // Slice 3b: legacy permissions_json template system removed. Role
-    // determines permission via the project_shares.role hierarchy +
-    // capabilities JSONB; templates per role are no longer stored or
-    // applied. We keep the role template stored on the projects row so
-    // legacy UI showing "what does this role currently grant?" stays
-    // functional, but no per-member sync happens.
-    const { data: projectData, error: selectErr } = await this.supabase
-      .from('projects')
-      .select('role_permissions_json')
-      .eq('id', projectId)
-      .single();
-    if (!selectErr && projectData !== null) {
-      const existingTemplates =
-        (projectData.role_permissions_json as Record<string, unknown>) ?? {};
-      await this.supabase
-        .from('projects')
-        .update({
-          role_permissions_json: { ...existingTemplates, [role]: permissions },
-        })
-        .eq('id', projectId);
-    }
-  }
-
-  async getRolePermissions(
-    projectId: string,
-    role: string,
-  ): Promise<ProjectPermissions | null> {
-    try {
-      const { data, error } = await this.supabase
-        .from('projects')
-        .select('role_permissions_json')
-        .eq('id', projectId)
-        .single();
-      if (error || !data) return null;
-      const stored = data.role_permissions_json as Record<
-        string,
-        unknown
-      > | null;
-      return (stored?.[role] ?? null) as ProjectPermissions | null;
-    } catch {
-      return null;
-    }
   }
 
   async listInvitesForUser(
