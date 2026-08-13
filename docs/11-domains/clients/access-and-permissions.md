@@ -1,12 +1,11 @@
 # Client Access and Permissions
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 A client's 45 permissions are never stored. They are recomputed on every check from three
 layers, and only the *delta* from the baseline is persisted — so role templates can evolve
-without a backfill. This page walks the resolution, gives the resolved matrix for the two
-configurations a client is actually created in, and documents a non-obvious property of the
-current code: **the client origin delta changes nothing except at `owner` role.**
+without a backfill. Client origin now explicitly closes team-wide Time visibility at every
+role, keeping delivery rates and aggregate internal costs out of client-mode projects.
 
 ## The resolution
 
@@ -45,27 +44,25 @@ from the `(role, origin)` baseline — `diffCapabilities()` computes that minima
 ```ts
 client: {
   'chat.message_freelancers': false,
-  // They fund the work, so the billing surfaces stay open to them — but
-  // not Time, which is the delivery team's cost side.
+  'time.view_team_logs': false,
+  // Billing stays open; team-wide Time is the delivery cost side.
 },
 ```
 
-That is the entire delta — one path. Compare the consultant delta, which adds four
+That is the entire delta — two paths. Compare the consultant delta, which adds four
 capabilities *additively regardless of role*:
 
 | Origin | Delta |
 | --- | --- |
-| `client` | `chat.message_freelancers: false` |
+| `client` | `chat.message_freelancers: false`, `time.view_team_logs: false` |
 | `consultant` | `chat.message_freelancers`, `members.manage`, `teams.manage`, `time.view_team_logs` → all `true` |
 | `invited` | `{}` — pure role baseline |
 | `personal_workspace` | every path → `true` |
 
-> **⚠️ The client delta is a no-op below `owner`.** `chat.message_freelancers` is never
-> granted by `ROLE_DEFAULTS` at `viewer`, `commenter`, `editor`, or `admin` — only
-> `allTrue()` at `owner` sets it. So setting it `false` changes the outcome **only** when a
-> client holds the owner role. At every other rank the delta re-denies something already
-> denied. Soft isolation below owner is enforced by the role baselines, not by the origin.
-> This is defence-in-depth and correct, but do not read the delta as the mechanism.
+> **The two denials have different reach.** `chat.message_freelancers` changes the resolved
+> result only at owner. `time.view_team_logs` is granted by the admin baseline, so the client
+> delta actively removes it from client-origin admins and owners. `access.time` remains true:
+> clients can use their own-logs experience without seeing team-wide rates or costs.
 
 ## How a client actually gets created
 
@@ -104,17 +101,31 @@ default mode; `viewer + client` is a typical invited stakeholder.
 | `resources.upload` / `resources.delete` | ❌ | ✅ | ✅ |
 | `logs.view` | ✅ | ✅ | ✅ |
 | `logs.view_sensitive` | ❌ | ✅ | ✅ |
-| `time.view_team_logs` | ❌ | ✅ | ✅ |
+| `time.view_team_logs` | ❌ | ❌ | ❌ |
 
 Derived from `buildRoleDefault()` and `ORIGIN_DELTAS` in
 [`project-permissions.ts`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts).
 Regenerate rather than transcribe if the file changes.
 
-> **On money and time.** A client at `admin` sees `time.view_team_logs` because *admin*
-> grants it, not because they are a client. The comment in `buildRoleDefault` — "the client
-> origin re-opens the billing three" — describes intent that the `client` delta no longer
-> implements; billing visibility comes from the role and from the separate
-> consultant-gated `/finance` surface. Treat the comment as aspirational, the table as real.
+> **On money and time.** Clients retain `access.time` and their own-log experience, but the
+> client-origin delta denies `time.view_team_logs` even when the stored role is admin or
+> owner. Dashboard counts and hours remain visible; `time.total_fees` is returned only for
+> projects where the resolved permission includes team-log visibility.
+
+## Contract party access
+
+Contract access is position-based rather than inferred from project role:
+
+| Action | Client position |
+| --- | --- |
+| Read a live or severed contract | `client_user_id`, or the distinct live project owner when no client seat is stored |
+| Sign the client party | Same rule; the project owner arm explicitly excludes the consultant seat |
+| Edit, unsign, or move a signature | Not allowed; these remain consultant-only writes |
+| Sign a severed contract | Not allowed; severed contracts are durable read-only history |
+
+The authenticated contract link in a notification therefore opens the same contract the
+client is authorized to read and sign. Token signing uses the same enrollment and severance
+checks as in-app signing.
 
 ## Two paths that are deliberately not permissions
 

@@ -1,6 +1,6 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
 grant access to every project. Project authority still requires `project_access`. When the
@@ -56,6 +56,25 @@ admin later demotes the stored project role while keeping the origin.
 The consultant capability does not make the person owner of every team. Their personal team
 does make them its owner, while other teams require an explicit `team_members` role. Project
 team management requires resolved project permissions in addition to team-level checks.
+
+## Contract position and signing
+
+`contracts.consultant_user_id` is the durable consultant party to an agreement. It points to
+`consultant_profiles`, survives project deletion, and falls back to `created_by` only for
+records created during the expand/deploy window. Once a contract reaches signed, active,
+ended, or cancelled, neither party column can change—even through service-role code.
+
+| Operation | Consultant rule |
+| --- | --- |
+| Create a contract | The caller becomes `consultant_user_id` |
+| Read contract history | The stored consultant seat may read live or severed rows at any enrollment status |
+| Sign, including by token | The seat must currently be verified; TypeScript checks first and the locking SQL transaction checks again |
+| Amend | The new draft inherits the original consultant seat |
+| Unsign or change signature placement | Consultant seat only; still project-scoped |
+| Severed contract | Read-only; no signing or other writes |
+
+Suspension or revocation does not erase history or terminate an agreement. It blocks new
+signature stamps with HTTP 409 until the enrollment is reinstated or re-approved.
 
 ## Enforcement layers
 

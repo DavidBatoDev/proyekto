@@ -1,10 +1,10 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **250 migrations** spanning
-2025-12-11 → 2026-08-12. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **252 migrations** spanning
+2025-12-11 → 2026-08-13. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -71,7 +71,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `payout_methods`, `payouts` | The **active** money path — manual payouts grouping approved time logs |
 | `invoices`, `invoice_line_items`, `invoice_documents` | Invoice generation + PDFs; terminal invoices survive project deletion with a project-title snapshot |
 | `invoice_payments`, `invoice_events` | Payment recording/reversal and the invoice audit trail |
-| `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). Snapshots both parties and the project title; terminal rows survive project deletion; carries `client_hourly_rate` (**client-facing**, never the internal cost rate), clauses, and services |
+| `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). `consultant_user_id` is a durable nullable FK to `consultant_profiles`; a null-safe check prevents a contract's client and consultant seats from matching. Terminal party columns are trigger-locked, terminal rows survive project deletion, and the row carries project/party snapshots plus `client_hourly_rate` (**client-facing**, never the internal cost rate), clauses, and services |
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
 | `finance_project_settings` | Company % vs team % revenue split and allocation mode per project (CHECK sums to 100) |
 | `finance_member_allocations` | Each member's slice of a project's team pool — **internal, never reaches a client** |
@@ -133,6 +133,7 @@ text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/voi
 auth.users.id ─1:1─► profiles.id
 profiles.id ─1:0..1─► consultant_profiles.user_id
 profiles.id ─1:0..1─► freelancer_profiles.user_id
+consultant_profiles.user_id ◄── contracts.consultant_user_id  (durable party seat, RESTRICT)
 profiles.id ◄─ projects.owner_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
 projects.id ─1:1─► roadmaps.project_id
@@ -152,6 +153,7 @@ Business logic that must be atomic lives in Postgres functions (SECURITY DEFINER
 | --- | --- |
 | `upsert_full_roadmap(id, owner, full_state jsonb, create_if_missing)` | Atomically persists an entire roadmap tree from a JSON candidate — the **AI-commit write path** |
 | `create_payout_and_mark_paid`, `void_payout_and_revert` | Payout lifecycle |
+| `sign_contract_and_flip` | Locks a contract, re-checks consultant enrollment, stamps a party, supersedes the prior live version, and derives signing status atomically; executable only by `service_role` |
 | `create_guest_user`, `get_guest_user_id`, `cleanup_old_guest_users` | Guest sessions |
 | `chat_latest_messages_by_room`, `chat_search_room_messages` | Chat reads |
 | `handle_new_user()` | Trigger — creates a `profiles` row on signup |

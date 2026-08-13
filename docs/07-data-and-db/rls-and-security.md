@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -44,7 +44,9 @@ users' rows.
 
 The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 Finance RLS uses consultant-origin owner rows in `project_access`; explicit contract
-owner/client branches remain in force where applicable.
+owner/client branches remain in force where applicable. Contract SELECT also admits the
+durable `consultant_user_id` seat, which keeps a severed row readable after its project FK
+has been set to null.
 
 ## Triggers enforcing invariants
 
@@ -54,7 +56,13 @@ owner/client branches remain in force where applicable.
 | `tg_team_members_block_owner_delete` | You can't remove a team's owner |
 | `tg_team_member_rates_check_consultant` | Team-member rates require an active consultant owner |
 | `tg_project_teams_sync_primary` | Keeps a project's primary team consistent |
+| `trg_contracts_lock_parties` | Prevents consultant/client party changes after a contract reaches signed, active, ended, or cancelled; there is no service-role bypass |
 | `handle_new_user()` | Creates a `profiles` row when `auth.users` gains a row |
+
+`sign_contract_and_flip` is a service-role-only `SECURITY DEFINER` RPC. It row-locks the
+contract and calls `is_active_consultant` inside the signing transaction before stamping a
+party or flipping status, closing the gap between an application-layer enrollment check and
+the database write.
 
 ## Service-role write-only tables
 
