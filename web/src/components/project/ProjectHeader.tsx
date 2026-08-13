@@ -245,8 +245,8 @@ export function ProjectHeader() {
 			: undefined;
 
 	return (
-		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
-			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
+		<div className="z-10 flex h-full w-full items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
+			<div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
 				<Link
 					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
@@ -256,7 +256,7 @@ export function ProjectHeader() {
 
 				<nav
 					aria-label="Breadcrumb"
-					className="flex min-w-0 items-center gap-1 text-sm font-medium text-slate-900"
+					className="flex min-w-0 flex-1 items-center gap-1 text-sm font-medium text-slate-900"
 				>
 					{/* Dashboard */}
 					<Link
@@ -273,10 +273,10 @@ export function ProjectHeader() {
 							<Link
 								to="/teams/$teamId"
 								params={{ teamId: visibleTeams[0].id }}
-								className="hidden items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex"
+								className="hidden min-w-0 max-w-[180px] items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex lg:max-w-[260px] xl:max-w-[340px]"
 							>
 								<TeamAvatar team={visibleTeams[0]} size="sm" />
-								<span className="truncate">{visibleTeams[0].name}</span>
+								<span className="min-w-0 truncate">{visibleTeams[0].name}</span>
 							</Link>
 							<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
 						</>
@@ -348,11 +348,14 @@ export function ProjectHeader() {
 							{title || "Untitled Project"}
 						</span>
 					) : (
-						<div ref={projectsDropdownRef} className="relative">
+						<div
+							ref={projectsDropdownRef}
+							className="relative min-w-0 max-w-[120px] sm:max-w-[260px]"
+						>
 							<button
 								type="button"
 								onClick={() => setProjectsDropdownOpen((v) => !v)}
-								className="flex max-w-[120px] items-center gap-1 rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
+								className="flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:text-[15px]"
 							>
 								<span className="truncate">{title || "Untitled Project"}</span>
 								<motion.span
