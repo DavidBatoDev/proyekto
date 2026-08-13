@@ -9,6 +9,7 @@ import { MailModule } from './common/mail/mail.module';
 import { ThrottlerStorageRedisService } from './config/throttler-storage.service';
 import { RedisModule } from './config/redis.module';
 import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
+import { backendEnvFilePaths } from './config/node-environment';
 
 import { AuthModule } from './modules/shared/auth/auth.module';
 import { UsersModule } from './modules/shared/users/users.module';
@@ -48,8 +49,9 @@ import { AppController } from './app.controller';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // Support running Nest from either backend/ or the monorepo root.
-      envFilePath: ['.env', 'backend/.env'],
+      // Support running Nest from either backend/ or the monorepo root while
+      // keeping development credentials isolated from production credentials.
+      envFilePath: backendEnvFilePaths,
       validate: validateEnv,
     }),
     RedisModule,

@@ -67,7 +67,7 @@ test("authenticate and save role-based auth states", async ({ browser }) => {
   const seeds = resolveRoleSeeds();
   if (seeds.length === 0) {
     throw new Error(
-      "No Playwright credentials found. Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD in web/.env.",
+      "No Playwright credentials found. Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD in web/.env.development.local.",
     );
   }
 

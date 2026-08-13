@@ -15,9 +15,9 @@
     "vercel-build": "npm run clean:dist && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "npm run build:mcp-apps && nest start",
-    "dev": "npm run clean:dist && npm run build:mcp-apps && nest start --watch --builder swc --type-check",
+    "dev": "node scripts/run-dev.mjs",
     "dev:clean": "npm run dev",
-    "start:debug": "npm run clean:dist && npm run build:mcp-apps && nest start --debug --watch --builder swc --type-check",
+    "start:debug": "node scripts/run-dev.mjs --debug",
     "start:prod": "node dist/server",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "check:roadmap-ai-schema": "node ../scripts/check_roadmap_ai_schema.mjs",
@@ -28,7 +28,10 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:integration": "jest --config ./test/jest-integration.json --runInBand"
+    "test:integration": "jest --config ./test/jest-integration.json --runInBand",
+    "db:dev:check": "node ../scripts/sync_supabase_dev.mjs check",
+    "db:dev:apply": "node ../scripts/sync_supabase_dev.mjs apply",
+    "db:dev:mirror": "node ../scripts/sync_supabase_dev.mjs mirror"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1073.0",

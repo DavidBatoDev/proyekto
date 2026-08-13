@@ -8,7 +8,7 @@ export class AppController {
       status: 'ok',
       message: 'Proyekto API is running',
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV ?? 'development',
+      environment: process.env.NODE_ENV ?? 'production',
     };
   }
 }

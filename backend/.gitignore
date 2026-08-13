@@ -40,6 +40,9 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+.env.development
+.env.production
+.env.test
 # Backups written by scripts/gmail_auth.mjs --write-env; same secrets, same rules.
 .env.bak
 .env.development.local

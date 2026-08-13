@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 function loadEnvFromWebEnvFile(): void {
-  const envPath = path.resolve(process.cwd(), ".env");
+  const envPath = path.resolve(process.cwd(), ".env.development.local");
   if (!fs.existsSync(envPath)) return;
 
   const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);

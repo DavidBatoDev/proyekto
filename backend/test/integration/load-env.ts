@@ -1,5 +1,6 @@
 /**
- * Loads backend/.env into process.env before the integration suite runs, so the
+ * Loads backend/.env.development.local into process.env before the integration
+ * suite runs, so the
  * harness (service-role Supabase client, JWT secret) and the booted AppModule
  * both see real config. Tiny hand parser — avoids adding a `dotenv` direct dep
  * (mirrors the repo-root benchmark scripts' own env loaders). Only sets keys not
@@ -8,7 +9,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-const envPath = resolve(__dirname, '../../.env');
+const envPath = resolve(__dirname, '../../.env.development.local');
 
 try {
   const raw = readFileSync(envPath, 'utf8');
@@ -30,10 +31,9 @@ try {
   }
 } catch (err) {
   // Surface a clear message — the suite is useless without real creds.
-  // eslint-disable-next-line no-console
   console.warn(
     `[integration] could not load ${envPath}: ${(err as Error).message}. ` +
-      'Integration tests need backend/.env with SUPABASE_URL, ' +
+      'Integration tests need backend/.env.development.local with SUPABASE_URL, ' +
       'SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET.',
   );
 }
