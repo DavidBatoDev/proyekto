@@ -41,7 +41,7 @@ import {
 import { attachProjectClientFlag } from './project-payload.mapper';
 
 const PROJECT_MEMBER_SELECT =
-  'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email, consultant_profile:consultant_profiles(status)))';
+  'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -54,7 +54,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   } | null> {
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, consultant_profile:consultant_profiles(status)')
+      .select(
+        'id, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)',
+      )
       .eq('id', userId)
       .single();
 
@@ -166,7 +168,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         `
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles(status)))
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))
       `,
       )
       .eq('id', id)
@@ -358,7 +360,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles(status))',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))',
       )
       .single();
 
@@ -694,7 +696,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const selectShape =
-      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles(status))';
+      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))';
 
     if (Object.keys(patch).length === 0) {
       const { data: current } = await this.supabase

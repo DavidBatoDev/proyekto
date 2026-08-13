@@ -29,7 +29,7 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!inner(status)',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status)',
           )
           .eq('consultant_profile.status', 'verified');
         return (data || []).map((profile) =>
@@ -48,7 +48,7 @@ export class ConsultantsService {
         const { data } = await this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!inner(status)',
+            'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status)',
           )
           .eq('id', id)
           .eq('consultant_profile.status', 'verified')

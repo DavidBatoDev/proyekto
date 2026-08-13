@@ -23,7 +23,9 @@ describe('SupabaseAuthRepository enrollment payload', () => {
       is_public: false,
     });
     expect(builder.select).toHaveBeenCalledWith(
-      expect.stringContaining('consultant_profiles(status)'),
+      expect.stringContaining(
+        'consultant_profiles!consultant_profiles_user_id_fkey(status)',
+      ),
     );
     expect(builder.select).toHaveBeenCalledWith(
       expect.stringContaining('freelancer_profiles(status)'),

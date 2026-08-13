@@ -8,7 +8,7 @@ import type { AppearancePreferences } from '../dto/appearance-preferences.dto';
 import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
 
 const PUBLIC_FIELDS =
-  'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)';
+  'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), freelancer_profile:freelancer_profiles(status)';
 
 @Injectable()
 export class SupabaseUsersRepository implements UsersRepository {
@@ -20,7 +20,7 @@ export class SupabaseUsersRepository implements UsersRepository {
     const { data } = await this.supabase
       .from('profiles')
       .select(
-        '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+        '*, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), freelancer_profile:freelancer_profiles(status)',
       )
       .eq('id', id)
       .single();

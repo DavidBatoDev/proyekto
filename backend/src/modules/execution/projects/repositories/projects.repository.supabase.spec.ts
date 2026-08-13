@@ -33,6 +33,15 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
 
     const result = await repo.findDashboardByUser('user-1');
 
+    const enrollmentEmbed =
+      'consultant_profiles!consultant_profiles_user_id_fkey(status)';
+    expect(projectsBuilder.select).toHaveBeenCalledWith(
+      expect.stringContaining(enrollmentEmbed),
+    );
+    expect(projectAccessBuilder.select).toHaveBeenCalledWith(
+      expect.stringContaining(enrollmentEmbed),
+    );
+
     // p2 has the newer created_at but the older updated_at - if the sort
     // were still keying off created_at this would come back ['p2', 'p1'].
     expect(result.map((p) => p.id)).toEqual(['p1', 'p2']);

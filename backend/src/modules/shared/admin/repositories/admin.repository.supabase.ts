@@ -44,7 +44,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     let q = this.supabase
       .from('consultant_applications')
       .select(
-        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, consultant_profile:consultant_profiles(status))',
+        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))',
       )
       .order('created_at', { ascending: false });
     if (filters.status) q = q.eq('status', filters.status);
@@ -87,7 +87,7 @@ export class SupabaseAdminRepository implements AdminRepository {
       this.supabase
         .from('profiles')
         .select(
-          '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+          '*, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), freelancer_profile:freelancer_profiles(status)',
         )
         .eq('id', userId)
         .single(),
@@ -352,7 +352,7 @@ export class SupabaseAdminRepository implements AdminRepository {
       .select(
         `
         id, display_name, first_name, last_name, email, avatar_url, headline, country,
-        consultant_profile:consultant_profiles!inner(status),
+        consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status),
         rate_settings:user_rate_settings(*),
         stats:user_stats(*),
         specializations:user_specializations(*),
@@ -472,7 +472,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     const result = (await this.supabase
       .from('profiles')
       .select(
-        '*, consultant_profile:consultant_profiles(status), freelancer_profile:freelancer_profiles(status)',
+        '*, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), freelancer_profile:freelancer_profiles(status)',
       )
       .order('created_at', {
         ascending: false,
