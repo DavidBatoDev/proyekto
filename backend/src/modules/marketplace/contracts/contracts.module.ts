@@ -10,6 +10,7 @@ import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
 import { ProjectActivationController } from './project-activation.controller';
 import { ProjectActivationService } from './project-activation.service';
+import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
 
 /**
  * Depends on AuthorizationModule rather than the whole ProjectsModule, so
@@ -27,6 +28,7 @@ import { ProjectActivationService } from './project-activation.service';
     NotificationsModule,
     UploadsModule,
     MailModule,
+    QaFixturesModule,
   ],
   controllers: [
     ContractSignatureLinksController,

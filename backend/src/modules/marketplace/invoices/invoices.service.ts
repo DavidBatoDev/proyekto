@@ -11,6 +11,7 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
+import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
 import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   ContractsService,
@@ -190,6 +191,7 @@ export class InvoicesService {
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
     private readonly projectAuth: ProjectAuthorizationService,
+    private readonly qaFixtures: QaFixturePolicyService,
   ) {}
 
   async listProjectInvoices(
@@ -326,6 +328,8 @@ export class InvoicesService {
     // Scheduler queries embed a live project. Keep the service fail-closed if a
     // severed contract is ever passed directly.
     if (!contract.project_id) return null;
+    if (await this.qaFixtures.isFixtureProject(contract.project_id))
+      return null;
     const number = await this.nextInvoiceNumber(contract.project_id, contract);
     const detail: HoursDetailLevel =
       contract.billing_mode === 'retainer' ? 'none' : 'summary';
@@ -569,6 +573,10 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
     await this.financeAccess.assertProject(callerId, projectId);
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      projectId,
+      'Invoice issuing',
+    );
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -782,6 +790,10 @@ export class InvoicesService {
       callerId,
       this.requireInvoiceProjectId(invoice),
     );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice email delivery',
+    );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Only issued invoices can be sent to the client.',
@@ -799,6 +811,10 @@ export class InvoicesService {
     await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
+    );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice payment recording',
     );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
@@ -840,6 +856,10 @@ export class InvoicesService {
     await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
+    );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice payment reversal',
     );
     if (invoice.status === 'void')
       throw new BadRequestException(
@@ -891,6 +911,10 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
     await this.financeAccess.assertProject(callerId, projectId);
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      projectId,
+      'Invoice void and replacement',
+    );
     if (invoice.status !== 'issued') {
       throw new BadRequestException(
         'Only unpaid issued invoices can be voided and replaced. Reverse payments first.',

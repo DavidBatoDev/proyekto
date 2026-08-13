@@ -20,6 +20,7 @@ import {
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { InvoicesService } from './invoices.service';
+import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
 
 export interface InvoiceRunResult {
   scanned: number;
@@ -71,6 +72,7 @@ export class InvoiceSchedulerService {
     private readonly config: ConfigService,
     private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly projectAuth: ProjectAuthorizationService,
+    private readonly qaFixtures: QaFixturePolicyService,
   ) {}
 
   async runDueInvoices(
@@ -330,7 +332,7 @@ export class InvoiceSchedulerService {
       .lte('service_start_date', addDaysIso(today, MAX_ADVANCE_LEAD_DAYS));
     if (error) throw new Error(error.message);
 
-    return (
+    const candidates = (
       (data ?? []) as Array<
         ContractRow & {
           project: { status: string } | Array<{ status: string }> | null;
@@ -356,6 +358,12 @@ export class InvoiceSchedulerService {
         delete contract.project;
         return contract as ContractRow;
       });
+    const fixtureFlags = await Promise.all(
+      candidates.map((contract) =>
+        this.qaFixtures.isFixtureProject(contract.project_id),
+      ),
+    );
+    return candidates.filter((_, index) => !fixtureFlags[index]);
   }
 
   private async notifyDraftReady(
@@ -413,6 +421,7 @@ export class InvoiceSchedulerService {
       service_end_date: string;
       created_by: string | null;
     }>) {
+      if (await this.qaFixtures.isFixtureProject(row.project_id)) continue;
       const lead = row.notice_days ?? 30;
       // Fires on exactly one day so repeated runs do not spam; no claim stamp
       // is needed for a purely advisory notice.

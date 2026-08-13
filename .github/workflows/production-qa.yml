@@ -1,0 +1,55 @@
+name: Production QA — Billing Fixture
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-qa-billing-fixture
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      QA_API_URL: ${{ vars.PUBLIC_API_URL }}
+      QA_SUPABASE_URL: ${{ secrets.QA_SUPABASE_URL }}
+      QA_SUPABASE_ANON_KEY: ${{ secrets.QA_SUPABASE_ANON_KEY }}
+      PRODUCTION_QA_SECRET: ${{ secrets.PRODUCTION_QA_SECRET }}
+      QA_FIXTURE_KEY: billing-v1
+      QA_CONSULTANT_EMAIL: ${{ secrets.QA_CONSULTANT_EMAIL }}
+      QA_CONSULTANT_PASSWORD: ${{ secrets.QA_CONSULTANT_PASSWORD }}
+      QA_WORKER_EMAIL: ${{ secrets.QA_WORKER_EMAIL }}
+      QA_WORKER_PASSWORD: ${{ secrets.QA_WORKER_PASSWORD }}
+      CONFIRM_PRODUCTION_QA: proyekto-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Verify production billing fixture
+        run: npm run qa:production
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "### Production billing QA" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fixture: \`billing-v1\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: \`${QA_API_URL:-https://api.proyekto.tech}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: see verification step" >> "$GITHUB_STEP_SUMMARY"

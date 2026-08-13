@@ -41,6 +41,7 @@ import { AuditModule } from './modules/shared/audit/audit.module';
 import { ActivityModule } from './modules/execution/activity/activity.module';
 import { KnowledgeModule } from './modules/shared/knowledge/knowledge.module';
 import { McpModule } from './modules/shared/mcp/mcp.module';
+import { QaFixturesModule } from './modules/shared/qa-fixtures/qa-fixtures.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -95,6 +96,7 @@ import { AppController } from './app.controller';
     ActivityModule,
     KnowledgeModule,
     McpModule,
+    QaFixturesModule,
   ],
 })
 export class AppModule {}

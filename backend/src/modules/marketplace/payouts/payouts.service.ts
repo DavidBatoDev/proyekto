@@ -15,6 +15,7 @@ import {
   CreatePayoutMethodDto,
   UpdatePayoutMethodDto,
 } from './dto/payouts.dto';
+import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
 
 const PAYOUT_METHOD_SELECT = `
   id, user_id, method_type, label, account_name, account_identifier,
@@ -79,6 +80,7 @@ export class PayoutsService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
+    private readonly qaFixtures: QaFixturePolicyService,
   ) {}
 
   // ─── payout methods (owner-scoped) ───────────────────────────────────
@@ -219,15 +221,24 @@ export class PayoutsService {
 
   // ─── payouts ──────────────────────────────────────────────────────────
 
-  async createPayout(callerId: string, dto: CreatePayoutDto): Promise<PayoutRow> {
+  async createPayout(
+    callerId: string,
+    dto: CreatePayoutDto,
+  ): Promise<PayoutRow> {
     await this.assertTeamApprover(callerId, dto.team_id);
+    await this.qaFixtures.assertTeamSideEffectAllowed(
+      dto.team_id,
+      'Payout creation',
+    );
     if (callerId === dto.member_user_id) {
       throw new ForbiddenException('You cannot pay your own time logs.');
     }
 
     const { data, error } = await this.supabase
       .from('task_time_logs')
-      .select('id, team_id, member_user_id, status, payout_id, currency_snapshot')
+      .select(
+        'id, team_id, member_user_id, status, payout_id, currency_snapshot',
+      )
       .in('id', dto.log_ids);
     if (error) throw new Error(error.message);
     const logs = (data ?? []) as Array<{
@@ -243,7 +254,10 @@ export class PayoutsService {
       throw new NotFoundException('One or more logs were not found.');
     }
     for (const log of logs) {
-      if (log.team_id !== dto.team_id || log.member_user_id !== dto.member_user_id) {
+      if (
+        log.team_id !== dto.team_id ||
+        log.member_user_id !== dto.member_user_id
+      ) {
         throw new BadRequestException(
           'All logs must belong to the same member and team.',
         );
@@ -459,7 +473,10 @@ export class PayoutsService {
     return data as unknown as PayoutRow;
   }
 
-  async getProofUrl(callerId: string, payoutId: string): Promise<{ url: string }> {
+  async getProofUrl(
+    callerId: string,
+    payoutId: string,
+  ): Promise<{ url: string }> {
     const payout = await this.fetchPayoutOrThrow(payoutId);
     await this.assertCanViewPayout(callerId, payout);
     if (!payout.proof_path) {
@@ -472,9 +489,7 @@ export class PayoutsService {
   // ─── helpers ──────────────────────────────────────────────────────────
 
   /** Attach a short-lived presigned GET for the method's QR (null if none). */
-  private async attachQrUrl(
-    row: PayoutMethodRow,
-  ): Promise<PayoutMethodRow> {
+  private async attachQrUrl(row: PayoutMethodRow): Promise<PayoutMethodRow> {
     if (!row.qr_path) return { ...row, qr_url: null };
     try {
       const qr_url = await this.uploads.getPrivateSignedUrl(row.qr_path);

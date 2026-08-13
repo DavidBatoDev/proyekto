@@ -16,6 +16,7 @@ describe('InvoiceSchedulerService notifications', () => {
     {} as never,
     {} as never,
     projectAuth as never,
+    { isFixtureProject: jest.fn().mockResolvedValue(false) } as never,
   );
   const notifyDraftReady = (
     service as unknown as {

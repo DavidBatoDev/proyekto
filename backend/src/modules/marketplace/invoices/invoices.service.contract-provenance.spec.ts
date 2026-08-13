@@ -97,6 +97,10 @@ function harness(invoice = invoiceFixture()) {
     getLiveContract: jest.fn(),
   };
   const composition = { composeForContract: jest.fn() };
+  const qaFixtures = {
+    isFixtureProject: jest.fn().mockResolvedValue(false),
+    assertProjectSideEffectAllowed: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new InvoicesService(
     supabase,
     financeAccess as never,
@@ -106,6 +110,7 @@ function harness(invoice = invoiceFixture()) {
     {} as never,
     {} as never,
     {} as never,
+    qaFixtures as never,
   );
   jest
     .spyOn(service as never, 'getInvoiceInternal' as never)
@@ -116,10 +121,32 @@ function harness(invoice = invoiceFixture()) {
   jest
     .spyOn(service as never, 'refreshTotals' as never)
     .mockResolvedValue(undefined as never);
-  return { service, contracts, composition, financeAccess, replace };
+  return {
+    service,
+    contracts,
+    composition,
+    financeAccess,
+    qaFixtures,
+    replace,
+  };
 }
 
 describe('InvoicesService contract provenance', () => {
+  it('checks the QA side-effect guard before issuing a draft', async () => {
+    const { service, qaFixtures } = harness();
+    qaFixtures.assertProjectSideEffectAllowed.mockRejectedValue(
+      new Error('fixture blocked'),
+    );
+
+    await expect(
+      service.issueInvoice('consultant-1', 'invoice-1'),
+    ).rejects.toThrow('fixture blocked');
+    expect(qaFixtures.assertProjectSideEffectAllowed).toHaveBeenCalledWith(
+      'project-1',
+      'Invoice issuing',
+    );
+  });
+
   it('recomposes using the invoice stored contract_id, never the live contract', async () => {
     const { service, contracts, composition } = harness();
     const contract = contractFixture({ id: 'contract-v1' });
