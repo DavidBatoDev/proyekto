@@ -114,11 +114,20 @@ export function ProjectContract({
 	const contract = contractQuery.data ?? null;
 	const projectQuery = useQuery({
 		queryKey: ["project", contract?.project_id],
-		queryFn: () => projectService.get(contract?.project_id as string),
+		queryFn: () => {
+			if (!contract?.project_id) throw new Error("Project not found");
+			return projectService.get(contract.project_id);
+		},
 		enabled: Boolean(contract?.project_id),
 	});
 	const project = projectQuery.data;
 	const isConsultant = isProjectConsultant(project, user?.id);
+	const contractConsultantId =
+		contract?.consultant_user_id ?? contract?.created_by ?? null;
+	const canSignAsConsultant =
+		Boolean(contract?.project_id) &&
+		Boolean(user?.id) &&
+		user?.id === contractConsultantId;
 	const [activeStep, setActiveStep] = useState<StepKey>(
 		initialStep ?? "parties",
 	);
@@ -333,7 +342,10 @@ export function ProjectContract({
 								: `Service agreement · Version ${contract.version}`}
 						</h1>
 						<p className="truncate text-[11px] text-muted-foreground">
-							{project?.title ?? contract.client_name ?? "Project contract"}
+							{project?.title ??
+								contract.project_title_snapshot ??
+								contract.client_name ??
+								"Project removed"}
 						</p>
 					</div>
 					<ContractStatusChip status={contract.status} />
@@ -468,11 +480,13 @@ export function ProjectContract({
 							<SignatureSection
 								contract={contract}
 								isConsultant={isConsultant}
-								canSignAsConsultant={isConsultant}
+								canSignAsConsultant={canSignAsConsultant}
 								canSignAsClient={
+									Boolean(contract.project_id) &&
 									Boolean(user?.id) &&
 									(contract.client_user_id === user?.id ||
-										project?.owner_id === user?.id)
+										(project?.owner_id === user?.id &&
+											project?.owner_id !== contractConsultantId))
 								}
 								onSign={(party, name, signatureUrl, placement) =>
 									signMutation.mutate({
@@ -705,7 +719,11 @@ function PartiesSection({
 	// backend enforces the same rule, so offering anything else would just 400.
 	const attachedTeamsQuery = useQuery({
 		queryKey: ["project", contract.project_id, "teams"],
-		queryFn: () => listProjectTeams(contract.project_id),
+		queryFn: () =>
+			contract.project_id
+				? listProjectTeams(contract.project_id)
+				: Promise.resolve([]),
+		enabled: Boolean(contract.project_id),
 	});
 	const attachedTeams = useMemo(
 		() => attachedTeamsQuery.data ?? [],

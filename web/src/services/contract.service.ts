@@ -70,7 +70,9 @@ export interface ContractPeriod {
 
 export interface Contract {
 	id: string;
-	project_id: string;
+	project_id: string | null;
+	project_title_snapshot: string | null;
+	consultant_user_id: string | null;
 	version: number;
 	contract_number: string | null;
 	status: ContractStatus;

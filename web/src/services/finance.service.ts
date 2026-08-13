@@ -46,7 +46,9 @@ export interface FinancePortfolio {
 
 export interface FinanceContractSummary {
 	id: string;
-	project_id: string;
+	project_id: string | null;
+	project_title_snapshot: string | null;
+	consultant_user_id: string | null;
 	contract_number: string | null;
 	status: string;
 	version: number;
@@ -62,7 +64,8 @@ export interface FinanceContractSummary {
 
 export interface FinanceInvoiceSummary {
 	id: string;
-	project_id: string;
+	project_id: string | null;
+	project_title_snapshot: string | null;
 	number: string;
 	status: string;
 	currency: string;
