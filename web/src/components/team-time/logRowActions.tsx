@@ -1,8 +1,8 @@
 import {
 	Check,
 	Coins,
-	Eye,
 	ExternalLink,
+	Eye,
 	Pencil,
 	RotateCcw,
 	Square,

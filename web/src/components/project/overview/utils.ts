@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Circle } from "lucide-react";
-import type { ProjectMember } from "@/services/project.service";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
+import type { ProjectMember } from "@/services/project.service";
 import type {
 	Roadmap,
 	RoadmapEpic,

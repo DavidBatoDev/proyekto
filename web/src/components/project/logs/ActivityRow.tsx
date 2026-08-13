@@ -1,8 +1,8 @@
 import { formatDistanceToNowStrict } from "date-fns";
 import { Avatar, displayNameOf } from "@/components/common/Avatar";
-import type { ProfileSummary } from "@/services/teams.service";
 import type { ActivityEntry } from "@/services/activity.service";
-import { activityCopyFor, type ActivityTone } from "./activityCatalog";
+import type { ProfileSummary } from "@/services/teams.service";
+import { type ActivityTone, activityCopyFor } from "./activityCatalog";
 
 /** Theme tokens only — never hardcoded hex. */
 const TONE_CLASS: Record<ActivityTone, string> = {

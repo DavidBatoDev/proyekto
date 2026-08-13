@@ -12,15 +12,17 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { RoadmapPageSkeleton } from "@/components/roadmap/views/RoadmapPageSkeleton";
 import {
 	useInvalidateProjectQueries,
 	useLinkedRoadmapQuery,
 } from "@/hooks/useProjectQueries";
-import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
-export const Route = createFileRoute("/_execution/project/$projectId/work-items")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/work-items",
+)({
 	component: WorkItemsLayout,
 });
 

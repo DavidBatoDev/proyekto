@@ -1,5 +1,5 @@
-import { createPortal } from "react-dom";
 import { useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
 
@@ -44,7 +44,10 @@ interface CellSelectionScoreboardProps {
 	selectedCells: Set<string>;
 	logs: TaskTimeLog[];
 	rowIdToLogIds?: Record<string, string[]>;
-	ownRateByProjectId?: Record<string, { hourly_rate: number; currency: string }>;
+	ownRateByProjectId?: Record<
+		string,
+		{ hourly_rate: number; currency: string }
+	>;
 	asPortal?: boolean;
 }
 
@@ -101,12 +104,12 @@ export function CellSelectionScoreboard({
 				for (const log of rowLogs) {
 					const snap = Number(log.rate_snapshot ?? 0);
 					const fallback = ownRateByProjectId?.[log.project_id];
-					const hourly = snap > 0 ? snap : fallback ? Number(fallback.hourly_rate) : null;
+					const hourly =
+						snap > 0 ? snap : fallback ? Number(fallback.hourly_rate) : null;
 					if (hourly === null || !Number.isFinite(hourly)) continue;
 					const h = liveDurationSecondsFromLog(log, nowMs) / 3600;
 					const fee = h * hourly;
-					const currency =
-						log.currency_snapshot || fallback?.currency || "USD";
+					const currency = log.currency_snapshot || fallback?.currency || "USD";
 					rowFeeMap.set(currency, (rowFeeMap.get(currency) ?? 0) + fee);
 				}
 				for (const [currency, fee] of rowFeeMap.entries()) {

@@ -5,12 +5,14 @@ interface Props {
 }
 
 function getInitials(name: string): string {
-	return name
-		.split(/\s+/)
-		.map((p) => p[0] ?? "")
-		.join("")
-		.slice(0, 2)
-		.toUpperCase() || "?";
+	return (
+		name
+			.split(/\s+/)
+			.map((p) => p[0] ?? "")
+			.join("")
+			.slice(0, 2)
+			.toUpperCase() || "?"
+	);
 }
 
 export function CollaborationPresenceBar({ collaborators }: Props) {
@@ -20,13 +22,12 @@ export function CollaborationPresenceBar({ collaborators }: Props) {
 	const overflow = collaborators.length - visible.length;
 
 	return (
-		<div className="flex items-center gap-1" title="Collaborators currently viewing">
+		<div
+			className="flex items-center gap-1"
+			title="Collaborators currently viewing"
+		>
 			{visible.map((c) => (
-				<div
-					key={c.userId}
-					className="relative group"
-					title={c.name}
-				>
+				<div key={c.userId} className="relative group" title={c.name}>
 					{c.avatarUrl ? (
 						<img
 							src={c.avatarUrl}

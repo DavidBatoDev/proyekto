@@ -350,11 +350,20 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to record payment"));
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to record payment",
+				),
+			);
 		}
 	},
 
-	async reversePayment(invoiceId: string, paymentId: string, reason: string): Promise<Invoice> {
+	async reversePayment(
+		invoiceId: string,
+		paymentId: string,
+		reason: string,
+	): Promise<Invoice> {
 		try {
 			const { data } = await apiClient.post<{ data: Invoice }>(
 				`/api/invoices/${invoiceId}/payments/${paymentId}/reverse`,
@@ -362,19 +371,34 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to reverse payment"));
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to reverse payment",
+				),
+			);
 		}
 	},
 
-	async voidAndReplace(invoiceId: string, reason: string): Promise<{ voided: Invoice; replacement: Invoice }> {
+	async voidAndReplace(
+		invoiceId: string,
+		reason: string,
+	): Promise<{ voided: Invoice; replacement: Invoice }> {
 		try {
-			const { data } = await apiClient.post<{ data: { voided: Invoice; replacement: Invoice } }>(
-				`/api/invoices/${invoiceId}/void-and-replace`,
-				{ reason },
-			);
-			return { voided: normalizeInvoice(data.data.voided), replacement: normalizeInvoice(data.data.replacement) };
+			const { data } = await apiClient.post<{
+				data: { voided: Invoice; replacement: Invoice };
+			}>(`/api/invoices/${invoiceId}/void-and-replace`, { reason });
+			return {
+				voided: normalizeInvoice(data.data.voided),
+				replacement: normalizeInvoice(data.data.replacement),
+			};
 		} catch (err) {
-			throw new Error(extractApiErrorMessage((err as { response?: { data?: unknown } }).response?.data, "Failed to void and replace invoice"));
+			throw new Error(
+				extractApiErrorMessage(
+					(err as { response?: { data?: unknown } }).response?.data,
+					"Failed to void and replace invoice",
+				),
+			);
 		}
 	},
 

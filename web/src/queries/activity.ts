@@ -1,7 +1,7 @@
 import {
-	activityService,
 	type ActivityFilters,
 	type ActivityPage,
+	activityService,
 } from "@/services/activity.service";
 
 export const activityKeys = {

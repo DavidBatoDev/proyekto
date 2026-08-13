@@ -53,7 +53,10 @@ export function MessageActionsMenu({
 	const showEdit = canModify && !!onEdit;
 	const showDelete = canModify && !!onDelete;
 	const itemCount =
-		Number(showReply) + Number(showCopy) + Number(showEdit) + Number(showDelete);
+		Number(showReply) +
+		Number(showCopy) +
+		Number(showEdit) +
+		Number(showDelete);
 
 	const place = useCallback(() => {
 		const rect = btnRef.current?.getBoundingClientRect();

@@ -262,11 +262,7 @@ export function addDays(date: Date, days: number): Date {
 	return floorToUnit(next, "day");
 }
 
-export function clampDate(
-	date: Date,
-	minDate?: Date,
-	maxDate?: Date,
-): Date {
+export function clampDate(date: Date, minDate?: Date, maxDate?: Date): Date {
 	const ts = floorToUnit(date, "day").getTime();
 	const minTs =
 		minDate !== undefined ? floorToUnit(minDate, "day").getTime() : undefined;
@@ -310,7 +306,8 @@ export function dateFromTimelinePx(
 				1,
 			);
 			const monthProgress = monthsFloat - monthOffset;
-			const day = 1 + Math.round(monthProgress * (getDaysInMonth(monthDate) - 1));
+			const day =
+				1 + Math.round(monthProgress * (getDaysInMonth(monthDate) - 1));
 			return floorToUnit(
 				new Date(monthDate.getFullYear(), monthDate.getMonth(), day),
 				"day",
@@ -321,7 +318,8 @@ export function dateFromTimelinePx(
 			const yearOffset = Math.floor(yearsFloat);
 			const year = s.getFullYear() + yearOffset;
 			const yearProgress = yearsFloat - yearOffset;
-			const dayOfYear = 1 + Math.round(yearProgress * (getDaysInYear(year) - 1));
+			const dayOfYear =
+				1 + Math.round(yearProgress * (getDaysInYear(year) - 1));
 			return floorToUnit(new Date(year, 0, dayOfYear), "day");
 		}
 	}

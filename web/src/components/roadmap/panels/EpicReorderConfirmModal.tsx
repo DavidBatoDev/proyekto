@@ -124,6 +124,6 @@ export const EpicReorderConfirmModal = ({
 				</div>
 			</div>
 		</div>,
-		document.body
+		document.body,
 	);
 };

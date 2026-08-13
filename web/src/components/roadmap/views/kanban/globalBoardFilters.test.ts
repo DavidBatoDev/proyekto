@@ -187,5 +187,4 @@ describe("applyFilters", () => {
 		});
 		expect(filtered.map((r) => r.task.id)).toEqual(["t3"]);
 	});
-
 });

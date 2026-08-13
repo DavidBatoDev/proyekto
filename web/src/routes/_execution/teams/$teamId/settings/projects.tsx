@@ -1,6 +1,5 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	FolderKanban,
@@ -8,18 +7,21 @@ import {
 	Search,
 	Unlink,
 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
-import { useAuthStore, useUser } from "@/stores/authStore";
 import {
 	detachTeam,
 	getTeam,
 	listTeamProjects,
 	type TeamProjectAttachment,
 } from "@/services/teams.service";
-import { ModalPortal } from "@/components/common/ModalPortal";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/settings/projects")({
+export const Route = createFileRoute(
+	"/_execution/teams/$teamId/settings/projects",
+)({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) {
@@ -228,48 +230,48 @@ function TeamProjectsSettings() {
 
 			{confirmOpen && (
 				<ModalPortal>
-				<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-					<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-						<div className="border-b border-slate-100 bg-rose-50 px-6 py-4">
-							<div className="flex items-center gap-2">
-								<AlertTriangle className="h-5 w-5 text-rose-600" />
-								<h3 className="text-[16px] font-semibold text-rose-700">
-									Detach team from {selected.size}{" "}
-									{selected.size === 1 ? "project" : "projects"}?
-								</h3>
+					<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+						<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+							<div className="border-b border-slate-100 bg-rose-50 px-6 py-4">
+								<div className="flex items-center gap-2">
+									<AlertTriangle className="h-5 w-5 text-rose-600" />
+									<h3 className="text-[16px] font-semibold text-rose-700">
+										Detach team from {selected.size}{" "}
+										{selected.size === 1 ? "project" : "projects"}?
+									</h3>
+								</div>
+								<p className="mt-1 text-sm text-rose-700">
+									Members of this team will lose project-level access through
+									this attachment. They keep direct project memberships, if any.
+								</p>
 							</div>
-							<p className="mt-1 text-sm text-rose-700">
-								Members of this team will lose project-level access through
-								this attachment. They keep direct project memberships, if any.
-							</p>
-						</div>
-						<div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
-							<button
-								type="button"
-								onClick={() => setConfirmOpen(false)}
-								className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-								disabled={detachMutation.isPending}
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={() =>
-									detachMutation.mutate(Array.from(selected.values()))
-								}
-								disabled={detachMutation.isPending}
-								className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-							>
-								{detachMutation.isPending ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<Unlink className="h-4 w-4" />
-								)}
-								Confirm detach
-							</button>
+							<div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+								<button
+									type="button"
+									onClick={() => setConfirmOpen(false)}
+									className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+									disabled={detachMutation.isPending}
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={() =>
+										detachMutation.mutate(Array.from(selected.values()))
+									}
+									disabled={detachMutation.isPending}
+									className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+								>
+									{detachMutation.isPending ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<Unlink className="h-4 w-4" />
+									)}
+									Confirm detach
+								</button>
+							</div>
 						</div>
 					</div>
-				</div>
 				</ModalPortal>
 			)}
 		</TeamSettingsLayout>

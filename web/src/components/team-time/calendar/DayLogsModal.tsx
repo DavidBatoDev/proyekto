@@ -1,4 +1,12 @@
-import { AlertTriangle, Check, Play, Plus, RotateCcw, Wallet, X } from "lucide-react";
+import {
+	AlertTriangle,
+	Check,
+	Play,
+	Plus,
+	RotateCcw,
+	Wallet,
+	X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import type { TaskTimeLog } from "@/services/team-time.service";

@@ -323,10 +323,7 @@ export function TeamLogsStatsCard({
 					<div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100" />
 					<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 						{[0, 1, 2, 3].map((i) => (
-							<div
-								key={i}
-								className="h-9 animate-pulse rounded bg-slate-100"
-							/>
+							<div key={i} className="h-9 animate-pulse rounded bg-slate-100" />
 						))}
 					</div>
 				</div>

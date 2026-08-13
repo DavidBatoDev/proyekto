@@ -19,7 +19,9 @@ import {
 import { getTeam, listTeamMembers } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/time/log/$logId")({
+export const Route = createFileRoute(
+	"/_execution/teams/$teamId/time/log/$logId",
+)({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });

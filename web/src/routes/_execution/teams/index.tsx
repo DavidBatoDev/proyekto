@@ -1,23 +1,23 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ArrowRight, Loader2, Plus, User, Users } from "lucide-react";
+import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import { DashboardShell } from "@/components/layout/DashboardShell";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
+import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
-import { useAuthStore } from "@/stores/authStore";
 import {
 	createTeam,
 	listMyTeams,
 	type ProfileSummary,
 	type Team,
 } from "@/services/teams.service";
+import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/teams/")({
 	beforeLoad: () => {
@@ -30,7 +30,11 @@ export const Route = createFileRoute("/_execution/teams/")({
 });
 
 function TeamsIndexPage() {
-	const { data: teams, isLoading, error } = useQuery({
+	const {
+		data: teams,
+		isLoading,
+		error,
+	} = useQuery({
 		queryKey: ["teams", "mine"],
 		queryFn: listMyTeams,
 	});
@@ -93,9 +97,7 @@ function TeamsIndexPage() {
 				</div>
 			</div>
 
-			{createOpen && (
-				<CreateTeamModal onClose={() => setCreateOpen(false)} />
-			)}
+			{createOpen && <CreateTeamModal onClose={() => setCreateOpen(false)} />}
 		</DashboardShell>
 	);
 }
@@ -257,75 +259,71 @@ function CreateTeamModal({ onClose }: { onClose: () => void }) {
 
 	return (
 		<ModalPortal>
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
-			onClick={onClose}
-		>
 			<div
-				className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-				onClick={(e) => e.stopPropagation()}
+				className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+				onClick={onClose}
 			>
-				<h2 className="text-lg font-semibold text-slate-900">
-					Create team
-				</h2>
-				<p className="mt-1 text-sm text-slate-600">
-					Name your team. You'll be added automatically as the owner.
-				</p>
-				<form
-					className="mt-5 space-y-4"
-					onSubmit={(e) => {
-						e.preventDefault();
-						if (!name.trim()) return;
-						mutation.mutate();
-					}}
+				<div
+					className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+					onClick={(e) => e.stopPropagation()}
 				>
-					<label className="block">
-						<span className="text-sm font-medium text-slate-700">
-							Name
-						</span>
-						<input
-							autoFocus
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							maxLength={120}
-							className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-							placeholder="e.g. Engineering Squad"
-						/>
-					</label>
-					<label className="block">
-						<span className="text-sm font-medium text-slate-700">
-							Description (optional)
-						</span>
-						<textarea
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							maxLength={500}
-							rows={3}
-							className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
-						/>
-					</label>
-					<div className="flex justify-end gap-2 pt-2">
-						<button
-							type="button"
-							onClick={onClose}
-							className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={!name.trim() || mutation.isPending}
-							className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-						>
-							{mutation.isPending && (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							)}
-							Create
-						</button>
-					</div>
-				</form>
+					<h2 className="text-lg font-semibold text-slate-900">Create team</h2>
+					<p className="mt-1 text-sm text-slate-600">
+						Name your team. You'll be added automatically as the owner.
+					</p>
+					<form
+						className="mt-5 space-y-4"
+						onSubmit={(e) => {
+							e.preventDefault();
+							if (!name.trim()) return;
+							mutation.mutate();
+						}}
+					>
+						<label className="block">
+							<span className="text-sm font-medium text-slate-700">Name</span>
+							<input
+								autoFocus
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								maxLength={120}
+								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+								placeholder="e.g. Engineering Squad"
+							/>
+						</label>
+						<label className="block">
+							<span className="text-sm font-medium text-slate-700">
+								Description (optional)
+							</span>
+							<textarea
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+								maxLength={500}
+								rows={3}
+								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+							/>
+						</label>
+						<div className="flex justify-end gap-2 pt-2">
+							<button
+								type="button"
+								onClick={onClose}
+								className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+							>
+								Cancel
+							</button>
+							<button
+								type="submit"
+								disabled={!name.trim() || mutation.isPending}
+								className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+							>
+								{mutation.isPending && (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								)}
+								Create
+							</button>
+						</div>
+					</form>
+				</div>
 			</div>
-		</div>
 		</ModalPortal>
 	);
 }

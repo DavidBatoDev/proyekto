@@ -176,7 +176,9 @@ export function TaskDetailPeek({
 							{commentsQuery.isPending ? (
 								<Loader2 className="h-4 w-4 animate-spin text-slate-400" />
 							) : comments.length === 0 ? (
-								<p className="text-sm italic text-slate-400">No comments yet.</p>
+								<p className="text-sm italic text-slate-400">
+									No comments yet.
+								</p>
 							) : (
 								<ul className="space-y-3">
 									{comments.map((c) => {

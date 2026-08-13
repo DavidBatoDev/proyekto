@@ -1,12 +1,6 @@
-import {
-	cloneElement,
-	isValidElement,
-	type CSSProperties,
-	type ReactNode,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { AnimatePresence } from "framer-motion";
 import {
 	Bot,
 	Check,
@@ -17,45 +11,41 @@ import {
 	TriangleAlert,
 	X,
 } from "lucide-react";
-import { AnimatePresence } from "framer-motion";
-import { Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+	type CSSProperties,
+	cloneElement,
+	isValidElement,
+	type ReactNode,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useRoadmapStore } from "@/stores/roadmapStore";
-import { projectKeys } from "@/queries/project";
-import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
 import { featureFlags } from "@/config/featureFlags";
+import {
+	useCreateRoadmapAiSession,
+	useRoadmapAiSessionsList,
+} from "@/hooks/useRoadmapAiSessions";
+import { useToast } from "@/hooks/useToast";
 import { isRealtimeConfigured, RealtimeRoom } from "@/lib/realtime";
+import { projectKeys } from "@/queries/project";
 import roadmapAgentService, {
 	type AgentOperation,
 	type AgentTraceEvent,
 	type AgentTraceEventsResponse,
-	RoadmapAgentServiceError,
 	isAgentTimeoutError,
+	RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
-import { useUser } from "@/stores/authStore";
 import { roadmapAiSessionsService } from "@/services/roadmap-ai-sessions.service";
-import { useToast } from "@/hooks/useToast";
+import { useUser } from "@/stores/authStore";
+import {
+	useActiveRoadmapAiThread,
+	useRoadmapAiThreadsStore,
+} from "@/stores/roadmapAiThreadsStore";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
 import { RoadmapAiActivityTimelineView } from "./RoadmapAiActivityTimeline";
-import {
-	buildCuratedToolRequestedMessage,
-	buildCuratedToolResultMessage,
-	buildFriendlyMinimalToolLabel,
-	extractTraceToolName,
-} from "./roadmapAiToolMessaging";
-import {
-	useRoadmapAiAssistantSession,
-	type RoadmapAiActivityTimeline,
-	type RoadmapAiActivityStep,
-	type RoadmapAiActivityDetailMode,
-	type RoadmapAiActivityPresentationMode,
-	type RoadmapAiChatAttachment,
-	type RoadmapAiChatMessage,
-	type RoadmapAiCommitLifecycle,
-	type RoadmapAiCommitImpactedItem,
-	type RoadmapAiCommitImpactedItemKind,
-} from "./useRoadmapAiAssistantSession";
 import { RoadmapAiClarifierCard } from "./RoadmapAiClarifierCard";
 import {
 	buildClarifierDisplayLabel,
@@ -65,13 +55,23 @@ import { RoadmapAiPlanProposalCard } from "./RoadmapAiPlanProposalCard";
 import { RoadmapAiPlanQuestionCard } from "./RoadmapAiPlanQuestionCard";
 import { RoadmapAiThreadList } from "./RoadmapAiThreadList";
 import {
-	useRoadmapAiThreadsStore,
-	useActiveRoadmapAiThread,
-} from "@/stores/roadmapAiThreadsStore";
+	buildCuratedToolRequestedMessage,
+	buildCuratedToolResultMessage,
+	buildFriendlyMinimalToolLabel,
+	extractTraceToolName,
+} from "./roadmapAiToolMessaging";
 import {
-	useCreateRoadmapAiSession,
-	useRoadmapAiSessionsList,
-} from "@/hooks/useRoadmapAiSessions";
+	type RoadmapAiActivityDetailMode,
+	type RoadmapAiActivityPresentationMode,
+	type RoadmapAiActivityStep,
+	type RoadmapAiActivityTimeline,
+	type RoadmapAiChatAttachment,
+	type RoadmapAiChatMessage,
+	type RoadmapAiCommitImpactedItem,
+	type RoadmapAiCommitImpactedItemKind,
+	type RoadmapAiCommitLifecycle,
+	useRoadmapAiAssistantSession,
+} from "./useRoadmapAiAssistantSession";
 
 interface RoadmapAiAssistantPanelProps {
 	projectId: string;

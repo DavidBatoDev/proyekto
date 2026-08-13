@@ -1,53 +1,40 @@
 import {
-	useCallback,
-	useState,
-	useEffect,
-	useMemo,
-	useRef,
-	type MouseEvent as ReactMouseEvent,
-} from "react";
-import { AlertTriangle, Rocket, X } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import {
 	DndContext,
+	type DragEndEvent,
 	DragOverlay,
+	type DragStartEvent,
 	PointerSensor,
 	useSensor,
 	useSensors,
-	type DragEndEvent,
-	type DragStartEvent,
 } from "@dnd-kit/core";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, Rocket, X } from "lucide-react";
 import {
-	RoadmapLeftSidePanel,
+	type MouseEvent as ReactMouseEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { useShallow } from "zustand/react/shallow";
+import {
 	JSONRoadmapSidePanel,
-	RoadmapCanvas,
-	ShareRoadmapModal,
-	RoadmapMetadataModal,
 	RoadmapAiAssistantPanel,
+	RoadmapCanvas,
+	RoadmapLeftSidePanel,
 	type RoadmapMetadataFormData,
+	RoadmapMetadataModal,
+	ShareRoadmapModal,
 } from "@/components/roadmap";
 import { ConfirmAssigneeOverwriteDialog } from "@/components/roadmap/widgets/ConfirmAssigneeOverwriteDialog";
-import { RoadmapTopBar } from "../../RoadmapTopBar";
-import { MobileRoadmapView } from "./MobileRoadmapView";
-import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
-import {
-	roadmapService,
-	type UpsertFullRoadmapDto,
-} from "@/services/roadmap.service";
-import type { Roadmap, RoadmapTask } from "@/types/roadmap";
 import { useToast } from "@/contexts/ToastContext";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
 import {
-	useRecentAssignees,
 	type DockAvatar,
+	useRecentAssignees,
 } from "@/hooks/useRecentAssignees";
-import { useRoadmapStore, type CanvasViewMode } from "@/stores/roadmapStore";
-import { useUser } from "@/stores/authStore";
-import { useShallow } from "zustand/react/shallow";
-import { findTaskById } from "@/routes/_execution/project/$projectId/work-items/workItemsOptimistic";
-import type { RoadmapPerformanceMode } from "../models/types";
 import {
 	dismissGuestRoadmapCta,
 	isGuestRoadmapCtaDismissed,
@@ -59,6 +46,19 @@ import {
 	consumePendingRoadmapAiPrompt,
 	consumePendingRoadmapMetadataModal,
 } from "@/lib/roadmapPageHandoff";
+import { findTaskById } from "@/routes/_execution/project/$projectId/work-items/workItemsOptimistic";
+import {
+	roadmapService,
+	type UpsertFullRoadmapDto,
+} from "@/services/roadmap.service";
+import { useUser } from "@/stores/authStore";
+import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
+import { type CanvasViewMode, useRoadmapStore } from "@/stores/roadmapStore";
+import type { Roadmap, RoadmapTask } from "@/types/roadmap";
+import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
+import { RoadmapTopBar } from "../../RoadmapTopBar";
+import type { RoadmapPerformanceMode } from "../models/types";
+import { MobileRoadmapView } from "./MobileRoadmapView";
 
 interface PendingAssignment {
 	taskId: string;

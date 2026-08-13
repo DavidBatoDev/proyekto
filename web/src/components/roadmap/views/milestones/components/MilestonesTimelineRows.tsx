@@ -1,12 +1,12 @@
 import {
+	type CSSProperties,
+	type MouseEvent as ReactMouseEvent,
 	useCallback,
 	useEffect,
 	useState,
-	type CSSProperties,
-	type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { calculateFeatureProgressFromTasks } from "../../../shared/featureProgress";
 import {
 	EPIC_LINE_HEIGHT,
@@ -30,9 +30,9 @@ import {
 	computeEpicRange,
 	dateFromTimelinePx,
 	daysBetween,
+	floorToUnit,
 	fmtEpicDateRange,
 	fmtShort,
-	floorToUnit,
 	getInclusiveDays,
 	toISODateString,
 	toTimelinePx,
@@ -87,8 +87,16 @@ interface MilestonesTimelineRowsProps {
 	onFeatureDateDraftCommit?: (change: FeatureDateDraftCommit) => void;
 	isDateDrawMode?: boolean;
 	clientXToDate?: (clientX: number) => Date;
-	onEpicDateCreate?: (epic: RoadmapEpic, startDate: string, endDate: string) => void;
-	onFeatureDateCreate?: (feature: RoadmapFeature, startDate: string, endDate: string) => void;
+	onEpicDateCreate?: (
+		epic: RoadmapEpic,
+		startDate: string,
+		endDate: string,
+	) => void;
+	onFeatureDateCreate?: (
+		feature: RoadmapFeature,
+		startDate: string,
+		endDate: string,
+	) => void;
 	epicDateVisualDrafts?: Record<string, { startDate: string; endDate: string }>;
 	onEpicDateDraftCommit?: (change: EpicDateDraftCommit) => void;
 }
@@ -137,7 +145,9 @@ export const MilestonesTimelineRows = ({
 		hasMoved: boolean;
 	} | null>(null);
 
-	const [drawDragState, setDrawDragState] = useState<DrawDragState | null>(null);
+	const [drawDragState, setDrawDragState] = useState<DrawDragState | null>(
+		null,
+	);
 
 	const handleDragStart = useCallback(
 		(
@@ -360,7 +370,14 @@ export const MilestonesTimelineRows = ({
 			window.removeEventListener("mousemove", handleMouseMove);
 			window.removeEventListener("mouseup", handleMouseUp);
 		};
-	}, [dragState, rangeStart, granularity, cw, onFeatureDateDraftCommit, onFeatureSelect]);
+	}, [
+		dragState,
+		rangeStart,
+		granularity,
+		cw,
+		onFeatureDateDraftCommit,
+		onFeatureSelect,
+	]);
 
 	useEffect(() => {
 		if (!epicDragState) return;
@@ -368,12 +385,29 @@ export const MilestonesTimelineRows = ({
 		const handleMouseMove = (event: MouseEvent) => {
 			const dx = event.clientX - epicDragState.anchorClientX;
 			const hasMoved = Math.abs(dx) >= 2;
-			const initialStartPx = toTimelinePx(epicDragState.initialStartDate, rangeStart, granularity, cw);
-			const initialEndPx = toTimelinePx(epicDragState.initialEndDate, rangeStart, granularity, cw);
+			const initialStartPx = toTimelinePx(
+				epicDragState.initialStartDate,
+				rangeStart,
+				granularity,
+				cw,
+			);
+			const initialEndPx = toTimelinePx(
+				epicDragState.initialEndDate,
+				rangeStart,
+				granularity,
+				cw,
+			);
 
 			if (epicDragState.mode === "move") {
-				const shiftedStart = dateFromTimelinePx(initialStartPx + dx, rangeStart, granularity, cw);
-				const deltaDays = Math.round(daysBetween(epicDragState.initialStartDate, shiftedStart));
+				const shiftedStart = dateFromTimelinePx(
+					initialStartPx + dx,
+					rangeStart,
+					granularity,
+					cw,
+				);
+				const deltaDays = Math.round(
+					daysBetween(epicDragState.initialStartDate, shiftedStart),
+				);
 				setEpicDragState((prev) =>
 					prev
 						? {
@@ -388,18 +422,50 @@ export const MilestonesTimelineRows = ({
 			}
 
 			if (epicDragState.mode === "start") {
-				const rawStart = dateFromTimelinePx(initialStartPx + dx, rangeStart, granularity, cw);
-				const nextStart = clampDate(rawStart, undefined, epicDragState.initialEndDate);
+				const rawStart = dateFromTimelinePx(
+					initialStartPx + dx,
+					rangeStart,
+					granularity,
+					cw,
+				);
+				const nextStart = clampDate(
+					rawStart,
+					undefined,
+					epicDragState.initialEndDate,
+				);
 				setEpicDragState((prev) =>
-					prev ? { ...prev, draftStartDate: nextStart, draftEndDate: prev.initialEndDate, hasMoved: prev.hasMoved || hasMoved } : prev,
+					prev
+						? {
+								...prev,
+								draftStartDate: nextStart,
+								draftEndDate: prev.initialEndDate,
+								hasMoved: prev.hasMoved || hasMoved,
+							}
+						: prev,
 				);
 				return;
 			}
 
-			const rawEnd = dateFromTimelinePx(initialEndPx + dx, rangeStart, granularity, cw);
-			const nextEnd = clampDate(rawEnd, epicDragState.initialStartDate, undefined);
+			const rawEnd = dateFromTimelinePx(
+				initialEndPx + dx,
+				rangeStart,
+				granularity,
+				cw,
+			);
+			const nextEnd = clampDate(
+				rawEnd,
+				epicDragState.initialStartDate,
+				undefined,
+			);
 			setEpicDragState((prev) =>
-				prev ? { ...prev, draftStartDate: prev.initialStartDate, draftEndDate: nextEnd, hasMoved: prev.hasMoved || hasMoved } : prev,
+				prev
+					? {
+							...prev,
+							draftStartDate: prev.initialStartDate,
+							draftEndDate: nextEnd,
+							hasMoved: prev.hasMoved || hasMoved,
+						}
+					: prev,
 			);
 		};
 
@@ -413,7 +479,13 @@ export const MilestonesTimelineRows = ({
 				(oldStartDate !== newStartDate || oldEndDate !== newEndDate) &&
 				onEpicDateDraftCommit
 			) {
-				onEpicDateDraftCommit({ epic: epicDragState.epic, oldStartDate, oldEndDate, newStartDate, newEndDate });
+				onEpicDateDraftCommit({
+					epic: epicDragState.epic,
+					oldStartDate,
+					oldEndDate,
+					newStartDate,
+					newEndDate,
+				});
 			}
 			setEpicDragState(null);
 		};
@@ -457,9 +529,17 @@ export const MilestonesTimelineRows = ({
 				const endDate = toISODateString(drawDragState.draftEndDate);
 				if (startDate !== endDate) {
 					if (drawDragState.kind === "epic" && onEpicDateCreate) {
-						onEpicDateCreate(drawDragState.entity as RoadmapEpic, startDate, endDate);
+						onEpicDateCreate(
+							drawDragState.entity as RoadmapEpic,
+							startDate,
+							endDate,
+						);
 					} else if (drawDragState.kind === "feature" && onFeatureDateCreate) {
-						onFeatureDateCreate(drawDragState.entity as RoadmapFeature, startDate, endDate);
+						onFeatureDateCreate(
+							drawDragState.entity as RoadmapFeature,
+							startDate,
+							endDate,
+						);
 					}
 				}
 			}
@@ -486,7 +566,8 @@ export const MilestonesTimelineRows = ({
 				const epicRowHeight =
 					ROW_HEIGHT + (epicIndex === 0 ? FIRST_EPIC_EXTRA_HEIGHT : 0);
 
-				const epicDragForThis = epicDragState?.epic.id === epic.id ? epicDragState : null;
+				const epicDragForThis =
+					epicDragState?.epic.id === epic.id ? epicDragState : null;
 				const epicVisualDraft = epicDateVisualDrafts[epic.id];
 				const epicHasStoredDates = !!(epic.start_date && epic.end_date);
 				const epicEffectiveStart = epicDragForThis
@@ -509,12 +590,25 @@ export const MilestonesTimelineRows = ({
 					drawDragState?.kind === "epic" &&
 					(drawDragState.entity as RoadmapEpic).id === epic.id;
 				const epicDrawPreviewLeft = isDrawingThisEpic
-					? toTimelinePx(drawDragState.draftStartDate, rangeStart, granularity, cw)
+					? toTimelinePx(
+							drawDragState.draftStartDate,
+							rangeStart,
+							granularity,
+							cw,
+						)
 					: 0;
 				const epicDrawPreviewRight = isDrawingThisEpic
-					? toTimelinePx(drawDragState.draftEndDate, rangeStart, granularity, cw)
+					? toTimelinePx(
+							drawDragState.draftEndDate,
+							rangeStart,
+							granularity,
+							cw,
+						)
 					: 0;
-				const epicDrawPreviewWidth = Math.max(2, epicDrawPreviewRight - epicDrawPreviewLeft);
+				const epicDrawPreviewWidth = Math.max(
+					2,
+					epicDrawPreviewRight - epicDrawPreviewLeft,
+				);
 
 				return (
 					<div key={`right-${epic.id}`}>
@@ -602,47 +696,83 @@ export const MilestonesTimelineRows = ({
 									);
 								})()}
 
-						{epicEffectiveStart && epicEffectiveEnd && (() => {
-							const barLeft = toTimelinePx(epicEffectiveStart, rangeStart, granularity, cw);
-							const barRight = toTimelinePx(epicEffectiveEnd, rangeStart, granularity, cw);
-							const barWidth = Math.max(6, barRight - barLeft);
-							return (
-								<div
-									className={`absolute top-1/2 rounded-sm group z-10 ${
-										canEditDateRanges
-											? isDraggingThisEpic
-												? "cursor-grabbing"
-												: "cursor-pointer"
-											: "cursor-default"
-									}`}
-									data-no-pan="true"
-									onMouseDown={(e) => handleEpicDragStart(e, epic, "move", epicEffectiveStart, epicEffectiveEnd)}
-									style={{
-										left: Math.max(0, barLeft),
-										width: barWidth,
-										height: 12,
-										marginTop: 0,
-										backgroundColor: epicColor,
-										opacity: 0.85,
-									}}
-								>
-									{canEditDateRanges && (
-										<>
-											<div
-												className="absolute left-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-l-sm"
-												data-no-pan="true"
-												onMouseDown={(e) => handleEpicDragStart(e, epic, "start", epicEffectiveStart, epicEffectiveEnd)}
-											/>
-											<div
-												className="absolute right-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-r-sm"
-												data-no-pan="true"
-												onMouseDown={(e) => handleEpicDragStart(e, epic, "end", epicEffectiveStart, epicEffectiveEnd)}
-											/>
-										</>
-									)}
-								</div>
-							);
-						})()}
+							{epicEffectiveStart &&
+								epicEffectiveEnd &&
+								(() => {
+									const barLeft = toTimelinePx(
+										epicEffectiveStart,
+										rangeStart,
+										granularity,
+										cw,
+									);
+									const barRight = toTimelinePx(
+										epicEffectiveEnd,
+										rangeStart,
+										granularity,
+										cw,
+									);
+									const barWidth = Math.max(6, barRight - barLeft);
+									return (
+										<div
+											className={`absolute top-1/2 rounded-sm group z-10 ${
+												canEditDateRanges
+													? isDraggingThisEpic
+														? "cursor-grabbing"
+														: "cursor-pointer"
+													: "cursor-default"
+											}`}
+											data-no-pan="true"
+											onMouseDown={(e) =>
+												handleEpicDragStart(
+													e,
+													epic,
+													"move",
+													epicEffectiveStart,
+													epicEffectiveEnd,
+												)
+											}
+											style={{
+												left: Math.max(0, barLeft),
+												width: barWidth,
+												height: 12,
+												marginTop: 0,
+												backgroundColor: epicColor,
+												opacity: 0.85,
+											}}
+										>
+											{canEditDateRanges && (
+												<>
+													<div
+														className="absolute left-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-l-sm"
+														data-no-pan="true"
+														onMouseDown={(e) =>
+															handleEpicDragStart(
+																e,
+																epic,
+																"start",
+																epicEffectiveStart,
+																epicEffectiveEnd,
+															)
+														}
+													/>
+													<div
+														className="absolute right-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-r-sm"
+														data-no-pan="true"
+														onMouseDown={(e) =>
+															handleEpicDragStart(
+																e,
+																epic,
+																"end",
+																epicEffectiveStart,
+																epicEffectiveEnd,
+															)
+														}
+													/>
+												</>
+											)}
+										</div>
+									);
+								})()}
 						</div>
 
 						{!isCollapsed &&
@@ -656,29 +786,38 @@ export const MilestonesTimelineRows = ({
 									? featureDragState.draftStartDate
 									: visualDraft
 										? floorToUnit(new Date(visualDraft.startDate), "day")
-									: hasDates
-										? floorToUnit(new Date(feature.start_date ?? ""), "day")
-										: null;
+										: hasDates
+											? floorToUnit(new Date(feature.start_date ?? ""), "day")
+											: null;
 								const effectiveEndDate = featureDragState
 									? featureDragState.draftEndDate
 									: visualDraft
 										? floorToUnit(new Date(visualDraft.endDate), "day")
-									: hasDates
-										? floorToUnit(new Date(feature.end_date ?? ""), "day")
-										: null;
+										: hasDates
+											? floorToUnit(new Date(feature.end_date ?? ""), "day")
+											: null;
 								const taskProgress = calculateFeatureProgressFromTasks(
 									feature.tasks,
 								);
-								const clampedProgress = Math.max(0, Math.min(100, taskProgress));
+								const clampedProgress = Math.max(
+									0,
+									Math.min(100, taskProgress),
+								);
 								const barLeft = effectiveStartDate
-									? toTimelinePx(effectiveStartDate, rangeStart, granularity, cw)
+									? toTimelinePx(
+											effectiveStartDate,
+											rangeStart,
+											granularity,
+											cw,
+										)
 									: 0;
 								const barRight = effectiveEndDate
 									? toTimelinePx(effectiveEndDate, rangeStart, granularity, cw)
 									: 0;
 								const barWidth = Math.max(6, barRight - barLeft);
 								const rawFillWidth = (barWidth * clampedProgress) / 100;
-								const fillWidth = clampedProgress > 0 ? Math.max(3, rawFillWidth) : 0;
+								const fillWidth =
+									clampedProgress > 0 ? Math.max(3, rawFillWidth) : 0;
 								const estimatedLabelWidth =
 									feature.title.length * FEATURE_LABEL_CHAR_PX +
 									FEATURE_LABEL_HORIZONTAL_PADDING;
@@ -687,10 +826,10 @@ export const MilestonesTimelineRows = ({
 									Math.max(FEATURE_LABEL_MIN_INSIDE_WIDTH, estimatedLabelWidth);
 								const startTooltipDate = effectiveStartDate
 									? toISODateString(effectiveStartDate)
-									: feature.start_date ?? "";
+									: (feature.start_date ?? "");
 								const endTooltipDate = effectiveEndDate
 									? toISODateString(effectiveEndDate)
-									: feature.end_date ?? "";
+									: (feature.end_date ?? "");
 								const tooltip = hasDates
 									? `${fmtShort(startTooltipDate)} -> ${fmtShort(endTooltipDate)} | ${clampedProgress}%`
 									: "No dates set";
@@ -699,12 +838,25 @@ export const MilestonesTimelineRows = ({
 									drawDragState?.kind === "feature" &&
 									(drawDragState.entity as RoadmapFeature).id === feature.id;
 								const featureDrawLeft = isDrawingThisFeature
-									? toTimelinePx(drawDragState.draftStartDate, rangeStart, granularity, cw)
+									? toTimelinePx(
+											drawDragState.draftStartDate,
+											rangeStart,
+											granularity,
+											cw,
+										)
 									: 0;
 								const featureDrawRight = isDrawingThisFeature
-									? toTimelinePx(drawDragState.draftEndDate, rangeStart, granularity, cw)
+									? toTimelinePx(
+											drawDragState.draftEndDate,
+											rangeStart,
+											granularity,
+											cw,
+										)
 									: 0;
-								const featureDrawWidth = Math.max(2, featureDrawRight - featureDrawLeft);
+								const featureDrawWidth = Math.max(
+									2,
+									featureDrawRight - featureDrawLeft,
+								);
 
 								return (
 									<div
@@ -732,7 +884,9 @@ export const MilestonesTimelineRows = ({
 											<div
 												className="absolute inset-0 z-10 cursor-text"
 												data-no-pan="true"
-												onMouseDown={(e) => handleDrawStart(e, "feature", feature)}
+												onMouseDown={(e) =>
+													handleDrawStart(e, "feature", feature)
+												}
 											/>
 										)}
 
@@ -825,7 +979,9 @@ export const MilestonesTimelineRows = ({
 															<div className="font-semibold mb-0.5">
 																{feature.title}
 															</div>
-															<div className="text-gray-300 text-[11px]">{tooltip}</div>
+															<div className="text-gray-300 text-[11px]">
+																{tooltip}
+															</div>
 														</div>
 													</div>
 
@@ -842,10 +998,17 @@ export const MilestonesTimelineRows = ({
 														onClick={(e) => e.stopPropagation()}
 														className="absolute top-1/2 -translate-y-1/2 z-30 pointer-events-auto"
 														style={{
-															left: Math.max(0, barLeft) + barWidth + (labelFitsInside ? 4 : 80),
+															left:
+																Math.max(0, barLeft) +
+																barWidth +
+																(labelFitsInside ? 4 : 80),
 														}}
 													>
-														<TaskTimerButton projectId={projectId} taskId={feature.tasks[0].id} size="sm" />
+														<TaskTimerButton
+															projectId={projectId}
+															taskId={feature.tasks[0].id}
+															size="sm"
+														/>
 													</div>
 												)}
 

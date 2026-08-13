@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type CellKey = string; // `${rowId}:${colId}`
 
@@ -46,25 +46,19 @@ function keyFromPoint(x: number, y: number): string | null {
 }
 
 // Shared speed constants (same feel for both axes)
-const ZONE = 100;  // px from edge that activates scroll
-const ENTRY = 5;   // px/frame at zone boundary
-const EDGE = 30;   // px/frame at the element edge (before accel)
-const OVER = 60;   // px/frame when mouse is outside the element rect
+const ZONE = 100; // px from edge that activates scroll
+const ENTRY = 5; // px/frame at zone boundary
+const EDGE = 30; // px/frame at the element edge (before accel)
+const OVER = 60; // px/frame when mouse is outside the element rect
 const MAX_ACCEL = 12;
 const ACCEL_RATE = 1.04; // multiplier per frame (~doubles every 18 frames / 300 ms)
 
-function axisSpeed(
-	mouse: number,
-	edgeLow: number,
-	edgeHigh: number,
-): number {
+function axisSpeed(mouse: number, edgeLow: number, edgeHigh: number): number {
 	const fromLow = mouse - edgeLow;
 	const fromHigh = edgeHigh - mouse;
 
-	if (mouse < edgeLow)
-		return -(OVER + Math.abs(mouse - edgeLow) * 0.8);
-	if (mouse > edgeHigh)
-		return OVER + (mouse - edgeHigh) * 0.8;
+	if (mouse < edgeLow) return -(OVER + Math.abs(mouse - edgeLow) * 0.8);
+	if (mouse > edgeHigh) return OVER + (mouse - edgeHigh) * 0.8;
 	if (fromLow < ZONE) {
 		const t = 1 - fromLow / ZONE;
 		return -(ENTRY + (EDGE - ENTRY) * t);
@@ -87,7 +81,10 @@ export interface TableCellSelectionResult {
 	selectedCells: Set<CellKey>;
 	hasSelection: boolean;
 	isSelected: (rowId: string, colId: string) => boolean;
-	getCellDataProps: (rowId: string, colId: string) => { "data-cell-key": string };
+	getCellDataProps: (
+		rowId: string,
+		colId: string,
+	) => { "data-cell-key": string };
 	clearSelection: () => void;
 }
 
@@ -97,7 +94,9 @@ export function useTableCellSelection(
 	tableRef: RefObject<HTMLTableElement | null>,
 	options?: TableCellSelectionOptions,
 ): TableCellSelectionResult {
-	const [selectedCells, setSelectedCellsState] = useState<Set<CellKey>>(new Set());
+	const [selectedCells, setSelectedCellsState] = useState<Set<CellKey>>(
+		new Set(),
+	);
 
 	const selectedCellsRef = useRef<Set<CellKey>>(selectedCells);
 	selectedCellsRef.current = selectedCells;
@@ -154,7 +153,9 @@ export function useTableCellSelection(
 		(cells: Set<CellKey>) => {
 			const table = tableRef.current;
 			if (table) {
-				for (const el of table.querySelectorAll<HTMLElement>("[data-selected]")) {
+				for (const el of table.querySelectorAll<HTMLElement>(
+					"[data-selected]",
+				)) {
 					el.removeAttribute("data-selected");
 					el.style.backgroundColor = "";
 				}
@@ -284,7 +285,11 @@ export function useTableCellSelection(
 
 			// Always let interactive elements handle their own events — this covers
 			// both buttons inside the table and portal menus rendered in document.body.
-			if (target.closest("button") || target.closest("input") || target.closest("a"))
+			if (
+				target.closest("button") ||
+				target.closest("input") ||
+				target.closest("a")
+			)
 				return;
 
 			if (!tableRef.current?.contains(target)) {
@@ -309,7 +314,12 @@ export function useTableCellSelection(
 			mouseYRef.current = e.clientY;
 
 			if (e.shiftKey && anchorRef.current) {
-				const rect = getRectRange(anchorRef.current, key, rowIdsRef.current, colIdsRef.current);
+				const rect = getRectRange(
+					anchorRef.current,
+					key,
+					rowIdsRef.current,
+					colIdsRef.current,
+				);
 				const merged = new Set(baseSelectionRef.current);
 				for (const k of rect) merged.add(k);
 				commitSelection(merged);
@@ -348,7 +358,12 @@ export function useTableCellSelection(
 			selRafId = requestAnimationFrame(() => {
 				selRafId = null;
 				if (!pendingKey || !anchorRef.current) return;
-				const rect = getRectRange(anchorRef.current, pendingKey, rowIdsRef.current, colIdsRef.current);
+				const rect = getRectRange(
+					anchorRef.current,
+					pendingKey,
+					rowIdsRef.current,
+					colIdsRef.current,
+				);
 				const merged = new Set(baseSelectionRef.current);
 				for (const k of rect) merged.add(k);
 				applyDomSelection(merged);
@@ -362,7 +377,9 @@ export function useTableCellSelection(
 			const table = tableRef.current;
 			const final = new Set<CellKey>(baseSelectionRef.current);
 			if (table) {
-				for (const el of table.querySelectorAll<HTMLElement>("[data-selected]")) {
+				for (const el of table.querySelectorAll<HTMLElement>(
+					"[data-selected]",
+				)) {
 					const k = el.getAttribute("data-cell-key");
 					if (k) final.add(k);
 				}
@@ -392,7 +409,8 @@ export function useTableCellSelection(
 			document.removeEventListener("mousemove", onMouseMove);
 			document.removeEventListener("mouseup", onMouseUp);
 			document.removeEventListener("keydown", onKeyDown);
-			if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+			if (scrollRafRef.current !== null)
+				cancelAnimationFrame(scrollRafRef.current);
 			if (selRafId !== null) cancelAnimationFrame(selRafId);
 		};
 	}, [tableRef, applyDomSelection, commitSelection]);
@@ -404,12 +422,15 @@ export function useTableCellSelection(
 	}, [commitSelection]);
 
 	const isSelected = useCallback(
-		(rowId: string, colId: string) => selectedCells.has(makeCellKey(rowId, colId)),
+		(rowId: string, colId: string) =>
+			selectedCells.has(makeCellKey(rowId, colId)),
 		[selectedCells],
 	);
 
 	const getCellDataProps = useCallback(
-		(rowId: string, colId: string) => ({ "data-cell-key": makeCellKey(rowId, colId) }),
+		(rowId: string, colId: string) => ({
+			"data-cell-key": makeCellKey(rowId, colId),
+		}),
 		[],
 	);
 

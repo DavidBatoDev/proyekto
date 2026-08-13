@@ -31,6 +31,10 @@ export function PersonAccessDrawerForMember({
 	if (!person) return null;
 
 	return (
-		<PersonAccessDrawer projectId={projectId} person={person} onClose={onClose} />
+		<PersonAccessDrawer
+			projectId={projectId}
+			person={person}
+			onClose={onClose}
+		/>
 	);
 }

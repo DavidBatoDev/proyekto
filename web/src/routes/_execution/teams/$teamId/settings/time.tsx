@@ -10,15 +10,17 @@ import { isActiveConsultant } from "@/lib/auth-utils";
 import { getTeam, updateTeam } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/settings/time")({
-	beforeLoad: () => {
-		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
+export const Route = createFileRoute("/_execution/teams/$teamId/settings/time")(
+	{
+		beforeLoad: () => {
+			const { isAuthenticated } = useAuthStore.getState();
+			if (!isAuthenticated) {
+				throw redirect({ to: "/auth/login" });
+			}
+		},
+		component: TeamTimeSettings,
 	},
-	component: TeamTimeSettings,
-});
+);
 
 function TeamTimeSettings() {
 	const { teamId } = Route.useParams();

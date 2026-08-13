@@ -74,7 +74,9 @@ import { profileService } from "@/services/profile.service";
 import { uploadService } from "@/services/upload.service";
 import { useProfile, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/project/$projectId/chat/$chatRef")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/chat/$chatRef",
+)({
 	component: ChatRoute,
 });
 

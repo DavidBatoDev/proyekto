@@ -1,4 +1,20 @@
 import {
+	closestCenter,
+	DndContext,
+	type DragEndEvent,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	arrayMove,
+	SortableContext,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Tooltip } from "@mui/material";
+import {
 	ChevronDown,
 	ChevronRight,
 	ExternalLink,
@@ -6,26 +22,10 @@ import {
 	GripVertical,
 	Plus,
 } from "lucide-react";
-import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Tooltip } from "@mui/material";
-import {
-	DndContext,
-	PointerSensor,
-	closestCenter,
-	type DragEndEvent,
-	useSensor,
-	useSensors,
-} from "@dnd-kit/core";
-import {
-	SortableContext,
-	arrayMove,
-	useSortable,
-	verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { ReactNode, RefObject } from "react";
-import type { RoadmapEpic } from "@/types/roadmap";
+import { type MouseEvent as ReactMouseEvent, useRef, useState } from "react";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import type { RoadmapEpic } from "@/types/roadmap";
 import {
 	type ExplorerSearchResult,
 	RoadmapStructureHeader,
@@ -100,8 +100,14 @@ const SortableMilestoneEpicRow = ({
 	canDrag,
 	children,
 }: SortableMilestoneEpicRowProps) => {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-		useSortable({ id: epicId });
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: epicId });
 
 	return children({
 		setNodeRef,
@@ -130,8 +136,14 @@ const SortableMilestoneFeatureRow = ({
 	onSetFeatureRowRef,
 	projectId,
 }: SortableMilestoneFeatureRowProps) => {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-		useSortable({ id: feature.id });
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: feature.id });
 
 	const style = {
 		transform: CSS.Transform.toString(transform),
@@ -167,10 +179,14 @@ const SortableMilestoneFeatureRow = ({
 				</div>
 				<ChevronRight className="h-3 w-3 shrink-0 text-gray-400" />
 				<Tooltip title={feature.title} enterDelay={600} placement="right" arrow>
-					<span className="min-w-0 flex-1 truncate text-left">{feature.title}</span>
+					<span className="min-w-0 flex-1 truncate text-left">
+						{feature.title}
+					</span>
 				</Tooltip>
 				{taskCount > 0 && (
-					<span className="pr-1 text-[10px] font-normal text-gray-500">{taskCount}</span>
+					<span className="pr-1 text-[10px] font-normal text-gray-500">
+						{taskCount}
+					</span>
 				)}
 				{projectId && firstTaskId && (
 					<div
@@ -178,7 +194,11 @@ const SortableMilestoneFeatureRow = ({
 						onMouseDown={(event) => event.stopPropagation()}
 						className="shrink-0"
 					>
-						<TaskTimerButton projectId={projectId} taskId={firstTaskId} size="sm" />
+						<TaskTimerButton
+							projectId={projectId}
+							taskId={firstTaskId}
+							size="sm"
+						/>
 					</div>
 				)}
 			</div>
@@ -247,13 +267,18 @@ export const MilestonesLeftPanel = ({
 		};
 
 		const onMouseUp = () => {
-			if (rafId !== null) { window.cancelAnimationFrame(rafId); flush(); }
+			if (rafId !== null) {
+				window.cancelAnimationFrame(rafId);
+				flush();
+			}
 			setIsResizing(false);
 			document.body.style.cursor = "";
 			document.body.style.userSelect = "";
 			setPanelWidth(latestWidth);
 			panelWidthRef.current = latestWidth;
-			try { window.localStorage.setItem(PANEL_STORAGE_KEY, String(latestWidth)); } catch {}
+			try {
+				window.localStorage.setItem(PANEL_STORAGE_KEY, String(latestWidth));
+			} catch {}
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 		};
@@ -396,7 +421,12 @@ export const MilestonesLeftPanel = ({
 															<ChevronDown className="h-3.5 w-3.5 text-gray-500" />
 														)}
 													</button>
-													<Tooltip title={epic.title} enterDelay={600} placement="right" arrow>
+													<Tooltip
+														title={epic.title}
+														enterDelay={600}
+														placement="right"
+														arrow
+													>
 														<button
 															type="button"
 															onClick={() => onToggleEpic(epic.id)}
@@ -451,7 +481,9 @@ export const MilestonesLeftPanel = ({
 																feature={feature}
 																taskCount={feature.tasks?.length ?? 0}
 																canDrag={canReorderFeatures}
-																onSetFeatureRowRef={setFeatureRowRef(feature.id)}
+																onSetFeatureRowRef={setFeatureRowRef(
+																	feature.id,
+																)}
 																projectId={projectId}
 															/>
 														))}
@@ -488,7 +520,9 @@ export const MilestonesLeftPanel = ({
 			>
 				<div
 					className={`absolute right-0 top-0 w-[3px] h-full rounded-full transition-colors ${
-						isResizing ? "bg-orange-400" : "bg-transparent group-hover/resizer:bg-orange-300"
+						isResizing
+							? "bg-orange-400"
+							: "bg-transparent group-hover/resizer:bg-orange-300"
 					}`}
 				/>
 			</div>

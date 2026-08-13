@@ -1,17 +1,13 @@
 import {
+	type CSSProperties,
+	type MouseEvent as ReactMouseEvent,
 	useCallback,
 	useEffect,
 	useRef,
 	useState,
-	type CSSProperties,
-	type MouseEvent as ReactMouseEvent,
 } from "react";
 import { DATE_HEADER_HEIGHT, SUB_ROW_H, SUPER_ROW_H } from "../model/constants";
-import type {
-	Granularity,
-	MilestoneMarker,
-	SuperGroup,
-} from "../model/types";
+import type { Granularity, MilestoneMarker, SuperGroup } from "../model/types";
 import {
 	dateFromTimelinePx,
 	floorToUnit,
@@ -60,7 +56,9 @@ const MilestoneLines = ({
 		<div
 			key={milestone.id}
 			className={`absolute top-0 bottom-0 -translate-x-1/2 group/milestone ${
-				canEditDateRanges ? "cursor-ew-resize pointer-events-auto" : "pointer-events-none"
+				canEditDateRanges
+					? "cursor-ew-resize pointer-events-auto"
+					: "pointer-events-none"
 			}`}
 			style={{ left: Math.max(0, left) }}
 			onMouseDown={(event) =>
@@ -115,7 +113,10 @@ export const MilestonesTimelineHeader = ({
 			if (!canEditDateRanges) return;
 			event.preventDefault();
 			event.stopPropagation();
-			const initialDate = floorToUnit(new Date(marker.milestone.target_date), "day");
+			const initialDate = floorToUnit(
+				new Date(marker.milestone.target_date),
+				"day",
+			);
 			setDragState({
 				marker,
 				anchorClientX: event.clientX,
@@ -186,7 +187,12 @@ export const MilestonesTimelineHeader = ({
 		if (!markerDragState) return marker;
 		return {
 			...marker,
-			left: toTimelinePx(markerDragState.draftDate, rangeStart, granularity, cw),
+			left: toTimelinePx(
+				markerDragState.draftDate,
+				rangeStart,
+				granularity,
+				cw,
+			),
 		};
 	});
 
@@ -208,7 +214,10 @@ export const MilestonesTimelineHeader = ({
 				/>
 			</div>
 
-			<div className="sticky z-30 bg-white border-b border-gray-200" style={{ top: stickyTop }}>
+			<div
+				className="sticky z-30 bg-white border-b border-gray-200"
+				style={{ top: stickyTop }}
+			>
 				{rightHeaderTopHeight > 0 && (
 					<div
 						className="relative border-b border-gray-100 bg-white"

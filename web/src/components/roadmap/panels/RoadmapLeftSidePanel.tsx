@@ -1,4 +1,26 @@
 import {
+	type CollisionDetection,
+	closestCenter,
+	DndContext,
+	type DragEndEvent,
+	type DragOverEvent,
+	type DragStartEvent,
+	KeyboardSensor,
+	PointerSensor,
+	useDroppable,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	arrayMove,
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Tooltip } from "@mui/material";
+import {
 	ChevronRight,
 	ExternalLink,
 	FolderOpen,
@@ -6,45 +28,23 @@ import {
 	Plus,
 	RotateCcw,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Tooltip } from "@mui/material";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
-import {
-	DndContext,
-	KeyboardSensor,
-	PointerSensor,
-	closestCenter,
-	type CollisionDetection,
-	type DragEndEvent,
-	type DragOverEvent,
-	type DragStartEvent,
-	useDroppable,
-	useSensor,
-	useSensors,
-} from "@dnd-kit/core";
-import {
-	SortableContext,
-	arrayMove,
-	sortableKeyboardCoordinates,
-	useSortable,
-	verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import type { Message } from "./ChatPanel";
+import { useToast } from "@/hooks/useToast";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { TaskListItem } from "../widgets/TaskListItem";
-import { useToast } from "@/hooks/useToast";
-import { useShallow } from "zustand/react/shallow";
+import type { Message } from "./ChatPanel";
+import { EpicReorderConfirmModal } from "./EpicReorderConfirmModal";
 import {
-	getSortedEpics,
 	type ExplorerSearchResult,
+	getSortedEpics,
 	ROADMAP_STRUCTURE_EXPLORER_CONFIG,
 	RoadmapStructureHeader,
 } from "./explorer/RoadmapStructureHeader";
-import { FeatureReorderConfirmModal } from "./FeatureReorderConfirmModal";
 import { FeatureMoveConfirmModal } from "./FeatureMoveConfirmModal";
-import { EpicReorderConfirmModal } from "./EpicReorderConfirmModal";
+import { FeatureReorderConfirmModal } from "./FeatureReorderConfirmModal";
 
 export type { Message } from "./ChatPanel";
 

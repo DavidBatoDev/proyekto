@@ -1,25 +1,35 @@
 import {
-	DndContext,
-	DragOverlay,
-	MouseSensor,
-	TouchSensor,
+	type CollisionDetection,
 	closestCenter,
+	DndContext,
+	type DragEndEvent,
+	DragOverlay,
+	type DragStartEvent,
+	MouseSensor,
 	pointerWithin,
+	TouchSensor,
 	useDraggable,
 	useDroppable,
 	useSensor,
 	useSensors,
-	type CollisionDetection,
-	type DragEndEvent,
-	type DragStartEvent,
 } from "@dnd-kit/core";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, ChevronDown, GripVertical, Layers3, ListTree } from "lucide-react";
+import {
+	CalendarDays,
+	ChevronDown,
+	GripVertical,
+	Layers3,
+	ListTree,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useToast } from "@/hooks/useToast";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import { DEFAULT_KANBAN_COLUMNS, type KanbanColumnDef, type KanbanTaskContext } from "./types";
+import {
+	DEFAULT_KANBAN_COLUMNS,
+	type KanbanColumnDef,
+	type KanbanTaskContext,
+} from "./types";
 
 // ─── Drag overlay preview ─────────────────────────────────────────────────────
 
@@ -29,16 +39,18 @@ function TaskDragPreview({ row }: { row: KanbanTaskContext }) {
 	return (
 		<div className="w-72 rounded-xl bg-white shadow-2xl border border-slate-200/80 px-3 py-2.5 rotate-1">
 			<div className="flex items-center gap-2 mb-1.5">
-				<span className={`w-2 h-2 rounded-full ${col?.accent ?? "bg-gray-400"}`} />
+				<span
+					className={`w-2 h-2 rounded-full ${col?.accent ?? "bg-gray-400"}`}
+				/>
 				<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
 					{col?.label}
 				</span>
 			</div>
-			<p className="text-sm font-semibold text-slate-900 line-clamp-2">{task.title}</p>
+			<p className="text-sm font-semibold text-slate-900 line-clamp-2">
+				{task.title}
+			</p>
 			<div className="mt-1.5 flex flex-wrap gap-1">
-				<span
-					className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
-				>
+				<span className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
 					<Layers3 className="h-3 w-3 shrink-0" />
 					{epic.title}
 				</span>
@@ -69,10 +81,13 @@ function DraggableTaskRow({
 	const { task, feature, epic } = row;
 	const assigneeLabel =
 		task.assignee?.display_name ||
-		[task.assignee?.first_name, task.assignee?.last_name].filter(Boolean).join(" ") ||
+		[task.assignee?.first_name, task.assignee?.last_name]
+			.filter(Boolean)
+			.join(" ") ||
 		task.assignee?.email;
 	const dueDate = task.due_date ? new Date(task.due_date) : null;
-	const isOverdue = dueDate && task.status !== "done" && dueDate.getTime() < Date.now();
+	const isOverdue =
+		dueDate && task.status !== "done" && dueDate.getTime() < Date.now();
 
 	return (
 		// Listeners on the whole row — same pattern as KanbanCard.
@@ -89,14 +104,16 @@ function DraggableTaskRow({
 			{/* Visual drag affordance (non-interactive) */}
 			<GripVertical className="w-4 h-4 text-slate-200 shrink-0" />
 
-			<span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 self-start ${col.accent}`} />
+			<span
+				className={`mt-0.5 w-2 h-2 rounded-full shrink-0 self-start ${col.accent}`}
+			/>
 
 			<div className="flex-1 min-w-0">
-				<p className="text-sm font-medium text-slate-900 line-clamp-2">{task.title}</p>
+				<p className="text-sm font-medium text-slate-900 line-clamp-2">
+					{task.title}
+				</p>
 				<div className="mt-1.5 flex flex-wrap gap-1">
-					<span
-						className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]"
-					>
+					<span className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
 						<Layers3 className="h-3 w-3 shrink-0" />
 						{epic.title}
 					</span>
@@ -283,13 +300,16 @@ export function KanbanListView({ rows }: KanbanListViewProps) {
 	);
 
 	const activeRow = useMemo<KanbanTaskContext | null>(
-		() => (activeId ? (rows.find((r) => r.task.id === activeId) ?? null) : null),
+		() =>
+			activeId ? (rows.find((r) => r.task.id === activeId) ?? null) : null,
 		[activeId, rows],
 	);
 
 	const sensors = useSensors(
 		useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-		useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+		useSensor(TouchSensor, {
+			activationConstraint: { delay: 150, tolerance: 8 },
+		}),
 	);
 
 	const handleDragStart = ({ active }: DragStartEvent) => {
@@ -310,7 +330,9 @@ export function KanbanListView({ rows }: KanbanListViewProps) {
 		if (!targetCol) return;
 
 		void updateTaskStatusIntent(taskId, targetCol.bucketStatus).catch((err) => {
-			toast.error(err instanceof Error ? err.message : "Failed to update task status");
+			toast.error(
+				err instanceof Error ? err.message : "Failed to update task status",
+			);
 		});
 	};
 

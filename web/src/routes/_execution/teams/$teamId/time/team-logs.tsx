@@ -42,7 +42,9 @@ import {
 import { getTeam } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/time/team-logs")({
+export const Route = createFileRoute(
+	"/_execution/teams/$teamId/time/team-logs",
+)({
 	validateSearch: parseTeamLogPeriodSearch,
 	component: TeamLogsRoute,
 });

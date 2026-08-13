@@ -1,14 +1,14 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
-import { useUser } from "@/stores/authStore";
 import {
 	getTeam,
 	hasAnyActiveRate,
 	listTeamMembers,
 } from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/teams/$teamId/time/")({
 	component: TimeIndexRedirect,
@@ -91,9 +91,7 @@ function TimeIndexRedirect() {
 	return (
 		<AppSurfaceCard>
 			<div className="space-y-3 p-6 text-sm text-slate-600">
-				<p>
-					You don't have access to time tracking on this team.
-				</p>
+				<p>You don't have access to time tracking on this team.</p>
 				<Link
 					to="/teams/$teamId"
 					params={{ teamId }}

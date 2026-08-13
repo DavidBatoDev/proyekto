@@ -1,22 +1,21 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
 import {
-	ListChecks,
 	AlertCircle,
+	ListChecks,
 	Loader2,
 	Plus,
 	ReceiptText,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
+import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
+import { RoadmapCanvasOverlays } from "@/components/roadmap/views/roadmap/components/RoadmapCanvasOverlays";
+import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useRoadmapDataSync } from "@/hooks/useRoadmapDataSync";
 import { useUser } from "@/stores/authStore";
-import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
-import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
-import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
-import { RoadmapCanvasOverlays } from "@/components/roadmap/views/roadmap/components/RoadmapCanvasOverlays";
-import { useState } from "react";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 
 export const Route = createFileRoute(
 	"/_execution/project/$projectId/work-items/$roadmapId",

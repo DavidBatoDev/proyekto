@@ -29,10 +29,7 @@ export function memberHasGate(
 			? ROLE_PRESETS[role]
 			: null;
 	if (!preset) return false;
-	const [section, field] = gate.split(".") as [
-		keyof typeof preset,
-		string,
-	];
+	const [section, field] = gate.split(".") as [keyof typeof preset, string];
 	const sectionRecord = preset[section] as Record<string, boolean>;
 	return Boolean(sectionRecord?.[field]);
 }

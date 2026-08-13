@@ -17,13 +17,13 @@
 const cdnToBlob = new Map<string, string>();
 
 export function rememberAttachmentBlob(cdnUrl: string, blobUrl: string): void {
-  if (cdnUrl && blobUrl) cdnToBlob.set(cdnUrl, blobUrl);
+	if (cdnUrl && blobUrl) cdnToBlob.set(cdnUrl, blobUrl);
 }
 
 export function resolveAttachmentSrc(url: string): string {
-  return cdnToBlob.get(url) ?? url;
+	return cdnToBlob.get(url) ?? url;
 }
 
 export function forgetAttachmentBlob(cdnUrl: string): void {
-  cdnToBlob.delete(cdnUrl);
+	cdnToBlob.delete(cdnUrl);
 }

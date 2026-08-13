@@ -1,19 +1,21 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ClipboardList } from "lucide-react";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
-import { useAuthStore } from "@/stores/authStore";
 import { getTeam } from "@/services/teams.service";
+import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/settings/logs")({
-	beforeLoad: () => {
-		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
+export const Route = createFileRoute("/_execution/teams/$teamId/settings/logs")(
+	{
+		beforeLoad: () => {
+			const { isAuthenticated } = useAuthStore.getState();
+			if (!isAuthenticated) {
+				throw redirect({ to: "/auth/login" });
+			}
+		},
+		component: TeamLogsSettings,
 	},
-	component: TeamLogsSettings,
-});
+);
 
 function TeamLogsSettings() {
 	const { teamId } = Route.useParams();

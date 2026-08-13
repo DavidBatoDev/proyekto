@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Loader2, Plus, Users } from "lucide-react";
+import { useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { useProjectInviteMemberMutation } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
@@ -80,8 +80,8 @@ export function InviteToProjectModal({
 						</h2>
 					</div>
 					<p className="mt-1 text-sm text-slate-600">
-						Send an invite by email. They'll be added directly to this
-						project once they accept. To bring in a whole team, use{" "}
+						Send an invite by email. They'll be added directly to this project
+						once they accept. To bring in a whole team, use{" "}
 						<span className="font-medium text-slate-700">Manage teams</span>{" "}
 						instead.
 					</p>

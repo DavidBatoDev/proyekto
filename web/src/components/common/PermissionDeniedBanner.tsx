@@ -2,8 +2,8 @@ import { ShieldAlert } from "lucide-react";
 import {
 	formatMissingPermission,
 	getPermissionLabel,
-	parseMissingPermissionError,
 	type ParsedPermissionError,
+	parseMissingPermissionError,
 } from "@/lib/permissionErrors";
 
 /**
@@ -23,7 +23,8 @@ export function PermissionDeniedBanner({
 	parsed?: ParsedPermissionError;
 	className?: string;
 }) {
-	const resolved = parsed ?? (error ? parseMissingPermissionError(error) : null);
+	const resolved =
+		parsed ?? (error ? parseMissingPermissionError(error) : null);
 	if (!resolved) return null;
 
 	const headline = formatMissingPermission(resolved);

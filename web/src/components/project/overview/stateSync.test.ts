@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	EMPTY_CUSTOM_FIELDS,
 	areProjectBriefFieldsEqual,
+	EMPTY_CUSTOM_FIELDS,
 	getOverviewBriefState,
 } from "./stateSync";
 import type { ProjectBriefField } from "./types";

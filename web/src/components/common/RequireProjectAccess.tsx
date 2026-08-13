@@ -1,12 +1,12 @@
-import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
-import type { ProjectPermissions } from "@/services/project.service";
-import { PermissionDeniedBanner } from "./PermissionDeniedBanner";
 import {
 	getPermissionLabel,
 	type ParsedPermissionError,
 } from "@/lib/permissionErrors";
+import type { ProjectPermissions } from "@/services/project.service";
+import { PermissionDeniedBanner } from "./PermissionDeniedBanner";
 
 type AccessGate = keyof ProjectPermissions["access"];
 

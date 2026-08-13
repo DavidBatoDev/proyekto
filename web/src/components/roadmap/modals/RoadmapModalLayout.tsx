@@ -1,14 +1,14 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, Calendar, Paperclip, Plus, X } from "lucide-react";
 import {
+	type FormEvent,
+	type ReactNode,
 	useEffect,
 	useMemo,
-	useState,
 	useRef,
-	type ReactNode,
-	type FormEvent,
+	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, X, Plus, Calendar, Paperclip } from "lucide-react";
 
 interface RoadmapModalLayoutProps {
 	isOpen: boolean;

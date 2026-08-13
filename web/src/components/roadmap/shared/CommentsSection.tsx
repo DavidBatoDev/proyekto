@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import type { Comment } from "@/types/roadmap";
-import type { MentionUser } from "@/components/common/RichTextEditor/types";
 import { formatDistanceToNow } from "date-fns";
+import { Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import type { MentionUser } from "@/components/common/RichTextEditor/types";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
+import type { Comment } from "@/types/roadmap";
 
 interface CommentsSectionProps {
 	comments: Comment[];
@@ -311,7 +311,7 @@ export const CommentsSection = ({
 										<>
 											<div className="border border-gray-300 rounded-xl bg-white px-4 py-3">
 												<div
-											className="max-w-none wrap-break-word text-sm text-gray-700 [&_.mention]:rounded [&_.mention]:bg-primary/10 [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:font-semibold [&_.mention]:text-primary [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
+													className="max-w-none wrap-break-word text-sm text-gray-700 [&_.mention]:rounded [&_.mention]:bg-primary/10 [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:font-semibold [&_.mention]:text-primary [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
 													dangerouslySetInnerHTML={{
 														__html: sanitizeCommentHtml(comment.content),
 													}}

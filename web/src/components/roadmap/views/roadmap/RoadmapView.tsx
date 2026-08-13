@@ -1,58 +1,58 @@
+import { useQuery } from "@tanstack/react-query";
+import {
+	applyNodeChanges,
+	Background,
+	BackgroundVariant,
+	Controls,
+	type Edge,
+	type Node,
+	type NodeChange,
+	type NodeTypes,
+	ReactFlow,
+	type ReactFlowInstance,
+	useNodesInitialized,
+} from "@xyflow/react";
 import React, {
+	type DragEvent,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type DragEvent,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-	ReactFlow,
-	Controls,
-	Background,
-	BackgroundVariant,
-	applyNodeChanges,
-	useNodesInitialized,
-	type Node,
-	type Edge,
-	type NodeTypes,
-	type ReactFlowInstance,
-	type NodeChange,
-} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useDraggable } from "@dnd-kit/core";
-import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useShallow } from "zustand/react/shallow";
 import { GripHorizontal, Layers3, ListTodo, Loader2 } from "lucide-react";
-import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
-import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
-import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
-import { FeatureMoveConfirmModal } from "../../panels/FeatureMoveConfirmModal";
+import { useShallow } from "zustand/react/shallow";
+import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
+import { featureFlags } from "@/config/featureFlags";
 import {
-	FeatureWidget,
-	type FeatureWidgetData,
-} from "../../widgets/FeatureWidget";
+	type DockAvatar,
+	useRecentAssignees,
+} from "@/hooks/useRecentAssignees";
+import type {
+	CollaboratorInfo,
+	RemoteCursor,
+	RemoteDrag,
+} from "@/hooks/useRoadmapCollaboration";
+import { teamTimeService } from "@/services/team-time.service";
+import { useUser } from "@/stores/authStore";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type {
 	Roadmap,
 	RoadmapEpic,
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
-import type { RoadmapPerformanceMode } from "./models/types";
+import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
+import { FeatureMoveConfirmModal } from "../../panels/FeatureMoveConfirmModal";
+import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
+import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
 import {
-	useRecentAssignees,
-	type DockAvatar,
-} from "@/hooks/useRecentAssignees";
-import { teamTimeService } from "@/services/team-time.service";
-import { useUser } from "@/stores/authStore";
-import type {
-	CollaboratorInfo,
-	RemoteCursor,
-	RemoteDrag,
-} from "@/hooks/useRoadmapCollaboration";
-import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
-import { featureFlags } from "@/config/featureFlags";
+	FeatureWidget,
+	type FeatureWidgetData,
+} from "../../widgets/FeatureWidget";
+import type { RoadmapPerformanceMode } from "./models/types";
 
 function InitialCanvasReady({
 	nodeCount,
