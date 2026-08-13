@@ -50,6 +50,14 @@ export function isProjectConsultant(
 	return getProjectConsultantMember(project)?.user_id === userId;
 }
 
+export function isPersonalWorkspace(
+	project?: ProjectWithAccess | null,
+): boolean {
+	return (project?.members ?? []).some(
+		(member) => member.origin === "personal_workspace",
+	);
+}
+
 /** Owner of the project row, or an owner/admin access row on it. */
 export function hasProjectAdminAccess(
 	project?: ProjectWithAccess | null,

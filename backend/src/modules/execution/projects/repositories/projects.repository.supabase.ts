@@ -42,8 +42,6 @@ import { attachProjectClientFlag } from './project-payload.mapper';
 
 const PROJECT_MEMBER_SELECT =
   'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))';
-const PERSONAL_WORKSPACE_SELECT =
-  'personal_workspace:personal_workspaces(user_id)';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -86,7 +84,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     const { data } = await this.supabase
       .from('project_access')
       .select(
-        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT})`,
+        `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
       )
       .eq('user_id', userId);
 
@@ -101,14 +99,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       this.supabase
         .from('projects')
         .select(
-          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT}`,
+          `*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}`,
         )
         .eq('owner_id', userId),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
         .from('project_access')
         .select(
-          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT}, ${PERSONAL_WORKSPACE_SELECT})`,
+          `project:projects(*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, email), ${PROJECT_MEMBER_SELECT})`,
         )
         .eq('user_id', userId),
     ]);
@@ -160,8 +158,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         `
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))),
-        personal_workspace:personal_workspaces(user_id)
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))
       `,
       )
       .eq('id', id)

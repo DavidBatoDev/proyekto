@@ -2,24 +2,7 @@ export interface ProjectClientFlag {
   has_client: boolean;
 }
 
-export interface ProjectCompatibilityFields {
-  is_personal_workspace: boolean;
-  category: null;
-  project_state: null;
-  skills: [];
-  budget_range: null;
-  funding_status: null;
-  start_date: null;
-  custom_start_date: null;
-  role_permissions_json: Record<string, never>;
-}
-
-type PublicProjectPayload<T extends object> = Omit<
-  T,
-  keyof ProjectCompatibilityFields | 'personal_workspace'
-> &
-  ProjectClientFlag &
-  ProjectCompatibilityFields;
+type PublicProjectPayload<T extends object> = T & ProjectClientFlag;
 
 import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
 
@@ -29,10 +12,6 @@ interface ProjectAccessMemberRow {
   has_direct_grant?: unknown;
   granted_at?: unknown;
   user?: unknown;
-}
-
-interface PersonalWorkspaceRelation {
-  user_id?: unknown;
 }
 
 function timestamp(value: unknown): number {
@@ -79,29 +58,9 @@ export function attachProjectClientFlag<T extends object>(
         ? attachMarketplaceEnrollmentFields(member.user)
         : member.user,
   }));
-  const personalWorkspace = record.personal_workspace as
-    | PersonalWorkspaceRelation
-    | PersonalWorkspaceRelation[]
-    | null
-    | undefined;
-  const isPersonalWorkspace = Array.isArray(personalWorkspace)
-    ? personalWorkspace.length > 0
-    : Boolean(personalWorkspace);
-  const publicProject = { ...record };
-  delete publicProject.personal_workspace;
-
   return {
-    ...publicProject,
+    ...record,
     ...(Array.isArray(record.members) ? { members: mappedMembers } : {}),
     has_client: record.owner_id !== consultantOfRecordId(members),
-    is_personal_workspace: isPersonalWorkspace,
-    category: null,
-    project_state: null,
-    skills: [],
-    budget_range: null,
-    funding_status: null,
-    start_date: null,
-    custom_start_date: null,
-    role_permissions_json: {},
   } as PublicProjectPayload<T>;
 }

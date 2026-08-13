@@ -31,6 +31,7 @@ import {
 import {
 	getProjectConsultantMember,
 	hasProjectAdminAccess,
+	isPersonalWorkspace,
 } from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import { projectService } from "@/services/project.service";
@@ -333,7 +334,7 @@ function OverviewPage() {
 							</div>
 						)}
 						<BringInAConsultantCard
-							isPersonalWorkspace={Boolean(project.is_personal_workspace)}
+							isPersonalWorkspace={isPersonalWorkspace(project)}
 							hasConsultant={Boolean(getProjectConsultantMember(project))}
 						/>
 						<div className="app-slide-up">
