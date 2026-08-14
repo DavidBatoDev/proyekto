@@ -1,12 +1,12 @@
 /* @vitest-environment jsdom */
 
-import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
-import { RoadmapView } from "./RoadmapView";
 import type { RoadmapPerformanceMode } from "./models/types";
+import { RoadmapView } from "./RoadmapView";
 
 type ReactFlowMockProps = {
 	children?: ReactNode;
@@ -17,9 +17,31 @@ type ReactFlowMockProps = {
 
 let reactFlowProps: ReactFlowMockProps | null = null;
 
+/**
+ * Stub instance handed to `onInit`, so the shell-owned canvas chrome (which
+ * drives the renderer imperatively) can be exercised in jsdom.
+ */
+const flowInstance = {
+	zoomIn: vi.fn(),
+	zoomOut: vi.fn(),
+	fitView: vi.fn(),
+	getZoom: () => 0.67,
+	getViewport: () => ({ x: 0, y: 0, zoom: 0.67 }),
+	getNode: () => undefined,
+	getNodes: () => [],
+	setCenter: vi.fn(),
+	screenToFlowPosition: (p: { x: number; y: number }) => p,
+};
+
 vi.mock("@xyflow/react", () => ({
 	ReactFlow: ({ children, ...props }: ReactFlowMockProps) => {
 		reactFlowProps = props;
+		const onInit = props.onInit as ((i: unknown) => void) | undefined;
+		// In an effect, not during render: `onInit` sets state on the parent, and
+		// the real ReactFlow also fires it post-mount.
+		useEffect(() => {
+			onInit?.(flowInstance);
+		}, [onInit]);
 		return <div data-testid="react-flow">{children}</div>;
 	},
 	Controls: () => <div data-testid="controls" />,
@@ -162,5 +184,51 @@ describe("RoadmapView performance mode", () => {
 		expect(featureNode?.data?.onDelete).toBeUndefined();
 		expect(featureNode?.data?.onUpdateTask).toBeUndefined();
 		expect(screen.queryByText("Drag To Add")).toBeNull();
+	});
+});
+
+describe("RoadmapView canvas chrome", () => {
+	afterEach(() => {
+		cleanup();
+		reactFlowProps = null;
+		vi.clearAllMocks();
+	});
+
+	it("exposes renderer-independent test hooks on the shell", () => {
+		// These are what the e2e suite targets instead of React Flow's internal
+		// class names, so they must survive the renderer swap.
+		renderRoadmapView();
+
+		const shell = screen.getByTestId("roadmap-canvas");
+		expect(shell).toBeTruthy();
+		expect(shell.getAttribute("data-canvas-engine")).toBe("react-flow");
+		expect(shell.getAttribute("data-canvas-ready")).toBeTruthy();
+	});
+
+	it("renders its own zoom and fit-view controls, not React Flow's", () => {
+		renderRoadmapView();
+
+		expect(screen.getByTestId("roadmap-canvas-zoom-in")).toBeTruthy();
+		expect(screen.getByTestId("roadmap-canvas-zoom-out")).toBeTruthy();
+		expect(screen.getByTestId("roadmap-canvas-fit-view")).toBeTruthy();
+		// React Flow's <Controls> is no longer mounted.
+		expect(screen.queryByTestId("controls")).toBeNull();
+	});
+
+	it("drives the renderer viewport from the controls", () => {
+		renderRoadmapView();
+
+		screen.getByTestId("roadmap-canvas-zoom-in").click();
+		expect(flowInstance.zoomIn).toHaveBeenCalled();
+
+		screen.getByTestId("roadmap-canvas-zoom-out").click();
+		expect(flowInstance.zoomOut).toHaveBeenCalled();
+
+		screen.getByTestId("roadmap-canvas-fit-view").click();
+		// Must keep the framing the canvas was designed around.
+		expect(flowInstance.fitView).toHaveBeenCalledWith({
+			padding: 0.12,
+			maxZoom: 0.67,
+		});
 	});
 });
