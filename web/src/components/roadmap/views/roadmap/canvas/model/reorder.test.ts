@@ -10,30 +10,30 @@
  *   2. non-dragged features stay anchored to their original epic, even when they
  *      sit nearer another epic's midpoint.
  */
-import type { Node } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import { byId, makeEpic, makeFeature } from "./__fixtures__/canvasGraph";
 import { computeReorderedEpics } from "./reorder";
+import type { CanvasNode } from "./types";
 
 type Box = { id: string; y: number; height: number };
 
-const epicNode = ({ id, y, height }: Box): Node =>
+const epicNode = ({ id, y, height }: Box): CanvasNode =>
 	({
 		id,
 		type: "epicWidget",
 		position: { x: 100, y },
 		height,
 		data: {},
-	}) as unknown as Node;
+	}) as CanvasNode;
 
-const featureNode = ({ id, y, height }: Box): Node =>
+const featureNode = ({ id, y, height }: Box): CanvasNode =>
 	({
 		id,
 		type: "featureWidget",
 		position: { x: 750, y },
 		height,
 		data: {},
-	}) as unknown as Node;
+	}) as CanvasNode;
 
 describe("computeReorderedEpics — epic drag", () => {
 	it("orders epics by their current Y and renumbers position by index * 1000", () => {
@@ -267,19 +267,19 @@ describe("computeReorderedEpics — feature drag", () => {
 				type: "epicWidget",
 				position: { x: 100, y: 0 },
 				data: {},
-			} as unknown as Node,
+			} as CanvasNode,
 			{
 				id: "f1",
 				type: "featureWidget",
 				position: { x: 750, y: 400 },
 				data: {},
-			} as unknown as Node,
+			} as CanvasNode,
 			{
 				id: "dragged",
 				type: "featureWidget",
 				position: { x: 750, y: 0 },
 				data: {},
-			} as unknown as Node,
+			} as CanvasNode,
 		];
 
 		const result = computeReorderedEpics(

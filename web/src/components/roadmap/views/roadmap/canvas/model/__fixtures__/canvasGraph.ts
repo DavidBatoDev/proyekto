@@ -7,9 +7,8 @@
  * the fields those functions actually read are meaningful, everything else is
  * filler so the objects satisfy the domain types.
  */
-import type { Edge, Node } from "@xyflow/react";
 import type { RoadmapEpic, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
-import type { StructuralNodeData } from "../types";
+import type { CanvasEdge, CanvasNode, StructuralNodeData } from "../types";
 
 const TS = "2026-01-01T00:00:00.000Z";
 
@@ -82,15 +81,15 @@ export function makeEpic(
 export function makeNodes(
 	epics: RoadmapEpic[],
 	extraFeatures: RoadmapFeature[] = [],
-): Node<StructuralNodeData>[] {
-	const epicNodes: Node<StructuralNodeData>[] = epics.map((epic) => ({
+): CanvasNode<StructuralNodeData>[] {
+	const epicNodes: CanvasNode<StructuralNodeData>[] = epics.map((epic) => ({
 		id: epic.id,
 		type: "epicWidget",
 		data: { kind: "epic", epic },
 		position: { x: 0, y: 0 },
 	}));
 
-	const featureNodes: Node<StructuralNodeData>[] = [
+	const featureNodes: CanvasNode<StructuralNodeData>[] = [
 		...epics.flatMap((epic) =>
 			(epic.features ?? []).map((feature) => ({
 				...feature,
@@ -112,8 +111,8 @@ export function makeNodes(
 }
 
 /** Mirrors the component's edge construction closely enough for preview tests. */
-export function makeEdges(epics: RoadmapEpic[]): Edge[] {
-	const featureEdges: Edge[] = epics.flatMap((epic) =>
+export function makeEdges(epics: RoadmapEpic[]): CanvasEdge[] {
+	const featureEdges: CanvasEdge[] = epics.flatMap((epic) =>
 		(epic.features ?? []).map((feature) => ({
 			id: `epic-feature-${epic.id}-${feature.id}`,
 			source: epic.id,
@@ -125,7 +124,7 @@ export function makeEdges(epics: RoadmapEpic[]): Edge[] {
 		})),
 	);
 
-	const chainEdges: Edge[] = [];
+	const chainEdges: CanvasEdge[] = [];
 	const ordered = [...epics].sort((a, b) => a.position - b.position);
 	for (let i = 0; i < ordered.length - 1; i++) {
 		chainEdges.push({

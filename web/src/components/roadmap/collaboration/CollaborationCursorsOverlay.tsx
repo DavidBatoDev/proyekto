@@ -1,5 +1,5 @@
-import { useReactFlow } from "@xyflow/react";
 import { useEffect, useRef } from "react";
+import { useCanvasViewport } from "@/components/roadmap/views/roadmap/canvas/viewport/CanvasViewportContext";
 import type { RemoteCursor } from "@/hooks/useRoadmapCollaboration";
 
 interface Props {
@@ -13,7 +13,13 @@ const EASE = 0.3;
 const SNAP_EPSILON = 0.5;
 
 /**
- * Rendered as a child of <ReactFlow> so useReactFlow() is in context.
+ * Renderer-agnostic: it reads the viewport through the canvas port, so it can be
+ * a sibling of whichever engine is mounted rather than a child of one.
+ *
+ * The port's `getViewport` has a stable identity by construction, which matters
+ * here — the rAF effect below is keyed on it, so an identity that changed per
+ * viewport update would tear the loop down and rebuild it every frame, resetting
+ * every cursor's easing state.
  *
  * Smoothing: broadcast positions are treated as *targets*; a requestAnimationFrame
  * loop eases each cursor toward its target and writes the transform directly to
@@ -23,7 +29,7 @@ const SNAP_EPSILON = 0.5;
  * pan/zoom.
  */
 export function CollaborationCursorsOverlay({ remoteCursors }: Props) {
-	const { getViewport } = useReactFlow();
+	const { getViewport } = useCanvasViewport();
 
 	// Latest targets, read by the rAF loop without re-subscribing.
 	const targetsRef = useRef<RemoteCursor[]>(remoteCursors);

@@ -1,18 +1,59 @@
 /**
  * Canvas domain types.
  *
- * `CanvasNode`/`CanvasEdge` are currently aliases of React Flow's types. They exist
- * so the rest of the canvas can stop naming `@xyflow/react` directly: when the
- * renderer is replaced these two aliases become locally-declared structural
- * interfaces and nothing downstream has to change.
+ * `CanvasNode`/`CanvasEdge` are declared HERE rather than imported from
+ * `@xyflow/react`. They started as aliases of React Flow's `Node`/`Edge` purely
+ * so the rest of the canvas could stop naming that package; now they are
+ * structural, describing only the fields this canvas actually reads.
+ *
+ * Both remain structurally compatible with React Flow's equivalents in both
+ * directions for those fields, which is what lets `ReactFlowRenderer` pass them
+ * straight through with a cast at the adapter boundary — and what lets a second
+ * renderer consume them with no adapter at all.
  */
-import type { Edge, Node } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 
-export type CanvasNode<
+export interface CanvasXYPosition {
+	x: number;
+	y: number;
+}
+
+export interface CanvasNode<
 	TData extends Record<string, unknown> = Record<string, unknown>,
-> = Node<TData>;
-export type CanvasEdge = Edge;
+> {
+	id: string;
+	/** Selects the widget that draws this node (`epicWidget` / `featureWidget`). */
+	type?: string;
+	position: CanvasXYPosition;
+	data: TData;
+	/**
+	 * Authoritative dimensions. The layout pass always assigns both, and edge
+	 * anchoring is computed from them analytically — see the invariant test in
+	 * layout.test.ts.
+	 */
+	width?: number;
+	height?: number;
+	zIndex?: number;
+	className?: string;
+	style?: CSSProperties;
+	hidden?: boolean;
+}
+
+export interface CanvasEdge {
+	id: string;
+	source: string;
+	target: string;
+	sourceHandle?: string | null;
+	targetHandle?: string | null;
+	/** Path shape. Currently always `simplebezier`. */
+	type?: string;
+	animated?: boolean;
+	className?: string;
+	style?: CSSProperties;
+	hidden?: boolean;
+	zIndex?: number;
+}
 
 export type StructuralEpicNodeData = {
 	kind: "epic";

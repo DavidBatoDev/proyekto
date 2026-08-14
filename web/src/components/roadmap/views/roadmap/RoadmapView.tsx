@@ -1,16 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-	applyNodeChanges,
-	Background,
-	BackgroundVariant,
-	type Edge,
-	type Node,
-	type NodeChange,
-	type NodeTypes,
-	ReactFlow,
-	type ReactFlowInstance,
-	useNodesInitialized,
-} from "@xyflow/react";
+import { Loader2 } from "lucide-react";
 import {
 	type DragEvent,
 	useCallback,
@@ -18,8 +7,6 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import "@xyflow/react/dist/style.css";
-import { Loader2 } from "lucide-react";
 import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
 import { featureFlags } from "@/config/featureFlags";
 import { useRecentAssignees } from "@/hooks/useRecentAssignees";
@@ -28,6 +15,7 @@ import type {
 	RemoteCursor,
 	RemoteDrag,
 } from "@/hooks/useRoadmapCollaboration";
+import { resolveCanvasEngine } from "@/lib/canvasEngine";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
 import type {
@@ -39,11 +27,8 @@ import type {
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
 import { FeatureMoveConfirmModal } from "../../panels/FeatureMoveConfirmModal";
 import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
-import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
-import {
-	FeatureWidget,
-	type FeatureWidgetData,
-} from "../../widgets/FeatureWidget";
+import { EpicWidget } from "../../widgets/EpicWidget";
+import { FeatureWidget } from "../../widgets/FeatureWidget";
 import { CanvasControls } from "./canvas/components/CanvasControls";
 import { CanvasToolbarDock } from "./canvas/components/CanvasToolbarDock";
 import { useCanvasDragReorder } from "./canvas/hooks/useCanvasDragReorder";
@@ -64,33 +49,18 @@ import {
 } from "./canvas/model/toolbar";
 import type {
 	CanvasDragSubject,
+	CanvasEdge,
+	CanvasNode,
 	StructuralNodeData,
 } from "./canvas/model/types";
+import { ReactFlowRenderer } from "./canvas/renderers/ReactFlowRenderer";
+import type { CanvasRenderer } from "./canvas/renderers/types";
+import {
+	CanvasViewportProvider,
+	useCanvasViewport,
+	useCanvasViewportReady,
+} from "./canvas/viewport/CanvasViewportContext";
 import type { RoadmapPerformanceMode } from "./models/types";
-
-function InitialCanvasReady({
-	nodeCount,
-	onReady,
-}: {
-	nodeCount: number;
-	onReady: () => void;
-}) {
-	const nodesInitialized = useNodesInitialized({
-		includeHiddenNodes: true,
-	});
-
-	useEffect(() => {
-		if (nodeCount > 0 && !nodesInitialized) return;
-
-		// Let React Flow commit its measured node bounds and initial viewport before
-		// revealing the canvas. This prevents the empty/default-position flash seen
-		// on the first visit while keeping later node updates immediate.
-		const frameId = window.requestAnimationFrame(onReady);
-		return () => window.cancelAnimationFrame(frameId);
-	}, [nodeCount, nodesInitialized, onReady]);
-
-	return null;
-}
 
 interface RoadmapViewProps {
 	roadmap: Roadmap;
@@ -145,7 +115,15 @@ interface RoadmapViewProps {
 	performanceMode?: RoadmapPerformanceMode;
 }
 
-export const RoadmapView = ({
+/**
+ * Only one engine exists today, so this resolves to `ReactFlowRenderer`
+ * unconditionally. It is wired up now so activating the second engine is a
+ * one-line change here rather than a refactor.
+ */
+const CANVAS_ENGINE = resolveCanvasEngine("app");
+const Renderer: CanvasRenderer = ReactFlowRenderer;
+
+const RoadmapCanvasShell = ({
 	roadmap,
 	epics,
 	minZoom = 0.4,
@@ -193,10 +171,10 @@ export const RoadmapView = ({
 		taskId: string;
 		token: number;
 	} | null>(null);
-	const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<
-		Node<EpicWidgetData | FeatureWidgetData>,
-		Edge
-	> | null>(null);
+	// The renderer publishes its imperative API here; `viewportReady` stands in
+	// for the old `if (!reactFlowInstance)` guards.
+	const viewport = useCanvasViewport();
+	const viewportReady = useCanvasViewportReady();
 	const [readyRoadmapId, setReadyRoadmapId] = useState<string | null>(null);
 	const isCanvasReady = readyRoadmapId === roadmap.id;
 	const handleCanvasReady = useCallback(() => {
@@ -233,7 +211,7 @@ export const RoadmapView = ({
 		roadmap?.project_id ?? "",
 	);
 
-	const nodeTypes: NodeTypes = useMemo(
+	const nodeComponents = useMemo(
 		() => ({
 			epicWidget: EpicWidget,
 			featureWidget: FeatureWidget,
@@ -280,15 +258,17 @@ export const RoadmapView = ({
 			}));
 
 		let derivedMaxTaskCount = 0;
-		const epicNodes: Node<StructuralNodeData>[] = orderedEpics.map((epic) => ({
-			id: epic.id,
-			type: "epicWidget",
-			data: {
-				kind: "epic",
-				epic,
-			},
-			position: { x: 0, y: 0 },
-		}));
+		const epicNodes: CanvasNode<StructuralNodeData>[] = orderedEpics.map(
+			(epic) => ({
+				id: epic.id,
+				type: "epicWidget",
+				data: {
+					kind: "epic",
+					epic,
+				},
+				position: { x: 0, y: 0 },
+			}),
+		);
 
 		const allFeatures = orderedEpics.flatMap((epic) =>
 			(epic.features || []).map((feature) => {
@@ -303,7 +283,7 @@ export const RoadmapView = ({
 			}),
 		);
 
-		const featureNodes: Node<StructuralNodeData>[] = allFeatures.map(
+		const featureNodes: CanvasNode<StructuralNodeData>[] = allFeatures.map(
 			(feature) => ({
 				id: feature.id,
 				type: "featureWidget",
@@ -317,7 +297,7 @@ export const RoadmapView = ({
 
 		const allNodes = [...epicNodes, ...featureNodes];
 
-		const featureEdges: Edge[] = allFeatures.map((feature) => {
+		const featureEdges: CanvasEdge[] = allFeatures.map((feature) => {
 			const derivedStatus = feature.status;
 			return {
 				id: `epic-feature-${feature.epic_id}-${feature.id}`,
@@ -333,7 +313,7 @@ export const RoadmapView = ({
 			};
 		});
 
-		const epicEdges: Edge[] = [];
+		const epicEdges: CanvasEdge[] = [];
 		for (let i = 0; i < orderedEpics.length - 1; i++) {
 			epicEdges.push({
 				id: `epic-chain-${orderedEpics[i].id}-${orderedEpics[i + 1].id}`,
@@ -402,11 +382,11 @@ export const RoadmapView = ({
 	});
 
 	useEffect(() => {
-		if (!focusNodeId || !reactFlowInstance) {
+		if (!focusNodeId || !viewportReady) {
 			return;
 		}
 
-		const targetNode = reactFlowInstance.getNode(focusNodeId);
+		const targetNode = viewport.getNode(focusNodeId);
 		if (!targetNode) {
 			onFocusComplete?.();
 			return;
@@ -417,9 +397,8 @@ export const RoadmapView = ({
 		const centerX = targetNode.position.x + nodeWidth / 2 + focusNodeOffsetX;
 		const centerY = targetNode.position.y + nodeHeight / 2;
 
-		const viewport = reactFlowInstance.getViewport?.();
-		const nextZoom = viewport?.zoom ?? zoom;
-		reactFlowInstance.setCenter(centerX, centerY, {
+		const nextZoom = viewport.getViewport().zoom ?? zoom;
+		viewport.setCenter(centerX, centerY, {
 			zoom: nextZoom,
 			duration: isReducedMotion ? 0 : 600,
 		});
@@ -452,7 +431,8 @@ export const RoadmapView = ({
 		focusTaskId,
 		isReducedMotion,
 		onFocusComplete,
-		reactFlowInstance,
+		viewport,
+		viewportReady,
 		zoom,
 	]);
 
@@ -466,10 +446,6 @@ export const RoadmapView = ({
 		[extraRightPadding, layoutedNodes],
 	);
 
-	const onEdgesChange = useCallback(() => {
-		// Handle edge changes if needed
-	}, []);
-
 	// --- Canvas drag helpers ---
 
 	// Binds the pure `computeDragPreview` to this render's authoritative graph so
@@ -480,8 +456,8 @@ export const RoadmapView = ({
 		(args: {
 			ds: CanvasDragSubject;
 			draggedPosition: { x: number; y: number };
-			baseNodes: Node[];
-			originalNodes: Node[];
+			baseNodes: CanvasNode[];
+			originalNodes: CanvasNode[];
 			relativeYs: Map<string, number> | null;
 		}) =>
 			computeDragPreview({
@@ -522,12 +498,22 @@ export const RoadmapView = ({
 		onBroadcastNodeDragEnd,
 	});
 
-	const onNodesChange = useCallback((changes: NodeChange[]) => {
-		if (!workingNodesRef.current) return;
-		const updated = applyNodeChanges(changes, workingNodesRef.current);
-		workingNodesRef.current = updated;
-		setWorkingNodes(updated);
-	}, []);
+	/**
+	 * Read/write handle the renderer uses to apply its own node changes, keeping
+	 * React Flow's NodeChange protocol out of the shell. Reading the REF rather
+	 * than state is deliberate: it is written synchronously during a drag and the
+	 * renderer needs the current frame within the same event cycle.
+	 */
+	const nodesController = useMemo(
+		() => ({
+			getNodes: () => workingNodesRef.current,
+			setNodes: (next: CanvasNode[]) => {
+				workingNodesRef.current = next;
+				setWorkingNodes(next);
+			},
+		}),
+		[workingNodesRef, setWorkingNodes],
+	);
 
 	const { remoteWorkingNodes, remoteWorkingEdges } = useRemoteDragMirror({
 		remoteDrag,
@@ -576,8 +562,8 @@ export const RoadmapView = ({
 		(event: DragEvent<HTMLDivElement>) => {
 			const itemType = getToolbarItemFromTransfer(event);
 			if (itemType !== "epic") return;
-			if (!reactFlowInstance) return;
-			const dropPosition = reactFlowInstance.screenToFlowPosition({
+			if (!viewportReady) return;
+			const dropPosition = viewport.screenToCanvas({
 				x: event.clientX,
 				y: event.clientY,
 			});
@@ -585,16 +571,16 @@ export const RoadmapView = ({
 			event.preventDefault();
 			event.dataTransfer.dropEffect = "move";
 		},
-		[getToolbarItemFromTransfer, reactFlowInstance, getHitTestNodes],
+		[getToolbarItemFromTransfer, viewport, viewportReady, getHitTestNodes],
 	);
 
 	const handleCanvasDrop = useCallback(
 		(event: DragEvent<HTMLDivElement>) => {
 			const itemType = getToolbarItemFromTransfer(event);
 			setToolbarDraggingType(null);
-			if (itemType !== "epic" || !reactFlowInstance) return;
+			if (itemType !== "epic" || !viewportReady) return;
 			event.preventDefault();
-			const dropPosition = reactFlowInstance.screenToFlowPosition({
+			const dropPosition = viewport.screenToCanvas({
 				x: event.clientX,
 				y: event.clientY,
 			});
@@ -605,7 +591,8 @@ export const RoadmapView = ({
 		[
 			getToolbarItemFromTransfer,
 			onAddEpicBelow,
-			reactFlowInstance,
+			viewport,
+			viewportReady,
 			getHitTestNodes,
 		],
 	);
@@ -616,58 +603,42 @@ export const RoadmapView = ({
 			// Stable hooks for e2e. These live on the shell rather than the renderer
 			// so they are identical whichever canvas engine is mounted below.
 			data-testid="roadmap-canvas"
-			data-canvas-engine="react-flow"
+			data-canvas-engine={CANVAS_ENGINE}
 			data-canvas-ready={isCanvasReady ? "true" : "false"}
 			data-canvas-node-count={nodes.length}
 			onDragOver={handleCanvasDragOver}
 			onDrop={handleCanvasDrop}
 			onPointerMove={(e) => {
-				if (!reactFlowInstance || !onTrackCursor) return;
-				// screenToFlowPosition expects client (page) coords — it handles
-				// the container offset internally. Subtracting bounds here would be
-				// a bug that shifts every remote cursor by the container's page position.
-				const pos = reactFlowInstance.screenToFlowPosition({
+				if (!viewportReady || !onTrackCursor) return;
+				// screenToCanvas expects client (page) coords — it handles the
+				// container offset internally. Subtracting bounds here would be a bug
+				// that shifts every remote cursor by the container's page position.
+				const pos = viewport.screenToCanvas({
 					x: e.clientX,
 					y: e.clientY,
 				});
 				onTrackCursor(pos.x, pos.y);
 			}}
 		>
-			<ReactFlow
+			<Renderer
 				className={`transition-opacity duration-150 ${
 					isCanvasReady ? "opacity-100" : "opacity-0"
 				}`}
-				nodes={
-					(workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ??
-					(remoteWorkingNodes as
-						| Node<EpicWidgetData | FeatureWidgetData>[]
-						| null) ??
-					nodes
-				}
+				nodes={workingNodes ?? remoteWorkingNodes ?? nodes}
 				edges={workingEdges ?? remoteWorkingEdges ?? edges}
-				nodeTypes={nodeTypes}
-				// ReactFlow pauses viewport culling during a real drag (so the local
-				// drag never flickers), but a remote collaborator's preview moves nodes
-				// via the controlled `nodes` prop with no active drag — leaving culling
-				// on makes epic/feature edges pop in and out as the reflow shifts their
-				// bounding boxes. Pause culling while the remote preview is active.
-				onlyRenderVisibleElements={!(remoteWorkingNodes && !workingNodes)}
-				onNodesChange={onNodesChange}
-				onEdgesChange={onEdgesChange}
+				nodeComponents={nodeComponents}
+				// A remote preview moves nodes through the controlled prop with no
+				// active local drag; culling would pop edges as the reflow shifts
+				// bounding boxes, so suspend it while that preview is up.
+				pauseCulling={Boolean(remoteWorkingNodes && !workingNodes)}
+				nodesController={nodesController}
 				onNodeDragStart={onNodeDragStart}
 				onNodeDrag={onNodeDrag}
 				onNodeDragStop={onNodeDragStop}
-				onMoveStart={() => {
-					onPanStart?.();
-				}}
-				onMoveEnd={(_, viewport) => {
-					setZoom(viewport.zoom);
-					onPanEnd?.();
-				}}
-				onInit={(instance) => {
-					setReactFlowInstance(instance);
-					setZoom(instance.getZoom());
-				}}
+				onViewportChange={(next) => setZoom(next.zoom)}
+				onPanStart={() => onPanStart?.()}
+				onPanEnd={() => onPanEnd?.()}
+				onReady={handleCanvasReady}
 				defaultViewport={{
 					x: DEFAULT_VIEWPORT_X,
 					y: DEFAULT_VIEWPORT_Y,
@@ -678,37 +649,18 @@ export const RoadmapView = ({
 				fitView={fitView}
 				fitViewOptions={{ padding: 0.12, maxZoom: DEFAULT_ZOOM }}
 				translateExtent={translateExtent}
-				panOnDrag={[0, 1, 2]}
-				panOnScroll
-				zoomOnScroll
-				zoomOnPinch
-				zoomOnDoubleClick={false}
 				nodesDraggable={canEditRoadmap}
-				defaultEdgeOptions={{
-					type: "simplebezier",
-				}}
-			>
-				<InitialCanvasReady
-					nodeCount={nodes.length}
-					onReady={handleCanvasReady}
-				/>
-				<Background
-					variant={BackgroundVariant.Dots}
-					bgColor="var(--background)"
-					color="var(--canvas-dot)"
-					gap={18}
-					size={1.4}
-				/>
-				{featureFlags.realtimeCursors && (
-					<CollaborationCursorsOverlay remoteCursors={remoteCursors} />
-				)}
-			</ReactFlow>
+			/>
+
+			{featureFlags.realtimeCursors && (
+				<CollaborationCursorsOverlay remoteCursors={remoteCursors} />
+			)}
 
 			<CanvasControls
-				onZoomIn={() => reactFlowInstance?.zoomIn()}
-				onZoomOut={() => reactFlowInstance?.zoomOut()}
+				onZoomIn={() => viewport.zoomIn()}
+				onZoomOut={() => viewport.zoomOut()}
 				onFitView={() =>
-					reactFlowInstance?.fitView({ padding: 0.12, maxZoom: DEFAULT_ZOOM })
+					viewport.fitView({ padding: 0.12, maxZoom: DEFAULT_ZOOM })
 				}
 				zoomInDisabled={zoom >= MAX_ZOOM}
 				zoomOutDisabled={zoom <= MIN_ZOOM}
@@ -791,3 +743,17 @@ export const RoadmapView = ({
 		</div>
 	);
 };
+
+/**
+ * Public entry point for the roadmap canvas.
+ *
+ * Thin on purpose: it owns the viewport provider and picks the renderer, so the
+ * shell below can *consume* the port (a component cannot read a context it
+ * provides in the same render). When the DOM+SVG engine lands, this is the only
+ * place that changes.
+ */
+export const RoadmapView = (props: RoadmapViewProps) => (
+	<CanvasViewportProvider>
+		<RoadmapCanvasShell {...props} />
+	</CanvasViewportProvider>
+);

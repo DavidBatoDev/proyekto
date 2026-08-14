@@ -9,6 +9,12 @@
  */
 export type RealtimeTransport = "supabase" | "durable-objects";
 
+/**
+ * Renderer backing the roadmap canvas. Flipped per surface during the migration
+ * off @xyflow/react so each one rolls out (and rolls back) independently.
+ */
+export type RoadmapCanvasEngine = "react-flow" | "dom-svg";
+
 export const featureFlags = {
 	/**
 	 * Whole-app semantic theme runtime. Set VITE_THEME_SYSTEM_ENABLED=false in
@@ -58,4 +64,19 @@ export const featureFlags = {
 	 * ahead of the upload, and this flag is what keeps that ordering safe.
 	 */
 	stockPhotos: import.meta.env.VITE_STOCK_PHOTOS_ENABLED === "true",
+
+	/**
+	 * Which engine renders the roadmap canvas. "react-flow" is the incumbent
+	 * (@xyflow/react); "dom-svg" is the in-repo engine replacing it.
+	 *
+	 * Note the OPT-IN polarity (`=== "dom-svg"`), opposite to `themeSystem`'s
+	 * `!== "false"` kill switch. A missing, misspelt or empty env var must never
+	 * activate the new engine — only the exact string does.
+	 *
+	 * This is the build-time default. Per-user and per-surface overrides live in
+	 * src/lib/canvasEngine.ts, which is what components should read.
+	 */
+	roadmapCanvasEngine: (import.meta.env.VITE_ROADMAP_CANVAS_ENGINE === "dom-svg"
+		? "dom-svg"
+		: "react-flow") as RoadmapCanvasEngine,
 } as const;

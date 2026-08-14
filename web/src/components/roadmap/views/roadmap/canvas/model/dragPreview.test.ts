@@ -4,7 +4,6 @@
  * call it, pinning it here means a renderer swap can only break event plumbing,
  * never the geometry two users disagree about.
  */
-import type { Edge } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import {
 	byId,
@@ -15,7 +14,7 @@ import {
 } from "./__fixtures__/canvasGraph";
 import { computeDragPreview } from "./dragPreview";
 import { getLayoutedElements } from "./layout";
-import type { StructuralNodeData } from "./types";
+import type { CanvasEdge, StructuralNodeData } from "./types";
 
 /**
  * Two epics, one feature each. The settled layout this produces:
@@ -34,7 +33,7 @@ function scenario() {
 	return { epics, edges, layoutedNodes };
 }
 
-const featureEdge = (edges: Edge[], featureId: string) =>
+const featureEdge = (edges: CanvasEdge[], featureId: string) =>
 	edges.find((edge) => edge.target === featureId);
 
 describe("computeDragPreview — epic drag", () => {
