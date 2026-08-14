@@ -151,7 +151,7 @@ export class InvoiceSchedulerService {
       .from('contracts')
       .select('*')
       .eq('project_id', projectId)
-      .in('status', ['signed', 'active'])
+      .eq('status', 'signed')
       .order('version', { ascending: false })
       .limit(1);
     if (error) throw new BadRequestException(error.message);
@@ -323,41 +323,20 @@ export class InvoiceSchedulerService {
    * `lastBillablePeriod`, which enforces the real invoice date.
    */
   private async findBillableContracts(today: string): Promise<ContractRow[]> {
-    // Scheduler billing correctly follows the current live project contract;
-    // severed contracts are durable history, not future billing configuration.
+    // A signed contract and its service window are the billing authority.
     const { data, error } = await this.supabase
       .from('contracts')
-      .select('*, project:projects!contracts_project_id_fkey(status)')
-      .in('status', ['signed', 'active'])
+      .select('*')
+      .eq('status', 'signed')
       .lte('service_start_date', addDaysIso(today, MAX_ADVANCE_LEAD_DAYS));
     if (error) throw new Error(error.message);
 
-    const candidates = (
-      (data ?? []) as Array<
-        ContractRow & {
-          project: { status: string } | Array<{ status: string }> | null;
-        }
-      >
-    )
-      .filter((row) => {
-        const project = Array.isArray(row.project)
-          ? row.project[0]
-          : row.project;
-        // Only an ACTIVE project bills. A paused or completed project keeps its
-        // contract but stops generating invoices.
-        if (project?.status !== 'active') return false;
-        // Keep billing through the final period after service ends, but stop
-        // once the wind-down window has also closed.
-        const cutoff = row.contract_end_date ?? row.service_end_date;
-        return !cutoff || today <= addDaysIso(cutoff, 45);
-      })
-      .map((row) => {
-        // Drop the joined project before returning — downstream code takes a
-        // plain ContractRow and must not see the embedded relation.
-        const contract = { ...row } as Partial<typeof row>;
-        delete contract.project;
-        return contract as ContractRow;
-      });
+    const candidates = ((data ?? []) as ContractRow[]).filter((row) => {
+      // Keep billing through the final period after service ends, but stop
+      // once the wind-down window has also closed.
+      const cutoff = row.contract_end_date ?? row.service_end_date;
+      return !cutoff || today <= addDaysIso(cutoff, 45);
+    });
     const fixtureFlags = await Promise.all(
       candidates.map((contract) =>
         this.qaFixtures.isFixtureProject(contract.project_id),
@@ -373,8 +352,7 @@ export class InvoiceSchedulerService {
     periodStart: string,
     periodEnd: string,
   ): Promise<void> {
-    // Scheduled billing requires a live project; severed contracts remain
-    // historical records and deliberately fall out of scheduler scans.
+    // Severed contracts are historical records and never schedule new drafts.
     if (!contract.project_id) return;
     const consultantId = await this.projectAuth.getProjectConsultantId(
       contract.project_id,
@@ -410,7 +388,7 @@ export class InvoiceSchedulerService {
     const { data, error } = await this.supabase
       .from('contracts')
       .select('id, project_id, notice_days, service_end_date, created_by')
-      .in('status', ['signed', 'active'])
+      .eq('status', 'signed')
       .not('service_end_date', 'is', null);
     if (error) return;
 

@@ -238,10 +238,10 @@ export class InvoicesService {
     );
 
     // An explicitly selected contract is exact invoice provenance. Without
-    // one, manual creation correctly uses the project's current live contract.
+    // one, manual creation correctly uses the project's signed contract.
     const contract = dto.contract_id
       ? await this.contracts.getContractById(dto.contract_id)
-      : await this.contracts.getLiveContract(dto.project_id);
+      : await this.contracts.getSignedContract(dto.project_id);
     if (dto.contract_id && !contract) {
       throw new BadRequestException('The selected contract does not exist.');
     }
@@ -260,6 +260,8 @@ export class InvoicesService {
       (await this.nextInvoiceNumber(dto.project_id, contract));
     const detail = dto.hours_detail_level ?? 'summary';
 
+    // The shared Supabase client is intentionally untyped at this boundary.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('invoices')
       .insert({
@@ -325,8 +327,7 @@ export class InvoicesService {
     dueDate: string,
     issueDate: string,
   ): Promise<InvoiceWithLines | null> {
-    // Scheduler queries embed a live project. Keep the service fail-closed if a
-    // severed contract is ever passed directly.
+    // Keep the service fail-closed if a severed contract is passed directly.
     if (!contract.project_id) return null;
     if (await this.qaFixtures.isFixtureProject(contract.project_id))
       return null;
@@ -334,6 +335,7 @@ export class InvoicesService {
     const detail: HoursDetailLevel =
       contract.billing_mode === 'retainer' ? 'none' : 'summary';
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('invoices')
       .insert({
@@ -865,6 +867,7 @@ export class InvoicesService {
       throw new BadRequestException(
         'A void invoice has no reversible payments.',
       );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: payment, error: paymentErr } = await this.supabase
       .from('invoice_payments')
       .select('*')
@@ -925,6 +928,7 @@ export class InvoicesService {
       throw new BadRequestException('A void reason is required.');
     const number = await this.nextInvoiceNumber(projectId, null);
     const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: replacement, error: replacementErr } = await this.supabase
       .from('invoices')
       .insert({
@@ -1096,6 +1100,7 @@ export class InvoicesService {
       .delete()
       .eq('invoice_id', invoice.id);
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: document, error: docErr } = await this.supabase
       .from('invoice_documents')
       .insert({
@@ -1196,6 +1201,7 @@ export class InvoicesService {
   private async getInvoiceInternal(
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: invoice, error: invoiceErr } = await this.supabase
       .from('invoices')
       .select('*')

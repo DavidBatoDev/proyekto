@@ -94,7 +94,7 @@ function harness(invoice = invoiceFixture()) {
   const financeAccess = { assertProject: jest.fn().mockResolvedValue({}) };
   const contracts = {
     getContractById: jest.fn(),
-    getLiveContract: jest.fn(),
+    getSignedContract: jest.fn(),
   };
   const composition = { composeForContract: jest.fn() };
   const qaFixtures = {
@@ -158,7 +158,7 @@ describe('InvoicesService contract provenance', () => {
     });
 
     expect(contracts.getContractById).toHaveBeenCalledWith('contract-v1');
-    expect(contracts.getLiveContract).not.toHaveBeenCalled();
+    expect(contracts.getSignedContract).not.toHaveBeenCalled();
     expect(composition.composeForContract).toHaveBeenCalledWith(
       contract,
       '2026-08-01',

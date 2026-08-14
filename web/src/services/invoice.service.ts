@@ -418,7 +418,7 @@ export const invoiceService = {
 
 	/**
 	 * Draft every closed billing period the contract hasn't been billed for.
-	 * Requires a signed/active contract; safe to run repeatedly.
+	 * Requires a signed contract; safe to run repeatedly.
 	 */
 	async generateScheduled(projectId: string): Promise<InvoiceRunResult> {
 		try {

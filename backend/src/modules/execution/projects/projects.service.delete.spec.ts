@@ -95,7 +95,6 @@ function buildHarness(input: {
     {} as any,
     {} as any,
     {} as any,
-    {} as any,
     teamTime as any,
   );
   return {
@@ -109,7 +108,7 @@ function buildHarness(input: {
 }
 
 describe('ProjectsService.deleteProject', () => {
-  it('blocks deletion when a sent, signed, or active contract exists', async () => {
+  it('blocks deletion when a sent or signed contract exists', async () => {
     const harness = buildHarness({ contractBlockers: 1 });
 
     await expect(

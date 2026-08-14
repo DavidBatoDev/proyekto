@@ -34,7 +34,6 @@ import {
 	type Team,
 } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
-import { ActivationHeaderPill } from "./ActivationHeaderPill";
 import ProjectUserMenu from "./ProjectUserMenu";
 import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
 
@@ -501,8 +500,6 @@ export function ProjectHeader() {
 				>
 					<MessageCircle size={20} />
 				</button>
-
-				<ActivationHeaderPill projectId={projectId} project={project} />
 
 				<NotificationBell />
 

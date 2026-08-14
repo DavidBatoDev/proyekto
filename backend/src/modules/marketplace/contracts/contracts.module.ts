@@ -8,15 +8,11 @@ import { ContractSignatureLinksController } from './contract-signature-links.con
 import { ContractSignatureLinksService } from './contract-signature-links.service';
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
-import { ProjectActivationController } from './project-activation.controller';
-import { ProjectActivationService } from './project-activation.service';
+import { ProjectEconomicsController } from './project-economics.controller';
+import { ProjectEconomicsService } from './project-economics.service';
 import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
 
 /**
- * Depends on AuthorizationModule rather than the whole ProjectsModule, so
- * ProjectsModule can import THIS module (for the activation gate) without a
- * circular dependency.
- *
  * ContractSignatureLinksController is listed FIRST deliberately: it owns the
  * literal `contracts/sign/:token` paths, and ContractsController's
  * `@Get(':id')` (with a ParseUUIDPipe) would otherwise swallow them.
@@ -33,13 +29,13 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
   controllers: [
     ContractSignatureLinksController,
     ContractsController,
-    ProjectActivationController,
+    ProjectEconomicsController,
   ],
   providers: [
     ContractsService,
     ContractSignatureLinksService,
-    ProjectActivationService,
+    ProjectEconomicsService,
   ],
-  exports: [ContractsService, ProjectActivationService],
+  exports: [ContractsService],
 })
 export class ContractsModule {}

@@ -1,6 +1,6 @@
 # Client ↔ Consultant Interaction
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 The Consultant layer is Proyekto's differentiator: a vetted project lead sitting between the
 Client and Talent, so a freelance hire becomes managed delivery. This page documents
@@ -66,30 +66,12 @@ flowchart TD
 Automated invoicing drafts one invoice per contract per closed billing period and notifies the
 consultant. **Nothing is sent to a client automatically** — issuing is always a human action.
 
-## Activation: where the client becomes load-bearing
+## Billing authority
 
-Flipping a project to `active` runs `ProjectActivationService.buildChecklist()`, seven derived
-items gating the billing flip. Two concern the client directly.
-
-**`client_identified`** — severity `blocker`. Satisfied by *either*:
-
-```ts
-ownerIdentified   = project.owner_id && project.owner_id !== consultantOfRecordId
-clientOnContract  = contract.client_user_id || contract.client_email || contract.client_name
-ok = ownerIdentified || clientOnContract
-```
-
-The stable checklist key remains `client_identified`, but `owner_id` is now role-neutral.
-The current fallback treats a non-consultant project owner as the billing client when the
-contract has no client fields. An external client named only on the contract also satisfies
-the check.
-
-**`contract_signed`** — a fully signed contract with usable commercial terms. The client's
-signature can arrive through the app or through a tokenized link.
-
-The checklist deliberately gates only the *billing* flip. Its own doc comment explains why:
-activating without these "produces invoices with no price and payouts with no rate." Anything
-that does not produce that failure does not belong in the blocker set.
+Project lifecycle status never enables billing. A signed contract supplies the client,
+commercial terms, and service window used by scheduled invoice drafts. The client's
+signature can arrive through the app or through a tokenized link. Ending or cancelling
+the contract stops future scheduled drafts; pausing the execution project does not.
 
 ## Can we invite an individual contractor who is not on a team?
 
@@ -101,10 +83,8 @@ capabilities. This has shipped and is the path behind
 [`/invites`](../../../web/src/routes/_execution/invites.tsx).
 
 > **⚠️ But there is a silent footgun.** A directly-invited person has no `project_team_members`
-> row. `ProjectActivationService.getCuratedMembers()` reads *only* `project_team_members`, so
-> that person:
+> row, so that person:
 >
-> - never appears in the `member_rates_set` or `hour_limits_set` checklist items,
 > - therefore has no `team_member_rates` row,
 > - therefore appears in **no payout**.
 >
@@ -119,8 +99,7 @@ attaching their personal team; it is heavier, but it keeps rates and payouts wor
 arm in both hand-maintained web mirrors, and a permanent branch in `resolvePermissions` — to
 express something `invited` plus a rate already expresses.
 
-A `warning`-severity checklist item surfacing unbilled direct members is proposed in
-[13-proposals/client-access-handover.md](../../13-proposals/client-access-handover.md#related-activation-warnings).
+The engagement design must surface this mismatch before paid work begins.
 
 ## Guarantees and asymmetries
 

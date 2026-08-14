@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 The Client is the person paying for the work — a **position on a contract, not an
 account attribute**. There is no `clients` table and no account role (`profiles.role`
@@ -92,7 +92,7 @@ its owner.
 - **Authorization:** [`backend/src/modules/execution/projects/authorization/project-authorization.service.ts`](../../../backend/src/modules/execution/projects/authorization/project-authorization.service.ts),
   [`backend/src/modules/execution/projects/permissions/project-permissions.ts`](../../../backend/src/modules/execution/projects/permissions/project-permissions.ts)
 - **Contracts & signing:** [`backend/src/modules/marketplace/contracts/`](../../../backend/src/modules/marketplace/contracts/)
-  (`contract-signature-links.service.ts`, `project-activation.service.ts`)
+  (`contract-signature-links.service.ts`, `project-economics.service.ts`)
 - **Web gate:** [`web/src/components/common/RequireProjectAccess.tsx`](../../../web/src/components/common/RequireProjectAccess.tsx)
 - **Web permission mirrors:** [`web/src/components/project/permissions/`](../../../web/src/components/project/permissions/)
   (`permissionCatalog.ts`, `roleTemplates.ts`) — hand-maintained, must track the backend

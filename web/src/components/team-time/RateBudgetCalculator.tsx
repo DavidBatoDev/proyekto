@@ -86,11 +86,7 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 
 	const contract = useMemo(() => {
 		const all = contractsQuery.data ?? [];
-		return (
-			all.find((c) => c.status === "signed" || c.status === "active") ??
-			all[0] ??
-			null
-		);
+		return all.find((c) => c.status === "signed") ?? all[0] ?? null;
 	}, [contractsQuery.data]);
 
 	// Each member's active rate on this project (to update vs create + seed defaults).
@@ -229,9 +225,6 @@ export function RateBudgetCalculator({ projectId, rows }: Props) {
 					args.row.member.user_id,
 					projectId,
 				],
-			});
-			void qc.invalidateQueries({
-				queryKey: ["project", projectId, "activation-checklist"],
 			});
 		},
 		onError: (err: Error) => toast.error(err.message),

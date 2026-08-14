@@ -98,7 +98,6 @@ describe('ProjectsService (permissions)', () => {
       {
         provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
       } as any,
-      { assertActivationReady: jest.fn() } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
       { log: jest.fn() } as any, // AuditService
       { stopRunningLogsForProject: jest.fn() } as any,
@@ -107,6 +106,22 @@ describe('ProjectsService (permissions)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('updates execution status without commercial prerequisites', async () => {
+    const activeProject = buildProject({ status: 'active' });
+    const repo = {
+      isOwner: jest.fn().mockResolvedValue(true),
+      update: jest.fn().mockResolvedValue(activeProject),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.updateProject('project-1', 'client-1', { status: 'active' }),
+    ).resolves.toEqual(activeProject);
+    expect(repo.update).toHaveBeenCalledWith('project-1', {
+      status: 'active',
+    });
   });
 
   it('uses user-scoped dashboard cache keys', async () => {
@@ -237,9 +252,7 @@ describe('ProjectsService (permissions)', () => {
 
   it('allows permission updates when caller has members.edit_permissions', async () => {
     const repo = {
-      findById: jest
-        .fn()
-        .mockResolvedValue(buildProject()),
+      findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
@@ -410,9 +423,7 @@ describe('ProjectsService (permissions)', () => {
         role: 'member',
       }),
       isActiveConsultant: jest.fn().mockResolvedValue(true),
-      update: jest
-        .fn()
-        .mockResolvedValue(buildProject()),
+      update: jest.fn().mockResolvedValue(buildProject()),
     };
     const service = buildService(repo, ownerAuth());
 
@@ -478,9 +489,7 @@ describe('ProjectsService (permissions)', () => {
         role: 'member',
       }),
       isActiveConsultant: jest.fn().mockResolvedValue(true),
-      update: jest
-        .fn()
-        .mockResolvedValue(buildProject()),
+      update: jest.fn().mockResolvedValue(buildProject()),
     };
     const grant = jest.fn().mockResolvedValue(undefined);
     const revoke = jest.fn().mockResolvedValue(undefined);
@@ -491,13 +500,9 @@ describe('ProjectsService (permissions)', () => {
       revoke,
     });
 
-    const updated = await service.reassignProjectConsultant(
-      'project-1',
-      'client-1',
-      {
-        new_consultant_id: 'member-2',
-      },
-    );
+    await service.reassignProjectConsultant('project-1', 'client-1', {
+      new_consultant_id: 'member-2',
+    });
     expect(grant).toHaveBeenCalledWith({
       projectId: 'project-1',
       userId: 'member-2',

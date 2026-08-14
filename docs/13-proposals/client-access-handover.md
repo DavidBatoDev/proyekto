@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-11 · **Status:** draft
+> **Last updated:** 2026-08-14 · **Status:** draft
 
 When a consultant starts work, the client has to hand over access to a pile of external
 systems: the Canva brand kit, Google Drive, GA4, Google Tag Manager, Search Console, the
@@ -17,20 +17,9 @@ the handover a first-class object — and, critically, one that **never stores a
 
 ## Why stored, not derived
 
-The obvious move is to copy `ProjectActivationService.buildChecklist()`, which computes seven
-items on every read with no table behind them. That works there because every activation item
-is a **predicate over data that already exists** — `contract.service_start_date != null`,
-`rates.size > 0`. Nothing about it is authored.
-
-Access grants are the opposite in every respect:
-
-| Property | Activation checklist | Access handover |
-| --- | --- | --- |
-| Where the truth lives | Another table | **This table — nothing else records it** |
-| Who authors the item set | Nobody (fixed list of 7) | The consultant, per project |
-| Client-editable state | None | Notes, blocked reasons, share URLs |
-| Needs transition history | No | Yes — "who marked this granted, and when?" |
-| Due dates / assignment | No | Yes |
+Access grants cannot be derived from contracts, projects, or team membership. The handover
+therefore needs stored state authored per project: client-editable notes, blocked reasons,
+share URLs, transition history, due dates, and assignments.
 
 A derived model would need a shadow table for exactly that state, which is the stored model
 with extra steps. **Stored.**
@@ -282,7 +271,7 @@ DTOs must declare every field: the global `ValidationPipe` runs `whitelist +
 forbidNonWhitelisted`, so an undeclared field 400s the request. Controllers return raw data;
 `ResponseInterceptor` wraps.
 
-The response shape deliberately parallels `ActivationChecklist` so the web helpers transfer:
+The API returns one stored checklist with aggregate progress:
 
 ```ts
 interface OnboardingChecklist {
@@ -324,56 +313,25 @@ path must also go into `Header.tsx` `validPaths` or the header breaks on it.
 
 | Component | Mirrors |
 | --- | --- |
-| `OnboardingChecklist.tsx` | `ActivationGuide.tsx` — same `mode: 'compact' \| 'full'` prop driving header pill, Overview widget, and tab from one implementation |
-| `onboardingProgress.ts` | `sortChecklistItems()` / `checklistProgress()` — pure, exported, unit-tested |
-| `OnboardingItemRow.tsx` | the `<li>` block of `ActivationGuide.tsx` |
+| `OnboardingChecklist.tsx` | Full checklist and compact summary modes from one implementation |
+| `onboardingProgress.ts` | Pure, exported, unit-tested progress calculations |
+| `OnboardingItemRow.tsx` | Item state, assignee, due date, and blocked state |
 | `OnboardingItemDrawer.tsx` | new — instructions, transitions, note field, event history |
 | `AccessRequestBuilder.tsx` | new — consultant picks categories/items from the catalog |
-| `OnboardingProgressPill.tsx` | `ActivationHeaderPill.tsx` |
+| `OnboardingProgressPill.tsx` | Compact project-header progress entry point |
 | `NoCredentialsBanner.tsx` | new — persistent, above every input |
 
-`useOnboardingChecklist.ts` copies `useActivationChecklist.ts`, including the `enabled` gating
-that stops non-permitted callers 403-storming.
+`useOnboardingChecklist.ts` enables its query only for permitted callers so the UI does not
+create repeated 403 responses.
 
-`ActivationGuide.tsx` contains a `ChecklistLink` that splits a `fixPath` into TanStack Router's
-separate `to` and `search` props. Extract it to `web/src/components/common/DeepLink.tsx` and
-have both call it rather than duplicating.
-
-## Progress and activation
+## Progress and independence
 
 `done = state ∈ {granted, verified, not_applicable}`; `percent` weights only `is_required`
 items; `blocked` surfaces separately in amber, because a blocked item is not "not yet" — it is
 "someone must act".
 
-**It does not block project activation.** `assertActivationReady()` guards the *billing* flip,
-and its own comment says why: activating without those inputs "produces invoices with no price
-and payouts with no rate." A missing Instagram grant produces neither. Blocking billing on it
-would generate support tickets and teach consultants to route around the gate.
-
-Instead, add one `warning`-severity item to the existing `buildChecklist()`:
-
-```
-key:      'client_access_granted'
-severity: 'warning'
-detail:   '4 of 11 access items outstanding (2 blocked).'
-fixPath:  /project/${projectId}/onboarding
-```
-
-Escape hatch for whoever disagrees: `project_onboarding_checklists.blocks_activation`, per
-project, default `false`. When `true` the item computes to `'blocker'`. No migration to flip.
-
-### Related activation warnings
-
-While touching `buildChecklist()`, add a second `warning` item for the payout footgun
-documented in
-[clients/consultant-interaction.md](../11-domains/clients/consultant-interaction.md#can-we-invite-an-individual-contractor-who-is-not-on-a-team):
-
-```
-key:      'unbilled_direct_members'
-severity: 'warning'
-detail:   '2 members have project access but no team or rate — they will not appear in payouts.'
-fixPath:  /project/${projectId}/settings/teams
-```
+The handover never blocks execution status, contract signing, scheduled invoice drafts, or
+payouts. Outstanding and blocked items surface only in its own progress UI and notifications.
 
 ## Activity and notifications
 

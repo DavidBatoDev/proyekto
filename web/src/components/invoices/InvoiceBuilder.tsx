@@ -63,14 +63,10 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 		enabled: Boolean(invoiceId),
 	});
 
-	// Prefer a live (signed/active) contract for party + service defaults.
+	// Prefer the signed contract for party and service defaults.
 	const contract = useMemo(() => {
 		const all = contractsQuery.data ?? [];
-		return (
-			all.find((c) => c.status === "signed" || c.status === "active") ??
-			all[0] ??
-			null
-		);
+		return all.find((c) => c.status === "signed") ?? all[0] ?? null;
 	}, [contractsQuery.data]);
 
 	const existing = existingQuery.data;

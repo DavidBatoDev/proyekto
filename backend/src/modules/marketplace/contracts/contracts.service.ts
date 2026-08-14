@@ -204,15 +204,15 @@ export class ContractsService {
   }
 
   /**
-   * The single contract that governs billing right now, or null. Used by the
-   * activation checklist and the invoice scheduler.
+   * The single signed contract that currently governs project billing.
    */
-  async getLiveContract(projectId: string): Promise<ContractRow | null> {
+  async getSignedContract(projectId: string): Promise<ContractRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .select('*')
       .eq('project_id', projectId)
-      .in('status', ['signed', 'active'])
+      .eq('status', 'signed')
       .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as ContractRow | null) ?? null;
@@ -252,6 +252,8 @@ export class ContractsService {
       ...this.termPatch(terms),
     };
 
+    // The shared Supabase client is intentionally untyped at this boundary.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .insert(insert)
@@ -302,6 +304,7 @@ export class ContractsService {
       return this.withSchedule(existing);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -359,7 +362,7 @@ export class ContractsService {
         'Changing a single invoice is an invoice edit, not a contract change — open that invoice in the editor instead.',
       );
     }
-    if (existing.status !== 'signed' && existing.status !== 'active') {
+    if (existing.status !== 'signed') {
       throw new BadRequestException(
         'Only a signed contract needs amending. Edit this one directly.',
       );
@@ -480,6 +483,8 @@ export class ContractsService {
     callerId: string,
   ): Promise<ContractRow> {
     const { scope: _scope, effective_from: _effectiveFrom, ...terms } = dto;
+    void _scope;
+    void _effectiveFrom;
     const patch = {
       ...this.scalarPatch(terms as UpdateContractDto),
       ...this.termPatch(
@@ -503,7 +508,11 @@ export class ContractsService {
       updated_at: _updatedAt,
       ...carried
     } = existing;
+    void _id;
+    void _createdAt;
+    void _updatedAt;
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .insert({
@@ -533,8 +542,8 @@ export class ContractsService {
   }
 
   /**
-   * Stamps one party's signature. The contract only becomes `signed` once BOTH
-   * parties have stamped — which is what the activation checklist gates on.
+   * Stamps one party's signature. The contract becomes `signed` once both
+   * parties have stamped.
    */
   async signContract(
     callerId: string,
@@ -650,7 +659,7 @@ export class ContractsService {
   /**
    * Resize or reposition a stamped signature image. Cosmetic only — it changes
    * where and how large the overlay is drawn, never the terms — so unlike
-   * unsigning it stays available on a signed or active contract.
+   * unsigning it stays available once the contract is signed.
    */
   async updateSignaturePlacement(
     callerId: string,
@@ -686,6 +695,7 @@ export class ContractsService {
       return this.withSchedule(existing);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -704,8 +714,7 @@ export class ContractsService {
    * Remove a party's signature so it can be re-done (e.g. to swap a typed name
    * for an uploaded signature image). Clears that party's name/date/image and,
    * if the contract had reached `signed`, drops it back to `sent` — it is no
-   * longer fully executed, so the sign controls reappear. An `active` contract
-   * governs a live project and is intentionally not editable here.
+   * longer fully executed, so the sign controls reappear.
    */
   async unsignContract(
     callerId: string,
@@ -720,12 +729,6 @@ export class ContractsService {
         `A ${existing.status} contract cannot be changed.`,
       );
     }
-    if (existing.status === 'active') {
-      throw new BadRequestException(
-        'This contract is active and governs the live project. Deactivate the project before changing signatures.',
-      );
-    }
-
     const now = new Date().toISOString();
     const patch: Record<string, unknown> =
       dto.party === 'client'
@@ -744,6 +747,7 @@ export class ContractsService {
       patch.status = 'sent';
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({ ...patch, updated_at: now })
@@ -1172,6 +1176,7 @@ export class ContractsService {
       kind,
       teamId,
     );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update(patch)

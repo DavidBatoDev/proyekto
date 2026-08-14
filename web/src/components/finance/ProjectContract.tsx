@@ -88,9 +88,8 @@ const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
 }));
 
 /**
- * `?step=` lets the activation checklist deep-link to the section an item is
- * actually about. Unknown values fall through to the default step rather
- * than erroring — a stale bookmark should still open the page.
+ * `?step=` opens a specific document section. Unknown values fall through to
+ * the default step so a stale bookmark still opens the page.
  */
 export function ProjectContract({
 	contractId,
@@ -672,7 +671,6 @@ function ContractStatusChip({ status }: { status: Contract["status"] }) {
 		draft: "bg-muted text-muted-foreground border-border",
 		sent: "bg-amber-500/15 text-amber-600 border-amber-500/30",
 		signed: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-		active: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
 		ended: "bg-muted text-muted-foreground border-border",
 		cancelled: "bg-destructive/10 text-destructive border-destructive/30",
 	};
@@ -1065,8 +1063,7 @@ function TermsSection({
 	// submitted as a new version rather than autosaved over the signed one.
 	const [amending, setAmending] = useState(false);
 	const [scopeOpen, setScopeOpen] = useState(false);
-	const signedAndLive =
-		contract.status === "signed" || contract.status === "active";
+	const signed = contract.status === "signed";
 	const locked = !editable || (!isEditableStatus(contract.status) && !amending);
 
 	const termsPayload = (d: typeof draft) => ({
@@ -1135,9 +1132,6 @@ function TermsSection({
 				queryKey: ["contracts", contract.project_id],
 			});
 			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
-			void qc.invalidateQueries({
-				queryKey: ["project", contract.project_id, "activation-checklist"],
-			});
 		},
 		{
 			enabled: !locked && !amending,
@@ -1163,7 +1157,7 @@ function TermsSection({
 						rates are separate and stay internal.
 					</p>
 				</div>
-				{editable && signedAndLive && !amending && (
+				{editable && signed && !amending && (
 					<button
 						type="button"
 						onClick={() => setAmending(true)}

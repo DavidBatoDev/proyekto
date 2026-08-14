@@ -58,13 +58,13 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 		queryFn: () => projectService.get(projectId),
 	});
 
-	// Generating scheduled drafts needs a signed/active contract to bill against.
+	// Generating scheduled drafts needs a signed contract to bill against.
 	const contractsQuery = useQuery({
 		queryKey: ["contracts", projectId],
 		queryFn: () => contractService.listByProject(projectId),
 	});
-	const liveContract = (contractsQuery.data ?? []).find(
-		(c) => c.status === "signed" || c.status === "active",
+	const signedContract = (contractsQuery.data ?? []).find(
+		(c) => c.status === "signed",
 	);
 
 	const invalidate = () =>
@@ -298,9 +298,9 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 								<button
 									type="button"
 									onClick={() => generateMutation.mutate()}
-									disabled={!liveContract || generateMutation.isPending}
+									disabled={!signedContract || generateMutation.isPending}
 									title={
-										liveContract
+										signedContract
 											? "Draft an invoice for every closed billing period the contract hasn't been billed for"
 											: "Sign the contract first — scheduled invoices bill against its terms."
 									}
@@ -355,7 +355,7 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 						icon={ReceiptText}
 						title="No invoices yet"
 						description={
-							liveContract
+							signedContract
 								? "Generate them from the contract's billing schedule, or write one by hand."
 								: "Create one by hand, or sign the contract to bill from its schedule automatically."
 						}
