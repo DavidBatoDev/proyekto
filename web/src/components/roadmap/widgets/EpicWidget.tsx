@@ -155,6 +155,11 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
 
 	return (
 		<motion.div
+			// Renderer-independent test hooks: the canvas engine owns the wrapper
+			// element, so these live on the widget root instead.
+			data-testid="roadmap-canvas-node"
+			data-node-id={epic.id}
+			data-node-type="epic"
 			className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : onClick ? "cursor-pointer" : "cursor-default"} ${
 				isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
 			} ${isOptimisticEpic ? "opacity-75" : ""} ${

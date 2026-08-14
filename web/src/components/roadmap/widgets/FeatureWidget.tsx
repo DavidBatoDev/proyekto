@@ -552,6 +552,11 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 		<div className="relative w-[500px]">
 			<motion.div
 				ref={cardRef}
+				// Renderer-independent test hooks: the canvas engine owns the wrapper
+				// element, so these live on the widget root instead.
+				data-testid="roadmap-canvas-node"
+				data-node-id={feature.id}
+				data-node-type="feature"
 				className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
 					isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
 				} ${isOptimisticFeature ? "opacity-75" : ""} ${
