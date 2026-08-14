@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 /**
  * Reference-resolution edge cases through the real composer:
@@ -27,7 +28,7 @@ test("v2 agent: typo / ambiguity / pronoun edge cases", async ({ page }) => {
   await page.goto(APP_URL);
   const toggle = page.getByTitle("Toggle AI chat panel");
   await expect(toggle).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 30_000 });
+  await expect(canvasRoot(page)).toBeVisible({ timeout: 30_000 });
   await toggle.click();
   const panel = page.getByLabel("AI Assistant Panel");
   await expect(panel).toBeVisible();

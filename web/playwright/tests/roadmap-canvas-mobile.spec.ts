@@ -1,0 +1,100 @@
+import { expect, test } from "@playwright/test";
+import { canvasNodes, canvasRoot, waitForCanvasReady } from "./canvasLocators";
+
+/**
+ * Phone-viewport coverage for the canvas surfaces that have NO mobile fallback.
+ *
+ * `useIsMobile()` is consulted only in `RoadmapViewContent`, so the app route
+ * swaps in `MobileRoadmapView` on phones and the canvas never mounts there. The
+ * two PUBLIC surfaces do not do that:
+ *
+ *   - `/roadmap/shared/:token`   renders `RoadmapCanvas` directly
+ *   - `/roadmap-templates/:slug` renders `TemplateRoadmapFlow` -> `RoadmapView`
+ *
+ * So the canvas — and, after the renderer swap, hand-rolled touch pan/pinch —
+ * ships to unauthenticated phone traffic on exactly the two least-tested routes.
+ * Before this file there was no phone coverage of either. These tests pin the
+ * current behaviour so the swap has something to be measured against.
+ *
+ * Both tests self-discover their fixture (a share link / a template slug) the
+ * same way `playwright/audit/capture.mjs` does, and skip loudly rather than
+ * silently passing when none exists.
+ */
+
+const PHONE = { width: 390, height: 844 };
+
+test.use({ viewport: PHONE });
+
+async function firstHref(
+	page: import("@playwright/test").Page,
+	selector: string,
+): Promise<string | null> {
+	const link = page.locator(selector).first();
+	if (!(await link.count())) return null;
+	return link.getAttribute("href");
+}
+
+test("share link renders the canvas at phone width", async ({ page }) => {
+	await page.goto("/roadmap/shared-with-me", {
+		waitUntil: "domcontentloaded",
+	});
+	const href = await firstHref(page, 'a[href*="/roadmap/shared/"]');
+	test.skip(
+		!href,
+		"no roadmap is shared with this account — create one to cover the public share route on phones",
+	);
+
+	await page.goto(href as string);
+
+	// The share route has no mobile branch, so the real canvas must mount here.
+	await waitForCanvasReady(page, 45_000);
+	await expect(canvasRoot(page)).toBeVisible();
+	await expect(canvasNodes(page).first()).toBeVisible({ timeout: 30_000 });
+
+	// It must not overflow the viewport horizontally.
+	const scrollWidth = await page.evaluate(
+		() => document.documentElement.scrollWidth,
+	);
+	expect(scrollWidth).toBeLessThanOrEqual(PHONE.width + 1);
+});
+
+test("template preview renders the canvas at phone width", async ({ page }) => {
+	await page.goto("/roadmap-templates", { waitUntil: "domcontentloaded" });
+	const href = await firstHref(page, 'a[href*="/roadmap-templates/"]');
+	test.skip(!href, "no roadmap templates are published");
+
+	await page.goto(href as string);
+
+	// TemplateRoadmapFlow mounts RoadmapView with fitView + minZoom 0.2. The
+	// fitView path at that zoom is the case most likely to expose differences
+	// between the old and new renderer's framing maths.
+	await waitForCanvasReady(page, 45_000);
+	await expect(canvasRoot(page)).toBeVisible();
+	await expect(canvasNodes(page).first()).toBeVisible({ timeout: 30_000 });
+
+	const scrollWidth = await page.evaluate(
+		() => document.documentElement.scrollWidth,
+	);
+	expect(scrollWidth).toBeLessThanOrEqual(PHONE.width + 1);
+});
+
+test("app route falls back to the mobile tree instead of the canvas", async ({
+	page,
+}) => {
+	// Documents the asymmetry that makes the two tests above matter: on phones the
+	// app route deliberately does NOT mount the canvas. If this ever starts
+	// rendering the canvas, phone users inherit the full drag/pan surface and
+	// these expectations need revisiting.
+	const ROADMAP_ID = "5ebdbb85-87a6-4685-aba4-fcf7f2283afe";
+	const PROJECT_ID = "69d405c9-1eee-4b0f-91b4-2e677ba10c23";
+	await page.goto(
+		`/project/${PROJECT_ID}/roadmap/${ROADMAP_ID}?view=roadmapView`,
+	);
+
+	// Something from the roadmap page must render...
+	await expect(page.getByTitle("Toggle AI chat panel")).toBeVisible({
+		timeout: 45_000,
+	});
+	// ...but not the canvas shell.
+	await expect(canvasRoot(page)).toHaveCount(0);
+});

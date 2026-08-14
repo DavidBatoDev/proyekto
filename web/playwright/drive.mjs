@@ -132,7 +132,7 @@ async function init() {
   });
   await page.goto(APP_URL);
   await page.getByTitle("Toggle AI chat panel").waitFor({ timeout: 30_000 });
-  await page.locator(".react-flow").waitFor({ timeout: 30_000 });
+  await page.locator("[data-testid=\"roadmap-canvas\"]").waitFor({ timeout: 30_000 });
   await page.getByTitle("Toggle AI chat panel").click();
   await panel().waitFor({ timeout: 10_000 });
   await newThread();

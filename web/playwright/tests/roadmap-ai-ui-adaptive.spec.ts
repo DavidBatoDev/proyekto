@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 /**
  * Adaptive live drive of the roadmap AI panel. Instead of a fixed battery, it
@@ -22,7 +23,7 @@ test("v2 agent: adaptive live drive (assess state, then act)", async ({ page }) 
   await page.goto(APP_URL);
   const toggle = page.getByTitle("Toggle AI chat panel");
   await expect(toggle).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 30_000 });
+  await expect(canvasRoot(page)).toBeVisible({ timeout: 30_000 });
   await toggle.click();
   const panel = page.getByLabel("AI Assistant Panel");
   await expect(panel).toBeVisible();

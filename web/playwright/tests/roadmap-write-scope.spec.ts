@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 /**
  * End-to-end regression for the Phase 0 authz-scope refactor.
@@ -53,7 +54,7 @@ test("Phase 0: every roadmap write path still resolves through the shared scope"
 	// verdict and the returned scope; if that broke, the canvas never loads.
 	await page.goto(APP_URL);
 	await expect(
-		page.locator(".react-flow"),
+		canvasRoot(page),
 		"roadmap canvas should render (assertViewPermission read path)",
 	).toBeVisible({ timeout: 45_000 });
 
