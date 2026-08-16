@@ -1,6 +1,6 @@
 # Clients
 
-> **Last updated:** 2026-08-14 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 The Client is the person paying for the work — a **position on a contract, not an
 account attribute**. There is no `clients` table and no account role (`profiles.role`
@@ -30,7 +30,7 @@ its owner.
 
 ## What a client can do
 
-- **See the delivery** — roadmap, work items, resources, logs, and the team roster, read-only
+- **See the delivery** — roadmap, board, resources, logs, and the team roster, read-only
   by default.
 - **Talk to the consultant**, not to the delivery team. `ORIGIN_DELTAS.client` sets
   `chat.message_freelancers: false` so the consultant mediates. This is the *soft isolation*

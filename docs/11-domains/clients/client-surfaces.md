@@ -1,6 +1,6 @@
 # Client Surfaces
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 There is **no client route subtree**. Every surface a client reaches is a shared route
 that renders differently, or hides entirely, based on resolved permissions. This page is the
@@ -43,7 +43,8 @@ bypasses it so anonymous guests can build a roadmap.
 | --- | --- | --- | --- |
 | `overview.tsx` | **none** beyond auth + membership | ✅ | ✅ |
 | `roadmap.tsx` (+ `roadmap/$roadmapId`, `roadmap/create`) | `RequireProjectAccess access="roadmap"` | ✅ read-only | ✅ |
-| `work-items.tsx` (+ `work-items/$roadmapId`) | `RequireProjectAccess access="work_items"` | ✅ | ✅ |
+| `timeline.tsx` (+ `timeline/$roadmapId`) — labelled **Timeline** | `RequireProjectAccess access="roadmap"` | ✅ read-only | ✅ |
+| `work-items.tsx` (+ `work-items/$roadmapId`) — labelled **Board** | `RequireProjectAccess access="work_items"` | ✅ | ✅ |
 | `resources.tsx` | `RequireProjectAccess access="resources"` | ✅ read-only | ✅ |
 | `chat/$chatRef.tsx` | `RequireProjectAccess access="chat"` | ✅ view only | ✅ |
 | `time.tsx` | `RequireProjectAccess access="time"` | ✅ **own logs only** | ✅ team logs |

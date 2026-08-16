@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `freelancer` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -21,7 +21,7 @@ dashboard subtree.
 | `/dashboard` | Yes; personal workspace and accessible projects |
 | `/profile/$profileId` | Yes; profile editing follows ownership checks |
 | `/teams`, `/teams/$teamId/*` | Yes according to team membership and team role |
-| `/work-items`, `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
+| `/work-items` (labelled **Board**), `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
 | `/settings/*` | Yes; account settings |
 | `/project-posting` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
 | `/consultant/apply` | Yes; authenticated application flow |
@@ -33,7 +33,7 @@ Talent project visibility is controlled entirely by `project_access`.
 
 | Project surface | Typical marketplace `editor` access |
 | --- | --- |
-| Overview, roadmap, work items | View and edit delivery work |
+| Overview, roadmap, board | View and edit delivery work |
 | Resources | View and upload; deletion requires `admin` |
 | Chat | View, send, mention, DM, and share files |
 | Time | View and manage own eligible logs; team-wide review requires elevated permission |

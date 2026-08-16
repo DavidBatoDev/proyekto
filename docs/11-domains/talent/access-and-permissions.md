@@ -1,6 +1,6 @@
 # Talent Access and Permissions
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 Nothing account-level grants project capabilities. A Talent participant receives a
 project role through a direct invite or team curation, then the shared permission resolver
@@ -29,7 +29,7 @@ with either `origin='invited'` or a team-derived `origin='team:<id>'`.
 
 | Project role | Important defaults for Talent |
 | --- | --- |
-| `viewer` | Read roadmap, work items, team, chat, resources, logs, and own time |
+| `viewer` | Read roadmap, board, team, chat, resources, logs, and own time |
 | `commenter` | Viewer plus comments, messages, mentions, and DMs |
 | `editor` | Commenter plus roadmap/task edits, sharing, uploads, and work delivery |
 | `admin` | Editor plus members, teams, settings, channels, team time, and sensitive logs |

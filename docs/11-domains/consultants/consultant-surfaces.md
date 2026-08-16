@@ -1,6 +1,6 @@
 # Consultant Surfaces
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 Consultant routes fall into three groups: public marketing/discovery, authenticated
 application and shared work, and active-consultant operator tools. A `/consultant/*` path is
@@ -43,7 +43,7 @@ The common consultant assignment is project owner, so all project tabs are avail
 
 | Surface | Consultant responsibility |
 | --- | --- |
-| Roadmap and work items | Plan, assign, edit, promote, and view internal delivery data |
+| Roadmap and board | Plan, assign, edit, promote, and view internal delivery data |
 | Team and permissions | Attach teams, curate members, manage roles and capabilities |
 | Chat | Communicate with Client and Talent, manage channels |
 | Resources and logs | Manage artifacts and inspect sensitive activity |

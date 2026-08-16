@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -57,10 +57,15 @@ for the rationale.
 `project/$projectId.tsx` is a layout with tabs (nav in `ProjectSidebar` /
 `ProjectBottomNav`, grouped Plan / Collaborate / Manage):
 
-`overview`, `roadmap` (+ `roadmap/$roadmapId`, `roadmap/create`), `work-items`
-(+ `work-items/$roadmapId`), `team/*`, `resources`, `time`, `logs`, `chat/$chatRef`, and
-`settings/*`. There's also `project/roadmap/convert/$roadmapId` for the guest-roadmap →
-project conversion.
+`overview`, `roadmap` (+ `roadmap/$roadmapId`, `roadmap/create`), `timeline`
+(+ `timeline/$roadmapId`), `work-items` (+ `work-items/$roadmapId`), `team/*`,
+`resources`, `time`, `logs`, `chat/$chatRef`, and `settings/*`. There's also
+`project/roadmap/convert/$roadmapId` for the guest-roadmap → project conversion.
+
+> **Two nav labels differ from their paths.** `work-items` is labelled **Board**, and
+> `timeline` is the milestones timeline promoted out of the roadmap canvas into its own
+> page (it renders `RoadmapViewContent` with the view mode pinned; the old
+> `roadmap/$roadmapId?view=timelineView` deep link redirects to it).
 
 > **There is no `payments` project tab.** Invoicing and contracts live in the top-level
 > `finance/` subtree, which is consultant-only.
@@ -78,8 +83,9 @@ Gating happens in three places:
   confirms a verified `consultant_profiles` enrollment (there is no account role).
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
-  exactly five route bodies — `roadmap`, `work-items`, `resources`, `chat/$chatRef`, and
-  `time` — keyed on the corresponding `access.*` flag. `logs` gates **inline** on
+  exactly six route bodies — `roadmap`, `timeline`, `work-items`, `resources`,
+  `chat/$chatRef`, and `time` — keyed on the corresponding `access.*` flag (`timeline`
+  reuses `access.roadmap`). `logs` gates **inline** on
   `permissions.logs.view` because the component's `access` prop is typed to the `access.*`
   section, which has no `logs` key. `overview`, `team/*`, and `settings/*` are **not
   wrapped** and rely on backend 403s surfacing as toasts. `ProtectedRoute` handles
