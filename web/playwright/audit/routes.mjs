@@ -62,6 +62,8 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/project/:projectId/roadmap/:roadmapId", needs: ["projectId", "roadmapId"], group: "project", auth: true },
   { tpl: "/project/:projectId/roadmap/create", needs: ["projectId"], group: "project", auth: true },
   { tpl: "/project/roadmap/convert/:roadmapId", needs: ["roadmapId"], group: "roadmap", auth: true },
+  { tpl: "/project/:projectId/gantt", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/gantt/:roadmapId", needs: ["projectId", "roadmapId"], group: "project", auth: true },
   { tpl: "/project/:projectId/work-items", needs: ["projectId"], group: "project", auth: true },
   { tpl: "/project/:projectId/work-items/:roadmapId", needs: ["projectId", "roadmapId"], group: "project", auth: true },
   { tpl: "/project/:projectId/chat/:chatRef", needs: ["projectId", "chatRef"], group: "project", auth: true },

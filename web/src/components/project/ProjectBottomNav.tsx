@@ -5,6 +5,7 @@ import {
 	BookOpen,
 	ClipboardList,
 	Clock,
+	GanttChartSquare,
 	LayoutDashboard,
 	ListChecks,
 	Map,
@@ -38,6 +39,7 @@ export function ProjectBottomNav({
 
 	const roadmapIdFromPath =
 		currentPath.match(/\/roadmap\/([^/]+)/)?.[1] ??
+		currentPath.match(/\/gantt\/([^/]+)/)?.[1] ??
 		currentPath.match(/\/work-items\/([^/]+)/)?.[1];
 	const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
@@ -147,6 +149,17 @@ export function ProjectBottomNav({
 		isActive: boolean;
 		gate?: ProjectNavGate;
 	}> = [
+		// Gantt lives in the "More" sheet rather than the primary row: the bar is
+		// already full, and the chart itself is desktop-only.
+		{
+			label: "Gantt Chart",
+			icon: GanttChartSquare,
+			to: effectiveRoadmapId
+				? `/project/${projectId}/gantt/${effectiveRoadmapId}`
+				: `/project/${projectId}/gantt`,
+			isActive: currentPath.includes("/gantt"),
+			gate: "access.roadmap",
+		},
 		{
 			label: "Team",
 			icon: Users,

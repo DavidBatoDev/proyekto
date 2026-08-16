@@ -61,6 +61,18 @@ function RoadmapViewPage() {
 	);
 	const safeEffectiveNodeId = toCanonicalUrlNodeId(effectiveNodeId);
 
+	// The milestones timeline moved out of this canvas and became the Gantt Chart
+	// page. Keep old `?view=timelineView` deep links working.
+	useEffect(() => {
+		if (view !== "timelineView") return;
+		void navigate({
+			to: "/project/$projectId/gantt/$roadmapId",
+			params: { projectId, roadmapId },
+			search: effectiveNodeId ? { nodeId: effectiveNodeId } : undefined,
+			replace: true,
+		});
+	}, [effectiveNodeId, navigate, projectId, roadmapId, view]);
+
 	useEffect(() => {
 		if (!node || nodeId) return;
 		const canonicalLegacyNodeId = toCanonicalUrlNodeId(node);

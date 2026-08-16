@@ -15,14 +15,7 @@ import {
 	useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-	CalendarDays,
-	FileText,
-	LayoutGrid,
-	MessageCircle,
-	Share2,
-	X,
-} from "lucide-react";
+import { FileText, MessageCircle, Share2, X } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -154,40 +147,9 @@ export function RoadmapTopBar({
 	return (
 		<div className="bg-gray-100 border-b border-gray-200 flex items-center justify-between w-full shrink-0 z-10 overflow-hidden">
 			<div className="flex items-center flex-1 min-w-0 h-full overflow-hidden">
-				<div
-					className="flex items-center shrink-0"
-					style={{ width: LEFT_PANEL_WIDTH }}
-				>
-					<button
-						onClick={() => {
-							setViewMode("roadmap");
-							setSelectedEpicId(null);
-						}}
-						className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
-							viewMode === "roadmap"
-								? "text-gray-900 border-gray-900"
-								: "text-gray-600 hover:text-gray-900 border-transparent"
-						}`}
-					>
-						<span className="inline-flex items-center gap-1.5">
-							<LayoutGrid className="w-4 h-4" />
-							Roadmap
-						</span>
-					</button>
-					<button
-						onClick={() => setViewMode("milestones")}
-						className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
-							viewMode === "milestones"
-								? "text-gray-900 border-gray-900"
-								: "text-gray-600 hover:text-gray-900 border-transparent"
-						}`}
-					>
-						<span className="inline-flex items-center gap-1.5">
-							<CalendarDays className="w-4 h-4" />
-							Milestones
-						</span>
-					</button>
-				</div>
+				{/* Spacer keeping the epic tabs aligned with the canvas: the top bar
+				    spans the full width, including the left panel's column. */}
+				<div className="shrink-0" style={{ width: LEFT_PANEL_WIDTH }} />
 
 				<div className="flex-1 min-w-0 overflow-x-auto no-scrollbar h-full">
 					<div className="flex items-center h-full w-max min-w-full">

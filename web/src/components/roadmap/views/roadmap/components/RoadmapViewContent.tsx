@@ -72,6 +72,11 @@ interface RoadmapViewContentProps {
 	deepLinkNodeId?: string | null;
 	deepLinkCommentId?: string | null;
 	urlView?: RoadmapUrlView | null;
+	/**
+	 * Pins the canvas to a single view mode for routes that *are* the view (the
+	 * Gantt chart page). When set, the URL `?view=` sync is bypassed entirely.
+	 */
+	forcedViewMode?: CanvasViewMode;
 	onDeepLinkNodeConsumed?: (view: RoadmapUrlView) => void;
 	onViewChange?: (view: RoadmapUrlView) => void;
 	onNodeOpened?: (nodeId: string, view: RoadmapUrlView) => void;
@@ -186,6 +191,7 @@ export function RoadmapViewContent({
 	deepLinkNodeId,
 	deepLinkCommentId,
 	urlView,
+	forcedViewMode,
 	onDeepLinkNodeConsumed,
 	onViewChange,
 	onNodeOpened,
@@ -278,7 +284,22 @@ export function RoadmapViewContent({
 		setInitialAiMessage(null);
 	}, []);
 
+	// Routes that pin the view (Gantt chart) own the mode outright: force it on
+	// mount and whenever the canvas drifts (e.g. closing the last epic tab resets
+	// the store to "roadmap").
 	useEffect(() => {
+		if (!forcedViewMode) {
+			// "milestones" now belongs exclusively to the Gantt route; a stale mode
+			// carried over from it must not hijack the roadmap canvas.
+			if (canvasViewMode === "milestones") setCanvasViewMode("roadmap");
+			return;
+		}
+		if (canvasViewMode === forcedViewMode) return;
+		setCanvasViewMode(forcedViewMode);
+	}, [canvasViewMode, forcedViewMode, setCanvasViewMode]);
+
+	useEffect(() => {
+		if (forcedViewMode) return;
 		if (!urlView) {
 			lastAppliedUrlViewRef.current = null;
 			return;
@@ -294,9 +315,10 @@ export function RoadmapViewContent({
 
 		isApplyingUrlViewRef.current = true;
 		setCanvasViewMode(nextMode);
-	}, [canvasViewMode, setCanvasViewMode, urlView]);
+	}, [canvasViewMode, forcedViewMode, setCanvasViewMode, urlView]);
 
 	useEffect(() => {
+		if (forcedViewMode) return;
 		const nextUrlView = toRoadmapUrlView(canvasViewMode);
 		if (isApplyingUrlViewRef.current) {
 			const resolvedIncomingMode = urlView ? toCanvasViewMode(urlView) : null;
@@ -307,7 +329,7 @@ export function RoadmapViewContent({
 		}
 
 		onViewChange?.(nextUrlView);
-	}, [canvasViewMode, onViewChange, urlView]);
+	}, [canvasViewMode, forcedViewMode, onViewChange, urlView]);
 
 	useEffect(() => {
 		const normalizedNodeId =
