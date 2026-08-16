@@ -1,4 +1,3 @@
-import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
 	Calendar,
@@ -38,6 +37,11 @@ import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+import {
+	type CanvasNodeProps,
+	Handle,
+	Position,
+} from "../views/roadmap/canvas/ports/node";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 
 type ToolbarItemType = "epic" | "feature" | "task";
@@ -68,8 +72,6 @@ export interface FeatureWidgetData extends Record<string, unknown> {
 	/** node-id → editors map; the task list looks up each task's own id. */
 	taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
 }
-
-type FeatureWidgetNode = Node<FeatureWidgetData>;
 
 const CANVAS_TASK_STATUS_OPTIONS: RoadmapTask["status"][] = [
 	"todo",
@@ -389,631 +391,645 @@ function CanvasTaskList({
 	);
 }
 
-export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
-	const {
-		feature,
-		showTaskCount = true,
-		onEdit,
-		onDelete,
-		onDuplicate,
-		onClick,
-		onAddTask,
-		onSelectTask,
-		onUpdateTask,
-		pulseTaskId,
-		pulseTaskToken,
-		pulseToken,
-		runningTaskId,
-		toolbarDraggingType = null,
-		performanceMode = "normal",
-		canEditRoadmap = false,
-		editors,
-		taskEditorsByNodeId,
-	} = data;
-	const toast = useToast();
-	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
-	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
-	const resolveCanonicalNodeId = useRoadmapStore(
-		(s) => s.resolveCanonicalNodeId,
-	);
-	const isOptimisticNodeId = useRoadmapStore((s) => s.isOptimisticNodeId);
-	const handleCopyLink = (e: { stopPropagation: () => void }) => {
-		e.stopPropagation();
-		const canonicalId = resolveCanonicalNodeId(feature.id) ?? feature.id;
-		if (isOptimisticNodeId(canonicalId)) {
-			toast.error("Still saving this feature — try again in a moment.");
-			return;
-		}
-		if (!roadmapId || !projectId) {
-			toast.error("Can't build a link outside a roadmap.");
-			return;
-		}
-		const url = buildRoadmapPreviewUrl(
-			window.location.origin,
-			roadmapId,
-			canonicalId,
+export const FeatureWidget = memo(
+	({ data }: CanvasNodeProps<FeatureWidgetData>) => {
+		const {
+			feature,
+			showTaskCount = true,
+			onEdit,
+			onDelete,
+			onDuplicate,
+			onClick,
+			onAddTask,
+			onSelectTask,
+			onUpdateTask,
+			pulseTaskId,
+			pulseTaskToken,
+			pulseToken,
+			runningTaskId,
+			toolbarDraggingType = null,
+			performanceMode = "normal",
+			canEditRoadmap = false,
+			editors,
+			taskEditorsByNodeId,
+		} = data;
+		const toast = useToast();
+		const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+		const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
+		const resolveCanonicalNodeId = useRoadmapStore(
+			(s) => s.resolveCanonicalNodeId,
 		);
-		navigator.clipboard.writeText(url);
-		toast.success("Link copied to clipboard");
-	};
-	const isReducedMotion = performanceMode === "reducedMotion";
-	const safelyUpdateTask = (task: RoadmapTask) => {
-		if (!onUpdateTask) return;
-		void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
-	};
-	const descriptionRef = useRef<HTMLDivElement>(null);
-	const cardRef = useRef<HTMLDivElement>(null);
-	const taskListRef = useRef<HTMLDivElement>(null);
-
-	const [hasOverflow, setHasOverflow] = useState(false);
-	const [taskListHasScroll, setTaskListHasScroll] = useState(false);
-	const [taskListScrollTop, setTaskListScrollTop] = useState(0);
-	const [isPulsing, setIsPulsing] = useState(false);
-	const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
-	const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
-	const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
-	const derivedStatus = feature.status;
-
-	const taskCount = feature.tasks?.length || 0;
-	const isOptimisticFeature = feature.id.startsWith("temp-");
-	const completedTasks = getCompletedTaskCount(feature.tasks);
-	const autoProgress = calculateFeatureProgressFromTasks(feature.tasks);
-	const featureAssignees = useMemo(() => {
-		const deduped = new Map<string, NonNullable<RoadmapTask["assignee"]>>();
-
-		for (const task of feature.tasks ?? []) {
-			const assigneeId = task.assignee_id ?? task.assignee?.id;
-			if (!assigneeId || !task.assignee) continue;
-			if (!deduped.has(assigneeId)) deduped.set(assigneeId, task.assignee);
-		}
-
-		return Array.from(deduped.values());
-	}, [feature.tasks]);
-
-	useEffect(() => {
-		const el = descriptionRef.current;
-		if (!el) return;
-		setHasOverflow(el.scrollHeight > el.clientHeight + 1);
-	}, [feature.description]);
-
-	useEffect(() => {
-		const el = taskListRef.current;
-		if (!el) {
-			setTaskListHasScroll(false);
-			return;
-		}
-		setTaskListHasScroll(el.scrollHeight > el.clientHeight + 1);
-	}, [feature.tasks]);
-
-	useEffect(() => {
-		if (isReducedMotion) {
-			setIsPulsing(false);
-			return;
-		}
-		if (!pulseToken) return;
-		setIsPulsing(true);
-		const timeoutId = window.setTimeout(() => {
-			setIsPulsing(false);
-		}, 900);
-		return () => {
-			window.clearTimeout(timeoutId);
-		};
-	}, [isReducedMotion, pulseToken]);
-
-	const getToolbarItemType = (
-		event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
-	): ToolbarItemType | null => {
-		const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
-		if (
-			rawCustom === "epic" ||
-			rawCustom === "feature" ||
-			rawCustom === "task"
-		) {
-			return rawCustom;
-		}
-
-		const rawText = event.dataTransfer.getData("text/plain");
-		if (rawText === "epic" || rawText === "feature" || rawText === "task") {
-			return rawText;
-		}
-
-		if (toolbarDraggingType) {
-			return toolbarDraggingType;
-		}
-
-		return null;
-	};
-	const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
-
-	const renderAssigneeAvatar = (
-		assignee: NonNullable<RoadmapTask["assignee"]>,
-	) => {
-		if (assignee.avatar_url) {
-			return (
-				<img
-					src={assignee.avatar_url}
-					alt={assignee.display_name ?? assignee.email ?? "Assignee"}
-					className="w-6 h-6 rounded-full object-cover ring-1 ring-white"
-				/>
+		const isOptimisticNodeId = useRoadmapStore((s) => s.isOptimisticNodeId);
+		const handleCopyLink = (e: { stopPropagation: () => void }) => {
+			e.stopPropagation();
+			const canonicalId = resolveCanonicalNodeId(feature.id) ?? feature.id;
+			if (isOptimisticNodeId(canonicalId)) {
+				toast.error("Still saving this feature — try again in a moment.");
+				return;
+			}
+			if (!roadmapId || !projectId) {
+				toast.error("Can't build a link outside a roadmap.");
+				return;
+			}
+			const url = buildRoadmapPreviewUrl(
+				window.location.origin,
+				roadmapId,
+				canonicalId,
 			);
-		}
+			navigator.clipboard.writeText(url);
+			toast.success("Link copied to clipboard");
+		};
+		const isReducedMotion = performanceMode === "reducedMotion";
+		const safelyUpdateTask = (task: RoadmapTask) => {
+			if (!onUpdateTask) return;
+			void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
+		};
+		const descriptionRef = useRef<HTMLDivElement>(null);
+		const cardRef = useRef<HTMLDivElement>(null);
+		const taskListRef = useRef<HTMLDivElement>(null);
 
-		const source = assignee.display_name ?? assignee.email ?? "?";
-		const initials = source
-			.split(" ")
-			.map((part) => part[0])
-			.join("")
-			.slice(0, 2)
-			.toUpperCase();
+		const [hasOverflow, setHasOverflow] = useState(false);
+		const [taskListHasScroll, setTaskListHasScroll] = useState(false);
+		const [taskListScrollTop, setTaskListScrollTop] = useState(0);
+		const [isPulsing, setIsPulsing] = useState(false);
+		const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
+		const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
+		const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
+		const derivedStatus = feature.status;
+
+		const taskCount = feature.tasks?.length || 0;
+		const isOptimisticFeature = feature.id.startsWith("temp-");
+		const completedTasks = getCompletedTaskCount(feature.tasks);
+		const autoProgress = calculateFeatureProgressFromTasks(feature.tasks);
+		const featureAssignees = useMemo(() => {
+			const deduped = new Map<string, NonNullable<RoadmapTask["assignee"]>>();
+
+			for (const task of feature.tasks ?? []) {
+				const assigneeId = task.assignee_id ?? task.assignee?.id;
+				if (!assigneeId || !task.assignee) continue;
+				if (!deduped.has(assigneeId)) deduped.set(assigneeId, task.assignee);
+			}
+
+			return Array.from(deduped.values());
+		}, [feature.tasks]);
+
+		useEffect(() => {
+			const el = descriptionRef.current;
+			if (!el) return;
+			setHasOverflow(el.scrollHeight > el.clientHeight + 1);
+		}, [feature.description]);
+
+		useEffect(() => {
+			const el = taskListRef.current;
+			if (!el) {
+				setTaskListHasScroll(false);
+				return;
+			}
+			setTaskListHasScroll(el.scrollHeight > el.clientHeight + 1);
+		}, [feature.tasks]);
+
+		useEffect(() => {
+			if (isReducedMotion) {
+				setIsPulsing(false);
+				return;
+			}
+			if (!pulseToken) return;
+			setIsPulsing(true);
+			const timeoutId = window.setTimeout(() => {
+				setIsPulsing(false);
+			}, 900);
+			return () => {
+				window.clearTimeout(timeoutId);
+			};
+		}, [isReducedMotion, pulseToken]);
+
+		const getToolbarItemType = (
+			event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
+		): ToolbarItemType | null => {
+			const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+			if (
+				rawCustom === "epic" ||
+				rawCustom === "feature" ||
+				rawCustom === "task"
+			) {
+				return rawCustom;
+			}
+
+			const rawText = event.dataTransfer.getData("text/plain");
+			if (rawText === "epic" || rawText === "feature" || rawText === "task") {
+				return rawText;
+			}
+
+			if (toolbarDraggingType) {
+				return toolbarDraggingType;
+			}
+
+			return null;
+		};
+		const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
+
+		const renderAssigneeAvatar = (
+			assignee: NonNullable<RoadmapTask["assignee"]>,
+		) => {
+			if (assignee.avatar_url) {
+				return (
+					<img
+						src={assignee.avatar_url}
+						alt={assignee.display_name ?? assignee.email ?? "Assignee"}
+						className="w-6 h-6 rounded-full object-cover ring-1 ring-white"
+					/>
+				);
+			}
+
+			const source = assignee.display_name ?? assignee.email ?? "?";
+			const initials = source
+				.split(" ")
+				.map((part) => part[0])
+				.join("")
+				.slice(0, 2)
+				.toUpperCase();
+
+			return (
+				<div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
+					{initials}
+				</div>
+			);
+		};
 
 		return (
-			<div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
-				{initials}
-			</div>
-		);
-	};
+			<div className="relative w-[500px]">
+				<motion.div
+					ref={cardRef}
+					// Renderer-independent test hooks: the canvas engine owns the wrapper
+					// element, so these live on the widget root instead.
+					data-testid="roadmap-canvas-node"
+					data-node-id={feature.id}
+					data-node-type="feature"
+					className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
+						isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+					} ${isOptimisticFeature ? "opacity-75" : ""} ${
+						isCardTaskDropActive
+							? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
+							: isGlobalTaskDropHighlight
+								? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+								: // Same resting border as EpicWidget. `border-border` resolves
+									// to #eeeff1, which is far lighter than the epic card's
+									// gray-300 and made feature cards read as borderless beside
+									// them on the canvas.
+									"border-gray-300 hover:border-primary/60"
+					}`}
+					style={
+						editingBorderColor(editors)
+							? { borderColor: editingBorderColor(editors) }
+							: undefined
+					}
+					onClick={() => onClick?.(feature)}
+					onDragEnter={(event) => {
+						if (!onAddTask || getToolbarItemType(event) !== "task") return;
+						event.preventDefault();
+						event.stopPropagation();
+						setIsCardTaskDropActive(true);
+					}}
+					onDragOver={(event) => {
+						if (!onAddTask || getToolbarItemType(event) !== "task") return;
+						event.preventDefault();
+						event.stopPropagation();
+						event.dataTransfer.dropEffect = "move";
+						setIsCardTaskDropActive(true);
+					}}
+					onDragLeave={() => {
+						setIsCardTaskDropActive(false);
+					}}
+					onDrop={(event) => {
+						const itemType = getToolbarItemType(event);
+						setIsCardTaskDropActive(false);
+						if (!onAddTask || itemType !== "task") return;
+						event.preventDefault();
+						event.stopPropagation();
+						onAddTask(feature.id);
+					}}
+					initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+					animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+					transition={
+						isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
+					}
+				>
+					{/* Live "editing" presence — collaborators with this feature open */}
+					<EditingAvatars editors={editors} />
 
-	return (
-		<div className="relative w-[500px]">
-			<motion.div
-				ref={cardRef}
-				className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
-					isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-				} ${isOptimisticFeature ? "opacity-75" : ""} ${
-					isCardTaskDropActive
-						? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
-						: isGlobalTaskDropHighlight
-							? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-							: "border-border hover:border-primary/60"
-				}`}
-				style={
-					editingBorderColor(editors)
-						? { borderColor: editingBorderColor(editors) }
-						: undefined
-				}
-				onClick={() => onClick?.(feature)}
-				onDragEnter={(event) => {
-					if (!onAddTask || getToolbarItemType(event) !== "task") return;
-					event.preventDefault();
-					event.stopPropagation();
-					setIsCardTaskDropActive(true);
-				}}
-				onDragOver={(event) => {
-					if (!onAddTask || getToolbarItemType(event) !== "task") return;
-					event.preventDefault();
-					event.stopPropagation();
-					event.dataTransfer.dropEffect = "move";
-					setIsCardTaskDropActive(true);
-				}}
-				onDragLeave={() => {
-					setIsCardTaskDropActive(false);
-				}}
-				onDrop={(event) => {
-					const itemType = getToolbarItemType(event);
-					setIsCardTaskDropActive(false);
-					if (!onAddTask || itemType !== "task") return;
-					event.preventDefault();
-					event.stopPropagation();
-					onAddTask(feature.id);
-				}}
-				initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
-				animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-				transition={
-					isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
-				}
-			>
-				{/* Live "editing" presence — collaborators with this feature open */}
-				<EditingAvatars editors={editors} />
-
-				{/* Deliverable indicator */}
-				{feature.is_deliverable && (
-					<div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
-						★
-					</div>
-				)}
-
-				{/* Invisible handles for edge connections */}
-				<Handle
-					type="target"
-					position={Position.Left}
-					className="w-3 h-3 opacity-0"
-				/>
-				<Handle
-					type="source"
-					position={Position.Right}
-					className="w-3 h-3 opacity-0"
-				/>
-
-				{onAddTask && (
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							onAddTask(feature.id);
-						}}
-						onDragEnter={(event) => {
-							if (getToolbarItemType(event) !== "task") return;
-							event.preventDefault();
-							setIsAddTaskDropActive(true);
-						}}
-						onDragOver={(event) => {
-							if (getToolbarItemType(event) !== "task") return;
-							event.preventDefault();
-							event.dataTransfer.dropEffect = "move";
-							setIsAddTaskDropActive(true);
-						}}
-						onDragLeave={() => {
-							setIsAddTaskDropActive(false);
-						}}
-						onDrop={(event) => {
-							setIsAddTaskDropActive(false);
-							if (getToolbarItemType(event) !== "task") return;
-							event.preventDefault();
-							event.stopPropagation();
-							onAddTask(feature.id);
-						}}
-						className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
-							toolbarDraggingType === "task"
-								? `opacity-100 scale-100 ring-2 ${
-										isAddTaskDropActive
-											? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
-											: "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
-									}`
-								: "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
-						}`}
-						title="Add task"
-					>
-						<Plus className="w-4 h-4" />
-					</button>
-				)}
-
-				<div className="p-10 flex flex-col h-full overflow-hidden">
-					{/* Header */}
-					<div className="flex items-start justify-between gap-2 mb-2">
-						<div className="flex-1 min-w-0">
-							<div className="flex items-center gap-2 mb-1"></div>
-							<h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
-								{feature.title}
-							</h4>
-						</div>
-
-						{/* Actions */}
-						<div className="flex items-center gap-1 shrink-0">
-							{onEdit && (
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										onEdit(feature);
-									}}
-									className="p-1 hover:bg-amber-100 rounded transition-colors"
-									title="Edit feature"
-								>
-									<Edit2 className="w-3 h-3 text-gray-600" />
-								</button>
-							)}
-							{onDuplicate && (
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										onDuplicate(feature.id);
-									}}
-									className="p-1 hover:bg-gray-100 rounded transition-colors"
-									title="Duplicate feature"
-								>
-									<Copy className="w-3 h-3 text-gray-600" />
-								</button>
-							)}
-							<button
-								type="button"
-								onClick={handleCopyLink}
-								className="p-1 hover:bg-gray-100 rounded transition-colors"
-								title="Copy link"
-							>
-								<Link2 className="w-3 h-3 text-gray-600" />
-							</button>
-							{onDelete && (
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										onDelete(feature.id);
-									}}
-									className="p-1 hover:bg-red-100 rounded transition-colors"
-									title="Delete feature"
-								>
-									<Trash2 className="w-3 h-3 text-red-600" />
-								</button>
-							)}
-						</div>
-					</div>
-
-					{/* Description */}
-					{feature.description && (
-						<div
-							ref={descriptionRef}
-							className="relative mb-2 grow overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-						>
-							<div
-								className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none"
-								dangerouslySetInnerHTML={{ __html: feature.description }}
-							/>
-							{hasOverflow && (
-								<div
-									data-description-overflow-fade
-									className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-card via-card/80 to-transparent"
-								/>
-							)}
+					{/* Deliverable indicator */}
+					{feature.is_deliverable && (
+						<div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
+							★
 						</div>
 					)}
 
-					{/* Status Badge */}
-					<div className="flex items-center gap-2 mb-2">
-						<TaskStatusBadge status={derivedStatus} />
+					{/* Invisible handles for edge connections */}
+					<Handle
+						type="target"
+						position={Position.Left}
+						className="w-3 h-3 opacity-0"
+					/>
+					<Handle
+						type="source"
+						position={Position.Right}
+						className="w-3 h-3 opacity-0"
+					/>
 
-						{featureAssignees.length > 0 && (
-							<div className="ml-auto flex items-center">
-								{featureAssignees.slice(0, 4).map((assignee, index) => (
-									<div
-										key={assignee.id}
-										className={index > 0 ? "-ml-1.5" : ""}
-										title={
-											assignee.display_name ?? assignee.email ?? "Assignee"
-										}
+					{onAddTask && (
+						<button
+							type="button"
+							onClick={(event) => {
+								event.stopPropagation();
+								onAddTask(feature.id);
+							}}
+							onDragEnter={(event) => {
+								if (getToolbarItemType(event) !== "task") return;
+								event.preventDefault();
+								setIsAddTaskDropActive(true);
+							}}
+							onDragOver={(event) => {
+								if (getToolbarItemType(event) !== "task") return;
+								event.preventDefault();
+								event.dataTransfer.dropEffect = "move";
+								setIsAddTaskDropActive(true);
+							}}
+							onDragLeave={() => {
+								setIsAddTaskDropActive(false);
+							}}
+							onDrop={(event) => {
+								setIsAddTaskDropActive(false);
+								if (getToolbarItemType(event) !== "task") return;
+								event.preventDefault();
+								event.stopPropagation();
+								onAddTask(feature.id);
+							}}
+							className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
+								toolbarDraggingType === "task"
+									? `opacity-100 scale-100 ring-2 ${
+											isAddTaskDropActive
+												? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+												: "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+										}`
+									: "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+							}`}
+							title="Add task"
+						>
+							<Plus className="w-4 h-4" />
+						</button>
+					)}
+
+					<div className="p-10 flex flex-col h-full overflow-hidden">
+						{/* Header */}
+						<div className="flex items-start justify-between gap-2 mb-2">
+							<div className="flex-1 min-w-0">
+								<div className="flex items-center gap-2 mb-1"></div>
+								<h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
+									{feature.title}
+								</h4>
+							</div>
+
+							{/* Actions */}
+							<div className="flex items-center gap-1 shrink-0">
+								{onEdit && (
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											onEdit(feature);
+										}}
+										className="p-1 hover:bg-amber-100 rounded transition-colors"
+										title="Edit feature"
 									>
-										{renderAssigneeAvatar(assignee)}
-									</div>
-								))}
-								{featureAssignees.length > 4 && (
-									<span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
-										+{featureAssignees.length - 4}
+										<Edit2 className="w-3 h-3 text-gray-600" />
+									</button>
+								)}
+								{onDuplicate && (
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											onDuplicate(feature.id);
+										}}
+										className="p-1 hover:bg-gray-100 rounded transition-colors"
+										title="Duplicate feature"
+									>
+										<Copy className="w-3 h-3 text-gray-600" />
+									</button>
+								)}
+								<button
+									type="button"
+									onClick={handleCopyLink}
+									className="p-1 hover:bg-gray-100 rounded transition-colors"
+									title="Copy link"
+								>
+									<Link2 className="w-3 h-3 text-gray-600" />
+								</button>
+								{onDelete && (
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											onDelete(feature.id);
+										}}
+										className="p-1 hover:bg-red-100 rounded transition-colors"
+										title="Delete feature"
+									>
+										<Trash2 className="w-3 h-3 text-red-600" />
+									</button>
+								)}
+							</div>
+						</div>
+
+						{/* Description */}
+						{feature.description && (
+							<div
+								ref={descriptionRef}
+								className="relative mb-2 grow overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							>
+								<div
+									className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none"
+									dangerouslySetInnerHTML={{ __html: feature.description }}
+								/>
+								{hasOverflow && (
+									<div
+										data-description-overflow-fade
+										className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-card via-card/80 to-transparent"
+									/>
+								)}
+							</div>
+						)}
+
+						{/* Status Badge */}
+						<div className="flex items-center gap-2 mb-2">
+							<TaskStatusBadge status={derivedStatus} />
+
+							{featureAssignees.length > 0 && (
+								<div className="ml-auto flex items-center">
+									{featureAssignees.slice(0, 4).map((assignee, index) => (
+										<div
+											key={assignee.id}
+											className={index > 0 ? "-ml-1.5" : ""}
+											title={
+												assignee.display_name ?? assignee.email ?? "Assignee"
+											}
+										>
+											{renderAssigneeAvatar(assignee)}
+										</div>
+									))}
+									{featureAssignees.length > 4 && (
+										<span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
+											+{featureAssignees.length - 4}
+										</span>
+									)}
+								</div>
+							)}
+						</div>
+
+						{/* Progress Bar (auto-calculated from task statuses) */}
+						{taskCount > 0 && (
+							<div className="mb-2">
+								<div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+									<span>Progress</span>
+									<span className="font-medium">{autoProgress}%</span>
+								</div>
+								<div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+									<div
+										className="h-full bg-primary transition-all duration-300"
+										style={{ width: `${autoProgress}%` }}
+									/>
+								</div>
+							</div>
+						)}
+
+						{/* Task count or indicator */}
+						{showTaskCount && (
+							<div className="flex items-center justify-between text-xs">
+								<div className="flex items-center gap-1 text-gray-600">
+									<List className="w-3 h-3" />
+									<span>
+										{taskCount} task{taskCount !== 1 ? "s" : ""}
+									</span>
+								</div>
+								{taskCount > 0 && (
+									<span className="text-gray-500">
+										{completedTasks}/{taskCount} done
 									</span>
 								)}
 							</div>
 						)}
-					</div>
 
-					{/* Progress Bar (auto-calculated from task statuses) */}
-					{taskCount > 0 && (
-						<div className="mb-2">
-							<div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-								<span>Progress</span>
-								<span className="font-medium">{autoProgress}%</span>
+						{/* Estimated hours */}
+						{feature.estimated_hours && (
+							<div className="mt-2 text-xs text-gray-500 text-right">
+								~{feature.estimated_hours}h
 							</div>
-							<div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-								<div
-									className="h-full bg-primary transition-all duration-300"
-									style={{ width: `${autoProgress}%` }}
-								/>
-							</div>
-						</div>
-					)}
+						)}
 
-					{/* Task count or indicator */}
-					{showTaskCount && (
-						<div className="flex items-center justify-between text-xs">
-							<div className="flex items-center gap-1 text-gray-600">
-								<List className="w-3 h-3" />
+						{/* Date range */}
+						{(feature.start_date || feature.end_date) && (
+							<div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
+								<Calendar className="w-3 h-3 shrink-0" />
 								<span>
-									{taskCount} task{taskCount !== 1 ? "s" : ""}
+									{feature.start_date
+										? new Date(feature.start_date).toLocaleDateString(
+												undefined,
+												{
+													month: "short",
+													day: "numeric",
+												},
+											)
+										: "—"}
+									{" → "}
+									{feature.end_date
+										? new Date(feature.end_date).toLocaleDateString(undefined, {
+												month: "short",
+												day: "numeric",
+											})
+										: "—"}
 								</span>
 							</div>
-							{taskCount > 0 && (
-								<span className="text-gray-500">
-									{completedTasks}/{taskCount} done
-								</span>
-							)}
-						</div>
-					)}
+						)}
+					</div>
+				</motion.div>
 
-					{/* Estimated hours */}
-					{feature.estimated_hours && (
-						<div className="mt-2 text-xs text-gray-500 text-right">
-							~{feature.estimated_hours}h
-						</div>
-					)}
+				{taskCount > 0 && (
+					<>
+						{/* Connecting line from feature to tasks */}
+						<div
+							className="absolute top-1/2 -translate-y-1/2 left-[500px] h-px w-10"
+							style={{ backgroundColor: "var(--canvas-edge)" }}
+						/>
 
-					{/* Date range */}
-					{(feature.start_date || feature.end_date) && (
-						<div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
-							<Calendar className="w-3 h-3 shrink-0" />
-							<span>
-								{feature.start_date
-									? new Date(feature.start_date).toLocaleDateString(undefined, {
-											month: "short",
-											day: "numeric",
-										})
-									: "—"}
-								{" → "}
-								{feature.end_date
-									? new Date(feature.end_date).toLocaleDateString(undefined, {
-											month: "short",
-											day: "numeric",
-										})
-									: "—"}
-							</span>
-						</div>
-					)}
-				</div>
-			</motion.div>
-
-			{taskCount > 0 && (
-				<>
-					{/* Connecting line from feature to tasks */}
-					<div
-						className="absolute top-1/2 -translate-y-1/2 left-[500px] h-px w-10"
-						style={{ backgroundColor: "var(--canvas-edge)" }}
-					/>
-
-					{/* Task List - positioned to the right */}
-					{(() => {
-						const allTasks = feature.tasks ?? [];
-						return (
-							<div
-								role="presentation"
-								data-task-list-shell
-								className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
-								style={{
-									height: `${(allTasks.length + 2) * 1.75}rem`,
-									maxHeight: "calc(100% - 1.5rem)",
-								}}
-								onClick={(e) => e.stopPropagation()}
-								onPointerDown={(e) => e.stopPropagation()}
-							>
+						{/* Task List - positioned to the right */}
+						{(() => {
+							const allTasks = feature.tasks ?? [];
+							return (
 								<div
-									data-task-list-container
-									className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+									role="presentation"
+									data-task-list-shell
+									className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
+									style={{
+										height: `${(allTasks.length + 2) * 1.75}rem`,
+										maxHeight: "calc(100% - 1.5rem)",
+									}}
+									onClick={(e) => e.stopPropagation()}
+									onPointerDown={(e) => e.stopPropagation()}
 								>
-									{/* Header */}
-									<button
-										type="button"
-										className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
-										onClick={(e) => {
-											e.stopPropagation();
-											setIsTaskListModalOpen(true);
-										}}
-									>
-										<span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-											Tasks - {allTasks.length}
-										</span>
-										<Maximize2 className="w-3 h-3 text-gray-500" />
-									</button>
-
-									{/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
 									<div
-										role="presentation"
-										ref={taskListRef}
-										className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
-										onClick={(e) => e.stopPropagation()}
-										onScroll={(event) =>
-											setTaskListScrollTop(event.currentTarget.scrollTop)
-										}
+										data-task-list-container
+										className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
 									>
-										<CanvasTaskList
-											tasks={allTasks}
-											pulseTaskId={pulseTaskId}
-											pulseTaskToken={pulseTaskToken}
-											runningTaskId={runningTaskId}
-											taskEditorsByNodeId={taskEditorsByNodeId}
-											onSelectTask={onSelectTask}
-											onToggleComplete={
-												onUpdateTask
-													? (task) => {
-															safelyUpdateTask({
-																...task,
-																status:
-																	task.status === "done" ? "todo" : "done",
-															});
-														}
-													: undefined
-											}
-											onUpdateStatus={
-												onUpdateTask
-													? (task, status) => {
-															safelyUpdateTask({ ...task, status });
-														}
-													: undefined
-											}
-										/>
-									</div>
-									<button
-										type="button"
-										className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
-										onClick={(event) => {
-											event.stopPropagation();
-											setIsTaskListModalOpen(true);
-										}}
-									>
-										<Maximize2 className="h-3 w-3" />
-										Full task controls
-									</button>
-								</div>
-
-								{onSelectTask && (
-									<div
-										data-task-comment-gutter
-										className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
-									>
-										<div
-											style={{
-												transform: `translateY(-${taskListScrollTop}px)`,
+										{/* Header */}
+										<button
+											type="button"
+											className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
+											onClick={(e) => {
+												e.stopPropagation();
+												setIsTaskListModalOpen(true);
 											}}
 										>
-											{allTasks.map((task) => {
-												const commentCount = Math.max(
-													0,
-													Math.floor(task.comment_count ?? 0),
-												);
+											<span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+												Tasks - {allTasks.length}
+											</span>
+											<Maximize2 className="w-3 h-3 text-gray-500" />
+										</button>
 
-												return (
-													<div
-														key={task.id}
-														className="flex h-7 items-center justify-start"
-													>
-														{commentCount > 0 && (
-															<button
-																type="button"
-																className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
-																onClick={(event) => {
-																	event.stopPropagation();
-																	onSelectTask(task, "comments");
-																}}
-																title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
-																aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
-															>
-																<span
-																	aria-hidden="true"
-																	className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
-																>
-																	<span className="relative z-10 flex items-center gap-0.5">
-																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																		<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																	</span>
-																</span>
-																<span className="tabular-nums text-[11px] font-bold tracking-tight">
-																	{commentCount > 99 ? "99+" : commentCount}
-																</span>
-															</button>
-														)}
-													</div>
-												);
-											})}
+										{/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
+										<div
+											role="presentation"
+											ref={taskListRef}
+											className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+											onClick={(e) => e.stopPropagation()}
+											onScroll={(event) =>
+												setTaskListScrollTop(event.currentTarget.scrollTop)
+											}
+										>
+											<CanvasTaskList
+												tasks={allTasks}
+												pulseTaskId={pulseTaskId}
+												pulseTaskToken={pulseTaskToken}
+												runningTaskId={runningTaskId}
+												taskEditorsByNodeId={taskEditorsByNodeId}
+												onSelectTask={onSelectTask}
+												onToggleComplete={
+													onUpdateTask
+														? (task) => {
+																safelyUpdateTask({
+																	...task,
+																	status:
+																		task.status === "done" ? "todo" : "done",
+																});
+															}
+														: undefined
+												}
+												onUpdateStatus={
+													onUpdateTask
+														? (task, status) => {
+																safelyUpdateTask({ ...task, status });
+															}
+														: undefined
+												}
+											/>
 										</div>
+										<button
+											type="button"
+											className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
+											onClick={(event) => {
+												event.stopPropagation();
+												setIsTaskListModalOpen(true);
+											}}
+										>
+											<Maximize2 className="h-3 w-3" />
+											Full task controls
+										</button>
 									</div>
-								)}
-							</div>
-						);
-					})()}
 
-					{isTaskListModalOpen && (
-						<TaskListModal
-							feature={feature}
-							onClose={() => setIsTaskListModalOpen(false)}
-							onUpdateTask={safelyUpdateTask}
-							onSelectTask={
-								onSelectTask
-									? (task) => {
-											setIsTaskListModalOpen(false);
-											onSelectTask(task);
-										}
-									: undefined
-							}
-							onAddTask={
-								onAddTask
-									? () => {
-											setIsTaskListModalOpen(false);
-											onAddTask(feature.id);
-										}
-									: undefined
-							}
-						/>
-					)}
-				</>
-			)}
-		</div>
-	);
-});
+									{onSelectTask && (
+										<div
+											data-task-comment-gutter
+											className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
+										>
+											<div
+												style={{
+													transform: `translateY(-${taskListScrollTop}px)`,
+												}}
+											>
+												{allTasks.map((task) => {
+													const commentCount = Math.max(
+														0,
+														Math.floor(task.comment_count ?? 0),
+													);
+
+													return (
+														<div
+															key={task.id}
+															className="flex h-7 items-center justify-start"
+														>
+															{commentCount > 0 && (
+																<button
+																	type="button"
+																	className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		onSelectTask(task, "comments");
+																	}}
+																	title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
+																	aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
+																>
+																	<span
+																		aria-hidden="true"
+																		className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																	>
+																		<span className="relative z-10 flex items-center gap-0.5">
+																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																		</span>
+																	</span>
+																	<span className="tabular-nums text-[11px] font-bold tracking-tight">
+																		{commentCount > 99 ? "99+" : commentCount}
+																	</span>
+																</button>
+															)}
+														</div>
+													);
+												})}
+											</div>
+										</div>
+									)}
+								</div>
+							);
+						})()}
+
+						{isTaskListModalOpen && (
+							<TaskListModal
+								feature={feature}
+								onClose={() => setIsTaskListModalOpen(false)}
+								onUpdateTask={safelyUpdateTask}
+								onSelectTask={
+									onSelectTask
+										? (task) => {
+												setIsTaskListModalOpen(false);
+												onSelectTask(task);
+											}
+										: undefined
+								}
+								onAddTask={
+									onAddTask
+										? () => {
+												setIsTaskListModalOpen(false);
+												onAddTask(feature.id);
+											}
+										: undefined
+								}
+							/>
+						)}
+					</>
+				)}
+			</div>
+		);
+	},
+);
 
 FeatureWidget.displayName = "FeatureWidget";

@@ -22,7 +22,7 @@ for CRUD and to the agent directly for roadmap AI.
 | Client state | Zustand |
 | UI | MUI 7 + Tailwind v4 (`clsx`, `tailwind-merge`, `cva`) |
 | Rich text / code | Lexical, Monaco (JSON editor) |
-| Canvas | XYFlow (React Flow) — see [roadmap-canvas.md](./roadmap-canvas.md) |
+| Canvas | In-house DOM+SVG engine (`src/lib/flow/`) — see [roadmap-canvas.md](./roadmap-canvas.md) |
 | Drag & drop | dnd-kit |
 | Native | Capacitor (Android/iOS) + Firebase messaging |
 | Backends | Supabase JS, axios |
@@ -75,4 +75,4 @@ polling) drive most invalidation. See
 
 - [routing-and-personas.md](./routing-and-personas.md) — the route tree and auth gating.
 - [state-and-services.md](./state-and-services.md) — Zustand stores + API service clients.
-- [roadmap-canvas.md](./roadmap-canvas.md) — the XYFlow canvas + optimistic UI.
+- [roadmap-canvas.md](./roadmap-canvas.md) — the canvas engine + optimistic UI.

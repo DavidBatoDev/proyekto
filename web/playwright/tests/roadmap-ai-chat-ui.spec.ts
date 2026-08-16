@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 /**
  * UI-driven walkthrough of the roadmap AI assistant — drives the REAL panel
@@ -32,7 +33,7 @@ test("roadmap AI: open panel, start a new thread, and chat", async ({ page }) =>
   await expect(toggle, "roadmap top bar should render").toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 30_000 });
+  await expect(canvasRoot(page)).toBeVisible({ timeout: 30_000 });
   await toggle.click();
 
   const panel = page.getByLabel("AI Assistant Panel");

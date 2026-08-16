@@ -1,3 +1,4 @@
+import './config/node-environment';
 import { initTracing } from './tracing';
 
 initTracing();

@@ -1,0 +1,119 @@
+/**
+ * Flow engine base styles.
+ *
+ * Everything the engine needs to lay itself out, and nothing about how a
+ * particular app looks: colours come from the --flow-* custom properties, which
+ * the consumer overrides. This file is imported by Flow.tsx, so it only enters
+ * the bundle when the engine is actually mounted.
+ */
+
+.flow {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background-color: var(--flow-background-color, transparent);
+}
+
+/* The dot grid. It deliberately sits OUTSIDE the transformed pane: scaling a
+   gradient via background-size is one style write per frame, whereas a pattern
+   inside the pane would be re-rasterised at every zoom level. */
+.flow__background {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	/* The gradient itself is written from the render loop: the dot radius tracks
+	   zoom, because a fixed radius makes a zoomed-out canvas read as heavy
+	   texture rather than a faint reference grid. */
+}
+
+.flow__pane {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 1;
+	width: 100%;
+	height: 100%;
+	transform-origin: 0 0;
+	cursor: default;
+	/* Promote only the pane and the edge layer — never individual nodes. A few
+     hundred 500px cards each on their own compositor layer will exhaust GPU
+     memory on mobile. */
+	will-change: transform;
+}
+
+.flow--panning .flow__pane {
+	cursor: grabbing;
+}
+
+.flow__edges {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 0;
+	overflow: visible;
+	pointer-events: none;
+	will-change: transform;
+}
+
+.flow__edge-path {
+	fill: none;
+	stroke: var(--flow-edge-stroke, #b1b1b7);
+	stroke-width: var(--flow-edge-stroke-width, 1);
+}
+
+.flow__edge.animated .flow__edge-path {
+	stroke-dasharray: 5;
+	animation: flow-dashdraw 0.5s linear infinite;
+}
+
+@keyframes flow-dashdraw {
+	from {
+		stroke-dashoffset: 10;
+	}
+}
+
+.flow__nodes {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 1;
+}
+
+.flow__node {
+	position: absolute;
+	top: 0;
+	left: 0;
+	box-sizing: border-box;
+	transform-origin: 0 0;
+	user-select: none;
+	pointer-events: all;
+	cursor: default;
+}
+
+/* No `transition: transform` here, ever. Edges anchor to logical positions
+   instantly, so a transitioned node visually lags its own edges and reads as
+   the edges flickering. */
+.flow__node--dragging {
+	cursor: grabbing;
+}
+
+/* Offscreen nodes stay MOUNTED and simply stop being laid out and painted.
+   Unmounting them would discard task-list scroll positions, open menus and
+   in-flight drag state — the reason this engine culls this way rather than by
+   removing elements. */
+.flow__node--culled {
+	content-visibility: auto;
+}
+
+.flow__handle {
+	position: absolute;
+	pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.flow__edge.animated .flow__edge-path {
+		animation: none;
+	}
+}

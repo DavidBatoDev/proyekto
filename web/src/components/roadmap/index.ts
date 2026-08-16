@@ -35,4 +35,3 @@ export { RoadmapView } from "./views/roadmap/RoadmapView";
 export { EpicWidget, type EpicWidgetData } from "./widgets/EpicWidget";
 export { FeatureWidget, type FeatureWidgetData } from "./widgets/FeatureWidget";
 export { TaskListItem } from "./widgets/TaskListItem";
-export { TaskWidget, type TaskWidgetData } from "./widgets/TaskWidget";

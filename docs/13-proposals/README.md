@@ -94,7 +94,7 @@ contract migration long after the readers have moved.
 
 This follows the repo's staged-rollout rule: user-visible features ship dark behind flags and
 activate in phases. Prod migrations go through the Supabase MCP `apply_migration` tool —
-**never** `supabase db push`, which fails with SASL.
+**never** local `supabase db push`.
 
 ## Terminology reserved by these proposals
 

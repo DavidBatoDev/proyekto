@@ -14,7 +14,7 @@ Product docs: docs/01-product/. The docs/ tree (sections 00-13) is authoritative
 
 Proyekto is a monorepo with six deployable units. Each unit has its own CLAUDE.md with local commands, conventions, and gotchas - read it before working in that unit.
 
-- web/ - React 19 + Vite + TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow/dagre (roadmap canvas), Supabase client, Capacitor mobile. Dev port 3000, path alias @/* -> web/src/*. See web/CLAUDE.md.
+- web/ - React 19 + Vite + TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, an in-house DOM+SVG canvas engine in web/src/lib/flow/ (roadmap canvas), Supabase client, Capacitor mobile. Dev port 3000, path alias @/* -> web/src/*. See web/CLAUDE.md.
 - backend/ - NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Cloud Run as a Docker image (container starts backend/src/server.ts; backend/src/lambda.ts is an orphaned Vercel adapter, not deployed). 31 feature modules under backend/src/modules/ as of 2026-08 - the list drifts; `ls backend/src/modules` is the source of truth. See backend/CLAUDE.md.
 - agent/ - Python 3.12 FastAPI AI agent powering roadmap AI. Entry: agent/run.py -> app.main:app (port 8010). The single brain is the v2 tool-calling loop in agent/app/core/v2/ over the OpenAI Responses API (OPENAI_MODEL_V2). Session state via Upstash Redis. Deployed to Cloud Run (Docker built from repo root). See agent/CLAUDE.md.
 - realtime/ - Cloudflare Worker + Durable Objects carrying collaborative realtime (roadmap canvas + chat), replacing Supabase Realtime. Shipped dormant behind transport flags. Buckets: R2 proyekto-media / proyekto-private. See realtime/CLAUDE.md.
@@ -45,7 +45,8 @@ Scripts auto-load .env in order: cwd -> scripts/.env -> repo root .env -> backen
 
 - Staged rollouts: user-visible features ship dark behind telemetry/feature flags and activate in phases (realtime transport flags are the model). Do not bundle activation with the initial land unless asked.
 - CI is deploy-only - there are no PR test gates. Local checks (tests, typechecks, schema validators, the canary) are the only quality gate; the /deploy-preflight skill is the pre-push checklist.
-- NEVER `supabase db push` to prod - it fails with SASL (stale local password) and the correct path is the Supabase MCP apply_migration tool. See supabase/CLAUDE.md.
+- NEVER `supabase db push` to prod. The audited production path is the Supabase MCP `apply_migration` tool, regardless of which local credentials are available. See supabase/CLAUDE.md.
+- Supabase production (`byvbnkpiselvvulsvxgo`) and hosted development (`vyiedlwasdwmjbztqznl`) are separate projects. `db:dev:check` compares normalized `public` schemas; `db:dev:mirror` is a confirmed, backup-first schema-only operation that may erase dev rows in rebuilt tables. It does not clone production data, Auth users/sessions, Storage objects, migration history, credentials, or project settings. Do not expand a schema-mirror request into copying any of those resources.
 
 ## Architecture Notes
 
@@ -56,7 +57,7 @@ The roadmap AI feature spans all three runtimes and is the most load-bearing cro
 2. *Backend* forwards to the Python *agent* over HTTP, carrying a session id; agent state is persisted in Upstash Redis via agent/app/core/session_store.py.
 3. *Agent* runs a single tool-calling loop (agent/app/core/v2/) that emits roadmap operations conforming to schemas/roadmap-ai-operations.json.
 4. *Backend* applies those operations to Supabase (via fast-json-patch where relevant) and returns either a full roadmap payload or a lean diff based on the include_roadmap flag - this lean path is a deliberate latency optimization and is benchmark-covered.
-5. *Web* renders the canvas with XYFlow + dagre and supports optimistic UI for epic/feature/task operations.
+5. *Web* renders the canvas with its own DOM+SVG engine (web/src/lib/flow/) and supports optimistic UI for epic/feature/task operations.
 
 The agent has a single brain: the v2 single-loop in agent/app/core/v2/ (one model via the OpenAI Responses API, OPENAI_MODEL_V2). There is no v1/v2 feature-flag matrix - AgentService.plan_message always runs the v2 loop. Tunables (see agent/app/core/config.py): AGENT_V2_MAX_TURNS, AGENT_V2_MAX_TOOL_CALLS, OPENAI_V2_MAX_OUTPUT_TOKENS, OPENAI_V2_REASONING_EFFORT, AGENT_ASYNC_AUTO_COMMIT_ENABLED, SESSION_TTL_SECONDS, AGENT_SUMMARY_MODEL/TRIGGER_MESSAGES/KEEP_MESSAGES/MAX_CHARS.
 

@@ -18,7 +18,7 @@ Local context for the web unit. Cross-cutting rules live in the root CLAUDE.md.
 - Styling: MUI 7 and Tailwind 4 coexist. Use theme tokens (bg-primary, text-primary, the blue-600 scale) - NEVER hardcode hex colors. Theme tokens live in src/styles.css.
 - User-facing copy says "Proyekto" - never "Prodigy".
 - State: server state in TanStack Query (src/queries/), client state in the 5 Zustand stores (src/stores/: authStore, roadmapStore, roadmapAiThreadsStore, projectSettingsStore, appearanceStore). API calls go through src/services/ + src/api/ (axios.ts for backend, agent-axios.ts for the agent).
-- Roadmap canvas: XYFlow (dagre is a declared dep but is NOT imported anywhere - layout is a hand-written getLayoutedElements in RoadmapView.tsx); epic/feature/task mutations use optimistic updates with rollback - follow the existing pattern in roadmapStore/services when adding operations.
+- Roadmap canvas: an in-house DOM+SVG engine in src/lib/flow/ (no graph library; @xyflow/react and dagre were removed 2026-08-16). lib/flow/ may import ONLY react/react-dom - that boundary is enforced by importBoundary.test.ts so the engine stays liftable into its own package. Layout is the hand-written getLayoutedElements in canvas/model/layout.ts; epic/feature/task mutations use optimistic updates with rollback - follow the existing pattern in roadmapStore/services when adding operations.
 
 ## Playwright (e2e)
 

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 // End-to-end smoke for the rebuilt v2 roadmap AI agent (single-loop brain,
 // gpt-5.4-mini via the OpenAI Responses API). Drives the real web UI ->
@@ -36,7 +37,7 @@ test("v2 agent: chat request creates an epic on the canvas", async ({ page }) =>
   await expect(toggle, "roadmap top bar should render").toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.locator(".react-flow"), "canvas should render").toBeVisible({
+  await expect(canvasRoot(page), "canvas should render").toBeVisible({
     timeout: 30_000,
   });
 

@@ -1,4 +1,3 @@
-import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
 	Calendar,
@@ -20,6 +19,11 @@ import {
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+import {
+	type CanvasNodeProps,
+	Handle,
+	Position,
+} from "../views/roadmap/canvas/ports/node";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 
 type ToolbarItemType = "epic" | "feature" | "task";
@@ -42,9 +46,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
 	editors?: CollaboratorInfo[];
 }
 
-type EpicWidgetNode = Node<EpicWidgetData>;
-
-export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
+export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 	const {
 		epic,
 		onClick,
@@ -160,6 +162,11 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
 
 	return (
 		<motion.div
+			// Renderer-independent test hooks: the canvas engine owns the wrapper
+			// element, so these live on the widget root instead.
+			data-testid="roadmap-canvas-node"
+			data-node-id={epic.id}
+			data-node-type="epic"
 			className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : onClick ? "cursor-pointer" : "cursor-default"} ${
 				isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
 			} ${isOptimisticEpic ? "opacity-75" : ""} ${

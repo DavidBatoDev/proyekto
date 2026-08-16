@@ -4,7 +4,7 @@ This setup stores an authenticated browser state and reuses it for QA tests.
 
 ## 1) Set credentials
 
-Add these to `web/.env` (or your shell environment):
+Add these to `web/.env.development.local` (or your shell environment):
 
 ```bash
 PLAYWRIGHT_BASE_URL=http://localhost:3000

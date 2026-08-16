@@ -25,6 +25,25 @@ describe('validateEnv — CLIENT_URL in production', () => {
     GMAIL_REFRESH_TOKEN: 'gmail-token',
   };
 
+  it('defaults NODE_ENV to production', () => {
+    const result = validateEnv({
+      ...base,
+      CLIENT_URL: 'https://www.proyekto.tech',
+    });
+
+    expect(result.NODE_ENV).toBe('production');
+  });
+
+  it('rejects an unknown NODE_ENV instead of silently using production', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'staging',
+        CLIENT_URL: 'https://www.proyekto.tech',
+      }),
+    ).toThrow(/NODE_ENV/);
+  });
+
   it('rejects the localhost default', () => {
     expect(() =>
       validateEnv({

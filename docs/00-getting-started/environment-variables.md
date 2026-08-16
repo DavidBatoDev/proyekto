@@ -1,18 +1,20 @@
 # Environment Variables
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
 this page is the orientation: which service reads what, and where the values come from
 in production.
 
-> Each unit has its own `.env.example` — copy it to `.env` and fill in. In
+> Each unit has an env example. For local web/backend work, copy it to
+> `.env.development.local`; these ignored files point at the development Supabase
+> project. In
 > production, backend/agent secrets come from **GCP Secret Manager** (injected at
 > deploy), web `VITE_*` come from `web/.env.production`, and the realtime Worker's
 > secrets are set with `wrangler secret put`.
 
-## Backend (`backend/.env`)
+## Backend (`backend/.env.development.local` locally)
 
 Validated at boot by `validateEnv`. Categories:
 
@@ -42,7 +44,7 @@ Full table: [Backend → configuration](../03-backend/configuration.md#environme
 
 Full table: [Agent → setup & deploy](../05-agent-ai/setup-and-deploy.md#configuration).
 
-## Web (`web/.env`) — public `VITE_*` only
+## Web (`web/.env.development.local`) — public `VITE_*` only
 
 | Var | Points at |
 | --- | --- |
@@ -55,6 +57,10 @@ Full table: [Agent → setup & deploy](../05-agent-ai/setup-and-deploy.md#config
 | `VITE_STOCK_PHOTOS_ENABLED` | Curated stock-photo thumbnails — code default is **off** (`=== "true"`) |
 
 Only public values — no secrets. See [Web → state & services](../04-web/README.md).
+
+Vite loads `web/.env.development.local` for `npm run dev`. The dev server refuses
+to start unless `VITE_SUPABASE_URL` points at `vyiedlwasdwmjbztqznl`, preventing
+an old `web/.env` from silently connecting local work to production.
 
 > **Build-time, not runtime.** Every `VITE_*` value is baked into the bundle by Vite
 > when `npm run build` runs in `web-deploy.yml`, reading the committed

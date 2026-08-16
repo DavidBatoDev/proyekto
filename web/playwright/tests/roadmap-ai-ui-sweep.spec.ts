@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { expect, request as pwRequest, test } from "@playwright/test";
+import { canvasRoot } from "./canvasLocators";
 
 /**
  * UI-driven assessment sweep — every operation goes through real human steps:
@@ -43,7 +44,7 @@ test("v2 agent: UI-driven sweep (human steps, watch speed + UX)", async ({ page 
   await page.goto(APP_URL);
   const toggle = page.getByTitle("Toggle AI chat panel");
   await expect(toggle, "roadmap top bar should render").toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 30_000 });
+  await expect(canvasRoot(page)).toBeVisible({ timeout: 30_000 });
   await toggle.click();
   const panel = page.getByLabel("AI Assistant Panel");
   await expect(panel, "AI panel should open").toBeVisible();

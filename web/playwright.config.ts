@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 function loadEnvFromWebEnvFile(): void {
-  const envPath = path.resolve(process.cwd(), ".env");
+  const envPath = path.resolve(process.cwd(), ".env.development.local");
   if (!fs.existsSync(envPath)) return;
 
   const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
@@ -13,7 +13,14 @@ function loadEnvFromWebEnvFile(): void {
     const eqIndex = line.indexOf("=");
     if (eqIndex <= 0) continue;
     const key = line.slice(0, eqIndex).trim();
-    const value = line.slice(eqIndex + 1).trim();
+    let value = line.slice(eqIndex + 1).trim();
+    // Strip surrounding quotes the way dotenv does. Without this a quoted
+    // value ships its quote characters as part of the secret, which surfaces
+    // as an ordinary "wrong password" login timeout rather than a parse error
+    // — a genuinely confusing failure, since the file looks correct.
+    if (value.length >= 2 && /^(".*"|'.*')$/s.test(value)) {
+      value = value.slice(1, -1);
+    }
     if (!process.env[key]) process.env[key] = value;
   }
 }

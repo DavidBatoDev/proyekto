@@ -104,7 +104,7 @@ async function step(name, fn) {
 }
 const visible = (loc) => loc.isVisible().catch(() => false);
 async function fitView() {
-  const fit = page.locator(".react-flow__controls-fitview").first();
+  const fit = page.locator("[data-testid=\"roadmap-canvas-fit-view\"]").first();
   if (await visible(fit)) {
     await fit.click();
     await sleep(1000);
@@ -116,8 +116,8 @@ let readyAtMs = 0;
 await step("roadmap: load", async () => {
   const t0 = Date.now();
   await page.goto(roadmapUrl, { waitUntil: "domcontentloaded" });
-  await page.locator(".react-flow").first().waitFor({ timeout: 45_000 });
-  await page.locator(".react-flow__node").first().waitFor({ timeout: 45_000 });
+  await page.locator("[data-testid=\"roadmap-canvas\"]").first().waitFor({ timeout: 45_000 });
+  await page.locator("[data-testid=\"roadmap-canvas-node\"]").first().waitFor({ timeout: 45_000 });
   readyAtMs = Date.now() - t0;
   console.log(`[rec] canvas ready ~${readyAtMs}ms (trim hint)`);
   await sleep(1500);
@@ -131,14 +131,14 @@ await step("roadmap: ensure AI panel closed (clean canvas beat)", async () => {
 });
 await step("roadmap: fit + zoom + pan", async () => {
   await fitView();
-  const zoomIn = page.locator(".react-flow__controls-zoomin").first();
+  const zoomIn = page.locator("[data-testid=\"roadmap-canvas-zoom-in\"]").first();
   if (await visible(zoomIn)) {
     await zoomIn.click();
     await sleep(600);
     await zoomIn.click();
     await sleep(800);
   }
-  const pane = page.locator(".react-flow__pane").first();
+  const pane = page.locator("[data-testid=\"roadmap-canvas\"]").first();
   const box = await pane.boundingBox().catch(() => null);
   if (box) {
     await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.55);

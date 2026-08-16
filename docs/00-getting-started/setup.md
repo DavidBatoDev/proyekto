@@ -1,6 +1,6 @@
 # Setup
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 Getting the Proyekto stack running locally. The three services you'll usually run are
 **web** (React), **backend** (NestJS), and **agent** (Python) — each installs and runs
@@ -36,7 +36,7 @@ The folder is legacy-named `prdigy/`; the product is **Proyekto**.
 
 ```bash
 cd backend
-cp .env.example .env        # fill Supabase, R2, Redis, OpenAI, Gmail values
+cp .env.example .env.development.local  # fill dev Supabase + shared service values
 npm install
 npm run dev                 # nest start --watch → http://localhost:3001/api
 ```
@@ -48,7 +48,8 @@ value stops startup with a clear error. See [Backend → configuration](../03-ba
 
 ```bash
 cd web
-cp .env.example .env        # VITE_* values (API/agent/realtime/Supabase)
+cp .env.development.example .env.development.local
+# add the development project's anon key
 npm install
 npm run dev                 # vite on http://localhost:3000
 ```
@@ -78,8 +79,12 @@ npx supabase link --project-ref <ref>
 npx supabase db push
 ```
 
-For the live Singapore project, use the Supabase MCP `apply_migration` (CLI `db push`
-fails SASL there). See [Data → migrations workflow](../07-data-and-db/migrations-workflow.md).
+The hosted projects are development `vyiedlwasdwmjbztqznl` and production
+`byvbnkpiselvvulsvxgo`. Use `npm run db:dev:check` / `db:dev:apply` from
+`backend/` to validate or update development without changing the CLI's saved link;
+use the confirmed `db:dev:mirror` command for an exact production-schema baseline.
+For production, always use the Supabase MCP `apply_migration`, never local
+`db push`. See [Data → migrations workflow](../07-data-and-db/migrations-workflow.md).
 
 ## Next
 

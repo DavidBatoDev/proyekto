@@ -1,6 +1,6 @@
 # Local Development
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-13 · **Status:** current
 
 The day-to-day commands for each package, the ports they run on, and the
 Windows/monorepo gotchas that trip people up.
@@ -17,7 +17,7 @@ Windows/monorepo gotchas that trip people up.
 
 | Command | Does |
 | --- | --- |
-| `npm run dev` | Vite dev server on port 3000 |
+| `npm run dev` | Vite dev server on port 3000; requires `.env.development.local` pointing at dev Supabase |
 | `npm run build` | `vite build` **then** `tsc` (typecheck gates the build) |
 | `npm test` | Vitest (single run); `vitest` for watch |
 | `npm run check` / `lint` / `format` | Biome |
@@ -27,7 +27,9 @@ Windows/monorepo gotchas that trip people up.
 
 | Command | Does |
 | --- | --- |
-| `npm run dev` | `nest start --watch` |
+| `npm run dev` | Sets `NODE_ENV=development`, loads `.env.development.local`, then starts Nest watch mode |
+| `npm run db:dev:check` / `db:dev:apply` | Check prod parity or apply repository migrations on hosted dev Supabase |
+| `npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` | Back up dev and mirror production's public schema into it |
 | `npm run build` | `nest build` |
 | `npm test` | Jest (config inline in `package.json`, `rootDir` is `src/`) |
 | `npx jest path/to/file.spec.ts` | Run a single spec |

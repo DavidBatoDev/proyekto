@@ -31,8 +31,10 @@ A stale copy once silently reverted behavior in `upsert_full_roadmap`.
 
 | Target | How |
 |---|---|
-| Local/dev DB | `cd backend && npx supabase db push` (CLI runs from backend/) |
-| PROD (Singapore, ref byvbnkpiselvvulsvxgo) | Supabase MCP `apply_migration` ONLY. `db push` FAILS with SASL - the password on disk belongs to the old Mumbai project. |
+| Hosted dev (`vyiedlwasdwmjbztqznl`) | `cd backend && npm run db:dev:apply` (dry-run, explicit target, all migrations, safe seed) |
+| Exact prod -> dev baseline mirror | `cd backend && npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` (backup-first, schema only) |
+| Local Supabase stack | `cd backend && npx supabase db push --local` |
+| PROD (Singapore, ref byvbnkpiselvvulsvxgo) | Supabase MCP `apply_migration` ONLY. Never use local credentials with `db push`; the MCP path is the audited production workflow. |
 
 After a prod apply: confirm with MCP `list_migrations`, then run `get_advisors` (security + performance) and address new lints.
 

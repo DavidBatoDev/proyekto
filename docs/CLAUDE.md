@@ -5,5 +5,6 @@
 - Each numbered section (00-14) has a README.md hub - update it when adding, renaming, or moving pages.
 - Sections 00-12 describe SHIPPED behaviour. Section 13-proposals holds general unbuilt designs. Section 14-engagement is the dedicated exception for P4b's applied schema and not-yet-built runtime. Draft pages in either section must clearly distinguish live schema from inactive behavior. When a proposal ships, rewrite it as current-state docs under its owning section and remove the obsolete draft.
 - Never trust an existing count - recount from source (docs once said 24 backend modules and 165 migrations; actuals were 26 and 192).
+- When documenting Supabase environment parity, say `public` schema parity, not full database cloning. Data, Auth, Storage, migration history, credentials, and project settings remain separate unless a distinct workflow explicitly changes them.
 - Root SETUP.md was deleted; the canonical setup guide is docs/00-getting-started/setup.md - fix any dangling references you find.
 - For a systematic drift pass, use /docs-update (delegates to the technical-writer agent).

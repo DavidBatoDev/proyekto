@@ -16,7 +16,7 @@ enum Environment {
 
 class EnvironmentVariables {
   @IsEnum(Environment)
-  NODE_ENV: Environment = Environment.Development;
+  NODE_ENV: Environment = Environment.Production;
 
   @IsOptional()
   @IsNumber()

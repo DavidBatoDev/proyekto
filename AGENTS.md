@@ -32,3 +32,11 @@ Commands (.claude/commands/): /review, /test, /ship, /plan-feature, /validate-id
 
 - Do not mock the database in backend integration tests (past incident: mock/prod divergence masked a broken migration).
 - If node scripts/test_agent_unit.mjs hangs on a new test, delete the test rather than retrying.
+
+## Supabase environments
+
+- Production is `byvbnkpiselvvulsvxgo`; hosted development is `vyiedlwasdwmjbztqznl`.
+- `npm run db:dev:check` from `backend/` verifies that normalized `public` schemas match.
+- `npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` is the backup-first, destructive schema-only baseline workflow. It may erase dev rows in rebuilt tables.
+- Schema parity does not mean environment cloning: production rows, Auth users/sessions, Storage objects, migration-history records, credentials, and dashboard/project configuration remain separate.
+- Never copy production rows or Auth users to dev as part of schema mirroring. Never use local `supabase db push` for production; use the Supabase MCP `apply_migration` workflow.

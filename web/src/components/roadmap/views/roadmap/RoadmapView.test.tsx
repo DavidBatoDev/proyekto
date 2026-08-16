@@ -2,44 +2,62 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
+import { useRegisterCanvasViewport } from "./canvas/viewport/CanvasViewportContext";
 import type { RoadmapPerformanceMode } from "./models/types";
 import { RoadmapView } from "./RoadmapView";
 
-type ReactFlowMockProps = {
-	children?: ReactNode;
+/**
+ * Captured props of the canvas renderer.
+ *
+ * The renderer is mocked rather than the engine's internals: these assertions
+ * are about the CONTRACT the shell hands down (which nodes, which edges,
+ * whether dragging is allowed), not about how any engine draws it. That is why
+ * they survived the swap from @xyflow/react to the in-house engine unchanged.
+ */
+type RendererMockProps = {
 	edges?: Array<{ animated?: boolean }>;
 	nodes?: Array<{ type?: string; data?: Record<string, unknown> }>;
 	nodesDraggable?: boolean;
 } & Record<string, unknown>;
 
-let reactFlowProps: ReactFlowMockProps | null = null;
+let rendererProps: RendererMockProps | null = null;
 
-vi.mock("@xyflow/react", () => ({
-	ReactFlow: ({ children, ...props }: ReactFlowMockProps) => {
-		reactFlowProps = props;
-		return <div data-testid="react-flow">{children}</div>;
+/** Viewport port the mock renderer publishes, so canvas chrome is testable. */
+const viewportStub = {
+	zoomIn: vi.fn(),
+	zoomOut: vi.fn(),
+	fitView: vi.fn(),
+	setCenter: vi.fn(),
+	getViewport: () => ({ x: 0, y: 0, zoom: 0.67 }),
+	getNode: () => undefined,
+	getNodes: () => [],
+	screenToCanvas: (p: { x: number; y: number }) => p,
+	canvasToScreen: (p: { x: number; y: number }) => p,
+};
+
+vi.mock("./canvas/renderers/DomSvgRenderer", () => ({
+	DomSvgRenderer: (props: RendererMockProps) => {
+		rendererProps = props;
+		const onReady = props.onReady as (() => void) | undefined;
+		const registerViewport = useRegisterCanvasViewport();
+
+		// Publish the viewport port exactly as a real renderer does, so the
+		// shell-owned chrome (zoom buttons, fit view) is exercised rather than
+		// silently hitting the no-op port.
+		useEffect(() => {
+			registerViewport(viewportStub);
+			return () => registerViewport(null);
+		}, [registerViewport]);
+		// In an effect, not during render: the real engine fires this after its
+		// first committed layout, and the shell sets state from it.
+		useEffect(() => {
+			onReady?.();
+		}, [onReady]);
+		return <div data-testid="canvas-renderer" />;
 	},
-	Controls: () => <div data-testid="controls" />,
-	MiniMap: () => <div data-testid="mini-map" />,
-	Background: () => <div data-testid="background" />,
-	BackgroundVariant: {
-		Dots: "dots",
-	},
-	Handle: () => <div data-testid="flow-handle" />,
-	Position: {
-		Bottom: "bottom",
-		Left: "left",
-		Right: "right",
-		Top: "top",
-	},
-	applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
-	useReactFlow: () => ({
-		getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
-	}),
-	useNodesInitialized: () => true,
 }));
 
 vi.mock("@/hooks/useRecentAssignees", () => ({
@@ -130,7 +148,7 @@ function renderRoadmapView(
 describe("RoadmapView performance mode", () => {
 	afterEach(() => {
 		cleanup();
-		reactFlowProps = null;
+		rendererProps = null;
 	});
 
 	it("does not render the MiniMap", () => {
@@ -142,25 +160,71 @@ describe("RoadmapView performance mode", () => {
 	it("disables animated edges in reduced-motion mode", () => {
 		renderRoadmapView("reducedMotion");
 
-		expect(reactFlowProps?.edges?.some((edge) => edge.animated)).toBe(false);
+		expect(rendererProps?.edges?.some((edge) => edge.animated)).toBe(false);
 	});
 
 	it("removes editing controls and node dragging in read-only mode", () => {
 		renderRoadmapView("normal", true);
 
-		const epicNode = reactFlowProps?.nodes?.find(
+		const epicNode = rendererProps?.nodes?.find(
 			(node) => node.type === "epicWidget",
 		);
-		const featureNode = reactFlowProps?.nodes?.find(
+		const featureNode = rendererProps?.nodes?.find(
 			(node) => node.type === "featureWidget",
 		);
 
-		expect(reactFlowProps?.nodesDraggable).toBe(false);
+		expect(rendererProps?.nodesDraggable).toBe(false);
 		expect(epicNode?.data?.onEdit).toBeUndefined();
 		expect(epicNode?.data?.onDelete).toBeUndefined();
 		expect(featureNode?.data?.onEdit).toBeUndefined();
 		expect(featureNode?.data?.onDelete).toBeUndefined();
 		expect(featureNode?.data?.onUpdateTask).toBeUndefined();
 		expect(screen.queryByText("Drag To Add")).toBeNull();
+	});
+});
+
+describe("RoadmapView canvas chrome", () => {
+	afterEach(() => {
+		cleanup();
+		rendererProps = null;
+		vi.clearAllMocks();
+	});
+
+	it("exposes renderer-independent test hooks on the shell", () => {
+		// These are what the e2e suite targets instead of React Flow's internal
+		// class names, so they must survive the renderer swap.
+		renderRoadmapView();
+
+		const shell = screen.getByTestId("roadmap-canvas");
+		expect(shell).toBeTruthy();
+		expect(shell.getAttribute("data-canvas-engine")).toBe("dom-svg");
+		expect(shell.getAttribute("data-canvas-ready")).toBeTruthy();
+	});
+
+	it("renders its own zoom and fit-view controls, not React Flow's", () => {
+		renderRoadmapView();
+
+		expect(screen.getByTestId("roadmap-canvas-zoom-in")).toBeTruthy();
+		expect(screen.getByTestId("roadmap-canvas-zoom-out")).toBeTruthy();
+		expect(screen.getByTestId("roadmap-canvas-fit-view")).toBeTruthy();
+		// React Flow's <Controls> is no longer mounted.
+		expect(screen.queryByTestId("controls")).toBeNull();
+	});
+
+	it("drives the renderer viewport from the controls", () => {
+		renderRoadmapView();
+
+		screen.getByTestId("roadmap-canvas-zoom-in").click();
+		expect(viewportStub.zoomIn).toHaveBeenCalled();
+
+		screen.getByTestId("roadmap-canvas-zoom-out").click();
+		expect(viewportStub.zoomOut).toHaveBeenCalled();
+
+		screen.getByTestId("roadmap-canvas-fit-view").click();
+		// Must keep the framing the canvas was designed around.
+		expect(viewportStub.fitView).toHaveBeenCalledWith({
+			padding: 0.12,
+			maxZoom: 0.67,
+		});
 	});
 });
