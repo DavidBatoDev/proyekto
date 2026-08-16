@@ -17,8 +17,12 @@ interface FlowEdgesProps {
 	nodes: Map<string, FlowNode>;
 	edges: FlowEdge[];
 	registry: HandleRegistry;
+	/** Rendered card sizes by node id; edges anchor to these when present. */
+	contentSizes: Map<string, { width: number; height: number }>;
 	/** Bumped when handle registrations change, to force a redraw. */
 	handleVersion: number;
+	/** Bumped when a card is measured or resized, likewise. */
+	contentVersion: number;
 }
 
 const FlowEdgeItem = memo(function FlowEdgeItem({
@@ -53,6 +57,7 @@ export const FlowEdges = memo(function FlowEdges({
 	nodes,
 	edges,
 	registry,
+	contentSizes,
 }: FlowEdgesProps) {
 	return (
 		// A 1x1 SVG with overflow visible: the drawing area is unbounded, so the
@@ -81,8 +86,16 @@ export const FlowEdges = memo(function FlowEdges({
 					// node origin, which reads as a stray line to the corner.
 					if (!sourceHandle || !targetHandle) return null;
 
-					const from = handlePoint(source, sourceHandle.position);
-					const to = handlePoint(target, targetHandle.position);
+					const from = handlePoint(
+						source,
+						sourceHandle.position,
+						contentSizes.get(source.id),
+					);
+					const to = handlePoint(
+						target,
+						targetHandle.position,
+						contentSizes.get(target.id),
+					);
 
 					const [d] = getSimpleBezierPath({
 						sourceX: from.x,

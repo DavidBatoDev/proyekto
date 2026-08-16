@@ -18,6 +18,27 @@ describe("handlePoint", () => {
 		expect(handlePoint(epic, "bottom")).toEqual({ x: 350, y: 560 });
 	});
 
+	it("prefers the rendered content size over the declared box", () => {
+		// The regression this guards: the roadmap's epic nodes declare a height of
+		// 220 as SPACING metadata while the card inside renders at 137. Anchoring
+		// to the declared box put the edge 83px below the card it should touch,
+		// which on screen reads as an edge floating in empty space.
+		const rendered = { width: 500, height: 137 };
+
+		expect(handlePoint(epic, "bottom", rendered)).toEqual({ x: 350, y: 477 });
+		expect(handlePoint(epic, "right", rendered)).toEqual({ x: 600, y: 408.5 });
+		// Top and left are unaffected — they sit at the node origin either way.
+		expect(handlePoint(epic, "top", rendered)).toEqual(
+			handlePoint(epic, "top"),
+		);
+	});
+
+	it("falls back to the declared box before anything is measured", () => {
+		// First paint, and jsdom, have no measurement yet. Edges must still be
+		// drawn somewhere sensible rather than collapsing to the origin.
+		expect(handlePoint(epic, "bottom", undefined)).toEqual({ x: 350, y: 560 });
+	});
+
 	it("treats a node with no declared size as a point", () => {
 		// Not a supported state, but it must degrade to the node origin rather
 		// than producing NaN, which would poison every path string it touches.

@@ -3,6 +3,7 @@ import {
 	memo,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -103,6 +104,7 @@ interface FlowNodeViewProps {
 	registry: HandleRegistry;
 	onHandlesChanged: () => void;
 	culled: boolean;
+	onContentSize: (id: string, size: { width: number; height: number }) => void;
 }
 
 const FlowNodeView = memo(function FlowNodeView({
@@ -111,8 +113,34 @@ const FlowNodeView = memo(function FlowNodeView({
 	registry,
 	onHandlesChanged,
 	culled,
+	onContentSize,
 }: FlowNodeViewProps) {
 	const orderRef = useRef(0);
+	const elementRef = useRef<HTMLDivElement | null>(null);
+
+	// Report the CARD's rendered size, which is what edges anchor to.
+	//
+	// A declared height can be pure spacing metadata that the card does not fill,
+	// and anchoring to it leaves edges floating short of the card. One observer
+	// per node, firing only when the card actually resizes — never per frame.
+	useLayoutEffect(() => {
+		const card = elementRef.current?.firstElementChild;
+		if (!(card instanceof HTMLElement)) return;
+
+		const report = () =>
+			onContentSize(node.id, {
+				// offsetWidth/Height are pre-transform CSS pixels, i.e. already in
+				// canvas units — no need to divide by zoom.
+				width: card.offsetWidth,
+				height: card.offsetHeight,
+			});
+
+		report();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(report);
+		observer.observe(card);
+		return () => observer.disconnect();
+	}, [node.id, onContentSize]);
 
 	const context = useMemo<FlowNodeContextValue>(
 		() => ({
@@ -135,6 +163,7 @@ const FlowNodeView = memo(function FlowNodeView({
 	return (
 		<FlowNodeContext.Provider value={context}>
 			<div
+				ref={elementRef}
 				// The legacy class is kept alongside the engine's own so the app's
 				// existing node styling (cursor, the remote-drag outline and its
 				// colour variable) applies unchanged under either renderer.
@@ -205,6 +234,31 @@ export function Flow({
 			setHandleVersion((version) => version + 1);
 		});
 	}, []);
+
+	// Rendered card sizes, keyed by node id. Written by each node's observer and
+	// read when drawing edges; a version counter turns a batch of measurements
+	// into a single redraw rather than one per node.
+	const contentSizesRef = useRef(
+		new Map<string, { width: number; height: number }>(),
+	);
+	const [contentVersion, setContentVersion] = useState(0);
+	const contentFlushRef = useRef(false);
+	const onContentSize = useCallback(
+		(id: string, size: { width: number; height: number }) => {
+			const previous = contentSizesRef.current.get(id);
+			if (previous?.width === size.width && previous?.height === size.height) {
+				return;
+			}
+			contentSizesRef.current.set(id, size);
+			if (contentFlushRef.current) return;
+			contentFlushRef.current = true;
+			queueMicrotask(() => {
+				contentFlushRef.current = false;
+				setContentVersion((version) => version + 1);
+			});
+		},
+		[],
+	);
 
 	const nodesRef = useRef(nodes);
 	nodesRef.current = nodes;
@@ -393,7 +447,9 @@ export function Flow({
 					nodes={nodeMap}
 					edges={edges}
 					registry={registry}
+					contentSizes={contentSizesRef.current}
 					handleVersion={handleVersion}
+					contentVersion={contentVersion}
 				/>
 				<div className="flow__nodes">
 					{nodes.map((node) => {
@@ -407,6 +463,7 @@ export function Flow({
 								registry={registry}
 								onHandlesChanged={onHandlesChanged}
 								culled={visibleIds !== null && !visibleIds.has(node.id)}
+								onContentSize={onContentSize}
 							/>
 						);
 					})}

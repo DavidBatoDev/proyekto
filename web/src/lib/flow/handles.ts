@@ -9,21 +9,29 @@ import type {
 /**
  * Handle geometry and resolution.
  *
- * Geometry is ANALYTIC — computed from the node box and the side the handle sits
- * on — never measured from the DOM. That is exact rather than approximate:
- * React Flow's own stylesheet pins handles to the edge midpoints
- * (`left:50%;bottom:0;translate(-50%,50%)` and friends), so the formulas below
- * produce the same points its measurement does. It also means edges are correct
- * on the very first frame, can never go stale, and work in jsdom.
+ * Geometry is computed from a node's box and the side the handle sits on, never
+ * from per-handle DOM measurement.
  *
- * The precondition is that every node carries declared `width`/`height`, which
- * the consumer's layout pass guarantees.
+ * WHICH box matters, and it is not the declared one. A consumer's layout pass
+ * may declare a height that is only spacing metadata — the roadmap's epic nodes
+ * declare 220 while the card inside renders 137 — and React Flow anchored edges
+ * to the CARD, because its handle CSS resolves against the card's own
+ * positioning context. Anchoring to the declared box instead leaves a visible
+ * gap between an edge and the card it should touch.
+ *
+ * So callers pass the rendered content size when they have it (one measurement
+ * per node, on resize — not per handle and not per frame), and the declared box
+ * is the fallback for the first paint and for jsdom.
  */
 
-export function handlePoint(node: FlowNode, position: HandlePosition): Point {
+export function handlePoint(
+	node: FlowNode,
+	position: HandlePosition,
+	contentSize?: { width: number; height: number },
+): Point {
 	const { x, y } = node.position;
-	const width = node.width ?? 0;
-	const height = node.height ?? 0;
+	const width = contentSize?.width ?? node.width ?? 0;
+	const height = contentSize?.height ?? node.height ?? 0;
 
 	switch (position) {
 		case "left":
