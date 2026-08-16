@@ -1,6 +1,6 @@
 # Documentation Style Guide
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 How to write and organize pages in this knowledge base so everything reads as one
 system. The reference exemplar is the [Meetings docs](./11-domains/meetings/README.md)
@@ -9,7 +9,7 @@ system. The reference exemplar is the [Meetings docs](./11-domains/meetings/READ
 ## Structure
 
 - Docs live in **numbered top-level section folders**: `00-getting-started/`,
-  `01-product/`, … `12-runbooks/`. Numbers are on **folders only**.
+  `01-product/`, through `14-engagement/`. Numbers are on **folders only**.
 - Topic files inside a section are **lowercase-kebab** (`system-overview.md`,
   `backend-api.md`) with **no numeric prefix** — they're rename-stable, and their
   reading order is carried by the section `README.md` index table.

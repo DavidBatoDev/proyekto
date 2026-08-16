@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-10 · **Status:** current (all 14 sections written)
+> **Last updated:** 2026-08-14 · **Status:** current (all 15 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -41,11 +41,12 @@ site, so links are relative filesystem paths. Every page carries a
 | 11 | [Feature Domains](./11-domains/README.md) | Participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
 | 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree, identity & enrollment | **draft** |
+| 14 | [Engagements](./14-engagement/README.md) | Locked P4b tables, scenarios, lifecycle rules, commercial time, and privacy boundaries | **draft** |
 
-> **⚠️ Section 13 is the one exception to the current-state rule.** Everything in `00`–`12`
-> describes shipped behaviour. `13-proposals/` holds designs that do not exist yet; every page
-> there is `Status: draft` and opens with a "Proposed — not built" callout. When a proposal
-> ships it moves into the section that owns it and is deleted from `13`.
+> **⚠️ Sections 13 and 14 are exceptions to the current-state rule.** Everything in `00`–`12`
+> describes shipped behaviour. `13-proposals/` holds general designs that do not exist yet;
+> `14-engagement/` is the dedicated reference for the locked but unapplied P4b schema. Their
+> pages remain `Status: draft` until the corresponding runtime behavior ships.
 
 ## Also at the repo root
 

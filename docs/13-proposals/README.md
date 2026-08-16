@@ -1,14 +1,16 @@
 # Proposals
 
-> **Last updated:** 2026-08-13 · **Status:** draft
+> **Last updated:** 2026-08-14 · **Status:** draft
 
-Designs that have been reviewed but **not built**. Everything else in `docs/` describes
-shipped behaviour and is verified against source; this section is the one place where that
-guarantee is deliberately suspended, so that speculative work has somewhere to live without
-being mistaken for reality.
+Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
+behaviour and are verified against source. This section holds general proposals;
+[`14-engagement`](../14-engagement/README.md) is the dedicated draft reference for P4b's
+locked but unapplied schema.
 
 If you only read one page, read
-[organizations-and-services.md](./organizations-and-services.md) — the other two depend on it.
+[organizations-and-services.md](./organizations-and-services.md) first for the proposed
+client/organization hierarchy. The [Engagements](../14-engagement/README.md) design
+deliberately leaves that future party expansion additive.
 
 ## The rules of this section
 
@@ -62,8 +64,12 @@ way: [identity-and-enrollment.md](./identity-and-enrollment.md) deletes the `acc
 identity that the 2026-08-09 reconciliation in
 [organizations-and-services.md](./organizations-and-services.md) noted, replacing it with
 marketplace enrollment tables. The two compose: both are progressive, opt-in, and
-auto-provision nothing. Its phase 1 (dropping `profiles.role`, single-lane signup) is
-landing now; the enrollment tables are unbuilt.
+auto-provision nothing. Role deletion, enrollment, and P4a's contract-seat correctness
+slice are shipped; P4b's schema is authored but unapplied.
+
+P4b's locked design now has its own scenario-driven reference in
+[Engagements](../14-engagement/README.md). It remains unapplied and is clearly marked as
+draft there.
 
 The fifth, [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md), is the
 monetization layer over both platforms. It was drafted against the pre-deletion

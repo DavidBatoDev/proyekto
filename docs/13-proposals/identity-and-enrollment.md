@@ -1,10 +1,10 @@
 # Identity and Enrollment
 
-> **Last updated:** 2026-08-13 · **Status:** draft
+> **Last updated:** 2026-08-14 · **Status:** draft
 
-> **⚠️ Proposed — not built.** P4b's engagement link and P4c's client projection remain
-> proposed. Phases 1–3, consultant/freelancer enrollment, and P4a's contract-seat
-> correctness slice are live in source.
+> **⚠️ Proposed — not built.** P4b's schema and decisions are authored but unapplied;
+> P4c's client projection remains undesigned. Phases 1–3, consultant/freelancer enrollment,
+> and P4a's contract-seat correctness slice are live in source.
 
 Proyekto has tried to answer "what kind of user is this?" twice — first with a switchable
 `persona_type` (removed in `20260804170019_remove_active_persona.sql`), then with a durable
@@ -176,11 +176,12 @@ it.
 | **P3** | Marketplace/execution reorganization | Shipped 2026-08-11: routes and modules grouped into `execution/*` / `marketplace/*` / shared; consultant-of-record moved to `project_access`; `projects.consultant_id` and unused fee columns dropped; dead payments surface removed |
 | **Enrollment** | Consultant and freelancer lifecycle tables | Shipped 2026-08-12: verified/suspended/revoked consultant capability, eligibility-enforced active/paused freelancer discovery, legacy flags retired |
 | **P4a** | Contract positions + correctness | Shipped 2026-08-13: durable consultant seat, immutable terminal parties, enrollment re-check at signing, severed position reads, client-party signing, client-cost leak closures, exact invoice-contract recomposition |
-| **P4b** | Engagement link | Proposed: invent the authoritative relationship between project, contract, team connection, and time-log billing provenance; treat it as the governed durability edge between marketplace agreements and execution work rather than assuming a single "only legal" cross-domain FK |
+| **P4b** | Engagement link | Decided and authored, not applied: bilateral engagements, generic contract positions, project links/assignments, contract-authoritative pricing, and separate client-revenue/talent-cost time flows; see [Engagements](../14-engagement/README.md) |
 | **P4c** | Client projection | Proposed: reconcile project-backed client read access and handover with the organizations fan-out design before creating `client_profiles` |
 
-Phases 1–3, enrollment, and P4a are standalone correctness work; P4b/P4c require new product
-design. Current mechanics live in
+Phases 1–3, enrollment, and P4a are standalone correctness work. P4b's decisions and
+unapplied expand schema are complete; its runtime integration and P4c still require later
+work. Current mechanics live in
 [Data: identity and vetting](../07-data-and-db/identity-vetting-model.md).
 
 P4a ships six bounded corrections:
@@ -205,15 +206,18 @@ source of truth"), [04-web/routing-and-personas.md](../04-web/routing-and-person
 [11-domains](../11-domains/README.md) (clients, talent, consultants hubs), and the
 [glossary](../01-product/glossary.md) "Account role" entry. Phase 1's doc sweep updates
 the pages made false by the deletion; the enrollment-model pages move to their owning
-sections when each phase ships, per this section's rules. The remaining blast radius
-is limited to `client_profiles` and the engagement/client-projection designs.
+sections when each phase ships, per this section's rules. The remaining blast radius is
+limited to P4b runtime integration, `client_profiles`, and the client-projection design.
 
-## Open P4b question
+## Decided P4b pricing authority
 
-**Pricing authority remains open.** The engagement design must decide how contract billing
-terms and execution-side time-tracking configuration interact when they disagree. P4a fixes
-invoice recomposition to honor the invoice's stored `contract_id`; it deliberately does not
-resolve the broader pricing/`time_tracking_enabled` ownership collision.
+The signed contract version is the legal pricing authority. Effective-dated
+`engagement_time_rates` and `engagement_time_settings` project its terms into execution;
+they cannot silently override it. Attributed commercial work follows the engagement policy
+when a team default disagrees. Team configuration remains the fallback for legacy and
+internal work. Rate changes require a signed amendment, and existing time/approval/invoice
+snapshots never reprice. See
+[Engagements](../14-engagement/README.md).
 
 ## Decisions to review
 
