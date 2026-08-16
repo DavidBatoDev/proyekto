@@ -10,7 +10,7 @@ const parseStringParam = (value: unknown): string | undefined => {
 };
 
 export const Route = createFileRoute(
-	"/_execution/project/$projectId/gantt/$roadmapId",
+	"/_execution/project/$projectId/timeline/$roadmapId",
 )({
 	validateSearch: (
 		search: Record<string, unknown>,
@@ -23,10 +23,10 @@ export const Route = createFileRoute(
 		node: parseStringParam(search.node),
 		commentId: parseStringParam(search.commentId),
 	}),
-	component: GanttViewPage,
+	component: TimelineViewPage,
 });
 
-function GanttViewPage() {
+function TimelineViewPage() {
 	const { projectId, roadmapId } = Route.useParams();
 	const { nodeId, node, commentId } = Route.useSearch();
 	const navigate = useNavigate({ from: Route.fullPath });
@@ -55,7 +55,7 @@ function GanttViewPage() {
 		if (!node || nodeId) return;
 		const canonicalLegacyNodeId = toCanonicalUrlNodeId(node);
 		void navigate({
-			to: "/project/$projectId/gantt/$roadmapId",
+			to: "/project/$projectId/timeline/$roadmapId",
 			params: { projectId, roadmapId },
 			search: canonicalLegacyNodeId
 				? { nodeId: canonicalLegacyNodeId }
@@ -72,7 +72,7 @@ function GanttViewPage() {
 			if (isCanonicalSearch) return;
 
 			void navigate({
-				to: "/project/$projectId/gantt/$roadmapId",
+				to: "/project/$projectId/timeline/$roadmapId",
 				params: { projectId, roadmapId },
 				search: normalizedNodeId ? { nodeId: normalizedNodeId } : undefined,
 				replace: true,

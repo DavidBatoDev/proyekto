@@ -61,12 +61,12 @@ function RoadmapViewPage() {
 	);
 	const safeEffectiveNodeId = toCanonicalUrlNodeId(effectiveNodeId);
 
-	// The milestones timeline moved out of this canvas and became the Gantt Chart
-	// page. Keep old `?view=timelineView` deep links working.
+	// The milestones view moved out of this canvas and became the Timeline page.
+	// Keep old `?view=timelineView` deep links working.
 	useEffect(() => {
 		if (view !== "timelineView") return;
 		void navigate({
-			to: "/project/$projectId/gantt/$roadmapId",
+			to: "/project/$projectId/timeline/$roadmapId",
 			params: { projectId, roadmapId },
 			search: effectiveNodeId ? { nodeId: effectiveNodeId } : undefined,
 			replace: true,

@@ -74,7 +74,7 @@ interface RoadmapViewContentProps {
 	urlView?: RoadmapUrlView | null;
 	/**
 	 * Pins the canvas to a single view mode for routes that *are* the view (the
-	 * Gantt chart page). When set, the URL `?view=` sync is bypassed entirely.
+	 * Timeline page). When set, the URL `?view=` sync is bypassed entirely.
 	 */
 	forcedViewMode?: CanvasViewMode;
 	onDeepLinkNodeConsumed?: (view: RoadmapUrlView) => void;
@@ -284,12 +284,12 @@ export function RoadmapViewContent({
 		setInitialAiMessage(null);
 	}, []);
 
-	// Routes that pin the view (Gantt chart) own the mode outright: force it on
+	// Routes that pin the view (Timeline) own the mode outright: force it on
 	// mount and whenever the canvas drifts (e.g. closing the last epic tab resets
 	// the store to "roadmap").
 	useEffect(() => {
 		if (!forcedViewMode) {
-			// "milestones" now belongs exclusively to the Gantt route; a stale mode
+			// "milestones" now belongs exclusively to the Timeline route; a stale mode
 			// carried over from it must not hijack the roadmap canvas.
 			if (canvasViewMode === "milestones") setCanvasViewMode("roadmap");
 			return;

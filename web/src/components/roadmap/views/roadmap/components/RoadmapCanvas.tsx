@@ -319,11 +319,11 @@ const RoadmapCanvas = ({
 								<CalendarDays className="h-6 w-6 text-muted-foreground" />
 							</div>
 							<h3 className="text-base font-semibold text-foreground">
-								Gantt Chart
+								Timeline
 							</h3>
 							<p className="mt-1 max-w-xs text-sm text-muted-foreground">
-								The Gantt chart is best viewed on a larger screen. Open Roadmap
-								to browse epics, features, and tasks.
+								The Timeline is best viewed on a larger screen. Open Roadmap to
+								browse epics, features, and tasks.
 							</p>
 						</div>
 					) : epics.length === 0 ? (

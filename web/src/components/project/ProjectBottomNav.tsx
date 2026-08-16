@@ -3,9 +3,9 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	BookOpen,
+	CalendarRange,
 	ClipboardList,
 	Clock,
-	GanttChartSquare,
 	LayoutDashboard,
 	ListChecks,
 	Map,
@@ -39,7 +39,7 @@ export function ProjectBottomNav({
 
 	const roadmapIdFromPath =
 		currentPath.match(/\/roadmap\/([^/]+)/)?.[1] ??
-		currentPath.match(/\/gantt\/([^/]+)/)?.[1] ??
+		currentPath.match(/\/timeline\/([^/]+)/)?.[1] ??
 		currentPath.match(/\/work-items\/([^/]+)/)?.[1];
 	const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
@@ -149,15 +149,15 @@ export function ProjectBottomNav({
 		isActive: boolean;
 		gate?: ProjectNavGate;
 	}> = [
-		// Gantt lives in the "More" sheet rather than the primary row: the bar is
+		// Timeline lives in the "More" sheet rather than the primary row: the bar is
 		// already full, and the chart itself is desktop-only.
 		{
-			label: "Gantt Chart",
-			icon: GanttChartSquare,
+			label: "Timeline",
+			icon: CalendarRange,
 			to: effectiveRoadmapId
-				? `/project/${projectId}/gantt/${effectiveRoadmapId}`
-				: `/project/${projectId}/gantt`,
-			isActive: currentPath.includes("/gantt"),
+				? `/project/${projectId}/timeline/${effectiveRoadmapId}`
+				: `/project/${projectId}/timeline`,
+			isActive: currentPath.includes("/timeline"),
 			gate: "access.roadmap",
 		},
 		{

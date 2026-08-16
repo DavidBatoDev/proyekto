@@ -3,11 +3,11 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	BookOpen,
+	CalendarRange,
 	ChevronRight,
 	ClipboardList,
 	Clock,
 	FolderKanban,
-	GanttChartSquare,
 	LayoutDashboard,
 	ListChecks,
 	Map,
@@ -45,7 +45,7 @@ export function ProjectSidebar({
 	// (e.g. projectId="n" skips the getByProjectId lookup in the parent layout)
 	const roadmapIdFromPath =
 		currentPath.match(/\/roadmap\/([^/]+)/)?.[1] ??
-		currentPath.match(/\/gantt\/([^/]+)/)?.[1] ??
+		currentPath.match(/\/timeline\/([^/]+)/)?.[1] ??
 		currentPath.match(/\/work-items\/([^/]+)/)?.[1];
 	const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
@@ -133,11 +133,11 @@ export function ProjectSidebar({
 					gate: "access.roadmap",
 				},
 				{
-					label: "Gantt Chart",
-					icon: GanttChartSquare,
+					label: "Timeline",
+					icon: CalendarRange,
 					to: effectiveRoadmapId
-						? `/project/${projectId}/gantt/${effectiveRoadmapId}`
-						: `/project/${projectId}/gantt`,
+						? `/project/${projectId}/timeline/${effectiveRoadmapId}`
+						: `/project/${projectId}/timeline`,
 					requiresProject: false,
 					gate: "access.roadmap",
 				},
@@ -342,8 +342,8 @@ export function ProjectSidebar({
 											currentPath.includes("/settings")) ||
 										(item.label === "Roadmap" &&
 											currentPath.includes("/roadmap")) ||
-										(item.label === "Gantt Chart" &&
-											currentPath.includes("/gantt")) ||
+										(item.label === "Timeline" &&
+											currentPath.includes("/timeline")) ||
 										(item.label === "Work Items" &&
 											currentPath.includes("/work-items"));
 									return (
