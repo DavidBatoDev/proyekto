@@ -99,26 +99,21 @@
 	cursor: grabbing;
 }
 
-/* Offscreen nodes stay MOUNTED and simply stop being laid out and painted.
-   Unmounting them would discard task-list scroll positions, open menus and
-   in-flight drag state — the reason this engine culls this way rather than by
-   removing elements.
+/* NOTE: no `content-visibility` here, deliberately.
 
-   This is applied to EVERY node, permanently, and that is the point:
-   `content-visibility: auto` is itself the browser's offscreen-skipping
-   mechanism. Toggling it from our own visibility calculation fought it — the
-   property flipped on a batch of nodes mid-pan and Chromium left stale painted
-   tiles behind inside the composited pane, which showed up as ghost copies of
-   cards at their previous positions. Set it once; let the browser decide. */
-.flow__node {
-	content-visibility: auto;
-}
+   It was tried twice — first toggled per node from our own visibility
+   calculation, then applied permanently — and both produced ghost copies of
+   cards left behind at stale positions during panning. Inside a large
+   transformed, composited pane Chromium's decision about what is on screen
+   does not stay in step with the pane's transform, so it keeps painting
+   content that has moved and skips content that has not.
 
-/* Escape hatch for the consumer's `pauseCulling`: while a remote collaborator's
-   preview is reflowing nodes, skip nothing. */
-.flow--cull-paused .flow__node {
-	content-visibility: visible;
-}
+   The engine renders every node instead. That is affordable because a pan
+   costs zero React renders and only moves one composited layer; the cards
+   themselves are static between gestures. If this ever needs revisiting,
+   measure before assuming skipping helps: removing it made panning FASTER
+   here, because the visible-set bookkeeping it required was re-rendering the
+   node layer mid-gesture. */
 
 .flow__handle {
 	position: absolute;

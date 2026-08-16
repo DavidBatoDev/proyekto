@@ -67,7 +67,10 @@ export interface FlowProps {
 	fitView?: boolean;
 	fitViewOptions?: { padding: number; maxZoom: number };
 	translateExtent: TranslateExtent;
-	/** Suspends culling — every node renders regardless of visibility. */
+	/**
+	 * Accepted for interface compatibility and intentionally unused: this engine
+	 * always renders every node, so there is no culling to suspend.
+	 */
 	pauseCulling?: boolean;
 	backgroundGap?: number;
 	/** Dot diameter in px at zoom 1. */
@@ -168,12 +171,7 @@ const FlowNodeView = memo(function FlowNodeView({
 					// `contain-intrinsic-size` below still uses the declared height: it
 					// is only a size hint for culled nodes, never a hit area.
 					zIndex: node.zIndex,
-					// Placeholder size for nodes the browser skips. Without it a
-					// skipped node collapses to zero and the graph reflows as you pan.
-					containIntrinsicSize:
-						node.width && node.height
-							? `${node.width}px ${node.height}px`
-							: undefined,
+
 					...node.style,
 				}}
 			>
@@ -194,7 +192,6 @@ export function Flow({
 	fitView = false,
 	fitViewOptions,
 	translateExtent,
-	pauseCulling = false,
 	nodesDraggable = false,
 	onNodeDragStart,
 	onNodeDrag,
@@ -383,7 +380,7 @@ export function Flow({
 	return (
 		<div
 			ref={containerRef}
-			className={`flow${pauseCulling ? " flow--cull-paused" : ""}${className ? ` ${className}` : ""}`}
+			className={className ? `flow ${className}` : "flow"}
 			data-flow-root=""
 		>
 			<div ref={backgroundRef} className="flow__background" />
