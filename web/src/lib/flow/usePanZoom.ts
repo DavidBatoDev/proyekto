@@ -283,6 +283,12 @@ export function usePanZoom({
 
 			// Buttons 0, 1 and 2 all pan — right-drag panning is easy to lose.
 			if (event.button > 2) return;
+			// We are taking this gesture, so stop the browser taking it too: a
+			// press-and-drag would otherwise begin a text selection and can then
+			// escalate into a native drag whose translucent drag image looks like
+			// a rendering glitch. Safe here because every interactive target and
+			// every `.nodrag` subtree has already returned above.
+			event.preventDefault();
 			armed = true;
 			origin = { x: event.clientX, y: event.clientY };
 			originViewport = viewportRef.current;

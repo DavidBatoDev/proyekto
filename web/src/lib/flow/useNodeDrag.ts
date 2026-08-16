@@ -116,6 +116,10 @@ export function useNodeDrag({
 			const node = nodeById(id);
 			if (!node) return;
 
+			// This press belongs to a node, so the browser must not also treat it
+			// as the start of a selection or a native drag.
+			event.preventDefault();
+
 			element = candidate;
 			nodeId = id;
 			pointerId = event.pointerId;
