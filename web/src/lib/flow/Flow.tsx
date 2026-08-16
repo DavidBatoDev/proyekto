@@ -15,10 +15,8 @@ import { HandleRegistry } from "./handles";
 import {
 	getNodesBounds,
 	getViewportForBounds,
-	rectsIntersect,
 	screenToFlow,
 	viewportForCenter,
-	visibleRect,
 } from "./transform";
 import type {
 	FlowEdge,
@@ -40,15 +38,6 @@ import { usePanZoom } from "./usePanZoom";
  * Draws, pans, zooms, culls and drags nodes. Selection and marquee are
  * deliberately absent — they are net-new behaviour, not parity items.
  */
-
-/**
- * How far beyond the viewport to keep nodes fully live, in flow units. Roughly
- * one screen at default zoom, so ordinary panning re-uses already-laid-out
- * nodes instead of thrashing.
- */
-const CULL_MARGIN = 800;
-/** Re-evaluate the visible set only after this much movement, in flow units. */
-const CULL_HYSTERESIS = 200;
 
 export interface FlowApi {
 	getViewport: () => Viewport;
@@ -78,7 +67,10 @@ export interface FlowProps {
 	fitView?: boolean;
 	fitViewOptions?: { padding: number; maxZoom: number };
 	translateExtent: TranslateExtent;
-	/** Suspends culling — every node renders regardless of visibility. */
+	/**
+	 * Accepted for interface compatibility and intentionally unused: this engine
+	 * always renders every node, so there is no culling to suspend.
+	 */
 	pauseCulling?: boolean;
 	backgroundGap?: number;
 	/** Dot diameter in px at zoom 1. */
@@ -103,7 +95,6 @@ interface FlowNodeViewProps {
 	Component: ComponentType<any>;
 	registry: HandleRegistry;
 	onHandlesChanged: () => void;
-	culled: boolean;
 	onContentSize: (id: string, size: { width: number; height: number }) => void;
 }
 
@@ -112,7 +103,6 @@ const FlowNodeView = memo(function FlowNodeView({
 	Component,
 	registry,
 	onHandlesChanged,
-	culled,
 	onContentSize,
 }: FlowNodeViewProps) {
 	const orderRef = useRef(0);
@@ -164,19 +154,24 @@ const FlowNodeView = memo(function FlowNodeView({
 		<FlowNodeContext.Provider value={context}>
 			<div
 				ref={elementRef}
-				className={`flow__node${
-					culled ? " flow__node--culled" : ""
-				}${node.className ? ` ${node.className}` : ""}`}
+				className={`flow__node${node.className ? ` ${node.className}` : ""}`}
 				data-id={node.id}
 				style={{
 					transform: `translate(${node.position.x}px, ${node.position.y}px)`,
 					width: node.width,
-					height: node.height,
+					// Height is deliberately NOT forced from `node.height`.
+					//
+					// A declared height can be spacing metadata that the card does not
+					// fill — the roadmap declares 220 for epics whose card renders 137.
+					// Forcing it leaves an invisible, pointer-catching strip below every
+					// card: presses that look like empty canvas land on a node instead,
+					// so the canvas drags a node when the user meant to pan. Letting the
+					// wrapper hug its content keeps the hit area equal to what is drawn.
+					//
+					// `contain-intrinsic-size` below still uses the declared height: it
+					// is only a size hint for culled nodes, never a hit area.
 					zIndex: node.zIndex,
-					containIntrinsicSize:
-						culled && node.width && node.height
-							? `${node.width}px ${node.height}px`
-							: undefined,
+
 					...node.style,
 				}}
 			>
@@ -197,7 +192,6 @@ export function Flow({
 	fitView = false,
 	fitViewOptions,
 	translateExtent,
-	pauseCulling = false,
 	nodesDraggable = false,
 	onNodeDragStart,
 	onNodeDrag,
@@ -265,10 +259,6 @@ export function Flow({
 		return map;
 	}, [nodes]);
 
-	// Indirection through a ref because culling needs the pan/zoom API and
-	// pan/zoom needs to notify culling — the cycle has to be broken somewhere.
-	const cullRef = useRef<() => void>(NOOP);
-
 	const panZoom = usePanZoom({
 		paneRef,
 		containerRef,
@@ -278,7 +268,7 @@ export function Flow({
 		maxZoom,
 		translateExtent,
 		onZoomChange: onViewportChange ?? NOOP,
-		onCommit: () => cullRef.current(),
+		onCommit: NOOP,
 		onPanStart: onPanStart ?? NOOP,
 		onPanEnd: onPanEnd ?? NOOP,
 		backgroundGap,
@@ -295,54 +285,9 @@ export function Flow({
 		onNodeDragStop,
 	});
 
-	// ── culling ─────────────────────────────────────────────────────────────
-	const [visibleIds, setVisibleIds] = useState<Set<string> | null>(null);
-	const lastCullRef = useRef<Viewport | null>(null);
-
-	const evaluateCulling = useCallback(() => {
-		if (pauseCulling) {
-			setVisibleIds(null);
-			return;
-		}
-		const size = panZoom.getContainerSize();
-		if (size.width === 0 || size.height === 0) return;
-
-		const viewport = panZoom.getViewport();
-		const last = lastCullRef.current;
-		// Hysteresis: re-evaluating every frame would churn the visible set and
-		// remount feature cards mid-pan, losing task-list scroll positions.
-		if (
-			last &&
-			last.zoom === viewport.zoom &&
-			Math.abs(last.x - viewport.x) < CULL_HYSTERESIS &&
-			Math.abs(last.y - viewport.y) < CULL_HYSTERESIS
-		) {
-			return;
-		}
-		lastCullRef.current = viewport;
-
-		const view = visibleRect(viewport, size, CULL_MARGIN);
-		const next = new Set<string>();
-		for (const node of nodesRef.current) {
-			const rect = {
-				x: node.position.x,
-				y: node.position.y,
-				width: node.width ?? 0,
-				height: node.height ?? 0,
-			};
-			if (rectsIntersect(view, rect)) next.add(node.id);
-		}
-		setVisibleIds(next);
-	}, [panZoom, pauseCulling]);
-
-	cullRef.current = evaluateCulling;
-
-	// Re-evaluate whenever the graph or the pause flag changes. Movement-driven
-	// evaluation is wired through usePanZoom's onCommit rather than an always-on
-	// animation frame, so an idle canvas schedules no work at all.
-	useEffect(() => {
-		evaluateCulling();
-	}, [evaluateCulling]);
+	// Culling is the browser's job now: every node carries
+	// `content-visibility: auto` permanently (see flow.css). We only tell it
+	// when to stand down, via the class below.
 
 	// ── imperative API ──────────────────────────────────────────────────────
 	const api = useMemo<FlowApi>(
@@ -459,7 +404,6 @@ export function Flow({
 								Component={Component}
 								registry={registry}
 								onHandlesChanged={onHandlesChanged}
-								culled={visibleIds !== null && !visibleIds.has(node.id)}
 								onContentSize={onContentSize}
 							/>
 						);

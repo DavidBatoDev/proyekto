@@ -166,6 +166,32 @@ test.describe("roadmap canvas", () => {
 			.not.toBe(Math.round(before.x));
 	});
 
+	test("a node's hit area matches the card that is drawn", async ({ page }) => {
+		// Regression guard. The engine used to force each node wrapper to the
+		// height the layout pass DECLARES, which is spacing metadata the card does
+		// not fill — leaving an invisible strip below every card (55px on screen at
+		// 67% zoom) that still captured the pointer. Pressing what looked like
+		// empty canvas therefore grabbed a node and dragged it instead of panning,
+		// which on a dense roadmap made the canvas feel impossible to pan.
+		const overhang = await page.evaluate(() => {
+			const wrappers = [
+				...document.querySelectorAll<HTMLElement>("[data-flow-pane] .flow__node"),
+			].slice(0, 12);
+			return wrappers.map((wrapper) => {
+				const card = wrapper.firstElementChild;
+				if (!card) return 0;
+				const w = wrapper.getBoundingClientRect();
+				const c = card.getBoundingClientRect();
+				// How far the interactive box extends past what the user can see.
+				return Math.round(Math.max(w.bottom - c.bottom, w.right - c.right));
+			});
+		});
+
+		expect(overhang.length).toBeGreaterThan(0);
+		// A couple of pixels of rounding is fine; tens of pixels is a dead zone.
+		for (const px of overhang) expect(px).toBeLessThan(4);
+	});
+
 	test("the transform is applied to a single pane element", async ({ page }) => {
 		// Guards the core invariant of the renderer: one transformed pane carrying
 		// every node, rather than per-node absolute repositioning on pan.
