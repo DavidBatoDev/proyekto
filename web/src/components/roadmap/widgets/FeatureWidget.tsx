@@ -567,7 +567,11 @@ export const FeatureWidget = memo(
 							? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
 							: isGlobalTaskDropHighlight
 								? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-								: "border-border hover:border-primary/60"
+								: // Same resting border as EpicWidget. `border-border` resolves
+									// to #eeeff1, which is far lighter than the epic card's
+									// gray-300 and made feature cards read as borderless beside
+									// them on the canvas.
+									"border-gray-300 hover:border-primary/60"
 					}`}
 					style={
 						editingBorderColor(editors)
