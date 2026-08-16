@@ -164,10 +164,7 @@ const FlowNodeView = memo(function FlowNodeView({
 		<FlowNodeContext.Provider value={context}>
 			<div
 				ref={elementRef}
-				// The legacy class is kept alongside the engine's own so the app's
-				// existing node styling (cursor, the remote-drag outline and its
-				// colour variable) applies unchanged under either renderer.
-				className={`flow__node react-flow__node${
+				className={`flow__node${
 					culled ? " flow__node--culled" : ""
 				}${node.className ? ` ${node.className}` : ""}`}
 				data-id={node.id}

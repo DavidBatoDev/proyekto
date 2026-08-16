@@ -1,7 +1,6 @@
 // Widget components for ReactFlow
 export { EpicWidget, type EpicWidgetData } from "./widgets/EpicWidget";
 export { FeatureWidget, type FeatureWidgetData } from "./widgets/FeatureWidget";
-export { TaskWidget, type TaskWidgetData } from "./widgets/TaskWidget";
 export { TaskListItem } from "./widgets/TaskListItem";
 
 // View components

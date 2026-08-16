@@ -6,10 +6,10 @@ import type { CanvasViewport } from "../viewport/CanvasViewportContext";
 /**
  * A node widget, as far as a renderer is concerned.
  *
- * Deliberately loose: the widgets are still typed against `@xyflow/react`'s
- * `NodeProps` until they move to the engine's own node port, and this is the
- * adapter boundary where that mismatch is absorbed. Narrowing it here would
- * just push a cast onto every renderer.
+ * Deliberately loose. Widgets are authored against `canvas/ports/node.tsx`,
+ * which declares only the three fields they read; this boundary is where that
+ * narrow contract meets whatever a renderer wants to hand a component.
+ * Narrowing it here would just push a cast onto every renderer.
  */
 export type CanvasNodeComponent = ComponentType<any>;
 

@@ -3,19 +3,13 @@ import type { Locator, Page } from "@playwright/test";
 /**
  * Canvas locators for the roadmap view.
  *
- * These exist so the e2e suite stops reaching into React Flow's internal class
- * names (`.react-flow`, `.react-flow__node`, `.react-flow__controls-*`). Those
- * are implementation details of a dependency we are replacing; every spec that
- * hard-codes one is a spec that breaks on the renderer swap for no good reason.
+ * Every selector here is emitted by the canvas SHELL or by the epic/feature
+ * widgets — never by the renderer. That separation is what let the entire suite
+ * run unchanged against two different canvas engines while they coexisted, and
+ * it is why swapping the engine cost no spec edits.
  *
- * The `data-testid`s below are emitted by the canvas shell and the epic/feature
- * widgets, not by the renderer, so they are identical under either engine.
- *
- * Note on `.or()` fallbacks: deliberately not used. During the migration BOTH the
- * shell's `[data-testid="roadmap-canvas"]` and React Flow's `.react-flow` element
- * are present — they are different nodes — so an `.or()` chain would resolve to
- * two elements and trip Playwright's strict mode. The app change and this change
- * land together, so a revert reverts both.
+ * Keep it that way: a spec that reaches for an engine-internal class name is a
+ * spec that breaks the next time the canvas changes shape.
  */
 
 /** The canvas shell. Also the surface to drag against for pan gestures. */

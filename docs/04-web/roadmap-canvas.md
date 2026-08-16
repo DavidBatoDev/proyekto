@@ -1,15 +1,50 @@
 # Roadmap Canvas
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-16 · **Status:** current
 
-The roadmap canvas is the most complex surface in the web app: an **XYFlow (React
-Flow)** graph of epics → features → tasks, an AI assistant panel, a JSON editor, and
-several view modes — all driven by `roadmapStore` with **optimistic UI** so edits feel
-instant and reconcile (or roll back) against the server.
+The roadmap canvas is the most complex surface in the web app: a graph of
+epics → features → tasks, an AI assistant panel, a JSON editor, and several view
+modes — all driven by `roadmapStore` with **optimistic UI** so edits feel instant and
+reconcile (or roll back) against the server.
 
-> **Not dagre.** `dagre` is a declared dependency but is **not imported** anywhere —
-> layout is a hand-written `getLayoutedElements` that columns epics on the left with
-> their features offset right. (The CLAUDE.md "XYFlow/dagre" shorthand is inaccurate.)
+> **No graph library.** The canvas is drawn by an in-house DOM+SVG engine in
+> `src/lib/flow/`. `@xyflow/react` and `dagre` were removed on 2026-08-16; the engine
+> replaced the former, and the latter had never been imported at all. Layout is the
+> hand-written `getLayoutedElements` in `canvas/model/layout.ts`, which columns epics
+> on the left with their features offset right.
+
+## The engine
+
+`src/lib/flow/` may import **only** `react`/`react-dom` — no app modules, no UI
+framework — so it can be lifted into its own package for reuse. `importBoundary.test.ts`
+enforces that mechanically.
+
+| Piece | File |
+| --- | --- |
+| Engine root (pane, layers, culling) | `lib/flow/Flow.tsx` |
+| Pan / zoom / wheel / touch | `lib/flow/usePanZoom.ts` |
+| Node dragging | `lib/flow/useNodeDrag.ts` |
+| Edge layer | `lib/flow/FlowEdges.tsx` + `lib/flow/edgePath.ts` |
+| Handle registration + geometry | `lib/flow/handles.ts`, `lib/flow/FlowNodeContext.tsx` |
+| Viewport maths (fitView, d3 constrain) | `lib/flow/transform.ts` |
+| App-side adapter | `canvas/renderers/DomSvgRenderer.tsx` |
+| Node-authoring port (widgets use this) | `canvas/ports/node.tsx` |
+
+Three design points worth knowing before changing it:
+
+- **Gestures never re-render React.** The viewport lives in a ref; pointer handlers
+  mutate a pending value and one rAF writes `transform` straight to the pane. A drag
+  moves its node by writing the element's transform directly and reporting the
+  absolute position, so drag frames cost zero renders too.
+- **Culling keeps nodes mounted** (`content-visibility`), so task-list scroll
+  positions, open menus and drag state survive a pan. That trades a larger DOM for
+  interaction smoothness, deliberately.
+- **Edges anchor to the rendered card**, not to the declared node height — the layout
+  pass's height is spacing metadata that the card does not fill.
+
+Edge paths and `fitView` framing are pinned to goldens recorded from the previous
+library before it was removed (`lib/flow/edgePath.test.ts`, `transform.test.ts`); a
+diff there means every edge or the framing moved.
 
 ## Composition
 
@@ -22,8 +57,8 @@ data via `useRoadmapFullLiveQuery`, and drives `useRoadmapStore`. The route
 | --- | --- |
 | Orchestrator | `views/roadmap/components/RoadmapViewContent.tsx` |
 | View switcher | `views/roadmap/components/RoadmapCanvas.tsx` (`canvasViewMode`) |
-| Hierarchy view | `views/roadmap/RoadmapView.tsx` (XYFlow) |
-| Nodes | `widgets/EpicWidget.tsx`, `widgets/FeatureWidget.tsx`, `widgets/{SortableTaskList,TaskWidget}.tsx` |
+| Hierarchy view | `views/roadmap/RoadmapView.tsx` (canvas shell) |
+| Nodes | `widgets/EpicWidget.tsx`, `widgets/FeatureWidget.tsx`, `widgets/SortableTaskList.tsx` |
 | Top bar | `views/RoadmapTopBar.tsx` (view toggle + sortable epic tabs) |
 | AI panel | `ai/RoadmapAiAssistantPanel.tsx` + `ai/useRoadmapAiAssistantSession.ts` |
 | JSON panel | `panels/JSONRoadmapSidePanel.tsx` (Monaco) |
@@ -34,7 +69,7 @@ data via `useRoadmapFullLiveQuery`, and drives `useRoadmapStore`. The route
 
 `canvasViewMode` (`"roadmap" | "epic" | "milestones"`) switches between:
 
-- **Roadmap hierarchy** — the XYFlow epic→feature→task graph; custom node types
+- **Roadmap hierarchy** — the epic→feature→task graph; node types
   `epicWidget` / `featureWidget`, tasks rendered inside feature widgets; edges are
   epic→feature (colored by derived feature status) plus a dashed epic chain.
 - **Milestones / timeline (Gantt)** — features on a timeline (`views/milestones/`),

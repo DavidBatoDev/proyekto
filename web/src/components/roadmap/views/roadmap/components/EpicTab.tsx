@@ -1,29 +1,29 @@
-import * as React from "react";
-import { useState, useEffect } from "react";
 import {
-	Edit2,
-	Trash2,
-	Plus,
-	X,
 	Check,
 	ChevronDown,
 	ChevronUp,
+	Edit2,
 	MessageSquare,
+	Plus,
+	Trash2,
+	X,
 } from "lucide-react";
-import { TaskListItem } from "../../../widgets/TaskListItem";
-import type {
-	RoadmapEpic,
-	RoadmapFeature,
-	RoadmapTask,
-	Comment,
-} from "@/types/roadmap";
+import * as React from "react";
+import { useEffect, useState } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { FeatureModal } from "../../../modals/FeatureModal";
-import { CommentsSection } from "../../../shared/CommentsSection";
+import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { commentsService } from "@/services/roadmap.service";
 import { useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useMentionUsers } from "@/hooks/useMentionUsers";
+import type {
+	Comment,
+	RoadmapEpic,
+	RoadmapFeature,
+	RoadmapTask,
+} from "@/types/roadmap";
+import { FeatureModal } from "../../../modals/FeatureModal";
+import { CommentsSection } from "../../../shared/CommentsSection";
+import { TaskListItem } from "../../../widgets/TaskListItem";
 
 interface EpicTabProps {
 	epic: RoadmapEpic;

@@ -479,25 +479,10 @@ html[data-ui-theme] {
   height: 0;
 }
 
-.react-flow__node.minimap-only-node {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.react-flow__pane {
-  cursor: default !important;
-}
-
-.react-flow__pane.react-flow__pane--dragging {
-  cursor: grabbing !important;
-}
-
-.react-flow__node {
-  cursor: pointer !important;
-}
-
-.react-flow__node.dragging {
-  cursor: grabbing !important;
+/* Roadmap canvas cursors. The `.minimap-only-node` rule that used to live here
+   went with React Flow — no minimap was ever rendered, so nothing set it. */
+.flow__node {
+  cursor: pointer;
 }
 
 @keyframes roadmap-task-light-pulse {
@@ -775,11 +760,11 @@ html[data-ui-theme] {
 
 /* Live collaborator drag preview (roadmap canvas). The dragged node gets an
    outline in the dragger's color. NOTE: do NOT add a `transition: transform`
-   here — ReactFlow anchors edges to a node's logical position instantly, so a
+   here — the canvas anchors edges to a node's logical position instantly, so a
    CSS transform transition makes the node visually lag its edges, which reads
    as edges flickering/disappearing. Smoothness comes from the broadcast rate
    instead (see broadcastNodeDrag throttle). Only the outline color is animated. */
-.react-flow__node.remote-dragging {
+.flow__node.remote-dragging {
   outline: 2px solid var(--remote-drag-color, #6366f1);
   outline-offset: 2px;
   border-radius: 8px;
@@ -974,28 +959,4 @@ html.dark select {
   --rdg-row-selected-hover-background-color: var(--primary-light);
 }
 
-.react-flow {
-  --xy-background-color-default: var(--background);
-  --xy-node-color-default: var(--foreground);
-  --xy-node-background-color-default: var(--card);
-  --xy-node-border-default: 1px solid var(--border);
-  --xy-controls-button-background-color-default: var(--card);
-  --xy-controls-button-background-color-hover-default: var(--muted);
-  --xy-controls-button-color-default: var(--foreground);
-  --xy-controls-button-border-color-default: var(--border);
-  --xy-minimap-background-color-default: var(--card);
-}
 
-.react-flow__controls-button {
-  background-color: var(--card) !important;
-  border-bottom-color: var(--border) !important;
-  color: var(--foreground) !important;
-}
-
-.react-flow__controls-button:hover {
-  background-color: var(--muted) !important;
-}
-
-.react-flow__controls-button svg {
-  fill: currentColor;
-}

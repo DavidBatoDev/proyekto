@@ -1,9 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
-import { SidePanel } from "../../../panels/SidePanel";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { EpicPriority, RoadmapEpic, RoadmapTask } from "@/types/roadmap";
 import { EpicModal } from "../../../modals/EpicModal";
 import { FeatureModal } from "../../../modals/FeatureModal";
-import type { RoadmapEpic, RoadmapTask, EpicPriority } from "@/types/roadmap";
+import { SidePanel } from "../../../panels/SidePanel";
 
 interface DeleteConfirm {
 	type: "epic" | "feature";

@@ -1,4 +1,3 @@
-import { getViewportForBounds as rfViewportForBounds } from "@xyflow/system";
 import { describe, expect, it } from "vitest";
 import {
 	constrainTransform,
@@ -12,9 +11,10 @@ import {
 import type { FlowNode, TranslateExtent, Viewport } from "./types";
 
 /**
- * The `@xyflow/system` cross-checks below must be DELETED with the dependency;
- * the surrounding assertions on our own output stay. See edgePath.test.ts for
- * the same arrangement and the reasoning.
+ * fitView framing is pinned to goldens recorded from `@xyflow/system`'s
+ * `getViewportForBounds` — the implementation this replaced — captured in the
+ * commit that removed that dependency. See edgePath.test.ts for the same
+ * arrangement and the reasoning.
  */
 
 // A container that is NOT at the page origin. Using {left:0,top:0} would let an
@@ -151,6 +151,9 @@ describe("getNodesBounds", () => {
 describe("getViewportForBounds", () => {
 	// The real call sites: padding 0.12 / maxZoom 0.67, minZoom 0.4 in the app
 	// and 0.2 on template previews.
+	// Recorded from @xyflow/system at padding 0.12, across the real call
+	// sites: the app (minZoom 0.4), template previews (0.2), a graph small
+	// enough to clamp at maxZoom, and a phone viewport.
 	const CASES = [
 		{
 			name: "app defaults",
@@ -158,6 +161,7 @@ describe("getViewportForBounds", () => {
 			size: { width: 1200, height: 800 },
 			minZoom: 0.4,
 			maxZoom: 0.67,
+			expected: { x: 330, y: -280, zoom: 0.4 },
 		},
 		{
 			name: "template preview (minZoom 0.2)",
@@ -165,6 +169,7 @@ describe("getViewportForBounds", () => {
 			size: { width: 1200, height: 800 },
 			minZoom: 0.2,
 			maxZoom: 0.67,
+			expected: { x: 465, y: -520, zoom: 0.2 },
 		},
 		{
 			name: "tiny graph clamps to maxZoom",
@@ -172,6 +177,7 @@ describe("getViewportForBounds", () => {
 			size: { width: 1200, height: 800 },
 			minZoom: 0.4,
 			maxZoom: 0.67,
+			expected: { x: 365.5, y: 259.29999999999995, zoom: 0.67 },
 		},
 		{
 			name: "phone viewport",
@@ -179,28 +185,22 @@ describe("getViewportForBounds", () => {
 			size: { width: 390, height: 844 },
 			minZoom: 0.2,
 			maxZoom: 0.67,
+			expected: { x: 35.953125, y: 21.4375, zoom: 0.235625 },
 		},
 	];
 
 	for (const testCase of CASES) {
-		it(`matches React Flow's framing — ${testCase.name}`, () => {
-			const ours = getViewportForBounds(
-				testCase.bounds,
-				testCase.size.width,
-				testCase.size.height,
-				testCase.minZoom,
-				testCase.maxZoom,
-				0.12,
-			);
-			const theirs = rfViewportForBounds(
-				testCase.bounds,
-				testCase.size.width,
-				testCase.size.height,
-				testCase.minZoom,
-				testCase.maxZoom,
-				0.12,
-			);
-			expect(ours).toEqual(theirs);
+		it(`matches the frozen framing golden — ${testCase.name}`, () => {
+			expect(
+				getViewportForBounds(
+					testCase.bounds,
+					testCase.size.width,
+					testCase.size.height,
+					testCase.minZoom,
+					testCase.maxZoom,
+					0.12,
+				),
+			).toEqual(testCase.expected);
 		});
 	}
 });

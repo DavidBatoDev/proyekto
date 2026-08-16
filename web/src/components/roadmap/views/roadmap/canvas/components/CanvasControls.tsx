@@ -3,16 +3,10 @@ import { Maximize, Minus, Plus } from "lucide-react";
 /**
  * Zoom / fit-view controls for the roadmap canvas.
  *
- * Replaces `<Controls />` from `@xyflow/react` so the chrome is owned by us and
- * survives the canvas-renderer swap: it takes plain callbacks and holds no
- * renderer context. Two other things it buys:
- *
- *  - **Stable test hooks.** The Playwright suite used to reach for React Flow's
- *    internal `.react-flow__controls-*` classes. The `data-testid`s here are the
- *    replacement; the legacy classes are kept alongside them for one release so
- *    the specs can migrate without a flag-day.
- *  - **Theme tokens.** React Flow's buttons needed `!important` overrides in
- *    `styles.css` to respect dark mode. These use tokens directly.
+ * Canvas chrome owned by the app rather than the renderer: it takes plain
+ * callbacks and holds no renderer context, so it is unaffected by which engine
+ * draws the canvas. Styled with theme tokens directly — the previous library's
+ * buttons needed `!important` overrides in `styles.css` to respect dark mode.
  *
  * Note: React Flow's fourth button — the interactivity lock — is deliberately not
  * reproduced. It toggled `nodesDraggable` in React Flow's internal store, which
@@ -32,7 +26,7 @@ export interface CanvasControlsProps {
 }
 
 const BUTTON_CLASS =
-	"react-flow__controls-button flex h-7 w-7 items-center justify-center text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40";
+	"flex h-7 w-7 items-center justify-center text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40";
 
 export function CanvasControls({
 	onZoomIn,
@@ -44,9 +38,7 @@ export function CanvasControls({
 }: CanvasControlsProps) {
 	return (
 		<div
-			// `react-flow__controls` is retained only so the existing e2e selectors
-			// and the styles.css overrides keep matching during the migration.
-			className={`react-flow__controls absolute top-3 right-3 z-10 flex flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm ${
+			className={`absolute top-3 right-3 z-10 flex flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm ${
 				className ?? ""
 			}`}
 			data-testid="roadmap-canvas-controls"
@@ -55,7 +47,7 @@ export function CanvasControls({
 				type="button"
 				onClick={onZoomIn}
 				disabled={zoomInDisabled}
-				className={`${BUTTON_CLASS} react-flow__controls-zoomin border-b border-border`}
+				className={`${BUTTON_CLASS} border-b border-border`}
 				data-testid="roadmap-canvas-zoom-in"
 				title="Zoom in"
 				aria-label="Zoom in"
@@ -66,7 +58,7 @@ export function CanvasControls({
 				type="button"
 				onClick={onZoomOut}
 				disabled={zoomOutDisabled}
-				className={`${BUTTON_CLASS} react-flow__controls-zoomout border-b border-border`}
+				className={`${BUTTON_CLASS} border-b border-border`}
 				data-testid="roadmap-canvas-zoom-out"
 				title="Zoom out"
 				aria-label="Zoom out"
@@ -76,7 +68,7 @@ export function CanvasControls({
 			<button
 				type="button"
 				onClick={onFitView}
-				className={`${BUTTON_CLASS} react-flow__controls-fitview`}
+				className={`${BUTTON_CLASS}`}
 				data-testid="roadmap-canvas-fit-view"
 				title="Fit view"
 				aria-label="Fit view"

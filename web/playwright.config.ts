@@ -65,28 +65,5 @@ export default defineConfig({
       },
       dependencies: ["setup"],
     },
-    {
-      name: "engine-setup",
-      testDir: "./playwright",
-      testMatch: /engine\.setup\.ts/,
-      use: { ...devices["Desktop Chrome"] },
-      dependencies: ["setup"],
-    },
-    {
-      // The same specs, run against the in-house DOM+SVG canvas engine.
-      //
-      // No spec file knows this project exists: the engine is selected by the
-      // localStorage key the resolver already reads, and every canvas assertion
-      // is written against shell-emitted testids rather than renderer internals.
-      // That is the whole payoff of the engine-neutral locators — parity is
-      // checked by re-running the existing suite, not by maintaining a second one.
-      name: "chromium-user-domsvg",
-      testMatch: /(roadmap-canvas|canvas-perf).*\.spec\.ts/,
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: "./playwright/.auth/user-domsvg.json",
-      },
-      dependencies: ["engine-setup"],
-    },
   ],
 });

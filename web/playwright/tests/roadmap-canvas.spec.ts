@@ -32,7 +32,7 @@ import { APP_URL, PROJECT_ID, ROADMAP_ID } from "./canvasFixture";
 async function paneTransform(page: import("@playwright/test").Page) {
 	return page.evaluate(() => {
 		const pane = document.querySelector<HTMLElement>(
-			'[data-testid="roadmap-canvas"] .react-flow__viewport, [data-testid="roadmap-canvas"] [data-flow-pane]',
+			'[data-testid="roadmap-canvas"] [data-flow-pane]',
 		);
 		return pane ? getComputedStyle(pane).transform : null;
 	});

@@ -1,15 +1,11 @@
 /**
  * Canvas domain types.
  *
- * `CanvasNode`/`CanvasEdge` are declared HERE rather than imported from
- * `@xyflow/react`. They started as aliases of React Flow's `Node`/`Edge` purely
- * so the rest of the canvas could stop naming that package; now they are
- * structural, describing only the fields this canvas actually reads.
- *
- * Both remain structurally compatible with React Flow's equivalents in both
- * directions for those fields, which is what lets `ReactFlowRenderer` pass them
- * straight through with a cast at the adapter boundary — and what lets a second
- * renderer consume them with no adapter at all.
+ * `CanvasNode`/`CanvasEdge` describe only the fields this canvas actually
+ * reads, and are owned here rather than by any renderer. They are structurally
+ * identical to `lib/flow`'s `FlowNode`/`FlowEdge`, which is what lets the
+ * renderer adapter pass them straight through with a cast instead of
+ * translating between two shapes on every render.
  */
 import type { CSSProperties } from "react";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";

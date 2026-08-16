@@ -15,16 +15,16 @@ import {
  * committing. So the reorder path — the canvas's single most destructive
  * interaction — shipped on trust.
  *
- * Written engine-neutrally (shell testids only), so the same file runs under
- * both `chromium-user` and `chromium-user-domsvg` and is the parity proof for
- * dragging.
+ * Written against shell testids only, so it is unaffected by how the canvas
+ * renders. It ran under two engines side by side while both existed, which is
+ * how drag parity was established.
  *
- * It MUTATES data, so it runs against DEDICATED fixture roadmaps — one PER
- * PROJECT. Both engine projects execute this file, Playwright runs them on
- * separate workers concurrently, and two workers reordering the same epics
- * corrupt each other: an earlier version of this spec shared the app roadmap
- * and did exactly that, leaving the fixture shuffled for every later run.
- * A roadmap each removes the race and keeps real project data untouched.
+ * It MUTATES data, so it runs against a DEDICATED fixture roadmap. An earlier
+ * version shared the app roadmap and left it shuffled whenever the test failed
+ * mid-way — and, while two engine projects ran this file concurrently, two
+ * workers reordering the same epics corrupted each other. The per-project map
+ * below survives from that arrangement and is the extension point if a second
+ * project is ever added again.
  *
  * The committed test still restores the original order afterwards, so repeated
  * runs start from the same place.

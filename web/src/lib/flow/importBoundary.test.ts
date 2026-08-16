@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
  * a doc comment and easy to break with one convenient import, so it is asserted
  * here instead.
  *
- * Test files are exempt: two of them deliberately cross-check against
- * `@xyflow/react` / `@xyflow/system` while those packages still exist, which is
- * how edge-path and fitView parity are proven.
+ * Test files are exempt. The `@xyflow` patterns are kept even though those
+ * packages are gone — the point is now to stop them being reintroduced, since
+ * this library exists precisely so the app does not depend on one.
  */
 
 const FORBIDDEN = [
