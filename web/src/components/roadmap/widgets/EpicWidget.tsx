@@ -1,25 +1,29 @@
-import { memo, useEffect, useRef, useState, type DragEvent } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
-	Edit2,
-	Trash2,
-	Plus,
-	ExternalLink,
 	Calendar,
 	Copy,
+	Edit2,
+	ExternalLink,
 	Link2,
+	Plus,
+	Trash2,
 } from "lucide-react";
-import type { RoadmapEpic } from "@/types/roadmap";
-import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
-import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+import { type DragEvent, memo, useEffect, useRef, useState } from "react";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import { useToast } from "@/hooks/useToast";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { RoadmapEpic } from "@/types/roadmap";
 import {
 	EditingAvatars,
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
-import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useToast } from "@/hooks/useToast";
+import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+import {
+	type CanvasNodeProps,
+	Handle,
+	Position,
+} from "../views/roadmap/canvas/ports/node";
+import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -41,9 +45,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
 	editors?: CollaboratorInfo[];
 }
 
-type EpicWidgetNode = Node<EpicWidgetData>;
-
-export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
+export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 	const {
 		epic,
 		onClick,
