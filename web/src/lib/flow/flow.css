@@ -23,11 +23,9 @@
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
-	background-image: radial-gradient(
-		circle at 1px 1px,
-		var(--flow-dot-color, #c8ccd4) var(--flow-dot-size, 1.4px),
-		transparent 0
-	);
+	/* The gradient itself is written from the render loop: the dot radius tracks
+	   zoom, because a fixed radius makes a zoomed-out canvas read as heavy
+	   texture rather than a faint reference grid. */
 }
 
 .flow__pane {

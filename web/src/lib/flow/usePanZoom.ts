@@ -103,6 +103,8 @@ export interface PanZoomOptions {
 	onPanEnd: () => void;
 	/** Dot spacing in flow units, for the background parallax. */
 	backgroundGap: number;
+	/** Dot DIAMETER in px at zoom 1. */
+	backgroundDotSize: number;
 }
 
 export interface PanZoomApi {
@@ -129,6 +131,7 @@ export function usePanZoom({
 	onPanStart,
 	onPanEnd,
 	backgroundGap,
+	backgroundDotSize,
 }: PanZoomOptions): PanZoomApi {
 	const viewportRef = useRef<Viewport>(initialViewport);
 	const pendingRef = useRef<Viewport | null>(null);
@@ -146,6 +149,7 @@ export function usePanZoom({
 		onPanStart,
 		onPanEnd,
 		backgroundGap,
+		backgroundDotSize,
 	});
 	optionsRef.current = {
 		minZoom,
@@ -156,6 +160,7 @@ export function usePanZoom({
 		onPanStart,
 		onPanEnd,
 		backgroundGap,
+		backgroundDotSize,
 	};
 
 	/**
@@ -191,8 +196,18 @@ export function usePanZoom({
 		const background = backgroundRef.current;
 		if (background) {
 			const gap = optionsRef.current.backgroundGap * next.zoom;
+			// The dot must shrink with the canvas, otherwise zooming out packs
+			// full-size dots closer together and the grid reads as heavy texture
+			// rather than a subtle reference. `backgroundDotSize` is a DIAMETER
+			// (matching how the previous renderer specified it), so halve it for
+			// the gradient's radius.
+			const radius = Math.max(
+				(optionsRef.current.backgroundDotSize / 2) * next.zoom,
+				0.5,
+			);
 			background.style.backgroundSize = `${gap}px ${gap}px`;
 			background.style.backgroundPosition = `${next.x}px ${next.y}px`;
+			background.style.backgroundImage = `radial-gradient(circle at ${radius}px ${radius}px, var(--flow-dot-color, #c8ccd4) ${radius}px, transparent 0)`;
 		}
 
 		if (previous.zoom !== next.zoom) {

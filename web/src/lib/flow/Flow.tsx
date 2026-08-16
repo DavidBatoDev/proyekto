@@ -79,6 +79,8 @@ export interface FlowProps {
 	/** Suspends culling — every node renders regardless of visibility. */
 	pauseCulling?: boolean;
 	backgroundGap?: number;
+	/** Dot diameter in px at zoom 1. */
+	backgroundDotSize?: number;
 	onViewportChange?: (viewport: Viewport) => void;
 	onPanStart?: () => void;
 	onPanEnd?: () => void;
@@ -165,6 +167,7 @@ export function Flow({
 	translateExtent,
 	pauseCulling = false,
 	backgroundGap = 18,
+	backgroundDotSize = 1.4,
 	onViewportChange,
 	onPanStart,
 	onPanEnd,
@@ -218,6 +221,7 @@ export function Flow({
 		onPanStart: onPanStart ?? NOOP,
 		onPanEnd: onPanEnd ?? NOOP,
 		backgroundGap,
+		backgroundDotSize,
 	});
 
 	// ── culling ─────────────────────────────────────────────────────────────
