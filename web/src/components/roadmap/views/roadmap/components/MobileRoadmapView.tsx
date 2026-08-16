@@ -29,11 +29,11 @@ interface MobileRoadmapViewProps {
 
 /**
  * Compact, phone-friendly shell for the roadmap detail page. Replaces the
- * desktop three-column layout (resizable explorer + XYFlow canvas + AI side
- * panel) on small screens: a slim header with a Roadmap/Milestones toggle and
- * an overflow menu, the explorer tree as the body (rendered by RoadmapCanvas in
- * `mobile` mode so the editor overlays stay wired), and the AI assistant as a
- * slide-up sheet. The XYFlow canvas is never mounted here.
+ * desktop three-column layout (resizable explorer + canvas + AI side panel) on
+ * small screens: a slim header with an overflow menu, the explorer tree as the
+ * body (rendered by RoadmapCanvas in `mobile` mode so the editor overlays stay
+ * wired), and the AI assistant as a slide-up sheet. The canvas is never mounted
+ * here.
  */
 export function MobileRoadmapView({
 	projectId,
