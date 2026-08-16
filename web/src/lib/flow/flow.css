@@ -92,6 +92,13 @@
 	cursor: default;
 }
 
+/* No `transition: transform` here, ever. Edges anchor to logical positions
+   instantly, so a transitioned node visually lags its own edges and reads as
+   the edges flickering. */
+.flow__node--dragging {
+	cursor: grabbing;
+}
+
 /* Offscreen nodes stay MOUNTED and simply stop being laid out and painted.
    Unmounting them would discard task-list scroll positions, open menus and
    in-flight drag state — the reason this engine culls this way rather than by

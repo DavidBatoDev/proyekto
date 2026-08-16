@@ -66,9 +66,14 @@ const INTERACTIVE_SELECTOR =
 
 function startsPan(target: EventTarget | null): boolean {
 	if (!(target instanceof Element)) return true;
-	// `.nodrag` is load-bearing: feature cards nest dnd-kit sortable task rows
-	// with their own pointer sensors, and the drag handle is inside one. Without
-	// this check two drag systems fight over the same pointer.
+	// A press that lands on a node never pans.
+	//
+	// React Flow got this from its DOM shape — its pane sat BEHIND the nodes, so
+	// a press on a card never reached it. Here nodes are children of the pane, so
+	// the rule has to be explicit; without it, dragging a card pans the canvas
+	// underneath it.
+	if (target.closest(".flow__node")) return false;
+	// `.nodrag` opts a subtree out of canvas gestures entirely.
 	if (target.closest(".nodrag")) return false;
 	if (target.closest(INTERACTIVE_SELECTOR)) return false;
 	return true;

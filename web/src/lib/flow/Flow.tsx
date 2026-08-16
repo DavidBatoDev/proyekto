@@ -27,6 +27,7 @@ import type {
 	TranslateExtent,
 	Viewport,
 } from "./types";
+import { useNodeDrag } from "./useNodeDrag";
 import { usePanZoom } from "./usePanZoom";
 
 /**
@@ -35,8 +36,8 @@ import { usePanZoom } from "./usePanZoom";
  * Renders absolutely-positioned DOM nodes and an SVG edge layer inside a single
  * CSS-transformed pane, and drives pan/zoom without re-rendering React.
  *
- * This slice is READ-ONLY: it draws, pans and zooms. Node dragging, selection
- * and marquee are deliberately absent.
+ * Draws, pans, zooms, culls and drags nodes. Selection and marquee are
+ * deliberately absent — they are net-new behaviour, not parity items.
  */
 
 /**
@@ -84,6 +85,11 @@ export interface FlowProps {
 	onViewportChange?: (viewport: Viewport) => void;
 	onPanStart?: () => void;
 	onPanEnd?: () => void;
+	/** Whether nodes can be dragged. */
+	nodesDraggable?: boolean;
+	onNodeDragStart?: (event: unknown, node: FlowNode) => void;
+	onNodeDrag?: (event: unknown, node: FlowNode) => void;
+	onNodeDragStop?: (event: unknown, node: FlowNode) => void;
 	/** Fires once the first real layout is committed. */
 	onReady?: () => void;
 	onApi?: (api: FlowApi) => void;
@@ -166,6 +172,10 @@ export function Flow({
 	fitViewOptions,
 	translateExtent,
 	pauseCulling = false,
+	nodesDraggable = false,
+	onNodeDragStart,
+	onNodeDrag,
+	onNodeDragStop,
 	backgroundGap = 18,
 	backgroundDotSize = 1.4,
 	onViewportChange,
@@ -222,6 +232,16 @@ export function Flow({
 		onPanEnd: onPanEnd ?? NOOP,
 		backgroundGap,
 		backgroundDotSize,
+	});
+
+	useNodeDrag({
+		containerRef,
+		nodesRef,
+		getViewport: panZoom.getViewport,
+		enabled: nodesDraggable,
+		onNodeDragStart,
+		onNodeDrag,
+		onNodeDragStop,
 	});
 
 	// ── culling ─────────────────────────────────────────────────────────────

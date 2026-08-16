@@ -15,10 +15,11 @@ import type { CanvasRendererProps } from "./types";
  * port out, so the shell above cannot tell which one is mounted. Selected only
  * when the engine resolves to `dom-svg`.
  *
- * SLICE 1 IS READ-ONLY. Node dragging, the nodes controller and the toolbar
- * drop target are accepted below and deliberately ignored; the engine does not
- * emit drag events yet. Everything else — render, pan, zoom, fitView, deep-link
- * focus, culling — is live.
+ * `nodesController` is accepted and deliberately unused. It exists to absorb
+ * React Flow's `NodeChange` protocol; this engine moves the dragged node by
+ * writing its transform directly and reports the absolute position, so there is
+ * no change protocol to absorb and the shell's own preview stays the single
+ * source of node positions.
  *
  * `CanvasNode`/`CanvasEdge` and the engine's `FlowNode`/`FlowEdge` are
  * structurally identical by design, so the boundary below is a cast rather than
@@ -36,6 +37,10 @@ export function DomSvgRenderer({
 	fitViewOptions,
 	translateExtent,
 	pauseCulling,
+	nodesDraggable,
+	onNodeDragStart,
+	onNodeDrag,
+	onNodeDragStop,
 	onViewportChange,
 	onPanStart,
 	onPanEnd,
@@ -80,6 +85,10 @@ export function DomSvgRenderer({
 			fitViewOptions={fitViewOptions}
 			translateExtent={translateExtent}
 			pauseCulling={pauseCulling}
+			nodesDraggable={nodesDraggable}
+			onNodeDragStart={onNodeDragStart}
+			onNodeDrag={onNodeDrag}
+			onNodeDragStop={onNodeDragStop}
 			backgroundGap={18}
 			onViewportChange={onViewportChange}
 			onPanStart={onPanStart}
