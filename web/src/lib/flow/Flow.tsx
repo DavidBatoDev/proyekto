@@ -171,7 +171,17 @@ const FlowNodeView = memo(function FlowNodeView({
 				style={{
 					transform: `translate(${node.position.x}px, ${node.position.y}px)`,
 					width: node.width,
-					height: node.height,
+					// Height is deliberately NOT forced from `node.height`.
+					//
+					// A declared height can be spacing metadata that the card does not
+					// fill — the roadmap declares 220 for epics whose card renders 137.
+					// Forcing it leaves an invisible, pointer-catching strip below every
+					// card: presses that look like empty canvas land on a node instead,
+					// so the canvas drags a node when the user meant to pan. Letting the
+					// wrapper hug its content keeps the hit area equal to what is drawn.
+					//
+					// `contain-intrinsic-size` below still uses the declared height: it
+					// is only a size hint for culled nodes, never a hit area.
 					zIndex: node.zIndex,
 					containIntrinsicSize:
 						culled && node.width && node.height
