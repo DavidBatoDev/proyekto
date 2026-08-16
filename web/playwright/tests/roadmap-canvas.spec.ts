@@ -9,6 +9,7 @@ import {
 	canvasZoomOut,
 	waitForCanvasReady,
 } from "./canvasLocators";
+import { APP_URL, PROJECT_ID, ROADMAP_ID } from "./canvasFixture";
 
 /**
  * Fast, deterministic canvas regression net — NO AI involved.
@@ -26,9 +27,6 @@ import {
  * runs green against either renderer.
  */
 
-const ROADMAP_ID = "5ebdbb85-87a6-4685-aba4-fcf7f2283afe";
-const PROJECT_ID = "69d405c9-1eee-4b0f-91b4-2e677ba10c23";
-const APP_URL = `/project/${PROJECT_ID}/roadmap/${ROADMAP_ID}?view=roadmapView`;
 
 /** Reads the live viewport transform off the canvas pane. */
 async function paneTransform(page: import("@playwright/test").Page) {

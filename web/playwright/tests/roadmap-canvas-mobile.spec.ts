@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { canvasNodes, canvasRoot, waitForCanvasReady } from "./canvasLocators";
+import { APP_URL } from "./canvasFixture";
 
 /**
  * Phone-viewport coverage for the canvas surfaces that have NO mobile fallback.
@@ -85,16 +86,15 @@ test("app route falls back to the mobile tree instead of the canvas", async ({
 	// app route deliberately does NOT mount the canvas. If this ever starts
 	// rendering the canvas, phone users inherit the full drag/pan surface and
 	// these expectations need revisiting.
-	const ROADMAP_ID = "5ebdbb85-87a6-4685-aba4-fcf7f2283afe";
-	const PROJECT_ID = "69d405c9-1eee-4b0f-91b4-2e677ba10c23";
-	await page.goto(
-		`/project/${PROJECT_ID}/roadmap/${ROADMAP_ID}?view=roadmapView`,
-	);
+	await page.goto(APP_URL);
 
-	// Something from the roadmap page must render...
-	await expect(page.getByTitle("Toggle AI chat panel")).toBeVisible({
-		timeout: 45_000,
-	});
+	// Something from the roadmap page must render. Anchor on a control that only
+	// the mobile tree renders ("Toggle AI assistant", MobileRoadmapView) rather
+	// than the desktop top bar's "Toggle AI chat panel" — otherwise a regression
+	// that mounted the *desktop* shell on a phone would still satisfy this.
+	await expect(
+		page.getByRole("button", { name: "Toggle AI assistant" }),
+	).toBeVisible({ timeout: 45_000 });
 	// ...but not the canvas shell.
 	await expect(canvasRoot(page)).toHaveCount(0);
 });
