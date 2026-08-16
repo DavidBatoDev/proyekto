@@ -1,9 +1,9 @@
 # Engagement Lifecycle and Edge Cases
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
-> **⚠️ Designed, not active.** These rules define the intended P4b runtime contract. The
-> current backend does not create or consume engagement rows yet.
+> **⚠️ Schema applied; runtime not active.** These rules define the intended P4b runtime
+> contract. The current backend does not create or consume engagement rows yet.
 
 Engagement records are durable financial and legal history. Most corrections therefore
 append, end, reopen, or supersede records instead of mutating the facts that explain an

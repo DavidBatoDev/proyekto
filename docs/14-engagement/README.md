@@ -1,11 +1,11 @@
 # Engagements
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
-> **⚠️ Designed, not active.** The additive schema is authored in
+> **⚠️ Schema applied; runtime not active.** The additive schema is defined in
 > [`20260814020000_engagement_core.sql`](../../supabase/migrations/20260814020000_engagement_core.sql)
 > and [`20260814021000_engagement_time.sql`](../../supabase/migrations/20260814021000_engagement_time.sql),
-> but neither migration is applied and no runtime path writes these tables yet.
+> and is applied in production. No runtime path writes these tables yet.
 
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making

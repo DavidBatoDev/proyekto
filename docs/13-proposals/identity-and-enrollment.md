@@ -1,10 +1,10 @@
 # Identity and Enrollment
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
-> **⚠️ Proposed — not built.** P4b's schema and decisions are authored but unapplied;
-> P4c's client projection remains undesigned. Phases 1–3, consultant/freelancer enrollment,
-> and P4a's contract-seat correctness slice are live in source.
+> **⚠️ Proposed runtime — not built.** P4b's expand schema is applied, but its runtime is
+> inactive; P4c's client projection remains undesigned. Phases 1–3,
+> consultant/freelancer enrollment, and P4a's contract-seat correctness slice are live.
 
 Proyekto has tried to answer "what kind of user is this?" twice — first with a switchable
 `persona_type` (removed in `20260804170019_remove_active_persona.sql`), then with a durable
@@ -176,11 +176,11 @@ it.
 | **P3** | Marketplace/execution reorganization | Shipped 2026-08-11: routes and modules grouped into `execution/*` / `marketplace/*` / shared; consultant-of-record moved to `project_access`; `projects.consultant_id` and unused fee columns dropped; dead payments surface removed |
 | **Enrollment** | Consultant and freelancer lifecycle tables | Shipped 2026-08-12: verified/suspended/revoked consultant capability, eligibility-enforced active/paused freelancer discovery, legacy flags retired |
 | **P4a** | Contract positions + correctness | Shipped 2026-08-13: durable consultant seat, immutable terminal parties, enrollment re-check at signing, severed position reads, client-party signing, client-cost leak closures, exact invoice-contract recomposition |
-| **P4b** | Engagement link | Decided and authored, not applied: bilateral engagements, generic contract positions, project links/assignments, contract-authoritative pricing, and separate client-revenue/talent-cost time flows; see [Engagements](../14-engagement/README.md) |
+| **P4b** | Engagement link | Expand schema applied; runtime not built: bilateral engagements, generic contract positions, project links/assignments, contract-authoritative pricing, and separate client-revenue/talent-cost time flows; see [Engagements](../14-engagement/README.md) |
 | **P4c** | Client projection | Proposed: reconcile project-backed client read access and handover with the organizations fan-out design before creating `client_profiles` |
 
 Phases 1–3, enrollment, and P4a are standalone correctness work. P4b's decisions and
-unapplied expand schema are complete; its runtime integration and P4c still require later
+applied expand schema are complete; its runtime integration and P4c still require later
 work. Current mechanics live in
 [Data: identity and vetting](../07-data-and-db/identity-vetting-model.md).
 

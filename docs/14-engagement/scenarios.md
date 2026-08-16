@@ -1,9 +1,9 @@
 # Engagement Scenarios
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
-> **⚠️ Designed, not active.** The rows below are illustrative identifiers showing how the
-> authored schema behaves. They are not production records or a migration backfill.
+> **⚠️ Schema applied; runtime not active.** The rows below illustrate how the empty
+> production schema is intended to behave. They are not production records or a backfill.
 
 These scenarios use the same people throughout so the relationship between tables stays
 visible.

@@ -1,10 +1,10 @@
 # Engagement Data Model
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
-> **⚠️ Designed, not active.** These definitions describe the two authored but unapplied
-> P4b migrations. Existing runtime behavior continues to use the legacy contract, project,
-> team-rate, and time-log paths.
+> **⚠️ Schema applied; runtime not active.** These definitions describe the two applied
+> P4b expand migrations. Existing runtime behavior continues to use the legacy contract,
+> project, team-rate, and time-log paths.
 
 The schema separates four facts that are easy to conflate: the legal relationship, its
 parties, the projects where it is used, and the workers whose activity has commercial

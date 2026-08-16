@@ -1,11 +1,11 @@
 # Proposals
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;
 [`14-engagement`](../14-engagement/README.md) is the dedicated draft reference for P4b's
-locked but unapplied schema.
+applied schema and not-yet-built runtime.
 
 If you only read one page, read
 [organizations-and-services.md](./organizations-and-services.md) first for the proposed
@@ -65,11 +65,11 @@ identity that the 2026-08-09 reconciliation in
 [organizations-and-services.md](./organizations-and-services.md) noted, replacing it with
 marketplace enrollment tables. The two compose: both are progressive, opt-in, and
 auto-provision nothing. Role deletion, enrollment, and P4a's contract-seat correctness
-slice are shipped; P4b's schema is authored but unapplied.
+slice are shipped; P4b's expand schema is applied but its runtime is not built.
 
 P4b's locked design now has its own scenario-driven reference in
-[Engagements](../14-engagement/README.md). It remains unapplied and is clearly marked as
-draft there.
+[Engagements](../14-engagement/README.md). Its runtime remains inactive and is clearly
+marked as draft there.
 
 The fifth, [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md), is the
 monetization layer over both platforms. It was drafted against the pre-deletion

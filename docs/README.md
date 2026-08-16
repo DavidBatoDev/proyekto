@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-14 · **Status:** current (all 15 sections written)
+> **Last updated:** 2026-08-16 · **Status:** current (all 15 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -45,8 +45,8 @@ site, so links are relative filesystem paths. Every page carries a
 
 > **⚠️ Sections 13 and 14 are exceptions to the current-state rule.** Everything in `00`–`12`
 > describes shipped behaviour. `13-proposals/` holds general designs that do not exist yet;
-> `14-engagement/` is the dedicated reference for the locked but unapplied P4b schema. Their
-> pages remain `Status: draft` until the corresponding runtime behavior ships.
+> `14-engagement/` is the dedicated reference for P4b's applied schema and inactive runtime.
+> Their pages remain `Status: draft` until the corresponding runtime behavior ships.
 
 ## Also at the repo root
 
