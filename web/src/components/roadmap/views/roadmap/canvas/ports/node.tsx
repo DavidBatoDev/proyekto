@@ -14,6 +14,7 @@ import {
 	Handle as ReactFlowHandle,
 	Position as ReactFlowPosition,
 } from "@xyflow/react";
+import { FlowHandle, useFlowNode } from "@/lib/flow/FlowNodeContext";
 
 export const Position = {
 	Left: "left",
@@ -46,6 +47,12 @@ export interface CanvasHandleProps {
  * `layout.test.ts`).
  */
 export function Handle({ position, ...props }: CanvasHandleProps) {
+	// Which engine is mounted is decided by whether a node context is present —
+	// only the DOM/SVG engine provides one. Dispatching here means no widget has
+	// to know, and the React Flow path below is exactly what it was before.
+	const flowNode = useFlowNode();
+	if (flowNode) return <FlowHandle {...props} position={position} />;
+
 	// React Flow's `Position` is a TS enum, so the literal union above is not
 	// assignable to it even though the runtime values are identical. The map
 	// below is the whole of that impedance mismatch, and it lives here — at the

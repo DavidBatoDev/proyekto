@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
 	type DragEvent,
+	lazy,
+	Suspense,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -116,12 +118,23 @@ interface RoadmapViewProps {
 }
 
 /**
- * Only one engine exists today, so this resolves to `ReactFlowRenderer`
- * unconditionally. It is wired up now so activating the second engine is a
- * one-line change here rather than a refactor.
+ * Which engine draws the canvas.
+ *
+ * Resolved at module evaluation — before any component renders — so the choice
+ * is made once, cannot flip mid-session, and causes no first-paint swap.
+ *
+ * The non-default engine is lazy so it stays out of the main chunk: both
+ * renderers otherwise ship in the Capacitor bundle that is pushed to phones
+ * over the air, and only one of them can ever run.
  */
 const CANVAS_ENGINE = resolveCanvasEngine("app");
-const Renderer: CanvasRenderer = ReactFlowRenderer;
+
+const LazyDomSvgRenderer = lazy(async () => ({
+	default: (await import("./canvas/renderers/DomSvgRenderer")).DomSvgRenderer,
+}));
+
+const Renderer: CanvasRenderer =
+	CANVAS_ENGINE === "dom-svg" ? LazyDomSvgRenderer : ReactFlowRenderer;
 
 const RoadmapCanvasShell = ({
 	roadmap,
@@ -620,37 +633,42 @@ const RoadmapCanvasShell = ({
 				onTrackCursor(pos.x, pos.y);
 			}}
 		>
-			<Renderer
-				className={`transition-opacity duration-150 ${
-					isCanvasReady ? "opacity-100" : "opacity-0"
-				}`}
-				nodes={workingNodes ?? remoteWorkingNodes ?? nodes}
-				edges={workingEdges ?? remoteWorkingEdges ?? edges}
-				nodeComponents={nodeComponents}
-				// A remote preview moves nodes through the controlled prop with no
-				// active local drag; culling would pop edges as the reflow shifts
-				// bounding boxes, so suspend it while that preview is up.
-				pauseCulling={Boolean(remoteWorkingNodes && !workingNodes)}
-				nodesController={nodesController}
-				onNodeDragStart={onNodeDragStart}
-				onNodeDrag={onNodeDrag}
-				onNodeDragStop={onNodeDragStop}
-				onViewportChange={(next) => setZoom(next.zoom)}
-				onPanStart={() => onPanStart?.()}
-				onPanEnd={() => onPanEnd?.()}
-				onReady={handleCanvasReady}
-				defaultViewport={{
-					x: DEFAULT_VIEWPORT_X,
-					y: DEFAULT_VIEWPORT_Y,
-					zoom: DEFAULT_ZOOM,
-				}}
-				minZoom={MIN_ZOOM}
-				maxZoom={MAX_ZOOM}
-				fitView={fitView}
-				fitViewOptions={{ padding: 0.12, maxZoom: DEFAULT_ZOOM }}
-				translateExtent={translateExtent}
-				nodesDraggable={canEditRoadmap}
-			/>
+			{/* `null` is the right fallback: the shell already renders its own
+			    "Preparing roadmap" overlay until `onReady` fires, so the lazy
+			    chunk's load is covered by the same curtain as the first layout. */}
+			<Suspense fallback={null}>
+				<Renderer
+					className={`transition-opacity duration-150 ${
+						isCanvasReady ? "opacity-100" : "opacity-0"
+					}`}
+					nodes={workingNodes ?? remoteWorkingNodes ?? nodes}
+					edges={workingEdges ?? remoteWorkingEdges ?? edges}
+					nodeComponents={nodeComponents}
+					// A remote preview moves nodes through the controlled prop with no
+					// active local drag; culling would pop edges as the reflow shifts
+					// bounding boxes, so suspend it while that preview is up.
+					pauseCulling={Boolean(remoteWorkingNodes && !workingNodes)}
+					nodesController={nodesController}
+					onNodeDragStart={onNodeDragStart}
+					onNodeDrag={onNodeDrag}
+					onNodeDragStop={onNodeDragStop}
+					onViewportChange={(next) => setZoom(next.zoom)}
+					onPanStart={() => onPanStart?.()}
+					onPanEnd={() => onPanEnd?.()}
+					onReady={handleCanvasReady}
+					defaultViewport={{
+						x: DEFAULT_VIEWPORT_X,
+						y: DEFAULT_VIEWPORT_Y,
+						zoom: DEFAULT_ZOOM,
+					}}
+					minZoom={MIN_ZOOM}
+					maxZoom={MAX_ZOOM}
+					fitView={fitView}
+					fitViewOptions={{ padding: 0.12, maxZoom: DEFAULT_ZOOM }}
+					translateExtent={translateExtent}
+					nodesDraggable={canEditRoadmap}
+				/>
+			</Suspense>
 
 			{featureFlags.realtimeCursors && (
 				<CollaborationCursorsOverlay remoteCursors={remoteCursors} />

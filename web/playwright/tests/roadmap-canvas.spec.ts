@@ -103,10 +103,23 @@ test.describe("roadmap canvas", () => {
 		await expect.poll(readZoom, { timeout: 10_000 }).toBeLessThan(zoomedIn);
 
 		// maxZoom is 1.5 -> the button must eventually disable rather than run away.
+		//
+		// The click is guarded because "is it enabled?" then "click it" is
+		// inherently racy against a control that disables itself once the clamp is
+		// reached: the button can flip between the two calls. A renderer that
+		// reports zoom promptly makes that window easy to hit, which is a virtue,
+		// not a regression — so treat the failed click as "it disabled itself",
+		// which is exactly what this loop is waiting for. The assertion below is
+		// what actually proves the clamp held.
 		for (let i = 0; i < 12; i++) {
 			if (await canvasZoomIn(page).isDisabled()) break;
-			await canvasZoomIn(page).click();
+			try {
+				await canvasZoomIn(page).click({ timeout: 5_000 });
+			} catch {
+				break;
+			}
 		}
+		await expect(canvasZoomIn(page)).toBeDisabled();
 		await expect.poll(readZoom, { timeout: 10_000 }).toBeLessThanOrEqual(150);
 	});
 
