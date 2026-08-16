@@ -102,9 +102,22 @@
 /* Offscreen nodes stay MOUNTED and simply stop being laid out and painted.
    Unmounting them would discard task-list scroll positions, open menus and
    in-flight drag state — the reason this engine culls this way rather than by
-   removing elements. */
-.flow__node--culled {
+   removing elements.
+
+   This is applied to EVERY node, permanently, and that is the point:
+   `content-visibility: auto` is itself the browser's offscreen-skipping
+   mechanism. Toggling it from our own visibility calculation fought it — the
+   property flipped on a batch of nodes mid-pan and Chromium left stale painted
+   tiles behind inside the composited pane, which showed up as ghost copies of
+   cards at their previous positions. Set it once; let the browser decide. */
+.flow__node {
 	content-visibility: auto;
+}
+
+/* Escape hatch for the consumer's `pauseCulling`: while a remote collaborator's
+   preview is reflowing nodes, skip nothing. */
+.flow--cull-paused .flow__node {
+	content-visibility: visible;
 }
 
 .flow__handle {
