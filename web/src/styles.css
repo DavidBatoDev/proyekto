@@ -479,6 +479,17 @@ html[data-ui-theme] {
   height: 0;
 }
 
+/* Theme bridge for the canvas engine.
+   The engine ships neutral --flow-* custom properties with light-mode
+   fallbacks; this is where the app maps them onto its own theme tokens so the
+   canvas follows light/dark like everything else. Without it the dot grid keeps
+   the library's built-in light grey and glares on a dark background. */
+.flow {
+  --flow-dot-color: var(--canvas-dot);
+  --flow-edge-stroke: var(--canvas-edge);
+  --flow-background-color: var(--background);
+}
+
 /* Roadmap canvas cursors. The `.minimap-only-node` rule that used to live here
    went with React Flow — no minimap was ever rendered, so nothing set it. */
 .flow__node {
