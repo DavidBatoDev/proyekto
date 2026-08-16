@@ -60,7 +60,7 @@ const getProjectSwitchPath = (
 
 const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
 	if (pathname.includes("/roadmap")) return "Roadmap";
-	if (pathname.includes("/work-items")) return "Work Items";
+	if (pathname.includes("/work-items")) return "Board";
 	if (pathname.includes("/chat")) return "Chat";
 	if (pathname.includes("/settings")) return "Settings";
 	if (pathname.includes("/team")) return "Team";

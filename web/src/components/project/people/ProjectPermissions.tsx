@@ -97,7 +97,7 @@ const SECTION_ACCESS_REQUIREMENTS: Partial<Record<SectionKey, AccessGateKey>> =
 
 const ACCESS_GATE_LABELS: Record<AccessGateKey, string> = {
 	roadmap: "Access Roadmap",
-	work_items: "Access Work Items",
+	work_items: "Access Board",
 	team: "Access Team",
 	chat: "Access Chat",
 	resources: "Access Resources",

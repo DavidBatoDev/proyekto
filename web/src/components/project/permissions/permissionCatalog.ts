@@ -60,8 +60,8 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 			p(
 				"access",
 				"work_items",
-				"Open Work Items",
-				"View the per-roadmap work-items list.",
+				"Open Board",
+				"View the per-roadmap task board.",
 			),
 			p("access", "team", "Open Team", "Open the project's Team page."),
 			p("access", "chat", "Open Chat", "Open project chat (#general + DMs)."),

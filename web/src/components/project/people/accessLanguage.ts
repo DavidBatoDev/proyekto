@@ -12,7 +12,7 @@ import type { ProjectPermissions } from "@/services/project.service";
 /** The ten page-level gates, in the order the sidebar shows them. */
 const SECTION_LABELS: Array<{ field: string; label: string }> = [
 	{ field: "roadmap", label: "Roadmap" },
-	{ field: "work_items", label: "Work items" },
+	{ field: "work_items", label: "Board" },
 	{ field: "team", label: "People" },
 	{ field: "chat", label: "Chat" },
 	{ field: "resources", label: "Resources" },

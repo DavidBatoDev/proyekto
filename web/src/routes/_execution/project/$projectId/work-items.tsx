@@ -68,7 +68,7 @@ function WorkItemsLayoutBody() {
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Delivery"
-						title="Work Items"
+						title="Board"
 						subtitle="View and manage this project's epics, features, and tasks."
 					/>
 				</AppSurfaceCard>

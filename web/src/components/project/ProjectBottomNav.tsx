@@ -113,7 +113,7 @@ export function ProjectBottomNav({
 			gate: "access.roadmap",
 		},
 		{
-			label: "Work Items",
+			label: "Board",
 			icon: ListChecks,
 			to: effectiveRoadmapId
 				? `/project/${projectId}/work-items/${effectiveRoadmapId}`

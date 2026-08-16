@@ -33,7 +33,7 @@ const SUB_ITEMS: SubItem[] = [
 		matches: (p, id) => p.startsWith(`/project/${id}/roadmap`),
 	},
 	{
-		label: "Work items",
+		label: "Board",
 		icon: ListChecks,
 		to: "/project/$projectId/work-items",
 		matches: (p, id) => p.startsWith(`/project/${id}/work-items`),

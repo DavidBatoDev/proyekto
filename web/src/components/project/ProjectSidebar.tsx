@@ -142,7 +142,7 @@ export function ProjectSidebar({
 					gate: "access.roadmap",
 				},
 				{
-					label: "Work Items",
+					label: "Board",
 					icon: ListChecks,
 					to: effectiveRoadmapId
 						? `/project/${projectId}/work-items/${effectiveRoadmapId}`
@@ -344,7 +344,7 @@ export function ProjectSidebar({
 											currentPath.includes("/roadmap")) ||
 										(item.label === "Timeline" &&
 											currentPath.includes("/timeline")) ||
-										(item.label === "Work Items" &&
+										(item.label === "Board" &&
 											currentPath.includes("/work-items"));
 									return (
 										<Link

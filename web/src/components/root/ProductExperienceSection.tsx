@@ -52,7 +52,7 @@ const topRowTiles = [
 	{ label: "Dashboard", icon: LayoutDashboard },
 	{ label: "Project Posting", icon: FileText },
 	{ label: "Roadmap Views", icon: Map },
-	{ label: "Work Items", icon: ListTodo },
+	{ label: "Board", icon: ListTodo },
 	{ label: "Team Management", icon: UsersRound },
 	{ label: "Project Chat", icon: MessageCircle },
 	{ label: "Notifications", icon: Bell },

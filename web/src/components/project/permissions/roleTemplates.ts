@@ -114,7 +114,7 @@ export const ROLE_PRESET_LABELS: Record<RolePresetKey, string> = {
 export const ROLE_PRESET_DESCRIPTIONS: Record<RolePresetKey, string> = {
 	admin: "Full management of members, channels, financials, and settings.",
 	editor: "Edit roadmap and content, log time, send messages.",
-	viewer: "Read-only access to roadmap, work items, resources, and chat.",
+	viewer: "Read-only access to roadmap, board, resources, and chat.",
 };
 
 /**

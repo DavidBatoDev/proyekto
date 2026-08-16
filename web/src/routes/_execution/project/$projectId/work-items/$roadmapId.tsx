@@ -86,11 +86,9 @@ function WorkItemsBoardPage() {
 							<ListChecks className="w-4 h-4 text-[#0f172a]" />
 						</div>
 						<div className="leading-tight">
-							<h1 className="text-sm font-semibold text-slate-900">
-								Work Items
-							</h1>
+							<h1 className="text-sm font-semibold text-slate-900">Board</h1>
 							<p className="hidden text-[11px] text-slate-400 md:block">
-								Board view of every task in this roadmap
+								Every task in this roadmap, by status
 							</p>
 						</div>
 					</div>
