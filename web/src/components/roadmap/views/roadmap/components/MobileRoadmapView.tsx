@@ -1,16 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
-	CalendarDays,
 	FileText,
-	LayoutGrid,
 	MessageCircle,
 	MoreHorizontal,
 	Share2,
 	X,
 } from "lucide-react";
 import { useState } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { Roadmap } from "@/types/roadmap";
 import { RoadmapAiAssistantPanel } from "../../../ai/RoadmapAiAssistantPanel";
 import type { RoadmapPerformanceMode } from "../models/types";
@@ -53,17 +49,6 @@ export function MobileRoadmapView({
 	onInitialAiMessageConsumed,
 }: MobileRoadmapViewProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const { viewMode, setViewMode, setSelectedEpicId } = useRoadmapStore(
-		useShallow((state) => ({
-			viewMode: state.canvasViewMode,
-			setViewMode: state.setCanvasViewMode,
-			setSelectedEpicId: state.setCanvasSelectedEpicId,
-		})),
-	);
-
-	// "epic" tab mode isn't reachable on mobile; treat anything that isn't the
-	// milestones timeline as the roadmap tree for the toggle's active state.
-	const isMilestones = viewMode === "milestones";
 
 	return (
 		<div className="flex h-full flex-col bg-white">
@@ -127,37 +112,6 @@ export function MobileRoadmapView({
 							</>
 						)}
 					</div>
-				</div>
-
-				{/* Roadmap / Milestones toggle */}
-				<div className="flex items-center gap-1 px-3 py-2">
-					<button
-						type="button"
-						onClick={() => {
-							setViewMode("roadmap");
-							setSelectedEpicId(null);
-						}}
-						className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-							!isMilestones
-								? "bg-slate-900 text-white"
-								: "bg-slate-100 text-slate-600"
-						}`}
-					>
-						<LayoutGrid className="h-4 w-4" />
-						Roadmap
-					</button>
-					<button
-						type="button"
-						onClick={() => setViewMode("milestones")}
-						className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-							isMilestones
-								? "bg-slate-900 text-white"
-								: "bg-slate-100 text-slate-600"
-						}`}
-					>
-						<CalendarDays className="h-4 w-4" />
-						Milestones
-					</button>
 				</div>
 			</header>
 

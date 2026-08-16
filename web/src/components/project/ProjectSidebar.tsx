@@ -7,6 +7,7 @@ import {
 	ClipboardList,
 	Clock,
 	FolderKanban,
+	GanttChartSquare,
 	LayoutDashboard,
 	ListChecks,
 	Map,
@@ -44,6 +45,7 @@ export function ProjectSidebar({
 	// (e.g. projectId="n" skips the getByProjectId lookup in the parent layout)
 	const roadmapIdFromPath =
 		currentPath.match(/\/roadmap\/([^/]+)/)?.[1] ??
+		currentPath.match(/\/gantt\/([^/]+)/)?.[1] ??
 		currentPath.match(/\/work-items\/([^/]+)/)?.[1];
 	const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
@@ -127,6 +129,15 @@ export function ProjectSidebar({
 					to: effectiveRoadmapId
 						? `/project/${projectId}/roadmap/${effectiveRoadmapId}`
 						: `/project/${projectId}/roadmap`,
+					requiresProject: false,
+					gate: "access.roadmap",
+				},
+				{
+					label: "Gantt Chart",
+					icon: GanttChartSquare,
+					to: effectiveRoadmapId
+						? `/project/${projectId}/gantt/${effectiveRoadmapId}`
+						: `/project/${projectId}/gantt`,
 					requiresProject: false,
 					gate: "access.roadmap",
 				},
@@ -331,6 +342,8 @@ export function ProjectSidebar({
 											currentPath.includes("/settings")) ||
 										(item.label === "Roadmap" &&
 											currentPath.includes("/roadmap")) ||
+										(item.label === "Gantt Chart" &&
+											currentPath.includes("/gantt")) ||
 										(item.label === "Work Items" &&
 											currentPath.includes("/work-items"));
 									return (

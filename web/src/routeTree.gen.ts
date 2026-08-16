@@ -71,6 +71,7 @@ import { Route as ExecutionProjectProjectIdRoadmapRouteImport } from './routes/_
 import { Route as ExecutionProjectProjectIdResourcesRouteImport } from './routes/_execution/project/$projectId/resources'
 import { Route as ExecutionProjectProjectIdOverviewRouteImport } from './routes/_execution/project/$projectId/overview'
 import { Route as ExecutionProjectProjectIdLogsRouteImport } from './routes/_execution/project/$projectId/logs'
+import { Route as ExecutionProjectProjectIdGanttRouteImport } from './routes/_execution/project/$projectId/gantt'
 import { Route as ExecutionTeamsTeamIdTimeRouteRouteImport } from './routes/_execution/teams/$teamId/time/route'
 import { Route as ExecutionTeamsTeamIdTimeIndexRouteImport } from './routes/_execution/teams/$teamId/time/index'
 import { Route as ExecutionTeamsTeamIdSettingsIndexRouteImport } from './routes/_execution/teams/$teamId/settings/index'
@@ -97,6 +98,7 @@ import { Route as ExecutionProjectProjectIdSettingsPermissionsRouteImport } from
 import { Route as ExecutionProjectProjectIdSettingsGeneralRouteImport } from './routes/_execution/project/$projectId/settings/general'
 import { Route as ExecutionProjectProjectIdRoadmapCreateRouteImport } from './routes/_execution/project/$projectId/roadmap/create'
 import { Route as ExecutionProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/_execution/project/$projectId/roadmap/$roadmapId'
+import { Route as ExecutionProjectProjectIdGanttRoadmapIdRouteImport } from './routes/_execution/project/$projectId/gantt/$roadmapId'
 import { Route as ExecutionProjectProjectIdChatChatRefRouteImport } from './routes/_execution/project/$projectId/chat/$chatRef'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/index'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/$userId'
@@ -430,6 +432,12 @@ const ExecutionProjectProjectIdLogsRoute =
     path: '/logs',
     getParentRoute: () => ExecutionProjectProjectIdRoute,
   } as any)
+const ExecutionProjectProjectIdGanttRoute =
+  ExecutionProjectProjectIdGanttRouteImport.update({
+    id: '/gantt',
+    path: '/gantt',
+    getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
 const ExecutionTeamsTeamIdTimeRouteRoute =
   ExecutionTeamsTeamIdTimeRouteRouteImport.update({
     id: '/time',
@@ -586,6 +594,12 @@ const ExecutionProjectProjectIdRoadmapRoadmapIdRoute =
     path: '/$roadmapId',
     getParentRoute: () => ExecutionProjectProjectIdRoadmapRoute,
   } as any)
+const ExecutionProjectProjectIdGanttRoadmapIdRoute =
+  ExecutionProjectProjectIdGanttRoadmapIdRouteImport.update({
+    id: '/$roadmapId',
+    path: '/$roadmapId',
+    getParentRoute: () => ExecutionProjectProjectIdGanttRoute,
+  } as any)
 const ExecutionProjectProjectIdChatChatRefRoute =
   ExecutionProjectProjectIdChatChatRefRouteImport.update({
     id: '/chat/$chatRef',
@@ -661,6 +675,7 @@ export interface FileRoutesByFullPath {
   '/teams': typeof ExecutionTeamsIndexRoute
   '/finance': typeof MarketplaceFinanceIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
+  '/project/$projectId/gantt': typeof ExecutionProjectProjectIdGanttRouteWithChildren
   '/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
@@ -674,6 +689,7 @@ export interface FileRoutesByFullPath {
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/project/$projectId/gantt/$roadmapId': typeof ExecutionProjectProjectIdGanttRoadmapIdRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -749,6 +765,7 @@ export interface FileRoutesByTo {
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/finance': typeof MarketplaceFinanceIndexRoute
+  '/project/$projectId/gantt': typeof ExecutionProjectProjectIdGanttRouteWithChildren
   '/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
@@ -762,6 +779,7 @@ export interface FileRoutesByTo {
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/project/$projectId/gantt/$roadmapId': typeof ExecutionProjectProjectIdGanttRoadmapIdRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -844,6 +862,7 @@ export interface FileRoutesById {
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/_marketplace/finance/': typeof MarketplaceFinanceIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
+  '/_execution/project/$projectId/gantt': typeof ExecutionProjectProjectIdGanttRouteWithChildren
   '/_execution/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/_execution/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/_execution/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
@@ -857,6 +876,7 @@ export interface FileRoutesById {
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
   '/_execution/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/_execution/project/$projectId/gantt/$roadmapId': typeof ExecutionProjectProjectIdGanttRoadmapIdRoute
   '/_execution/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/_execution/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/_execution/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -938,6 +958,7 @@ export interface FileRouteTypes {
     | '/teams'
     | '/finance'
     | '/teams/$teamId/time'
+    | '/project/$projectId/gantt'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/resources'
@@ -951,6 +972,7 @@ export interface FileRouteTypes {
     | '/project/roadmap'
     | '/teams/$teamId/'
     | '/project/$projectId/chat/$chatRef'
+    | '/project/$projectId/gantt/$roadmapId'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1026,6 +1048,7 @@ export interface FileRouteTypes {
     | '/auth/admin/signin'
     | '/teams'
     | '/finance'
+    | '/project/$projectId/gantt'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/resources'
@@ -1039,6 +1062,7 @@ export interface FileRouteTypes {
     | '/project/roadmap'
     | '/teams/$teamId'
     | '/project/$projectId/chat/$chatRef'
+    | '/project/$projectId/gantt/$roadmapId'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1120,6 +1144,7 @@ export interface FileRouteTypes {
     | '/_execution/teams/'
     | '/_marketplace/finance/'
     | '/_execution/teams/$teamId/time'
+    | '/_execution/project/$projectId/gantt'
     | '/_execution/project/$projectId/logs'
     | '/_execution/project/$projectId/overview'
     | '/_execution/project/$projectId/resources'
@@ -1133,6 +1158,7 @@ export interface FileRouteTypes {
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
     | '/_execution/project/$projectId/chat/$chatRef'
+    | '/_execution/project/$projectId/gantt/$roadmapId'
     | '/_execution/project/$projectId/roadmap/$roadmapId'
     | '/_execution/project/$projectId/roadmap/create'
     | '/_execution/project/$projectId/settings/general'
@@ -1626,6 +1652,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdLogsRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoute
     }
+    '/_execution/project/$projectId/gantt': {
+      id: '/_execution/project/$projectId/gantt'
+      path: '/gantt'
+      fullPath: '/project/$projectId/gantt'
+      preLoaderRoute: typeof ExecutionProjectProjectIdGanttRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
     '/_execution/teams/$teamId/time': {
       id: '/_execution/teams/$teamId/time'
       path: '/time'
@@ -1808,6 +1841,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdRoadmapRoadmapIdRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoadmapRoute
     }
+    '/_execution/project/$projectId/gantt/$roadmapId': {
+      id: '/_execution/project/$projectId/gantt/$roadmapId'
+      path: '/$roadmapId'
+      fullPath: '/project/$projectId/gantt/$roadmapId'
+      preLoaderRoute: typeof ExecutionProjectProjectIdGanttRoadmapIdRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdGanttRoute
+    }
     '/_execution/project/$projectId/chat/$chatRef': {
       id: '/_execution/project/$projectId/chat/$chatRef'
       path: '/chat/$chatRef'
@@ -1854,6 +1894,21 @@ const RoadmapTemplatesRouteRouteWithChildren =
     RoadmapTemplatesRouteRouteChildren,
   )
 
+interface ExecutionProjectProjectIdGanttRouteChildren {
+  ExecutionProjectProjectIdGanttRoadmapIdRoute: typeof ExecutionProjectProjectIdGanttRoadmapIdRoute
+}
+
+const ExecutionProjectProjectIdGanttRouteChildren: ExecutionProjectProjectIdGanttRouteChildren =
+  {
+    ExecutionProjectProjectIdGanttRoadmapIdRoute:
+      ExecutionProjectProjectIdGanttRoadmapIdRoute,
+  }
+
+const ExecutionProjectProjectIdGanttRouteWithChildren =
+  ExecutionProjectProjectIdGanttRoute._addFileChildren(
+    ExecutionProjectProjectIdGanttRouteChildren,
+  )
+
 interface ExecutionProjectProjectIdRoadmapRouteChildren {
   ExecutionProjectProjectIdRoadmapRoadmapIdRoute: typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   ExecutionProjectProjectIdRoadmapCreateRoute: typeof ExecutionProjectProjectIdRoadmapCreateRoute
@@ -1888,6 +1943,7 @@ const ExecutionProjectProjectIdWorkItemsRouteWithChildren =
   )
 
 interface ExecutionProjectProjectIdRouteChildren {
+  ExecutionProjectProjectIdGanttRoute: typeof ExecutionProjectProjectIdGanttRouteWithChildren
   ExecutionProjectProjectIdLogsRoute: typeof ExecutionProjectProjectIdLogsRoute
   ExecutionProjectProjectIdOverviewRoute: typeof ExecutionProjectProjectIdOverviewRoute
   ExecutionProjectProjectIdResourcesRoute: typeof ExecutionProjectProjectIdResourcesRoute
@@ -1910,6 +1966,8 @@ interface ExecutionProjectProjectIdRouteChildren {
 
 const ExecutionProjectProjectIdRouteChildren: ExecutionProjectProjectIdRouteChildren =
   {
+    ExecutionProjectProjectIdGanttRoute:
+      ExecutionProjectProjectIdGanttRouteWithChildren,
     ExecutionProjectProjectIdLogsRoute: ExecutionProjectProjectIdLogsRoute,
     ExecutionProjectProjectIdOverviewRoute:
       ExecutionProjectProjectIdOverviewRoute,
