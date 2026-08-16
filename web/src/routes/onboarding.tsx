@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useAuthStore } from "@/stores/authStore";
 import { fetchProfile } from "@/queries/profile";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * Legacy /onboarding route.
@@ -14,22 +14,22 @@ import { fetchProfile } from "@/queries/profile";
  *   - authenticated → /welcome (lane-aware deck handles consultant routing)
  */
 export const Route = createFileRoute("/onboarding")({
-  beforeLoad: () => {
-    const { isAuthenticated, isLoading } = useAuthStore.getState();
-    if (!isLoading && !isAuthenticated) {
-      throw redirect({ to: "/auth/login" });
-    }
-  },
-  loader: async () => {
-    const { user, setProfile } = useAuthStore.getState();
-    if (!user) {
-      throw redirect({ to: "/auth/login" });
-    }
+	beforeLoad: () => {
+		const { isAuthenticated, isLoading } = useAuthStore.getState();
+		if (!isLoading && !isAuthenticated) {
+			throw redirect({ to: "/auth/login" });
+		}
+	},
+	loader: async () => {
+		const { user, setProfile } = useAuthStore.getState();
+		if (!user) {
+			throw redirect({ to: "/auth/login" });
+		}
 
-    const profile = await fetchProfile(user.id);
-    setProfile(profile);
+		const profile = await fetchProfile(user.id);
+		setProfile(profile);
 
-    throw redirect({ to: "/welcome" });
-  },
-  component: () => null,
+		throw redirect({ to: "/welcome" });
+	},
+	component: () => null,
 });

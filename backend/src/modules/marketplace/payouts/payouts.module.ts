@@ -4,9 +4,15 @@ import { NotificationsModule } from '../../shared/notifications/notifications.mo
 import { UploadsModule } from '../../shared/uploads/uploads.module';
 import { PayoutsController } from './payouts.controller';
 import { PayoutsService } from './payouts.service';
+import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
 
 @Module({
-  imports: [SupabaseModule, NotificationsModule, UploadsModule],
+  imports: [
+    SupabaseModule,
+    NotificationsModule,
+    UploadsModule,
+    QaFixturesModule,
+  ],
   controllers: [PayoutsController],
   providers: [PayoutsService],
   exports: [PayoutsService],

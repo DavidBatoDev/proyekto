@@ -1,350 +1,376 @@
 import { motion } from "framer-motion";
 import { Hash, Lock, Plus, SquarePen, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ChatMemberCandidate } from "@/services/chat.service";
 import { readChatDraftText, useChatDraftsVersion } from "@/hooks/useChatDraft";
+import type { ChatMemberCandidate } from "@/services/chat.service";
 import { ChatAvatar } from "./Avatar";
 
 type DmEntry = {
-  member: ChatMemberCandidate;
-  roomId: string | null;
-  preview: string;
-  avatarUrl?: string | null;
-  lastAt?: string;
-  lastSenderId?: string;
-  hasUnread?: boolean;
+	member: ChatMemberCandidate;
+	roomId: string | null;
+	preview: string;
+	avatarUrl?: string | null;
+	lastAt?: string;
+	lastSenderId?: string;
+	hasUnread?: boolean;
 };
 
 type ChannelEntry = {
-  roomId: string;
-  title: string;
-  isPrivate: boolean;
-  hasUnread: boolean;
-  isStarred: boolean;
+	roomId: string;
+	title: string;
+	isPrivate: boolean;
+	hasUnread: boolean;
+	isStarred: boolean;
 };
 
 export function ChatSidebar({
-  dmEntries,
-  members,
-  currentUserId,
-  channels,
-  activeChannelRoomId,
-  canCreateChannels,
-  onCreateChannel,
-  onSelectChannel,
-  onToggleChannelStar,
-  activeDmUserId,
-  onTogglePeoplePicker,
-  onSelectMember,
-  showPeoplePicker,
+	dmEntries,
+	members,
+	currentUserId,
+	channels,
+	activeChannelRoomId,
+	canCreateChannels,
+	onCreateChannel,
+	onSelectChannel,
+	onToggleChannelStar,
+	activeDmUserId,
+	onTogglePeoplePicker,
+	onSelectMember,
+	showPeoplePicker,
 }: {
-  dmEntries: DmEntry[];
-  members: ChatMemberCandidate[];
-  currentUserId?: string;
-  channels: ChannelEntry[];
-  activeChannelRoomId: string | null;
-  canCreateChannels: boolean;
-  onCreateChannel: () => void;
-  onSelectChannel: (roomId: string) => void;
-  onToggleChannelStar: (roomId: string) => void;
-  activeDmUserId: string | null;
-  onTogglePeoplePicker: () => void;
-  onSelectMember: (userId: string, roomId: string | null) => void;
-  showPeoplePicker: boolean;
+	dmEntries: DmEntry[];
+	members: ChatMemberCandidate[];
+	currentUserId?: string;
+	channels: ChannelEntry[];
+	activeChannelRoomId: string | null;
+	canCreateChannels: boolean;
+	onCreateChannel: () => void;
+	onSelectChannel: (roomId: string) => void;
+	onToggleChannelStar: (roomId: string) => void;
+	activeDmUserId: string | null;
+	onTogglePeoplePicker: () => void;
+	onSelectMember: (userId: string, roomId: string | null) => void;
+	showPeoplePicker: boolean;
 }) {
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  // Re-render DM rows when a draft changes so their preview stays in sync.
-  useChatDraftsVersion();
+	const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+	// Re-render DM rows when a draft changes so their preview stays in sync.
+	useChatDraftsVersion();
 
-  const dmList = useMemo(() => {
-    if (showUnreadOnly) return dmEntries.filter((entry) => !!entry.hasUnread);
-    return dmEntries;
-  }, [dmEntries, showUnreadOnly]);
+	const dmList = useMemo(() => {
+		if (showUnreadOnly) return dmEntries.filter((entry) => !!entry.hasUnread);
+		return dmEntries;
+	}, [dmEntries, showUnreadOnly]);
 
-  const formatRowTime = (iso?: string) => {
-    if (!iso) return "";
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "";
+	const formatRowTime = (iso?: string) => {
+		if (!iso) return "";
+		const date = new Date(iso);
+		if (Number.isNaN(date.getTime())) return "";
 
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfRow = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const dayDiff = Math.round(
-      (startOfToday.getTime() - startOfRow.getTime()) / (24 * 60 * 60 * 1000),
-    );
+		const now = new Date();
+		const startOfToday = new Date(
+			now.getFullYear(),
+			now.getMonth(),
+			now.getDate(),
+		);
+		const startOfRow = new Date(
+			date.getFullYear(),
+			date.getMonth(),
+			date.getDate(),
+		);
+		const dayDiff = Math.round(
+			(startOfToday.getTime() - startOfRow.getTime()) / (24 * 60 * 60 * 1000),
+		);
 
-    if (dayDiff === 0) {
-      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    }
-    if (dayDiff === 1) return "Yesterday";
-    if (dayDiff > 1 && dayDiff < 7) {
-      return date.toLocaleDateString([], { weekday: "long" });
-    }
-    return date.toLocaleDateString([], { month: "numeric", day: "numeric", year: "2-digit" });
-  };
+		if (dayDiff === 0) {
+			return date.toLocaleTimeString([], {
+				hour: "numeric",
+				minute: "2-digit",
+			});
+		}
+		if (dayDiff === 1) return "Yesterday";
+		if (dayDiff > 1 && dayDiff < 7) {
+			return date.toLocaleDateString([], { weekday: "long" });
+		}
+		return date.toLocaleDateString([], {
+			month: "numeric",
+			day: "numeric",
+			year: "2-digit",
+		});
+	};
 
-  return (
-    <aside className="h-full border-r border-slate-200 bg-slate-50">
-        <div className="h-full overflow-y-auto">
-          <div className="border-b border-slate-200 bg-white/70 px-4 py-3">
-            <div className="flex items-center justify-between gap-2">
-              <h1 className="text-[18px] font-semibold leading-none text-slate-900 md:text-[23px]">
-                Direct messages
-              </h1>
-              <button
-                type="button"
-                onClick={onTogglePeoplePicker}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
-                aria-label="Compose message"
-              >
-                <SquarePen className="w-4 h-4" />
-              </button>
-            </div>
+	return (
+		<aside className="h-full border-r border-slate-200 bg-slate-50">
+			<div className="h-full overflow-y-auto">
+				<div className="border-b border-slate-200 bg-white/70 px-4 py-3">
+					<div className="flex items-center justify-between gap-2">
+						<h1 className="text-[18px] font-semibold leading-none text-slate-900 md:text-[23px]">
+							Direct messages
+						</h1>
+						<button
+							type="button"
+							onClick={onTogglePeoplePicker}
+							className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
+							aria-label="Compose message"
+						>
+							<SquarePen className="w-4 h-4" />
+						</button>
+					</div>
 
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Unread</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showUnreadOnly}
-                onClick={() => setShowUnreadOnly((value) => !value)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  showUnreadOnly ? "bg-primary" : "bg-slate-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showUnreadOnly ? "translate-x-4" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
+					<div className="mt-3 flex items-center justify-between">
+						<span className="text-xs font-medium text-slate-500">Unread</span>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={showUnreadOnly}
+							onClick={() => setShowUnreadOnly((value) => !value)}
+							className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+								showUnreadOnly ? "bg-primary" : "bg-slate-300"
+							}`}
+						>
+							<span
+								className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+									showUnreadOnly ? "translate-x-4" : "translate-x-0.5"
+								}`}
+							/>
+						</button>
+					</div>
+				</div>
 
-          <div className="p-4">
-            <button
-              type="button"
-              onClick={onTogglePeoplePicker}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 md:py-2.5 md:text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              New Message
-            </button>
-          </div>
+				<div className="p-4">
+					<button
+						type="button"
+						onClick={onTogglePeoplePicker}
+						className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 md:py-2.5 md:text-sm"
+					>
+						<Plus className="w-4 h-4" />
+						New Message
+					</button>
+				</div>
 
-          {showPeoplePicker && (
-            <div className="px-4 pb-2">
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-                {members.map((member) => {
-                  const label =
-                    member.user?.display_name || member.user?.email || member.user_id;
-                  return (
-                    <button
-                      key={member.user_id}
-                      type="button"
-                      onClick={() => onSelectMember(member.user_id, null)}
-                      className="w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50 last:border-b-0"
-                    >
-                      <p className="text-sm font-medium text-slate-900">{label}</p>
-                      <p className="text-xs uppercase text-slate-500">{member.role}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+				{showPeoplePicker && (
+					<div className="px-4 pb-2">
+						<div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+							{members.map((member) => {
+								const label =
+									member.user?.display_name ||
+									member.user?.email ||
+									member.user_id;
+								return (
+									<button
+										key={member.user_id}
+										type="button"
+										onClick={() => onSelectMember(member.user_id, null)}
+										className="w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50 last:border-b-0"
+									>
+										<p className="text-sm font-medium text-slate-900">
+											{label}
+										</p>
+										<p className="text-xs uppercase text-slate-500">
+											{member.role}
+										</p>
+									</button>
+								);
+							})}
+						</div>
+					</div>
+				)}
 
-          <div className="border-t border-slate-200/80 px-4 pb-5 pt-2">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Channels
-              </p>
-              {canCreateChannels && (
-                <button
-                  type="button"
-                  onClick={onCreateChannel}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
-                  aria-label="Create channel"
-                  title="Create channel"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <div className="space-y-0.5">
-              {channels.map((channel) => {
-                const isActive = activeChannelRoomId === channel.roomId;
-                const isUnread = !isActive && channel.hasUnread;
-                return (
-                  <div
-                    key={channel.roomId}
-                    className={`group/row flex w-full items-center rounded-lg pr-1.5 transition-colors ${
-                      isActive
-                        ? "bg-primary text-white"
-                        : "text-slate-700 hover:bg-slate-200/80"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onSelectChannel(channel.roomId)}
-                      className="inline-flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
-                    >
-                      {channel.isPrivate ? (
-                        <Lock className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <Hash className="h-4 w-4 shrink-0" />
-                      )}
-                      <span
-                        className={`truncate font-medium ${
-                          isUnread ? "font-bold" : ""
-                        }`}
-                      >
-                        {channel.title}
-                      </span>
-                    </button>
-                    {isUnread ? (
-                      <span
-                        className={`mr-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                          isActive ? "bg-white" : "bg-slate-900"
-                        }`}
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => onToggleChannelStar(channel.roomId)}
-                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-opacity ${
-                        channel.isStarred
-                          ? isActive
-                            ? "text-amber-200 opacity-100"
-                            : "text-amber-500 opacity-100"
-                          : isActive
-                            ? "text-white/80 opacity-0 hover:text-white group-hover/row:opacity-100"
-                            : "text-slate-400 opacity-0 hover:text-amber-500 group-hover/row:opacity-100"
-                      }`}
-                      aria-label={
-                        channel.isStarred ? "Unstar channel" : "Star channel"
-                      }
-                      title={
-                        channel.isStarred ? "Unstar channel" : "Star channel"
-                      }
-                    >
-                      <Star
-                        className={`h-3.5 w-3.5 ${
-                          channel.isStarred ? "fill-current" : ""
-                        }`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+				<div className="border-t border-slate-200/80 px-4 pb-5 pt-2">
+					<div className="mb-2 flex items-center justify-between">
+						<p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+							Channels
+						</p>
+						{canCreateChannels && (
+							<button
+								type="button"
+								onClick={onCreateChannel}
+								className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
+								aria-label="Create channel"
+								title="Create channel"
+							>
+								<Plus className="h-4 w-4" />
+							</button>
+						)}
+					</div>
+					<div className="space-y-0.5">
+						{channels.map((channel) => {
+							const isActive = activeChannelRoomId === channel.roomId;
+							const isUnread = !isActive && channel.hasUnread;
+							return (
+								<div
+									key={channel.roomId}
+									className={`group/row flex w-full items-center rounded-lg pr-1.5 transition-colors ${
+										isActive
+											? "bg-primary text-white"
+											: "text-slate-700 hover:bg-slate-200/80"
+									}`}
+								>
+									<button
+										type="button"
+										onClick={() => onSelectChannel(channel.roomId)}
+										className="inline-flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+									>
+										{channel.isPrivate ? (
+											<Lock className="h-4 w-4 shrink-0" />
+										) : (
+											<Hash className="h-4 w-4 shrink-0" />
+										)}
+										<span
+											className={`truncate font-medium ${
+												isUnread ? "font-bold" : ""
+											}`}
+										>
+											{channel.title}
+										</span>
+									</button>
+									{isUnread ? (
+										<span
+											className={`mr-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+												isActive ? "bg-white" : "bg-slate-900"
+											}`}
+										/>
+									) : null}
+									<button
+										type="button"
+										onClick={() => onToggleChannelStar(channel.roomId)}
+										className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-opacity ${
+											channel.isStarred
+												? isActive
+													? "text-amber-200 opacity-100"
+													: "text-amber-500 opacity-100"
+												: isActive
+													? "text-white/80 opacity-0 hover:text-white group-hover/row:opacity-100"
+													: "text-slate-400 opacity-0 hover:text-amber-500 group-hover/row:opacity-100"
+										}`}
+										aria-label={
+											channel.isStarred ? "Unstar channel" : "Star channel"
+										}
+										title={
+											channel.isStarred ? "Unstar channel" : "Star channel"
+										}
+									>
+										<Star
+											className={`h-3.5 w-3.5 ${
+												channel.isStarred ? "fill-current" : ""
+											}`}
+										/>
+									</button>
+								</div>
+							);
+						})}
+					</div>
+				</div>
 
-          <div className="px-3 pb-4">
-            <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Direct Messages
-            </p>
-            <div className="space-y-0.5">
-              {dmList.map((entry) => {
-                const label =
-                  entry.member.user?.display_name ||
-                  entry.member.user?.email ||
-                  entry.member.user_id;
-                const isActive = activeDmUserId === entry.member.user_id;
-                const isUnread = !isActive && !!entry.hasUnread;
-                const shouldPrefixYou =
-                  !!entry.lastSenderId &&
-                  !!currentUserId &&
-                  entry.lastSenderId === currentUserId &&
-                  entry.preview !== "Start a conversation";
-                const previewText = shouldPrefixYou
-                  ? `You: ${entry.preview}`
-                  : entry.preview;
-                const draftText = readChatDraftText(
-                  `dm:${entry.member.user_id}`,
-                ).trim();
-                return (
-                  <motion.button
-                    layout
-                    key={entry.member.user_id}
-                    type="button"
-                    onClick={() => onSelectMember(entry.member.user_id, entry.roomId)}
-                    className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
-                      isActive
-                        ? "bg-primary text-white"
-                        : "text-slate-800 hover:bg-slate-200/70"
-                    }`}
-                  >
-                    <div className="flex gap-2 items-start">
-                      <ChatAvatar name={label} avatarUrl={entry.avatarUrl} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p
-                            className={`text-[13px] truncate md:text-[15px] ${
-                              isUnread
-                                ? isActive
-                                  ? "font-bold text-white"
-                                  : "font-bold text-slate-900"
-                                : "font-semibold"
-                            }`}
-                          >
-                            {label}
-                          </p>
-                          <span
-                            className={`text-[11px] shrink-0 md:text-[12px] ${
-                              isUnread
-                                ? isActive
-                                  ? "font-semibold text-white/80"
-                                  : "font-semibold text-slate-700"
-                                : isActive
-                                  ? "text-white/70"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {formatRowTime(entry.lastAt)}
-                          </span>
-                        </div>
-                        <p
-                          className={`text-xs truncate mt-0.5 md:text-[14px] ${
-                            isUnread
-                              ? isActive
-                                ? "font-semibold text-white/90"
-                                : "font-semibold text-slate-700"
-                              : isActive
-                                ? "text-white/70"
-                                : "text-slate-500"
-                          }`}
-                        >
-                          {draftText ? (
-                            <>
-                              <span
-                                className={`font-medium ${
-                                  isActive ? "text-rose-200" : "text-rose-500"
-                                }`}
-                              >
-                                Draft:
-                              </span>{" "}
-                              {draftText}
-                            </>
-                          ) : (
-                            previewText
-                          )}
-                        </p>
-                      </div>
-                      <span className="h-5 w-5 shrink-0 inline-flex items-center justify-center" aria-hidden="true">
-                        {isUnread ? (
-                          <span
-                            className={`h-2.5 w-2.5 rounded-full ${isActive ? "bg-white" : "bg-slate-900"}`}
-                          />
-                        ) : null}
-                      </span>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </aside>
-  );
+				<div className="px-3 pb-4">
+					<p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+						Direct Messages
+					</p>
+					<div className="space-y-0.5">
+						{dmList.map((entry) => {
+							const label =
+								entry.member.user?.display_name ||
+								entry.member.user?.email ||
+								entry.member.user_id;
+							const isActive = activeDmUserId === entry.member.user_id;
+							const isUnread = !isActive && !!entry.hasUnread;
+							const shouldPrefixYou =
+								!!entry.lastSenderId &&
+								!!currentUserId &&
+								entry.lastSenderId === currentUserId &&
+								entry.preview !== "Start a conversation";
+							const previewText = shouldPrefixYou
+								? `You: ${entry.preview}`
+								: entry.preview;
+							const draftText = readChatDraftText(
+								`dm:${entry.member.user_id}`,
+							).trim();
+							return (
+								<motion.button
+									layout
+									key={entry.member.user_id}
+									type="button"
+									onClick={() =>
+										onSelectMember(entry.member.user_id, entry.roomId)
+									}
+									className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
+										isActive
+											? "bg-primary text-white"
+											: "text-slate-800 hover:bg-slate-200/70"
+									}`}
+								>
+									<div className="flex gap-2 items-start">
+										<ChatAvatar name={label} avatarUrl={entry.avatarUrl} />
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center justify-between gap-2">
+												<p
+													className={`text-[13px] truncate md:text-[15px] ${
+														isUnread
+															? isActive
+																? "font-bold text-white"
+																: "font-bold text-slate-900"
+															: "font-semibold"
+													}`}
+												>
+													{label}
+												</p>
+												<span
+													className={`text-[11px] shrink-0 md:text-[12px] ${
+														isUnread
+															? isActive
+																? "font-semibold text-white/80"
+																: "font-semibold text-slate-700"
+															: isActive
+																? "text-white/70"
+																: "text-slate-500"
+													}`}
+												>
+													{formatRowTime(entry.lastAt)}
+												</span>
+											</div>
+											<p
+												className={`text-xs truncate mt-0.5 md:text-[14px] ${
+													isUnread
+														? isActive
+															? "font-semibold text-white/90"
+															: "font-semibold text-slate-700"
+														: isActive
+															? "text-white/70"
+															: "text-slate-500"
+												}`}
+											>
+												{draftText ? (
+													<>
+														<span
+															className={`font-medium ${
+																isActive ? "text-rose-200" : "text-rose-500"
+															}`}
+														>
+															Draft:
+														</span>{" "}
+														{draftText}
+													</>
+												) : (
+													previewText
+												)}
+											</p>
+										</div>
+										<span
+											className="h-5 w-5 shrink-0 inline-flex items-center justify-center"
+											aria-hidden="true"
+										>
+											{isUnread ? (
+												<span
+													className={`h-2.5 w-2.5 rounded-full ${isActive ? "bg-white" : "bg-slate-900"}`}
+												/>
+											) : null}
+										</span>
+									</div>
+								</motion.button>
+							);
+						})}
+					</div>
+				</div>
+			</div>
+		</aside>
+	);
 }

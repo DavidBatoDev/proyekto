@@ -11,6 +11,7 @@ import {
 import { type DragEvent, memo, useEffect, useRef, useState } from "react";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import { useToast } from "@/hooks/useToast";
+import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic } from "@/types/roadmap";
 import {
@@ -79,7 +80,11 @@ export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 			toast.error("Can't build a link outside a roadmap.");
 			return;
 		}
-		const url = `${window.location.origin}/project/${projectId}/roadmap/${roadmapId}?nodeId=${canonicalId}&view=roadmapView`;
+		const url = buildRoadmapPreviewUrl(
+			window.location.origin,
+			roadmapId,
+			canonicalId,
+		);
 		navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
 	};

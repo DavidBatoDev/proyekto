@@ -1,32 +1,32 @@
 import {
-	X,
-	Share2,
-	MessageCircle,
-	LayoutGrid,
-	CalendarDays,
-	FileText,
-} from "lucide-react";
-import { useMemo, type ReactNode } from "react";
-import {
-	DndContext,
 	closestCenter,
+	DndContext,
+	type DragEndEvent,
 	KeyboardSensor,
 	PointerSensor,
 	useSensor,
 	useSensors,
-	type DragEndEvent,
 } from "@dnd-kit/core";
 import {
 	arrayMove,
+	horizontalListSortingStrategy,
 	SortableContext,
 	sortableKeyboardCoordinates,
 	useSortable,
-	horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { RoadmapEpic } from "@/types/roadmap";
-import { useRoadmapStore } from "@/stores/roadmapStore";
+import {
+	CalendarDays,
+	FileText,
+	LayoutGrid,
+	MessageCircle,
+	Share2,
+	X,
+} from "lucide-react";
+import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { RoadmapEpic } from "@/types/roadmap";
 
 const LEFT_PANEL_WIDTH = 320;
 

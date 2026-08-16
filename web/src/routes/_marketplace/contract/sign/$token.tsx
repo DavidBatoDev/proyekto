@@ -109,9 +109,8 @@ function PublicSignPage() {
 			title: "Sign this agreement?",
 			message: (
 				<>
-					You are signing this agreement as <strong>{name.trim()}</strong>.
-					Your signature is recorded and this one-time link will no longer be
-					usable.
+					You are signing this agreement as <strong>{name.trim()}</strong>. Your
+					signature is recorded and this one-time link will no longer be usable.
 				</>
 			),
 			confirmLabel: "Sign agreement",
@@ -175,42 +174,48 @@ function PublicSignPage() {
 					</div>
 					<div className="min-h-0 flex-1">
 						<ContractEditorCanvas
-						contract={contract}
-						parties={{
-							provider_name: contract.provider_name ?? "",
-							provider_address: contract.provider_address ?? "",
-							provider_email: contract.provider_email,
-							provider_tin: contract.provider_tin,
-							provider_kind: contract.provider_kind,
-							client_name: contract.client_name ?? "",
-							client_contact_name: contract.client_contact_name ?? "",
-							client_address: contract.client_address ?? "",
-							client_email: contract.client_email,
-							client_tin: contract.client_tin,
-						}}
-						terms={{
-							currency: contract.currency,
-							billing_mode: contract.billing_mode,
-							recurring_fee: contract.recurring_fee?.toString() ?? "",
-							client_hourly_rate: contract.client_hourly_rate?.toString() ?? "",
-							service_description: contract.service_description ?? "",
-							payment_method: contract.payment_method ?? "",
-							due_days: String(contract.due_days),
-							billing_timing: contract.billing_timing,
-							auto_renew: contract.auto_renew,
-							notice_days: String(contract.notice_days ?? ""),
-						}}
+							contract={contract}
+							parties={{
+								provider_name: contract.provider_name ?? "",
+								provider_address: contract.provider_address ?? "",
+								provider_email: contract.provider_email,
+								provider_tin: contract.provider_tin,
+								provider_kind: contract.provider_kind,
+								client_name: contract.client_name ?? "",
+								client_contact_name: contract.client_contact_name ?? "",
+								client_address: contract.client_address ?? "",
+								client_email: contract.client_email,
+								client_tin: contract.client_tin,
+							}}
+							terms={{
+								currency: contract.currency,
+								billing_mode: contract.billing_mode,
+								recurring_fee: contract.recurring_fee?.toString() ?? "",
+								client_hourly_rate:
+									contract.client_hourly_rate?.toString() ?? "",
+								service_description: contract.service_description ?? "",
+								payment_method: contract.payment_method ?? "",
+								due_days: String(contract.due_days),
+								billing_timing: contract.billing_timing,
+								auto_renew: contract.auto_renew,
+								notice_days: String(contract.notice_days ?? ""),
+							}}
 							editable={false}
 							selectable={false}
 							zoom={zoom}
 							onZoomChange={setZoom}
 							fitSignal={fitSignal}
 							onStatsChange={setCanvasStats}
-					/>
+						/>
 					</div>
 					<footer className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-card px-3 text-[11px] text-muted-foreground">
-						<span>Page {canvasStats.currentPage} of {canvasStats.pageCount}</span>
-						<span>{canvasStats.wordCount} {canvasStats.wordCount === 1 ? "word" : "words"}</span>
+						<span>
+							Page {canvasStats.currentPage} of {canvasStats.pageCount}
+						</span>
+						<span>
+							{canvasStats.wordCount}{" "}
+							{canvasStats.wordCount === 1 ? "word" : "words"}
+						</span>
 					</footer>
 				</div>
 

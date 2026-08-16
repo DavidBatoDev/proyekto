@@ -47,7 +47,9 @@ const PATH_LABEL_BY_ID = (() => {
  * Resolve a permission path → friendly catalogue label, e.g.
  * 'roadmap.edit' → 'Edit roadmap'. Returns null if unknown.
  */
-export function getPermissionLabel(path: string | null | undefined): string | null {
+export function getPermissionLabel(
+	path: string | null | undefined,
+): string | null {
 	if (!path) return null;
 	return PATH_LABEL_BY_ID.get(path) ?? null;
 }
@@ -76,9 +78,7 @@ export function parseMissingPermissionError(
 	const body =
 		(e.response?.data as unknown) ??
 		(e.data as unknown) ??
-		(typeof e.message === "string"
-			? safeParseJson(e.message)
-			: e.message);
+		(typeof e.message === "string" ? safeParseJson(e.message) : e.message);
 
 	if (status !== null && status !== 403) return null;
 
@@ -86,9 +86,11 @@ export function parseMissingPermissionError(
 		const b = body as Record<string, unknown>;
 		// NestJS HttpException body lives under `message` for HttpException
 		// or directly on the body for ForbiddenException-with-object.
-		const inner = (b.message && typeof b.message === "object"
-			? (b.message as Record<string, unknown>)
-			: b) as Record<string, unknown>;
+		const inner = (
+			b.message && typeof b.message === "object"
+				? (b.message as Record<string, unknown>)
+				: b
+		) as Record<string, unknown>;
 		if (inner.code === "missing_permission") {
 			return {
 				path: typeof inner.path === "string" ? inner.path : null,

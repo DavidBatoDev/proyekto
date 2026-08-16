@@ -3,7 +3,9 @@ import { ProjectInvitesPage } from "@/components/project/people/ProjectInvitesPa
 import { ProjectTeamAdminGate } from "@/components/project/people/ProjectTeamAdminGate";
 import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 
-export const Route = createFileRoute("/_execution/project/$projectId/team/invites")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/team/invites",
+)({
 	component: RouteComponent,
 });
 

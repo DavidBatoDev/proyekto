@@ -23,6 +23,16 @@ import { CreateShareDto, AddShareCommentDto } from './dto/roadmap-shares.dto';
 export class RoadmapSharesController {
   constructor(private readonly sharesService: RoadmapSharesService) {}
 
+  @Get('preview/:roadmapId/:nodeId')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
+  getPreviewMetadata(
+    @Param('roadmapId') roadmapId: string,
+    @Param('nodeId') nodeId: string,
+  ) {
+    return this.sharesService.getPreviewMetadata(roadmapId, nodeId);
+  }
+
   @Post(':id')
   create(
     @Param('id') roadmapId: string,

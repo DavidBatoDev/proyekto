@@ -1,20 +1,20 @@
-import { useEffect, useState, useRef, type FormEvent } from "react";
-import { Plus, Edit2, ChevronDown, ChevronUp, Calendar, X } from "lucide-react";
-import type {
-	EpicPriority,
-	Comment,
-	RoadmapFeature,
-	RoadmapTask,
-} from "@/types/roadmap";
+import { Calendar, ChevronDown, ChevronUp, Edit2, Plus, X } from "lucide-react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useUser } from "@/auth";
-import { RoadmapModalLayout } from "./RoadmapModalLayout";
-import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { LabelSelector } from "@/components/common/LabelSelector";
-import { TaskListItem } from "../widgets/TaskListItem";
-import { CommentsSection } from "../shared/CommentsSection";
+import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { commentsService } from "@/services/roadmap.service";
 import type { Label } from "@/types/label";
 import { LABEL_COLORS } from "@/types/label";
+import type {
+	Comment,
+	EpicPriority,
+	RoadmapFeature,
+	RoadmapTask,
+} from "@/types/roadmap";
+import { CommentsSection } from "../shared/CommentsSection";
+import { TaskListItem } from "../widgets/TaskListItem";
+import { RoadmapModalLayout } from "./RoadmapModalLayout";
 
 interface EpicModalProps {
 	isOpen: boolean;

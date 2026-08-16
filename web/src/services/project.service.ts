@@ -27,22 +27,7 @@ export interface Project {
 	title: string;
 	brief?: string;
 	description?: string;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	category?: string | null;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	project_state?: string | null;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	skills?: string[];
 	duration?: string;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	budget_range?: string | null;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	funding_status?: string | null;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	start_date?: string | null;
-	/** @deprecated Compatibility projection; project metadata is no longer stored here. */
-	custom_start_date?: string | null;
-	is_personal_workspace?: boolean;
 	status: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";
 	/** Default currency for new rates/contracts/invoices + project time display. */
 	currency?: string;

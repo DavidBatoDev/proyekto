@@ -1,8 +1,5 @@
-import type {
-	RoadmapEpic,
-	RoadmapMilestone,
-} from "@/types/roadmap";
 import type { KanbanBoardFilters } from "@/stores/roadmapStore";
+import type { RoadmapEpic, RoadmapMilestone } from "@/types/roadmap";
 import type { KanbanTaskContext } from "./types";
 
 /**

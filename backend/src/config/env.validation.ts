@@ -297,6 +297,16 @@ class EnvironmentVariables {
   @IsString()
   INVOICE_AUTOMATION_ENABLED?: string;
 
+  // Dedicated production QA control surface. The endpoint is 404 unless the
+  // flag is true; the secret authorizes only reset of registered fixtures.
+  @IsOptional()
+  @IsString()
+  PRODUCTION_QA_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  PRODUCTION_QA_SECRET?: string;
+
   // ── Roadmap activity log ────────────────────────────────────────────────────
   // ON by default — leave unset in normal operation. This exists only as a kill
   // switch: set it to 'false' (or '0') to stop the recorder in an environment

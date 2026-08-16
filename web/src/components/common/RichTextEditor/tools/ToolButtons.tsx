@@ -1,20 +1,20 @@
 import {
 	Bold,
-	Italic,
-	List,
-	ListOrdered,
-	Link as LinkIcon,
-	Image as ImageIcon,
-	MoreHorizontal,
 	ChevronDown,
-	Paperclip,
+	Eraser,
 	FileCode,
 	HelpCircle,
-	Underline,
+	Image as ImageIcon,
+	Italic,
+	Link as LinkIcon,
+	List,
+	ListOrdered,
+	MoreHorizontal,
+	Paperclip,
 	Strikethrough,
-	Eraser,
+	Underline,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ToolButtonProps {
 	icon: React.ReactNode;

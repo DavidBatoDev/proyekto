@@ -171,14 +171,7 @@ export class CreateProjectDto {
   @IsEnum(['draft', 'bidding', 'active', 'paused', 'completed', 'archived'])
   @IsOptional()
   status?: ProjectStatus;
-  @IsString() @IsOptional() category?: string;
-  @IsString() @IsOptional() project_state?: string;
-  @IsArray() @IsOptional() skills?: unknown[];
   @IsString() @IsOptional() duration?: string;
-  @IsString() @IsOptional() budget_range?: string;
-  @IsString() @IsOptional() funding_status?: string;
-  @IsString() @IsOptional() start_date?: string;
-  @IsString() @IsOptional() custom_start_date?: string;
   // Default currency for new rates/contracts/invoices and the project time
   // display fallback. Not a conversion — existing frozen amounts are untouched.
   @IsString() @IsOptional() @MaxLength(8) currency?: string;
@@ -205,14 +198,7 @@ export class UpdateProjectDto {
   @IsEnum(['draft', 'bidding', 'active', 'paused', 'completed', 'archived'])
   @IsOptional()
   status?: ProjectStatus;
-  @IsString() @IsOptional() category?: string;
-  @IsString() @IsOptional() project_state?: string;
-  @IsArray() @IsOptional() skills?: unknown[];
   @IsString() @IsOptional() duration?: string;
-  @IsString() @IsOptional() budget_range?: string;
-  @IsString() @IsOptional() funding_status?: string;
-  @IsString() @IsOptional() start_date?: string;
-  @IsString() @IsOptional() custom_start_date?: string;
   @IsString() @IsOptional() @MaxLength(8) currency?: string;
 }
 

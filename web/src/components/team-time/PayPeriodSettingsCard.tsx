@@ -72,7 +72,8 @@ export function PayPeriodSettingsCard({
 		return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 	}, []);
 	const preview = useMemo(
-		() => resolvePayPeriods({ cadence: "monthly", periods: draft }, previewMonth),
+		() =>
+			resolvePayPeriods({ cadence: "monthly", periods: draft }, previewMonth),
 		[draft, previewMonth],
 	);
 
@@ -105,9 +106,9 @@ export function PayPeriodSettingsCard({
 						Payout cut-offs
 					</p>
 					<p className="mt-1 text-xs text-slate-500">
-						Define your pay periods and when each is paid. Members and admins pick
-						these from the period filter (e.g. “Current cut-off”). Leave as-is to
-						use the default semi-monthly schedule.
+						Define your pay periods and when each is paid. Members and admins
+						pick these from the period filter (e.g. “Current cut-off”). Leave
+						as-is to use the default semi-monthly schedule.
 					</p>
 				</div>
 			</div>

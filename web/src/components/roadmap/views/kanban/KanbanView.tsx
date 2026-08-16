@@ -1,9 +1,9 @@
 import {
 	closestCorners,
 	DndContext,
-	DragOverlay,
 	type DragEndEvent,
 	type DragOverEvent,
+	DragOverlay,
 	type DragStartEvent,
 	KeyboardSensor,
 	MouseSensor,
@@ -14,21 +14,21 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { useToast } from "@/hooks/useToast";
 import {
 	type KanbanBoardFilters,
 	useRoadmapStore,
 } from "@/stores/roadmapStore";
-import { useToast } from "@/hooks/useToast";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanFilters } from "./KanbanFilters";
 import { KanbanListView } from "./KanbanListView";
-import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 import {
 	applyBoardFilters,
 	applyBoardSearch,
 	selectAllTasksWithContext,
 } from "./selectors";
+import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 
 type ColumnMap = Record<string, KanbanTaskContext[]>;
 

@@ -30,6 +30,7 @@ import {
   CreateSignatureLinkDto,
   PublicSignContractDto,
 } from './dto/contract-signature-links.dto';
+import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
 
 interface SignatureLinkRow {
   id: string;
@@ -136,6 +137,7 @@ export class ContractSignatureLinksService {
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    private readonly qaFixtures: QaFixturePolicyService,
   ) {}
 
   // ─── consultant side ───────────────────────────────────────────────────────
@@ -146,10 +148,8 @@ export class ContractSignatureLinksService {
     contractId: string,
   ): Promise<SignatureLinkSummary | null> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(contract),
-    );
+    const projectId = this.requireProjectId(contract);
+    await this.financeAccess.assertProject(callerId, projectId);
 
     const row = await this.activeLinkRow(contractId);
     return row ? this.toSummary(row) : null;
@@ -187,10 +187,14 @@ export class ContractSignatureLinksService {
     dto: CreateSignatureLinkDto,
   ): Promise<SignatureLinkSummary> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(contract),
-    );
+    const projectId = this.requireProjectId(contract);
+    await this.financeAccess.assertProject(callerId, projectId);
+    if (dto.send_email) {
+      await this.qaFixtures.assertProjectSideEffectAllowed(
+        projectId,
+        'Contract signature-link email delivery',
+      );
+    }
 
     if (contract.status === 'ended' || contract.status === 'cancelled') {
       throw new BadRequestException(
@@ -248,10 +252,8 @@ export class ContractSignatureLinksService {
 
   async revokeLink(callerId: string, contractId: string): Promise<void> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(contract),
-    );
+    const projectId = this.requireProjectId(contract);
+    await this.financeAccess.assertProject(callerId, projectId);
 
     // Capture the recipient before revoking — afterwards the active-link query
     // returns nothing and we would have nobody to notify.
@@ -261,7 +263,8 @@ export class ContractSignatureLinksService {
     // A silently dead link is worse than one extra email: the client sits on a
     // URL that 410s with no idea why. Only notify if they were actually sent
     // one and have not already signed with it.
-    if (active?.recipient_email && !active.used_at) {
+    const mayEmail = !(await this.qaFixtures.isFixtureProject(projectId));
+    if (mayEmail && active?.recipient_email && !active.used_at) {
       await this.emailRevocation(contract, active.recipient_email);
     }
   }

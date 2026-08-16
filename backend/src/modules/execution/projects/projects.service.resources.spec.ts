@@ -21,7 +21,7 @@ describe('ProjectsService (resources)', () => {
   };
   const dataCache = {
     getAuthTtlSeconds: jest.fn().mockReturnValue(45),
-    rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
+    rememberJson: jest.fn((_key: string, _ttl: number, loader: any) =>
       loader(),
     ),
   };
@@ -72,7 +72,6 @@ describe('ProjectsService (resources)', () => {
       {
         provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
       } as any,
-      { assertActivationReady: jest.fn() } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
       { log: jest.fn() } as any, // AuditService
       { stopRunningLogsForProject: jest.fn() } as any,

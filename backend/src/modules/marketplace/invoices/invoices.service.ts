@@ -11,6 +11,7 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
+import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
 import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   ContractsService,
@@ -190,6 +191,7 @@ export class InvoicesService {
     private readonly uploads: UploadsService,
     private readonly mailer: MailerService,
     private readonly projectAuth: ProjectAuthorizationService,
+    private readonly qaFixtures: QaFixturePolicyService,
   ) {}
 
   async listProjectInvoices(
@@ -236,10 +238,10 @@ export class InvoicesService {
     );
 
     // An explicitly selected contract is exact invoice provenance. Without
-    // one, manual creation correctly uses the project's current live contract.
+    // one, manual creation correctly uses the project's signed contract.
     const contract = dto.contract_id
       ? await this.contracts.getContractById(dto.contract_id)
-      : await this.contracts.getLiveContract(dto.project_id);
+      : await this.contracts.getSignedContract(dto.project_id);
     if (dto.contract_id && !contract) {
       throw new BadRequestException('The selected contract does not exist.');
     }
@@ -258,6 +260,8 @@ export class InvoicesService {
       (await this.nextInvoiceNumber(dto.project_id, contract));
     const detail = dto.hours_detail_level ?? 'summary';
 
+    // The shared Supabase client is intentionally untyped at this boundary.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('invoices')
       .insert({
@@ -323,13 +327,15 @@ export class InvoicesService {
     dueDate: string,
     issueDate: string,
   ): Promise<InvoiceWithLines | null> {
-    // Scheduler queries embed a live project. Keep the service fail-closed if a
-    // severed contract is ever passed directly.
+    // Keep the service fail-closed if a severed contract is passed directly.
     if (!contract.project_id) return null;
+    if (await this.qaFixtures.isFixtureProject(contract.project_id))
+      return null;
     const number = await this.nextInvoiceNumber(contract.project_id, contract);
     const detail: HoursDetailLevel =
       contract.billing_mode === 'retainer' ? 'none' : 'summary';
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('invoices')
       .insert({
@@ -569,6 +575,10 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
     await this.financeAccess.assertProject(callerId, projectId);
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      projectId,
+      'Invoice issuing',
+    );
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -782,6 +792,10 @@ export class InvoicesService {
       callerId,
       this.requireInvoiceProjectId(invoice),
     );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice email delivery',
+    );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Only issued invoices can be sent to the client.',
@@ -799,6 +813,10 @@ export class InvoicesService {
     await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
+    );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice payment recording',
     );
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
@@ -841,10 +859,15 @@ export class InvoicesService {
       callerId,
       this.requireInvoiceProjectId(invoice),
     );
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      this.requireInvoiceProjectId(invoice),
+      'Invoice payment reversal',
+    );
     if (invoice.status === 'void')
       throw new BadRequestException(
         'A void invoice has no reversible payments.',
       );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: payment, error: paymentErr } = await this.supabase
       .from('invoice_payments')
       .select('*')
@@ -891,6 +914,10 @@ export class InvoicesService {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
     await this.financeAccess.assertProject(callerId, projectId);
+    await this.qaFixtures.assertProjectSideEffectAllowed(
+      projectId,
+      'Invoice void and replacement',
+    );
     if (invoice.status !== 'issued') {
       throw new BadRequestException(
         'Only unpaid issued invoices can be voided and replaced. Reverse payments first.',
@@ -901,6 +928,7 @@ export class InvoicesService {
       throw new BadRequestException('A void reason is required.');
     const number = await this.nextInvoiceNumber(projectId, null);
     const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: replacement, error: replacementErr } = await this.supabase
       .from('invoices')
       .insert({
@@ -1072,6 +1100,7 @@ export class InvoicesService {
       .delete()
       .eq('invoice_id', invoice.id);
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: document, error: docErr } = await this.supabase
       .from('invoice_documents')
       .insert({
@@ -1172,6 +1201,7 @@ export class InvoicesService {
   private async getInvoiceInternal(
     invoiceId: string,
   ): Promise<InvoiceWithLines> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: invoice, error: invoiceErr } = await this.supabase
       .from('invoices')
       .select('*')

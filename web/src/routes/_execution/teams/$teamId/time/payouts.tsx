@@ -27,11 +27,11 @@ import {
 } from "@/components/team-time/time-utils";
 import { useToast } from "@/hooks/useToast";
 import { type Payout, payoutsService } from "@/services/payouts.service";
-import { getTeam, type PayPeriodConfig } from "@/services/teams.service";
 import {
 	type TaskTimeLog,
 	teamTimeService,
 } from "@/services/team-time.service";
+import { getTeam, type PayPeriodConfig } from "@/services/teams.service";
 
 export const Route = createFileRoute("/_execution/teams/$teamId/time/payouts")({
 	component: PayoutsRoute,
@@ -338,7 +338,9 @@ function PayoutsRoute() {
 			{/* ─── Paid history ──────────────────────────────────────────────── */}
 			<section className="rounded-xl border border-slate-200 bg-white">
 				<div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-					<h3 className="text-sm font-semibold text-slate-900">Payout history</h3>
+					<h3 className="text-sm font-semibold text-slate-900">
+						Payout history
+					</h3>
 					{payouts.length > 0 && (
 						<span className="text-xs text-slate-400">
 							{payouts.length} record{payouts.length === 1 ? "" : "s"}
@@ -501,7 +503,8 @@ function CutoffSection({
 						{group.label}
 					</span>
 					<span className="text-[11px] text-slate-400">
-						{group.overdue ? "was due" : "pays"} {DATE_FMT.format(group.payDate)}
+						{group.overdue ? "was due" : "pays"}{" "}
+						{DATE_FMT.format(group.payDate)}
 					</span>
 				</div>
 				<span

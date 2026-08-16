@@ -1,6 +1,6 @@
 # Client Structure
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 There is no `clients` table — and no client *account* of any kind. Proyekto stores no
 account role: the switchable `persona_type` was dropped in
@@ -47,9 +47,8 @@ nullable `client_user_id`. An external client reaches exactly one surface in the
 the tokenized signing page. See
 [user-flows.md](./user-flows.md#external-client-signing).
 
-The activation checklist keeps the stable `client_identified` key. Today it accepts either
-a project owner distinct from the consultant-of-record (`project_access.origin='consultant'`)
-or a client named on the contract; the owner fallback is role-neutral compatibility behavior.
+A signed contract's party snapshot is the billing authority. Project ownership remains
+role-neutral execution metadata and is not a fallback billing counterparty.
 
 ### 3. Personal workspace
 
@@ -67,7 +66,7 @@ erDiagram
     projects ||--o| personal_workspaces : project_id
     profiles ||--o{ project_access : user_id
     projects ||--o{ project_access : project_id
-    projects ||--|| contracts : "one live contract"
+    projects ||--|| contracts : "one signed contract"
     profiles ||--o{ contracts : "client_user_id (nullable)"
     contracts ||--o{ contract_signature_links : contract_id
     projects ||--o{ project_invites : project_id

@@ -3,7 +3,9 @@ import { PermissionCatalogPage } from "@/components/project/people/PermissionCat
 import { ProjectTeamAdminGate } from "@/components/project/people/ProjectTeamAdminGate";
 import { TeamPageLayout } from "@/components/project/TeamPageLayout";
 
-export const Route = createFileRoute("/_execution/project/$projectId/team/catalog")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/team/catalog",
+)({
 	component: RouteComponent,
 });
 

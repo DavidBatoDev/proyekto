@@ -617,7 +617,11 @@ function CutoffControls({
 			</div>
 			<div className="space-y-0.5">
 				<div className="text-xs text-slate-500">
-					{cutoffLabel(payPeriodConfig, period.cutoffMonth, period.cutoffPeriodId)}
+					{cutoffLabel(
+						payPeriodConfig,
+						period.cutoffMonth,
+						period.cutoffPeriodId,
+					)}
 				</div>
 				{payLabel && (
 					<div className="text-[11px] font-medium text-emerald-600">

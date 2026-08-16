@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
+import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
 import {
 	listMyTeamInvites,
 	listMyTeams,
@@ -9,7 +10,6 @@ import {
 	type Team,
 	type TeamInvite,
 } from "@/services/teams.service";
-import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useUser } from "@/stores/authStore";
 
 const AVATAR_PREVIEW_LIMIT = 6;
@@ -173,7 +173,9 @@ function AvatarStack({
 	overflow: number;
 }) {
 	if (members.length === 0 && overflow === 0) {
-		return <span className="text-[11px] text-muted-foreground">No members</span>;
+		return (
+			<span className="text-[11px] text-muted-foreground">No members</span>
+		);
 	}
 	// Phones (2-up cards) are too narrow for the full stack, so cap the
 	// visible avatars there and roll the rest into the "+N" chip; sm+ shows all.
@@ -298,8 +300,8 @@ function TeamsEmptyState({ className }: { className?: string }) {
 				No teams yet
 			</h4>
 			<p className="mx-auto mb-4 max-w-md text-sm text-slate-600">
-				Create a team to group the people you collaborate with, then attach
-				the team to any project.
+				Create a team to group the people you collaborate with, then attach the
+				team to any project.
 			</p>
 			<Link
 				to="/teams"

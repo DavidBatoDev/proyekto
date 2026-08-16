@@ -1,121 +1,123 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { Plus, X } from "lucide-react";
 import { useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapFeature, RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { SortableTaskList } from "../widgets/SortableTaskList";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 
 interface TaskListModalProps {
-  feature: RoadmapFeature;
-  onClose: () => void;
-  onSelectTask?: (task: RoadmapTask) => void;
-  onUpdateTask?: (task: RoadmapTask) => void;
-  onAddTask?: (featureId: string) => void;
+	feature: RoadmapFeature;
+	onClose: () => void;
+	onSelectTask?: (task: RoadmapTask) => void;
+	onUpdateTask?: (task: RoadmapTask) => void;
+	onAddTask?: (featureId: string) => void;
 }
 
 export function TaskListModal({
-  feature,
-  onClose,
-  onSelectTask,
-  onUpdateTask,
-  onAddTask,
+	feature,
+	onClose,
+	onSelectTask,
+	onUpdateTask,
+	onAddTask,
 }: TaskListModalProps) {
-  const tasks = feature.tasks ?? [];
-  const doneCount = tasks.filter((t) => t.status === "done").length;
-  const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
+	const tasks = feature.tasks ?? [];
+	const doneCount = tasks.filter((t) => t.status === "done").length;
+	const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
 
-  const handleToggleComplete = (taskId: string) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task || !onUpdateTask) return;
-    onUpdateTask({ ...task, status: task.status === "done" ? "todo" : "done" });
-  };
+	const handleToggleComplete = (taskId: string) => {
+		const task = tasks.find((t) => t.id === taskId);
+		if (!task || !onUpdateTask) return;
+		onUpdateTask({ ...task, status: task.status === "done" ? "todo" : "done" });
+	};
 
-  const handleUpdateStatus = (taskId: string, status: TaskStatus) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task || !onUpdateTask) return;
-    onUpdateTask({ ...task, status });
-  };
+	const handleUpdateStatus = (taskId: string, status: TaskStatus) => {
+		const task = tasks.find((t) => t.id === taskId);
+		if (!task || !onUpdateTask) return;
+		onUpdateTask({ ...task, status });
+	};
 
-  const handleReorder = useCallback(
-    (fId: string, orderedIds: string[]) => {
-      void reorderTasksInFeature(fId, orderedIds);
-    },
-    [reorderTasksInFeature],
-  );
+	const handleReorder = useCallback(
+		(fId: string, orderedIds: string[]) => {
+			void reorderTasksInFeature(fId, orderedIds);
+		},
+		[reorderTasksInFeature],
+	);
 
-  return createPortal(
-    <AnimatePresence>
-      <motion.div
-        className="fixed inset-0 z-150 bg-black/30 flex items-center justify-center p-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        onClick={onClose}
-      >
-        <motion.div
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
-          initial={{ opacity: 0, scale: 0.94, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-gray-900 truncate">
-                {feature.title}
-              </h2>
-              <p className="text-sm text-gray-400 mt-0.5">
-                {doneCount}/{tasks.length} tasks done
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="ml-4 p-1.5 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
-              title="Close"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
+	return createPortal(
+		<AnimatePresence>
+			<motion.div
+				className="fixed inset-0 z-150 bg-black/30 flex items-center justify-center p-4"
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+				exit={{ opacity: 0 }}
+				transition={{ duration: 0.18 }}
+				onClick={onClose}
+			>
+				<motion.div
+					className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+					initial={{ opacity: 0, scale: 0.94, y: 12 }}
+					animate={{ opacity: 1, scale: 1, y: 0 }}
+					exit={{ opacity: 0, scale: 0.94, y: 12 }}
+					transition={{ duration: 0.2, ease: "easeOut" }}
+					onClick={(e) => e.stopPropagation()}
+				>
+					{/* Header */}
+					<div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+						<div className="min-w-0">
+							<h2 className="text-lg font-semibold text-gray-900 truncate">
+								{feature.title}
+							</h2>
+							<p className="text-sm text-gray-400 mt-0.5">
+								{doneCount}/{tasks.length} tasks done
+							</p>
+						</div>
+						<button
+							onClick={onClose}
+							className="ml-4 p-1.5 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+							title="Close"
+						>
+							<X className="w-5 h-5 text-gray-500" />
+						</button>
+					</div>
 
-          {/* Task list */}
-          <div className="flex-1 overflow-y-auto py-1">
-            {tasks.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-sm text-gray-400">
-                No tasks yet
-              </div>
-            ) : (
-              <SortableTaskList
-                tasks={tasks}
-                featureId={feature.id}
-                density="normal"
-                onReorder={handleReorder}
-                onClick={onSelectTask}
-                onToggleComplete={onUpdateTask ? handleToggleComplete : undefined}
-                onUpdateStatus={onUpdateTask ? handleUpdateStatus : undefined}
-              />
-            )}
-          </div>
+					{/* Task list */}
+					<div className="flex-1 overflow-y-auto py-1">
+						{tasks.length === 0 ? (
+							<div className="flex items-center justify-center py-16 text-sm text-gray-400">
+								No tasks yet
+							</div>
+						) : (
+							<SortableTaskList
+								tasks={tasks}
+								featureId={feature.id}
+								density="normal"
+								onReorder={handleReorder}
+								onClick={onSelectTask}
+								onToggleComplete={
+									onUpdateTask ? handleToggleComplete : undefined
+								}
+								onUpdateStatus={onUpdateTask ? handleUpdateStatus : undefined}
+							/>
+						)}
+					</div>
 
-          {/* Add task — pinned outside the scroll area so it stays reachable in long lists */}
-          {onAddTask && (
-            <div className="shrink-0 border-t border-gray-100 px-6 py-3">
-              <button
-                type="button"
-                onClick={() => onAddTask(feature.id)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Task
-              </button>
-            </div>
-          )}
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>,
-    document.body,
-  );
+					{/* Add task — pinned outside the scroll area so it stays reachable in long lists */}
+					{onAddTask && (
+						<div className="shrink-0 border-t border-gray-100 px-6 py-3">
+							<button
+								type="button"
+								onClick={() => onAddTask(feature.id)}
+								className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors"
+							>
+								<Plus className="w-4 h-4" />
+								Add Task
+							</button>
+						</div>
+					)}
+				</motion.div>
+			</motion.div>
+		</AnimatePresence>,
+		document.body,
+	);
 }

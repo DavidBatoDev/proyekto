@@ -4,7 +4,9 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
  * Redirect. Attached teams have their own dedicated management page now,
  * under the Team section rather than Settings.
  */
-export const Route = createFileRoute("/_execution/project/$projectId/settings/teams")({
+export const Route = createFileRoute(
+	"/_execution/project/$projectId/settings/teams",
+)({
 	beforeLoad: ({ params }) => {
 		throw redirect({
 			to: "/project/$projectId/team/teams",

@@ -16,7 +16,7 @@ function RateCardSkeleton() {
 			<div className="h-14 bg-muted" />
 			<div className="px-3 pb-3 -mt-7 flex-1 flex flex-col">
 				<div className="mx-auto h-14 w-14 rounded-full border-4 border-card bg-muted shadow-sm" />
-				
+
 				<div className="mt-2.5 space-y-2 text-center">
 					<div className="mx-auto h-4 w-32 rounded bg-muted" />
 					<div className="mx-auto h-3 w-40 rounded bg-muted" />
@@ -136,7 +136,9 @@ export function TeamRatesSection({
 					</div>
 				) : ratedMembers.length === 0 ? (
 					<div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
-						<p className="text-sm text-muted-foreground">No time rates set yet.</p>
+						<p className="text-sm text-muted-foreground">
+							No time rates set yet.
+						</p>
 					</div>
 				) : (
 					<div className="flex flex-wrap gap-4">
@@ -209,21 +211,22 @@ export function TeamRatesSection({
 											</div>
 											{rates.length > 1 && (
 												<div className="mt-2 space-y-0.5 border-t border-border pt-2">
-							{preview.map((r) => (
-								<div
-									key={r.id}
-									className="flex items-center justify-between gap-2 text-[10.5px]"
-								>
-									<span className="truncate text-muted-foreground">
-										{projectTitleById[r.project_id] ?? "Project"}
-									</span>
-									<span className="font-medium text-card-foreground tabular-nums">
-										Work {Number(r.hourly_rate).toFixed(2)} / Training{" "}
-										{Number(r.training_hourly_rate).toFixed(2)}{" "}
-										{r.currency || "USD"}
-									</span>
-								</div>
-							))}
+													{preview.map((r) => (
+														<div
+															key={r.id}
+															className="flex items-center justify-between gap-2 text-[10.5px]"
+														>
+															<span className="truncate text-muted-foreground">
+																{projectTitleById[r.project_id] ?? "Project"}
+															</span>
+															<span className="font-medium text-card-foreground tabular-nums">
+																Work {Number(r.hourly_rate).toFixed(2)} /
+																Training{" "}
+																{Number(r.training_hourly_rate).toFixed(2)}{" "}
+																{r.currency || "USD"}
+															</span>
+														</div>
+													))}
 													{remaining > 0 && (
 														<p className="text-center text-[10.5px] text-muted-foreground">
 															+{remaining} more

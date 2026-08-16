@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -46,24 +46,25 @@ HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/genera
 
 Finance access requires active consultant capability plus a `project_access` row with
 `role=owner` and `origin=consultant`; that access row is also the consultant-of-record.
-Project deletion is refused while contracts are sent/signed/active or
+Project deletion is refused while contracts are sent or signed, or while
 invoices are issued/sent. Drafts are discarded; ended/cancelled contracts and paid/void
 invoices survive with `project_id=NULL` and their project-title snapshots intact.
 
 The consultant finance lists include the caller's severed contracts and linked invoices,
 labeled from `project_title_snapshot`. Direct contract reads are position-based, so both
 stored parties retain read-only access after severance. The portfolio summary and invoice
-scheduler remain live-project views: severed rows are intentionally absent from portfolio
-totals and cannot drive future scheduled billing.
+scheduler remain attached-project views: severed rows are intentionally absent from portfolio
+totals and cannot drive future scheduled billing. Project lifecycle status does not control
+whether a signed contract schedules invoice drafts.
 
 ## Contract signing and invoice provenance
 
 - Contract creation stores `consultant_user_id`; amendments inherit the seat.
 - Every signature stamp re-checks the seat's active consultant enrollment in TypeScript and
   in the row-locking `sign_contract_and_flip` transaction. Severed contracts cannot sign.
-- The final signature, prior-live-contract supersede, and status flip are atomic.
+- The final signature, prior-signed-contract supersede, and status flip are atomic.
 - Invoice recomposition resolves the invoice's stored `contract_id` exactly. It never falls
-  forward to a newer live contract, so an amended agreement cannot silently reprice an old
+  forward to a newer signed contract, so an amended agreement cannot silently reprice an old
   draft. If that exact contract is unavailable, stored priced lines remain authoritative.
 
 ## Wallets (retained storage)

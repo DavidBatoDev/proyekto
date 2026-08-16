@@ -50,7 +50,9 @@ export const FeatureMoveConfirmModal = ({
 		>
 			<div
 				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
-					isVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-95 opacity-0"
+					isVisible
+						? "translate-y-0 scale-100 opacity-100"
+						: "translate-y-2 scale-95 opacity-0"
 				}`}
 			>
 				<div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
@@ -85,7 +87,8 @@ export const FeatureMoveConfirmModal = ({
 						</span>
 						{targetEpicTitle && (
 							<>
-								{" "}to epic{" "}
+								{" "}
+								to epic{" "}
 								<span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-sm font-semibold text-gray-700">
 									{targetEpicTitle}
 								</span>
@@ -132,6 +135,6 @@ export const FeatureMoveConfirmModal = ({
 				</div>
 			</div>
 		</div>,
-		document.body
+		document.body,
 	);
 };

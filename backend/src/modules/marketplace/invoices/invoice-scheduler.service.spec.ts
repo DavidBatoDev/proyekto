@@ -16,6 +16,7 @@ describe('InvoiceSchedulerService notifications', () => {
     {} as never,
     {} as never,
     projectAuth as never,
+    { isFixtureProject: jest.fn().mockResolvedValue(false) } as never,
   );
   const notifyDraftReady = (
     service as unknown as {
@@ -82,5 +83,46 @@ describe('InvoiceSchedulerService notifications', () => {
 
     expect(projectAuth.getProjectConsultantId).not.toHaveBeenCalled();
     expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('InvoiceSchedulerService contract selection', () => {
+  it('uses signed contracts without consulting project lifecycle status', async () => {
+    const contract = {
+      id: 'contract-1',
+      project_id: 'project-1',
+      status: 'signed',
+      service_end_date: '2026-12-31',
+      contract_end_date: '2026-12-31',
+    } as ContractRow;
+    const lte = jest.fn().mockResolvedValue({ data: [contract], error: null });
+    const eq = jest.fn().mockReturnValue({ lte });
+    const select = jest.fn().mockReturnValue({ eq });
+    const from = jest.fn().mockReturnValue({ select });
+    const qaFixtures = {
+      isFixtureProject: jest.fn().mockResolvedValue(false),
+    };
+    const service = new InvoiceSchedulerService(
+      { from } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      qaFixtures as never,
+    );
+    const findBillableContracts = (
+      service as unknown as {
+        findBillableContracts(today: string): Promise<ContractRow[]>;
+      }
+    ).findBillableContracts.bind(service);
+
+    await expect(findBillableContracts('2026-08-14')).resolves.toEqual([
+      contract,
+    ]);
+    expect(select).toHaveBeenCalledWith('*');
+    expect(eq).toHaveBeenCalledWith('status', 'signed');
+    expect(qaFixtures.isFixtureProject).toHaveBeenCalledWith('project-1');
   });
 });

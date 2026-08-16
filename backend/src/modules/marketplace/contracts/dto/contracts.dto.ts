@@ -20,7 +20,6 @@ export const CONTRACT_STATUSES = [
   'draft',
   'sent',
   'signed',
-  'active',
   'ended',
   'cancelled',
 ] as const;
@@ -105,9 +104,8 @@ export class ContractServiceDto {
  * Commercial + party fields shared by create and update. Every field is
  * optional here because a contract is built up progressively — the wizard
  * writes terms, the Contract tab fills in parties and clauses later. The
- * *completeness* rules that actually matter live in the activation checklist,
- * not in DTO validation, so a consultant is never blocked from saving a
- * half-finished draft.
+ * Signing enforces the commercial and party invariants that make an agreement
+ * executable. Drafts remain progressively editable.
  */
 export class ContractTermsDto {
   @IsOptional() @IsIn(PROVIDER_KINDS) provider_kind?: ProviderKind;
@@ -298,7 +296,7 @@ export class UnsignContractDto {
 /**
  * Resize or reposition an already-stamped signature. Purely cosmetic — it
  * changes where and how large the overlay is drawn, never the terms — so
- * unlike unsigning it stays available once the contract is signed or active.
+ * unlike unsigning it stays available once the contract is signed.
  *
  * Every field is optional so the size slider and the drag handle can write
  * independently without clobbering each other.

@@ -36,7 +36,7 @@ import { projectService } from "@/services/project.service";
  * This used to be step 4 of the contract builder, which was the wrong home for
  * it: contracts get built on screen shares WITH the client, and the client must
  * never see what the agency keeps. It lives in Financials now, behind a
- * consultant/admin gate, and the activation checklist points here.
+ * consultant/admin gate.
  */
 
 const rowKey = (r: { teamId: string; userId: string }) =>
@@ -63,11 +63,7 @@ export function BudgetSplitPanel({ projectId }: { projectId: string }) {
 
 	const contract = useMemo(() => {
 		const all = contractsQuery.data ?? [];
-		return (
-			all.find((c) => c.status === "signed" || c.status === "active") ??
-			all[0] ??
-			null
-		);
+		return all.find((c) => c.status === "signed") ?? all[0] ?? null;
 	}, [contractsQuery.data]);
 
 	const economics = economicsQuery.data ?? null;
@@ -148,9 +144,6 @@ export function BudgetSplitPanel({ projectId }: { projectId: string }) {
 			});
 			void qc.invalidateQueries({
 				queryKey: ["project", projectId, "economics"],
-			});
-			void qc.invalidateQueries({
-				queryKey: ["project", projectId, "activation-checklist"],
 			});
 		},
 		{

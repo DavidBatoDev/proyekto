@@ -6,12 +6,16 @@
 import { create } from "zustand";
 import {
 	epicService,
+	type FullRoadmap,
 	featureService,
 	milestoneService,
 	roadmapService,
 	taskService,
-	type FullRoadmap,
 } from "@/services/roadmap.service";
+import type {
+	AgentCommitImpactedItem,
+	AgentOperation,
+} from "@/services/roadmap-agent.service";
 import type {
 	Roadmap,
 	RoadmapEpic,
@@ -19,10 +23,6 @@ import type {
 	RoadmapMilestone,
 	RoadmapTask,
 } from "@/types/roadmap";
-import type {
-	AgentCommitImpactedItem,
-	AgentOperation,
-} from "@/services/roadmap-agent.service";
 export type CanvasViewMode = "roadmap" | "epic" | "milestones";
 
 export interface KanbanBoardFilters {

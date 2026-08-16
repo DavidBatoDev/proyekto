@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -42,7 +42,7 @@ group-level barrel modules.
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
-| `contracts` | Service agreements, the services catalog, signing (in-app + tokenized link), amendments, project activation | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
+| `contracts` | Service agreements, signing (in-app + tokenized link), amendments, and project economics | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
 | `finance` | Consultant-only cross-project money portfolio | *(reads `contracts`, `invoices`)* |
 | `financials` | Per-project profitability API consumed by Finance | *(reads `finance_project_settings`, `task_time_logs`)* |
 | `activity` | Project activity feed read API | `project_activity_log` |

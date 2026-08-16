@@ -1,19 +1,19 @@
 export {
-	FeatureDateChangeConfirmModal,
 	type DateChangeConfirmPayload,
+	FeatureDateChangeConfirmModal,
 } from "./components/FeatureDateChangeConfirmModal";
 export { MilestoneEditorModal } from "./components/MilestoneEditorModal";
 export { MilestonesLeftPanel } from "./components/MilestonesLeftPanel";
 export {
-	MilestonesTimelineRows,
+	type MilestoneDateDraftCommit,
+	MilestonesTimelineHeader,
+} from "./components/MilestonesTimelineHeader";
+export {
 	type EpicDateDraftCommit,
 	type FeatureDateDraftCommit,
 	type FeatureDateVisualDraft,
+	MilestonesTimelineRows,
 } from "./components/MilestonesTimelineRows";
-export {
-	MilestonesTimelineHeader,
-	type MilestoneDateDraftCommit,
-} from "./components/MilestonesTimelineHeader";
 export { MilestonesToolbar } from "./components/MilestonesToolbar";
 
 export { useMilestoneEditor } from "./hooks/useMilestoneEditor";

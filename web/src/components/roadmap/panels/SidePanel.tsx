@@ -1,21 +1,31 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-	X,
-	CheckSquare,
-	Search,
-	ChevronDown,
-	Check,
-	Paperclip,
-	Edit2,
-	Plus,
-	Trash2,
-	Link2,
-	Copy,
-	History,
 	AlertCircle,
+	Check,
+	CheckSquare,
+	ChevronDown,
+	Copy,
+	Edit2,
+	History,
+	Link2,
+	Paperclip,
+	Plus,
+	Search,
+	Trash2,
+	X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
+import { useToast } from "@/hooks/useToast";
+import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
+import { type ProjectMember, projectService } from "@/services/project.service";
+import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
+import { commentsService, taskService } from "@/services/roadmap.service";
+import { uploadService } from "@/services/upload.service";
+import { useProfile, useUser } from "@/stores/authStore";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type {
 	AssigneeProfile,
 	ChecklistItem,
@@ -25,18 +35,9 @@ import type {
 	TaskAttachment,
 	TaskDependency,
 } from "@/types/roadmap";
-import { projectService, type ProjectMember } from "@/services/project.service";
-import { commentsService, taskService } from "@/services/roadmap.service";
-import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
-import { uploadService } from "@/services/upload.service";
-import { useToast } from "@/hooks/useToast";
-import { CommentsSection } from "../shared/CommentsSection";
-import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
-import { DueDatePicker } from "./DueDatePicker";
 import { Button } from "@/ui/button";
-import { useProfile, useUser } from "@/stores/authStore";
-import { useRoadmapStore } from "@/stores/roadmapStore";
+import { CommentsSection } from "../shared/CommentsSection";
+import { DueDatePicker } from "./DueDatePicker";
 
 interface SidePanelProps {
 	task: RoadmapTask | null;
@@ -917,7 +918,11 @@ export const SidePanel = ({
 			toast.error("Can't build a link outside a roadmap.");
 			return;
 		}
-		const url = `${window.location.origin}/project/${effectiveProjectId}/roadmap/${roadmapId}?nodeId=${canonicalId}&view=roadmapView`;
+		const url = buildRoadmapPreviewUrl(
+			window.location.origin,
+			roadmapId,
+			canonicalId,
+		);
 		navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
 	};

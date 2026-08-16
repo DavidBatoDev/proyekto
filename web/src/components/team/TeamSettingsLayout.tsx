@@ -1,5 +1,4 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import type { ReactNode } from "react";
 import {
 	ChevronRight,
 	ClipboardList,
@@ -7,6 +6,7 @@ import {
 	FolderKanban,
 	Settings,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 

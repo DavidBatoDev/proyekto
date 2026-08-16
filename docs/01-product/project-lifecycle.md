@@ -1,6 +1,6 @@
 # Project Lifecycle
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-14 · **Status:** current
 
 A **project** is the structured container for delivery — it holds the roadmap, the
 team, the conversations, the meetings, and the money. This page walks a project from
@@ -59,7 +59,7 @@ The team executes against the roadmap:
   (scheduled, recurring, with reminders) keep everyone aligned. Notifications and
   optional push fan out important events.
 
-## 5. Contract & activation
+## 5. Contract
 
 Before a project can bill anyone it needs a **contract** (`contracts`): the parties,
 the commercial terms (`billing_mode` = `retainer` / `time_based` / `hybrid`, the
@@ -67,12 +67,10 @@ recurring fee or the **client-facing** hourly rate), the invoice cadence, and th
 (from which `service_end_date` / `contract_end_date` are derived and stored). It also
 carries the editable clause set that renders the Service Agreement.
 
-Flipping a project to `active` — the state that means it is paying the consultant and
-the team — runs an **activation checklist** (`GET /api/projects/:id/activation-checklist`):
-a fully signed contract, a `finance_project_settings` split (company % vs team %), an attached
-team, a rate for every curated member (`hourly` or `fixed`), hour limits on hourly
-members, and an identified client. `ProjectsService.updateProject` refuses the
-transition until the blockers clear.
+Project status describes execution only. A project can move between draft, active,
+paused, completed, and archived without a contract, team rate, or budget split. Billing
+starts from a signed contract and its service window; ending or cancelling that contract
+stops future scheduled invoice drafts.
 
 ## 6. Billing
 

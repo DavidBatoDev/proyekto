@@ -438,9 +438,7 @@ export function ContractEditorCanvas({
 										large
 										blockIds={new Set(page)}
 										activeSection={selectable ? activeSection : undefined}
-										onSectionSelect={
-											selectable ? onSectionSelect : undefined
-										}
+										onSectionSelect={selectable ? onSectionSelect : undefined}
 										editable={editable}
 										onClauseChange={onClauseChange}
 									/>

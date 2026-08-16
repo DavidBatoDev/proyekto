@@ -1,4 +1,7 @@
-import type { LogStatusCounts, TimeLogStatus } from "@/services/team-time.service";
+import type {
+	LogStatusCounts,
+	TimeLogStatus,
+} from "@/services/team-time.service";
 
 export type StatusTab = TimeLogStatus | "all";
 
@@ -27,9 +30,7 @@ export function TeamLogsStatusTabs({
 	const countFor = (key: StatusTab): number | null => {
 		if (!counts) return null;
 		if (key === "all")
-			return (
-				counts.pending + counts.approved + counts.paid + counts.rejected
-			);
+			return counts.pending + counts.approved + counts.paid + counts.rejected;
 		return counts[key];
 	};
 

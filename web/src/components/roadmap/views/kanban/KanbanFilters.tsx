@@ -1,5 +1,5 @@
-import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import type { FeatureStatus } from "@/types/roadmap";
 
@@ -20,12 +20,12 @@ const getPillBorderColor = (status: FeatureStatus) => {
 };
 
 import {
+	type ReactNode,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
-	type ReactNode,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";

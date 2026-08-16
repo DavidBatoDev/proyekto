@@ -136,9 +136,7 @@ export function Dropdown({
 						exit={{ opacity: 0, y: -4 }}
 						transition={{ duration: 0.14, ease: "easeOut" }}
 						className={`absolute z-50 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg ${
-							menuPlacement === "top"
-								? "bottom-full mb-1"
-								: "mt-1"
+							menuPlacement === "top" ? "bottom-full mb-1" : "mt-1"
 						}`}
 					>
 						{options.map((option, index) => {

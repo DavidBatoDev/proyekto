@@ -65,7 +65,7 @@ const BASE_CONTRACT: ContractRow = {
   consultant_user_id: 'consultant-1',
   version: 1,
   contract_number: 'BS2026-001',
-  status: 'active',
+  status: 'signed',
   provider_kind: 'agency',
   provider_name: 'Prodigitality',
   provider_address: null,

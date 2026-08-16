@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { MilestonesView } from "./MilestonesView";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
+import { MilestonesView } from "./MilestonesView";
 
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({

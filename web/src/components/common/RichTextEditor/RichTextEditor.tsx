@@ -1,18 +1,18 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import type { RichTextEditorProps } from "./types";
-import { RichTextToolbar } from "./RichTextToolbar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MentionDropdown } from "./MentionDropdown";
 import {
 	buildMentionCandidates,
-	matchMentionQuery,
 	type MentionTarget,
+	matchMentionQuery,
 } from "./mentionCandidates";
+import { RichTextToolbar } from "./RichTextToolbar";
+import type { RichTextEditorProps } from "./types";
 import {
+	cleanHTML,
 	executeCommand,
 	getActiveFormats,
-	insertLink,
 	insertImage,
-	cleanHTML,
+	insertLink,
 } from "./utils/formatting";
 
 const DEFAULT_TOOLS = [

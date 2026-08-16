@@ -8,8 +8,8 @@ import {
 	CirclePause,
 	CircleX,
 	Clock3,
-	Shield,
 	type LucideIcon,
+	Shield,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";

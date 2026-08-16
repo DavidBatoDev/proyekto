@@ -136,9 +136,9 @@ describe("count-free reorders", () => {
 		// MilestonesService.reorder moves ONE milestone and emits no item_count,
 		// so a count-based renderer produced "reordered 0 milestones".
 		const copy = activityCopyFor("milestone.reordered");
-		expect(copy.object(entry({ metadata: { title: "Beta", position: 2 } }))).toBe(
-			'milestone “Beta”',
-		);
+		expect(
+			copy.object(entry({ metadata: { title: "Beta", position: 2 } })),
+		).toBe("milestone “Beta”");
 		expect(copy.object(entry({ metadata: {} }))).toBe("a milestone");
 	});
 });

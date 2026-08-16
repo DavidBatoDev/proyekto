@@ -11,7 +11,6 @@ export type ContractStatus =
 	| "draft"
 	| "sent"
 	| "signed"
-	| "active"
 	| "ended"
 	| "cancelled";
 
@@ -202,21 +201,6 @@ export interface ProjectEconomics {
 	metadata: Record<string, unknown>;
 	created_at: string;
 	updated_at: string;
-}
-
-export interface ActivationChecklistItem {
-	key: string;
-	label: string;
-	ok: boolean;
-	severity: "blocker" | "warning";
-	detail: string | null;
-	fixPath: string | null;
-}
-
-export interface ActivationChecklist {
-	project_id: string;
-	ready: boolean;
-	items: ActivationChecklistItem[];
 }
 
 function fail(err: unknown, fallback: string): never {
@@ -554,19 +538,6 @@ export const contractService = {
 			return normalizeEconomics(data.data);
 		} catch (err) {
 			fail(err, "Failed to save the project budget split");
-		}
-	},
-
-	async getActivationChecklist(
-		projectId: string,
-	): Promise<ActivationChecklist> {
-		try {
-			const { data } = await apiClient.get<{ data: ActivationChecklist }>(
-				`/api/projects/${projectId}/activation-checklist`,
-			);
-			return data.data;
-		} catch (err) {
-			fail(err, "Failed to load the activation checklist");
 		}
 	},
 };

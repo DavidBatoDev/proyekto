@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent } from "react";
-import { Plus, Edit2, ChevronDown, ChevronUp, Calendar, X } from "lucide-react";
-import type { Comment, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import { Calendar, ChevronDown, ChevronUp, Edit2, Plus, X } from "lucide-react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/auth";
-import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { TaskListItem } from "../widgets/TaskListItem";
-import { CommentsSection } from "../shared/CommentsSection";
 import { commentsService } from "@/services/roadmap.service";
+import type { Comment, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import { CommentsSection } from "../shared/CommentsSection";
 import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+import { TaskListItem } from "../widgets/TaskListItem";
+import { RoadmapModalLayout } from "./RoadmapModalLayout";
 
 interface FeatureModalProps {
 	isOpen: boolean;

@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { Menu, MessageCircle, Search } from "lucide-react";
 import { useState } from "react";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
-import { BrandMark } from "@/components/brand/BrandMark";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 import { NotificationBell } from "./NotificationBell";
 import UserMenu from "./UserMenu";
@@ -64,7 +64,10 @@ const DashboardHeader = () => {
 				) : isAuthenticated ? (
 					<>
 						<div className="hidden min-w-[220px] items-center rounded-2xl border border-border bg-muted/80 px-3 py-1.5 transition-all duration-200 hover:bg-muted focus-within:bg-card focus-within:ring-2 focus-within:ring-border md:flex lg:min-w-[300px]">
-							<Search size={17} className="mr-2 shrink-0 text-muted-foreground" />
+							<Search
+								size={17}
+								className="mr-2 shrink-0 text-muted-foreground"
+							/>
 							<input
 								type="text"
 								placeholder="Search..."

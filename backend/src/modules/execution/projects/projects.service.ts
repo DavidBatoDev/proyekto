@@ -55,7 +55,6 @@ import {
   UpdateProjectResourceLinkDto,
 } from './dto/project.dto';
 import { Project } from '../../../common/entities';
-import { ProjectActivationService } from '../../marketplace/contracts/project-activation.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
@@ -122,7 +121,6 @@ export class ProjectsService {
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly config: ConfigService,
     private readonly chatService: ChatService,
-    private readonly activation: ProjectActivationService,
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
     private readonly teamTime: TeamTimeService,
@@ -1214,17 +1212,6 @@ export class ProjectsService {
         label: 'update this project',
       });
 
-    // Activating a project means it starts paying the consultant and the team,
-    // so every billing input must exist first. Re-saving an already-active
-    // project must not re-run the gate — otherwise a later edit (e.g. removing
-    // a member's rate) would lock the owner out of unrelated updates.
-    if (dto.status === 'active') {
-      const existing = await this.getProjectOrThrow(id);
-      if (existing.status !== 'active') {
-        await this.activation.assertActivationReady(id);
-      }
-    }
-
     const updated = await this.projectsRepo.update(id, dto);
     await this.invalidateDashboardCache();
     return updated;
@@ -1246,7 +1233,7 @@ export class ProjectsService {
         .from('contracts')
         .select('id', { count: 'exact', head: true })
         .eq('project_id', id)
-        .in('status', ['sent', 'signed', 'active']),
+        .in('status', ['sent', 'signed']),
       this.supabase
         .from('invoices')
         .select('id', { count: 'exact', head: true })
@@ -1257,7 +1244,7 @@ export class ProjectsService {
     if (invoiceResult.error) throw new Error(invoiceResult.error.message);
     if ((contractResult.count ?? 0) > 0 || (invoiceResult.count ?? 0) > 0) {
       throw new BadRequestException(
-        'Cannot delete this project while it has sent, signed, or active contracts or issued or sent invoices. End or cancel contracts and pay or void invoices, then try again.',
+        'Cannot delete this project while it has sent or signed contracts or issued or sent invoices. End or cancel contracts and pay or void invoices, then try again.',
       );
     }
 
@@ -1441,7 +1428,6 @@ export class ProjectsService {
         // Last-owner protection — leave the previous consultant in place
         // rather than orphaning. They remain a co-owner alongside the new
         // consultant; admin can demote them later from team settings.
-        // eslint-disable-next-line no-console
         console.warn(
           `Could not revoke previous consultant ${previousConsultantId} on ${projectId}: ${
             err instanceof Error ? err.message : String(err)
@@ -1708,7 +1694,6 @@ export class ProjectsService {
       } catch (err) {
         // Surface but don't block — the invite respond already persisted.
         // Operator can retry the grant from the team settings UI.
-        // eslint-disable-next-line no-console
         console.error(
           `Failed to grant project_share for invite ${inviteId}:`,
           err,

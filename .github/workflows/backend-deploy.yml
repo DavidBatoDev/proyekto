@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
   workflow_dispatch:
 
 concurrency:
@@ -34,6 +34,7 @@ jobs:
       OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
       MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
       INVOICE_AUTOMATION_ENABLED: ${{ vars.INVOICE_AUTOMATION_ENABLED }}
+      PRODUCTION_QA_ENABLED: ${{ vars.PRODUCTION_QA_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
       ROADMAP_ACTIVITY_LOG_ENABLED: ${{ vars.ROADMAP_ACTIVITY_LOG_ENABLED }}
@@ -146,6 +147,17 @@ jobs:
             echo "Automated client invoicing enabled for this deploy."
           else
             echo "Automated client invoicing disabled (set the INVOICE_AUTOMATION_ENABLED repo var to enable; the cron endpoint stays in dry-run)."
+          fi
+
+          # Dedicated production QA reset surface. It stays 404 unless enabled,
+          # and receives a purpose-specific secret rather than the Supabase
+          # service-role key.
+          if [[ -n "${PRODUCTION_QA_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},PRODUCTION_QA_ENABLED=true"
+            SECRETS="${SECRETS},PRODUCTION_QA_SECRET=PRODUCTION_QA_SECRET:latest"
+            echo "Production QA fixture control enabled."
+          else
+            echo "Production QA fixture control disabled."
           fi
 
           # Knowledge pipeline (roadmap AI RAG). Gated on the

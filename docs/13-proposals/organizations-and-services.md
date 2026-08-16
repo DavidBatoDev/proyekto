@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-13 · **Status:** draft
+> **Last updated:** 2026-08-14 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows whose client relationship is repeated in access and contract data, and an
@@ -164,7 +164,7 @@ the role-neutral project owner, not the client organization or billing counterpa
 | `personal_workspaces(user_id, project_id)` one-to-one junction | the personal-workspace identity |
 | `canAccessProject` — owner/access membership resolution | roadmap access |
 | `listRoadmapLinkCandidates` | guest-roadmap conversion |
-| `ProjectActivationService` `client_identified` | the activation blocker |
+| Signed contracts and invoices | billing counterparty snapshots |
 | RLS policies across the tree | defence in depth |
 
 **Keep it independent.** Adding `client_org_id` must not rewrite `owner_id` or require the
@@ -187,7 +187,7 @@ type ProjectClient =
 resolveClient(project, contract?): ProjectClient
 ```
 
-Every consumer — activation checklist, contract parties step, invoice header, chat filters —
+Every consumer — contract parties step, invoice header, and chat filters —
 calls this. If `client_org_id` appears in a conditional anywhere else, that is a bug.
 
 ## Org → project access

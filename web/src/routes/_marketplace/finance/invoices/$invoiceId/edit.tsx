@@ -3,7 +3,9 @@ import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_marketplace/finance/invoices/$invoiceId/edit")({
+export const Route = createFileRoute(
+	"/_marketplace/finance/invoices/$invoiceId/edit",
+)({
 	beforeLoad: () => {
 		if (!useAuthStore.getState().isAuthenticated) {
 			throw redirect({ to: "/auth/login" });

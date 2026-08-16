@@ -16,8 +16,8 @@ import {
 	type PayoutMethod,
 	payoutsService,
 } from "@/services/payouts.service";
-import type { PayPeriodConfig } from "@/services/teams.service";
 import type { TaskTimeLog } from "@/services/team-time.service";
+import type { PayPeriodConfig } from "@/services/teams.service";
 import { uploadService } from "@/services/upload.service";
 import { payPeriodForDate, payPeriodLabel } from "./log-period";
 import { formatMoney, logFee } from "./time-utils";
@@ -117,7 +117,14 @@ export function PayMemberModal({
 	const breakdown = useMemo(() => {
 		const map = new Map<
 			string,
-			{ key: string; label: string; logs: number; seconds: number; amount: number; sortKey: number }
+			{
+				key: string;
+				label: string;
+				logs: number;
+				seconds: number;
+				amount: number;
+				sortKey: number;
+			}
 		>();
 		for (const log of logs) {
 			const { month, period } = payPeriodForDate(

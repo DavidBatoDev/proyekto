@@ -1,16 +1,16 @@
-import type { RichTextToolbarProps, ToolType } from "./types";
 import { TextFormatTool } from "./tools/TextFormatTool";
 import {
 	BoldTool,
-	ItalicTool,
-	MoreTool,
-	ListTool,
-	LinkTool,
-	ImageTool,
-	MarkdownTool,
 	HelpTool,
+	ImageTool,
+	ItalicTool,
+	LinkTool,
+	ListTool,
+	MarkdownTool,
+	MoreTool,
 	ToolSeparator,
 } from "./tools/ToolButtons";
+import type { RichTextToolbarProps, ToolType } from "./types";
 
 export function RichTextToolbar({
 	tools,

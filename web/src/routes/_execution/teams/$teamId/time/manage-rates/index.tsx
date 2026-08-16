@@ -31,7 +31,9 @@ import {
 	updateMemberRate,
 } from "@/services/teams.service";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/time/manage-rates/")({
+export const Route = createFileRoute(
+	"/_execution/teams/$teamId/time/manage-rates/",
+)({
 	component: ManageRatesTab,
 });
 

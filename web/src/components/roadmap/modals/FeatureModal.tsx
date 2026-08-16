@@ -1,21 +1,29 @@
 import {
-	useState,
-	useEffect,
-	useRef,
-	useMemo,
-	useCallback,
-	type FormEvent,
-} from "react";
-import {
-	Plus,
-	Edit2,
+	Calendar,
+	Check,
 	ChevronDown,
 	ChevronUp,
-	Calendar,
-	X,
+	Edit2,
+	Plus,
 	Search,
-	Check,
+	X,
 } from "lucide-react";
+import {
+	type FormEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useUser } from "@/auth";
+import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { useMentionUsers } from "@/hooks/useMentionUsers";
+import { useToast } from "@/hooks/useToast";
+import { type ProjectMember, projectService } from "@/services/project.service";
+import { commentsService } from "@/services/roadmap.service";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type {
 	AssigneeProfile,
 	Comment,
@@ -23,21 +31,13 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
-import { projectService, type ProjectMember } from "@/services/project.service";
-import { useUser } from "@/auth";
-import { useShallow } from "zustand/react/shallow";
-import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useMentionUsers } from "@/hooks/useMentionUsers";
-import { useToast } from "@/hooks/useToast";
-import { RoadmapModalLayout } from "./RoadmapModalLayout";
-import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { SortableTaskList } from "../widgets/SortableTaskList";
 import { CommentsSection } from "../shared/CommentsSection";
-import { commentsService } from "@/services/roadmap.service";
 import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+import { SortableTaskList } from "../widgets/SortableTaskList";
+import { RoadmapModalLayout } from "./RoadmapModalLayout";
 
 const FEATURE_STATUS_OPTIONS: FeatureStatus[] = [
 	"not_started",

@@ -49,7 +49,6 @@ function buildService(input: {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
   );
 }
 

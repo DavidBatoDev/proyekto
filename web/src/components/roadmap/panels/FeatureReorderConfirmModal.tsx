@@ -48,7 +48,9 @@ export const FeatureReorderConfirmModal = ({
 		>
 			<div
 				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-orange-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
-					isVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-95 opacity-0"
+					isVisible
+						? "translate-y-0 scale-100 opacity-100"
+						: "translate-y-2 scale-95 opacity-0"
 				}`}
 			>
 				<div className="flex items-center justify-between border-b border-orange-100 bg-gradient-to-r from-amber-50 via-orange-50 to-rose-50 px-5 py-4">
@@ -122,6 +124,6 @@ export const FeatureReorderConfirmModal = ({
 				</div>
 			</div>
 		</div>,
-		document.body
+		document.body,
 	);
 };

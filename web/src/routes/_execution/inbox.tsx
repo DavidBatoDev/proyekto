@@ -1,5 +1,5 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
 	ArrowLeft,
@@ -10,20 +10,33 @@ import {
 	MessageSquare,
 	PanelRight,
 } from "lucide-react";
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { useAuthStore, useProfile, useUser } from "@/stores/authStore";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import {
-	type Project,
-	projectService,
-} from "@/services/project.service";
-import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
+	ChatComposer,
+	ChatProfilePanel,
+	ChatUnsendConfirmModal,
+	type MentionCandidate,
+	MessageList,
+	type PendingAttachment,
+	TypingIndicator,
+} from "@/components/project/chat";
+import {
+	forgetAttachmentBlob,
+	rememberAttachmentBlob,
+} from "@/components/project/chat/attachmentPreviewCache";
+import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
+import { resolveMentions } from "@/components/project/chat/mentions";
+import {
+	mergeThreadMessages,
+	type ThreadSender,
+	type ThreadUiMessage,
+} from "@/components/project/chat/thread";
+import {
+	readChatDraftText,
+	useChatDraft,
+	useChatDraftsVersion,
+} from "@/hooks/useChatDraft";
 import {
 	flattenRoomMessages,
 	useDeleteChatMessageMutation,
@@ -34,37 +47,15 @@ import {
 	useSendDmMessageMutation,
 	useToggleChatReactionMutation,
 } from "@/hooks/useChatQueries";
-import { useChatTyping } from "@/hooks/useChatTyping";
 import { useDmRealtime, useProjectsRealtime } from "@/hooks/useChatRealtime";
+import { useChatTyping } from "@/hooks/useChatTyping";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
-import type { ProjectMember } from "@/services/project.service";
+import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatAttachment, ChatRoom } from "@/services/chat.service";
+import type { ProjectMember } from "@/services/project.service";
+import { type Project, projectService } from "@/services/project.service";
 import { uploadService } from "@/services/upload.service";
-import {
-	forgetAttachmentBlob,
-	rememberAttachmentBlob,
-} from "@/components/project/chat/attachmentPreviewCache";
-import {
-	mergeThreadMessages,
-	type ThreadSender,
-	type ThreadUiMessage,
-} from "@/components/project/chat/thread";
-import {
-	ChatComposer,
-	ChatProfilePanel,
-	ChatUnsendConfirmModal,
-	MessageList,
-	TypingIndicator,
-	type PendingAttachment,
-	type MentionCandidate,
-} from "@/components/project/chat";
-import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
-import { resolveMentions } from "@/components/project/chat/mentions";
-import {
-	readChatDraftText,
-	useChatDraft,
-	useChatDraftsVersion,
-} from "@/hooks/useChatDraft";
+import { useAuthStore, useProfile, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/inbox")({
 	validateSearch: (search) => ({
@@ -130,8 +121,7 @@ function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 		null;
 	if (!viewerLastReadAt) return last.sender_id !== userId;
 	return (
-		new Date(last.created_at).getTime() >
-		new Date(viewerLastReadAt).getTime()
+		new Date(last.created_at).getTime() > new Date(viewerLastReadAt).getTime()
 	);
 }
 
@@ -641,8 +631,8 @@ function InboxThread({
 	const draftKey =
 		room.type === "dm"
 			? `dm:${
-					room.participants.find((p) => p.user_id !== currentUserId)
-						?.user_id ?? room.id
+					room.participants.find((p) => p.user_id !== currentUserId)?.user_id ??
+					room.id
 				}`
 			: `channel:${room.id}`;
 	const draft = useChatDraft(draftKey);
@@ -812,13 +802,11 @@ function InboxThread({
 			readMarkTimerRef.current = setTimeout(() => {
 				if (inFlightReadRoomRef.current === room.id) return;
 				inFlightReadRoomRef.current = room.id;
-				void markReadMutation
-					.mutateAsync({ roomId: room.id })
-					.finally(() => {
-						if (inFlightReadRoomRef.current === room.id) {
-							inFlightReadRoomRef.current = null;
-						}
-					});
+				void markReadMutation.mutateAsync({ roomId: room.id }).finally(() => {
+					if (inFlightReadRoomRef.current === room.id) {
+						inFlightReadRoomRef.current = null;
+					}
+				});
 			}, delayMs);
 		},
 		[currentUserId, markReadMutation, room],
@@ -1071,9 +1059,7 @@ function InboxThread({
 				.map((m) => {
 					const name =
 						m.user?.display_name ||
-						[m.user?.first_name, m.user?.last_name]
-							.filter(Boolean)
-							.join(" ") ||
+						[m.user?.first_name, m.user?.last_name].filter(Boolean).join(" ") ||
 						m.user?.email ||
 						"Member";
 					const roleLabel = m.role

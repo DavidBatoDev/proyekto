@@ -46,7 +46,9 @@ describe("parseLogsSearch", () => {
 	});
 
 	it("drops an unknown family but keeps the valid siblings", () => {
-		expect(parseLogsSearch({ family: ["task", "nope"] }).family).toEqual(["task"]);
+		expect(parseLogsSearch({ family: ["task", "nope"] }).family).toEqual([
+			"task",
+		]);
 		expect(parseLogsSearch({ family: "nope" }).family).toBeUndefined();
 	});
 

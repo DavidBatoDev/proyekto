@@ -8,6 +8,7 @@ import { NotificationsModule } from '../../shared/notifications/notifications.mo
 import { ContractsModule } from '../contracts/contracts.module';
 import { UploadsModule } from '../../shared/uploads/uploads.module';
 import { FinanceModule } from '../finance/finance.module';
+import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { FinanceModule } from '../finance/finance.module';
     ContractsModule,
     UploadsModule,
     FinanceModule,
+    QaFixturesModule,
   ],
   controllers: [InvoicesController],
   providers: [

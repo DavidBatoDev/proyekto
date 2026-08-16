@@ -4,7 +4,6 @@ import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
-import { ActivationGuide } from "@/components/project/ActivationGuide";
 import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
 import {
 	deriveTimelineItems,
@@ -19,7 +18,6 @@ import {
 	areProjectBriefFieldsEqual,
 	getOverviewBriefState,
 } from "@/components/project/overview/stateSync";
-import { useActivationChecklist } from "@/hooks/useActivationChecklist";
 import {
 	useInvalidateProjectQueries,
 	useLinkedRoadmapQuery,
@@ -31,6 +29,7 @@ import {
 import {
 	getProjectConsultantMember,
 	hasProjectAdminAccess,
+	isPersonalWorkspace,
 } from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import { projectService } from "@/services/project.service";
@@ -215,13 +214,6 @@ function OverviewPage() {
 	const canEditOverview =
 		isOwnerOnProject || ["owner", "admin", "editor"].includes(memberRole);
 
-	// The activation guide is a home base for "make this project live". Only
-	// project admins see it, and only while the project isn't active yet.
-	const showActivationGuide = isOwnerOnProject && project?.status !== "active";
-	const activationChecklist = useActivationChecklist(projectId, {
-		enabled: showActivationGuide,
-	});
-
 	const summaryHtml = toRichHtml(projectSummary ?? project?.description ?? "");
 
 	const upsertBrief = async (patch: {
@@ -321,19 +313,8 @@ function OverviewPage() {
 			<div className="px-3 py-4 sm:px-5 sm:py-6 md:px-8 md:py-8">
 				<div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
 					<div className="flex flex-col">
-						{showActivationGuide && (
-							<div className="app-slide-up mb-4">
-								<ActivationGuide
-									projectId={projectId}
-									checklist={activationChecklist.data ?? null}
-									isLoading={activationChecklist.isPending}
-									projectStatus={project.status}
-									mode="full"
-								/>
-							</div>
-						)}
 						<BringInAConsultantCard
-							isPersonalWorkspace={Boolean(project.is_personal_workspace)}
+							isPersonalWorkspace={isPersonalWorkspace(project)}
 							hasConsultant={Boolean(getProjectConsultantMember(project))}
 						/>
 						<div className="app-slide-up">

@@ -20,7 +20,9 @@ import { deleteTeam, getTeam, updateTeam } from "@/services/teams.service";
 import { uploadService } from "@/services/upload.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_execution/teams/$teamId/settings/general")({
+export const Route = createFileRoute(
+	"/_execution/teams/$teamId/settings/general",
+)({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) {

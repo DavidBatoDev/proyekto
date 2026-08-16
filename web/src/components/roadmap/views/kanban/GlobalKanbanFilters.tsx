@@ -479,11 +479,11 @@ export function GlobalKanbanFilters({
 						onClick={() => {
 							onSearchChange("");
 							onChange({
-							projectId: filters.projectId,
-							epicId: null,
-							featureId: null,
-							assigneeIds: [],
-						});
+								projectId: filters.projectId,
+								epicId: null,
+								featureId: null,
+								assigneeIds: [],
+							});
 						}}
 						className={`shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${
 							hasAny ? "" : "invisible"

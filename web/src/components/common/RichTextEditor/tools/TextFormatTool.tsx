@@ -1,5 +1,5 @@
-import { Type, ChevronDown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { ChevronDown, Type } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface TextFormatToolProps {
 	onCommand: (command: string, value?: string) => void;

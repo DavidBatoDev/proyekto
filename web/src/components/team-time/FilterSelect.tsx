@@ -117,9 +117,7 @@ export function FilterSelect({
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
 				className={`inline-flex items-center gap-2 rounded-lg border bg-white py-1.5 pl-2.5 pr-2 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 ${
-					open
-						? "border-sky-400 ring-1 ring-sky-200"
-						: "border-slate-200"
+					open ? "border-sky-400 ring-1 ring-sky-200" : "border-slate-200"
 				}`}
 			>
 				{selected?.avatarUrl !== undefined ? (

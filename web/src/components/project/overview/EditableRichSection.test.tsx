@@ -2,8 +2,8 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EditableRichSection } from "./EditableRichSection";
 import type { EditableRichSectionProps } from "./EditableRichSection";
+import { EditableRichSection } from "./EditableRichSection";
 
 vi.mock("@/components/common/RichTextEditor", () => ({
 	RichTextEditor: ({

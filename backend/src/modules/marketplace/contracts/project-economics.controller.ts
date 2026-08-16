@@ -11,7 +11,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import { UpdateProjectEconomicsDto } from './dto/contracts.dto';
-import { ProjectActivationService } from './project-activation.service';
+import { ProjectEconomicsService } from './project-economics.service';
 
 /**
  * Project-scoped money settings. These live under the `projects` prefix
@@ -23,15 +23,15 @@ import { ProjectActivationService } from './project-activation.service';
  */
 @UseGuards(SupabaseAuthGuard)
 @Controller('projects')
-export class ProjectActivationController {
-  constructor(private readonly activation: ProjectActivationService) {}
+export class ProjectEconomicsController {
+  constructor(private readonly economics: ProjectEconomicsService) {}
 
   @Get(':projectId/economics')
   getEconomics(
     @CurrentUser() user: AuthenticatedUser,
     @Param('projectId', ParseUUIDPipe) projectId: string,
   ) {
-    return this.activation.getEconomics(user.id, projectId);
+    return this.economics.getEconomics(user.id, projectId);
   }
 
   @Put(':projectId/economics')
@@ -40,14 +40,6 @@ export class ProjectActivationController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: UpdateProjectEconomicsDto,
   ) {
-    return this.activation.upsertEconomics(user.id, projectId, dto);
-  }
-
-  @Get(':projectId/activation-checklist')
-  getChecklist(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-  ) {
-    return this.activation.getChecklist(user.id, projectId);
+    return this.economics.upsertEconomics(user.id, projectId, dto);
   }
 }

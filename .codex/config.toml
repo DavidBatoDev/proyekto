@@ -1,5 +1,6 @@
 [mcp_servers.supabase]
 url = "https://mcp.supabase.com/mcp?project_ref=byvbnkpiselvvulsvxgo"
+startup_timeout_sec = 120
 
 [mcp_servers.cloudflare_api]
 url = "https://mcp.cloudflare.com/mcp"

@@ -1,12 +1,4 @@
-import {
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-	useEffect,
-	type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
 	Archive,
 	ArchiveRestore,
@@ -20,7 +12,15 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+	type RefObject,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { createPortal } from "react-dom";
 import {
 	useDeleteRoadmapAiSession,
 	useRoadmapAiSessionsList,

@@ -68,8 +68,6 @@ describe('SupabaseProjectsRepository create', () => {
     await repo.create('user-1', {
       title: 'Apollo',
       description: '  Build the launch experience.  ',
-      category: 'legacy-client-field',
-      skills: ['legacy-client-field'],
     });
 
     expect(projectInsert).toHaveBeenCalledWith(
@@ -78,8 +76,6 @@ describe('SupabaseProjectsRepository create', () => {
         title: 'Apollo',
       }),
     );
-    expect(projectInsert.mock.calls[0]?.[0]).not.toHaveProperty('category');
-    expect(projectInsert.mock.calls[0]?.[0]).not.toHaveProperty('skills');
     expect(briefInsert).toHaveBeenCalledWith({
       project_id: 'project-1',
       project_summary: 'Build the launch experience.',

@@ -4,12 +4,12 @@ import { Avatar } from "@/components/common/Avatar";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { ACTION_FAMILIES, ACTION_FAMILY_LABELS } from "./activityCatalog";
 import {
-	DATE_PRESETS,
 	DATE_PRESET_LABELS,
+	DATE_PRESETS,
 	type DatePreset,
+	hasActiveLogsFilters,
 	type LogsSearch,
 	type ResolvedLogsSearch,
-	hasActiveLogsFilters,
 	toggleInList,
 } from "./logsSearch";
 
