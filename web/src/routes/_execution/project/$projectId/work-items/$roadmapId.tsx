@@ -1,13 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-	AlertCircle,
-	ListChecks,
-	Loader2,
-	Plus,
-	ReceiptText,
-} from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { AlertCircle, ListChecks, Loader2, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { ProjectPageHeader } from "@/components/project/ProjectPageHeader";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
 import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { RoadmapCanvasOverlays } from "@/components/roadmap/views/roadmap/components/RoadmapCanvasOverlays";
@@ -25,7 +20,6 @@ export const Route = createFileRoute(
 
 function WorkItemsBoardPage() {
 	const { projectId, roadmapId } = Route.useParams();
-	const navigate = useNavigate();
 	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 	const user = useUser();
 	const { broadcastDataChanged } = useRoadmapDataSync(roadmapId, user?.id);
@@ -78,47 +72,22 @@ function WorkItemsBoardPage() {
 
 	return (
 		<div className="relative flex flex-col h-full min-h-0 bg-background text-foreground">
-			{/* Header */}
-			<div className="px-3 py-2 bg-card text-card-foreground border-b border-border shrink-0 md:px-6 md:py-2.5">
-				<div className="flex items-center justify-between gap-4">
-					<div className="flex items-center gap-2.5">
-						<div className="w-7 h-7 rounded-lg bg-[#0f172a]/10 flex items-center justify-center shrink-0 md:w-8 md:h-8">
-							<ListChecks className="w-4 h-4 text-[#0f172a]" />
-						</div>
-						<div className="leading-tight">
-							<h1 className="text-sm font-semibold text-slate-900">Board</h1>
-							<p className="hidden text-[11px] text-slate-400 md:block">
-								Every task in this roadmap, by status
-							</p>
-						</div>
-					</div>
-
-					<div className="flex items-center gap-2 shrink-0">
-						<button
-							type="button"
-							onClick={() =>
-								navigate({
-									to: "/finance",
-									search: { tab: "invoices", projectId },
-								})
-							}
-							className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-						>
-							<ReceiptText className="w-3.5 h-3.5" />
-							Invoices
-						</button>
-						<button
-							type="button"
-							onClick={() => setIsBrowserOpen(true)}
-							disabled={isLoading}
-							className="inline-flex items-center gap-1.5 rounded-md bg-primary text-white px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-						>
-							<Plus className="w-3.5 h-3.5" />
-							Add work items
-						</button>
-					</div>
-				</div>
-			</div>
+			<ProjectPageHeader
+				icon={ListChecks}
+				title="Board"
+				subtitle="Every task in this roadmap, by status"
+				actions={
+					<button
+						type="button"
+						onClick={() => setIsBrowserOpen(true)}
+						disabled={isLoading}
+						className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<Plus className="w-3.5 h-3.5" />
+						Add work items
+					</button>
+				}
+			/>
 
 			{/* Body */}
 			<div className="flex-1 min-h-0 flex flex-col">

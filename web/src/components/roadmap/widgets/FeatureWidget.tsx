@@ -37,6 +37,7 @@ import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+import { FeatureGlyph, TaskGlyph } from "../shared/NodeGlyph";
 import {
 	type CanvasNodeProps,
 	Handle,
@@ -257,6 +258,8 @@ const CanvasTaskRow = memo(
 						<CheckCircle2 className="h-3 w-3" />
 					</button>
 				)}
+
+				<TaskGlyph size={14} />
 
 				<span
 					className={`min-w-0 flex-1 truncate text-xs font-medium ${
@@ -684,9 +687,12 @@ export const FeatureWidget = memo(
 						<div className="flex items-start justify-between gap-2 mb-2">
 							<div className="flex-1 min-w-0">
 								<div className="flex items-center gap-2 mb-1"></div>
-								<h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
-									{feature.title}
-								</h4>
+								<div className="flex items-start gap-2">
+									<FeatureGlyph size={20} className="mt-px" />
+									<h4 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
+										{feature.title}
+									</h4>
+								</div>
 							</div>
 
 							{/* Actions */}

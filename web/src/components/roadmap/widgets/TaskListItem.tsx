@@ -22,6 +22,7 @@ import {
 	SemanticBadge,
 	TaskStatusBadge,
 } from "@/components/common/SemanticBadge";
+import { TaskGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import { useRunningTaskId } from "@/components/team-time/useActiveTimer";
 import { useToast } from "@/contexts/ToastContext";
@@ -433,7 +434,7 @@ export const TaskListItem = memo(
 				ref={setDropRef}
 				data-task-id={task.id}
 				className={`nodrag flex items-center transition-colors border group ${
-					isCompact ? "gap-2 px-0 py-0" : "gap-3 px-4 py-3"
+					isCompact ? "h-6 gap-1.5 px-0 py-0" : "gap-3 px-4 py-3"
 				} ${isPulsing ? "roadmap-task-row-pulse" : ""} ${
 					isOptimisticTask ? "opacity-75" : ""
 				} ${
@@ -489,7 +490,7 @@ export const TaskListItem = memo(
 						setIsCheckboxMenuOpen(true);
 					}}
 					className={`shrink-0 rounded border-2 flex items-center justify-center transition-all ${
-						isCompact ? "w-4 h-4" : "w-5 h-5"
+						isCompact ? "w-3.5 h-3.5" : "w-5 h-5"
 					} ${checkboxStyle.box}`}
 					title={isCompleted ? "Mark as incomplete" : "Mark as complete"}
 				>
@@ -536,6 +537,9 @@ export const TaskListItem = memo(
 						document.body,
 					)}
 
+				{/* Node-kind glyph, matching the epic and feature widgets. */}
+				<TaskGlyph size={isCompact ? 14 : 18} />
+
 				{/* Task Title */}
 				<Tooltip title={task.title} enterDelay={600} placement="top" arrow>
 					<div className="flex-1 min-w-0">
@@ -577,7 +581,7 @@ export const TaskListItem = memo(
 					>
 						<TaskStatusBadge
 							status={task.status}
-							className={isCompact ? "text-[10px]" : "text-xs"}
+							className={isCompact ? "py-0 text-[10px]" : "text-xs"}
 							trailing={
 								<ChevronDown
 									className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"}

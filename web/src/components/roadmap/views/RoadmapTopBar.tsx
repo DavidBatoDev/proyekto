@@ -88,6 +88,8 @@ interface RoadmapTopBarProps {
 	onShare?: () => void;
 	onOpenChatPanel?: () => void;
 	projectCta?: ReactNode;
+	/** Which page this bar is heading — see RoadmapPageIdentity / TimelinePageIdentity. */
+	identity?: ReactNode;
 }
 
 export function RoadmapTopBar({
@@ -95,6 +97,7 @@ export function RoadmapTopBar({
 	onShare,
 	onOpenChatPanel,
 	projectCta,
+	identity,
 }: RoadmapTopBarProps) {
 	const {
 		epics,
@@ -147,9 +150,11 @@ export function RoadmapTopBar({
 	return (
 		<div className="bg-gray-100 border-b border-gray-200 flex items-center justify-between w-full shrink-0 z-10 overflow-hidden">
 			<div className="flex items-center flex-1 min-w-0 h-full overflow-hidden">
-				{/* Spacer keeping the epic tabs aligned with the canvas: the top bar
-				    spans the full width, including the left panel's column. */}
-				<div className="shrink-0" style={{ width: LEFT_PANEL_WIDTH }} />
+				{/* Page identity, or a spacer keeping the epic tabs aligned with the
+				    canvas: the top bar spans the left panel's column too. */}
+				{identity ?? (
+					<div className="shrink-0" style={{ width: LEFT_PANEL_WIDTH }} />
+				)}
 
 				<div className="flex-1 min-w-0 overflow-x-auto no-scrollbar h-full">
 					<div className="flex items-center h-full w-max min-w-full">

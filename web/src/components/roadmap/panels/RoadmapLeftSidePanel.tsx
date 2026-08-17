@@ -31,6 +31,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
+import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useToast } from "@/hooks/useToast";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
@@ -249,8 +250,9 @@ function SortableFeatureRow({
 						/>
 					</button>
 				) : (
-					<div className="w-2 h-2 rounded-full bg-gray-300 ml-0.5 mr-0.5" />
+					<span className="w-3.5 shrink-0" />
 				)}
+				<FeatureGlyph size={14} className="mr-0.5" />
 				<Tooltip title={feature.title} enterDelay={600} placement="right" arrow>
 					<span
 						onClick={() => {
@@ -1175,8 +1177,9 @@ function ExplorerPanel({
 																	/>
 																</button>
 															) : (
-																<div className="w-2 h-2 rounded-full bg-gray-300 ml-1 mr-0.5" />
+																<span className="w-4 shrink-0" />
 															)}
+															<EpicGlyph size={16} className="mr-1" />
 															<Tooltip
 																title={epic.title}
 																enterDelay={600}
@@ -1274,8 +1277,8 @@ function ExplorerPanel({
 																				{explorerConfig.showTaskRows &&
 																					isFeatureExpanded &&
 																					tasks.length > 0 && (
-																						<div className="ml-2 mt-1 mb-1 overflow-hidden rounded-lg border border-border bg-card text-card-foreground">
-																							<div className="flex flex-col gap-0.5 px-2 py-1">
+																						<div className="ml-7 mt-1 mb-1 overflow-hidden rounded-lg border border-border bg-card text-card-foreground">
+																							<div className="flex flex-col px-2 py-0.5">
 																								{tasks.map((task) => (
 																									<TaskListItem
 																										key={task.id}

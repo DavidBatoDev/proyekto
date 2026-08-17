@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Epic">
+  <defs>
+    <linearGradient id="epicTile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B94E3"/>
+      <stop offset="1" stop-color="#5E6AD2"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#epicTile)"/>
+  <!-- Summit: the far peak sits behind, so the flagged peak reads as the goal. -->
+  <path d="M32 18 46 46H18Z" fill="#FFFFFF" fill-opacity="0.32"/>
+  <path d="M26 26 40 46H12Z" fill="#FFFFFF" fill-opacity="0.9"/>
+  <path d="M32 16v13" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M33.5 16h9l-3 4 3 4h-9z" fill="#FFFFFF"/>
+</svg>

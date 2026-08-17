@@ -55,8 +55,10 @@ import { useUser } from "@/stores/authStore";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
 import { type CanvasViewMode, useRoadmapStore } from "@/stores/roadmapStore";
 import type { Roadmap, RoadmapTask } from "@/types/roadmap";
+import { RoadmapPageIdentity } from "../../RoadmapPageIdentity";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
+import { TimelinePageIdentity } from "../../TimelinePageIdentity";
 import type { RoadmapPerformanceMode } from "../models/types";
 import { MobileRoadmapView } from "./MobileRoadmapView";
 
@@ -958,6 +960,13 @@ export function RoadmapViewContent({
 					<>
 						{/* Top navigation bar: view tabs + share/export */}
 						<RoadmapTopBar
+							identity={
+								canvasViewMode === "milestones" ? (
+									<TimelinePageIdentity />
+								) : (
+									<RoadmapPageIdentity />
+								)
+							}
 							onEditBrief={() => setIsBriefOpen(true)}
 							onShare={() => setIsShareModalOpen(true)}
 							onOpenChatPanel={() => {

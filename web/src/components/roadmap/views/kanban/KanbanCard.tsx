@@ -1,12 +1,17 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, Layers3, ListTree } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import {
 	type CSSProperties,
 	forwardRef,
 	type HTMLAttributes,
 	memo,
 } from "react";
+import {
+	EpicGlyph,
+	FeatureGlyph,
+	TaskGlyph,
+} from "@/components/roadmap/shared/NodeGlyph";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { KanbanTaskContext } from "./types";
 
@@ -65,23 +70,26 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 						</span>
 					</div>
 				)}
-				<div className="text-sm font-medium text-gray-900 line-clamp-2">
-					{task.title}
+				<div className="flex items-start gap-1.5">
+					<TaskGlyph size={14} className="mt-0.5" />
+					<div className="text-sm font-medium text-gray-900 line-clamp-2">
+						{task.title}
+					</div>
 				</div>
 
 				<div className="mt-2.5 flex flex-wrap gap-1.5 items-start">
 					<span
-						className="kanban-epic-chip inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
+						className="kanban-epic-chip inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
 						title={epic.title}
 					>
-						<Layers3 className="h-3 w-3 shrink-0" />
+						<EpicGlyph size={12} />
 						{epic.title}
 					</span>
 					<span
 						className="inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded border border-border bg-muted text-[11px] font-medium text-foreground truncate group-hover:bg-accent transition-colors"
 						title={feature.title}
 					>
-						<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
+						<FeatureGlyph size={12} />
 						{feature.title}
 					</span>
 					{milestone && (

@@ -14,15 +14,10 @@ import {
 	useSensors,
 } from "@dnd-kit/core";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	CalendarDays,
-	ChevronDown,
-	GripVertical,
-	Layers3,
-	ListTree,
-} from "lucide-react";
+import { CalendarDays, ChevronDown, GripVertical } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useToast } from "@/hooks/useToast";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
@@ -50,12 +45,12 @@ function TaskDragPreview({ row }: { row: KanbanTaskContext }) {
 				{task.title}
 			</p>
 			<div className="mt-1.5 flex flex-wrap gap-1">
-				<span className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
-					<Layers3 className="h-3 w-3 shrink-0" />
+				<span className="kanban-epic-chip inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
+					<EpicGlyph size={12} />
 					{epic.title}
 				</span>
 				<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-medium text-foreground truncate max-w-[130px]">
-					<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
+					<FeatureGlyph size={12} />
 					{feature.title}
 				</span>
 			</div>
@@ -113,12 +108,12 @@ function DraggableTaskRow({
 					{task.title}
 				</p>
 				<div className="mt-1.5 flex flex-wrap gap-1">
-					<span className="kanban-epic-chip inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
-						<Layers3 className="h-3 w-3 shrink-0" />
+					<span className="kanban-epic-chip inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold truncate max-w-[130px]">
+						<EpicGlyph size={12} />
 						{epic.title}
 					</span>
 					<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-medium text-foreground truncate max-w-[130px]">
-						<ListTree className="h-3 w-3 shrink-0 text-muted-foreground" />
+						<FeatureGlyph size={12} />
 						{feature.title}
 					</span>
 				</div>

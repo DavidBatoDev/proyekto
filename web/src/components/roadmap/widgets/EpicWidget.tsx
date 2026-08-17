@@ -19,6 +19,7 @@ import {
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+import { EpicGlyph } from "../shared/NodeGlyph";
 import {
 	type CanvasNodeProps,
 	Handle,
@@ -344,9 +345,12 @@ export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 								/>
 							)}
 						</div>
-						<h3 className="font-semibold text-gray-900 text-base leading-tight wrap-break-word">
-							{epic.title}
-						</h3>
+						<div className="flex items-start gap-2">
+							<EpicGlyph size={22} className="mt-0.5" />
+							<h3 className="font-semibold text-gray-900 text-base leading-tight wrap-break-word">
+								{epic.title}
+							</h3>
+						</div>
 					</div>
 
 					{/* Actions */}
