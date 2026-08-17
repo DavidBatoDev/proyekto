@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-16 · **Status:** current (all 15 sections written)
+> **Last updated:** 2026-08-18 · **Status:** current (all 15 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -41,12 +41,17 @@ site, so links are relative filesystem paths. Every page carries a
 | 11 | [Feature Domains](./11-domains/README.md) | Participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
 | 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree, identity & enrollment | **draft** |
-| 14 | [Engagements](./14-engagement/README.md) | Locked P4b tables, scenarios, lifecycle rules, commercial time, and privacy boundaries | **draft** |
+| 14 | [Engagements](./14-engagement/README.md) | P4b tables, the integration surface, scenarios, lifecycle rules, commercial time, and privacy boundaries | **current** |
 
-> **⚠️ Sections 13 and 14 are exceptions to the current-state rule.** Everything in `00`–`12`
-> describes shipped behaviour. `13-proposals/` holds general designs that do not exist yet;
-> `14-engagement/` is the dedicated reference for P4b's applied schema and inactive runtime.
-> Their pages remain `Status: draft` until the corresponding runtime behavior ships.
+> **⚠️ Section 13 is the exception to the current-state rule.** Everything in `00`–`12`
+> describes shipped behaviour, and `13-proposals/` holds general designs that do not exist
+> yet; its pages remain `Status: draft` until the corresponding runtime behavior ships.
+>
+> `14-engagement/` shipped its schema and activation path on 2026-08-18 and is now
+> current-state, but the runtime that consumes engagements — assignments, time submission,
+> approvals, and redacted projections — is still unbuilt. Its pages mark which behavior is
+> live and which is intended; start from
+> [Integration surface](./14-engagement/integration.md).
 
 ## Also at the repo root
 

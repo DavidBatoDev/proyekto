@@ -1,10 +1,13 @@
 # Engagement Lifecycle and Edge Cases
 
-> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
+> **Last updated:** 2026-08-18 · **Status:** current
 
-> **⚠️ Core schema applied; runtime migration authored but not applied.** These rules
-> define the P4b runtime contract. The backend cutover is deploy-gated by
-> `20260816090000_contract_positions_runtime.sql`.
+> **⚠️ The activation rules are enforced; the later-stage rules are not yet reachable.**
+> `20260816090000_contract_positions_runtime.sql` was applied 2026-08-18 and its backend
+> is deployed, so everything on this page about signing, activation, amendment rollover,
+> and party immutability is enforced today — in the database, inside
+> `sign_contract_position_and_activate`. Rules covering assignments, time submission, and
+> approval describe intended behavior with no runtime behind them yet.
 
 Engagement records are durable financial and legal history. Most corrections therefore
 append, end, reopen, or supersede records instead of mutating the facts that explain an

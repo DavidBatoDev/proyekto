@@ -1,11 +1,14 @@
 # Engagement Data Model
 
-> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
+> **Last updated:** 2026-08-18 · **Status:** current
 
-> **⚠️ Core schema applied; runtime migration authored but not applied.**
-> `20260816090000_contract_positions_runtime.sql` activates the P4b contract path after
-> deployment. Until then, existing runtime behavior continues to use the legacy contract,
-> project, team-rate, and time-log paths.
+> **⚠️ Every table below exists in production, but most are still unwritten and all are
+> unread.** `20260816090000_contract_positions_runtime.sql` was applied 2026-08-18 and its
+> backend is deployed, so signing now populates `engagements`, `engagement_parties`,
+> `engagement_project_links`, `engagement_time_settings`, and `engagement_time_rates`.
+> `engagement_assignments`, `engagement_time_approvals`, and
+> `engagement_time_approval_items` have no writer yet. No backend code reads any of these
+> tables — see [Integration surface](./integration.md).
 
 The schema separates four facts that are easy to conflate: the legal relationship, its
 parties, the projects where it is used, and the workers whose activity has commercial

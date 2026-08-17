@@ -1,10 +1,12 @@
 # Engagement Scenarios
 
-> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
+> **Last updated:** 2026-08-18 · **Status:** current
 
-> **⚠️ Core schema applied; runtime migration authored but not applied.** The rows below
-> describe the P4b runtime behavior once `20260816090000_contract_positions_runtime.sql`
-> and its matching backend are deployed. They are illustrative, not production records or a backfill.
+> **⚠️ Illustrative rows, not production records.** `20260816090000_contract_positions_runtime.sql`
+> was applied 2026-08-18 and its backend is deployed, so the signing and activation rows
+> below are what the system now writes. Rows involving assignments, time logs, and
+> approvals show the intended shape of a slice that has no runtime yet. Nothing here was
+> backfilled — production held 0 engagement rows at deploy time.
 
 These scenarios use the same people throughout so the relationship between tables stays
 visible.

@@ -1,13 +1,19 @@
 # Engagements
 
-> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
+> **Last updated:** 2026-08-18 · **Status:** current
 
-> **⚠️ Core schema applied; runtime migration authored but not applied.** The additive schema is defined in
-> [`20260814020000_engagement_core.sql`](../../supabase/migrations/20260814020000_engagement_core.sql)
-> and [`20260814021000_engagement_time.sql`](../../supabase/migrations/20260814021000_engagement_time.sql),
-> and is applied in production. `20260816090000_contract_positions_runtime.sql`
-> adds the P4b activation path; it must be applied before the matching backend and
-> web deploy. Until then, no runtime path writes engagement rows.
+> **⚠️ Activation is live; the consuming runtime is not.** All three migrations are
+> applied in production —
+> [`20260814020000_engagement_core.sql`](../../supabase/migrations/20260814020000_engagement_core.sql),
+> [`20260814021000_engagement_time.sql`](../../supabase/migrations/20260814021000_engagement_time.sql),
+> and [`20260816090000_contract_positions_runtime.sql`](../../supabase/migrations/20260816090000_contract_positions_runtime.sql)
+> (applied 2026-08-18) — and the matching backend and web are deployed.
+>
+> Engagement rows are therefore created by contract signing, but they are currently
+> **write-only**: no backend route and no web surface reads any engagement table yet.
+> Assignments, attributed time logs, submission and approval, and position-redacted
+> projections remain unbuilt. Read [Integration surface](./integration.md) before
+> building against this model.
 
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making
@@ -18,6 +24,7 @@ authority; engagements organize their operational and financial effects.
 
 | Page | What it answers |
 | --- | --- |
+| [Integration surface](./integration.md) | What P4b actually exposes today, what it does not, and the rules a new marketplace surface must hold |
 | [Data model](./data-model.md) | What every engagement table stores and which invariants the database enforces |
 | [Scenarios](./scenarios.md) | What rows exist when a client hires a consultant, a consultant hires Talent, work spans projects, rates change, or a project is deleted |
 | [Lifecycle and edge cases](./lifecycle-and-edge-cases.md) | When records are created, what can change, who approves time, and how exceptional cases behave |
