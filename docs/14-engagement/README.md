@@ -1,11 +1,13 @@
 # Engagements
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
 
-> **⚠️ Schema applied; runtime not active.** The additive schema is defined in
+> **⚠️ Core schema applied; runtime migration authored but not applied.** The additive schema is defined in
 > [`20260814020000_engagement_core.sql`](../../supabase/migrations/20260814020000_engagement_core.sql)
 > and [`20260814021000_engagement_time.sql`](../../supabase/migrations/20260814021000_engagement_time.sql),
-> and is applied in production. No runtime path writes these tables yet.
+> and is applied in production. `20260816090000_contract_positions_runtime.sql`
+> adds the P4b activation path; it must be applied before the matching backend and
+> web deploy. Until then, no runtime path writes engagement rows.
 
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making
@@ -56,6 +58,8 @@ signed contract version
 | Does an assignment grant project access? | No; `project_access` remains the only execution authorization source |
 | Can a Client see Talent cost? | No; Talent identity, rates, payouts, and Consultant margin stay private |
 | Are existing engagement/position links backfilled? | No; nullable links preserve the legacy path. Existing contracts only receive deterministic relationship/scope defaults. |
+| How are private counterparties selected? | A verified Consultant resolves an existing Proyekto account by exact email; public freelancer status is not required. |
+| Does signing create an assignment? | No. Activation creates the engagement, parties, scope, settings, and rates only; assignments remain an explicit later workflow. |
 
 ## Two independent commercial sides
 

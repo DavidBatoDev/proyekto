@@ -25,8 +25,42 @@ export const CONTRACT_STATUSES = [
 ] as const;
 export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
 
-export const BILLING_MODES = ['retainer', 'time_based', 'hybrid'] as const;
+export const BILLING_MODES = [
+  'retainer',
+  'time_based',
+  'hybrid',
+  'fixed',
+] as const;
 export type BillingMode = (typeof BILLING_MODES)[number];
+
+export const COMPENSATION_MODES = [
+  'fixed',
+  'monthly',
+  'hourly',
+  'hybrid',
+] as const;
+export type CompensationMode = (typeof COMPENSATION_MODES)[number];
+
+export const CONTRACT_RELATIONSHIP_KINDS = [
+  'client_services',
+  'talent_services',
+] as const;
+export type ContractRelationshipKind =
+  (typeof CONTRACT_RELATIONSHIP_KINDS)[number];
+
+export const CONTRACT_SCOPE_MODES = ['project_specific', 'flexible'] as const;
+export type ContractScopeMode = (typeof CONTRACT_SCOPE_MODES)[number];
+
+export const TIME_TRACKING_MODES = ['disabled', 'optional', 'required'] as const;
+export const TIME_APPROVAL_MODES = [
+  'none',
+  'provider_submit_hirer_approve',
+] as const;
+export const CLIENT_HOURS_DETAIL_LEVELS = [
+  'none',
+  'summary',
+  'detailed',
+] as const;
 
 export const INVOICE_CADENCES = ['monthly', 'semi_monthly', 'custom'] as const;
 export type InvoiceCadence = (typeof INVOICE_CADENCES)[number];
@@ -108,6 +142,14 @@ export class ContractServiceDto {
  * executable. Drafts remain progressively editable.
  */
 export class ContractTermsDto {
+  @IsOptional()
+  @IsIn(CONTRACT_RELATIONSHIP_KINDS)
+  relationship_kind?: ContractRelationshipKind;
+
+  @IsOptional()
+  @IsIn(CONTRACT_SCOPE_MODES)
+  scope_mode?: ContractScopeMode;
+
   @IsOptional() @IsIn(PROVIDER_KINDS) provider_kind?: ProviderKind;
   @IsOptional() @IsString() @MaxLength(200) provider_name?: string;
   @IsOptional() @IsString() @MaxLength(500) provider_address?: string;
@@ -123,6 +165,8 @@ export class ContractTermsDto {
 
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsIn(BILLING_MODES) billing_mode?: BillingMode;
+  /** Generic API alias. Legacy callers can continue using billing_mode. */
+  @IsOptional() @IsIn(COMPENSATION_MODES) compensation_mode?: CompensationMode;
   @IsOptional() @IsIn(BILLING_TIMINGS) billing_timing?: BillingTiming;
 
   @IsOptional()
@@ -131,11 +175,31 @@ export class ContractTermsDto {
   @Min(0)
   recurring_fee?: number | null;
 
+  /** Generic API alias for recurring_fee. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  monthly_rate?: number | null;
+
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   client_hourly_rate?: number | null;
+
+  /** Generic API alias for client_hourly_rate. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  hourly_rate?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fixed_fee?: number | null;
 
   @IsOptional()
   @Type(() => Number)
@@ -165,6 +229,37 @@ export class ContractTermsDto {
   @IsOptional() @IsString() @MaxLength(12) invoice_number_prefix?: string;
   @IsOptional() @IsString() @MaxLength(300) service_description?: string;
   @IsOptional() @IsString() @MaxLength(200) payment_method?: string;
+
+  @IsOptional()
+  @IsIn(TIME_TRACKING_MODES)
+  time_tracking_mode?:
+    | 'disabled'
+    | 'optional'
+    | 'required';
+  @IsOptional()
+  @IsIn(TIME_APPROVAL_MODES)
+  time_approval_mode?:
+    | 'none'
+    | 'provider_submit_hirer_approve';
+  @IsOptional() @IsBoolean() allow_manual_time?: boolean;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([0, 5, 6, 10, 15, 30])
+  time_rounding_minutes?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  weekly_time_limit_minutes?: number | null;
+
+  @IsOptional()
+  @IsIn(CLIENT_HOURS_DETAIL_LEVELS)
+  client_hours_detail_level?:
+    | 'none'
+    | 'summary'
+    | 'detailed';
 
   @IsOptional() @IsDateString() service_start_date?: string;
 
@@ -203,8 +298,12 @@ export class ContractTermsDto {
 }
 
 export class CreateContractDto extends ContractTermsDto {
-  @IsUUID()
-  project_id!: string;
+  @IsOptional() @IsUUID()
+  project_id?: string | null;
+
+  /** Existing account selected through exact-email resolution. */
+  @IsOptional() @IsUUID()
+  counterparty_user_id?: string;
 }
 
 export class UpdateContractDto extends ContractTermsDto {}
@@ -251,8 +350,11 @@ export class ReseedProviderDto {
 }
 
 export class SignContractDto {
-  @IsIn(['consultant', 'client'])
-  party!: 'consultant' | 'client';
+  @IsOptional() @IsIn(['consultant', 'client'])
+  party?: 'consultant' | 'client';
+
+  @IsOptional() @IsIn(['hirer', 'provider'])
+  position?: 'hirer' | 'provider';
 
   @IsString()
   @MaxLength(200)
@@ -286,6 +388,12 @@ export class SignContractDto {
   @Min(-3)
   @Max(3)
   signature_offset_y?: number;
+}
+
+export class ResolveContractCounterpartyDto {
+  @IsString()
+  @MaxLength(320)
+  email!: string;
 }
 
 export class UnsignContractDto {

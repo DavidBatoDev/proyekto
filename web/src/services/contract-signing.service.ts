@@ -31,6 +31,8 @@ export interface ContractDocumentView {
 	id: string;
 	contract_number: string | null;
 	status: ContractStatus;
+	relationship_kind: "client_services" | "talent_services";
+	scope_mode: "project_specific" | "flexible";
 	provider_kind: ProviderKind;
 	provider_name: string | null;
 	provider_address: string | null;
@@ -42,9 +44,10 @@ export interface ContractDocumentView {
 	client_tin: string | null;
 	client_email: string | null;
 	currency: string;
-	billing_mode: "retainer" | "time_based" | "hybrid";
+	billing_mode: "retainer" | "time_based" | "hybrid" | "fixed";
 	billing_timing: BillingTiming;
 	recurring_fee: number | null;
+	fixed_fee: number | null;
 	client_hourly_rate: number | null;
 	included_hours: number | null;
 	invoice_cadence: "monthly" | "semi_monthly" | "custom";

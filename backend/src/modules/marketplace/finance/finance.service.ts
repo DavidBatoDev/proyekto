@@ -77,6 +77,7 @@ export class FinanceService {
         .from('contracts')
         .select('id, project_id, status, version, updated_at')
         .in('project_id', ids)
+        .eq('relationship_kind', 'client_services')
         .order('version', { ascending: false }),
     ]);
     if (invoiceResult.error) throw new Error(invoiceResult.error.message);
@@ -243,29 +244,46 @@ export class FinanceService {
     );
     const projectIds = projects.map((project) => project.id);
     const includeSevered = !query.project_id && !query.project_status;
-    if (projectIds.length === 0 && !includeSevered) {
+    const { data: positionedContracts, error: positionedContractsError } =
+      includeSevered
+        ? await this.supabase
+            .from('contract_positions')
+            .select('contract_id')
+            .eq('user_id', callerId)
+            .eq('capacity', 'consultant')
+        : { data: [], error: null };
+    if (positionedContractsError) {
+      throw new Error(positionedContractsError.message);
+    }
+    const allPositionedContractIds = (
+      (positionedContracts ?? []) as Array<{ contract_id: string }>
+    ).map((row) => row.contract_id);
+    const positionedContractIds = includeSevered
+      ? allPositionedContractIds
+      : [];
+    if (projectIds.length === 0 && positionedContractIds.length === 0 && !includeSevered) {
       return { items: [], total: 0 };
     }
     const offset = (query.page - 1) * query.limit;
     let contractsQuery = this.supabase
       .from('contracts')
       .select(
-        'id, project_id, project_title_snapshot, consultant_user_id, contract_number, status, version, currency, billing_mode, recurring_fee, client_name, service_start_date, service_end_date, created_at, updated_at',
+        'id, project_id, project_title_snapshot, consultant_user_id, relationship_kind, scope_mode, engagement_id, contract_number, status, version, currency, billing_mode, fixed_fee, recurring_fee, client_hourly_rate, client_name, provider_name, service_start_date, service_end_date, created_at, updated_at',
         { count: 'exact' },
       )
       .order('updated_at', { ascending: false })
       .range(offset, offset + query.limit - 1);
-    if (projectIds.length > 0 && includeSevered) {
-      contractsQuery = contractsQuery.or(
-        `project_id.in.(${projectIds.join(',')}),and(project_id.is.null,consultant_user_id.eq.${callerId})`,
-      );
-    } else if (projectIds.length > 0) {
-      contractsQuery = contractsQuery.in('project_id', projectIds);
-    } else {
-      contractsQuery = contractsQuery
-        .is('project_id', null)
-        .eq('consultant_user_id', callerId);
-    }
+    const contractArms = [
+      ...(projectIds.length > 0 ? [`project_id.in.(${projectIds.join(',')})`] : []),
+      ...(positionedContractIds.length > 0
+        ? [`id.in.(${positionedContractIds.join(',')})`]
+        : []),
+      ...(includeSevered
+        ? [`and(project_id.is.null,consultant_user_id.eq.${callerId})`]
+        : []),
+    ];
+    if (contractArms.length === 0) return { items: [], total: 0 };
+    contractsQuery = contractsQuery.or(contractArms.join(','));
     if (query.contract_status) {
       contractsQuery = contractsQuery.eq('status', query.contract_status);
     }

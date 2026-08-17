@@ -1,9 +1,10 @@
 # Engagement Lifecycle and Edge Cases
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
 
-> **⚠️ Schema applied; runtime not active.** These rules define the intended P4b runtime
-> contract. The current backend does not create or consume engagement rows yet.
+> **⚠️ Core schema applied; runtime migration authored but not applied.** These rules
+> define the P4b runtime contract. The backend cutover is deploy-gated by
+> `20260816090000_contract_positions_runtime.sql`.
 
 Engagement records are durable financial and legal history. Most corrections therefore
 append, end, reopen, or supersede records instead of mutating the facts that explain an
@@ -100,13 +101,14 @@ editing approved evidence invisibly.
 | --- | --- |
 | Draft never signed | No engagement exists |
 | Duplicate final-sign request | Row lock makes activation idempotent |
-| Same parties and project have multiple contracts | Allowed; explicit assignment selects the commercial context |
+| Same parties and project have multiple contracts | Multiple Talent contracts are allowed. One signed Client-services contract governs project billing until finance supports parallel Client agreements. |
 | Consultant hires a non-public account | Allowed through a private Talent contract |
 | Freelancer pauses marketplace listing | Existing/private engagements continue |
 | Consultant is suspended or revoked | New marketplace/signing actions stop; history and in-flight execution are preserved |
-| Party receives a raise | Signed amendment with effective date; same engagement if parties are unchanged |
+| Party receives a raise | Signed prospective amendment effective today or later; same engagement if parties are unchanged |
+| Executed engagement needs a signature correction | Do not unsign it: amend or end the engagement so its effective-dated settings and rates remain legally coherent. |
 | Party changes | New root contract and engagement |
-| Fixed Client price, hourly Talent price | Each side follows its own contract; Talent hours do not reprice Client terms |
+| Fixed Client price, hourly Talent price | Each side follows its own contract; fixed Client agreements are manually invoiced until milestone billing ships, and Talent hours never reprice Client terms |
 | Different currencies | Each side snapshots its own currency; future margin reporting needs a separately snapshotted FX basis |
 | Late time entry | Allowed only when its work timestamp lies inside the original assignment window |
 | Timer crosses assignment end | Stop/split first or reject the end transition |
@@ -144,8 +146,7 @@ matching account IDs.
 
 | Item | Why deferred |
 | --- | --- |
-| Runtime final-sign integration | Requires a new atomic activation transaction |
-| Generic position-based signing cutover | Existing compatibility fields still serve live clients |
-| Redacted Client/Consultant/Talent APIs | Must be designed around the visibility boundary |
+| Assignment/time-log APIs | Activation now creates the commercial records; explicit assignment, logging, submission, and approval workflows still need their own operational API design. |
+| Redacted Client/Consultant/Talent APIs | Position-based signing is live in the P4b runtime cutover, but broader role-specific projections still need design around the visibility boundary. Compatibility fields remain accepted for rolling clients. |
 | Organization-backed parties | Belongs to P4c/organizations design; user parties are additive now |
 | Historical backfill | Explicitly rejected; inference could fabricate legal relationships |

@@ -190,6 +190,7 @@ function PublicSignPage() {
 							terms={{
 								currency: contract.currency,
 								billing_mode: contract.billing_mode,
+								fixed_fee: contract.fixed_fee?.toString() ?? "",
 								recurring_fee: contract.recurring_fee?.toString() ?? "",
 								client_hourly_rate:
 									contract.client_hourly_rate?.toString() ?? "",

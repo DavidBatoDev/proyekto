@@ -19,6 +19,7 @@ import {
 } from '../../../common/mail/templates/layout';
 import { renderTextEmail } from '../../../common/mail/templates/text';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
@@ -36,7 +37,7 @@ interface SignatureLinkRow {
   id: string;
   contract_id: string;
   token: string;
-  party: 'client';
+  party: 'client' | 'counterparty';
   recipient_email: string | null;
   expires_at: string;
   used_at: string | null;
@@ -76,6 +77,8 @@ export interface PublicContractView {
   id: string;
   contract_number: string | null;
   status: ContractRow['status'];
+  relationship_kind: ContractRow['relationship_kind'];
+  scope_mode: ContractRow['scope_mode'];
   provider_kind: ContractRow['provider_kind'];
   provider_name: string | null;
   provider_address: string | null;
@@ -90,6 +93,7 @@ export interface PublicContractView {
   billing_mode: ContractRow['billing_mode'];
   billing_timing: ContractRow['billing_timing'];
   recurring_fee: number | null;
+  fixed_fee: number | null;
   client_hourly_rate: number | null;
   included_hours: number | null;
   invoice_cadence: ContractRow['invoice_cadence'];
@@ -148,8 +152,7 @@ export class ContractSignatureLinksService {
     contractId: string,
   ): Promise<SignatureLinkSummary | null> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    const projectId = this.requireProjectId(contract);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.assertConsultantCanManageLink(callerId, contract);
 
     const row = await this.activeLinkRow(contractId);
     return row ? this.toSummary(row) : null;
@@ -187,13 +190,14 @@ export class ContractSignatureLinksService {
     dto: CreateSignatureLinkDto,
   ): Promise<SignatureLinkSummary> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    const projectId = this.requireProjectId(contract);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.assertConsultantCanManageLink(callerId, contract);
     if (dto.send_email) {
-      await this.qaFixtures.assertProjectSideEffectAllowed(
-        projectId,
-        'Contract signature-link email delivery',
-      );
+      if (contract.project_id) {
+        await this.qaFixtures.assertProjectSideEffectAllowed(
+          contract.project_id,
+          'Contract signature-link email delivery',
+        );
+      }
     }
 
     if (contract.status === 'ended' || contract.status === 'cancelled') {
@@ -218,14 +222,18 @@ export class ContractSignatureLinksService {
     const expiresAt = new Date(
       Date.now() + days * 24 * 60 * 60 * 1000,
     ).toISOString();
+    const positions = await this.contracts.getContractPositions(contract.id);
     const recipient =
-      dto.recipient_email?.trim() || contract.client_email?.trim() || null;
+      dto.recipient_email?.trim() ||
+      positions.find((position) => position.capacity !== 'consultant')?.email_snapshot?.trim() ||
+      contract.client_email?.trim() ||
+      null;
 
     const { data, error } = await this.supabase
       .from('contract_signature_links')
       .insert({
         contract_id: contractId,
-        party: 'client',
+        party: 'counterparty',
         recipient_email: recipient,
         expires_at: expiresAt,
         created_by: callerId,
@@ -252,8 +260,7 @@ export class ContractSignatureLinksService {
 
   async revokeLink(callerId: string, contractId: string): Promise<void> {
     const contract = await this.contracts.getContractRowForLink(contractId);
-    const projectId = this.requireProjectId(contract);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.assertConsultantCanManageLink(callerId, contract);
 
     // Capture the recipient before revoking — afterwards the active-link query
     // returns nothing and we would have nobody to notify.
@@ -263,7 +270,9 @@ export class ContractSignatureLinksService {
     // A silently dead link is worse than one extra email: the client sits on a
     // URL that 410s with no idea why. Only notify if they were actually sent
     // one and have not already signed with it.
-    const mayEmail = !(await this.qaFixtures.isFixtureProject(projectId));
+    const mayEmail =
+      !contract.project_id ||
+      !(await this.qaFixtures.isFixtureProject(contract.project_id));
     if (mayEmail && active?.recipient_email && !active.used_at) {
       await this.emailRevocation(contract, active.recipient_email);
     }
@@ -460,6 +469,8 @@ export class ContractSignatureLinksService {
       id: contract.id,
       contract_number: contract.contract_number,
       status: contract.status,
+      relationship_kind: contract.relationship_kind,
+      scope_mode: contract.scope_mode,
       provider_kind: contract.provider_kind,
       provider_name: contract.provider_name,
       provider_address: contract.provider_address,
@@ -474,6 +485,7 @@ export class ContractSignatureLinksService {
       billing_mode: contract.billing_mode,
       billing_timing: contract.billing_timing,
       recurring_fee: contract.recurring_fee,
+      fixed_fee: contract.fixed_fee,
       client_hourly_rate: contract.client_hourly_rate,
       included_hours: contract.included_hours,
       invoice_cadence: contract.invoice_cadence,
@@ -518,9 +530,19 @@ export class ContractSignatureLinksService {
     };
   }
 
-  private requireProjectId(contract: ContractRow): string {
-    if (!contract.project_id) throw new NotFoundException('Project not found');
-    return contract.project_id;
+  private async assertConsultantCanManageLink(
+    callerId: string,
+    contract: ContractRow,
+  ): Promise<void> {
+    const consultantId = contract.consultant_user_id ?? contract.created_by;
+    if (callerId !== consultantId) {
+      throw new NotFoundException('Contract not found');
+    }
+    if (contract.project_id) {
+      await this.financeAccess.assertProject(callerId, contract.project_id);
+    } else if (!(await isActiveConsultantEnrollment(this.supabase, callerId))) {
+      throw new NotFoundException('Contract not found');
+    }
   }
 
   /**

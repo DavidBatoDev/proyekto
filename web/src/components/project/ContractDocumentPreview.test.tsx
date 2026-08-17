@@ -60,6 +60,7 @@ const parties = {
 const terms = {
 	currency: "PHP",
 	billing_mode: "retainer" as const,
+	fixed_fee: "",
 	recurring_fee: "50000",
 	client_hourly_rate: "",
 	service_description: "Brand consulting",

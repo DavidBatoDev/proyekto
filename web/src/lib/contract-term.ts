@@ -13,7 +13,7 @@
 import type { PayPeriodConfig, PayPeriodDef } from "@/services/teams.service";
 
 export type ContractTermUnit = "month" | "year";
-export type BillingMode = "retainer" | "time_based" | "hybrid";
+export type BillingMode = "retainer" | "time_based" | "hybrid" | "fixed";
 export type InvoiceCadence = "monthly" | "semi_monthly" | "custom";
 
 export interface ContractTerm {

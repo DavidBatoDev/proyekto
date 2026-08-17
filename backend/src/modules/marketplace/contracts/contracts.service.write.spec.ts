@@ -36,6 +36,7 @@ function writeHarness() {
       if (table === 'contracts') return contractsTable;
       if (table === 'profiles') {
         return awaitable({
+          id: 'client-1',
           display_name: 'Consultant One',
           first_name: null,
           last_name: null,
@@ -43,7 +44,13 @@ function writeHarness() {
         });
       }
       if (table === 'projects') {
-        return awaitable({ owner_id: 'consultant-1', title: 'Project One' });
+        return awaitable({ owner_id: 'client-1', title: 'Project One' });
+      }
+      if (table === 'contract_positions') {
+        return {
+          select: jest.fn(() => awaitable([])),
+          insert: jest.fn(() => ({ error: null })),
+        };
       }
       return awaitable(null);
     }),

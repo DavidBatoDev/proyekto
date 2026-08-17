@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -30,6 +31,9 @@ import {
   AmendContractDto,
   BillingMode,
   BillingTiming,
+  CompensationMode,
+  ContractRelationshipKind,
+  ContractScopeMode,
   ContractStatus,
   CreateContractDto,
   InvoiceCadence,
@@ -40,11 +44,30 @@ import {
   UpdateSignaturePlacementDto,
 } from './dto/contracts.dto';
 
+export interface ContractPosition {
+  contract_id: string;
+  position: 'hirer' | 'provider';
+  user_id: string;
+  capacity: 'client' | 'consultant' | 'talent';
+  display_name_snapshot: string;
+  email_snapshot: string | null;
+  signer_name: string | null;
+  signature_url: string | null;
+  signature_scale: number;
+  signature_offset_x: number;
+  signature_offset_y: number;
+  signed_at: string | null;
+}
+
 export interface ContractRow {
   id: string;
   project_id: string | null;
   project_title_snapshot: string | null;
   consultant_user_id: string | null;
+  relationship_kind: ContractRelationshipKind;
+  scope_mode: ContractScopeMode;
+  contract_family_id: string | null;
+  engagement_id: string | null;
   version: number;
   contract_number: string | null;
   status: ContractStatus;
@@ -69,6 +92,13 @@ export interface ContractRow {
 
   currency: string;
   billing_mode: BillingMode;
+  fixed_fee: number | null;
+  time_tracking_mode: 'disabled' | 'optional' | 'required';
+  time_approval_mode: 'none' | 'provider_submit_hirer_approve';
+  allow_manual_time: boolean;
+  time_rounding_minutes: number;
+  weekly_time_limit_minutes: number | null;
+  client_hours_detail_level: 'none' | 'summary' | 'detailed';
   /** 'arrears' bills a closed period; 'advance' bills the period ahead. */
   billing_timing: BillingTiming;
   recurring_fee: number | null;
@@ -116,6 +146,7 @@ export interface ContractRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  positions?: ContractPosition[];
 }
 
 /** A contract plus the billing schedule derived from its terms. */
@@ -131,6 +162,15 @@ interface PrimaryTeamRow {
   tax_id: string | null;
   billing_email: string | null;
   pay_period_config: PayPeriodConfig | null;
+}
+
+interface ProfileIdentity {
+  id: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  avatar_url?: string | null;
 }
 
 const EDITABLE_STATUSES: ContractStatus[] = ['draft', 'sent'];
@@ -212,6 +252,7 @@ export class ContractsService {
       .from('contracts')
       .select('*')
       .eq('project_id', projectId)
+      .eq('relationship_kind', 'client_services')
       .eq('status', 'signed')
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -222,7 +263,28 @@ export class ContractsService {
     callerId: string,
     dto: CreateContractDto,
   ): Promise<ContractWithSchedule> {
-    await this.financeAccess.assertProject(callerId, dto.project_id);
+    const relationshipKind = dto.relationship_kind ?? 'client_services';
+    const scopeMode = dto.scope_mode ?? 'project_specific';
+    if (scopeMode === 'project_specific') {
+      if (!dto.project_id) {
+        throw new BadRequestException(
+          'A project-specific contract requires a project.',
+        );
+      }
+      await this.financeAccess.assertProject(callerId, dto.project_id);
+    } else {
+      if (dto.project_id) {
+        throw new BadRequestException(
+          'A flexible contract starts without a project scope.',
+        );
+      }
+      await this.assertActiveConsultant(callerId);
+    }
+    if (relationshipKind === 'talent_services' && !dto.counterparty_user_id) {
+      throw new BadRequestException(
+        'Choose the Talent account before creating a private Talent contract.',
+      );
+    }
     return this.createContractInternal(callerId, dto);
   }
 
@@ -233,14 +295,33 @@ export class ContractsService {
     callerId: string,
     dto: CreateContractDto,
   ): Promise<ContractWithSchedule> {
-    const { project_id: projectId, ...terms } = dto;
-    const seeded = await this.seedParties(callerId, projectId, terms);
-    const version = await this.nextVersion(projectId);
+    const { project_id: projectId = null, counterparty_user_id, ...rawTerms } = dto;
+    const terms = this.normalizeTerms(rawTerms);
+    const relationshipKind = terms.relationship_kind ?? 'client_services';
+    const scopeMode = terms.scope_mode ?? 'project_specific';
+    const consultant = await this.resolveProfile(callerId);
+    const counterparty = await this.resolveCounterpartyForCreate(
+      callerId,
+      projectId,
+      relationshipKind,
+      counterparty_user_id,
+    );
+    const seeded = await this.seedContractParties(
+      callerId,
+      projectId,
+      relationshipKind,
+      terms,
+      consultant,
+      counterparty,
+    );
 
     const insert: Record<string, unknown> = {
       project_id: projectId,
       consultant_user_id: callerId,
-      version,
+      relationship_kind: relationshipKind,
+      scope_mode: scopeMode,
+      contract_family_id: randomUUID(),
+      version: 1,
       status: 'draft',
       created_by: callerId,
       clauses:
@@ -249,6 +330,7 @@ export class ContractsService {
       // Services start empty — the consultant defines them on the Contract tab.
       services: (terms.services as unknown as ContractService[]) ?? [],
       ...seeded,
+      ...this.timePolicyPatch(relationshipKind, terms),
       ...this.termPatch(terms),
     };
 
@@ -264,7 +346,14 @@ export class ContractsService {
         error?.message ?? 'Failed to create contract.',
       );
     }
-    return this.withSchedule(data as ContractRow);
+    const row = data as ContractRow;
+    await this.insertContractPositions(
+      row.id,
+      relationshipKind,
+      consultant,
+      counterparty,
+    );
+    return this.withSchedule(row);
   }
 
   async updateContract(
@@ -273,10 +362,7 @@ export class ContractsService {
     dto: UpdateContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(existing),
-    );
+    await this.assertConsultantContractControl(callerId, existing);
 
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
@@ -284,20 +370,22 @@ export class ContractsService {
       );
     }
 
+    const terms = this.normalizeTerms(dto);
     this.assertBillingTimingAllowed(
-      dto.billing_timing ?? existing.billing_timing,
-      dto.billing_mode ?? existing.billing_mode,
+      terms.billing_timing ?? existing.billing_timing,
+      terms.billing_mode ?? existing.billing_mode,
     );
+    this.timePolicyPatch(existing.relationship_kind, { ...existing, ...terms });
 
     const patch: Record<string, unknown> = {
-      ...this.scalarPatch(dto),
-      ...this.termPatch(dto, existing),
+      ...this.scalarPatch(terms),
+      ...this.termPatch(terms, existing),
     };
-    if (dto.clauses !== undefined) {
-      patch.clauses = dto.clauses;
+    if (terms.clauses !== undefined) {
+      patch.clauses = terms.clauses;
     }
-    if (dto.services !== undefined) {
-      patch.services = dto.services;
+    if (terms.services !== undefined) {
+      patch.services = terms.services;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -322,10 +410,7 @@ export class ContractsService {
   /** Drafts have no legal force yet and may be discarded by the consultant. */
   async deleteContract(callerId: string, contractId: string): Promise<void> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(existing),
-    );
+    await this.assertConsultantContractControl(callerId, existing);
     if (existing.status !== 'draft') {
       throw new BadRequestException('Only draft contracts can be deleted.');
     }
@@ -352,37 +437,42 @@ export class ContractsService {
     dto: AmendContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(existing),
-    );
+    await this.assertConsultantContractControl(callerId, existing);
 
-    if (dto.scope === 'this') {
+    if (dto.scope === 'this' || (existing.engagement_id && dto.scope === 'all')) {
       throw new BadRequestException(
-        'Changing a single invoice is an invoice edit, not a contract change — open that invoice in the editor instead.',
+        existing.engagement_id
+          ? 'Engagement-backed contracts can only be amended prospectively.'
+          : 'Changing a single invoice is an invoice edit, not a contract change — open that invoice in the editor instead.',
       );
     }
-    if (existing.status !== 'signed') {
-      throw new BadRequestException(
-        'Only a signed contract needs amending. Edit this one directly.',
-      );
-    }
-    if (!existing.service_start_date || !existing.service_end_date) {
-      throw new BadRequestException(
-        'This contract has no service window to amend.',
-      );
-    }
-
+    const terms = this.normalizeTerms(dto);
     this.assertBillingTimingAllowed(
-      dto.billing_timing ?? existing.billing_timing,
-      dto.billing_mode ?? existing.billing_mode,
+      terms.billing_timing ?? existing.billing_timing,
+      terms.billing_mode ?? existing.billing_mode,
     );
+    this.timePolicyPatch(existing.relationship_kind, { ...existing, ...terms });
 
     const effectiveFrom =
       dto.scope === 'all'
         ? existing.service_start_date
         : (dto.effective_from?.slice(0, 10) ??
           (await this.currentPeriodStart(existing)));
+
+    if (!effectiveFrom || !existing.service_start_date) {
+      throw new BadRequestException(
+        'Set the service start date before amending this contract.',
+      );
+    }
+
+    if (
+      existing.engagement_id &&
+      effectiveFrom < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException(
+        'Engagement-backed amendments must take effect today or later.',
+      );
+    }
 
     await this.assertNoIssuedInvoicesFrom(contractId, effectiveFrom);
 
@@ -408,7 +498,7 @@ export class ContractsService {
 
     const successor = await this.insertAmendedVersion(
       existing,
-      dto,
+      terms as AmendContractDto,
       effectiveFrom,
       callerId,
     );
@@ -518,7 +608,8 @@ export class ContractsService {
       .insert({
         ...carried,
         ...patch,
-        version: await this.nextVersion(this.requireProjectId(existing)),
+        contract_family_id: existing.contract_family_id ?? randomUUID(),
+        version: await this.nextVersion(existing),
         status: 'draft',
         supersedes_contract_id: existing.id,
         amendment_effective_date: effectiveFrom,
@@ -538,7 +629,9 @@ export class ContractsService {
         error?.message ?? 'Failed to create the amended contract.',
       );
     }
-    return data as ContractRow;
+    const successor = data as ContractRow;
+    await this.cloneOrCreateAmendmentPositions(existing, successor);
+    return successor;
   }
 
   /**
@@ -551,8 +644,9 @@ export class ContractsService {
     dto: SignContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertCanSign(callerId, existing, dto.party);
-    return this.stampSignature(existing, dto, callerId);
+    const position = await this.resolveSignaturePosition(existing, dto);
+    await this.assertCanSign(callerId, existing, position);
+    return this.stampSignature(existing, { ...dto, position }, callerId);
   }
 
   /**
@@ -571,9 +665,10 @@ export class ContractsService {
     actorId: string | null,
   ): Promise<ContractWithSchedule> {
     const contractId = existing.id;
-    const isClientParty = dto.party === 'client';
+    const position = await this.resolveSignaturePosition(existing, dto);
+    const positions = await this.getPositions(existing.id);
 
-    if (existing.project_id === null) {
+    if (existing.scope_mode === 'project_specific' && existing.project_id === null) {
       throw new BadRequestException(
         'A contract for a removed project cannot be signed.',
       );
@@ -592,27 +687,45 @@ export class ContractsService {
         `A ${existing.status} contract cannot be signed.`,
       );
     }
+    if (existing.status === 'signed') {
+      throw new BadRequestException(
+        'This contract is already fully signed. Amend it to change its terms.',
+      );
+    }
     if (!existing.service_start_date || !existing.service_end_date) {
       throw new BadRequestException(
         'Set the service start date and term before signing.',
       );
     }
+    this.assertCommercialTerms(existing);
+    this.timePolicyPatch(existing.relationship_kind, existing);
 
     const now = new Date().toISOString();
     const signatureUrl = dto.signature_url?.trim() || null;
     const signatureScale = clampSignatureScale(dto.signature_scale);
     const offsetX = clampSignatureOffset(dto.signature_offset_x);
     const offsetY = clampSignatureOffset(dto.signature_offset_y);
-    const response = await this.supabase.rpc('sign_contract_and_flip', {
-      p_contract_id: contractId,
-      p_party: isClientParty ? 'client' : 'consultant',
-      p_signer_name: dto.signer_name.trim(),
-      p_signature_url: signatureUrl,
-      p_scale: signatureScale,
-      p_offset_x: offsetX,
-      p_offset_y: offsetY,
-      p_signed_at: now,
-    });
+    const response = positions.length === 2
+      ? await this.supabase.rpc('sign_contract_position_and_activate', {
+          p_contract_id: contractId,
+          p_position: position,
+          p_signer_name: dto.signer_name.trim(),
+          p_signature_url: signatureUrl,
+          p_scale: signatureScale,
+          p_offset_x: offsetX,
+          p_offset_y: offsetY,
+          p_signed_at: now,
+        })
+      : await this.supabase.rpc('sign_contract_and_flip', {
+          p_contract_id: contractId,
+          p_party: dto.party === 'consultant' ? 'consultant' : 'client',
+          p_signer_name: dto.signer_name.trim(),
+          p_signature_url: signatureUrl,
+          p_scale: signatureScale,
+          p_offset_x: offsetX,
+          p_offset_y: offsetY,
+          p_signed_at: now,
+        });
     const data: unknown = response.data;
     const error = response.error;
     if (error?.message.includes('CONSULTANT_ENROLLMENT_INACTIVE')) {
@@ -638,7 +751,7 @@ export class ContractsService {
 
     // A token-bearing signer has no account, so there is nobody to exclude
     // from the notification — everyone on the project should hear about it.
-    if (existing.status !== 'signed' && updated.status === 'signed') {
+    if (updated.status === 'signed') {
       await this.notifyCounterparty(actorId ?? '', updated);
     }
     return this.withSchedule(updated);
@@ -695,6 +808,28 @@ export class ContractsService {
       return this.withSchedule(existing);
     }
 
+    const position = await this.positionForLegacyParty(existing, dto.party);
+    if (position) {
+      const { error: positionError } = await this.supabase
+        .from('contract_positions')
+        .update({
+          ...(dto.scale !== undefined
+            ? { signature_scale: clampSignatureScale(dto.scale) }
+            : {}),
+          ...(dto.offset_x !== undefined
+            ? { signature_offset_x: clampSignatureOffset(dto.offset_x) }
+            : {}),
+          ...(dto.offset_y !== undefined
+            ? { signature_offset_y: clampSignatureOffset(dto.offset_y) }
+            : {}),
+        })
+        .eq('contract_id', contractId)
+        .eq('position', position);
+      if (positionError) {
+        throw new BadRequestException(positionError.message);
+      }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
@@ -729,6 +864,11 @@ export class ContractsService {
         `A ${existing.status} contract cannot be changed.`,
       );
     }
+    if (existing.engagement_id) {
+      throw new BadRequestException(
+        'An activated engagement cannot be unsigned. Amend or end the engagement instead.',
+      );
+    }
     const now = new Date().toISOString();
     const patch: Record<string, unknown> =
       dto.party === 'client'
@@ -745,6 +885,22 @@ export class ContractsService {
     // No longer fully executed once a signature is pulled.
     if (existing.status === 'signed') {
       patch.status = 'sent';
+    }
+
+    const position = await this.positionForLegacyParty(existing, dto.party);
+    if (position) {
+      const { error: positionError } = await this.supabase
+        .from('contract_positions')
+        .update({
+          signer_name: null,
+          signature_url: null,
+          signed_at: null,
+        })
+        .eq('contract_id', contractId)
+        .eq('position', position);
+      if (positionError) {
+        throw new BadRequestException(positionError.message);
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -765,10 +921,17 @@ export class ContractsService {
   private async assertCanSign(
     callerId: string,
     existing: ContractRow,
-    party: 'consultant' | 'client',
+    position: 'hirer' | 'provider',
   ): Promise<void> {
+    const positions = await this.getPositions(existing.id);
+    if (positions.length === 2) {
+      if (positions.some((entry) => entry.position === position && entry.user_id === callerId)) {
+        return;
+      }
+      throw new NotFoundException('Contract not found');
+    }
     const consultantId = existing.consultant_user_id ?? existing.created_by;
-    if (party === 'consultant') {
+    if (position === 'provider') {
       if (callerId === consultantId) return;
       throw new NotFoundException('Contract not found');
     }
@@ -790,10 +953,7 @@ export class ContractsService {
     callerId: string,
     existing: ContractRow,
   ): Promise<void> {
-    await this.financeAccess.assertProject(
-      callerId,
-      this.requireProjectId(existing),
-    );
+    await this.assertConsultantContractControl(callerId, existing);
     if (callerId !== (existing.consultant_user_id ?? existing.created_by)) {
       throw new NotFoundException('Contract not found');
     }
@@ -803,6 +963,8 @@ export class ContractsService {
     callerId: string,
     contract: ContractRow,
   ): Promise<void> {
+    const positions = await this.getPositions(contract.id);
+    if (positions.some((position) => position.user_id === callerId)) return;
     const consultantId = contract.consultant_user_id ?? contract.created_by;
     if (callerId === consultantId || callerId === contract.client_user_id) {
       return;
@@ -818,6 +980,79 @@ export class ContractsService {
       if (callerId === ownerId && ownerId !== consultantId) return;
     }
     throw new NotFoundException('Contract not found');
+  }
+
+  private async assertConsultantContractControl(
+    callerId: string,
+    contract: ContractRow,
+  ): Promise<void> {
+    const consultantId = contract.consultant_user_id ?? contract.created_by;
+    if (callerId !== consultantId) throw new NotFoundException('Contract not found');
+    if (contract.project_id) {
+      await this.financeAccess.assertProject(callerId, contract.project_id);
+    } else {
+      await this.assertActiveConsultant(callerId);
+    }
+  }
+
+  private async resolveSignaturePosition(
+    contract: ContractRow,
+    dto: SignContractDto,
+  ): Promise<'hirer' | 'provider'> {
+    if (dto.position && dto.party) {
+      const positions = await this.getPositions(contract.id);
+      const consultantPosition = positions.find(
+        (position) => position.capacity === 'consultant',
+      )?.position;
+      const mapped = dto.party === 'consultant'
+        ? consultantPosition
+        : consultantPosition === 'hirer'
+          ? 'provider'
+          : 'hirer';
+      if (mapped && mapped !== dto.position) {
+        throw new BadRequestException('party and position refer to different contract seats.');
+      }
+    }
+    if (dto.position) return dto.position;
+
+    if (dto.party) {
+      const positions = await this.getPositions(contract.id);
+      if (positions.length === 2) {
+        const consultantPosition = positions.find(
+          (position) => position.capacity === 'consultant',
+        )?.position;
+        if (!consultantPosition) {
+          throw new BadRequestException('This contract has no Consultant signing seat.');
+        }
+        return dto.party === 'consultant'
+          ? consultantPosition
+          : consultantPosition === 'hirer'
+            ? 'provider'
+            : 'hirer';
+      }
+      return dto.party === 'consultant' ? 'provider' : 'hirer';
+    }
+    throw new BadRequestException('Choose the contract position that is signing.');
+  }
+
+  /** Maps the legacy UI party names onto an authoritative P4b seat. */
+  private async positionForLegacyParty(
+    contract: ContractRow,
+    party: 'consultant' | 'client',
+  ): Promise<'hirer' | 'provider' | null> {
+    const positions = await this.getPositions(contract.id);
+    if (positions.length !== 2) return null;
+    const consultantPosition = positions.find(
+      (position) => position.capacity === 'consultant',
+    )?.position;
+    if (!consultantPosition) {
+      throw new BadRequestException('This contract has no Consultant signing seat.');
+    }
+    return party === 'consultant'
+      ? consultantPosition
+      : consultantPosition === 'hirer'
+        ? 'provider'
+        : 'hirer';
   }
 
   /**
@@ -897,7 +1132,21 @@ export class ContractsService {
   // ─── internals ─────────────────────────────────────────────────────────────
 
   private async withSchedule(row: ContractRow): Promise<ContractWithSchedule> {
-    return { ...row, periods: await this.resolvePeriods(row) };
+    return {
+      ...row,
+      positions: await this.getPositions(row.id),
+      periods: await this.resolvePeriods(row),
+    };
+  }
+
+  private async getPositions(contractId: string): Promise<ContractPosition[]> {
+    const { data, error } = await this.supabase
+      .from('contract_positions')
+      .select('*')
+      .eq('contract_id', contractId)
+      .order('position');
+    if (error) throw new BadRequestException(error.message);
+    return (data ?? []) as ContractPosition[];
   }
 
   /**
@@ -908,22 +1157,22 @@ export class ContractsService {
     return this.getContractRow(contractId);
   }
 
+  /** Signature-link and PDF projections need the generic seats. */
+  async getContractPositions(contractId: string): Promise<ContractPosition[]> {
+    return this.getPositions(contractId);
+  }
+
   private async getContractRow(contractId: string): Promise<ContractRow> {
     const data = await this.getContractById(contractId);
     if (!data) throw new NotFoundException('Contract not found');
     return data;
   }
 
-  private requireProjectId(contract: ContractRow): string {
-    if (!contract.project_id) throw new NotFoundException('Project not found');
-    return contract.project_id;
-  }
-
-  private async nextVersion(projectId: string): Promise<number> {
+  private async nextVersion(contract: ContractRow): Promise<number> {
     const { data, error } = await this.supabase
       .from('contracts')
       .select('version')
-      .eq('project_id', projectId)
+      .eq('contract_family_id', contract.contract_family_id ?? '')
       .order('version', { ascending: false })
       .limit(1);
     if (error) throw new Error(error.message);
@@ -964,6 +1213,13 @@ export class ContractsService {
     copy('due_days');
     copy('service_description');
     copy('payment_method');
+    copy('fixed_fee');
+    copy('time_tracking_mode');
+    copy('time_approval_mode');
+    copy('allow_manual_time');
+    copy('time_rounding_minutes');
+    copy('weekly_time_limit_minutes');
+    copy('client_hours_detail_level');
     copy('auto_renew');
     copy('notice_days');
     copy('notes');
@@ -974,6 +1230,113 @@ export class ContractsService {
         dto.invoice_number_prefix.trim().toUpperCase() || null;
     }
     return patch;
+  }
+
+  /**
+   * Normalizes the generic P4b commercial names onto the legacy physical
+   * columns. Both names are accepted only when they describe the same term.
+   */
+  private normalizeTerms<T extends Partial<UpdateContractDto>>(dto: T): T {
+    const normalized = { ...dto } as T & Record<string, unknown>;
+    const modeByCompensation: Record<CompensationMode, BillingMode> = {
+      fixed: 'fixed',
+      monthly: 'retainer',
+      hourly: 'time_based',
+      hybrid: 'hybrid',
+    };
+    const compensation = dto.compensation_mode;
+    if (compensation) {
+      const mapped = modeByCompensation[compensation];
+      if (dto.billing_mode && dto.billing_mode !== mapped) {
+        throw new BadRequestException(
+          'billing_mode and compensation_mode describe different terms.',
+        );
+      }
+      normalized.billing_mode = mapped;
+    }
+    if (
+      dto.monthly_rate !== undefined &&
+      dto.recurring_fee !== undefined &&
+      dto.monthly_rate !== dto.recurring_fee
+    ) {
+      throw new BadRequestException(
+        'monthly_rate and recurring_fee must match when both are supplied.',
+      );
+    }
+    if (
+      dto.hourly_rate !== undefined &&
+      dto.client_hourly_rate !== undefined &&
+      dto.hourly_rate !== dto.client_hourly_rate
+    ) {
+      throw new BadRequestException(
+        'hourly_rate and client_hourly_rate must match when both are supplied.',
+      );
+    }
+    if (dto.monthly_rate !== undefined) normalized.recurring_fee = dto.monthly_rate;
+    if (dto.hourly_rate !== undefined) {
+      normalized.client_hourly_rate = dto.hourly_rate;
+    }
+    delete normalized.monthly_rate;
+    delete normalized.hourly_rate;
+    delete normalized.compensation_mode;
+    return normalized as T;
+  }
+
+  private timePolicyPatch(
+    relationshipKind: ContractRelationshipKind,
+    dto: Pick<
+      Partial<UpdateContractDto>,
+      | 'time_tracking_mode'
+      | 'time_approval_mode'
+      | 'allow_manual_time'
+      | 'time_rounding_minutes'
+      | 'weekly_time_limit_minutes'
+      | 'client_hours_detail_level'
+    >,
+  ): Record<string, unknown> {
+    const talent = relationshipKind === 'talent_services';
+    const patch: Record<string, unknown> = {
+      time_tracking_mode: dto.time_tracking_mode ?? (talent ? 'required' : 'optional'),
+      time_approval_mode:
+        dto.time_approval_mode ?? (talent ? 'provider_submit_hirer_approve' : 'none'),
+      allow_manual_time: dto.allow_manual_time ?? true,
+      time_rounding_minutes: dto.time_rounding_minutes ?? 0,
+      weekly_time_limit_minutes: dto.weekly_time_limit_minutes ?? null,
+      client_hours_detail_level: dto.client_hours_detail_level ?? 'none',
+    };
+    if (talent) {
+      if (
+        patch.time_approval_mode !== 'provider_submit_hirer_approve' ||
+        patch.client_hours_detail_level !== 'none'
+      ) {
+        throw new BadRequestException(
+          'Talent contracts require Consultant approval and cannot expose client time detail.',
+        );
+      }
+    } else if (patch.time_approval_mode !== 'none') {
+      throw new BadRequestException(
+        'Client contracts do not support Talent time approval.',
+      );
+    }
+    return patch;
+  }
+
+  private assertCommercialTerms(contract: ContractRow): void {
+    if (contract.billing_mode === 'fixed' && contract.fixed_fee == null) {
+      throw new BadRequestException('Set the fixed contract amount before signing.');
+    }
+    if (
+      ['retainer', 'hybrid'].includes(contract.billing_mode) &&
+      contract.recurring_fee == null
+    ) {
+      throw new BadRequestException('Set the monthly contract rate before signing.');
+    }
+    if (
+      ['time_based', 'hybrid'].includes(contract.billing_mode) &&
+      contract.client_hourly_rate == null
+    ) {
+      throw new BadRequestException('Set the hourly contract rate before signing.');
+    }
   }
 
   /**
@@ -1018,54 +1381,224 @@ export class ContractsService {
     return patch;
   }
 
-  /** Prefills provider/client blocks from the creator and project owner. */
-  private async seedParties(
+  /** Exact-email profile lookup for private contract counterparties. */
+  async resolveCounterparty(
     callerId: string,
-    projectId: string,
+    email: string,
+  ): Promise<Pick<ProfileIdentity, 'id' | 'display_name' | 'email' | 'avatar_url'>> {
+    await this.assertActiveConsultant(callerId);
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) throw new BadRequestException('Enter an email address.');
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('id, display_name, first_name, last_name, email, avatar_url')
+      .eq('email', normalized)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    const profile = data as ProfileIdentity | null;
+    if (!profile || profile.id === callerId) {
+      throw new NotFoundException('No eligible Proyekto account was found.');
+    }
+    return {
+      id: profile.id,
+      display_name: this.profileLabel(profile),
+      email: profile.email,
+      avatar_url: profile.avatar_url ?? null,
+    };
+  }
+
+  private async assertActiveConsultant(callerId: string): Promise<void> {
+    if (!(await isActiveConsultantEnrollment(this.supabase, callerId))) {
+      throw new NotFoundException('Consultant access is required.');
+    }
+  }
+
+  private async resolveProfile(userId: string): Promise<ProfileIdentity> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('id, display_name, first_name, last_name, email, avatar_url')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Proyekto account not found.');
+    return data as ProfileIdentity;
+  }
+
+  private async resolveCounterpartyForCreate(
+    callerId: string,
+    projectId: string | null,
+    relationshipKind: ContractRelationshipKind,
+    requestedUserId?: string,
+  ): Promise<ProfileIdentity> {
+    let projectOwnerId: string | null = null;
+    if (projectId) {
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      if (error) throw new BadRequestException(error.message);
+      projectOwnerId = (data as { owner_id: string | null } | null)?.owner_id ?? null;
+    }
+
+    const counterpartyId = requestedUserId ??
+      (relationshipKind === 'client_services' ? projectOwnerId : null);
+    if (!counterpartyId || counterpartyId === callerId) {
+      throw new BadRequestException(
+        relationshipKind === 'client_services'
+          ? 'Choose a Client account before creating this contract.'
+          : 'Choose a Talent account before creating this contract.',
+      );
+    }
+    if (
+      relationshipKind === 'client_services' &&
+      projectId &&
+      (!projectOwnerId || counterpartyId !== projectOwnerId)
+    ) {
+      throw new BadRequestException(
+        'A project Client contract requires the project owner as its Client position.',
+      );
+    }
+    return this.resolveProfile(counterpartyId);
+  }
+
+  private async seedContractParties(
+    callerId: string,
+    projectId: string | null,
+    relationshipKind: ContractRelationshipKind,
     terms: Partial<CreateContractDto>,
+    consultant: ProfileIdentity,
+    counterparty: ProfileIdentity,
   ): Promise<Record<string, unknown>> {
     const seeded = this.scalarPatch(terms as UpdateContractDto);
-
-    const kind: ProviderKind = terms.provider_kind ?? 'agency';
-    const provider = await this.resolveProviderBlock(callerId, projectId, kind);
-    for (const [key, value] of Object.entries(provider)) {
-      if (seeded[key] === undefined) seeded[key] = value;
-    }
-
-    const { data: project } = await this.supabase
-      .from('projects')
-      .select('owner_id, title')
-      .eq('id', projectId)
-      .maybeSingle();
-    const projectRow = project as {
-      owner_id: string | null;
-      title: string | null;
-    } | null;
-    const ownerId = projectRow?.owner_id;
-    seeded.project_title_snapshot = projectRow?.title ?? null;
-    // A consultant-created project lists the creator as its own client until a
-    // real client is transferred in; seeding that as the counterparty would be
-    // misleading, so skip it.
-    if (ownerId && ownerId !== callerId) {
-      const { data: client } = await this.supabase
-        .from('profiles')
-        .select('display_name, first_name, last_name, email')
-        .eq('id', ownerId)
+    const consultantBlock = await this.resolveProviderBlock(
+      callerId,
+      projectId,
+      terms.provider_kind ?? 'agency',
+    );
+    if (projectId) {
+      const { data: project } = await this.supabase
+        .from('projects')
+        .select('title')
+        .eq('id', projectId)
         .maybeSingle();
-      if (client) {
-        if (seeded.client_name === undefined) {
-          seeded.client_name = this.profileLabel(client);
-        }
-        if (seeded.client_email === undefined) {
-          seeded.client_email =
-            (client as { email: string | null }).email ?? null;
-        }
-        if (seeded.client_user_id === undefined) {
-          seeded.client_user_id = ownerId;
-        }
-      }
+      seeded.project_title_snapshot =
+        (project as { title: string | null } | null)?.title ?? null;
     }
+
+    if (relationshipKind === 'client_services') {
+      for (const [key, value] of Object.entries(consultantBlock)) {
+        if (seeded[key] === undefined) seeded[key] = value;
+      }
+      if (seeded.client_name === undefined) {
+        seeded.client_name = this.profileLabel(counterparty);
+      }
+      if (seeded.client_email === undefined) seeded.client_email = counterparty.email;
+      if (seeded.client_user_id === undefined) seeded.client_user_id = counterparty.id;
+      return seeded;
+    }
+
+    // For talent services the Consultant is the hirer. The existing physical
+    // blocks remain compatibility storage, while positions remain authoritative.
+    if (seeded.client_name === undefined) {
+      seeded.client_name = consultantBlock.provider_name ?? this.profileLabel(consultant);
+    }
+    if (seeded.client_email === undefined) {
+      seeded.client_email = consultantBlock.provider_email ?? consultant.email;
+    }
+    if (seeded.provider_name === undefined) {
+      seeded.provider_name = this.profileLabel(counterparty);
+    }
+    if (seeded.provider_email === undefined) seeded.provider_email = counterparty.email;
+    if (seeded.provider_kind === undefined) {
+      seeded.provider_kind = terms.provider_kind ?? 'individual';
+    }
+    seeded.client_user_id = null;
     return seeded;
+  }
+
+  private async insertContractPositions(
+    contractId: string,
+    relationshipKind: ContractRelationshipKind,
+    consultant: ProfileIdentity,
+    counterparty: ProfileIdentity,
+  ): Promise<void> {
+    const label = (profile: ProfileIdentity) =>
+      this.profileLabel(profile) ?? profile.email ?? profile.id;
+    const rows =
+      relationshipKind === 'client_services'
+        ? [
+            {
+              contract_id: contractId,
+              position: 'hirer',
+              user_id: counterparty.id,
+              capacity: 'client',
+              display_name_snapshot: label(counterparty),
+              email_snapshot: counterparty.email,
+            },
+            {
+              contract_id: contractId,
+              position: 'provider',
+              user_id: consultant.id,
+              capacity: 'consultant',
+              display_name_snapshot: label(consultant),
+              email_snapshot: consultant.email,
+            },
+          ]
+        : [
+            {
+              contract_id: contractId,
+              position: 'hirer',
+              user_id: consultant.id,
+              capacity: 'consultant',
+              display_name_snapshot: label(consultant),
+              email_snapshot: consultant.email,
+            },
+            {
+              contract_id: contractId,
+              position: 'provider',
+              user_id: counterparty.id,
+              capacity: 'talent',
+              display_name_snapshot: label(counterparty),
+              email_snapshot: counterparty.email,
+            },
+          ];
+    const { error } = await this.supabase.from('contract_positions').insert(rows);
+    if (error) throw new BadRequestException(error.message);
+  }
+
+  private async cloneOrCreateAmendmentPositions(
+    existing: ContractRow,
+    successor: ContractRow,
+  ): Promise<void> {
+    const positions = await this.getPositions(existing.id);
+    if (positions.length === 2) {
+      const { error } = await this.supabase.from('contract_positions').insert(
+        positions.map((position) => ({
+          contract_id: successor.id,
+          position: position.position,
+          user_id: position.user_id,
+          capacity: position.capacity,
+          display_name_snapshot: position.display_name_snapshot,
+          email_snapshot: position.email_snapshot,
+        })),
+      );
+      if (error) throw new BadRequestException(error.message);
+      return;
+    }
+
+    const consultantId = existing.consultant_user_id ?? existing.created_by;
+    if (!consultantId || !existing.client_user_id) {
+      throw new BadRequestException(
+        'A legacy contract needs two Proyekto account-backed parties before it can be amended into an engagement.',
+      );
+    }
+    await this.insertContractPositions(
+      successor.id,
+      existing.relationship_kind,
+      await this.resolveProfile(consultantId),
+      await this.resolveProfile(existing.client_user_id),
+    );
   }
 
   /**
@@ -1079,7 +1612,7 @@ export class ContractsService {
    */
   private async resolveProviderBlock(
     callerId: string,
-    projectId: string,
+    projectId: string | null,
     kind: ProviderKind,
     teamId?: string,
   ): Promise<Record<string, unknown>> {
@@ -1103,7 +1636,9 @@ export class ContractsService {
     }
 
     const team = teamId
-      ? await this.getAttachedTeamIdentity(projectId, teamId)
+      ? projectId
+        ? await this.getAttachedTeamIdentity(projectId, teamId)
+        : null
       : await this.getPrimaryTeam(projectId);
     return {
       provider_kind: 'agency',
@@ -1162,8 +1697,7 @@ export class ContractsService {
     teamId?: string,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    const projectId = this.requireProjectId(existing);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.assertConsultantContractControl(callerId, existing);
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         'This contract is no longer editable. Remove the signatures to change it.',
@@ -1172,7 +1706,7 @@ export class ContractsService {
 
     const patch = await this.resolveProviderBlock(
       existing.created_by ?? callerId,
-      projectId,
+      existing.project_id,
       kind,
       teamId,
     );
@@ -1205,36 +1739,43 @@ export class ContractsService {
     actorId: string,
     contract: ContractRow,
   ): Promise<void> {
-    if (!contract.project_id) return;
-    const { data: project } = await this.supabase
-      .from('projects')
-      .select('owner_id, title')
-      .eq('id', contract.project_id)
-      .maybeSingle();
+    const { data: project } = contract.project_id
+      ? await this.supabase
+          .from('projects')
+          .select('owner_id, title')
+          .eq('id', contract.project_id)
+          .maybeSingle()
+      : { data: null };
     const row = project as {
       owner_id: string | null;
       title: string | null;
     } | null;
-    const consultantId = await this.projectAuth.getProjectConsultantId(
-      contract.project_id,
-    );
+    const positions = await this.getPositions(contract.id);
 
+    // Everyone the contract itself names. The provider used to be found by asking
+    // the execution layer who "the consultant" was on the project
+    // (project_access.origin) — unnecessary here, since the contract records its
+    // own provider and every position holder is added below anyway.
     const recipients = new Set<string>();
-    if (consultantId) recipients.add(consultantId);
+    if (contract.consultant_user_id) {
+      recipients.add(contract.consultant_user_id);
+    }
     if (contract.client_user_id) recipients.add(contract.client_user_id);
     else if (row?.owner_id) recipients.add(row.owner_id);
+    for (const position of positions) recipients.add(position.user_id);
     recipients.delete(actorId);
 
     for (const userId of recipients) {
       try {
         await this.notifications.createNotification({
           user_id: userId,
-          project_id: contract.project_id,
+          project_id: contract.project_id ?? undefined,
           actor_id: actorId,
           type_name: 'contract_signed',
           content: {
             contract_id: contract.id,
-            project_title: row?.title ?? null,
+            project_title:
+              row?.title ?? contract.project_title_snapshot ?? null,
             message: 'The service agreement is now fully signed.',
           },
           link_url: `/finance/${contract.id}?section=signatures`,

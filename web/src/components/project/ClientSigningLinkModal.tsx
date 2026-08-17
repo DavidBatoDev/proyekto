@@ -37,7 +37,13 @@ export function ClientSigningLinkModal({
 	const expiryId = useId();
 	const [days, setDays] = useState(14);
 	// Defaults on: creating a signing link and not sending it is the unusual case.
-	const [sendEmail, setSendEmail] = useState(Boolean(contract.client_email));
+	const counterparty = contract.positions.find(
+		(position) => position.capacity !== "consultant",
+	);
+	const counterpartyEmail = counterparty?.email_snapshot ?? contract.client_email;
+	const counterpartyLabel =
+		contract.relationship_kind === "talent_services" ? "Talent" : "Client";
+	const [sendEmail, setSendEmail] = useState(Boolean(counterpartyEmail));
 	const [copied, setCopied] = useState(false);
 
 	const linkQuery = useQuery({
@@ -57,8 +63,8 @@ export function ClientSigningLinkModal({
 			contractService.createSignatureLink(contract.id, {
 				expires_in_days: days,
 				send_email: sendEmail,
-				...(contract.client_email
-					? { recipient_email: contract.client_email }
+				...(counterpartyEmail
+					? { recipient_email: counterpartyEmail }
 					: {}),
 			}),
 		onSuccess: (created) => {
@@ -117,7 +123,7 @@ export function ClientSigningLinkModal({
 		const ok = await confirm({
 			title: "Replace this signing link?",
 			message: sendEmail
-				? "The current link stops working and a new one is emailed to the client."
+				? `The current link stops working and a new one is emailed to the ${counterpartyLabel.toLowerCase()}.`
 				: "The current link stops working straight away. Nothing will be emailed — you'll need to send the new link yourself.",
 			confirmLabel: "Replace link",
 			tone: "danger",
@@ -155,7 +161,7 @@ export function ClientSigningLinkModal({
 				</div>
 			</div>
 
-			{contract.client_email ? (
+			{counterpartyEmail ? (
 				<label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
 					<input
 						type="checkbox"
@@ -163,11 +169,11 @@ export function ClientSigningLinkModal({
 						onChange={(e) => setSendEmail(e.target.checked)}
 						className="h-3.5 w-3.5 accent-primary"
 					/>
-					Email it to {contract.client_email}
+					Email it to {counterpartyEmail}
 				</label>
 			) : (
 				<p className="text-[11px] text-muted-foreground">
-					No client email on the contract — you'll need to send the link
+					No {counterpartyLabel.toLowerCase()} email on the contract — you'll need to send the link
 					yourself.
 				</p>
 			)}
@@ -180,7 +186,7 @@ export function ClientSigningLinkModal({
 			onClose={onClose}
 			busy={busy}
 			size="md"
-			title="Send to the client to sign"
+			title={`Send to the ${counterpartyLabel.toLowerCase()} to sign`}
 			description="They open the link, read the agreement, and sign — no Proyekto account needed. The link works once and then stops."
 			footer={
 				<button

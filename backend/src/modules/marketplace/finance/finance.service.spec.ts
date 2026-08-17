@@ -35,8 +35,11 @@ describe('FinanceService severed records', () => {
         project_title_snapshot: 'Removed Project',
       },
     ]);
+    const positions = builderResult([{ contract_id: 'contract-removed' }]);
     const supabase = {
-      from: jest.fn(() => contracts),
+      from: jest.fn((table: string) =>
+        table === 'contract_positions' ? positions : contracts,
+      ),
     } as unknown as SupabaseClient;
     const access = {
       listProjects: jest
@@ -53,7 +56,7 @@ describe('FinanceService severed records', () => {
     );
 
     expect(contracts.or).toHaveBeenCalledWith(
-      'project_id.in.(11111111-1111-4111-8111-111111111111),and(project_id.is.null,consultant_user_id.eq.22222222-2222-4222-8222-222222222222)',
+      'project_id.in.(11111111-1111-4111-8111-111111111111),id.in.(contract-removed),and(project_id.is.null,consultant_user_id.eq.22222222-2222-4222-8222-222222222222)',
     );
     expect(result.items[0]).toEqual(
       expect.objectContaining({

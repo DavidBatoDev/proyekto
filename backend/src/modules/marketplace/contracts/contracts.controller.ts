@@ -16,6 +16,7 @@ import { ContractsService } from './contracts.service';
 import {
   AmendContractDto,
   CreateContractDto,
+  ResolveContractCounterpartyDto,
   ReseedProviderDto,
   SignContractDto,
   UnsignContractDto,
@@ -34,6 +35,15 @@ export class ContractsController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
   ) {
     return this.contracts.listByProject(user.id, projectId);
+  }
+
+  /** Exact-email lookup only; this is not a general account directory. */
+  @Post('counterparties/resolve')
+  resolveCounterparty(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ResolveContractCounterpartyDto,
+  ) {
+    return this.contracts.resolveCounterparty(user.id, dto.email);
   }
 
   @Post()

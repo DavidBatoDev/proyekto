@@ -1,9 +1,10 @@
 # Engagement Scenarios
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
 
-> **⚠️ Schema applied; runtime not active.** The rows below illustrate how the empty
-> production schema is intended to behave. They are not production records or a backfill.
+> **⚠️ Core schema applied; runtime migration authored but not applied.** The rows below
+> describe the P4b runtime behavior once `20260816090000_contract_positions_runtime.sql`
+> and its matching backend are deployed. They are illustrative, not production records or a backfill.
 
 These scenarios use the same people throughout so the relationship between tables stays
 visible.
@@ -113,7 +114,7 @@ The two contracts do not need matching compensation structures.
 
 | Side | Contract term | Effective rate row | Result |
 | --- | --- | --- | --- |
-| E1 Client services | Fixed ₱120,000 | `billing`, `fixed`, ₱120,000 | Client invoice follows milestones/fixed terms |
+| E1 Client services | Fixed ₱120,000 | `billing`, `fixed`, ₱120,000 | Consultant creates a manual invoice; milestone billing is deferred |
 | E2 Talent services | ₱500/hour | `cost`, `hour`, ₱500 | Approved U3 hours determine U2's Talent cost |
 
 If U3 logs 80 approved hours, the Talent-side snapshot can total ₱40,000. The Client still

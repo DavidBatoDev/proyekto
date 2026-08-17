@@ -4,7 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ContractsService, type ContractRow } from './contracts.service';
+import {
+  ContractsService,
+  type ContractPosition,
+  type ContractRow,
+} from './contracts.service';
 import { contractFixture } from './contracts.service.test-fixtures';
 
 function queryResult(result: object) {
@@ -12,7 +16,16 @@ function queryResult(result: object) {
     string,
     jest.Mock | ((resolve: (v: object) => void) => void)
   > = {};
-  for (const method of ['select', 'eq', 'is', 'in', 'neq', 'order', 'limit']) {
+  for (const method of [
+    'select',
+    'update',
+    'eq',
+    'is',
+    'in',
+    'neq',
+    'order',
+    'limit',
+  ]) {
     builder[method] = jest.fn(() => builder);
   }
   builder.maybeSingle = jest.fn().mockResolvedValue(result);
@@ -29,6 +42,7 @@ function harness(options: {
   active?: boolean;
   rpcData?: ContractRow | null;
   rpcError?: { message: string } | null;
+  positions?: ContractPosition[];
 }) {
   const contract = options.contract ?? contractFixture();
   const contracts = queryResult({ data: contract, error: null });
@@ -41,6 +55,10 @@ function harness(options: {
     count: options.active === false ? 0 : 1,
     error: null,
   });
+  const positions = queryResult({
+    data: options.positions ?? [],
+    error: null,
+  });
   const rpc = jest.fn().mockResolvedValue({
     data: options.rpcData ?? { ...contract, status: 'sent' },
     error: options.rpcError ?? null,
@@ -50,6 +68,9 @@ function harness(options: {
       if (table === 'contracts') return contracts;
       if (table === 'projects') return projects;
       if (table === 'consultant_profiles') return enrollment;
+      if (table === 'contract_positions') {
+        return positions;
+      }
       return queryResult({ data: null, error: null });
     }),
     rpc,
@@ -65,7 +86,7 @@ function harness(options: {
     notifications as never,
     projectAuth as never,
   );
-  return { service, rpc, financeAccess, notifications };
+  return { service, rpc, financeAccess, notifications, positions };
 }
 
 describe('ContractsService transactional signing', () => {
@@ -84,6 +105,98 @@ describe('ContractsService transactional signing', () => {
         p_party: 'consultant',
         p_signer_name: 'Consultant One',
       }),
+    );
+  });
+
+  it('stamps the generic Consultant seat through the position activation RPC', async () => {
+    const positions: ContractPosition[] = [
+      {
+        contract_id: 'contract-1',
+        position: 'hirer',
+        user_id: 'client-1',
+        capacity: 'client',
+        display_name_snapshot: 'Client One',
+        email_snapshot: 'client@example.com',
+        signer_name: null,
+        signature_url: null,
+        signature_scale: 1,
+        signature_offset_x: 0,
+        signature_offset_y: 0,
+        signed_at: null,
+      },
+      {
+        contract_id: 'contract-1',
+        position: 'provider',
+        user_id: 'consultant-1',
+        capacity: 'consultant',
+        display_name_snapshot: 'Consultant One',
+        email_snapshot: 'consultant@example.com',
+        signer_name: null,
+        signature_url: null,
+        signature_scale: 1,
+        signature_offset_x: 0,
+        signature_offset_y: 0,
+        signed_at: null,
+      },
+    ];
+    const { service, rpc } = harness({ positions });
+
+    await service.signContract('consultant-1', 'contract-1', {
+      position: 'provider',
+      signer_name: 'Consultant One',
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'sign_contract_position_and_activate',
+      expect.objectContaining({
+        p_contract_id: 'contract-1',
+        p_position: 'provider',
+      }),
+    );
+  });
+
+  it('clears the matching generic position before reopening a signed contract', async () => {
+    const positions: ContractPosition[] = [
+      {
+        contract_id: 'contract-1',
+        position: 'hirer',
+        user_id: 'client-1',
+        capacity: 'client',
+        display_name_snapshot: 'Client One',
+        email_snapshot: 'client@example.com',
+        signer_name: 'Client One',
+        signature_url: null,
+        signature_scale: 1,
+        signature_offset_x: 0,
+        signature_offset_y: 0,
+        signed_at: '2026-08-16T00:00:00.000Z',
+      },
+      {
+        contract_id: 'contract-1',
+        position: 'provider',
+        user_id: 'consultant-1',
+        capacity: 'consultant',
+        display_name_snapshot: 'Consultant One',
+        email_snapshot: 'consultant@example.com',
+        signer_name: 'Consultant One',
+        signature_url: null,
+        signature_scale: 1,
+        signature_offset_x: 0,
+        signature_offset_y: 0,
+        signed_at: '2026-08-16T00:00:00.000Z',
+      },
+    ];
+    const { service, positions: positionsQuery } = harness({
+      contract: contractFixture({ status: 'signed' }),
+      positions,
+    });
+
+    await service.unsignContract('consultant-1', 'contract-1', {
+      party: 'client',
+    });
+
+    expect(positionsQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({ signed_at: null }),
     );
   });
 

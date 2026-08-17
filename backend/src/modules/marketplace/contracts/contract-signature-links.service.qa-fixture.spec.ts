@@ -14,6 +14,7 @@ describe('ContractSignatureLinksService QA fixture safety', () => {
         service_start_date: '2026-01-01',
         service_end_date: '2026-12-31',
       } as ContractRow),
+      getContractPositions: jest.fn().mockResolvedValue([]),
     };
     const financeAccess = { assertProject: jest.fn().mockResolvedValue({}) };
     const qaFixtures = {

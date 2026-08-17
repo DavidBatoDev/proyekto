@@ -67,7 +67,6 @@ import {
 	type InvoiceCadence,
 } from "@/lib/contract-term";
 import { CURRENCIES } from "@/lib/currency";
-import { isProjectConsultant } from "@/lib/projectAccess";
 import {
 	type BillingTiming,
 	type Contract,
@@ -120,13 +119,22 @@ export function ProjectContract({
 		enabled: Boolean(contract?.project_id),
 	});
 	const project = projectQuery.data;
-	const isConsultant = isProjectConsultant(project, user?.id);
 	const contractConsultantId =
 		contract?.consultant_user_id ?? contract?.created_by ?? null;
-	const canSignAsConsultant =
-		Boolean(contract?.project_id) &&
-		Boolean(user?.id) &&
-		user?.id === contractConsultantId;
+	const consultantPosition = contract?.positions.find(
+		(position) => position.capacity === "consultant",
+	);
+	const counterpartyPosition = contract?.positions.find(
+		(position) => position.capacity !== "consultant",
+	);
+	// Whether the viewer is the provider on THIS contract. It used to ask the
+	// execution layer instead — "is this person the project's consultant?", via
+	// the member row whose origin was 'consultant' — which answered a contract
+	// question with a project fact. The contract names its own parties.
+	const isConsultant =
+		user?.id === consultantPosition?.user_id ||
+		(!consultantPosition && user?.id === contractConsultantId);
+	const canSignAsConsultant = Boolean(user?.id) && isConsultant;
 	const [activeStep, setActiveStep] = useState<StepKey>(
 		initialStep ?? "parties",
 	);
@@ -481,11 +489,12 @@ export function ProjectContract({
 								isConsultant={isConsultant}
 								canSignAsConsultant={canSignAsConsultant}
 								canSignAsClient={
-									Boolean(contract.project_id) &&
 									Boolean(user?.id) &&
-									(contract.client_user_id === user?.id ||
-										(project?.owner_id === user?.id &&
-											project?.owner_id !== contractConsultantId))
+									(counterpartyPosition?.user_id === user?.id ||
+										(!counterpartyPosition &&
+											(contract.client_user_id === user?.id ||
+												(project?.owner_id === user?.id &&
+													project?.owner_id !== contractConsultantId))))
 								}
 								onSign={(party, name, signatureUrl, placement) =>
 									signMutation.mutate({
@@ -653,6 +662,7 @@ function termsPreview(contract: Contract | null): PreviewTerms {
 	return {
 		currency: contract?.currency ?? "USD",
 		billing_mode: contract?.billing_mode ?? "time_based",
+		fixed_fee: contract?.fixed_fee?.toString() ?? "",
 		recurring_fee: contract?.recurring_fee?.toString() ?? "",
 		client_hourly_rate: contract?.client_hourly_rate?.toString() ?? "",
 		service_description: contract?.service_description ?? "",
@@ -998,6 +1008,7 @@ function draftFromContract(contract: Contract) {
 		currency: contract.currency,
 		billing_mode: contract.billing_mode,
 		billing_timing: contract.billing_timing ?? ("arrears" as BillingTiming),
+		fixed_fee: contract.fixed_fee?.toString() ?? "",
 		recurring_fee: contract.recurring_fee?.toString() ?? "",
 		client_hourly_rate: contract.client_hourly_rate?.toString() ?? "",
 		included_hours: contract.included_hours?.toString() ?? "",
@@ -1012,6 +1023,12 @@ function draftFromContract(contract: Contract) {
 		term_unit: contract.term_unit ?? ("month" as ContractTermUnit),
 		auto_renew: contract.auto_renew ?? false,
 		notice_days: String(contract.notice_days ?? 30),
+		time_tracking_mode: contract.time_tracking_mode,
+		allow_manual_time: contract.allow_manual_time,
+		time_rounding_minutes: String(contract.time_rounding_minutes ?? 0),
+		weekly_time_limit_minutes:
+			contract.weekly_time_limit_minutes?.toString() ?? "",
+		client_hours_detail_level: contract.client_hours_detail_level,
 	};
 }
 
@@ -1035,6 +1052,7 @@ function TermsSection({
 		onDraftChange?.({
 			currency: draft.currency,
 			billing_mode: draft.billing_mode,
+			fixed_fee: draft.fixed_fee,
 			recurring_fee: draft.recurring_fee,
 			client_hourly_rate: draft.client_hourly_rate,
 			service_description: draft.service_description,
@@ -1047,6 +1065,7 @@ function TermsSection({
 	}, [
 		draft.currency,
 		draft.billing_mode,
+		draft.fixed_fee,
 		draft.recurring_fee,
 		draft.client_hourly_rate,
 		draft.service_description,
@@ -1070,6 +1089,7 @@ function TermsSection({
 		currency: d.currency,
 		billing_mode: d.billing_mode,
 		billing_timing: d.billing_timing,
+		fixed_fee: numberOrNull(d.fixed_fee),
 		recurring_fee: numberOrNull(d.recurring_fee),
 		client_hourly_rate: numberOrNull(d.client_hourly_rate),
 		included_hours: numberOrNull(d.included_hours),
@@ -1079,6 +1099,11 @@ function TermsSection({
 		invoice_number_prefix: d.invoice_number_prefix.trim() || undefined,
 		service_description: d.service_description.trim() || undefined,
 		payment_method: d.payment_method.trim() || undefined,
+		time_tracking_mode: d.time_tracking_mode,
+		allow_manual_time: d.allow_manual_time,
+		time_rounding_minutes: Number(d.time_rounding_minutes) || 0,
+		weekly_time_limit_minutes: numberOrNull(d.weekly_time_limit_minutes),
+		client_hours_detail_level: d.client_hours_detail_level,
 		service_start_date: d.service_start_date || undefined,
 		term_count: Number(d.term_count) || undefined,
 		term_unit: d.term_unit,
@@ -1113,6 +1138,7 @@ function TermsSection({
 				currency: d.currency,
 				billing_mode: d.billing_mode,
 				billing_timing: d.billing_timing,
+				fixed_fee: numberOrNull(d.fixed_fee),
 				recurring_fee: numberOrNull(d.recurring_fee),
 				client_hourly_rate: numberOrNull(d.client_hourly_rate),
 				included_hours: numberOrNull(d.included_hours),
@@ -1122,6 +1148,11 @@ function TermsSection({
 				invoice_number_prefix: d.invoice_number_prefix.trim() || undefined,
 				service_description: d.service_description.trim() || undefined,
 				payment_method: d.payment_method.trim() || undefined,
+				time_tracking_mode: d.time_tracking_mode,
+				allow_manual_time: d.allow_manual_time,
+				time_rounding_minutes: Number(d.time_rounding_minutes) || 0,
+				weekly_time_limit_minutes: numberOrNull(d.weekly_time_limit_minutes),
+				client_hours_detail_level: d.client_hours_detail_level,
 				service_start_date: d.service_start_date || undefined,
 				term_count: Number(d.term_count) || undefined,
 				term_unit: d.term_unit,
@@ -1142,6 +1173,7 @@ function TermsSection({
 		draft.billing_mode === "retainer" || draft.billing_mode === "hybrid";
 	const usesRate =
 		draft.billing_mode === "time_based" || draft.billing_mode === "hybrid";
+	const usesFixed = draft.billing_mode === "fixed";
 	const advanceBilling = draft.billing_timing === "advance";
 
 	return (
@@ -1198,7 +1230,13 @@ function TermsSection({
 			)}
 
 			<div className="mt-4 space-y-4">
-				<FieldGroup title="How the client is charged">
+				<FieldGroup
+					title={
+						contract.relationship_kind === "talent_services"
+							? "How Talent is paid"
+							: "How the Client is charged"
+					}
+				>
 					<SelectField
 						label="Charging model"
 						hint="How the client is charged. Retainer bills a flat fee each period; Hourly bills approved time at the rate below; Retainer + overage bills the fee plus any hours beyond the included allowance."
@@ -1220,6 +1258,7 @@ function TermsSection({
 							{ value: "retainer", label: "Recurring retainer" },
 							{ value: "time_based", label: "Hourly (approved hours)" },
 							{ value: "hybrid", label: "Retainer + overage" },
+							{ value: "fixed", label: "Fixed contract amount" },
 						]}
 					/>
 					<SelectField
@@ -1237,6 +1276,16 @@ function TermsSection({
 							type="number"
 							value={draft.recurring_fee}
 							onChange={(v) => setDraft((d) => ({ ...d, recurring_fee: v }))}
+							disabled={locked}
+						/>
+					)}
+					{usesFixed && (
+						<TextField
+							label="Fixed contract amount"
+							hint="Fixed Client contracts are manually invoiced until milestone billing ships."
+							type="number"
+							value={draft.fixed_fee}
+							onChange={(v) => setDraft((d) => ({ ...d, fixed_fee: v }))}
 							disabled={locked}
 						/>
 					)}
@@ -1262,6 +1311,63 @@ function TermsSection({
 							disabled={locked}
 						/>
 					)}
+				</FieldGroup>
+
+				<FieldGroup title="Time policy">
+					<SelectField
+						label="Time tracking"
+						value={draft.time_tracking_mode}
+						disabled={locked}
+						onChange={(v) =>
+							setDraft((d) => ({
+								...d,
+								time_tracking_mode: v as typeof d.time_tracking_mode,
+							}))
+						}
+						options={[
+							{ value: "disabled", label: "Disabled" },
+							{ value: "optional", label: "Optional" },
+							{ value: "required", label: "Required" },
+						]}
+					/>
+					<SelectField
+						label="Client hours detail"
+						value={draft.client_hours_detail_level}
+						disabled={
+							locked || contract.relationship_kind === "talent_services"
+						}
+						onChange={(v) =>
+							setDraft((d) => ({
+								...d,
+								client_hours_detail_level:
+									v as typeof d.client_hours_detail_level,
+							}))
+						}
+						options={[
+							{ value: "none", label: "None" },
+							{ value: "summary", label: "Summary" },
+							{ value: "detailed", label: "Detailed" },
+						]}
+					/>
+					<TextField
+						label="Rounding minutes"
+						type="number"
+						value={draft.time_rounding_minutes}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, time_rounding_minutes: v }))
+						}
+						disabled={locked}
+					/>
+					<TextField
+						label="Weekly time limit"
+						hint="Leave empty for no limit."
+						type="number"
+						value={draft.weekly_time_limit_minutes}
+						onChange={(v) =>
+							setDraft((d) => ({ ...d, weekly_time_limit_minutes: v }))
+						}
+						disabled={locked}
+					/>
 				</FieldGroup>
 
 				<FieldGroup title="When invoices go out">
@@ -2191,6 +2297,8 @@ function SignatureSection({
 	const termsReady = Boolean(
 		contract.service_start_date && contract.service_end_date,
 	);
+	const counterpartyLabel =
+		contract.relationship_kind === "talent_services" ? "Talent" : "Client";
 
 	return (
 		<section className="px-1 py-1">
@@ -2201,8 +2309,7 @@ function SignatureSection({
 				parties have stamped it.
 			</p>
 
-			{/* Remote signing: the client doesn't need an account, and the
-			    consultant shouldn't have to sign on their behalf. */}
+			{/* Remote signing targets the non-Consultant contract position. */}
 			{isConsultant && !contract.signed_by_client_at && (
 				<button
 					type="button"
@@ -2210,7 +2317,7 @@ function SignatureSection({
 					className="mt-2 inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-muted"
 				>
 					<Link2 className="h-3 w-3" />
-					Send to the client to sign
+					Send to the {counterpartyLabel.toLowerCase()} to sign
 				</button>
 			)}
 
@@ -2222,7 +2329,11 @@ function SignatureSection({
 
 			<div className="mt-3 grid grid-cols-1 gap-2.5">
 				<SignatureBlock
-					heading="For the service provider"
+					heading={
+						contract.relationship_kind === "talent_services"
+							? "For the Consultant hirer"
+							: "For the Consultant provider"
+					}
 					signedName={contract.signed_by_consultant_name}
 					signedAt={contract.signed_by_consultant_at}
 					signedImageUrl={contract.signed_by_consultant_signature_url}
@@ -2245,7 +2356,7 @@ function SignatureSection({
 					isRescaling={isRescaling}
 				/>
 				<SignatureBlock
-					heading="For the client"
+					heading={`For the ${counterpartyLabel}`}
 					signedName={contract.signed_by_client_name}
 					signedAt={contract.signed_by_client_at}
 					signedImageUrl={contract.signed_by_client_signature_url}

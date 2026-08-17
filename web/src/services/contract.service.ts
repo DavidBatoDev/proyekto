@@ -26,6 +26,18 @@ export type ProviderKind = "individual" | "agency";
  * logged and approved before it can be billed.
  */
 export type BillingTiming = "arrears" | "advance";
+export type ContractRelationshipKind = "client_services" | "talent_services";
+export type ContractScopeMode = "project_specific" | "flexible";
+export type CompensationMode = "fixed" | "monthly" | "hourly" | "hybrid";
+
+export interface ContractPosition {
+	position: "hirer" | "provider";
+	user_id: string;
+	capacity: "client" | "consultant" | "talent";
+	display_name_snapshot: string;
+	email_snapshot: string | null;
+	signed_at: string | null;
+}
 
 /**
  * Which invoices a terms change applies to.
@@ -72,6 +84,10 @@ export interface Contract {
 	project_id: string | null;
 	project_title_snapshot: string | null;
 	consultant_user_id: string | null;
+	relationship_kind: ContractRelationshipKind;
+	scope_mode: ContractScopeMode;
+	contract_family_id: string | null;
+	engagement_id: string | null;
 	version: number;
 	contract_number: string | null;
 	status: ContractStatus;
@@ -91,6 +107,13 @@ export interface Contract {
 
 	currency: string;
 	billing_mode: BillingMode;
+	fixed_fee: number | null;
+	time_tracking_mode: "disabled" | "optional" | "required";
+	time_approval_mode: "none" | "provider_submit_hirer_approve";
+	allow_manual_time: boolean;
+	time_rounding_minutes: number;
+	weekly_time_limit_minutes: number | null;
+	client_hours_detail_level: "none" | "summary" | "detailed";
 	billing_timing: BillingTiming;
 	recurring_fee: number | null;
 	/** CLIENT-facing rate. Never a team member's cost rate. */
@@ -134,11 +157,14 @@ export interface Contract {
 	created_by: string | null;
 	created_at: string;
 	updated_at: string;
+	positions: ContractPosition[];
 
 	periods: ContractPeriod[];
 }
 
 export interface ContractTermsPayload {
+	relationship_kind?: ContractRelationshipKind;
+	scope_mode?: ContractScopeMode;
 	provider_kind?: ProviderKind;
 	provider_name?: string;
 	provider_address?: string;
@@ -153,9 +179,13 @@ export interface ContractTermsPayload {
 
 	currency?: string;
 	billing_mode?: BillingMode;
+	compensation_mode?: CompensationMode;
 	billing_timing?: BillingTiming;
 	recurring_fee?: number | null;
+	monthly_rate?: number | null;
 	client_hourly_rate?: number | null;
+	hourly_rate?: number | null;
+	fixed_fee?: number | null;
 	included_hours?: number | null;
 	invoice_cadence?: InvoiceCadence;
 	period_source?: "team_config" | "contract";
@@ -164,6 +194,12 @@ export interface ContractTermsPayload {
 	invoice_number_prefix?: string;
 	service_description?: string;
 	payment_method?: string;
+	time_tracking_mode?: "disabled" | "optional" | "required";
+	time_approval_mode?: "none" | "provider_submit_hirer_approve";
+	allow_manual_time?: boolean;
+	time_rounding_minutes?: number;
+	weekly_time_limit_minutes?: number | null;
+	client_hours_detail_level?: "none" | "summary" | "detailed";
 
 	service_start_date?: string;
 	term_count?: number;
@@ -255,6 +291,8 @@ function normalizeContract(contract: Contract): Contract {
 				: Number(contract.client_hourly_rate),
 		included_hours:
 			contract.included_hours == null ? null : Number(contract.included_hours),
+		fixed_fee: contract.fixed_fee == null ? null : Number(contract.fixed_fee),
+		positions: contract.positions ?? [],
 		clauses: [...(contract.clauses ?? [])].sort(
 			(a, b) => a.position - b.position,
 		),
@@ -302,17 +340,47 @@ export const contractService = {
 	},
 
 	async create(
-		projectId: string,
-		payload: ContractTermsPayload,
+		projectOrPayload:
+			| string
+			| (ContractTermsPayload & {
+					project_id?: string | null;
+					counterparty_user_id?: string;
+			  }),
+		payload: ContractTermsPayload = {},
 	): Promise<Contract> {
 		try {
+			const body =
+				typeof projectOrPayload === "string"
+					? { project_id: projectOrPayload, ...payload }
+					: projectOrPayload;
 			const { data } = await apiClient.post<{ data: Contract }>(
 				"/api/contracts",
-				{ project_id: projectId, ...payload },
+				body,
 			);
 			return normalizeContract(data.data);
 		} catch (err) {
 			fail(err, "Failed to create the contract");
+		}
+	},
+
+	async resolveCounterparty(email: string): Promise<{
+		id: string;
+		display_name: string | null;
+		email: string | null;
+		avatar_url: string | null;
+	}> {
+		try {
+			const { data } = await apiClient.post<{
+				data: {
+					id: string;
+					display_name: string | null;
+					email: string | null;
+					avatar_url: string | null;
+				};
+			}>("/api/contracts/counterparties/resolve", { email });
+			return data.data;
+		} catch (err) {
+			fail(err, "No eligible Proyekto account was found");
 		}
 	},
 

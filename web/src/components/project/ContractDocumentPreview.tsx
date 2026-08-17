@@ -84,6 +84,7 @@ export interface PreviewParties extends ContractVariableValues {
 export interface PreviewTerms {
 	currency: string;
 	billing_mode: BillingMode;
+	fixed_fee: string;
 	recurring_fee: string;
 	client_hourly_rate: string;
 	service_description: string;
@@ -434,6 +435,9 @@ function billingLine(terms: PreviewTerms): string {
 	}
 	if (terms.billing_mode === "time_based") {
 		return `${formatMoney(terms.currency, num(terms.client_hourly_rate))} / hour`;
+	}
+	if (terms.billing_mode === "fixed") {
+		return `${formatMoney(terms.currency, num(terms.fixed_fee))} fixed amount`;
 	}
 	return `${formatMoney(terms.currency, num(terms.recurring_fee))} / period + overage`;
 }

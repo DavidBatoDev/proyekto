@@ -1,9 +1,10 @@
 # Engagement Data Model
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-16 · **Status:** implementation pending deployment
 
-> **⚠️ Schema applied; runtime not active.** These definitions describe the two applied
-> P4b expand migrations. Existing runtime behavior continues to use the legacy contract,
+> **⚠️ Core schema applied; runtime migration authored but not applied.**
+> `20260816090000_contract_positions_runtime.sql` activates the P4b contract path after
+> deployment. Until then, existing runtime behavior continues to use the legacy contract,
 > project, team-rate, and time-log paths.
 
 The schema separates four facts that are easy to conflate: the legal relationship, its
@@ -124,7 +125,8 @@ contract columns tied to Client/Consultant terminology.
 | `created_at`, `updated_at` | Timestamps | Audit timestamps |
 
 The allowed position matrix mirrors `engagement_parties`. Existing contracts receive no
-position backfill; current compatibility columns remain authoritative until runtime cutover.
+position backfill. The P4b runtime writes both generic seat evidence and the legacy
+compatibility signature fields; it does not infer positions for historical contracts.
 
 ## Commercial time tables
 
@@ -196,7 +198,7 @@ evidence is locked.
 
 | Existing table | New nullable/additive fields | Purpose |
 | --- | --- | --- |
-| `contracts` | `relationship_kind`, `scope_mode`, `contract_family_id`, `engagement_id` | Direction, scope, amendment family, and governed relationship |
+| `contracts` | `relationship_kind`, `scope_mode`, `contract_family_id`, `engagement_id`, `fixed_fee`, time-policy fields | Direction, scope, amendment family, governed relationship, commercial price, and the time policy projected at final signing |
 | `invoices` | `engagement_id` | Client-services revenue side |
 | `payouts` | `engagement_id` | Talent-services cost side |
 | `task_time_logs` | `engagement_assignment_id` | Exact worker/project commercial attribution |

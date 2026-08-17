@@ -8,13 +8,18 @@ function serviceFor(contract: ContractRow, ownerId: string | null = null) {
     const builder = {
       select: jest.fn(() => builder),
       eq: jest.fn(() => builder),
+      order: jest.fn(() => builder),
       maybeSingle: jest.fn().mockResolvedValue({ data, error: null }),
     };
     return builder;
   };
   const supabase = {
     from: jest.fn((table: string) =>
-      table === 'contracts' ? query(contract) : query({ owner_id: ownerId }),
+      table === 'contracts'
+        ? query(contract)
+        : table === 'contract_positions'
+          ? query([])
+          : query({ owner_id: ownerId }),
     ),
   } as unknown as SupabaseClient;
   const financeAccess = { assertProject: jest.fn().mockResolvedValue({}) };
