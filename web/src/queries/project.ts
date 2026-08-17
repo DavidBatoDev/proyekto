@@ -47,6 +47,8 @@ export const projectKeys = {
 	brief: (projectId: string) => ["project", "brief", projectId] as const,
 	roadmapFull: (roadmapId: string) =>
 		["project", "roadmap-full", roadmapId] as const,
+	featureDependencies: (roadmapId: string) =>
+		["project", "feature-dependencies", roadmapId] as const,
 	allRoadmapsFull: ["project", "all-roadmaps-full"] as const,
 };
 

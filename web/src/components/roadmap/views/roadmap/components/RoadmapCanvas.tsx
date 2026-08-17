@@ -8,7 +8,7 @@ import { useRoadmapCollaboration } from "@/hooks/useRoadmapCollaboration";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { RoadmapLeftSidePanel } from "../../../panels/RoadmapLeftSidePanel";
-import { MilestonesView } from "../../milestones/MilestonesView";
+import { TimelineView } from "../../timeline/TimelineView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
 import type { RoadmapCanvasProps } from "../models/types";
 import { RoadmapView } from "../RoadmapView";
@@ -481,7 +481,7 @@ const RoadmapCanvas = ({
 						)}
 
 						{viewMode === "milestones" && (
-							<MilestonesView
+							<TimelineView
 								roadmap={roadmap}
 								milestones={milestones}
 								epics={epics}

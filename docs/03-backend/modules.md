@@ -101,7 +101,8 @@ features/milestones → tasks, with comments, assignees, dependencies, attachmen
 JSON-patch application). 9 controllers, ~15 services. Tables: `roadmap_epics`,
 `roadmap_features`, `roadmap_milestones`, `roadmap_tasks`, `roadmap_*_assignees`,
 `milestone_features`, `epic_comments`/`feature_comments`/`task_comments`,
-`task_attachments`, `task_dependencies`, `task_activity_log`, `roadmap_ai_sessions`,
+`task_attachments`, `task_dependencies`, `feature_dependencies`,
+`task_activity_log`, `roadmap_ai_sessions`,
 `roadmap_ai_messages`, `roadmap_ai_memories`. The patch repository persists the
 whole graph atomically via the RPC `upsert_full_roadmap` (no `.from()`).
 `RoadmapAuthorizationService` gates every access in the service layer, walking

@@ -53,9 +53,16 @@ export function useMilestonesTimeline({
 			.filter((item): item is MilestoneMarker => Boolean(item));
 	}, [sortedMilestones, rangeStart, granularity, cw]);
 
+	// A single-column tile that the compositor repeats, NOT a
+	// repeating-linear-gradient spanning the whole timeline. The repeating form
+	// makes the browser evaluate one gradient across the full scroll width, so
+	// every raster tile that scrolls into view during a horizontal pan is
+	// expensive; a `background-size` tile is rasterized once and reused.
 	const gridBg = useMemo(
 		() => ({
-			backgroundImage: `repeating-linear-gradient(90deg, transparent 0px, transparent ${cw - 1}px, #e5e7eb ${cw - 1}px, #e5e7eb ${cw}px)`,
+			backgroundImage: `linear-gradient(90deg, transparent ${cw - 1}px, #e5e7eb ${cw - 1}px)`,
+			backgroundSize: `${cw}px 100%`,
+			backgroundRepeat: "repeat",
 		}),
 		[cw],
 	);

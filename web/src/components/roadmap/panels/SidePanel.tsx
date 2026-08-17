@@ -461,17 +461,26 @@ export const SidePanel = ({
 				blocked_by: prev.blocked_by.filter((d) => d.id !== optimisticDep.id),
 			}));
 			console.error("[SidePanel] addDependency failed:", err);
-			alert("Failed to add dependency. Please try again.");
+			toast.error("Could not add that dependency");
 		}
 	};
 
 	const handleRemoveDependency = async (depId: string) => {
 		if (!task?.id) return;
+		// Snapshot before the optimistic drop: this used to be fire-and-forget,
+		// so a failed delete looked like a success until the next reload.
+		const snapshot = dependencies;
 		setDependencies((prev) => ({
 			blocking: prev.blocking.filter((d) => d.id !== depId),
 			blocked_by: prev.blocked_by.filter((d) => d.id !== depId),
 		}));
-		await taskService.removeDependency(task.id, depId).catch(() => {});
+		try {
+			await taskService.removeDependency(task.id, depId);
+		} catch (err) {
+			console.error("[SidePanel] removeDependency failed:", err);
+			setDependencies(snapshot);
+			toast.error("Could not remove that dependency");
+		}
 	};
 
 	const hasUnsavedChanges = useMemo(() => {
@@ -1569,31 +1578,57 @@ export const SidePanel = ({
 													Blocked by
 												</p>
 												<div className="space-y-1">
-													{dependencies.blocked_by.map((dep) => (
-														<div
-															key={dep.id}
-															className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-md px-2.5 py-1.5 text-xs"
-														>
-															<span className="flex-1 text-gray-700 truncate">
-																{dep.blocking_task?.title ??
-																	dep.blocking_task_id}
-															</span>
-															{dep.blocking_task?.status && (
-																<span className="text-gray-400 shrink-0">
-																	{dep.blocking_task.status.replace(/_/g, " ")}
-																</span>
-															)}
-															<button
-																type="button"
-																onClick={() =>
-																	void handleRemoveDependency(dep.id)
-																}
-																className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+													{dependencies.blocked_by.map((dep) => {
+														// A dependency whose predecessor is done is
+														// satisfied, not blocking. Colouring every one
+														// red overstates what is actually in the way.
+														const isSatisfied =
+															dep.blocking_task?.status === "done";
+														return (
+															<div
+																key={dep.id}
+																className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+																	isSatisfied
+																		? "bg-green-50 border-green-100"
+																		: "bg-red-50 border-red-100"
+																}`}
 															>
-																<X className="w-3 h-3" />
-															</button>
-														</div>
-													))}
+																<span
+																	className={`shrink-0 ${
+																		isSatisfied
+																			? "text-green-600"
+																			: "text-red-500"
+																	}`}
+																	title={
+																		isSatisfied ? "Satisfied" : "Still blocking"
+																	}
+																>
+																	{isSatisfied ? "✓" : "⚠"}
+																</span>
+																<span className="flex-1 text-gray-700 truncate">
+																	{dep.blocking_task?.title ??
+																		dep.blocking_task_id}
+																</span>
+																{dep.blocking_task?.status && (
+																	<span className="text-gray-400 shrink-0">
+																		{dep.blocking_task.status.replace(
+																			/_/g,
+																			" ",
+																		)}
+																	</span>
+																)}
+																<button
+																	type="button"
+																	onClick={() =>
+																		void handleRemoveDependency(dep.id)
+																	}
+																	className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+																>
+																	<X className="w-3 h-3" />
+																</button>
+															</div>
+														);
+													})}
 												</div>
 											</div>
 										)}
@@ -1614,6 +1649,19 @@ export const SidePanel = ({
 																	{dep.blocked_task.status.replace(/_/g, " ")}
 																</span>
 															)}
+															{/* Removable from this side too: the backend's
+															    binding check accepts either endpoint, so the
+															    old read-only list was asymmetric for no reason. */}
+															<button
+																type="button"
+																onClick={() =>
+																	void handleRemoveDependency(dep.id)
+																}
+																className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+																aria-label="Remove dependency"
+															>
+																<X className="w-3 h-3" />
+															</button>
 														</div>
 													))}
 												</div>

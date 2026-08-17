@@ -268,17 +268,32 @@ export const MilestonesView = ({
 		rowRefs.current.delete(key);
 	}, []);
 
-	const setEpicRowRef = useCallback(
-		(epicId: string) => (node: HTMLDivElement | null) => {
-			setRowRef(getEpicRowKey(epicId), node);
+	// Cache one ref callback per row id. A fresh closure per render would make
+	// React detach and reattach every row ref on every render — with hundreds of
+	// rows that is a measurable cost on each collapse/drag/state change.
+	const rowRefCallbacks = useRef(
+		new Map<string, (node: HTMLDivElement | null) => void>(),
+	);
+	const getRowRefCallback = useCallback(
+		(rowKey: string) => {
+			const cached = rowRefCallbacks.current.get(rowKey);
+			if (cached) return cached;
+			const callback = (node: HTMLDivElement | null) => {
+				setRowRef(rowKey, node);
+			};
+			rowRefCallbacks.current.set(rowKey, callback);
+			return callback;
 		},
-		[setRowRef, getEpicRowKey],
+		[setRowRef],
+	);
+
+	const setEpicRowRef = useCallback(
+		(epicId: string) => getRowRefCallback(getEpicRowKey(epicId)),
+		[getRowRefCallback, getEpicRowKey],
 	);
 	const setFeatureRowRef = useCallback(
-		(featureId: string) => (node: HTMLDivElement | null) => {
-			setRowRef(getFeatureRowKey(featureId), node);
-		},
-		[setRowRef, getFeatureRowKey],
+		(featureId: string) => getRowRefCallback(getFeatureRowKey(featureId)),
+		[getRowRefCallback, getFeatureRowKey],
 	);
 
 	const scrollToRow = useCallback(
@@ -390,7 +405,7 @@ export const MilestonesView = ({
 		onUpdateMilestone,
 	});
 
-	const { isPanningTimeline } = useMilestonesPan({
+	useMilestonesPan({
 		timelineScrollRef,
 		verticalScrollRef,
 	});
@@ -1072,14 +1087,11 @@ export const MilestonesView = ({
 							</div>
 						</div>
 
-						{/* Horizontally scrollable timeline */}
+						{/* Horizontally scrollable timeline. The grabbing cursor is applied
+						    imperatively by useMilestonesPan so a drag never re-renders here. */}
 						<div
 							ref={timelineScrollRef}
-							className={`overflow-x-auto overflow-y-visible hide-scrollbar ${
-								isPanningTimeline
-									? "cursor-grabbing select-none"
-									: "cursor-grab"
-							}`}
+							className="overflow-x-auto overflow-y-visible hide-scrollbar cursor-grab"
 						>
 							<div className="relative" style={{ width: totalWidth }}>
 								<MilestonesTimelineHeader

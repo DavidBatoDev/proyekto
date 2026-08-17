@@ -41,8 +41,20 @@ Backed by `roadmaps`, `roadmap_epics`, `roadmap_features`, `roadmap_tasks` — s
 | **Milestone view** (Gantt) | Features by default (optionally Epics; never Tasks) | Timeline of deliverables |
 
 Tasks are deliberately excluded from the Gantt — too granular, too volatile, too
-noisy for a timeline. Milestones link to features via the `milestone_features` M:N
+noisy for a timeline. (They also have no `start_date`, only a `due_date`, so there
+is no bar to draw.) Milestones link to features via the `milestone_features` M:N
 junction, so a milestone tracks the delivery of a set of features.
+
+**Dependencies** exist at two levels, and the level follows the same rule:
+
+- `feature_dependencies` — Finish→Start edges between features, drawn as arrows on
+  the Timeline, created by dragging between bars. The Timeline flags a successor
+  scheduled to start before its predecessor finishes and offers a one-click fix
+  that shifts it while preserving its duration.
+- `task_dependencies` — the existing task-level blockers, surfaced in the task
+  panel as Blocked by / Blocking. Not drawn on the Gantt, for the reason above.
+
+Neither derives a `blocked` status; that value stays manually set on a task.
 
 ## Date rules
 

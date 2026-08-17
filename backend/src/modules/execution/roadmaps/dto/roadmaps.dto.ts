@@ -352,3 +352,26 @@ export class AddAttachmentDto {
 export class AddDependencyDto {
   @IsUUID() blocking_task_id: string;
 }
+
+/**
+ * Feature-level (Gantt) dependency. dependency_type ships now even though the
+ * UI only emits 'FS', so SS/FF become a UI change rather than a migration.
+ * 'SF' is deliberately not offered.
+ */
+export class CreateFeatureDependencyDto {
+  @IsUUID()
+  blocking_feature_id: string;
+
+  @IsUUID()
+  blocked_feature_id: string;
+
+  @IsOptional()
+  @IsIn(['FS', 'SS', 'FF'])
+  dependency_type?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(-365)
+  @Max(365)
+  lag_days?: number;
+}

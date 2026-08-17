@@ -198,6 +198,36 @@ export interface TaskActivityEntry {
 	changed_by_user?: { id: string; display_name?: string; avatar_url?: string };
 }
 
+/** Finish->Start is all the UI emits today; SS/FF are schema-ready. */
+export type FeatureDependencyType = "FS" | "SS" | "FF";
+
+/**
+ * A scheduling edge between two features, drawn as an arrow in the Timeline.
+ * `blocking` is the predecessor, `blocked` is the successor.
+ */
+export interface FeatureDependency {
+	id: string;
+	roadmap_id: string;
+	blocking_feature_id: string;
+	blocked_feature_id: string;
+	dependency_type: FeatureDependencyType;
+	lag_days: number;
+	created_by?: string | null;
+	created_at: string;
+	blocking_feature?: {
+		id: string;
+		title: string;
+		start_date?: string;
+		end_date?: string;
+	};
+	blocked_feature?: {
+		id: string;
+		title: string;
+		start_date?: string;
+		end_date?: string;
+	};
+}
+
 export interface TaskDependency {
 	id: string;
 	blocking_task_id: string;

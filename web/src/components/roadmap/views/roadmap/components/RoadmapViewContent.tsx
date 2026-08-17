@@ -1017,8 +1017,13 @@ export function RoadmapViewContent({
 								</div>
 							)}
 
-							{/* Right: Roadmap Canvas */}
-							<div className="flex-1 relative">
+							{/* Right: Roadmap Canvas.
+							    min-w-0 is load-bearing: without it this flex item's automatic
+							    minimum size is its content's min-content width, and the Timeline
+							    grid is far wider than the viewport — the column would stretch
+							    past the screen and be clipped by the overflow-hidden ancestor,
+							    hiding anything right-aligned. */}
+							<div className="flex-1 relative min-w-0">
 								<RoadmapCanvas
 									roadmap={roadmap}
 									onNodeOpen={handleNodeOpen}

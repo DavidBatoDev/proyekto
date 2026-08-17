@@ -52,6 +52,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `milestone_features` | M:N milestones ↔ features (delivery tracking) |
 | `roadmap_task_assignees`, `roadmap_feature_assignees` | Multi-assignee joins |
 | `task_comments`, `epic_comments`, `feature_comments`, `task_attachments`, `task_dependencies`, `task_activity_log` | Task/epic/feature extras |
+| `feature_dependencies` | Finish→Start (schema-ready SS/FF) edges between features — the Timeline's arrows. `roadmap_id` is denormalised; a trigger enforces acyclicity and same-roadmap endpoints |
 | `roadmap_shares` | Tokenized share config (`share_token`, `invited_emails` jsonb) |
 | `roadmap_ai_sessions`, `roadmap_ai_messages`, `roadmap_ai_memories` | AI copilot state |
 

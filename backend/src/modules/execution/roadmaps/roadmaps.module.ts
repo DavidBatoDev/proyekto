@@ -8,6 +8,7 @@ import { MilestonesController } from './controllers/milestones.controller';
 import { EpicsController } from './controllers/epics.controller';
 import { FeaturesController } from './controllers/features.controller';
 import { TasksController } from './controllers/tasks.controller';
+import { FeatureDependenciesController } from './controllers/feature-dependencies.controller';
 import { TaskExtrasController } from './controllers/task-extras.controller';
 import { RoadmapPatchController } from './controllers/roadmap-patch.controller';
 import { RoadmapAiController } from './controllers/roadmap-ai.controller';
@@ -28,6 +29,11 @@ import {
   FEATURES_REPOSITORY,
 } from './services/features.service';
 import { TasksService, TASKS_REPOSITORY } from './services/tasks.service';
+import {
+  FeatureDependenciesService,
+  FEATURE_DEPENDENCIES_REPOSITORY,
+} from './services/feature-dependencies.service';
+import { FeatureDependenciesRepositorySupabase } from './repositories/feature-dependencies.repository.supabase';
 import {
   TaskExtrasService,
   TASK_EXTRAS_REPOSITORY,
@@ -69,6 +75,7 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     FeaturesController,
     TasksController,
     TaskExtrasController,
+    FeatureDependenciesController,
     RoadmapPatchController,
     RoadmapAiController,
     RoadmapAiSessionsController,
@@ -104,6 +111,11 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     { provide: TASKS_REPOSITORY, useClass: TasksRepositorySupabase },
     TaskExtrasService,
     { provide: TASK_EXTRAS_REPOSITORY, useClass: TaskExtrasRepositorySupabase },
+    FeatureDependenciesService,
+    {
+      provide: FEATURE_DEPENDENCIES_REPOSITORY,
+      useClass: FeatureDependenciesRepositorySupabase,
+    },
     FeatureStatusSyncService,
   ],
   exports: [

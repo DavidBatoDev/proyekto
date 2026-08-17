@@ -88,6 +88,8 @@ export const ACTIVITY_ACTIONS = {
 	TASK_ATTACHMENT_REMOVED: "task_attachment.removed",
 	TASK_DEPENDENCY_ADDED: "task_dependency.added",
 	TASK_DEPENDENCY_REMOVED: "task_dependency.removed",
+	FEATURE_DEPENDENCY_ADDED: "feature_dependency.added",
+	FEATURE_DEPENDENCY_REMOVED: "feature_dependency.removed",
 	MEMBER_INVITED: "member.invited",
 	MEMBER_INVITE_RESPONDED: "member.invite_responded",
 	MEMBER_INVITE_REVOKED: "member.invite_revoked",
@@ -131,6 +133,7 @@ export const ACTIVITY_ENTITY_TYPES = [
 	"feature_comment",
 	"task_attachment",
 	"task_dependency",
+	"feature_dependency",
 	"roadmap_share",
 	"project_member",
 	"project_access",
@@ -161,6 +164,7 @@ export const ACTION_FAMILY_LABELS: Record<string, string> = {
 	feature_comment: "Feature comments",
 	task_attachment: "Attachments",
 	task_dependency: "Dependencies",
+	feature_dependency: "Feature dependencies",
 	member: "Members",
 	project: "Project",
 	mcp: "AI connector",
@@ -444,6 +448,19 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 		tone: "neutral",
 		verb: "removed",
 		object: () => "a task dependency",
+	},
+
+	"feature_dependency.added": {
+		icon: Link2,
+		tone: "neutral",
+		verb: "added",
+		object: () => "a feature dependency",
+	},
+	"feature_dependency.removed": {
+		icon: Link2Off,
+		tone: "neutral",
+		verb: "removed",
+		object: () => "a feature dependency",
 	},
 
 	"member.invited": {

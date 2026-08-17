@@ -10,6 +10,8 @@ import type {
 	Comment,
 	EpicPriority,
 	EpicStatus,
+	FeatureDependency,
+	FeatureDependencyType,
 	FeatureStatus,
 	Roadmap,
 	RoadmapEpic,
@@ -932,6 +934,60 @@ export const featureService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, `Duplicate feature ${id}`);
+		}
+	},
+};
+
+/**
+ * Feature-level dependencies (the Timeline's arrows). Roadmap-scoped because
+ * the Gantt needs every edge at once; deliberately not folded into the
+ * roadmap "full" payload, which is the hottest read in the app.
+ */
+export const featureDependencyService = {
+	async listByRoadmap(roadmapId: string): Promise<FeatureDependency[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<FeatureDependency[]>>(
+				`/api/roadmaps/${roadmapId}/feature-dependencies`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`List feature dependencies for roadmap ${roadmapId}`,
+			);
+		}
+	},
+
+	async create(
+		roadmapId: string,
+		payload: {
+			blocking_feature_id: string;
+			blocked_feature_id: string;
+			dependency_type?: FeatureDependencyType;
+			lag_days?: number;
+		},
+	): Promise<FeatureDependency> {
+		try {
+			const response = await apiClient.post<ApiResponse<FeatureDependency>>(
+				`/api/roadmaps/${roadmapId}/feature-dependencies`,
+				payload,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Create feature dependency");
+		}
+	},
+
+	async remove(roadmapId: string, dependencyId: string): Promise<void> {
+		try {
+			await apiClient.delete(
+				`/api/roadmaps/${roadmapId}/feature-dependencies/${dependencyId}`,
+			);
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Remove feature dependency ${dependencyId}`,
+			);
 		}
 	},
 };

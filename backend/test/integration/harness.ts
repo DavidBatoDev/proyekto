@@ -250,14 +250,22 @@ export class Harness {
     return this.track('roadmap_epics', data.id as string);
   }
 
-  async createFeature(epicId: string, roadmapId: string): Promise<string> {
+  // position is a parameter because roadmap_features has a UNIQUE(epic_id,
+  // position): more than one feature under the same epic needs distinct values.
+  async createFeature(
+    epicId: string,
+    roadmapId: string,
+    position = 0,
+    dates?: { start_date?: string; end_date?: string },
+  ): Promise<string> {
     const { data, error } = await this.admin
       .from('roadmap_features')
       .insert({
         epic_id: epicId,
         roadmap_id: roadmapId,
         title: 'itest feature',
-        position: 0,
+        position,
+        ...(dates ?? {}),
       })
       .select('id')
       .single();

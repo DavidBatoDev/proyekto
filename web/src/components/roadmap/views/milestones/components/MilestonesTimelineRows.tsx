@@ -557,7 +557,21 @@ export const MilestonesTimelineRows = ({
 	}, [drawDragState, clientXToDate, onEpicDateCreate, onFeatureDateCreate]);
 
 	return (
-		<>
+		// The column grid and the today marker are painted ONCE here rather than
+		// per row. With ~240 rows, a repeating-linear-gradient (plus an overlay
+		// div) on every row is what makes panning stutter.
+		<div className="relative" style={{ width: totalWidth, ...gridBg }}>
+			{todayColInRange && (
+				<div
+					className="absolute top-0 bottom-0 z-0 pointer-events-none"
+					style={{
+						left: todayColLeft,
+						width: cw,
+						backgroundColor: "#f97316",
+						opacity: 0.07,
+					}}
+				/>
+			)}
 			{sortedEpics.map((epic, epicIndex) => {
 				const isCollapsed = collapsed.has(epic.id);
 				const epicColor = epic.color ?? "#6366f1";
@@ -617,21 +631,8 @@ export const MilestonesTimelineRows = ({
 							style={{
 								height: epicRowHeight,
 								width: totalWidth,
-								...gridBg,
 							}}
 						>
-							{todayColInRange && (
-								<div
-									className="absolute top-0 bottom-0 pointer-events-none"
-									style={{
-										left: todayColLeft,
-										width: cw,
-										backgroundColor: "#f97316",
-										opacity: 0.07,
-									}}
-								/>
-							)}
-
 							{isDateDrawMode && (
 								<div
 									className="absolute inset-0 z-10 cursor-text"
@@ -865,21 +866,8 @@ export const MilestonesTimelineRows = ({
 										style={{
 											height: ROW_HEIGHT,
 											width: totalWidth,
-											...gridBg,
 										}}
 									>
-										{todayColInRange && (
-											<div
-												className="absolute top-0 bottom-0 pointer-events-none"
-												style={{
-													left: todayColLeft,
-													width: cw,
-													backgroundColor: "#f97316",
-													opacity: 0.07,
-												}}
-											/>
-										)}
-
 										{isDateDrawMode && !hasDates && (
 											<div
 												className="absolute inset-0 z-10 cursor-text"
@@ -1033,6 +1021,6 @@ export const MilestonesTimelineRows = ({
 					</div>
 				);
 			})}
-		</>
+		</div>
 	);
 };

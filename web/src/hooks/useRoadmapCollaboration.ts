@@ -198,10 +198,17 @@ export function useRoadmapCollaboration({
 		colorRef.current = color;
 		avatarUrlRef.current = avatarUrl;
 
-		const invalidate = () =>
+		const invalidate = () => {
 			void queryClient.invalidateQueries({
 				queryKey: projectKeys.roadmapFull(roadmapId),
 			});
+			// Dependency edges are a separate query, so the roadmap payload
+			// refreshing does not cover them. Without this, a link another
+			// collaborator draws would not appear until reload.
+			void queryClient.invalidateQueries({
+				queryKey: projectKeys.featureDependencies(roadmapId),
+			});
+		};
 
 		const applyPresence = (collaboratorsList: PresenceState[]) => {
 			const others = collaboratorsList

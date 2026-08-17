@@ -76,6 +76,8 @@ export const ACTIVITY_ACTIONS = {
   TASK_ATTACHMENT_REMOVED: 'task_attachment.removed',
   TASK_DEPENDENCY_ADDED: 'task_dependency.added',
   TASK_DEPENDENCY_REMOVED: 'task_dependency.removed',
+  FEATURE_DEPENDENCY_ADDED: 'feature_dependency.added',
+  FEATURE_DEPENDENCY_REMOVED: 'feature_dependency.removed',
 
   // ── Membership / access ───────────────────────────────────────────────────
   MEMBER_INVITED: 'member.invited',
@@ -131,6 +133,7 @@ export const ACTIVITY_ENTITY_TYPES = [
   'feature_comment',
   'task_attachment',
   'task_dependency',
+  'feature_dependency',
   'roadmap_share',
   'project_member',
   'project_access',
