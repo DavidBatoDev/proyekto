@@ -240,6 +240,22 @@ export function selectedOption(decision: Decision) {
 	return decision.options?.find((option) => option.is_selected) ?? null;
 }
 
+/**
+ * Whether finalizing should stop and ask which option won.
+ *
+ * A decision that listed the alternatives and then settled without marking one
+ * answers "what did we weigh?" but not "what did we pick?" — and the second
+ * question is the one people come back for. Asking at the moment of finalizing
+ * is the only point where the answer is still fresh.
+ *
+ * Deliberately a prompt rather than a requirement: options are sometimes context
+ * rather than a shortlist, so the dialog offers a way through without choosing.
+ */
+export function needsOptionChoice(decision: Decision): boolean {
+	const options = decision.options ?? [];
+	return options.length > 0 && !options.some((option) => option.is_selected);
+}
+
 /** Category counts for the filter row, in the categories' own order. */
 export function categoryCounts(
 	decisions: Decision[],

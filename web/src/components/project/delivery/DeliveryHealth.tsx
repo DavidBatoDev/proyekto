@@ -88,8 +88,11 @@ export function DeliveryViewToggle({
 }
 
 /**
- * One big number with its caption. Shared with `ChangeRequestHealth`, so the two
- * delivery headers read as one system rather than two inventions.
+ * One big number with its caption.
+ *
+ * Deliverables-only now. Change Requests and Decisions used to share it, which
+ * is part of why all three headers looked identical; both have since moved to
+ * their own page chrome.
  *
  * `value` accepts a string as well as a number: some of these are day deltas
  * ("+18") where the sign carries the meaning and must not be lost to formatting.

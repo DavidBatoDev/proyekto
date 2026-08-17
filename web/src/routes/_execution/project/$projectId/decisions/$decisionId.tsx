@@ -15,33 +15,32 @@ import { useState } from "react";
 import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { AppTabs } from "@/components/common/AppTabs";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import {
+	DecisionButton,
+	DecisionFieldError,
+	DecisionSkeleton,
+	DecisionStatusText,
+	decisionInputClassFor,
+	RecordProse,
+	RecordSection,
+} from "@/components/project/decisions/DecisionPrimitives";
 import { CategoryChip } from "@/components/project/delivery/CategoryChip";
 import { CategoryCombobox } from "@/components/project/delivery/CategoryCombobox";
 import { CreateDecisionModal } from "@/components/project/delivery/CreateDecisionModal";
-import {
-	DeliverySkeleton,
-	FieldError,
-	inputClassFor,
-	ListBox,
-	ListEmpty,
-	ListRow,
-	PrimaryButton,
-	RoadmapNodeGlyph,
-	SecondaryButton,
-	StatusPill,
-} from "@/components/project/delivery/DeliveryPrimitives";
 import {
 	OPTION_TITLE_MAX,
 	validateOptionTitle,
 } from "@/components/project/delivery/decisionForm";
 import {
 	DECISION_STATUS_LABEL,
-	DECISION_STATUS_TONE,
 	decisionLinkSegments,
 	decisionReference,
+	needsOptionChoice,
 } from "@/components/project/delivery/decisionModel";
-import { LinkRoadmapWorkModal } from "@/components/project/delivery/LinkRoadmapWorkModal";
+import { FinalizeDecisionModal } from "@/components/project/delivery/FinalizeDecisionModal";
 import { ActivityFeed } from "@/components/project/logs/ActivityFeed";
+import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
+import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import {
 	useDecisionCategoriesQuery,
@@ -79,7 +78,7 @@ function DecisionDetailPage() {
 		<RequireProjectAccess
 			projectId={projectId}
 			access="delivery"
-			loadingFallback={<DeliverySkeleton rows={1} />}
+			loadingFallback={<DecisionSkeleton />}
 		>
 			<DecisionDetailBody />
 		</RequireProjectAccess>
@@ -101,11 +100,13 @@ function DecisionDetailBody() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isLinking, setIsLinking] = useState(false);
 	const [isSuperseding, setIsSuperseding] = useState(false);
+	/** Open when finalizing needs to ask which option won. */
+	const [isFinalizing, setIsFinalizing] = useState(false);
 
 	const canEdit = permissions.data?.decisions?.edit === true;
 	const decision = query.data;
 
-	if (query.isPending) return <DeliverySkeleton rows={1} />;
+	if (query.isPending) return <DecisionSkeleton />;
 	if (!decision) {
 		return (
 			<div className="app-shell-bg flex h-full w-full items-center justify-center">
@@ -147,75 +148,116 @@ function DecisionDetailBody() {
 		}
 	};
 
+	/**
+	 * Finalizing stops to ask which option won, when the decision listed some and
+	 * marked none — otherwise the record says what was weighed but not what was
+	 * picked.
+	 */
+	const startFinalize = () => {
+		if (needsOptionChoice(decision)) {
+			setIsFinalizing(true);
+			return;
+		}
+		mutations.finalize.mutate(decision.id);
+	};
+
+	const finalizeDecision = async (optionId: string | null) => {
+		if (optionId) {
+			try {
+				await mutations.updateOption.mutateAsync({
+					id: decision.id,
+					optionId,
+					body: { is_selected: true },
+				});
+			} catch {
+				// The mutation toasted and rolled back; settling anyway would record a
+				// final decision whose chosen option silently failed to save.
+				return;
+			}
+		}
+		mutations.finalize.mutate(decision.id);
+		setIsFinalizing(false);
+	};
+
 	return (
 		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			{/* Same top bar as the list page: page chrome running edge to edge,
-			    holding its ground while the tabs scroll under it. */}
-			<header className="sticky top-0 z-10 border-b border-border bg-card/90 px-6 py-3.5 backdrop-blur md:px-10">
-				<div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-					<div className="min-w-0">
-						<Link
-							to="/project/$projectId/decisions"
-							params={{ projectId }}
-							className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-						>
-							<ArrowLeft className="h-3 w-3" />
-							Decisions
-						</Link>
-						<div className="flex flex-wrap items-center gap-2">
-							<span className="font-mono text-xs font-semibold text-muted-foreground">
-								{decisionReference(decision)}
-							</span>
-							<h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-								{decision.title}
-							</h1>
-							<StatusPill
-								label={DECISION_STATUS_LABEL[decision.status]}
-								tone={DECISION_STATUS_TONE[decision.status]}
-							/>
-							<CategoryChip category={decision.category} size="sm" />
-							{decision.visibility === "internal" && (
-								<span
-									className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"
-									title="Internal — not shared with everyone on the project"
-								>
-									<Lock className="h-3 w-3" />
-									Internal
-								</span>
-							)}
-						</div>
-					</div>
+			{/* A masthead, not a toolbar. The record's own identity comes first and
+			    the actions sit under it, because on this page reading is the common
+			    act and editing is the rare one. */}
+			<header className="border-b border-border px-6 pb-5 pt-4 md:px-10">
+				<Link
+					to="/project/$projectId/decisions"
+					params={{ projectId }}
+					className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+				>
+					<ArrowLeft className="h-3 w-3" />
+					Decisions
+				</Link>
 
-					<div className="flex shrink-0 items-center gap-2">
+				<div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+					<span className="font-mono text-xs text-muted-foreground">
+						{decisionReference(decision)}
+					</span>
+					<h1 className="text-2xl font-semibold tracking-tight text-foreground">
+						{decision.title}
+					</h1>
+					{decision.version > 1 && (
+						<span className="text-xs text-muted-foreground">
+							v{decision.version}
+						</span>
+					)}
+				</div>
+
+				<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+					<DecisionStatusText
+						status={decision.status}
+						label={DECISION_STATUS_LABEL[decision.status]}
+					/>
+					<CategoryChip category={decision.category} size="sm" />
+					{decision.visibility === "internal" && (
+						<span
+							className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+							title="Internal — not shared with everyone on the project"
+						>
+							<Lock className="h-3 w-3" />
+							Internal
+						</span>
+					)}
+					<span className="text-[11px] tabular-nums text-muted-foreground">
+						{proposed ? "not yet settled" : `decided ${decision.decided_on}`}
+					</span>
+
+					<span className="ml-auto flex items-center gap-2">
 						{canEdit && proposed && (
-							<PrimaryButton
-								onClick={() => mutations.finalize.mutate(decision.id)}
+							<DecisionButton
+								tone="solid"
+								onClick={startFinalize}
 								disabled={busy}
 							>
-								<Gavel className="h-4 w-4" />
+								<Gavel className="h-3 w-3" />
 								Mark final
-							</PrimaryButton>
+							</DecisionButton>
 						)}
 						{canEdit && !superseded && !proposed && (
-							<SecondaryButton
+							<DecisionButton
 								onClick={() => setIsSuperseding(true)}
 								disabled={busy}
 							>
-								<ArrowUpDown className="h-3.5 w-3.5" />
+								<ArrowUpDown className="h-3 w-3" />
 								Supersede
-							</SecondaryButton>
+							</DecisionButton>
 						)}
 						{canEdit && (
-							<SecondaryButton
+							<DecisionButton
 								tone="danger"
 								onClick={() => setIsDeleting(true)}
 								disabled={mutations.remove.isPending}
 							>
-								<Trash2 className="h-3.5 w-3.5" />
+								<Trash2 className="h-3 w-3" />
 								Delete
-							</SecondaryButton>
+							</DecisionButton>
 						)}
-					</div>
+					</span>
 				</div>
 			</header>
 
@@ -269,6 +311,18 @@ function DecisionDetailBody() {
 			)}
 
 			{canEdit && (
+				<FinalizeDecisionModal
+					isOpen={isFinalizing}
+					decision={decision}
+					pending={
+						mutations.updateOption.isPending || mutations.finalize.isPending
+					}
+					onClose={() => setIsFinalizing(false)}
+					onConfirm={(optionId) => void finalizeDecision(optionId)}
+				/>
+			)}
+
+			{canEdit && (
 				<LinkRoadmapWorkModal
 					projectId={projectId}
 					links={decision.links ?? []}
@@ -293,8 +347,10 @@ function DecisionDetailBody() {
 				{/* The decision itself, unboxed under the bar — the same rhythm as the
 				    health strip on the list page. It is the one thing on this page
 				    that should never need a click to read. */}
-				<div className="mb-6 border-b border-border pb-5">
-					<p className="max-w-3xl text-base text-foreground">
+				<div className="mb-6 border-b border-border pb-6">
+					{/* The ruling, set large. It is the answer the page exists to give,
+					    so it is typeset as a statement rather than body copy. */}
+					<p className="max-w-3xl text-lg leading-relaxed text-foreground">
 						{decision.decision}
 					</p>
 					{superseded && replacedBy && (
@@ -419,100 +475,61 @@ function OverviewTab({
 	onChangeCategory: (category: DecisionCategory | null) => void;
 }) {
 	return (
-		<div className="grid gap-4 lg:grid-cols-2">
-			<ListBox title="Context and reasoning" bodyClassName="min-h-[13rem]">
-				{canEdit && (
-					// The one field editable in place. Everything else about a decision
-					// changes by superseding it, because the wording IS the record — but
-					// filing it under the wrong category is a clerical slip, not a change
-					// of mind, and forcing a new version for that would be absurd.
-					<div className="border-b border-border/60 px-4 py-3">
-						<p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-							Category
-						</p>
-						<div className="max-w-xs">
-							<CategoryCombobox
-								categories={categories}
-								value={decision.category_id ?? ""}
-								onChange={(categoryId) =>
-									onChangeCategory(
-										categories.find((c) => c.id === categoryId) ?? null,
-									)
-								}
-								onCreate={onCreateCategory}
-								creating={creatingCategory}
-							/>
-						</div>
-					</div>
-				)}
-				<div className="px-4 py-3">
-					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-						What prompted it
-					</p>
-					<p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
-						{decision.context || (
-							<span className="text-muted-foreground">
-								No context recorded.
-							</span>
-						)}
-					</p>
-				</div>
-				<div className="border-t border-border/60 px-4 py-3">
-					<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Why this was chosen
-					</p>
-					<p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
-						{decision.rationale || (
-							<span className="text-muted-foreground">
-								No reasoning recorded — the thing most likely to be missed
-								later.
-							</span>
-						)}
-					</p>
-				</div>
-			</ListBox>
+		// One column, read top to bottom. The two side-by-side panels this replaces
+		// were the same shape the deliverable and change-request detail pages used,
+		// which is most of why all three felt like one screen.
+		<div className="max-w-3xl">
+			<RecordSection title="What prompted it">
+				<RecordProse>{decision.context}</RecordProse>
+			</RecordSection>
 
-			<ListBox
-				title="History"
-				meta={decision.version > 1 ? `Version ${decision.version}` : undefined}
-				bodyClassName="min-h-[13rem]"
-			>
-				<ListRow>
-					<CircleCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-					<span className="flex-1">
-						{decision.status === "proposed"
-							? "Proposed, not yet settled"
-							: `Decided ${decision.decided_on}`}
-					</span>
-				</ListRow>
-				{replaced ? (
-					<ListRow>
-						<ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-						<span className="flex-1 min-w-0">
-							Replaced{" "}
-							<Link
-								to="/project/$projectId/decisions/$decisionId"
-								params={{ projectId, decisionId: replaced.id }}
-								className="font-semibold text-primary hover:underline"
-							>
-								{decisionReference(replaced)} {replaced.title}
-							</Link>
-						</span>
-					</ListRow>
+			<RecordSection title="Why this was chosen">
+				{decision.rationale ? (
+					<RecordProse>{decision.rationale}</RecordProse>
 				) : (
-					<ListRow>
-						<ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-						<span className="flex-1 text-muted-foreground">
-							This is the first decision on the question.
-						</span>
-					</ListRow>
+					<p className="text-sm text-muted-foreground/70">
+						No reasoning recorded — the thing most likely to be missed later.
+					</p>
 				)}
+			</RecordSection>
+
+			<RecordSection title="History">
+				<ul className="space-y-2 text-sm">
+					<li className="flex items-start gap-2">
+						<CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+						<span className="text-foreground">
+							{decision.status === "proposed"
+								? "Proposed, not yet settled"
+								: `Decided ${decision.decided_on}`}
+						</span>
+					</li>
+					<li className="flex items-start gap-2">
+						<ArrowUpDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+						{replaced ? (
+							<span className="min-w-0 text-foreground">
+								Replaced{" "}
+								<Link
+									to="/project/$projectId/decisions/$decisionId"
+									params={{ projectId, decisionId: replaced.id }}
+									className="font-medium text-primary hover:underline"
+								>
+									{decisionReference(replaced)} {replaced.title}
+								</Link>
+							</span>
+						) : (
+							<span className="text-muted-foreground">
+								This is the first decision on the question.
+							</span>
+						)}
+					</li>
+				</ul>
+
 				{decision.alternatives_considered && (
 					// Prose from before options were structured. Read-only: it is
 					// history, and re-editing it here would create two places to say the
 					// same thing.
-					<div className="border-t border-border/60 bg-muted/20 px-4 py-3">
-						<p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+					<div className="mt-4 border-l-2 border-border pl-3">
+						<p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 							Alternatives, recorded as free text
 						</p>
 						<p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
@@ -520,7 +537,29 @@ function OverviewTab({
 						</p>
 					</div>
 				)}
-			</ListBox>
+			</RecordSection>
+
+			{canEdit && (
+				// The one field editable in place. Everything else about a decision
+				// changes by superseding it, because the wording IS the record — but
+				// filing it under the wrong category is a clerical slip, not a change
+				// of mind, and forcing a new version for that would be absurd.
+				<RecordSection title="Category">
+					<div className="max-w-xs">
+						<CategoryCombobox
+							categories={categories}
+							value={decision.category_id ?? ""}
+							onChange={(categoryId) =>
+								onChangeCategory(
+									categories.find((c) => c.id === categoryId) ?? null,
+								)
+							}
+							onCreate={onCreateCategory}
+							creating={creatingCategory}
+						/>
+					</div>
+				</RecordSection>
+			)}
 		</div>
 	);
 }
@@ -554,20 +593,22 @@ function OptionsTab({
 	};
 
 	return (
-		<ListBox
+		<RecordSection
 			title="Options considered"
 			meta={options.length > 0 ? `${options.length} weighed` : undefined}
-			bodyClassName="min-h-[16rem]"
 		>
 			{options.length === 0 && (
-				<ListEmpty>
-					Nothing recorded. Months from now, "why didn't we use the other one?"
+				<p className="text-sm text-muted-foreground/70">
+					Nothing recorded. Months from now, “why didn’t we use the other one?”
 					is the question this answers.
-				</ListEmpty>
+				</p>
 			)}
 
 			{options.map((option) => (
-				<ListRow key={option.id} className="items-start py-2.5">
+				<div
+					key={option.id}
+					className="flex items-start gap-3 border-b border-border/60 py-3 last:border-b-0"
+				>
 					{canEdit ? (
 						<button
 							type="button"
@@ -631,15 +672,12 @@ function OptionsTab({
 							<X className="h-3.5 w-3.5" />
 						</button>
 					)}
-				</ListRow>
+				</div>
 			))}
 
 			{canEdit && (
-				<form
-					onSubmit={submit}
-					className="border-t border-border bg-muted/20 px-4 py-2.5"
-				>
-					<div className="flex items-center gap-2">
+				<form onSubmit={submit} className="mt-3">
+					<div className="flex items-end gap-2">
 						<input
 							value={draft}
 							onChange={(event) => {
@@ -647,19 +685,19 @@ function OptionsTab({
 								if (error) setError(null);
 							}}
 							maxLength={OPTION_TITLE_MAX + 1}
-							className={`${inputClassFor(error)} py-1.5`}
+							className={decisionInputClassFor(error)}
 							aria-invalid={Boolean(error)}
 							placeholder="Another option that was on the table"
 						/>
-						<PrimaryButton type="submit" disabled={busy}>
-							<Plus className="h-4 w-4" />
+						<DecisionButton type="submit" disabled={busy}>
+							<Plus className="h-3 w-3" />
 							Add
-						</PrimaryButton>
+						</DecisionButton>
 					</div>
-					<FieldError>{error}</FieldError>
+					<DecisionFieldError>{error}</DecisionFieldError>
 				</form>
 			)}
-		</ListBox>
+		</RecordSection>
 	);
 }
 
@@ -677,30 +715,32 @@ function ImpactTab({
 	const links = decision.links ?? [];
 
 	return (
-		<ListBox
+		<RecordSection
 			title="Work this affects"
 			meta={links.length > 0 ? `${links.length} linked` : undefined}
-			bodyClassName="min-h-[13rem]"
 			action={
 				canEdit ? (
-					<SecondaryButton onClick={onOpenLinkPicker}>
-						<Link2 className="h-3.5 w-3.5" />
+					<DecisionButton onClick={onOpenLinkPicker}>
+						<Link2 className="h-3 w-3" />
 						{links.length ? "Edit links" : "Link work"}
-					</SecondaryButton>
+					</DecisionButton>
 				) : undefined
 			}
 		>
 			{links.length === 0 ? (
-				<ListEmpty>
+				<p className="text-sm text-muted-foreground/70">
 					Nothing linked yet, so this decision won't surface when someone opens
 					the work it governs.
-				</ListEmpty>
+				</p>
 			) : (
 				links.map((link) => {
 					const segments = decisionLinkSegments(link);
 					if (segments.length === 0) return null;
 					return (
-						<ListRow key={link.id} className="items-stretch py-2.5">
+						<div
+							key={link.id}
+							className="flex items-stretch gap-3 border-b border-border/60 py-2.5 last:border-b-0"
+						>
 							<ul className="min-w-0 flex-1 space-y-0.5">
 								{segments.map((segment, depth) => {
 									const leaf = depth === segments.length - 1;
@@ -747,11 +787,11 @@ function ImpactTab({
 									<X className="h-3.5 w-3.5" />
 								</button>
 							)}
-						</ListRow>
+						</div>
 					);
 				})
 			)}
-		</ListBox>
+		</RecordSection>
 	);
 }
 
@@ -773,7 +813,7 @@ function ActivityTab({
 	// first page is still in flight, which reads as a fact rather than a wait.
 	if (query.isPending) {
 		return (
-			<ListBox title="Activity" bodyClassName="min-h-[16rem] p-4">
+			<RecordSection title="Activity">
 				<div className="animate-pulse space-y-3">
 					{["a", "b", "c", "d"].map((key) => (
 						<div key={key} className="flex items-start gap-3">
@@ -785,12 +825,12 @@ function ActivityTab({
 						</div>
 					))}
 				</div>
-			</ListBox>
+			</RecordSection>
 		);
 	}
 
 	return (
-		<ListBox title="Activity" bodyClassName="min-h-[16rem] p-4">
+		<RecordSection title="Activity">
 			<ActivityFeed
 				items={entries}
 				hasFilters={false}
@@ -800,6 +840,6 @@ function ActivityTab({
 				onClearFilters={() => undefined}
 				canViewSensitive
 			/>
-		</ListBox>
+		</RecordSection>
 	);
 }
