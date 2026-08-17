@@ -9,10 +9,10 @@ available but cannot be reached from the web client at all.
 
 ## The one-sentence summary
 
-Contract signing now creates engagements in production, but **nothing reads them**: there
-is no backend engagement module, no HTTP route returns an engagement, and RLS denies the
-web client direct access to every engagement table. The write path is finished; the read
-path does not exist.
+Contract signing creates engagements, and a **party-scoped read path now exists** —
+`GET /api/engagements` plus an Engagements tab on `/finance`. What is still missing is
+everything downstream: assignments, attributed time, submission, and approval have no
+writer and no route.
 
 ## What is live
 
@@ -22,18 +22,19 @@ All 9 tables exist in production with the column counts below (verified against
 | Table | Columns | Written by | Read by |
 | --- | --- | --- | --- |
 | `contract_positions` | 14 | Contract create/amend, and the signing RPC | Contract payload composition |
-| `engagements` | 14 | `sign_contract_position_and_activate` | nothing |
-| `engagement_parties` | 7 | `sign_contract_position_and_activate` | nothing |
-| `engagement_project_links` | 12 | `sign_contract_position_and_activate` | nothing |
-| `engagement_time_settings` | 14 | `sign_contract_position_and_activate` | nothing |
-| `engagement_time_rates` | 13 | `sign_contract_position_and_activate` | nothing |
+| `engagements` | 14 | `sign_contract_position_and_activate` | `EngagementsService` |
+| `engagement_parties` | 7 | `sign_contract_position_and_activate` | `EngagementsService` (scoping + counterparty) |
+| `engagement_project_links` | 12 | `sign_contract_position_and_activate` | `EngagementsService` |
+| `engagement_time_settings` | 14 | `sign_contract_position_and_activate` | `EngagementsService` (effective row only) |
+| `engagement_time_rates` | 13 | `sign_contract_position_and_activate` | `EngagementsService` (effective rows only) |
 | `engagement_assignments` | 16 | nothing yet | nothing |
 | `engagement_time_approvals` | 14 | nothing yet | nothing |
 | `engagement_time_approval_items` | 8 | nothing yet | nothing |
 
-Activation happens entirely inside one `SECURITY DEFINER` function. There is no
-`backend/src/modules/marketplace/engagements/` module, and no backend file contains a
-`from('engagements')` or `from('engagement_*')` call.
+Activation happens entirely inside one `SECURITY DEFINER` function. Reads go through
+`backend/src/modules/marketplace/engagements/`, which is the only module permitted to
+touch these tables — it runs on the admin client because RLS denies everyone else, so it
+owns the redaction itself.
 
 ### HTTP surface
 
@@ -54,10 +55,27 @@ Every route is under the global `/api` prefix. Two controllers share the `contra
 | `POST /api/contracts/:id/provider` | Provider identity |
 | `GET`/`POST`/`DELETE /api/contracts/:id/signature-link` | Manage a signing link |
 | `GET`/`POST /api/contracts/sign/:token` | Public token signing |
+| `GET /api/engagements` | Engagements the caller is a party to (`kind`, `status`, `project_id` filters) |
+| `GET /api/engagements/:id` | One engagement, 404 if the caller holds no seat |
 
-The only engagement data any of these return is the opaque `engagement_id` on the
-contract payload. The web `Contract` type carries `engagement_id: string | null` and
-nothing else engagement-shaped.
+Contract routes still expose only the opaque `engagement_id`. Everything engagement-shaped
+comes from the two `/api/engagements` routes, which return the viewer's seat, the
+counterparty, project links, and the settings and rates effective today. Superseded
+effective-dated rows are filtered server-side rather than returned for the client to sort.
+
+### Authorization model for engagement reads
+
+Party membership, and nothing else. A caller sees an engagement only when they occupy one
+of its two seats, which is what keeps the commercial sides apart without a separate
+redaction pass. Two consequences worth knowing before extending this:
+
+- There is deliberately **no** "list every engagement on this project" route. It would have
+  to re-derive the redaction that party scoping gives for free.
+- A non-party fetch returns 404, not 403, so the endpoint cannot be used to probe which
+  engagement ids exist.
+- The controller uses `SupabaseAuthGuard` alone. `ConsultantOnlyGuard` would gate on a
+  capability rather than the position that owns the row, and would lock Clients and Talent
+  out of reading their own agreements.
 
 ### Web routes
 
@@ -73,9 +91,11 @@ All 9 tables have **RLS enabled with zero policies**. That is deny-all for `anon
 adding a client-side query will silently return empty rather than error in the usual way.
 Only the backend's `service_role` client can reach them.
 
-The practical consequence: **every engagement read must be a new backend route that
+The practical consequence: **every engagement read must go through a backend route that
 applies its own redaction.** There is no "just query it from the client" shortcut, and
-that is deliberate — the redaction rules below cannot be enforced in the browser.
+that is deliberate — the redaction rules below cannot be enforced in the browser. Route
+engagement reads through `EngagementsService` rather than adding a second module that
+touches these tables, so the party-scoping rule has exactly one implementation.
 
 ## What one successful final signature writes
 
@@ -158,8 +178,9 @@ only place they can be enforced:
 
 ## Build order for the next slice
 
-1. **Read APIs first**, with redaction — a position-redacted engagement list and detail.
-   Everything else is unbuildable without them.
+1. ~~**Read APIs first**, with redaction — a position-redacted engagement list and detail.~~
+   Shipped 2026-08-18: `EngagementsService`, the two `/api/engagements` routes, and the
+   Engagements tab on `/finance`.
 2. Engagement assignment APIs and UI, including flexible-engagement project placement.
 3. Attributed timers and manual time logs writing `task_time_logs.engagement_assignment_id`.
 4. Talent submission, then Consultant approval/rejection.
@@ -175,7 +196,7 @@ Historical backfill stays rejected at every step.
 #   information_schema.columns where table_name like 'engagement%'
 # RLS posture
 #   pg_class.relrowsecurity + pg_policies count per table
-# read surface (expect no output)
+# read surface — expect hits only under modules/marketplace/engagements/
 grep -rn "from('engagement" backend/src --include=*.ts
 # routes
 grep -nE "@(Get|Post|Patch|Delete)\(" backend/src/modules/marketplace/contracts/*.controller.ts
