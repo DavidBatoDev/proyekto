@@ -4,31 +4,26 @@ import {
 	useChildMatches,
 	useNavigate,
 } from "@tanstack/react-router";
-import { GitPullRequestArrow, Plus } from "lucide-react";
+import { GitBranch, GitPullRequestArrow, Hourglass, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
-import { ChangeRequestCard } from "@/components/project/delivery/ChangeRequestCard";
+import { CrDrawer } from "@/components/project/change-requests/CrDrawer";
+import {
+	CrButton,
+	CrEmpty,
+	CrLedgerFigure,
+	CrPageShell,
+	CrSkeleton,
+} from "@/components/project/change-requests/CrPrimitives";
+import { CrQueue } from "@/components/project/change-requests/CrQueue";
+import {
+	groupForStatus,
+	queueGroups,
+	scheduleLedger,
+} from "@/components/project/change-requests/crQueueModel";
 import { ChangeRequestDecisionModal } from "@/components/project/delivery/ChangeRequestDecisionModal";
 import { ChangeRequestFormModal } from "@/components/project/delivery/ChangeRequestFormModal";
-import { ChangeRequestHealth } from "@/components/project/delivery/ChangeRequestHealth";
-import {
-	CR_PIPELINE_COLUMNS,
-	type CrPipelineColumnKey,
-	crPipelineColumnFor,
-	summarizeChangeRequests,
-} from "@/components/project/delivery/changeRequestModel";
-import {
-	type DeliveryViewMode,
-	DeliveryViewToggle,
-	loadDeliveryView,
-	storeDeliveryView,
-} from "@/components/project/delivery/DeliveryHealth";
-import {
-	DeliveryEmpty,
-	DeliveryPageShell,
-	DeliverySkeleton,
-	PrimaryButton,
-} from "@/components/project/delivery/DeliveryPrimitives";
 import { RecordAppliedModal } from "@/components/project/delivery/RecordAppliedModal";
 import {
 	useChangeRequestMutations,
@@ -36,20 +31,22 @@ import {
 } from "@/hooks/useDeliveryQueries";
 import {
 	useLinkedRoadmapQuery,
+	useProjectMembersQuery,
 	useProjectMyPermissionsQuery,
 } from "@/hooks/useProjectQueries";
 import type {
 	ChangeRequest,
 	ChangeRequestView,
 } from "@/services/delivery.service";
+import { profilesByUserId } from "@/services/memberProfile";
 
-/** The filter chips. `all` is the default and stays out of the URL. */
-const VIEWS: Array<{ key: ChangeRequestView; label: string }> = [
-	{ key: "all", label: "All" },
-	{ key: "open", label: "Open" },
-	{ key: "awaiting_decision", label: "Awaiting decision" },
-	{ key: "decided", label: "Decided" },
-	{ key: "closed", label: "Closed" },
+/** Views that can be deep-linked. `all` is the default and stays out of the URL. */
+const VIEWS: ChangeRequestView[] = [
+	"all",
+	"open",
+	"awaiting_decision",
+	"decided",
+	"closed",
 ];
 
 interface ChangeRequestsSearch {
@@ -59,11 +56,11 @@ interface ChangeRequestsSearch {
 export const Route = createFileRoute(
 	"/_execution/project/$projectId/change-requests",
 )({
-	// The filter lives in the URL so a filtered view is shareable and the back
-	// button steps through them. An unknown value drops to undefined, which reads
-	// as "all".
+	// Kept from the previous design: the filter lives in the URL so a narrowed view
+	// is shareable. The queue shows every group at once, so this is now a way to
+	// arrive focused rather than the primary control.
 	validateSearch: (search: Record<string, unknown>): ChangeRequestsSearch => ({
-		view: VIEWS.some((v) => v.key === search.view)
+		view: VIEWS.includes(search.view as ChangeRequestView)
 			? (search.view as ChangeRequestView)
 			: undefined,
 	}),
@@ -71,16 +68,14 @@ export const Route = createFileRoute(
 });
 
 /**
- * Layout route: the detail page renders through the outlet, so the list state
- * (view mode, open modals, filter) survives navigating into a request and back.
+ * Layout route: the detail page renders through the outlet, so the queue's state
+ * (open groups, drawer, modals) survives navigating into a request and back.
  */
 function ChangeRequestsLayout() {
 	const { projectId } = Route.useParams();
 	const childMatches = useChildMatches();
 	// Start the list fetch alongside the permission check rather than after it:
-	// RequireProjectAccess blocks its children until permissions resolve, so a
-	// query called only inside the body queues behind that round trip. Same cache
-	// key as the body's call, so this is one request, not two.
+	// RequireProjectAccess blocks its children until permissions resolve.
 	useChangeRequestsQuery(projectId);
 
 	if (childMatches.length > 0) return <Outlet />;
@@ -89,7 +84,7 @@ function ChangeRequestsLayout() {
 		<RequireProjectAccess
 			projectId={projectId}
 			access="delivery"
-			loadingFallback={<DeliverySkeleton />}
+			loadingFallback={<CrSkeleton />}
 		>
 			<ChangeRequestsBody projectId={projectId} />
 		</RequireProjectAccess>
@@ -101,104 +96,153 @@ function ChangeRequestsBody({ projectId }: { projectId: string }) {
 	const navigate = useNavigate();
 	const query = useChangeRequestsQuery(projectId, { view });
 	const permissions = useProjectMyPermissionsQuery(projectId);
+	const members = useProjectMembersQuery(projectId);
 	const mutations = useChangeRequestMutations(projectId);
 	const linkedRoadmap = useLinkedRoadmapQuery(projectId);
 
 	const [isCreating, setIsCreating] = useState(false);
+	const [editingId, setEditingId] = useState<string | null>(null);
 	const [decidingId, setDecidingId] = useState<string | null>(null);
 	const [applyingId, setApplyingId] = useState<string | null>(null);
-	const [mode, setMode] = useState<DeliveryViewMode>(() =>
-		loadDeliveryView(projectId, "changeRequests"),
-	);
+	const [peekId, setPeekId] = useState<string | null>(null);
+	const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+	const [deletingId, setDeletingId] = useState<string | null>(null);
 
 	const canCreate = permissions.data?.change_requests?.create === true;
 	const canDecide = permissions.data?.change_requests?.decide === true;
 
 	const requests = useMemo(() => query.data ?? [], [query.data]);
-	// Stats describe what is loaded, so a filtered view's header describes the
-	// filtered set rather than silently claiming to summarise the project.
-	const stats = useMemo(() => summarizeChangeRequests(requests), [requests]);
+	const groups = useMemo(() => queueGroups(requests), [requests]);
+	// Two figures, never summed — an applied request's days are already inside the
+	// roadmap's own dates.
+	const ledger = useMemo(() => scheduleLedger(requests), [requests]);
 
-	if (query.isPending) return <DeliverySkeleton />;
+	/** Members indexed so a row can show who raised a request without a lookup. */
+	const profiles = useMemo(
+		() => profilesByUserId(members.data),
+		[members.data],
+	);
 
-	const changeMode = (next: DeliveryViewMode) => {
-		setMode(next);
-		storeDeliveryView(projectId, next, "changeRequests");
-	};
+	if (query.isPending) return <CrSkeleton />;
 
-	const setView = (next: ChangeRequestView) =>
-		void navigate({
-			to: "/project/$projectId/change-requests",
-			params: { projectId },
-			search: next === "all" ? {} : { view: next },
-			replace: true,
-		});
+	const find = (id: string | null) =>
+		id ? (requests.find((request) => request.id === id) ?? null) : null;
 
 	const busy =
 		mutations.submit.isPending ||
 		mutations.decide.isPending ||
-		mutations.markApplied.isPending;
+		mutations.markApplied.isPending ||
+		mutations.withdraw.isPending ||
+		mutations.remove.isPending;
 
-	const actionsFor = (request: ChangeRequest) => ({
+	const handlers = {
 		canCreate,
 		canDecide,
 		busy,
-		onSubmit: () => mutations.submit.mutate(request.id),
-		onOpenDecision: () => setDecidingId(request.id),
-		onOpenApply: () => setApplyingId(request.id),
-	});
+		requesterFor: (request: ChangeRequest) =>
+			request.requested_by
+				? (profiles.get(request.requested_by) ?? null)
+				: null,
+		onOpen: (request: ChangeRequest) => setPeekId(request.id),
+		onSubmit: (request: ChangeRequest) => mutations.submit.mutate(request.id),
+		onDecide: (request: ChangeRequest) => setDecidingId(request.id),
+		onApply: (request: ChangeRequest) => setApplyingId(request.id),
+		onWithdraw: (request: ChangeRequest) => setWithdrawingId(request.id),
+		onEdit: (request: ChangeRequest) => setEditingId(request.id),
+		onDelete: (request: ChangeRequest) => setDeletingId(request.id),
+	};
 
-	const deciding = requests.find((r) => r.id === decidingId) ?? null;
-	const applying = requests.find((r) => r.id === applyingId) ?? null;
-	const isFiltered = view !== "all";
+	const editing = find(editingId);
+	const deciding = find(decidingId);
+	const applying = find(applyingId);
+	const withdrawing = find(withdrawingId);
+	const deleting = find(deletingId);
 
 	return (
-		<DeliveryPageShell
-			icon={GitPullRequestArrow}
+		<CrPageShell
 			title="Change Requests"
 			subtitle="Scope changes, what they do to the schedule, and who signed off."
+			ledger={
+				requests.length > 0 ? (
+					<div className="flex items-center gap-2">
+						<CrLedgerFigure
+							value={signed(ledger.pending)}
+							label="Pending"
+							icon={Hourglass}
+							// Sign-aware, not merely non-zero: a negative pending total means
+							// the approved work pulls the schedule IN, which is good news and
+							// should not be dressed in the same warning amber as a slip.
+							// Zero stays grey — nothing waiting, nothing to draw the eye.
+							tone={
+								ledger.pending === 0
+									? "neutral"
+									: ledger.pending > 0
+										? "pending"
+										: "committed"
+							}
+							hint="Approved but not yet applied — what is about to land on the schedule"
+						/>
+						<CrLedgerFigure
+							value={signed(ledger.committed)}
+							label="Committed"
+							icon={GitBranch}
+							tone={
+								ledger.committed === 0
+									? "neutral"
+									: ledger.committed > 0
+										? "pending"
+										: "committed"
+							}
+							hint="Already on the roadmap. Never add this to Pending; the roadmap's dates already include it"
+						/>
+					</div>
+				) : undefined
+			}
 			action={
-				<div className="flex items-center gap-3">
-					<DeliveryViewToggle value={mode} onChange={changeMode} />
-					{canCreate && (
-						<PrimaryButton onClick={() => setIsCreating(true)}>
-							<Plus className="h-4 w-4" />
-							Raise a request
-						</PrimaryButton>
-					)}
-				</div>
+				canCreate ? (
+					<CrButton tone="primary" onClick={() => setIsCreating(true)}>
+						<Plus className="h-3.5 w-3.5" />
+						Raise a request
+					</CrButton>
+				) : undefined
 			}
 		>
-			{/* Filter chips. Rendered above the header numbers because they scope
-			    them — reading the stats first and then discovering a filter was on
-			    would be misleading. */}
-			<div className="-mt-1 mb-6 flex flex-wrap items-center gap-1.5">
-				{VIEWS.map((option) => {
-					const selected = option.key === view;
-					return (
-						<button
-							key={option.key}
-							type="button"
-							onClick={() => setView(option.key)}
-							aria-pressed={selected}
-							className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-								selected
-									? "bg-primary text-white"
-									: "bg-muted text-muted-foreground hover:text-foreground"
-							}`}
-						>
-							{option.label}
-						</button>
-					);
-				})}
-			</div>
+			{view !== "all" && (
+				<div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+					<span>
+						Showing only{" "}
+						<strong className="text-foreground">
+							{view.replace(/_/g, " ")}
+						</strong>
+						.
+					</span>
+					<button
+						type="button"
+						className="font-semibold text-primary hover:underline"
+						onClick={() =>
+							void navigate({
+								to: "/project/$projectId/change-requests",
+								params: { projectId },
+								search: {},
+								replace: true,
+							})
+						}
+					>
+						Show everything
+					</button>
+				</div>
+			)}
 
 			{canCreate && (
 				<ChangeRequestFormModal
-					isOpen={isCreating}
-					pending={mutations.create.isPending}
-					onClose={() => setIsCreating(false)}
-					// Closes immediately: the optimistic row is already in the list, so
+					isOpen={isCreating || Boolean(editing)}
+					request={editing ?? undefined}
+					pending={mutations.create.isPending || mutations.update.isPending}
+					onClose={() => {
+						setIsCreating(false);
+						setEditingId(null);
+					}}
+					// Closes immediately: the optimistic row is already in the queue, so
 					// holding the dialog open would hide the thing it created.
 					onCreate={(body) => {
 						mutations.create.mutate({
@@ -207,8 +251,9 @@ function ChangeRequestsBody({ projectId }: { projectId: string }) {
 						});
 						setIsCreating(false);
 					}}
-					onUpdate={() => {
-						/* create-only here; editing happens on the detail page */
+					onUpdate={(body) => {
+						if (editing) mutations.update.mutate({ id: editing.id, body });
+						setEditingId(null);
 					}}
 				/>
 			)}
@@ -246,150 +291,83 @@ function ChangeRequestsBody({ projectId }: { projectId: string }) {
 				/>
 			)}
 
+			<CrDrawer
+				request={find(peekId)}
+				projectId={projectId}
+				requester={
+					find(peekId)?.requested_by
+						? (profiles.get(find(peekId)?.requested_by as string) ?? null)
+						: null
+				}
+				decider={
+					find(peekId)?.decided_by
+						? (profiles.get(find(peekId)?.decided_by as string) ?? null)
+						: null
+				}
+				onClose={() => setPeekId(null)}
+			/>
+
+			<AppConfirmDialog
+				open={Boolean(withdrawing)}
+				title="Withdraw this request?"
+				message={`"${withdrawing?.title}" stops waiting on anyone. It stays on the record as withdrawn rather than being deleted.`}
+				confirmLabel="Withdraw"
+				busy={mutations.withdraw.isPending}
+				onClose={() => setWithdrawingId(null)}
+				onConfirm={() => {
+					if (withdrawing) mutations.withdraw.mutate(withdrawing.id);
+					setWithdrawingId(null);
+				}}
+			/>
+
+			<AppConfirmDialog
+				open={Boolean(deleting)}
+				tone="danger"
+				title="Delete this request?"
+				message={`"${deleting?.title}" and its links will be removed. Withdrawing keeps the record instead.`}
+				confirmLabel="Delete request"
+				busy={mutations.remove.isPending}
+				onClose={() => setDeletingId(null)}
+				onConfirm={() => {
+					if (deleting) mutations.remove.mutate(deleting.id);
+					setDeletingId(null);
+				}}
+			/>
+
 			{requests.length === 0 ? (
-				isFiltered ? (
-					<DeliveryEmpty
-						icon={GitPullRequestArrow}
-						title="Nothing matches this filter"
-						description="No change requests are in this state right now. Clear the filter to see the rest."
-						action={
-							<PrimaryButton onClick={() => setView("all")}>
-								Show all requests
-							</PrimaryButton>
-						}
-					/>
-				) : (
-					<DeliveryEmpty
-						icon={GitPullRequestArrow}
-						title="No change requests"
-						description="When someone asks for work outside the agreed scope, raise it here. The request records what changes and what it does to the schedule, so 'can you just add this' stops being invisible."
-						action={
-							canCreate ? (
-								<PrimaryButton onClick={() => setIsCreating(true)}>
-									<Plus className="h-4 w-4" />
-									Raise the first one
-								</PrimaryButton>
-							) : undefined
-						}
-					/>
-				)
+				<CrEmpty
+					icon={GitPullRequestArrow}
+					title={
+						view === "all"
+							? "No change requests"
+							: "Nothing matches this filter"
+					}
+					description={
+						view === "all"
+							? "When someone asks for work outside the agreed scope, raise it here. The request records what changes and what it does to the schedule, so “can you just add this” stops being invisible."
+							: "No requests are in this state right now."
+					}
+					action={
+						canCreate && view === "all" ? (
+							<CrButton tone="primary" onClick={() => setIsCreating(true)}>
+								<Plus className="h-3.5 w-3.5" />
+								Raise the first one
+							</CrButton>
+						) : undefined
+					}
+				/>
 			) : (
-				<>
-					<ChangeRequestHealth
-						stats={stats}
-						requests={requests}
-						projectId={projectId}
-					/>
-
-					{mode === "overview" && (
-						// One card per row — the card lays its own body out in columns, so
-						// the width is used rather than stretched.
-						<div className="flex flex-col gap-3">
-							{requests.map((request) => (
-								<ChangeRequestCard
-									key={request.id}
-									request={request}
-									projectId={projectId}
-									actions={actionsFor(request)}
-								/>
-							))}
-						</div>
-					)}
-
-					{mode === "pipeline" && (
-						<PipelineView
-							requests={requests}
-							projectId={projectId}
-							actionsFor={actionsFor}
-						/>
-					)}
-				</>
+				<CrQueue groups={groups} projectId={projectId} handlers={handlers} />
 			)}
-		</DeliveryPageShell>
+		</CrPageShell>
 	);
 }
 
-/** Column accents mirror the card rails, so the board reads at a glance. */
-const COLUMN_DOT: Record<CrPipelineColumnKey, string> = {
-	draft: "bg-muted-foreground/50",
-	submitted: "bg-warning",
-	approved: "bg-info",
-	applied: "bg-success",
-};
-
-/**
- * The life of a change request, left to right — not a second Kanban.
- *
- * There is no drag: moving a request is a decision with attribution, not a
- * gesture. Rejected and withdrawn requests have no column (see
- * `CR_PIPELINE_COLUMNS`); the count below the board says how many are hidden so
- * the omission is stated rather than silent.
- */
-function PipelineView({
-	requests,
-	projectId,
-	actionsFor,
-}: {
-	requests: ChangeRequest[];
-	projectId: string;
-	actionsFor: (
-		request: ChangeRequest,
-	) => Parameters<typeof ChangeRequestCard>[0]["actions"];
-}) {
-	const offBoard = requests.filter(
-		(r) => crPipelineColumnFor(r.status) === null,
-	).length;
-
-	return (
-		<>
-			<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-				{CR_PIPELINE_COLUMNS.map((column) => {
-					const items = requests.filter(
-						(r) => crPipelineColumnFor(r.status) === column.key,
-					);
-					return (
-						<div
-							key={column.key}
-							className="rounded-xl border border-border/60 bg-muted/30 p-3"
-						>
-							<div className="mb-3 flex items-center justify-between border-b border-border/60 pb-2">
-								<p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-									<span
-										className={`h-1.5 w-1.5 rounded-full ${COLUMN_DOT[column.key]}`}
-									/>
-									{column.label}
-								</p>
-								<span className="rounded-full bg-card px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-									{items.length}
-								</span>
-							</div>
-							<div className="flex flex-col gap-2">
-								{items.map((request) => (
-									<ChangeRequestCard
-										key={request.id}
-										request={request}
-										projectId={projectId}
-										compact
-										actions={actionsFor(request)}
-									/>
-								))}
-								{items.length === 0 && (
-									<p className="px-1 py-3 text-xs text-muted-foreground">
-										Nothing here.
-									</p>
-								)}
-							</div>
-						</div>
-					);
-				})}
-			</div>
-			{offBoard > 0 && (
-				<p className="mt-3 text-[11px] text-muted-foreground">
-					{offBoard} rejected or withdrawn{" "}
-					{offBoard === 1 ? "request is" : "requests are"} not shown on the
-					board.
-				</p>
-			)}
-		</>
-	);
+/** "+12d" / "-3d" / "0d" — the sign is the meaning, so it is never dropped. */
+function signed(days: number): string {
+	if (days === 0) return "0d";
+	return days > 0 ? `+${days}d` : `${days}d`;
 }
+
+/** Re-exported for the detail route's back-link target checks. */
+export { groupForStatus };
