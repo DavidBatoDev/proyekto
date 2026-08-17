@@ -317,6 +317,36 @@ describe('ContractsService transactional signing', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('translates database signing tokens into human copy', async () => {
+    const { service } = harness({
+      rpcData: null,
+      rpcError: { message: 'CONTRACT_REQUIRES_TWO_POSITIONS' },
+    });
+
+    // The token itself must not reach the signer — it used to arrive verbatim
+    // in a 400 and render straight into the signature dialog.
+    await expect(
+      service.signContract('consultant-1', 'contract-1', {
+        party: 'consultant',
+        signer_name: 'Consultant One',
+      }),
+    ).rejects.toThrow(/hirer and the provider must be set/i);
+  });
+
+  it('still surfaces an unrecognised database error rather than hiding it', async () => {
+    const { service } = harness({
+      rpcData: null,
+      rpcError: { message: 'SOME_NEW_TOKEN_NOBODY_MAPPED' },
+    });
+
+    await expect(
+      service.signContract('consultant-1', 'contract-1', {
+        party: 'consultant',
+        signer_name: 'Consultant One',
+      }),
+    ).rejects.toThrow('SOME_NEW_TOKEN_NOBODY_MAPPED');
+  });
+
   it('keeps unsigning consultant-only', async () => {
     const { service, financeAccess } = harness({});
 

@@ -175,6 +175,116 @@ export interface ProfileIdentity {
 
 const EDITABLE_STATUSES: ContractStatus[] = ['draft', 'sent'];
 
+/**
+ * Signing failures raised by the database.
+ *
+ * `sign_contract_position_and_activate`, its legacy wrapper, and the
+ * `tg_contracts_lock_parties` trigger all signal with bare tokens. Without this
+ * table they reached the signer verbatim — a mid-signature dialog reading
+ * "CONTRACT_REQUIRES_TWO_POSITIONS". Anything unmapped still surfaces its raw
+ * message rather than being swallowed, so a new token is visible in support
+ * rather than silent.
+ */
+const SIGNING_ERRORS: Record<
+  string,
+  { conflict?: boolean; missing?: boolean; message: string }
+> = {
+  CONTRACT_NOT_FOUND: {
+    // Only reachable as a race: the RPC re-reads the row under its own lock.
+    missing: true,
+    message: 'This contract no longer exists.',
+  },
+  CONTRACT_ALREADY_SIGNED: {
+    conflict: true,
+    message:
+      'This contract is already fully signed. Amend it to change its terms.',
+  },
+  CONTRACT_NOT_SIGNABLE: {
+    conflict: true,
+    message: 'An ended or cancelled contract cannot be signed.',
+  },
+  CONSULTANT_ENROLLMENT_INACTIVE: {
+    conflict: true,
+    message:
+      'The consultant on this contract is no longer verified. Reinstate or re-approve them before signing.',
+  },
+  CONTRACT_POSITION_INVALID: {
+    message: 'That signing position is not part of this contract.',
+  },
+  CONTRACT_SIGNATURE_PARTY_INVALID: {
+    message: 'That signing party is not part of this contract.',
+  },
+  CONTRACT_REQUIRES_TWO_POSITIONS: {
+    message:
+      'Both the hirer and the provider must be set on the contract before it can be signed.',
+  },
+  CONTRACT_SELF_DEALING: {
+    message: 'The same account cannot be both sides of a contract.',
+  },
+  CONTRACT_PROJECT_SEVERED: {
+    message:
+      'The project this contract covers was deleted, so it can no longer be signed.',
+  },
+  CONTRACT_TERM_INCOMPLETE: {
+    message: 'Set the service start date and term before signing.',
+  },
+  CONTRACT_FIXED_FEE_REQUIRED: {
+    message: 'Set the fixed fee before signing a fixed-price contract.',
+  },
+  CONTRACT_MONTHLY_RATE_REQUIRED: {
+    message: 'Set the monthly rate before signing this contract.',
+  },
+  CONTRACT_HOURLY_RATE_REQUIRED: {
+    message: 'Set the hourly rate before signing this contract.',
+  },
+  ENGAGEMENT_PARTIES_MISMATCH: {
+    conflict: true,
+    message:
+      'This amendment does not match the parties on the existing engagement. A change of party needs a new contract.',
+  },
+  ENGAGEMENT_REQUIRES_TWO_PARTIES: {
+    conflict: true,
+    message: 'An engagement needs exactly one hirer and one provider.',
+  },
+  AMENDMENT_EFFECTIVE_DATE_PAST: {
+    message: 'An amendment must take effect today or later.',
+  },
+  AMENDMENT_EFFECTIVE_DATE_NOT_PROSPECTIVE: {
+    message:
+      'This amendment must take effect after the terms it replaces. Choose a later date.',
+  },
+  CONTRACT_CONSULTANT_PARTY_LOCKED: {
+    conflict: true,
+    message: 'The consultant cannot be changed once a contract has been sent.',
+  },
+  CONTRACT_CLIENT_PARTY_LOCKED: {
+    conflict: true,
+    message: 'The client cannot be changed once a contract has been sent.',
+  },
+  CONTRACT_COMMERCIAL_IDENTITY_LOCKED: {
+    conflict: true,
+    message:
+      'The relationship and scope of a sent contract are fixed. Create a new contract instead.',
+  },
+  CONTRACT_PROJECT_SCOPE_LOCKED: {
+    conflict: true,
+    message: 'The project a sent contract covers cannot be changed.',
+  },
+};
+
+/** Translate a database signing token into the matching HTTP error. */
+function signingError(raw: string | undefined) {
+  for (const [token, mapped] of Object.entries(SIGNING_ERRORS)) {
+    if (raw?.includes(token)) {
+      if (mapped.missing) return new NotFoundException(mapped.message);
+      return mapped.conflict
+        ? new ConflictException(mapped.message)
+        : new BadRequestException(mapped.message);
+    }
+  }
+  return new BadRequestException(raw ?? 'Failed to sign contract.');
+}
+
 const MIN_SIGNATURE_SCALE = 0.5;
 const MAX_SIGNATURE_SCALE = 3;
 const MAX_SIGNATURE_OFFSET = 3;
@@ -295,7 +405,11 @@ export class ContractsService {
     callerId: string,
     dto: CreateContractDto,
   ): Promise<ContractWithSchedule> {
-    const { project_id: projectId = null, counterparty_user_id, ...rawTerms } = dto;
+    const {
+      project_id: projectId = null,
+      counterparty_user_id,
+      ...rawTerms
+    } = dto;
     const terms = this.normalizeTerms(rawTerms);
     const relationshipKind = terms.relationship_kind ?? 'client_services';
     const scopeMode = terms.scope_mode ?? 'project_specific';
@@ -439,7 +553,10 @@ export class ContractsService {
     const existing = await this.getContractRow(contractId);
     await this.assertConsultantContractControl(callerId, existing);
 
-    if (dto.scope === 'this' || (existing.engagement_id && dto.scope === 'all')) {
+    if (
+      dto.scope === 'this' ||
+      (existing.engagement_id && dto.scope === 'all')
+    ) {
       throw new BadRequestException(
         existing.engagement_id
           ? 'Engagement-backed contracts can only be amended prospectively.'
@@ -498,7 +615,7 @@ export class ContractsService {
 
     const successor = await this.insertAmendedVersion(
       existing,
-      terms as AmendContractDto,
+      terms,
       effectiveFrom,
       callerId,
     );
@@ -668,7 +785,10 @@ export class ContractsService {
     const position = await this.resolveSignaturePosition(existing, dto);
     const positions = await this.getPositions(existing.id);
 
-    if (existing.scope_mode === 'project_specific' && existing.project_id === null) {
+    if (
+      existing.scope_mode === 'project_specific' &&
+      existing.project_id === null
+    ) {
       throw new BadRequestException(
         'A contract for a removed project cannot be signed.',
       );
@@ -705,42 +825,37 @@ export class ContractsService {
     const signatureScale = clampSignatureScale(dto.signature_scale);
     const offsetX = clampSignatureOffset(dto.signature_offset_x);
     const offsetY = clampSignatureOffset(dto.signature_offset_y);
-    const response = positions.length === 2
-      ? await this.supabase.rpc('sign_contract_position_and_activate', {
-          p_contract_id: contractId,
-          p_position: position,
-          p_signer_name: dto.signer_name.trim(),
-          p_signature_url: signatureUrl,
-          p_scale: signatureScale,
-          p_offset_x: offsetX,
-          p_offset_y: offsetY,
-          p_signed_at: now,
-        })
-      : await this.supabase.rpc('sign_contract_and_flip', {
-          p_contract_id: contractId,
-          p_party: dto.party === 'consultant' ? 'consultant' : 'client',
-          p_signer_name: dto.signer_name.trim(),
-          p_signature_url: signatureUrl,
-          p_scale: signatureScale,
-          p_offset_x: offsetX,
-          p_offset_y: offsetY,
-          p_signed_at: now,
-        });
+    const response =
+      positions.length === 2
+        ? await this.supabase.rpc('sign_contract_position_and_activate', {
+            p_contract_id: contractId,
+            p_position: position,
+            p_signer_name: dto.signer_name.trim(),
+            p_signature_url: signatureUrl,
+            p_scale: signatureScale,
+            p_offset_x: offsetX,
+            p_offset_y: offsetY,
+            p_signed_at: now,
+          })
+        : await this.supabase.rpc('sign_contract_and_flip', {
+            p_contract_id: contractId,
+            p_party: dto.party === 'consultant' ? 'consultant' : 'client',
+            p_signer_name: dto.signer_name.trim(),
+            p_signature_url: signatureUrl,
+            p_scale: signatureScale,
+            p_offset_x: offsetX,
+            p_offset_y: offsetY,
+            p_signed_at: now,
+          });
     const data: unknown = response.data;
     const error = response.error;
-    if (error?.message.includes('CONSULTANT_ENROLLMENT_INACTIVE')) {
-      throw new ConflictException(
-        'The consultant on this contract is no longer verified. Reinstate or re-approve them before signing.',
-      );
-    }
+    if (error) throw signingError(error.message);
 
     // The RPC owns superseding and the final status transition while the row is
     // locked, so concurrent consultant/client stamps cannot strand two
     // signatures on a contract that is still marked sent.
-    if (error || !data) {
-      throw new BadRequestException(
-        error?.message ?? 'Failed to sign contract.',
-      );
+    if (!data) {
+      throw new BadRequestException('Failed to sign contract.');
     }
     const updated = (Array.isArray(data) ? data[0] : data) as
       | ContractRow
@@ -925,7 +1040,11 @@ export class ContractsService {
   ): Promise<void> {
     const positions = await this.getPositions(existing.id);
     if (positions.length === 2) {
-      if (positions.some((entry) => entry.position === position && entry.user_id === callerId)) {
+      if (
+        positions.some(
+          (entry) => entry.position === position && entry.user_id === callerId,
+        )
+      ) {
         return;
       }
       throw new NotFoundException('Contract not found');
@@ -987,7 +1106,8 @@ export class ContractsService {
     contract: ContractRow,
   ): Promise<void> {
     const consultantId = contract.consultant_user_id ?? contract.created_by;
-    if (callerId !== consultantId) throw new NotFoundException('Contract not found');
+    if (callerId !== consultantId)
+      throw new NotFoundException('Contract not found');
     if (contract.project_id) {
       await this.financeAccess.assertProject(callerId, contract.project_id);
     } else {
@@ -1004,13 +1124,16 @@ export class ContractsService {
       const consultantPosition = positions.find(
         (position) => position.capacity === 'consultant',
       )?.position;
-      const mapped = dto.party === 'consultant'
-        ? consultantPosition
-        : consultantPosition === 'hirer'
-          ? 'provider'
-          : 'hirer';
+      const mapped =
+        dto.party === 'consultant'
+          ? consultantPosition
+          : consultantPosition === 'hirer'
+            ? 'provider'
+            : 'hirer';
       if (mapped && mapped !== dto.position) {
-        throw new BadRequestException('party and position refer to different contract seats.');
+        throw new BadRequestException(
+          'party and position refer to different contract seats.',
+        );
       }
     }
     if (dto.position) return dto.position;
@@ -1022,7 +1145,9 @@ export class ContractsService {
           (position) => position.capacity === 'consultant',
         )?.position;
         if (!consultantPosition) {
-          throw new BadRequestException('This contract has no Consultant signing seat.');
+          throw new BadRequestException(
+            'This contract has no Consultant signing seat.',
+          );
         }
         return dto.party === 'consultant'
           ? consultantPosition
@@ -1032,7 +1157,9 @@ export class ContractsService {
       }
       return dto.party === 'consultant' ? 'provider' : 'hirer';
     }
-    throw new BadRequestException('Choose the contract position that is signing.');
+    throw new BadRequestException(
+      'Choose the contract position that is signing.',
+    );
   }
 
   /** Maps the legacy UI party names onto an authoritative P4b seat. */
@@ -1046,7 +1173,9 @@ export class ContractsService {
       (position) => position.capacity === 'consultant',
     )?.position;
     if (!consultantPosition) {
-      throw new BadRequestException('This contract has no Consultant signing seat.');
+      throw new BadRequestException(
+        'This contract has no Consultant signing seat.',
+      );
     }
     return party === 'consultant'
       ? consultantPosition
@@ -1272,7 +1401,8 @@ export class ContractsService {
         'hourly_rate and client_hourly_rate must match when both are supplied.',
       );
     }
-    if (dto.monthly_rate !== undefined) normalized.recurring_fee = dto.monthly_rate;
+    if (dto.monthly_rate !== undefined)
+      normalized.recurring_fee = dto.monthly_rate;
     if (dto.hourly_rate !== undefined) {
       normalized.client_hourly_rate = dto.hourly_rate;
     }
@@ -1296,9 +1426,11 @@ export class ContractsService {
   ): Record<string, unknown> {
     const talent = relationshipKind === 'talent_services';
     const patch: Record<string, unknown> = {
-      time_tracking_mode: dto.time_tracking_mode ?? (talent ? 'required' : 'optional'),
+      time_tracking_mode:
+        dto.time_tracking_mode ?? (talent ? 'required' : 'optional'),
       time_approval_mode:
-        dto.time_approval_mode ?? (talent ? 'provider_submit_hirer_approve' : 'none'),
+        dto.time_approval_mode ??
+        (talent ? 'provider_submit_hirer_approve' : 'none'),
       allow_manual_time: dto.allow_manual_time ?? true,
       time_rounding_minutes: dto.time_rounding_minutes ?? 0,
       weekly_time_limit_minutes: dto.weekly_time_limit_minutes ?? null,
@@ -1323,19 +1455,25 @@ export class ContractsService {
 
   private assertCommercialTerms(contract: ContractRow): void {
     if (contract.billing_mode === 'fixed' && contract.fixed_fee == null) {
-      throw new BadRequestException('Set the fixed contract amount before signing.');
+      throw new BadRequestException(
+        'Set the fixed contract amount before signing.',
+      );
     }
     if (
       ['retainer', 'hybrid'].includes(contract.billing_mode) &&
       contract.recurring_fee == null
     ) {
-      throw new BadRequestException('Set the monthly contract rate before signing.');
+      throw new BadRequestException(
+        'Set the monthly contract rate before signing.',
+      );
     }
     if (
       ['time_based', 'hybrid'].includes(contract.billing_mode) &&
       contract.client_hourly_rate == null
     ) {
-      throw new BadRequestException('Set the hourly contract rate before signing.');
+      throw new BadRequestException(
+        'Set the hourly contract rate before signing.',
+      );
     }
   }
 
@@ -1385,7 +1523,9 @@ export class ContractsService {
   async resolveCounterparty(
     callerId: string,
     email: string,
-  ): Promise<Pick<ProfileIdentity, 'id' | 'display_name' | 'email' | 'avatar_url'>> {
+  ): Promise<
+    Pick<ProfileIdentity, 'id' | 'display_name' | 'email' | 'avatar_url'>
+  > {
     await this.assertActiveConsultant(callerId);
     const normalized = email.trim().toLowerCase();
     if (!normalized) throw new BadRequestException('Enter an email address.');
@@ -1438,10 +1578,12 @@ export class ContractsService {
         .eq('id', projectId)
         .maybeSingle();
       if (error) throw new BadRequestException(error.message);
-      projectOwnerId = (data as { owner_id: string | null } | null)?.owner_id ?? null;
+      projectOwnerId =
+        (data as { owner_id: string | null } | null)?.owner_id ?? null;
     }
 
-    const counterpartyId = requestedUserId ??
+    const counterpartyId =
+      requestedUserId ??
       (relationshipKind === 'client_services' ? projectOwnerId : null);
     if (!counterpartyId || counterpartyId === callerId) {
       throw new BadRequestException(
@@ -1493,15 +1635,18 @@ export class ContractsService {
       if (seeded.client_name === undefined) {
         seeded.client_name = this.profileLabel(counterparty);
       }
-      if (seeded.client_email === undefined) seeded.client_email = counterparty.email;
-      if (seeded.client_user_id === undefined) seeded.client_user_id = counterparty.id;
+      if (seeded.client_email === undefined)
+        seeded.client_email = counterparty.email;
+      if (seeded.client_user_id === undefined)
+        seeded.client_user_id = counterparty.id;
       return seeded;
     }
 
     // For talent services the Consultant is the hirer. The existing physical
     // blocks remain compatibility storage, while positions remain authoritative.
     if (seeded.client_name === undefined) {
-      seeded.client_name = consultantBlock.provider_name ?? this.profileLabel(consultant);
+      seeded.client_name =
+        consultantBlock.provider_name ?? this.profileLabel(consultant);
     }
     if (seeded.client_email === undefined) {
       seeded.client_email = consultantBlock.provider_email ?? consultant.email;
@@ -1509,7 +1654,8 @@ export class ContractsService {
     if (seeded.provider_name === undefined) {
       seeded.provider_name = this.profileLabel(counterparty);
     }
-    if (seeded.provider_email === undefined) seeded.provider_email = counterparty.email;
+    if (seeded.provider_email === undefined)
+      seeded.provider_email = counterparty.email;
     if (seeded.provider_kind === undefined) {
       seeded.provider_kind = terms.provider_kind ?? 'individual';
     }
@@ -1563,7 +1709,9 @@ export class ContractsService {
               email_snapshot: counterparty.email,
             },
           ];
-    const { error } = await this.supabase.from('contract_positions').insert(rows);
+    const { error } = await this.supabase
+      .from('contract_positions')
+      .insert(rows);
     if (error) throw new BadRequestException(error.message);
   }
 
