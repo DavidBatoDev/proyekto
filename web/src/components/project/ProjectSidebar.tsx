@@ -1,27 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	BookOpen,
-	CalendarRange,
-	ChevronRight,
-	ClipboardList,
-	Clock,
-	FolderKanban,
-	LayoutDashboard,
-	ListChecks,
-	Map,
-	MessageSquare,
-	Settings,
-	Users,
-} from "lucide-react";
+import { ChevronRight, FolderKanban } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
-import { hasNavGate, type ProjectNavGate } from "@/lib/projectPermissions";
+import { hasNavGate } from "@/lib/projectPermissions";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
 import { type Project, projectService } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
+import {
+	buildProjectNavSections,
+	createProjectNavItems,
+} from "./projectNavItems";
 
 interface ProjectSidebarProps {
 	project: Project | null;
@@ -110,108 +101,13 @@ export function ProjectSidebar({
 		return rooms.some(roomHasUnread);
 	}, [chatRoomsQuery.data, user?.id]);
 
-	const navSections: Array<{
-		title: string;
-		items: Array<{
-			label: string;
-			icon: typeof Map;
-			to: string;
-			requiresProject: boolean;
-			gate?: ProjectNavGate;
-		}>;
-	}> = [
-		{
-			title: "Plan",
-			items: [
-				{
-					label: "Roadmap",
-					icon: Map,
-					to: effectiveRoadmapId
-						? `/project/${projectId}/roadmap/${effectiveRoadmapId}`
-						: `/project/${projectId}/roadmap`,
-					requiresProject: false,
-					gate: "access.roadmap",
-				},
-				{
-					label: "Timeline",
-					icon: CalendarRange,
-					to: effectiveRoadmapId
-						? `/project/${projectId}/timeline/${effectiveRoadmapId}`
-						: `/project/${projectId}/timeline`,
-					requiresProject: false,
-					gate: "access.roadmap",
-				},
-				{
-					label: "Board",
-					icon: ListChecks,
-					to: effectiveRoadmapId
-						? `/project/${projectId}/work-items/${effectiveRoadmapId}`
-						: `/project/${projectId}/work-items`,
-					requiresProject: false,
-					gate: "access.work_items",
-				},
-				{
-					label: "Overview",
-					icon: LayoutDashboard,
-					to: `/project/${projectId}/overview`,
-					requiresProject: true,
-				},
-			],
-		},
-		{
-			title: "Collaborate",
-			items: [
-				{
-					label: "Team",
-					icon: Users,
-					to: `/project/${projectId}/team`,
-					requiresProject: true,
-					gate: "access.team",
-				},
-				{
-					label: "Chat",
-					icon: MessageSquare,
-					to: `/project/${projectId}/chat/channel-general`,
-					requiresProject: true,
-					gate: "access.chat",
-				},
-				{
-					label: "Resources",
-					icon: BookOpen,
-					to: `/project/${projectId}/resources`,
-					requiresProject: true,
-					gate: "access.resources",
-				},
-			],
-		},
-		{
-			title: "Manage",
-			items: [
-				{
-					label: "Time",
-					icon: Clock,
-					to: `/project/${projectId}/time`,
-					requiresProject: true,
-					gate: "access.time",
-				},
-				{
-					label: "Logs",
-					icon: ClipboardList,
-					to: `/project/${projectId}/logs`,
-					requiresProject: true,
-					gate: "logs.view",
-				},
-				// Settings stays ungated: its route body is open to every member
-				// (it also hosts "leave project").
-				{
-					label: "Settings",
-					icon: Settings,
-					to: `/project/${projectId}/settings/general`,
-					requiresProject: true,
-				},
-			],
-		},
-	];
+	const navSections = buildProjectNavSections({
+		projectId,
+		roadmapId: effectiveRoadmapId,
+	});
+	// Settings and Time hang off the gear pinned to the bottom of the rail
+	// rather than sitting inline as peers of the delivery pages.
+	const gearItems = createProjectNavItems({ projectId });
 
 	const visibleSections = navSections
 		.map((section) => ({
@@ -230,24 +126,24 @@ export function ProjectSidebar({
 			<aside
 				onMouseEnter={() => setIsExpanded(true)}
 				onMouseLeave={() => setIsExpanded(false)}
-				className={`absolute left-0 top-0 flex h-full overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm backdrop-blur transition-all duration-300 ease-in-out ${
-					isExpanded ? "w-56 shadow-lg" : "w-14"
+				className={`absolute left-0 top-0 flex h-full overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-200 ease-out ${
+					isExpanded ? "w-64 shadow-lg" : "w-14"
 				}`}
 			>
-				<div className="flex w-full flex-col overflow-y-auto py-3">
+				<div className="flex w-full flex-col overflow-y-auto py-2">
 					{/* Projects dropdown — top of sidebar */}
 					<div className="mb-1">
 						<button
 							type="button"
 							onClick={() => isExpanded && setProjectsOpen((v) => !v)}
 							title={!isExpanded ? "Projects" : undefined}
-							className="mx-2 flex w-[calc(100%-16px)] items-center rounded-lg p-2 text-sidebar-foreground/65 transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+							className="mx-2 flex w-[calc(100%-16px)] items-center rounded-lg px-2 py-1.5 text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 						>
 							<div className="flex h-6 w-6 shrink-0 items-center justify-center">
 								<FolderKanban className="h-5 w-5" />
 							</div>
 							<span
-								className={`ml-3 flex-1 truncate text-left text-sm font-medium transition-all duration-300 ${
+								className={`ml-3 flex-1 truncate text-left text-sm font-medium transition-[opacity,transform] duration-200 ${
 									isExpanded
 										? "translate-x-0 opacity-100"
 										: "-translate-x-4 opacity-0"
@@ -315,43 +211,39 @@ export function ProjectSidebar({
 					</div>
 
 					{/* Separator between projects list and nav sections */}
-					<div className="px-3 pb-2">
+					<div className="px-3 pb-1.5">
 						<div className="h-px bg-sidebar-border" />
 					</div>
 
 					{visibleSections.map((section, sectionIndex) => (
-						<div key={section.title} className="mb-2">
-							{sectionIndex > 0 && (
-								<div className="px-3 py-2">
-									<div className="h-px bg-sidebar-border" />
-								</div>
-							)}
+						<div key={section.title} className="mb-1">
+							{/* One fixed-height slot per group boundary, so opening the rail
+							    never shifts the rows below it. Expanded shows the group name;
+							    collapsed shows a rule instead, because the name is unreadable
+							    at 56px. Rendering both stacked is what used to push the lower
+							    sections down as the rail opened. */}
+							<div className="flex h-5 shrink-0 items-center px-3">
+								{isExpanded ? (
+									<span className="truncate text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+										{section.title}
+									</span>
+								) : sectionIndex > 0 ? (
+									<div className="h-px w-full bg-sidebar-border" />
+								) : null}
+							</div>
 
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-0.5">
 								{section.items.map((item) => {
 									const Icon = item.icon;
-									const isChatItem = item.label === "Chat";
 									const showChatUnreadDot =
-										isChatItem && hasUnreadChat && !isChatRoute;
-									const chatBasePath = `/project/${projectId}/chat`;
-									const isActive =
-										(isChatItem
-											? currentPath.startsWith(chatBasePath)
-											: currentPath.startsWith(item.to)) ||
-										(item.label === "Settings" &&
-											currentPath.includes("/settings")) ||
-										(item.label === "Roadmap" &&
-											currentPath.includes("/roadmap")) ||
-										(item.label === "Timeline" &&
-											currentPath.includes("/timeline")) ||
-										(item.label === "Board" &&
-											currentPath.includes("/work-items"));
+										item.key === "chat" && hasUnreadChat && !isChatRoute;
+									const isActive = item.matches(currentPath);
 									return (
 										<Link
 											key={item.label}
 											to={item.to}
 											title={!isExpanded ? item.label : undefined}
-											className={`mx-2 flex items-center overflow-hidden rounded-lg p-2 transition-all ${
+											className={`mx-2 flex items-center overflow-hidden rounded-lg px-2 py-1 transition-colors ${
 												isActive
 													? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
 													: "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -367,7 +259,7 @@ export function ProjectSidebar({
 												) : null}
 											</div>
 											<span
-												className={`ml-3 whitespace-nowrap text-sm font-medium transition-all duration-300 ${
+												className={`ml-3 whitespace-nowrap text-sm font-medium transition-[opacity,transform] duration-200 ${
 													isExpanded
 														? "opacity-100 translate-x-0"
 														: "opacity-0 -translate-x-4"
@@ -381,6 +273,51 @@ export function ProjectSidebar({
 							</div>
 						</div>
 					))}
+
+					{/* Gear: project operations, pinned to the bottom so they read as
+					    configuration rather than as peers of the delivery pages. */}
+					{isProjectActive && (
+						<div className="mt-auto pt-1">
+							<div className="px-3 pb-1.5">
+								<div className="h-px bg-sidebar-border" />
+							</div>
+							<div className="flex flex-col gap-0.5">
+								{[gearItems.time, gearItems.settings]
+									.filter((item) =>
+										hasNavGate(permissionsQuery.data, item.gate),
+									)
+									.map((item) => {
+										const Icon = item.icon;
+										const isActive = item.matches(currentPath);
+										return (
+											<Link
+												key={item.key}
+												to={item.to}
+												title={!isExpanded ? item.label : undefined}
+												className={`mx-2 flex items-center overflow-hidden rounded-lg px-2 py-1 transition-colors ${
+													isActive
+														? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+														: "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+												}`}
+											>
+												<div className="flex h-6 w-6 shrink-0 items-center justify-center">
+													<Icon className="h-5 w-5" />
+												</div>
+												<span
+													className={`ml-3 whitespace-nowrap text-sm font-medium transition-[opacity,transform] duration-200 ${
+														isExpanded
+															? "translate-x-0 opacity-100"
+															: "-translate-x-4 opacity-0"
+													}`}
+												>
+													{item.label}
+												</span>
+											</Link>
+										);
+									})}
+							</div>
+						</div>
+					)}
 				</div>
 			</aside>
 		</div>

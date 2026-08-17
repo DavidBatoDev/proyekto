@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -6,12 +6,14 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsISO8601,
   IsNotEmpty,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   Validate,
@@ -33,7 +35,8 @@ export const ROADMAP_AI_OPERATION_TYPES = [
   'shift_dates',
 ] as const;
 
-export type RoadmapAiOperationType = (typeof ROADMAP_AI_OPERATION_TYPES)[number];
+export type RoadmapAiOperationType =
+  (typeof ROADMAP_AI_OPERATION_TYPES)[number];
 
 export const ROADMAP_NODE_TYPES = [
   'roadmap',
@@ -73,9 +76,7 @@ function inspectOperationShape(args: ValidationArguments) {
 }
 
 @ValidatorConstraint({ name: 'RoadmapAiOperationShape', async: false })
-class RoadmapAiOperationShapeConstraint
-  implements ValidatorConstraintInterface
-{
+class RoadmapAiOperationShapeConstraint implements ValidatorConstraintInterface {
   validate(_value: unknown, args: ValidationArguments): boolean {
     const { op, hasTarget, hasTargets, hasParent } =
       inspectOperationShape(args);
@@ -572,6 +573,32 @@ export class RoadmapAiContextPreviewSelectorQueryDto {
   @IsOptional()
   @IsUUID()
   preview_id?: string;
+}
+
+/**
+ * Query for GET /roadmaps/:id/ai/changes.
+ *
+ * `include_operations` is opt-in because the operations array can be large and
+ * most callers (the change-request commit picker, for one) only need the summary
+ * counts to identify a commit.
+ */
+export class RoadmapAiChangeHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  /** Keyset cursor: return commits older than this ISO timestamp. */
+  @IsOptional()
+  @IsISO8601()
+  before?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  include_operations?: boolean;
 }
 
 export class RoadmapAiContextSearchQueryDto {

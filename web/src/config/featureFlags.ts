@@ -58,5 +58,4 @@ export const featureFlags = {
 	 * ahead of the upload, and this flag is what keeps that ordering safe.
 	 */
 	stockPhotos: import.meta.env.VITE_STOCK_PHOTOS_ENABLED === "true",
-
 } as const;

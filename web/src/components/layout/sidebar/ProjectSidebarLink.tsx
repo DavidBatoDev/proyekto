@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+	CalendarRange,
 	FileText,
 	Folder,
 	LayoutGrid,
@@ -39,6 +40,12 @@ const SUB_ITEMS: SubItem[] = [
 		matches: (p, id) => p.startsWith(`/project/${id}/work-items`),
 	},
 	{
+		label: "Timeline",
+		icon: CalendarRange,
+		to: "/project/$projectId/timeline",
+		matches: (p, id) => p.startsWith(`/project/${id}/timeline`),
+	},
+	{
 		label: "Overview",
 		icon: LayoutGrid,
 		to: "/project/$projectId/overview",
@@ -57,7 +64,7 @@ const SUB_ITEMS: SubItem[] = [
 		matches: (p, id) => p.startsWith(`/project/${id}/resources`),
 	},
 	{
-		label: "Logs",
+		label: "Activity",
 		icon: ScrollText,
 		to: "/project/$projectId/logs",
 		matches: (p, id) => p.startsWith(`/project/${id}/logs`),

@@ -108,6 +108,46 @@ export const ACTIVITY_ACTIONS = {
   MCP_CHAT_MESSAGE_EDIT: 'mcp.chat_message_edit',
   MCP_CHAT_MESSAGE_UNSEND: 'mcp.chat_message_unsend',
 
+  // ── Deliverables ──────────────────────────────────────────────────────────
+  DELIVERABLE_CREATED: 'deliverable.created',
+  DELIVERABLE_UPDATED: 'deliverable.updated',
+  DELIVERABLE_SUBMITTED: 'deliverable.submitted',
+  DELIVERABLE_APPROVED: 'deliverable.approved',
+  DELIVERABLE_CHANGES_REQUESTED: 'deliverable.changes_requested',
+  DELIVERABLE_DELETED: 'deliverable.deleted',
+  DELIVERABLE_LINK_ADDED: 'deliverable.link_added',
+  DELIVERABLE_LINK_REMOVED: 'deliverable.link_removed',
+
+  // ── Change requests ───────────────────────────────────────────────────────
+  CHANGE_REQUEST_CREATED: 'change_request.created',
+  CHANGE_REQUEST_UPDATED: 'change_request.updated',
+  CHANGE_REQUEST_SUBMITTED: 'change_request.submitted',
+  CHANGE_REQUEST_APPROVED: 'change_request.approved',
+  CHANGE_REQUEST_REJECTED: 'change_request.rejected',
+  CHANGE_REQUEST_CHANGES_REQUESTED: 'change_request.changes_requested',
+  CHANGE_REQUEST_WITHDRAWN: 'change_request.withdrawn',
+  CHANGE_REQUEST_APPLIED: 'change_request.applied',
+  CHANGE_REQUEST_DELETED: 'change_request.deleted',
+  CHANGE_REQUEST_LINK_ADDED: 'change_request.link_added',
+  CHANGE_REQUEST_LINK_REMOVED: 'change_request.link_removed',
+
+  // ── Risks & issues ────────────────────────────────────────────────────────
+  // NOTE: metadata for these must not carry the title of an `internal` row —
+  // SENSITIVE_ACTIONS is action-level, not row-level, so an internal risk's
+  // title in the feed would re-leak exactly what `risks.view_internal` guards.
+  RISK_CREATED: 'risk.created',
+  RISK_UPDATED: 'risk.updated',
+  RISK_STATUS_CHANGED: 'risk.status_changed',
+  RISK_OWNER_CHANGED: 'risk.owner_changed',
+  RISK_DELETED: 'risk.deleted',
+
+  // ── Decisions ─────────────────────────────────────────────────────────────
+  DECISION_CREATED: 'decision.created',
+  DECISION_UPDATED: 'decision.updated',
+  DECISION_FINALIZED: 'decision.finalized',
+  DECISION_SUPERSEDED: 'decision.superseded',
+  DECISION_DELETED: 'decision.deleted',
+
   // ── Pre-existing (chat + access). DO NOT RENAME — rows exist. ─────────────
   ACCESS_GRANTED: 'access.granted',
   ACCESS_REVOKED: 'access.revoked',
@@ -140,6 +180,12 @@ export const ACTIVITY_ENTITY_TYPES = [
   'chat_channel',
   // Emitted by mcp/tools/chat-write.tools.ts.
   'chat_message',
+  'deliverable',
+  'deliverable_link',
+  'change_request',
+  'change_request_link',
+  'risk',
+  'decision',
 ] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 
@@ -177,6 +223,15 @@ export const INDEXABLE_ACTIONS: ReadonlySet<string> = new Set<string>([
   ACTIVITY_ACTIONS.ACCESS_REVOKED,
   ACTIVITY_ACTIONS.CHANNEL_CREATED,
   ACTIVITY_ACTIONS.CHANNEL_ARCHIVED,
+  // Scope and acceptance decisions are exactly the "why did we do X" the RAG
+  // index exists to answer; the churn verbs on the same families are not.
+  ACTIVITY_ACTIONS.DELIVERABLE_CREATED,
+  ACTIVITY_ACTIONS.DELIVERABLE_APPROVED,
+  ACTIVITY_ACTIONS.CHANGE_REQUEST_CREATED,
+  ACTIVITY_ACTIONS.CHANGE_REQUEST_APPROVED,
+  ACTIVITY_ACTIONS.CHANGE_REQUEST_APPLIED,
+  ACTIVITY_ACTIONS.DECISION_CREATED,
+  ACTIVITY_ACTIONS.DECISION_SUPERSEDED,
 ]);
 
 /**

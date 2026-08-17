@@ -132,7 +132,7 @@ function ProjectLogsPage() {
 					</button>
 
 					<div className="min-w-0 flex-1">
-						<h1 className="text-sm font-semibold text-foreground">Logs</h1>
+						<h1 className="text-sm font-semibold text-foreground">Activity</h1>
 						<p className="truncate text-xs text-muted-foreground">
 							Every change to this project's roadmap, people, and access.
 						</p>

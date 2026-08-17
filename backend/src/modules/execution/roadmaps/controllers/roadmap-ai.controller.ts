@@ -16,6 +16,7 @@ import { SupabaseAuthGuard } from '../../../../common/guards/supabase-auth.guard
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../../common/interfaces/authenticated-request.interface';
 import {
+  RoadmapAiChangeHistoryQueryDto,
   RoadmapAiCommitDto,
   RoadmapAiContextPreviewSelectorQueryDto,
   RoadmapAiContextChildrenQueryDto,
@@ -61,6 +62,29 @@ export class RoadmapAiController {
     @Headers('x-trace-id') traceId?: string,
   ) {
     return this.roadmapAiService.preview(roadmapId, dto, user.id, traceId);
+  }
+
+  /**
+   * The roadmap's commit history.
+   *
+   * The service method predates this route and was reachable only in-process
+   * (the MCP module). Change Requests needs it over HTTP: recording that an
+   * approved change reached the roadmap means picking the commit that carried
+   * it, and `applied_change_id` has to be a real `roadmap_change_history` row.
+   *
+   * View authorization lives inside the service.
+   */
+  @Get('changes')
+  listChanges(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiChangeHistoryQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.listChangeHistory(roadmapId, user.id, {
+      limit: query.limit,
+      before: query.before,
+      includeOperations: query.include_operations,
+    });
   }
 
   @Get('previews/:previewId')

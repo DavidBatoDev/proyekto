@@ -27,6 +27,12 @@ interface AppTabsProps<K extends string> {
 	/** Router mode — return the `<Link>` props for a tab. */
 	linkFor?: (key: K) => Pick<LinkProps, "to" | "params" | "search">;
 	size?: "sm" | "md";
+	/**
+	 * `segmented` is the boxed pill strip (the default, as extracted).
+	 * `underline` is the page-level treatment: no container, an active
+	 * bottom rule, and a rule running the width of the page beneath.
+	 */
+	variant?: "segmented" | "underline";
 	className?: string;
 }
 
@@ -36,16 +42,26 @@ export function AppTabs<K extends string>({
 	onChange,
 	linkFor,
 	size = "md",
+	variant = "segmented",
 	className,
 }: AppTabsProps<K>) {
+	const underline = variant === "underline";
 	const pad = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
 
 	const classFor = (key: K, disabled?: boolean) =>
-		`rounded-md font-medium transition ${pad} ${
-			active === key
-				? "bg-primary text-primary-foreground"
-				: "text-muted-foreground hover:bg-muted hover:text-foreground"
-		} ${disabled ? "pointer-events-none opacity-50" : ""}`;
+		underline
+			? // -mb-px pulls each tab onto the strip's own border so the active
+				// rule replaces it rather than stacking two lines.
+				`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition ${
+					active === key
+						? "border-primary font-semibold text-foreground"
+						: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+				} ${disabled ? "pointer-events-none opacity-50" : ""}`
+			: `rounded-md font-medium transition ${pad} ${
+					active === key
+						? "bg-primary text-primary-foreground"
+						: "text-muted-foreground hover:bg-muted hover:text-foreground"
+				} ${disabled ? "pointer-events-none opacity-50" : ""}`;
 
 	// Left/Right move between tabs the way a real tablist does.
 	const onKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -64,19 +80,26 @@ export function AppTabs<K extends string>({
 	return (
 		<div
 			role="tablist"
-			className={`inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5 ${
-				className ?? ""
-			}`}
+			className={`${
+				underline
+					? "flex flex-wrap items-center gap-1 border-b border-border"
+					: "inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5"
+			} ${className ?? ""}`}
 		>
 			{items.map((item, index) => {
 				const body = (
 					<>
 						{item.label}
-						{typeof item.count === "number" && (
-							<span className="ml-1.5 text-[11px] opacity-70">
-								{item.count}
-							</span>
-						)}
+						{typeof item.count === "number" &&
+							(underline ? (
+								<span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+									{item.count}
+								</span>
+							) : (
+								<span className="ml-1.5 text-[11px] opacity-70">
+									{item.count}
+								</span>
+							))}
 					</>
 				);
 

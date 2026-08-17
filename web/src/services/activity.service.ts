@@ -33,6 +33,9 @@ export interface ActivityFilters {
 	family?: string[];
 	actor_id?: string[];
 	roadmap_id?: string;
+	/** Narrow to one object's history, e.g. a single deliverable. */
+	entity_type?: string;
+	entity_id?: string;
 	from?: string;
 	to?: string;
 }
@@ -56,6 +59,8 @@ export const activityService = {
 		for (const family of params.family ?? []) query.append("family", family);
 		for (const actor of params.actor_id ?? []) query.append("actor_id", actor);
 		if (params.roadmap_id) query.set("roadmap_id", params.roadmap_id);
+		if (params.entity_type) query.set("entity_type", params.entity_type);
+		if (params.entity_id) query.set("entity_id", params.entity_id);
 		if (params.from) query.set("from", params.from);
 		if (params.to) query.set("to", params.to);
 

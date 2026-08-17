@@ -69,9 +69,13 @@ import { Route as ExecutionProjectProjectIdWorkItemsRouteImport } from './routes
 import { Route as ExecutionProjectProjectIdTimelineRouteImport } from './routes/_execution/project/$projectId/timeline'
 import { Route as ExecutionProjectProjectIdTimeRouteImport } from './routes/_execution/project/$projectId/time'
 import { Route as ExecutionProjectProjectIdRoadmapRouteImport } from './routes/_execution/project/$projectId/roadmap'
+import { Route as ExecutionProjectProjectIdRisksRouteImport } from './routes/_execution/project/$projectId/risks'
 import { Route as ExecutionProjectProjectIdResourcesRouteImport } from './routes/_execution/project/$projectId/resources'
 import { Route as ExecutionProjectProjectIdOverviewRouteImport } from './routes/_execution/project/$projectId/overview'
 import { Route as ExecutionProjectProjectIdLogsRouteImport } from './routes/_execution/project/$projectId/logs'
+import { Route as ExecutionProjectProjectIdDeliverablesRouteImport } from './routes/_execution/project/$projectId/deliverables'
+import { Route as ExecutionProjectProjectIdDecisionsRouteImport } from './routes/_execution/project/$projectId/decisions'
+import { Route as ExecutionProjectProjectIdChangeRequestsRouteImport } from './routes/_execution/project/$projectId/change-requests'
 import { Route as ExecutionTeamsTeamIdTimeRouteRouteImport } from './routes/_execution/teams/$teamId/time/route'
 import { Route as ExecutionTeamsTeamIdTimeIndexRouteImport } from './routes/_execution/teams/$teamId/time/index'
 import { Route as ExecutionTeamsTeamIdSettingsIndexRouteImport } from './routes/_execution/teams/$teamId/settings/index'
@@ -99,7 +103,10 @@ import { Route as ExecutionProjectProjectIdSettingsPermissionsRouteImport } from
 import { Route as ExecutionProjectProjectIdSettingsGeneralRouteImport } from './routes/_execution/project/$projectId/settings/general'
 import { Route as ExecutionProjectProjectIdRoadmapCreateRouteImport } from './routes/_execution/project/$projectId/roadmap/create'
 import { Route as ExecutionProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/_execution/project/$projectId/roadmap/$roadmapId'
+import { Route as ExecutionProjectProjectIdDeliverablesDeliverableIdRouteImport } from './routes/_execution/project/$projectId/deliverables/$deliverableId'
+import { Route as ExecutionProjectProjectIdDecisionsDecisionIdRouteImport } from './routes/_execution/project/$projectId/decisions/$decisionId'
 import { Route as ExecutionProjectProjectIdChatChatRefRouteImport } from './routes/_execution/project/$projectId/chat/$chatRef'
+import { Route as ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport } from './routes/_execution/project/$projectId/change-requests/$changeRequestId'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/index'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/$userId'
 import { Route as ExecutionTeamsTeamIdTimeLogLogIdRouteImport } from './routes/_execution/teams/$teamId/time/log/$logId'
@@ -420,6 +427,12 @@ const ExecutionProjectProjectIdRoadmapRoute =
     path: '/roadmap',
     getParentRoute: () => ExecutionProjectProjectIdRoute,
   } as any)
+const ExecutionProjectProjectIdRisksRoute =
+  ExecutionProjectProjectIdRisksRouteImport.update({
+    id: '/risks',
+    path: '/risks',
+    getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
 const ExecutionProjectProjectIdResourcesRoute =
   ExecutionProjectProjectIdResourcesRouteImport.update({
     id: '/resources',
@@ -436,6 +449,24 @@ const ExecutionProjectProjectIdLogsRoute =
   ExecutionProjectProjectIdLogsRouteImport.update({
     id: '/logs',
     path: '/logs',
+    getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
+const ExecutionProjectProjectIdDeliverablesRoute =
+  ExecutionProjectProjectIdDeliverablesRouteImport.update({
+    id: '/deliverables',
+    path: '/deliverables',
+    getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
+const ExecutionProjectProjectIdDecisionsRoute =
+  ExecutionProjectProjectIdDecisionsRouteImport.update({
+    id: '/decisions',
+    path: '/decisions',
+    getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
+const ExecutionProjectProjectIdChangeRequestsRoute =
+  ExecutionProjectProjectIdChangeRequestsRouteImport.update({
+    id: '/change-requests',
+    path: '/change-requests',
     getParentRoute: () => ExecutionProjectProjectIdRoute,
   } as any)
 const ExecutionTeamsTeamIdTimeRouteRoute =
@@ -600,11 +631,29 @@ const ExecutionProjectProjectIdRoadmapRoadmapIdRoute =
     path: '/$roadmapId',
     getParentRoute: () => ExecutionProjectProjectIdRoadmapRoute,
   } as any)
+const ExecutionProjectProjectIdDeliverablesDeliverableIdRoute =
+  ExecutionProjectProjectIdDeliverablesDeliverableIdRouteImport.update({
+    id: '/$deliverableId',
+    path: '/$deliverableId',
+    getParentRoute: () => ExecutionProjectProjectIdDeliverablesRoute,
+  } as any)
+const ExecutionProjectProjectIdDecisionsDecisionIdRoute =
+  ExecutionProjectProjectIdDecisionsDecisionIdRouteImport.update({
+    id: '/$decisionId',
+    path: '/$decisionId',
+    getParentRoute: () => ExecutionProjectProjectIdDecisionsRoute,
+  } as any)
 const ExecutionProjectProjectIdChatChatRefRoute =
   ExecutionProjectProjectIdChatChatRefRouteImport.update({
     id: '/chat/$chatRef',
     path: '/chat/$chatRef',
     getParentRoute: () => ExecutionProjectProjectIdRoute,
+  } as any)
+const ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute =
+  ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport.update({
+    id: '/$changeRequestId',
+    path: '/$changeRequestId',
+    getParentRoute: () => ExecutionProjectProjectIdChangeRequestsRoute,
   } as any)
 const ExecutionTeamsTeamIdTimeManageRatesIndexRoute =
   ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport.update({
@@ -675,9 +724,13 @@ export interface FileRoutesByFullPath {
   '/teams': typeof ExecutionTeamsIndexRoute
   '/finance': typeof MarketplaceFinanceIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
+  '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
+  '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
+  '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
   '/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
+  '/project/$projectId/risks': typeof ExecutionProjectProjectIdRisksRoute
   '/project/$projectId/roadmap': typeof ExecutionProjectProjectIdRoadmapRouteWithChildren
   '/project/$projectId/time': typeof ExecutionProjectProjectIdTimeRoute
   '/project/$projectId/timeline': typeof ExecutionProjectProjectIdTimelineRouteWithChildren
@@ -688,7 +741,10 @@ export interface FileRoutesByFullPath {
   '/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
+  '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
+  '/project/$projectId/deliverables/$deliverableId': typeof ExecutionProjectProjectIdDeliverablesDeliverableIdRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -765,9 +821,13 @@ export interface FileRoutesByTo {
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/finance': typeof MarketplaceFinanceIndexRoute
+  '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
+  '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
+  '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
   '/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
+  '/project/$projectId/risks': typeof ExecutionProjectProjectIdRisksRoute
   '/project/$projectId/roadmap': typeof ExecutionProjectProjectIdRoadmapRouteWithChildren
   '/project/$projectId/time': typeof ExecutionProjectProjectIdTimeRoute
   '/project/$projectId/timeline': typeof ExecutionProjectProjectIdTimelineRouteWithChildren
@@ -778,7 +838,10 @@ export interface FileRoutesByTo {
   '/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
+  '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
+  '/project/$projectId/deliverables/$deliverableId': typeof ExecutionProjectProjectIdDeliverablesDeliverableIdRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -862,9 +925,13 @@ export interface FileRoutesById {
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/_marketplace/finance/': typeof MarketplaceFinanceIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
+  '/_execution/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
+  '/_execution/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
+  '/_execution/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
   '/_execution/project/$projectId/logs': typeof ExecutionProjectProjectIdLogsRoute
   '/_execution/project/$projectId/overview': typeof ExecutionProjectProjectIdOverviewRoute
   '/_execution/project/$projectId/resources': typeof ExecutionProjectProjectIdResourcesRoute
+  '/_execution/project/$projectId/risks': typeof ExecutionProjectProjectIdRisksRoute
   '/_execution/project/$projectId/roadmap': typeof ExecutionProjectProjectIdRoadmapRouteWithChildren
   '/_execution/project/$projectId/time': typeof ExecutionProjectProjectIdTimeRoute
   '/_execution/project/$projectId/timeline': typeof ExecutionProjectProjectIdTimelineRouteWithChildren
@@ -875,7 +942,10 @@ export interface FileRoutesById {
   '/_marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
+  '/_execution/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/_execution/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
+  '/_execution/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
+  '/_execution/project/$projectId/deliverables/$deliverableId': typeof ExecutionProjectProjectIdDeliverablesDeliverableIdRoute
   '/_execution/project/$projectId/roadmap/$roadmapId': typeof ExecutionProjectProjectIdRoadmapRoadmapIdRoute
   '/_execution/project/$projectId/roadmap/create': typeof ExecutionProjectProjectIdRoadmapCreateRoute
   '/_execution/project/$projectId/settings/general': typeof ExecutionProjectProjectIdSettingsGeneralRoute
@@ -958,9 +1028,13 @@ export interface FileRouteTypes {
     | '/teams'
     | '/finance'
     | '/teams/$teamId/time'
+    | '/project/$projectId/change-requests'
+    | '/project/$projectId/decisions'
+    | '/project/$projectId/deliverables'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/resources'
+    | '/project/$projectId/risks'
     | '/project/$projectId/roadmap'
     | '/project/$projectId/time'
     | '/project/$projectId/timeline'
@@ -971,7 +1045,10 @@ export interface FileRouteTypes {
     | '/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId/'
+    | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
+    | '/project/$projectId/decisions/$decisionId'
+    | '/project/$projectId/deliverables/$deliverableId'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1048,9 +1125,13 @@ export interface FileRouteTypes {
     | '/auth/admin/signin'
     | '/teams'
     | '/finance'
+    | '/project/$projectId/change-requests'
+    | '/project/$projectId/decisions'
+    | '/project/$projectId/deliverables'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/resources'
+    | '/project/$projectId/risks'
     | '/project/$projectId/roadmap'
     | '/project/$projectId/time'
     | '/project/$projectId/timeline'
@@ -1061,7 +1142,10 @@ export interface FileRouteTypes {
     | '/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId'
+    | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
+    | '/project/$projectId/decisions/$decisionId'
+    | '/project/$projectId/deliverables/$deliverableId'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -1144,9 +1228,13 @@ export interface FileRouteTypes {
     | '/_execution/teams/'
     | '/_marketplace/finance/'
     | '/_execution/teams/$teamId/time'
+    | '/_execution/project/$projectId/change-requests'
+    | '/_execution/project/$projectId/decisions'
+    | '/_execution/project/$projectId/deliverables'
     | '/_execution/project/$projectId/logs'
     | '/_execution/project/$projectId/overview'
     | '/_execution/project/$projectId/resources'
+    | '/_execution/project/$projectId/risks'
     | '/_execution/project/$projectId/roadmap'
     | '/_execution/project/$projectId/time'
     | '/_execution/project/$projectId/timeline'
@@ -1157,7 +1245,10 @@ export interface FileRouteTypes {
     | '/_marketplace/finance/invoices/new'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
+    | '/_execution/project/$projectId/change-requests/$changeRequestId'
     | '/_execution/project/$projectId/chat/$chatRef'
+    | '/_execution/project/$projectId/decisions/$decisionId'
+    | '/_execution/project/$projectId/deliverables/$deliverableId'
     | '/_execution/project/$projectId/roadmap/$roadmapId'
     | '/_execution/project/$projectId/roadmap/create'
     | '/_execution/project/$projectId/settings/general'
@@ -1638,6 +1729,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdRoadmapRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoute
     }
+    '/_execution/project/$projectId/risks': {
+      id: '/_execution/project/$projectId/risks'
+      path: '/risks'
+      fullPath: '/project/$projectId/risks'
+      preLoaderRoute: typeof ExecutionProjectProjectIdRisksRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
     '/_execution/project/$projectId/resources': {
       id: '/_execution/project/$projectId/resources'
       path: '/resources'
@@ -1657,6 +1755,27 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/project/$projectId/logs'
       preLoaderRoute: typeof ExecutionProjectProjectIdLogsRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
+    '/_execution/project/$projectId/deliverables': {
+      id: '/_execution/project/$projectId/deliverables'
+      path: '/deliverables'
+      fullPath: '/project/$projectId/deliverables'
+      preLoaderRoute: typeof ExecutionProjectProjectIdDeliverablesRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
+    '/_execution/project/$projectId/decisions': {
+      id: '/_execution/project/$projectId/decisions'
+      path: '/decisions'
+      fullPath: '/project/$projectId/decisions'
+      preLoaderRoute: typeof ExecutionProjectProjectIdDecisionsRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
+    '/_execution/project/$projectId/change-requests': {
+      id: '/_execution/project/$projectId/change-requests'
+      path: '/change-requests'
+      fullPath: '/project/$projectId/change-requests'
+      preLoaderRoute: typeof ExecutionProjectProjectIdChangeRequestsRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoute
     }
     '/_execution/teams/$teamId/time': {
@@ -1848,12 +1967,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdRoadmapRoadmapIdRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoadmapRoute
     }
+    '/_execution/project/$projectId/deliverables/$deliverableId': {
+      id: '/_execution/project/$projectId/deliverables/$deliverableId'
+      path: '/$deliverableId'
+      fullPath: '/project/$projectId/deliverables/$deliverableId'
+      preLoaderRoute: typeof ExecutionProjectProjectIdDeliverablesDeliverableIdRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdDeliverablesRoute
+    }
+    '/_execution/project/$projectId/decisions/$decisionId': {
+      id: '/_execution/project/$projectId/decisions/$decisionId'
+      path: '/$decisionId'
+      fullPath: '/project/$projectId/decisions/$decisionId'
+      preLoaderRoute: typeof ExecutionProjectProjectIdDecisionsDecisionIdRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdDecisionsRoute
+    }
     '/_execution/project/$projectId/chat/$chatRef': {
       id: '/_execution/project/$projectId/chat/$chatRef'
       path: '/chat/$chatRef'
       fullPath: '/project/$projectId/chat/$chatRef'
       preLoaderRoute: typeof ExecutionProjectProjectIdChatChatRefRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoute
+    }
+    '/_execution/project/$projectId/change-requests/$changeRequestId': {
+      id: '/_execution/project/$projectId/change-requests/$changeRequestId'
+      path: '/$changeRequestId'
+      fullPath: '/project/$projectId/change-requests/$changeRequestId'
+      preLoaderRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport
+      parentRoute: typeof ExecutionProjectProjectIdChangeRequestsRoute
     }
     '/_execution/teams/$teamId/time/manage-rates/': {
       id: '/_execution/teams/$teamId/time/manage-rates/'
@@ -1892,6 +2032,51 @@ const RoadmapTemplatesRouteRouteChildren: RoadmapTemplatesRouteRouteChildren = {
 const RoadmapTemplatesRouteRouteWithChildren =
   RoadmapTemplatesRouteRoute._addFileChildren(
     RoadmapTemplatesRouteRouteChildren,
+  )
+
+interface ExecutionProjectProjectIdChangeRequestsRouteChildren {
+  ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
+}
+
+const ExecutionProjectProjectIdChangeRequestsRouteChildren: ExecutionProjectProjectIdChangeRequestsRouteChildren =
+  {
+    ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute:
+      ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute,
+  }
+
+const ExecutionProjectProjectIdChangeRequestsRouteWithChildren =
+  ExecutionProjectProjectIdChangeRequestsRoute._addFileChildren(
+    ExecutionProjectProjectIdChangeRequestsRouteChildren,
+  )
+
+interface ExecutionProjectProjectIdDecisionsRouteChildren {
+  ExecutionProjectProjectIdDecisionsDecisionIdRoute: typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
+}
+
+const ExecutionProjectProjectIdDecisionsRouteChildren: ExecutionProjectProjectIdDecisionsRouteChildren =
+  {
+    ExecutionProjectProjectIdDecisionsDecisionIdRoute:
+      ExecutionProjectProjectIdDecisionsDecisionIdRoute,
+  }
+
+const ExecutionProjectProjectIdDecisionsRouteWithChildren =
+  ExecutionProjectProjectIdDecisionsRoute._addFileChildren(
+    ExecutionProjectProjectIdDecisionsRouteChildren,
+  )
+
+interface ExecutionProjectProjectIdDeliverablesRouteChildren {
+  ExecutionProjectProjectIdDeliverablesDeliverableIdRoute: typeof ExecutionProjectProjectIdDeliverablesDeliverableIdRoute
+}
+
+const ExecutionProjectProjectIdDeliverablesRouteChildren: ExecutionProjectProjectIdDeliverablesRouteChildren =
+  {
+    ExecutionProjectProjectIdDeliverablesDeliverableIdRoute:
+      ExecutionProjectProjectIdDeliverablesDeliverableIdRoute,
+  }
+
+const ExecutionProjectProjectIdDeliverablesRouteWithChildren =
+  ExecutionProjectProjectIdDeliverablesRoute._addFileChildren(
+    ExecutionProjectProjectIdDeliverablesRouteChildren,
   )
 
 interface ExecutionProjectProjectIdRoadmapRouteChildren {
@@ -1943,9 +2128,13 @@ const ExecutionProjectProjectIdWorkItemsRouteWithChildren =
   )
 
 interface ExecutionProjectProjectIdRouteChildren {
+  ExecutionProjectProjectIdChangeRequestsRoute: typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
+  ExecutionProjectProjectIdDecisionsRoute: typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
+  ExecutionProjectProjectIdDeliverablesRoute: typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
   ExecutionProjectProjectIdLogsRoute: typeof ExecutionProjectProjectIdLogsRoute
   ExecutionProjectProjectIdOverviewRoute: typeof ExecutionProjectProjectIdOverviewRoute
   ExecutionProjectProjectIdResourcesRoute: typeof ExecutionProjectProjectIdResourcesRoute
+  ExecutionProjectProjectIdRisksRoute: typeof ExecutionProjectProjectIdRisksRoute
   ExecutionProjectProjectIdRoadmapRoute: typeof ExecutionProjectProjectIdRoadmapRouteWithChildren
   ExecutionProjectProjectIdTimeRoute: typeof ExecutionProjectProjectIdTimeRoute
   ExecutionProjectProjectIdTimelineRoute: typeof ExecutionProjectProjectIdTimelineRouteWithChildren
@@ -1966,11 +2155,18 @@ interface ExecutionProjectProjectIdRouteChildren {
 
 const ExecutionProjectProjectIdRouteChildren: ExecutionProjectProjectIdRouteChildren =
   {
+    ExecutionProjectProjectIdChangeRequestsRoute:
+      ExecutionProjectProjectIdChangeRequestsRouteWithChildren,
+    ExecutionProjectProjectIdDecisionsRoute:
+      ExecutionProjectProjectIdDecisionsRouteWithChildren,
+    ExecutionProjectProjectIdDeliverablesRoute:
+      ExecutionProjectProjectIdDeliverablesRouteWithChildren,
     ExecutionProjectProjectIdLogsRoute: ExecutionProjectProjectIdLogsRoute,
     ExecutionProjectProjectIdOverviewRoute:
       ExecutionProjectProjectIdOverviewRoute,
     ExecutionProjectProjectIdResourcesRoute:
       ExecutionProjectProjectIdResourcesRoute,
+    ExecutionProjectProjectIdRisksRoute: ExecutionProjectProjectIdRisksRoute,
     ExecutionProjectProjectIdRoadmapRoute:
       ExecutionProjectProjectIdRoadmapRouteWithChildren,
     ExecutionProjectProjectIdTimeRoute: ExecutionProjectProjectIdTimeRoute,

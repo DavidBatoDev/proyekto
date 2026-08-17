@@ -1,25 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	BookOpen,
-	CalendarRange,
-	ClipboardList,
-	Clock,
-	LayoutDashboard,
-	ListChecks,
-	Map,
-	MessageSquare,
-	MoreHorizontal,
-	Settings,
-	Users,
-} from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { hasNavGate, type ProjectNavGate } from "@/lib/projectPermissions";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
 import { useUser } from "@/stores/authStore";
+import { buildProjectBottomNav } from "./projectNavItems";
 
 interface ProjectBottomNavProps {
 	projectId: string;
@@ -86,120 +75,24 @@ export function ProjectBottomNav({
 
 	const isChatRoute = currentPath.startsWith(`/project/${projectId}/chat`);
 
-	const primaryItems: Array<{
-		label: string;
-		icon: typeof Map;
-		to: string;
-		isActive: boolean;
-		requiresProject: boolean;
-		hasUnread?: boolean;
-		gate?: ProjectNavGate;
-	}> = [
-		{
-			label: "Overview",
-			icon: LayoutDashboard,
-			to: `/project/${projectId}/overview`,
-			isActive: currentPath.startsWith(`/project/${projectId}/overview`),
-			requiresProject: true,
-		},
-		{
-			label: "Roadmap",
-			icon: Map,
-			to: effectiveRoadmapId
-				? `/project/${projectId}/roadmap/${effectiveRoadmapId}`
-				: `/project/${projectId}/roadmap`,
-			isActive: currentPath.includes("/roadmap"),
-			requiresProject: false,
-			gate: "access.roadmap",
-		},
-		{
-			label: "Board",
-			icon: ListChecks,
-			to: effectiveRoadmapId
-				? `/project/${projectId}/work-items/${effectiveRoadmapId}`
-				: `/project/${projectId}/work-items`,
-			isActive: currentPath.includes("/work-items"),
-			requiresProject: false,
-			gate: "access.work_items",
-		},
-		{
-			label: "Chat",
-			icon: MessageSquare,
-			to: `/project/${projectId}/chat/channel-general`,
-			isActive: isChatRoute,
-			requiresProject: true,
-			hasUnread: hasUnreadChat && !isChatRoute,
-			gate: "access.chat",
-		},
-		{
-			label: "Resources",
-			icon: BookOpen,
-			to: `/project/${projectId}/resources`,
-			isActive: currentPath.startsWith(`/project/${projectId}/resources`),
-			requiresProject: true,
-			gate: "access.resources",
-		},
-	];
-
-	// Mirrors the desktop sidebar's Collaborate + Manage groups.
-	const moreItems: Array<{
-		label: string;
-		icon: typeof Map;
-		to: string;
-		isActive: boolean;
-		gate?: ProjectNavGate;
-	}> = [
-		// Timeline lives in the "More" sheet rather than the primary row: the bar is
-		// already full, and the chart itself is desktop-only.
-		{
-			label: "Timeline",
-			icon: CalendarRange,
-			to: effectiveRoadmapId
-				? `/project/${projectId}/timeline/${effectiveRoadmapId}`
-				: `/project/${projectId}/timeline`,
-			isActive: currentPath.includes("/timeline"),
-			gate: "access.roadmap",
-		},
-		{
-			label: "Team",
-			icon: Users,
-			to: `/project/${projectId}/team`,
-			isActive: currentPath.startsWith(`/project/${projectId}/team`),
-			gate: "access.team",
-		},
-		{
-			label: "Time",
-			icon: Clock,
-			to: `/project/${projectId}/time`,
-			isActive: currentPath.startsWith(`/project/${projectId}/time`),
-			gate: "access.time",
-		},
-		{
-			label: "Logs",
-			icon: ClipboardList,
-			to: `/project/${projectId}/logs`,
-			isActive: currentPath.startsWith(`/project/${projectId}/logs`),
-			gate: "logs.view",
-		},
-		{
-			label: "Settings",
-			icon: Settings,
-			to: `/project/${projectId}/settings/general`,
-			isActive: currentPath.includes("/settings"),
-		},
-	];
+	const { primary: primaryItems, more: moreItems } = buildProjectBottomNav({
+		projectId,
+		roadmapId: effectiveRoadmapId,
+	});
 
 	// hasNavGate fails open until permissions resolve — each route gates itself.
-	const allowed = (gate?: ProjectNavGate) =>
-		hasNavGate(permissionsQuery.data, gate);
+	const allowed = (item: { gate?: ProjectNavGate }) =>
+		hasNavGate(permissionsQuery.data, item.gate);
 
 	const visiblePrimary = primaryItems.filter(
-		(item) => (!item.requiresProject || isProjectActive) && allowed(item.gate),
+		(item) => (!item.requiresProject || isProjectActive) && allowed(item),
 	);
-	const visibleMore = moreItems.filter((item) => allowed(item.gate));
+	const visibleMore = moreItems.filter(
+		(item) => (!item.requiresProject || isProjectActive) && allowed(item),
+	);
 
 	const isMoreActive =
-		isProjectActive && visibleMore.some((item) => item.isActive);
+		isProjectActive && visibleMore.some((item) => item.matches(currentPath));
 
 	return (
 		<>
@@ -207,20 +100,23 @@ export function ProjectBottomNav({
 			<nav className="fixed bottom-0 left-0 right-0 z-50 flex h-app-nav items-stretch border-t border-sidebar-border bg-sidebar text-sidebar-foreground pb-safe backdrop-blur md:hidden">
 				{visiblePrimary.map((item) => {
 					const Icon = item.icon;
+					const isActive = item.matches(currentPath);
+					const showUnread =
+						item.key === "chat" && hasUnreadChat && !isChatRoute;
 					return (
 						<Link
-							key={item.label}
+							key={item.key}
 							to={item.to}
 							className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
-								item.isActive ? "text-primary" : "text-slate-400"
+								isActive ? "text-primary" : "text-slate-400"
 							}`}
 						>
-							{item.isActive && (
+							{isActive && (
 								<span className="absolute top-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-primary" />
 							)}
 							<div className="relative">
 								<Icon className="h-5 w-5" />
-								{item.hasUnread && (
+								{showUnread && (
 									<span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#ff9933] ring-1 ring-white" />
 								)}
 							</div>
@@ -283,16 +179,17 @@ export function ProjectBottomNav({
 							<div className="grid grid-cols-4 gap-3">
 								{visibleMore.map((item) => {
 									const Icon = item.icon;
+									const isActive = item.matches(currentPath);
 									return (
 										<Link
-											key={item.label}
+											key={item.key}
 											to={item.to}
 											onClick={() => setShowMore(false)}
 											className="flex flex-col items-center gap-1.5"
 										>
 											<div
 												className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-													item.isActive
+													isActive
 														? "bg-primary text-white"
 														: "bg-slate-100 text-slate-600"
 												}`}
@@ -301,7 +198,7 @@ export function ProjectBottomNav({
 											</div>
 											<span
 												className={`text-[11px] font-medium ${
-													item.isActive ? "text-primary" : "text-slate-600"
+													isActive ? "text-primary" : "text-slate-600"
 												}`}
 											>
 												{item.label}

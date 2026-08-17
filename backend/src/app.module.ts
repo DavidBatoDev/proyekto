@@ -40,6 +40,7 @@ import { RealtimeModule } from './modules/shared/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/shared/realtime/realtime-publisher.module';
 import { AuditModule } from './modules/shared/audit/audit.module';
 import { ActivityModule } from './modules/execution/activity/activity.module';
+import { DeliveryModule } from './modules/execution/delivery/delivery.module';
 import { KnowledgeModule } from './modules/shared/knowledge/knowledge.module';
 import { McpModule } from './modules/shared/mcp/mcp.module';
 import { QaFixturesModule } from './modules/shared/qa-fixtures/qa-fixtures.module';
@@ -96,6 +97,7 @@ import { AppController } from './app.controller';
     RealtimeModule,
     AuditModule,
     ActivityModule,
+    DeliveryModule,
     KnowledgeModule,
     McpModule,
     QaFixturesModule,

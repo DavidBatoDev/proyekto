@@ -14,20 +14,26 @@ import {
 	type ProjectBriefField,
 	toRichHtml,
 } from "@/components/project/overview";
+import { ProjectHealthStrip } from "@/components/project/overview/ProjectHealthStrip";
+import { deriveProjectHealth } from "@/components/project/overview/projectHealth";
 import {
 	areProjectBriefFieldsEqual,
 	getOverviewBriefState,
 } from "@/components/project/overview/stateSync";
+import {
+	useDeliverablesQuery,
+	useRisksQuery,
+} from "@/hooks/useDeliveryQueries";
 import {
 	useInvalidateProjectQueries,
 	useLinkedRoadmapQuery,
 	useProjectBriefQuery,
 	useProjectDetailQuery,
 	useProjectMembersQuery,
+	useProjectMyPermissionsQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
 import {
-	getProjectConsultantMember,
 	hasProjectAdminAccess,
 	isPersonalWorkspace,
 } from "@/lib/projectAccess";
@@ -143,6 +149,17 @@ function OverviewPage() {
 	const roadmapFullQuery = useRoadmapFullQuery(
 		linkedRoadmapQuery.data?.id ?? "",
 	);
+	// Deliverables and risks feed the health strip's "pending approval" and
+	// severity inputs. Both fail closed to an empty list, so a member without
+	// access.delivery simply sees zeroes rather than an error.
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+	const canSeeDelivery = permissionsQuery.data?.access?.delivery === true;
+	const deliverablesQuery = useDeliverablesQuery(
+		projectId,
+		undefined,
+		canSeeDelivery,
+	);
+	const risksQuery = useRisksQuery(projectId, {}, canSeeDelivery);
 	const { invalidateProject, invalidateBrief } =
 		useInvalidateProjectQueries(projectId);
 
@@ -199,6 +216,16 @@ function OverviewPage() {
 			setIsUploadingBanner(false);
 		}
 	};
+
+	const health = useMemo(
+		() =>
+			deriveProjectHealth(
+				roadmapFullQuery.data,
+				deliverablesQuery.data ?? [],
+				risksQuery.data?.items ?? [],
+			),
+		[roadmapFullQuery.data, deliverablesQuery.data, risksQuery.data],
+	);
 
 	const timelineItems = useMemo(
 		() =>
@@ -313,9 +340,10 @@ function OverviewPage() {
 			<div className="px-3 py-4 sm:px-5 sm:py-6 md:px-8 md:py-8">
 				<div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
 					<div className="flex flex-col">
+						<ProjectHealthStrip health={health} projectId={projectId} />
 						<BringInAConsultantCard
 							isPersonalWorkspace={isPersonalWorkspace(project)}
-							hasConsultant={Boolean(getProjectConsultantMember(project))}
+							memberCount={members.length}
 						/>
 						<div className="app-slide-up">
 							<OverviewBanner

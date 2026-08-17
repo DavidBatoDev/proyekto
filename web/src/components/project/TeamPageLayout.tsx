@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Mail, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Mail, ShieldCheck, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useProjectTeamAccess } from "@/components/project/people/useProjectTeamAccess";
@@ -17,12 +17,18 @@ export function TeamPageLayout({ projectId, children }: TeamPageLayoutProps) {
 
 	const navItems = [
 		{
-			label: "People & teams",
+			label: "People",
 			to: `/project/${projectId}/team`,
 			icon: Users,
 			// Exact match only — every sub-page's path also starts with this
-			// prefix, so `startsWith` here would keep Members lit everywhere.
+			// prefix, so `startsWith` here would keep People lit everywhere.
 			active: currentPath === `/project/${projectId}/team`,
+		},
+		{
+			label: "Teams",
+			to: `/project/${projectId}/team/teams`,
+			icon: UsersRound,
+			active: currentPath.startsWith(`/project/${projectId}/team/teams`),
 		},
 		{
 			label: "Permissions",
@@ -43,7 +49,10 @@ export function TeamPageLayout({ projectId, children }: TeamPageLayoutProps) {
 			active: currentPath.startsWith(`/project/${projectId}/team/invites`),
 		},
 	].filter(
-		(item) => item.label === "People & teams" || teamAccess.canViewAdmin,
+		(item) =>
+			item.label === "People" ||
+			item.label === "Teams" ||
+			teamAccess.canViewAdmin,
 	);
 
 	return (

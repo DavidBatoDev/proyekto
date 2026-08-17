@@ -152,3 +152,37 @@ export const updateRoadmap = async (
 export const deleteRoadmap = async (id: string): Promise<void> => {
 	await apiClient.delete(`/api/roadmaps/${id}`);
 };
+
+/** One entry in a roadmap's commit history. */
+export interface RoadmapChangeHistoryEntry {
+	change_id: string;
+	roadmap_id: string;
+	project_id: string | null;
+	actor_id: string | null;
+	status: "applied" | "discarded";
+	operations_count: number | null;
+	semantic_change_count: number | null;
+	committed_at: string | null;
+	discarded_at: string | null;
+}
+
+/**
+ * A roadmap's commit history, newest first.
+ *
+ * Used to identify the commit that carried an approved change request onto the
+ * roadmap: `project_change_requests.applied_change_id` has to reference a real
+ * `roadmap_change_history` row, so the commit is picked rather than typed.
+ */
+export const getRoadmapChanges = async (
+	roadmapId: string,
+	params: { limit?: number; before?: string } = {},
+): Promise<RoadmapChangeHistoryEntry[]> => {
+	const query = new URLSearchParams();
+	if (params.limit) query.set("limit", String(params.limit));
+	if (params.before) query.set("before", params.before);
+	const suffix = query.toString() ? `?${query.toString()}` : "";
+	const response = await apiClient.get<
+		ApiResponse<RoadmapChangeHistoryEntry[]>
+	>(`/api/roadmaps/${roadmapId}/ai/changes${suffix}`);
+	return response.data.data;
+};
