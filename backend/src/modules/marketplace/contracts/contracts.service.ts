@@ -164,7 +164,7 @@ interface PrimaryTeamRow {
   pay_period_config: PayPeriodConfig | null;
 }
 
-interface ProfileIdentity {
+export interface ProfileIdentity {
   id: string;
   display_name: string | null;
   first_name: string | null;

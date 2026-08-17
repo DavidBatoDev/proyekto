@@ -325,7 +325,9 @@ describe('ContractsService transactional signing', () => {
         party: 'client',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(financeAccess.assertProject).toHaveBeenCalled();
+    // The consultant identity check now fails closed before any project-access
+    // lookup, so a non-consultant caller never reaches financeAccess.
+    expect(financeAccess.assertProject).not.toHaveBeenCalled();
   });
 
   it('keeps signature placement consultant-only', async () => {
@@ -339,6 +341,8 @@ describe('ContractsService transactional signing', () => {
         offset_y: 0,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(financeAccess.assertProject).toHaveBeenCalled();
+    // The consultant identity check now fails closed before any project-access
+    // lookup, so a non-consultant caller never reaches financeAccess.
+    expect(financeAccess.assertProject).not.toHaveBeenCalled();
   });
 });

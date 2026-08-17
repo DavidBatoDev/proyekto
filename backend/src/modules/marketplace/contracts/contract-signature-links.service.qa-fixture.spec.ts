@@ -10,6 +10,7 @@ describe('ContractSignatureLinksService QA fixture safety', () => {
       getContractRowForLink: jest.fn().mockResolvedValue({
         id: 'contract-1',
         project_id: 'project-1',
+        consultant_user_id: 'consultant-1',
         status: 'draft',
         service_start_date: '2026-01-01',
         service_end_date: '2026-12-31',
