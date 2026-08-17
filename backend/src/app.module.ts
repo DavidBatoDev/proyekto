@@ -34,6 +34,7 @@ import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
 import { ContractsModule } from './modules/marketplace/contracts/contracts.module';
+import { EngagementsModule } from './modules/marketplace/engagements/engagements.module';
 import { FinancialsModule } from './modules/marketplace/financials/financials.module';
 import { FinanceModule } from './modules/marketplace/finance/finance.module';
 import { RealtimeModule } from './modules/shared/realtime/realtime.module';
@@ -91,6 +92,7 @@ import { AppController } from './app.controller';
     MeetingsModule,
     InvoicesModule,
     ContractsModule,
+    EngagementsModule,
     FinancialsModule,
     FinanceModule,
     RealtimePublisherModule,

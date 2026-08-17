@@ -27,6 +27,7 @@ import {
 	CircleDollarSign,
 	FileSignature,
 	FolderKanban,
+	Handshake,
 	Loader2,
 	Plus,
 	ReceiptText,
@@ -54,6 +55,11 @@ import {
 	contractService,
 } from "@/services/contract.service";
 import {
+	type Engagement,
+	type EngagementTimeRate,
+	engagementService,
+} from "@/services/engagement.service";
+import {
 	type FinanceContractSummary,
 	type FinanceFilters,
 	type FinanceInvoiceSummary,
@@ -62,11 +68,12 @@ import {
 } from "@/services/finance.service";
 import { useAuthStore, useProfile } from "@/stores/authStore";
 
-type FinanceTab = "overview" | "contracts" | "invoices";
+type FinanceTab = "overview" | "contracts" | "engagements" | "invoices";
 
 const FINANCE_TABS = [
 	{ id: "overview", label: "Overview", icon: BarChart3 },
 	{ id: "contracts", label: "Contracts", icon: FileSignature },
+	{ id: "engagements", label: "Engagements", icon: Handshake },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
 ] as const;
 
@@ -128,7 +135,9 @@ export const Route = createFileRoute("/_marketplace/finance/")({
 	},
 	validateSearch: (search: Record<string, unknown>): FinanceSearch => ({
 		tab:
-			search.tab === "contracts" || search.tab === "invoices"
+			search.tab === "contracts" ||
+			search.tab === "engagements" ||
+			search.tab === "invoices"
 				? search.tab
 				: "overview",
 		q: stringValue(search.q),
@@ -197,6 +206,14 @@ function FinancePage() {
 				contract_status: search.contractStatus,
 			}),
 		enabled: isConsultant && search.tab === "contracts",
+	});
+	const engagementsQuery = useQuery({
+		queryKey: ["finance", "engagements", search.projectId],
+		queryFn: () =>
+			engagementService.list(
+				search.projectId ? { project_id: search.projectId } : {},
+			),
+		enabled: isConsultant && search.tab === "engagements",
 	});
 	const invoicesQuery = useQuery({
 		queryKey: ["finance", "invoices", filters, search.invoiceStatus],
@@ -403,6 +420,14 @@ function FinancePage() {
 										: undefined
 								}
 								creating={createContractMutation.isPending}
+							/>
+						)}
+						{search.tab === "engagements" && (
+							<EngagementPortfolio
+								loading={engagementsQuery.isPending}
+								error={engagementsQuery.error as Error | null}
+								items={engagementsQuery.data ?? []}
+								onOpenContract={(contractId) => openContract(contractId)}
 							/>
 						)}
 						{search.tab === "invoices" &&
@@ -1566,6 +1591,126 @@ function ContractPortfolio({
 						</span>
 					</button>
 				))}
+			</AppSurfaceCard>
+		</div>
+	);
+}
+
+const RATE_UNIT_SUFFIX: Record<string, string> = {
+	hour: "/hr",
+	month: "/mo",
+	fixed: " fixed",
+};
+
+function describeRate(rate: EngagementTimeRate): string {
+	const amount = formatCurrency(rate.amount, rate.currency ?? "USD");
+	return `${amount}${RATE_UNIT_SUFFIX[rate.unit] ?? ""}`;
+}
+
+function describeScope(engagement: Engagement): string {
+	const active = engagement.project_links.filter(
+		(link) => link.status !== "ended",
+	);
+	if (engagement.scope_mode === "flexible" && active.length === 0) {
+		return "Flexible · no projects placed yet";
+	}
+	if (active.length === 0) return "No linked project";
+	if (active.length === 1) return active[0].project_title_snapshot;
+	return `${active.length} projects`;
+}
+
+function EngagementPortfolio({
+	loading,
+	error,
+	items,
+	onOpenContract,
+}: {
+	loading: boolean;
+	error: Error | null;
+	items: Engagement[];
+	onOpenContract: (contractId: string) => void;
+}) {
+	if (loading) return <Loading />;
+	if (error) {
+		return (
+			<AppEmptyState
+				icon={Handshake}
+				title="Could not load engagements"
+				description={error.message}
+			/>
+		);
+	}
+	if (!items.length) {
+		return (
+			<AppEmptyState
+				icon={Handshake}
+				title="No engagements yet"
+				description="An engagement is created when both parties finish signing a contract. Sign a contract to start one."
+			/>
+		);
+	}
+	return (
+		<div className="space-y-5 pb-8">
+			<FinanceSectionHeading
+				eyebrow="Commercial relationships"
+				title="Engagements"
+				description="Who hired whom, the projects each relationship covers, and the signed terms in effect today."
+				count={`${items.length} ${items.length === 1 ? "engagement" : "engagements"}`}
+			/>
+			<AppSurfaceCard className="divide-y divide-border overflow-hidden">
+				{items.map((engagement) => {
+					const counterpartyName =
+						engagement.counterparty?.display_name_snapshot ??
+						engagement.counterparty?.email_snapshot ??
+						"Counterparty removed";
+					const isClientSide = engagement.kind === "client_services";
+					const relationship =
+						engagement.viewer_position === "hirer"
+							? `You hired ${counterpartyName}`
+							: `${counterpartyName} hired you`;
+					return (
+						<div
+							key={engagement.id}
+							className="flex w-full items-center justify-between gap-4 p-4 text-left md:px-5 md:py-4"
+						>
+							<span className="flex min-w-0 items-center gap-3">
+								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+									<Handshake className="h-5 w-5" />
+								</span>
+								<span className="min-w-0">
+									<span className="block truncate font-semibold text-foreground">
+										{relationship}
+									</span>
+									<span className="mt-1 block truncate text-xs text-muted-foreground">
+										{isClientSide ? "Client engagement" : "Talent engagement"} ·{" "}
+										{describeScope(engagement)}
+									</span>
+								</span>
+							</span>
+							<span className="flex shrink-0 items-center gap-3">
+								{engagement.current_rates.length > 0 && (
+									<span className="hidden text-xs font-medium text-muted-foreground sm:block">
+										{engagement.current_rates.map(describeRate).join(" · ")}
+									</span>
+								)}
+								<FinanceStatusBadge status={engagement.status} />
+								{engagement.activated_by_contract_id && (
+									<button
+										type="button"
+										onClick={() =>
+											onOpenContract(
+												engagement.activated_by_contract_id as string,
+											)
+										}
+										className="text-xs font-semibold text-primary hover:underline"
+									>
+										Contract
+									</button>
+								)}
+							</span>
+						</div>
+					);
+				})}
 			</AppSurfaceCard>
 		</div>
 	);
