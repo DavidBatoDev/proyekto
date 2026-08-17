@@ -43,8 +43,8 @@ import {
 	linkSegments,
 	signOffSummary,
 } from "@/components/project/delivery/deliveryModel";
-import { LinkRoadmapWorkModal } from "@/components/project/delivery/LinkRoadmapWorkModal";
 import { ActivityFeed } from "@/components/project/logs/ActivityFeed";
+import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import {
 	useDeliverableMutations,

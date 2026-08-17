@@ -2,25 +2,10 @@ import { Search, UserPlus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { Avatar } from "@/components/common/Avatar";
+import { toProfileSummary } from "@/services/memberProfile";
 import type { ProjectMember } from "@/services/project.service";
 import type { ProfileSummary } from "@/services/teams.service";
 import { inputClass, SecondaryButton } from "./DeliveryPrimitives";
-
-/**
- * `ProjectMember.user` leaves its fields `undefined` where `ProfileSummary`
- * uses `null`, so it can't be handed to `Avatar` directly.
- */
-function toProfileSummary(member: ProjectMember): ProfileSummary | null {
-	if (!member.user) return null;
-	return {
-		id: member.user.id,
-		display_name: member.user.display_name ?? null,
-		avatar_url: member.user.avatar_url ?? null,
-		email: member.user.email ?? null,
-		first_name: member.user.first_name ?? null,
-		last_name: member.user.last_name ?? null,
-	};
-}
 
 /**
  * Names a project member as a required sign-off.

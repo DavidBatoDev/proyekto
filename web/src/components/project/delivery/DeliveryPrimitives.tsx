@@ -6,22 +6,18 @@ import {
 	CircleDot,
 	CircleX,
 	Clock3,
-	Flag,
-	Loader2,
 	type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { SemanticBadge } from "@/components/common/SemanticBadge";
-import {
-	EpicGlyph,
-	FeatureGlyph,
-	TaskGlyph,
-} from "@/components/roadmap/shared/NodeGlyph";
-import type { RoadmapNodeKind } from "./deliveryModel";
 
 /**
- * Shared chrome for the four delivery-governance pages so they read as one
- * product area rather than four separately-invented screens.
+ * Chrome for **Deliverables and Risks**.
+ *
+ * It used to serve all four governance pages "so they read as one system", which
+ * turned out to be the wrong call: Change Requests and Decisions ended up as the
+ * same page three times. Those two now own their own shells and atoms, and this
+ * file is scoped to the two surfaces that still share a look.
  */
 
 /**
@@ -271,30 +267,11 @@ export function ListEmpty({ children }: { children: ReactNode }) {
 }
 
 /**
- * The roadmap's own glyphs, so a trail rendered here reads exactly as it does
- * on the canvas, the kanban cards and the left panel. `NodeGlyph.tsx` has no
- * milestone artwork — `Flag` is the only milestone icon anywhere in the app —
- * so that level is a lucide icon boxed to match the tiles.
+ * Moved to sit beside the artwork it wraps. Re-exported so the Deliverables and
+ * Risks call sites are untouched — and because the old home meant this shared
+ * file imported `RoadmapNodeKind` from the Deliverables model.
  */
-export function RoadmapNodeGlyph({
-	kind,
-	size = 14,
-}: {
-	kind: RoadmapNodeKind;
-	size?: number;
-}) {
-	if (kind === "epic") return <EpicGlyph size={size} />;
-	if (kind === "feature") return <FeatureGlyph size={size} />;
-	if (kind === "task") return <TaskGlyph size={size} />;
-	return (
-		<span
-			className="flex shrink-0 items-center justify-center rounded-[4px] bg-amber-500"
-			style={{ width: size, height: size }}
-		>
-			<Flag className="h-2.5 w-2.5 text-white" />
-		</span>
-	);
-}
+export { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 
 /**
  * The blank slate for a whole page.
@@ -353,63 +330,16 @@ export function DeliveryEmpty({
 	);
 }
 
-export function PrimaryButton({
-	children,
-	onClick,
-	disabled,
-	loading = false,
-	type = "button",
-	form,
-}: {
-	children: ReactNode;
-	onClick?: () => void;
-	disabled?: boolean;
-	/** Swaps the leading icon for a spinner and blocks a second submit. */
-	loading?: boolean;
-	type?: "button" | "submit";
-	/** Submits a form by id — lets the button live in a dialog footer, outside the <form>. */
-	form?: string;
-}) {
-	return (
-		<button
-			type={type === "submit" ? "submit" : "button"}
-			form={form}
-			onClick={onClick}
-			disabled={disabled || loading}
-			className="app-cta inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			{loading && <Loader2 className="h-4 w-4 animate-spin" />}
-			{children}
-		</button>
-	);
-}
-
-export function SecondaryButton({
-	children,
-	onClick,
-	disabled,
-	tone = "neutral",
-}: {
-	children: ReactNode;
-	onClick?: () => void;
-	disabled?: boolean;
-	tone?: "neutral" | "danger";
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={disabled}
-			className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-				tone === "danger"
-					? "border-destructive/30 text-destructive hover:bg-destructive/10"
-					: "border-border text-foreground hover:bg-muted"
-			}`}
-		>
-			{children}
-		</button>
-	);
-}
+/**
+ * Deliverables and Risks keep calling these by their original names; the
+ * implementations moved to `common/AppButton` because ~20 files across four
+ * unrelated pages used them, which made them app vocabulary rather than delivery
+ * chrome. Re-exported rather than re-pointed so those call sites stay untouched.
+ */
+export {
+	AppPrimaryButton as PrimaryButton,
+	AppSecondaryButton as SecondaryButton,
+} from "@/components/common/AppButton";
 
 export function FieldLabel({ children }: { children: ReactNode }) {
 	return (
