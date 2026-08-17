@@ -26,9 +26,9 @@ export function useTimelineScale(
 		return {
 			rangeStart: cols[0]?.start ?? extent.start,
 			columns: cols,
-			groups: buildGroups(cols, granularity),
+			groups: buildGroups(cols, granularity, cw),
 		};
-	}, [epics, granularity]);
+	}, [epics, granularity, cw]);
 
 	const totalWidth = columns.length * cw;
 
