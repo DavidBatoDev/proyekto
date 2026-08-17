@@ -1,6 +1,6 @@
 # Talent Discovery and Delivery
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Discovery and paid delivery use different data. The marketplace advertises a public profile;
 teams and project curation establish who actually works; rates and approved time establish
@@ -64,5 +64,5 @@ not included in invoice output.
 ## See also
 
 - [Payments, payouts, and invoices](../finance/README.md)
-- [Clients: consultant interaction](../clients/consultant-interaction.md)
+- [Finance: contract parties](../finance/README.md#contract-parties)
 - [Teams and time](../teams-and-time/README.md)

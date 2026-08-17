@@ -1,6 +1,6 @@
 # Web Architecture
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The web app is a **React 19 + Vite** single-page app, also packaged as the mobile app
 via Capacitor. Routing is file-based (TanStack Router), server state is TanStack
@@ -73,6 +73,6 @@ polling) drive most invalidation. See
 
 ## See also
 
-- [routing-and-personas.md](./routing-and-personas.md) — the route tree and auth gating.
+- [routing-and-access.md](./routing-and-access.md) — the route tree and auth gating.
 - [state-and-services.md](./state-and-services.md) — Zustand stores + API service clients.
 - [roadmap-canvas.md](./roadmap-canvas.md) — the canvas engine + optimistic UI.

@@ -1,11 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Clock, Settings } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
-import { isProjectConsultant } from "@/lib/projectAccess";
-import { projectService } from "@/services/project.service";
-import { useUser } from "@/stores/authStore";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 
 interface ProjectSettingsLayoutProps {
 	projectId: string;
@@ -19,14 +16,12 @@ export function ProjectSettingsLayout({
 	const currentPath = useRouterState({
 		select: (state) => state.location.pathname,
 	});
-	const user = useUser();
-	// The "Time" tab (per-member hour limits) is consultant-only — the client
-	// must not see it. Reuses the cached ["project", id] query other pages load.
-	const { data: project } = useQuery({
-		queryKey: ["project", projectId],
-		queryFn: () => projectService.get(projectId),
-	});
-	const isConsultant = isProjectConsultant(project, user?.id);
+	// The "Time settings" tab configures other people's hour caps, so it shows
+	// for members who can see the team's time — the same grant the page itself
+	// checks. It used to be shown only to "the consultant", a position a project
+	// does not have.
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+	const canManageTeamTime = permissionsQuery.data?.time.view_team_logs === true;
 
 	// Settings is project CONFIGURATION only. Everything about people —
 	// members, permissions, attached teams, invites — is the Team page now, so
@@ -38,10 +33,12 @@ export function ProjectSettingsLayout({
 			icon: Settings,
 			active: currentPath === `/project/${projectId}/settings/general`,
 		},
-		...(isConsultant
+		...(canManageTeamTime
 			? [
 					{
-						label: "Time",
+						// "Time settings", not "Time": this configures hour caps and
+						// rates, while /project/$id/time is the time *logs* page.
+						label: "Time settings",
 						to: `/project/${projectId}/settings/time`,
 						icon: Clock,
 						active: currentPath.startsWith(

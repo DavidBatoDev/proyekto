@@ -151,7 +151,7 @@ describe('AdminService cache consistency', () => {
       projectId: 'project-1',
       userId: 'consultant-1',
       role: 'owner',
-      origin: 'consultant',
+      origin: 'direct',
       grantedBy: 'consultant-1',
     });
     expect(adminRepo.assignConsultant).toHaveBeenCalledWith('project-1');

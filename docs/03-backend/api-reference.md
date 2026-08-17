@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -58,8 +58,6 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 | POST | /api/projects/from-roadmap | Supabase | Create from roadmap (blocks guests) |
 | GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update / guarded delete (active finance records block) |
 | POST | /api/projects/:id/transfer-owner | Supabase | Transfer ownership |
-| POST | /api/projects/:id/reassign-consultant | Supabase | Reassign consultant |
-| POST | /api/projects/:id/assign-consultant | +AdminGuard | Admin-assign consultant |
 | * | /api/projects/:id/resources/{folders,links}… | Supabase | Resource folders/links CRUD + reorder |
 | POST | /api/projects/:id/members · /invites | Supabase | Add member / invite by email |
 | GET | /api/projects/me/invites | Supabase | My project invites |
@@ -190,9 +188,9 @@ Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payou
 
 `GET /invoices/project/:projectId`, `POST /invoices`, `GET/PATCH /invoices/:id`,
 `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`. Authenticated
-invoice operations require verified consultant capability and an exact
-`project_access` owner row with consultant origin. Client delivery is by attached PDF; the in-app
-notification returns the client to the project overview.
+invoice operations require verified consultant capability and a `project_access` row with
+`role=owner`. Delivery to the recipient is by attached PDF; the in-app notification returns
+them to the project overview.
 
 ## finance · `finance`
 
@@ -205,7 +203,7 @@ The consultant-only portfolio behind `/finance`:
 | GET | /api/finance/invoices | +ConsultantOnly | Filtered cross-project invoice list |
 
 All three endpoints return only projects where the caller has active consultant capability
-and a `project_access` row with `role=owner` and `origin=consultant`. Filters cover search,
+and a `project_access` row with `role=owner`. Filters cover search,
 project, project status, currency, date range, and the relevant contract or
 invoice status. Totals are never converted across currencies.
 

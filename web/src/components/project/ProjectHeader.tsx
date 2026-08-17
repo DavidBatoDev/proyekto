@@ -24,7 +24,6 @@ import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectMod
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
-import { isProjectConsultant } from "@/lib/projectAccess";
 import { type Project, projectService } from "@/services/project.service";
 import {
 	getTeam,
@@ -36,6 +35,7 @@ import {
 import { useUser } from "@/stores/authStore";
 import ProjectUserMenu from "./ProjectUserMenu";
 import { shouldShowStandaloneRoadmapProjectActions } from "./projectHeaderActions";
+import { resolveProjectPageLabel } from "./projectNavItems";
 
 // Compute the destination path when switching projects, preserving the current view.
 // roadmap/$roadmapId and work-items/$roadmapId strip the sub-ID so the layout route
@@ -58,25 +58,11 @@ const getProjectSwitchPath = (
 	return base;
 };
 
-const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
-	if (pathname.includes("/roadmap")) return "Roadmap";
-	if (pathname.includes("/work-items")) return "Board";
-	if (pathname.includes("/chat")) return "Chat";
-	if (pathname.includes("/settings")) return "Settings";
-	if (pathname.includes("/team")) return "Team";
-	if (pathname.includes("/resources")) return "Resources";
-	if (pathname.includes("/payments")) return "Payments";
-	if (pathname.includes("/financials")) return "Financials";
-	if (pathname.includes("/contract")) return "Contract";
-	if (pathname.includes("/time")) return "Time";
-	if (pathname.includes("/logs")) return "Logs";
-	if (pathname.includes("/overview") || pathname.endsWith(projectId))
-		return "Overview";
-
-	const segment = pathname.split("/").filter(Boolean).at(-1) || "Overview";
-	if (segment.length > 20) return "Overview";
-	return segment.replace("-", " ");
-};
+// Resolved from the same definitions the nav renders from, so a page can't be
+// called one thing in the sidebar and another in the breadcrumb. The old
+// `includes()` chain here matched "/time" inside "/timeline" and labelled every
+// Timeline page "Time"; `resolveProjectPageLabel` matches whole segments.
+const resolveCurrentPageLabel = resolveProjectPageLabel;
 
 export function ProjectHeader() {
 	const params = useParams({ strict: false }) as { projectId?: string };
@@ -233,14 +219,19 @@ export function ProjectHeader() {
 		isAuthenticated: Boolean(user),
 	});
 	const showGuestSignupCta = isRoadmapOnly && !user;
+	// The viewer's actual standing on this project: their share_role, which is
+	// what governs what they can do. This used to read CONSULTANT / CLIENT /
+	// MEMBER — and the "CLIENT" branch was never persona-derived anyway, it was
+	// `user.id === project.owner_id`, so it labelled the person leading the work
+	// as the client.
 	const viewingAs = isRoadmapOnly
 		? undefined
 		: user?.id && project
-			? isProjectConsultant(project, user.id)
-				? "CONSULTANT"
-				: user.id === project.owner_id
-					? "CLIENT"
-					: "MEMBER"
+			? user.id === project.owner_id
+				? "OWNER"
+				: ((project.members ?? [])
+						.find((member) => member.user_id === user.id)
+						?.role?.toUpperCase() ?? "MEMBER")
 			: undefined;
 
 	return (

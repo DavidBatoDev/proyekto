@@ -1,6 +1,6 @@
 # Consultant Surfaces
 
-> **Last updated:** 2026-08-16 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Consultant routes fall into three groups: public marketing/discovery, authenticated
 application and shared work, and active-consultant operator tools. A `/consultant/*` path is
@@ -63,4 +63,4 @@ invariants that must survive non-HTTP writes.
 
 - [access-and-permissions.md](./access-and-permissions.md)
 - [Backend auth and guards](../../03-backend/auth-and-guards.md)
-- [Web routing and personas](../../04-web/routing-and-personas.md)
+- [Web routing and access](../../04-web/routing-and-access.md)

@@ -42,7 +42,6 @@ import {
   InviteProjectByEmailDto,
   ProjectDashboardSummaryQueryDto,
   ProjectInviteQueryDto,
-  ReassignProjectConsultantDto,
   UpdateRolePermissionsDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
@@ -69,7 +68,6 @@ import {
   setPermission,
   validateDependencies,
 } from './permissions/project-permissions';
-import type { ProjectShareOrigin } from './authorization/project-authorization.service';
 import type {
   ProjectResourceFolderWithLinks,
   ProjectResourcesPayload,
@@ -248,6 +246,48 @@ export class ProjectsService {
       await this.notificationsService.createNotification(payload);
     } catch {
       return;
+    }
+  }
+
+  /**
+   * Tell everyone who administers the roster that it changed.
+   *
+   * Replaces two hand-rolled fan-outs that notified "the consultant", resolved
+   * from `project_access.origin`, and only when the actor happened to be the
+   * project owner. Both conditions were persona reasoning: the people who want to
+   * know the roster changed are the people who can change it, which is exactly
+   * `members.manage`.
+   *
+   * The actor is dropped — nobody needs telling about their own click — and
+   * resolution failure is swallowed, because a membership change must not fail on
+   * account of a notification.
+   */
+  private async notifyMembersManagers(
+    projectId: string,
+    actorId: string,
+    content: Record<string, unknown>,
+  ): Promise<void> {
+    let recipients: string[];
+    try {
+      recipients = (
+        await this.authorization.listUsersWithPermission(
+          projectId,
+          'members.manage',
+        )
+      ).filter((userId) => userId !== actorId);
+    } catch {
+      return;
+    }
+
+    for (const userId of recipients) {
+      await this.emitNotification({
+        user_id: userId,
+        project_id: projectId,
+        type_name: 'project_updated',
+        actor_id: actorId,
+        content,
+        link_url: `/project/${projectId}/team`,
+      });
     }
   }
 
@@ -581,15 +621,7 @@ export class ProjectsService {
         origin: string | null;
         capabilities: Record<string, unknown> | null;
       }>) {
-        const origin =
-          row.origin && !row.origin.startsWith('team:')
-            ? (row.origin as ProjectShareOrigin)
-            : null;
-        const permissions = resolvePermissions(
-          row.role,
-          origin,
-          row.capabilities,
-        );
+        const permissions = resolvePermissions(row.role, row.capabilities);
         if (permissions.time.view_team_logs) {
           feeVisibleProjectIds.add(row.project_id);
         }
@@ -867,13 +899,14 @@ export class ProjectsService {
         ...dto,
         creation_mode: 'client',
       });
-      // Marketplace project created by a client: client gets admin role.
-      // No owner exists until a consultant joins (per design.md).
+      // The creator gets admin. No owner exists yet — a marketplace project is
+      // posted before anyone is engaged to lead it, and whoever takes it on is
+      // granted owner then.
       await this.authorization.grant({
         projectId: project.id,
         userId,
         role: 'admin',
-        origin: 'client',
+        origin: 'direct',
         grantedBy: userId,
       });
       await this.safeSync(project.id, userId);
@@ -907,13 +940,12 @@ export class ProjectsService {
       creation_mode: 'consultant',
       status: 'draft',
     });
-    // Project created in consultant mode: the creator IS the consultant
-    // and gets owner role from the start.
+    // The creator is leading this one, so they own it from the start.
     await this.authorization.grant({
       projectId: project.id,
       userId,
       role: 'owner',
-      origin: 'consultant',
+      origin: 'direct',
       grantedBy: userId,
     });
     await this.safeSync(project.id, userId);
@@ -1045,7 +1077,7 @@ export class ProjectsService {
         projectId: project.id,
         userId,
         role: 'admin',
-        origin: 'client',
+        origin: 'direct',
         grantedBy: userId,
       });
       await this.safeSync(project.id, userId);
@@ -1334,127 +1366,21 @@ export class ProjectsService {
     return updatedProject;
   }
 
-  async assignConsultant(
-    projectId: string,
-    consultantId: string,
-  ): Promise<Project> {
-    // Auto-grant: assigned consultant becomes project owner.
-    // The pre-existing client (admin role) is unchanged — owner > admin so
-    // the consultant naturally outranks the client. Multi-owner projects
-    // are supported per design.
-    await this.authorization.grant({
-      projectId,
-      userId: consultantId,
-      role: 'owner',
-      origin: 'consultant',
-      grantedBy: consultantId,
-    });
-    await this.safeSync(projectId, consultantId);
-    const project = await this.projectsRepo.update(projectId, {
-      status: 'active',
-    });
-    await this.invalidateDashboardCache();
-    return project;
-  }
-
-  async reassignProjectConsultant(
-    projectId: string,
-    callerId: string,
-    dto: ReassignProjectConsultantDto,
-  ): Promise<Project> {
-    const project = await this.getProjectOrThrow(projectId);
-    if (!(await this.isProjectPrivileged(callerId, projectId))) {
-      throw new MissingPermissionException({
-        path: null,
-        requiredRole: 'admin',
-        label: 'reassign the consultant',
-      });
-    }
-
-    const newConsultantId = dto.new_consultant_id;
-    const previousConsultantId =
-      await this.authorization.getProjectConsultantId(projectId);
-
-    if (newConsultantId === previousConsultantId) {
-      throw new BadRequestException(
-        'Selected user is already the current consultant.',
-      );
-    }
-
-    const targetMembership =
-      await this.projectsRepo.getMemberByProjectAndUserId(
-        projectId,
-        newConsultantId,
-      );
-
-    if (!targetMembership) {
-      throw new BadRequestException(
-        'New consultant must already be a member of this project.',
-      );
-    }
-
-    const targetIsActiveConsultant =
-      await this.projectsRepo.isActiveConsultant(newConsultantId);
-    if (!targetIsActiveConsultant) {
-      throw new BadRequestException(
-        'Selected member is not an active consultant.',
-      );
-    }
-
-    // Sync project_shares with the consultant change:
-    // - new consultant gets owner role with origin='consultant'
-    // - previous consultant (if any) is revoked. Last-owner protection in
-    //   ProjectAuthorizationService.revoke ensures we never orphan the
-    //   project — if removing the previous consultant would leave 0 owners,
-    //   the revoke throws and we keep them as a co-owner.
-    await this.authorization.grant({
-      projectId,
-      userId: newConsultantId,
-      role: 'owner',
-      origin: 'consultant',
-      grantedBy: callerId,
-    });
-    await this.safeSync(projectId, newConsultantId);
-    if (previousConsultantId && previousConsultantId !== newConsultantId) {
-      try {
-        await this.authorization.revoke(
-          projectId,
-          previousConsultantId,
-          undefined,
-          { allowConsultantRemoval: true },
-        );
-        await this.safeSync(projectId, previousConsultantId);
-      } catch (err) {
-        // Last-owner protection — leave the previous consultant in place
-        // rather than orphaning. They remain a co-owner alongside the new
-        // consultant; admin can demote them later from team settings.
-        console.warn(
-          `Could not revoke previous consultant ${previousConsultantId} on ${projectId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-
-    const updatedProject = await this.projectsRepo.update(projectId, {
-      status: 'active',
-    });
-
-    await this.emitNotification({
-      user_id: newConsultantId,
-      project_id: projectId,
-      type_name: 'project_updated',
-      actor_id: callerId,
-      content: {
-        message: `You are now the consultant for ${project.title}.`,
-        previous_consultant_id: previousConsultantId,
-      },
-      link_url: `/project/${projectId}/team`,
-    });
-
-    await this.invalidateDashboardCache();
-    return updatedProject;
-  }
+  /*
+   * `assignConsultant` and `reassignProjectConsultant` used to live here.
+   *
+   * Both wrote or moved `project_access.origin = 'consultant'` — the execution
+   * layer keeping its own record of who the consultant is, which it must not do.
+   * Between them they also carried three surprises worth not reproducing:
+   * reassigning forced the project status back to `active`, a failed revoke of the
+   * previous holder silently left two co-owners, and neither wrote an activity row
+   * despite being the highest-privilege change short of ownership transfer.
+   *
+   * `transferProjectOwner` above is the replacement and does log activity. Every
+   * row that carried the consultant origin was also `projects.owner_id`, so no
+   * affordance is lost. The admin match tool keeps its own path
+   * (`/admin/match-assign`).
+   */
 
   async addMember(
     projectId: string,
@@ -1626,27 +1552,16 @@ export class ProjectsService {
       });
     }
 
-    const consultantId =
-      await this.authorization.getProjectConsultantId(projectId);
-    if (
-      callerId === project.owner_id &&
-      consultantId &&
-      consultantId !== callerId
-    ) {
-      await this.emitNotification({
-        user_id: consultantId,
-        project_id: projectId,
-        type_name: 'project_updated',
-        actor_id: callerId,
-        content: {
-          message: `Client ${inviterName} has invited ${dto.email.trim()} to the project.`,
-          invite_id: invite.id,
-          invitee_email: dto.email.trim(),
-          invited_position: invitedPosition,
-        },
-        link_url: `/project/${projectId}/team`,
-      });
-    }
+    // Tell whoever runs the roster that someone was invited. The audience used to
+    // be "the consultant", found via project_access.origin, with copy that named
+    // the inviter as the client. It is now everyone holding `members.manage` — the
+    // permission that actually corresponds to caring about this — minus the actor.
+    await this.notifyMembersManagers(projectId, callerId, {
+      message: `${inviterName} invited ${dto.email.trim()} to the project.`,
+      invite_id: invite.id,
+      invitee_email: dto.email.trim(),
+      invited_position: invitedPosition,
+    });
 
     await this.invalidateDashboardCache();
     return {
@@ -1933,32 +1848,23 @@ export class ProjectsService {
       await this.safeSync(projectId, targetMember.user_id);
     }
 
-    const consultantId =
-      await this.authorization.getProjectConsultantId(projectId);
-    if (
-      callerId === project.owner_id &&
-      consultantId &&
-      consultantId !== callerId
-    ) {
-      const removedMemberName = targetMember.user_id
-        ? await this.projectsRepo.getProfileDisplayName(targetMember.user_id)
-        : null;
+    const removedMemberName = targetMember.user_id
+      ? await this.projectsRepo.getProfileDisplayName(targetMember.user_id)
+      : null;
 
-      await this.emitNotification({
-        user_id: consultantId,
-        project_id: projectId,
-        type_name: 'project_updated',
-        actor_id: callerId,
-        content: {
-          message: `A member has been removed by the client.`,
-          removed_member_id: targetMember.id,
-          removed_user_id: targetMember.user_id,
-          removed_member_role: targetMember.role,
-          removed_member_name: removedMemberName,
-        },
-        link_url: `/project/${projectId}/team`,
-      });
-    }
+    // Same change of audience as inviteMember: holders of `members.manage` rather
+    // than "the consultant", and copy that says who acted instead of asserting
+    // they were the client.
+    await this.notifyMembersManagers(projectId, callerId, {
+      message: removedMemberName
+        ? `${removedMemberName} was removed from the project.`
+        : 'A member was removed from the project.',
+      removed_member_id: targetMember.id,
+      removed_user_id: targetMember.user_id,
+      removed_member_role: targetMember.role,
+      removed_member_name: removedMemberName,
+    });
+
     await this.invalidateDashboardCache();
   }
 
@@ -1968,13 +1874,14 @@ export class ProjectsService {
   ): Promise<{ unassigned_task_count: number }> {
     const project = await this.getProjectOrThrow(projectId);
 
-    const consultantId =
-      await this.authorization.getProjectConsultantId(projectId);
-    if (callerId === project.owner_id || callerId === consultantId) {
+    // The project owner cannot walk away from their own project. The check used to
+    // also cover "the consultant", resolved from project_access.origin — a member
+    // who is now simply another owner, and covered by the same line.
+    if (callerId === project.owner_id) {
       throw new MissingPermissionException({
         path: null,
         message:
-          'Project leads cannot leave the project. Transfer ownership or reassign consultant instead.',
+          'The project owner cannot leave the project. Transfer ownership first.',
       });
     }
 
@@ -2025,7 +1932,6 @@ export class ProjectsService {
     }
     return resolvePermissions(
       (target.role as ProjectRole) ?? 'viewer',
-      (target.origin as ProjectShareOrigin | null) ?? null,
       target.capabilities ?? null,
     );
   }
@@ -2048,19 +1954,21 @@ export class ProjectsService {
 
     const permissions = resolvePermissions(
       (target.role as ProjectRole) ?? 'viewer',
-      (target.origin as ProjectShareOrigin | null) ?? null,
       target.capabilities ?? null,
     );
 
     // Feature availability, folded in after resolution because the resolver is a
-    // pure function of role/origin/capabilities and knows nothing about which
+    // pure function of role/capabilities and knows nothing about which
     // features are switched on.
     //
     // Both halves are decided here so the client reads one boolean and cannot
     // combine them wrongly. The ROLE comparison — not `members.manage` — is what
-    // makes this agree with enforcement: RoadmapMentionInviteService gates on
-    // assertRole('admin'), while ORIGIN_DELTAS hands `members.manage` to
-    // consultant and client origins regardless of role.
+    // agrees with enforcement, because RoadmapMentionInviteService gates on
+    // assertRole('admin'). The original reason the two could disagree was
+    // ORIGIN_DELTAS, which handed `members.manage` out on origin regardless of
+    // role; that is gone, but the role comparison is what ships and matches the
+    // server, so switching this to `members.manage` is a deliberate change to
+    // verify against the guard, not a cleanup.
     permissions.mentions.invite_by_email =
       roleSatisfies((target.role as ProjectRole) ?? 'viewer', 'admin') &&
       (await this.isMentionInviteEnabled());
@@ -2136,7 +2044,6 @@ export class ProjectsService {
     }
 
     const role = (target.role as ProjectRole) ?? 'viewer';
-    const origin = (target.origin as ProjectShareOrigin | null) ?? null;
 
     // Cannot demote a project owner via this endpoint — owner permissions
     // are always at the maximum and protected by last-owner rules.
@@ -2152,7 +2059,11 @@ export class ProjectsService {
     // + existing capabilities), then layer in any sections present in the
     // request. The request shape is `Partial<ProjectPermissions>` per
     // section, so we merge field-by-field for each section it includes.
-    const desired = resolvePermissions(role, origin, target.capabilities);
+    const desired = resolvePermissions(role, target.capabilities);
+    // `mentions` is deliberately absent: invite_by_email is a feature-flag
+    // projection folded in after resolution, not a stored permission. The DTO
+    // whitelists it so the editor's round-tripped payload validates, but writing
+    // it would persist a capability that the resolver then overwrites anyway.
     const sections: (keyof ProjectPermissions)[] = [
       'access',
       'roadmap',
@@ -2163,6 +2074,10 @@ export class ProjectsService {
       'resources',
       'logs',
       'time',
+      'deliverables',
+      'change_requests',
+      'risks',
+      'decisions',
     ];
     for (const section of sections) {
       const incoming = (
@@ -2196,7 +2111,7 @@ export class ProjectsService {
     // Diff desired against the (role, origin) baseline → new flat delta
     // stored on the share row. Empty delta means "use defaults" (we still
     // write {} to clear any prior overrides).
-    const newCapabilities = diffCapabilities(role, origin, desired);
+    const newCapabilities = diffCapabilities(role, desired);
 
     // Yoke: capabilities are a per-user concept now, not per-origin.
     // Fan out the same map to every project_access row this user holds

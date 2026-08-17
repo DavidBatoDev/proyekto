@@ -61,6 +61,40 @@ export class UpdateProjectMemberPermissionsDto {
   @IsOptional()
   @IsObject()
   time?: Record<string, boolean>;
+
+  // The delivery-governance sections. Absent until now, which made the editor
+  // unusable: it posts back the whole object returned by GET .../permissions, and
+  // the global pipe runs forbidNonWhitelisted — so every save 400'd on
+  // "property deliverables should not exist". They also have to be settable per
+  // member now that the role ladder and capabilities are the only sources.
+  @IsOptional()
+  @IsObject()
+  deliverables?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  change_requests?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  risks?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  decisions?: Record<string, boolean>;
+
+  /**
+   * Accepted and ignored.
+   *
+   * `mentions.invite_by_email` is a feature-flag projection, not a stored
+   * permission — the resolver folds it in after resolution. The editor posts it
+   * back because it round-trips the GET payload, so it has to be whitelisted or
+   * the save 400s; `updateMemberPermissions` deliberately omits it from the
+   * sections it reads.
+   */
+  @IsOptional()
+  @IsObject()
+  mentions?: Record<string, boolean>;
 }
 
 export class AddProjectMemberDto {
@@ -202,18 +236,9 @@ export class UpdateProjectDto {
   @IsString() @IsOptional() @MaxLength(8) currency?: string;
 }
 
-export class AssignConsultantDto {
-  @IsString() consultant_id: string;
-}
-
 export class TransferProjectOwnerDto {
   @IsUUID()
   new_owner_id: string;
-}
-
-export class ReassignProjectConsultantDto {
-  @IsUUID()
-  new_consultant_id: string;
 }
 
 class ResourceReorderItemDto {

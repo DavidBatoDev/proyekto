@@ -23,10 +23,7 @@ import {
 	X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import {
-	getProjectConsultantMember,
-	type ProjectAccessMember,
-} from "@/lib/projectAccess";
+import { type ProjectAccessMember } from "@/lib/projectAccess";
 import {
 	adminService,
 	type ConsultantProfile,
@@ -190,7 +187,12 @@ function ProjectCard({
 			</div>
 
 			<div className="mt-4 flex justify-end">
-				{getProjectConsultantMember(project) ? (
+				{/* matchAssign grants the picked consultant role 'owner', so an owner
+				    row is the durable record that this project has been matched. It
+				    used to look for origin 'consultant', which no longer exists. */}
+				{(project.members ?? []).some(
+					(member: ProjectAccessMember) => member.role === "owner",
+				) ? (
 					<span className="shrink-0 flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
 						<CheckCircle2 className="w-3 h-3" /> Matched
 					</span>
@@ -865,8 +867,11 @@ function MatchPage() {
 										isSelected={selectedConsultantId === c.id}
 										isAssigned={
 											assignedMap[c.id] === selectedProjectId ||
-											getProjectConsultantMember(selectedProject)?.user_id ===
-												c.id
+											// matchAssign grants role 'owner' to whoever is picked.
+											(selectedProject?.members ?? []).some(
+												(member: ProjectAccessMember) =>
+													member.role === "owner" && member.user_id === c.id,
+											)
 										}
 										projectId={selectedProjectId}
 										onClick={() =>

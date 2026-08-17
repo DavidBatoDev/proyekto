@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-13 · **Status:** draft
+> **Last updated:** 2026-08-18 · **Status:** draft
 
 Proyekto today has **no monetization layer at all**: no plans, no subscriptions, no payment
 processor, no entitlements, no usage caps. This page designs one. It splits the product into
@@ -68,7 +68,7 @@ draft named two tiers (Free For All, Professional); this proposal completes the 
 **Who is a "seat"?** — the single most important decision (see D1 below). Recommended:
 **billable seats = rows in `team_members` on a paid team, excluding client-origin
 participants**. Clients never pay and never count (matches the landing-page promise and the
-soft-isolation model in [11-domains/clients](../11-domains/clients/README.md)). The team
+soft-isolation model in [11-domains/finance](../11-domains/finance/README.md#contract-parties)). The team
 **owner's** plan is the team's plan.
 
 ### Execution platform — tier matrix (completed)
@@ -256,7 +256,7 @@ Rules, in order of importance:
 
 - [organizations-and-services.md](./organizations-and-services.md) — the future billing
   anchor above teams (D2, D8).
-- [11-domains/clients](../11-domains/clients/README.md) — why clients don't pay and the
+- [11-domains/finance](../11-domains/finance/README.md#contract-parties) — who pays and the
   external-client signing path that must stay entitlement-free (E6).
 - [11-domains/consultants](../11-domains/consultants/README.md) and
   [11-domains/talent](../11-domains/talent/README.md) — the role domains the tier ladder

@@ -1,7 +1,13 @@
 /**
- * Project participation is read from `project_access` rows, never from a
- * consultant field on the project — a project has members with access, and
- * "consultant" is the position one of those rows records via its origin.
+ * Project participation is read from `project_access` rows: a project has
+ * members with access, and what each one can do is their `role` plus their
+ * `capabilities`.
+ *
+ * `getProjectConsultantMember` and `isProjectConsultant` used to live here,
+ * finding "the consultant" by looking for the row whose origin was
+ * 'consultant'. Both are gone along with that origin value — a project does not
+ * have a client and a consultant, it has members, and the two parties to a
+ * piece of work are recorded on a contract instead.
  */
 
 /** Top of the share_role ladder: the roles that administer a project. */
@@ -19,35 +25,6 @@ export interface ProjectAccessMember {
 export interface ProjectWithAccess {
 	owner_id?: string | null;
 	members?: ProjectAccessMember[] | null;
-}
-
-/**
- * The consultant of record: the access row whose origin is 'consultant'.
- * Ties (possible after a reassignment whose revoke failed) resolve to the
- * direct grant, then the most recent one — matching the backend helper.
- */
-export function getProjectConsultantMember(
-	project?: ProjectWithAccess | null,
-): ProjectAccessMember | null {
-	const consultants = (project?.members ?? []).filter(
-		(member) => member.origin === "consultant" && Boolean(member.user_id),
-	);
-	if (consultants.length === 0) return null;
-
-	return [...consultants].sort((a, b) => {
-		const directDelta =
-			Number(b.has_direct_grant === true) - Number(a.has_direct_grant === true);
-		if (directDelta !== 0) return directDelta;
-		return (b.granted_at ?? "").localeCompare(a.granted_at ?? "");
-	})[0];
-}
-
-export function isProjectConsultant(
-	project?: ProjectWithAccess | null,
-	userId?: string | null,
-): boolean {
-	if (!userId) return false;
-	return getProjectConsultantMember(project)?.user_id === userId;
 }
 
 export function isPersonalWorkspace(

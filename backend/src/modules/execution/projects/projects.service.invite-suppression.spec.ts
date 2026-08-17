@@ -18,7 +18,6 @@ describe('ProjectsService — invite email honours the suppression list', () => 
     title: 'Analytical Engine',
     status: 'active',
     owner_id: 'client-1',
-    has_client: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -79,7 +78,6 @@ describe('ProjectsService — invite email honours the suppression list', () => 
         assertActionOutranks: jest.fn().mockResolvedValue(undefined),
         resolvePermissions: jest.fn(),
         roleSatisfies: jest.fn().mockReturnValue(true),
-        getProjectConsultantId: jest.fn().mockResolvedValue('consultant-1'),
         grant: jest.fn(),
         revoke: jest.fn(),
       } as any,

@@ -66,8 +66,8 @@ import { useToast } from "@/hooks/useToast";
 import type {
 	ChatAttachment,
 	ChatMemberCandidate,
-	ChatMemberRole,
 	ChatMessage,
+	ChatProjectRole,
 	ChatRoom,
 } from "@/services/chat.service";
 import { profileService } from "@/services/profile.service";
@@ -94,8 +94,12 @@ type ActiveTarget =
 	| { kind: "dm"; userId: string; roomId: string | null };
 type ResolvedTarget = ActiveTarget | { kind: "invalid" };
 
-// Canonical ordering of the auto-provisioned default rooms in the sidebar,
-// keyed by slug (the system_key column was dropped).
+// Canonical sidebar ordering, keyed by slug (the system_key column was dropped).
+//
+// The four non-general slugs are LEGACY DATA: older projects were auto-provisioned
+// with them and still hold real messages, so they are pinned to the top in a
+// stable order. Nothing derives a persona from these names — they are ordinary
+// channels, and new projects get only #general.
 const SYSTEM_ROOM_ORDER: Record<string, number> = {
 	"client-room": 0,
 	"internal-team": 1,
@@ -128,7 +132,14 @@ function getDisplayName(member: ChatMemberCandidate | null): string {
 	return member.user?.display_name || member.user?.email || member.user_id;
 }
 
-function getRoleLabel(role: ChatMemberRole | undefined): string {
+/**
+ * The member's rung on the project, title-cased for display.
+ *
+ * This used to render a persona — Consultant / Client / Freelancer, derived from
+ * `project_access.origin`. A project has members with permissions, so the honest
+ * label is the access role they actually hold.
+ */
+function getRoleLabel(role: ChatProjectRole | undefined): string {
 	if (!role) return "Member";
 	return role.charAt(0).toUpperCase() + role.slice(1);
 }
@@ -661,8 +672,7 @@ function ChatPage() {
 
 		return {
 			user_id: fromParticipants.user_id,
-			role: fromParticipants.role ?? ("freelancer" as ChatMemberRole),
-			access_role: fromParticipants.access_role ?? "member",
+			access_role: fromParticipants.access_role ?? "viewer",
 			position: fromParticipants.position ?? null,
 			team: fromParticipants.team ?? null,
 			user: fromParticipants.user,
@@ -691,13 +701,13 @@ function ChatPage() {
 
 		const positionLabel =
 			activeMemberCandidate?.position?.trim() ||
-			getRoleLabel(activeMemberCandidate?.role) ||
+			getRoleLabel(activeMemberCandidate?.access_role) ||
 			"Member";
 
 		return {
 			userId: activeProfileUserId,
 			name,
-			roleLabel: getRoleLabel(activeMemberCandidate?.role),
+			roleLabel: getRoleLabel(activeMemberCandidate?.access_role),
 			positionLabel,
 			avatarUrl,
 			bannerUrl: activeProfileQuery.data?.banner_url ?? null,
@@ -1559,12 +1569,11 @@ function ChatPage() {
 					if (createChannelMutation.isPending) return;
 					setShowCreateChannel(false);
 				}}
-				onCreate={async ({ name, isPrivate, kind, memberIds }) => {
+				onCreate={async ({ name, isPrivate, memberIds }) => {
 					try {
 						const room = await createChannelMutation.mutateAsync({
 							name,
 							is_private: isPrivate,
-							kind,
 							memberIds,
 						});
 						setShowCreateChannel(false);

@@ -464,14 +464,7 @@ export function ChatInfoPanel({
 															const memberContext =
 																participant.position ||
 																participant.access_role ||
-																participant.role ||
 																"Project member";
-															const isCoreClientRoomMember =
-																(room?.slug === "client-project-room" ||
-																	room?.slug === "client-room") &&
-																(participant.role === "consultant" ||
-																	participant.role === "client" ||
-																	participant.access_role === "owner");
 															return (
 																<div
 																	key={participant.user_id}
@@ -501,8 +494,7 @@ export function ChatInfoPanel({
 																	</span>
 																	{canManage &&
 																		isPrivate &&
-																		participant.user_id !== currentUserId &&
-																		!isCoreClientRoomMember && (
+																		participant.user_id !== currentUserId && (
 																			<button
 																				type="button"
 																				disabled={isBusy}

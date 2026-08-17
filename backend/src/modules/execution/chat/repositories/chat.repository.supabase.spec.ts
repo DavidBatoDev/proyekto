@@ -20,30 +20,12 @@ function repository(data: unknown) {
   };
 }
 
-describe('SupabaseChatRepository project_access personas', () => {
-  it.each([
-    ['consultant', 'consultant'],
-    ['client', 'client'],
-    ['personal_workspace', 'client'],
-    ['legacy', 'client'],
-    ['invited', 'freelancer'],
-    ['team:studio-1', 'freelancer'],
-  ])('maps %s origin to %s', async (origin, expected) => {
-    const { repository: repo } = repository([{ role: 'owner', origin }]);
-    await expect(repo.resolveProjectRole('project-1', 'user-1')).resolves.toBe(
-      expected,
-    );
-  });
-
-  it('prefers a non-team origin when multiple rows are returned', async () => {
-    const { repository: repo } = repository([
-      { role: 'editor', origin: 'team:studio-1' },
-      { role: 'owner', origin: 'legacy' },
-    ]);
-    await expect(repo.resolveProjectRole('project-1', 'user-1')).resolves.toBe(
-      'client',
-    );
-  });
+describe('SupabaseChatRepository project access', () => {
+  // The origin→persona mapping suite that used to live here is gone along with
+  // `roleFromOrigin` / `resolveProjectRole`. It asserted that a `consultant`
+  // origin resolved to a consultant and everything else to a client or a
+  // freelancer — a derivation the execution layer no longer makes. Project
+  // membership is now the only question this repository asks of `project_access`.
 
   it('does not fall back to projects when no access row exists', async () => {
     const { repository: repo, supabase } = repository([]);

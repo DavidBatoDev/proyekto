@@ -129,8 +129,7 @@ export function ChannelSettingsModal({
 									Make private
 								</span>
 								<span className="block text-xs text-slate-500">
-									Only invited members (and the consultant) can see this
-									channel.
+									Only invited members can see this channel.
 								</span>
 							</span>
 						</label>

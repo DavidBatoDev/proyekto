@@ -9,7 +9,6 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     title: 'Project One',
     status: 'draft',
     owner_id: 'client-1',
-    has_client: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -40,7 +39,7 @@ describe('ProjectsService (permissions)', () => {
     assertActionOutranks: jest.fn().mockResolvedValue(undefined),
     resolvePermissions: jest.fn(),
     roleSatisfies: jest.fn(),
-    getProjectConsultantId: jest.fn().mockResolvedValue('consultant-1'),
+    listUsersWithPermission: jest.fn().mockResolvedValue(['manager-1']),
     grant: jest.fn(),
     revoke: jest.fn(),
   };
@@ -179,26 +178,34 @@ describe('ProjectsService (permissions)', () => {
     expect(result.roadmap.edit).toBe(true);
   });
 
-  it('layers consultant origin delta on top of role baseline', async () => {
-    // Same editor role but consultant origin → manage_rates and
-    // message_freelancers flip on via origin delta.
-    const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'member-row-1',
-        user_id: 'member-1',
-        role: 'editor',
-        origin: 'consultant',
-        position: 'Lead',
-        capabilities: {},
-      }),
+  // The origin used to add an "operator toolkit" on top of the role — an editor
+  // with a consultant origin silently gained members.manage. Permissions now come
+  // from the rung and the per-member capabilities only, so how the member joined
+  // makes no difference to what they can do.
+  it('ignores the access origin when resolving permissions', async () => {
+    const forOrigin = async (origin: string) => {
+      const repo = {
+        findById: jest.fn().mockResolvedValue(buildProject()),
+        getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+          id: 'member-row-1',
+          user_id: 'member-1',
+          role: 'editor',
+          origin,
+          position: 'Lead',
+          capabilities: {},
+        }),
+      };
+      return buildService(repo).getMyPermissions('project-1', 'member-1');
     };
-    const service = buildService(repo);
 
-    const result = await service.getMyPermissions('project-1', 'member-1');
+    const asConsultant = await forOrigin('consultant');
+    const asClient = await forOrigin('client');
+    const asInvited = await forOrigin('invited');
 
-    expect(result.chat.message_freelancers).toBe(true);
-    expect(result.members.manage).toBe(true);
+    expect(asConsultant).toEqual(asInvited);
+    expect(asClient).toEqual(asInvited);
+    // An editor does not manage members whatever label their row carries.
+    expect(asConsultant.members.manage).toBe(false);
   });
 
   it('applies capabilities overrides on top of (role, origin) baseline', async () => {
@@ -286,6 +293,51 @@ describe('ProjectsService (permissions)', () => {
     expect(repo.updateMemberCapabilities).toHaveBeenCalled();
   });
 
+  /**
+   * The delivery-governance sections must be writable.
+   *
+   * They were missing from `UpdateProjectMemberPermissionsDto` and from the
+   * `sections` array, which broke the editor completely: it posts back the whole
+   * object returned by `GET .../permissions`, and the global pipe runs
+   * `forbidNonWhitelisted`, so every save 400'd on "property deliverables should
+   * not exist". Nothing covered it. They matter more now that the role ladder and
+   * capabilities are the only sources — withholding internal risks from one member
+   * is only possible if this path works.
+   */
+  it('persists the delivery-governance sections', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'admin',
+        origin: 'invited',
+        position: null,
+        capabilities: {},
+      }),
+      updateMemberCapabilities: jest.fn().mockResolvedValue({ ok: true }),
+    };
+    const service = buildService(repo, {
+      assertPermission: jest.fn().mockResolvedValue({}),
+    });
+
+    await expect(
+      service.updateMemberPermissions('project-1', 'member-row-1', 'admin-1', {
+        access: { delivery: true },
+        // An admin holds these by default, so denying them is the interesting
+        // case — it is the replacement for what the client origin delta did.
+        risks: { view_internal: false },
+        decisions: { view_internal: false },
+        deliverables: { approve: false },
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    const written = repo.updateMemberCapabilities.mock.calls[0];
+    expect(written).toBeDefined();
+    // The stored delta records the denials, since the admin baseline grants them.
+    expect(JSON.stringify(written)).toContain('risks.view_internal');
+  });
+
   it('rejects permission updates that violate dependencies', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
@@ -319,7 +371,7 @@ describe('ProjectsService (permissions)', () => {
     expect(repo.updateMemberCapabilities).not.toHaveBeenCalled();
   });
 
-  it('sends consultant notification when client (admin role) invites a freelancer', async () => {
+  it('notifies members.manage holders when an admin invites someone', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
@@ -348,14 +400,14 @@ describe('ProjectsService (permissions)', () => {
 
     expect(notificationsService.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({
-        user_id: 'consultant-1',
+        user_id: 'manager-1',
         type_name: 'project_updated',
         actor_id: 'client-1',
       }),
     );
   });
 
-  it('unassigns tasks then removes member when client (admin role) removes freelancer', async () => {
+  it('unassigns tasks then removes the member, and notifies roster managers', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
@@ -381,145 +433,19 @@ describe('ProjectsService (permissions)', () => {
     expect(repo.removeMember).toHaveBeenCalledWith('project-1', 'member-row-1');
     expect(notificationsService.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({
-        user_id: 'consultant-1',
+        user_id: 'manager-1',
         type_name: 'project_updated',
         actor_id: 'client-1',
       }),
     );
   });
 
-  it('rejects consultant reassignment when caller is not project owner or consultant', async () => {
-    const repo = {
-      findById: jest
-        .fn()
-        .mockResolvedValue(buildProject({ owner_id: 'owner-1' })),
-    };
-    const service = buildService(repo);
+  // The six consultant-reassignment cases that were here are gone with the
+  // endpoint. They asserted a flow whose whole purpose was moving
+  // project_access.origin to consultant: that the caller was owner-or-consultant,
+  // that the target was consultant-verified, and that grant ran before revoke.
+  // Ownership transfer is the surviving path and keeps its own coverage.
 
-    await expect(
-      service.reassignProjectConsultant('project-1', 'not-owner', {
-        new_consultant_id: 'member-1',
-      }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  // Post-refactor: privileged callers hold owner/admin role on project_shares.
-  // Each reassign test below grants the caller `owner` so the role bypass
-  // fires inside ProjectsService.isProjectPrivileged, then asserts the
-  // downstream behavior. The auto-grant/revoke calls during reassignment are
-  // stubbed via the default `grant`/`revoke` mocks.
-  const ownerAuth = () => ({
-    getUserProjectRole: jest.fn().mockResolvedValue('owner'),
-  });
-
-  it('allows consultant (owner role) to reassign consultant', async () => {
-    const repo = {
-      findById: jest
-        .fn()
-        .mockResolvedValue(buildProject({ owner_id: 'owner-1' })),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'member-row-2',
-        user_id: 'member-2',
-        role: 'member',
-      }),
-      isActiveConsultant: jest.fn().mockResolvedValue(true),
-      update: jest.fn().mockResolvedValue(buildProject()),
-    };
-    const service = buildService(repo, ownerAuth());
-
-    await expect(
-      service.reassignProjectConsultant('project-1', 'consultant-1', {
-        new_consultant_id: 'member-2',
-      }),
-    ).resolves.toBeTruthy();
-  });
-
-  it('rejects consultant reassignment when target is not a project member', async () => {
-    const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
-    };
-    const service = buildService(repo, ownerAuth());
-
-    await expect(
-      service.reassignProjectConsultant('project-1', 'client-1', {
-        new_consultant_id: 'outsider-1',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('rejects consultant reassignment when target is not consultant-verified', async () => {
-    const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'member-row-1',
-        user_id: 'member-2',
-        role: 'member',
-      }),
-      isActiveConsultant: jest.fn().mockResolvedValue(false),
-    };
-    const service = buildService(repo, ownerAuth());
-
-    await expect(
-      service.reassignProjectConsultant('project-1', 'client-1', {
-        new_consultant_id: 'member-2',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('rejects consultant reassignment when selected member is already consultant', async () => {
-    const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-    };
-    const service = buildService(repo, ownerAuth());
-
-    await expect(
-      service.reassignProjectConsultant('project-1', 'client-1', {
-        new_consultant_id: 'consultant-1',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('reassigns consultant when owner selects a verified project member', async () => {
-    const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'member-row-2',
-        user_id: 'member-2',
-        role: 'member',
-      }),
-      isActiveConsultant: jest.fn().mockResolvedValue(true),
-      update: jest.fn().mockResolvedValue(buildProject()),
-    };
-    const grant = jest.fn().mockResolvedValue(undefined);
-    const revoke = jest.fn().mockResolvedValue(undefined);
-    const service = buildService(repo, {
-      ...ownerAuth(),
-      getProjectConsultantId: jest.fn().mockResolvedValue('consultant-1'),
-      grant,
-      revoke,
-    });
-
-    await service.reassignProjectConsultant('project-1', 'client-1', {
-      new_consultant_id: 'member-2',
-    });
-    expect(grant).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      userId: 'member-2',
-      role: 'owner',
-      origin: 'consultant',
-      grantedBy: 'client-1',
-    });
-    expect(revoke).toHaveBeenCalledWith(
-      'project-1',
-      'consultant-1',
-      undefined,
-      { allowConsultantRemoval: true },
-    );
-    expect(grant.mock.invocationCallOrder[0]).toBeLessThan(
-      revoke.mock.invocationCallOrder[0],
-    );
-  });
 
   // ── mention-by-email availability ─────────────────────────────────────────
   describe('mentions.invite_by_email', () => {
@@ -543,7 +469,7 @@ describe('ProjectsService (permissions)', () => {
       opts: {
         flag?: boolean;
         flagError?: boolean;
-        origin?: string | null;
+        capabilities?: Record<string, boolean>;
       } = {},
     ) => {
       const db = flagDb(opts.flag ?? true, opts.flagError);
@@ -554,9 +480,9 @@ describe('ProjectsService (permissions)', () => {
             id: 'm-1',
             user_id: 'user-1',
             role,
-            origin: opts.origin ?? null,
+            origin: null,
             position: null,
-            capabilities: {},
+            capabilities: opts.capabilities ?? {},
           }),
         },
         {},
@@ -591,14 +517,18 @@ describe('ProjectsService (permissions)', () => {
       expect(perms.mentions.invite_by_email).toBe(false);
     });
 
-    it('is false for a consultant-origin editor, who holds members.manage', async () => {
-      // The trap this guards. ORIGIN_DELTAS grants `members.manage` to consultant
-      // and client origins REGARDLESS of role, so using that as the predicate
-      // would offer the affordance to someone assertRole('admin') then refuses —
-      // a UI that promises what the server declines.
+    it('is false for an editor granted members.manage by capability', async () => {
+      // The trap this guards: `members.manage` and `roleSatisfies('admin')` can
+      // disagree, so using the permission as the predicate would offer the
+      // affordance to someone `assertRole('admin')` then refuses — a UI that
+      // promises what the server declines.
+      //
+      // The disagreement used to come from ORIGIN_DELTAS granting members.manage
+      // regardless of role. With the origin deltas gone, a per-member capability
+      // produces exactly the same divergence, so the guard still earns its place.
       const { perms } = await permissionsFor('editor', {
         flag: true,
-        origin: 'consultant',
+        capabilities: { 'members.manage': true },
       });
 
       expect(perms.members.manage).toBe(true);

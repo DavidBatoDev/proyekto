@@ -15,7 +15,6 @@ export interface ChatParticipant {
 	joined_at: string;
 	last_read_at: string | null;
 	user: ChatUser | null;
-	role?: ChatMemberRole;
 	access_role?: ChatProjectRole;
 	position?: string | null;
 	team?: ChatTeamSummary | null;
@@ -95,17 +94,12 @@ export interface ChatRoom {
 	is_starred?: boolean;
 }
 
-export type ChatMemberRole = "consultant" | "client" | "freelancer";
-
 export type ChatProjectRole =
 	| "owner"
 	| "admin"
 	| "editor"
 	| "commenter"
-	| "viewer"
-	| "consultant"
-	| "client"
-	| "member";
+	| "viewer";
 
 export interface ChatTeamSummary {
 	id: string;
@@ -115,7 +109,6 @@ export interface ChatTeamSummary {
 
 export interface ChatMemberCandidate {
 	user_id: string;
-	role: ChatMemberRole;
 	access_role: ChatProjectRole;
 	position: string | null;
 	team: ChatTeamSummary | null;
@@ -251,7 +244,6 @@ class ChatService {
 		payload: {
 			name: string;
 			is_private?: boolean;
-			kind?: "client_project";
 		},
 	): Promise<ChatRoom> {
 		return this.request<ChatRoom>(`/projects/${projectId}/chat/channels`, {

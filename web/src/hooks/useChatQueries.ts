@@ -164,13 +164,11 @@ export function useCreateChannelMutation(projectId: string) {
 		mutationFn: async (payload: {
 			name: string;
 			is_private?: boolean;
-			kind?: "client_project";
 			memberIds?: string[];
 		}) => {
 			const room = await chatService.createChannel(projectId, {
 				name: payload.name,
 				is_private: payload.is_private,
-				kind: payload.kind,
 			});
 			if (payload.is_private && payload.memberIds?.length) {
 				await Promise.all(

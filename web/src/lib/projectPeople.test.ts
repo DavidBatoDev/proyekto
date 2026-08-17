@@ -46,15 +46,17 @@ describe("classifyPerson", () => {
 		);
 	});
 
-	it("treats the consultant and a personal workspace as internal", () => {
-		expect(classifyPerson([member({ origin: "consultant" })])).toBe("internal");
+	it("treats a personal workspace as internal", () => {
 		expect(classifyPerson([member({ origin: "personal_workspace" })])).toBe(
 			"internal",
 		);
 	});
 
-	it("treats the client, bare invites and legacy rows as external", () => {
-		expect(classifyPerson([member({ origin: "client" })])).toBe("external");
+	it("treats every non-team grant as external, including a direct one", () => {
+		// 'direct' covers the rows that used to say 'client' or 'consultant'. The
+		// classification only ever meant "reachable through one of your teams",
+		// and a direct grant is not — whoever holds it.
+		expect(classifyPerson([member({ origin: "direct" })])).toBe("external");
 		expect(classifyPerson([member({ origin: "invited" })])).toBe("external");
 		expect(classifyPerson([member({ origin: "legacy" })])).toBe("external");
 		expect(classifyPerson([member({ origin: null })])).toBe("external");
@@ -116,20 +118,22 @@ describe("accessSources", () => {
 });
 
 describe("likelyCanEdit", () => {
-	it("is true for editor-ish roles", () => {
-		for (const role of [
-			"owner",
-			"admin",
-			"editor",
-			"consultant",
-			"member",
-		] as const) {
+	it("is true from editor up the share_role ladder", () => {
+		for (const role of ["owner", "admin", "editor"] as const) {
 			expect(likelyCanEdit([member({ role })])).toBe(true);
 		}
 	});
 
-	it("is false for viewers, commenters and clients", () => {
-		for (const role of ["viewer", "commenter", "client"] as const) {
+	// "consultant" and "member" used to be listed as editor-ish roles. Neither is
+	// a share_role (the ladder is viewer|commenter|editor|admin|owner), so
+	// neither could ever appear in `role` — the entries matched nothing.
+	it("is false for anything outside the ladder", () => {
+		for (const role of [
+			"viewer",
+			"commenter",
+			"consultant",
+			"member",
+		] as const) {
 			expect(likelyCanEdit([member({ role })])).toBe(false);
 		}
 	});
@@ -158,11 +162,13 @@ describe("summarize", () => {
 	it("counts editors, view-only and external people", () => {
 		expect(
 			summarize([
-				[member({ role: "owner", origin: "consultant" })],
+				[member({ role: "owner", origin: "direct" })],
 				[member({ role: "editor", origin: `team:${TEAM}` })],
-				[member({ role: "viewer", origin: "client" })],
+				[member({ role: "viewer", origin: "direct" })],
 			]),
-		).toEqual({ total: 3, canEdit: 2, viewOnly: 1, external: 1 });
+			// The owner holds a direct grant, so they are "external" too: two of
+			// the three are not reachable through a team.
+		).toEqual({ total: 3, canEdit: 2, viewOnly: 1, external: 2 });
 	});
 
 	it("handles an empty project", () => {

@@ -38,10 +38,9 @@ import {
   type ProjectRole,
   roleSatisfies,
 } from '../authorization/project-authorization.service';
-import { attachProjectClientFlag } from './project-payload.mapper';
 
 const PROJECT_MEMBER_SELECT =
-  'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))';
+  'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -90,8 +89,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     return (data || [])
       .map((r: Record<string, unknown>) => r.project)
-      .filter(Boolean)
-      .map((project) => attachProjectClientFlag(project as Project));
+      .filter(Boolean) as Project[];
   }
 
   async findDashboardByUser(userId: string): Promise<Project[]> {
@@ -121,12 +119,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     const memberProjects = (memberResult.data || [])
       .map((row: Record<string, unknown>) => row.project)
-      .filter(Boolean)
-      .map((project) => attachProjectClientFlag(project as Project));
+      .filter(Boolean) as Project[];
 
-    const ownedProjects = (ownedResult.data || []).map((project) =>
-      attachProjectClientFlag(project as Project),
-    );
+    const ownedProjects = (ownedResult.data || []) as unknown as Project[];
 
     const deduped = new Map<string, Project>();
     for (const project of [...ownedProjects, ...memberProjects]) {
@@ -158,7 +153,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         `
         *,
         owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)))
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name))
       `,
       )
       .eq('id', id)
@@ -166,7 +161,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (error || !data) return null;
 
-    return attachProjectClientFlag(data as Project & { members?: unknown[] });
+    return data as Project & { members?: unknown[] };
   }
 
   async create(userId: string, dto: CreateProjectDto): Promise<Project> {
@@ -370,7 +365,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
       )
       .single();
 
@@ -657,7 +652,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const selectShape =
-      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))';
+      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)';
 
     if (Object.keys(patch).length === 0) {
       const { data: current } = await this.supabase

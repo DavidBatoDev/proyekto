@@ -31,32 +31,33 @@ export function teamIdFromOrigin(origin?: string | null): string | null {
 }
 
 const DIRECT_ORIGIN_LABELS: Record<string, string> = {
-	client: "Added as the client",
-	consultant: "Leading this project as consultant",
+	direct: "Added directly to this project",
 	invited: "Invited directly",
 	personal_workspace: "Owner of this personal workspace",
 	legacy: "Added before access tracking",
 };
 
 /**
- * Internal or external, from every grant a person holds.
+ * Whether a person reaches this project through one of your teams.
  *
- * Anyone reachable through an attached team is internal — they are staff on a
- * team doing the work. `consultant` and `personal_workspace` are internal by
- * definition. Everyone else — the client, a bare invite, a legacy row — is
- * external, because we cannot show they belong to any team here.
+ * This is the ONLY thing the classification means, and the UI copy says so:
+ * "external" is shorthand for "we can't show they're on a team here", not a
+ * statement about who they are. A bare invite is external; so is a legacy row.
  *
- * A person with *any* internal grant counts as internal: being on the delivery
- * team is the stronger fact, and mislabelling a teammate "external" is the
- * worse error of the two.
+ * `consultant` used to count as internal alongside `personal_workspace`. That
+ * origin is gone — a project has members, not a consultant — and keeping it
+ * would have been worse than useless after the migration folded it into
+ * `direct`: the person leading the work would have started rendering as
+ * "external".
+ *
+ * A person with *any* team grant counts as internal: being on a team is the
+ * stronger fact, and mislabelling a teammate is the worse error of the two.
  */
 export function classifyPerson(rows: ProjectMember[]): PersonKind {
 	const internal = rows.some((row) => {
 		const origin = row.origin ?? "";
 		return (
-			origin.startsWith(TEAM_ORIGIN_PREFIX) ||
-			origin === "consultant" ||
-			origin === "personal_workspace"
+			origin.startsWith(TEAM_ORIGIN_PREFIX) || origin === "personal_workspace"
 		);
 	});
 	return internal ? "internal" : "external";
@@ -107,13 +108,9 @@ export function accessSources(
  * The access drawer does NOT use this — it fetches the authoritative
  * per-member permissions. Precision where precision is claimed.
  */
-const EDITOR_ROLES = new Set([
-	"owner",
-	"admin",
-	"editor",
-	"consultant",
-	"member",
-]);
+// The share_role ladder, from `editor` up. It used to also list "consultant"
+// and "member", neither of which is a share_role — so neither ever matched.
+const EDITOR_ROLES = new Set(["owner", "admin", "editor"]);
 
 export function likelyCanEdit(rows: ProjectMember[]): boolean {
 	return rows.some((row) => {

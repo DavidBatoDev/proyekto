@@ -50,8 +50,6 @@ function buildViewer(): ProjectPermissions {
 		"chat.view_channels": true,
 		"resources.view": true,
 		"logs.view": true,
-		"chat.message_clients": true,
-		"chat.message_consultants": true,
 	});
 }
 

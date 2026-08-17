@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -22,8 +22,8 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Canvas view mode** | The four projections of one roadmap — roadmap tree, epic, Gantt/milestones, and kanban. Views are projections, not separate entities. |
 | **Team** | A reusable group of people; attached to projects and curated per project. |
 | **`project_access`** | The authorization row — exactly one per (project, user) since `20260507000130` — carrying a `share_role` (`owner > admin > editor > commenter > viewer`), an `origin` label, and a capabilities delta. |
-| **Origin** | The *source* of an access grant, not a rank: `client`, `consultant`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. Patches permissions via `ORIGIN_DELTAS`. |
-| **Client** | The market position of people commissioning work — not an account attribute. Project participation and the legal payer come from `project_access` and contract snapshots. See [Clients](../11-domains/clients/README.md). |
+| **Origin** | Provenance of an access grant — *how* someone joined, never what they can do: `direct`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. It takes no part in permission resolution. The former `client` and `consultant` values were folded into `direct` on 2026-08-18. |
+| **Client** | The market position of people commissioning work — not an account attribute. Project participation and the legal payer come from `project_access` and contract snapshots. See [Finance → contract parties](../11-domains/finance/README.md#contract-parties). |
 | **Project owner** | The profile referenced by `projects.owner_id`. Any account may own a project; ownership implies nothing else about the account. |
 | **External client** | A contract counterparty with no account, existing only as `contracts.client_*` strings, who signs via a tokenized link. |
 | **Contract** | The service agreement for a project (`contracts`) — parties, commercial terms, term dates, clause set, and a jsonb services catalog. |

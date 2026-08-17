@@ -83,6 +83,12 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 				"Open Time",
 				"See time logs tracked on this project.",
 			),
+			p(
+				"access",
+				"delivery",
+				"Open Delivery",
+				"Open Deliverables, Change Requests, Risks & Issues, and Decisions.",
+			),
 		],
 	},
 	{
@@ -131,7 +137,7 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 				"roadmap",
 				"view_internal",
 				"View internal notes",
-				"See notes hidden from the client view.",
+				"See notes marked internal.",
 				["roadmap.view"],
 			),
 			p(
@@ -301,19 +307,6 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 			p("chat", "send_dm", "Send DMs", "Send messages in DMs.", [
 				"chat.start_dm",
 			]),
-			p("chat", "message_clients", "Message clients", "DM project clients."),
-			p(
-				"chat",
-				"message_consultants",
-				"Message consultants",
-				"DM project consultants.",
-			),
-			p(
-				"chat",
-				"message_freelancers",
-				"Message freelancers",
-				"DM project freelancers.",
-			),
 		],
 	},
 	{
@@ -361,6 +354,90 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 				"View the team's time",
 				"See every member's logs on this project, not just their own.",
 				["access.time"],
+			),
+		],
+	},
+	{
+		key: "deliverables",
+		label: "Deliverables",
+		description: "Producing and accepting handovers of finished work.",
+		permissions: [
+			p(
+				"deliverables",
+				"edit",
+				"Edit deliverables",
+				"Create, change, and submit deliverables for review.",
+				["access.delivery"],
+			),
+			p(
+				"deliverables",
+				"approve",
+				"Approve deliverables",
+				"Accept a submitted deliverable, or send it back with notes.",
+				["access.delivery"],
+			),
+		],
+	},
+	{
+		key: "change_requests",
+		label: "Change requests",
+		description: "Raising and deciding scope changes.",
+		permissions: [
+			p(
+				"change_requests",
+				"create",
+				"Raise change requests",
+				"Open a change request and submit it for a decision.",
+				["access.delivery"],
+			),
+			p(
+				"change_requests",
+				"decide",
+				"Decide change requests",
+				"Approve, reject, or return a change request, and record it as applied.",
+				["access.delivery"],
+			),
+		],
+	},
+	{
+		key: "risks",
+		label: "Risks & issues",
+		description: "The risk register, including what stays internal.",
+		permissions: [
+			p(
+				"risks",
+				"edit",
+				"Edit the register",
+				"Log and update risks and issues.",
+				["access.delivery"],
+			),
+			p(
+				"risks",
+				"view_internal",
+				"View internal risks",
+				"See risks marked internal.",
+				["access.delivery"],
+			),
+		],
+	},
+	{
+		key: "decisions",
+		label: "Decisions",
+		description: "The decision log, including what stays internal.",
+		permissions: [
+			p(
+				"decisions",
+				"edit",
+				"Record decisions",
+				"Log a decision, mark it final, and link it to the work it affects.",
+				["access.delivery"],
+			),
+			p(
+				"decisions",
+				"view_internal",
+				"View internal decisions",
+				"See decisions marked internal.",
+				["access.delivery"],
 			),
 		],
 	},

@@ -1,46 +1,46 @@
 /**
  * Opt-in channel presets shown in the Create channel modal. These used to be
  * auto-provisioned per project (the backend `PROJECT_SYSTEM_ROOMS`), but new
- * projects now start with just #general — teams create the persona rooms they
- * actually need from here. Picking one pre-fills the create form; the resulting
- * channel is an ordinary user channel (slug derived from the name).
+ * projects now start with just #general — teams create the channels they actually
+ * need from here. Picking one pre-fills the create form; the resulting channel is
+ * an ordinary user channel (slug derived from the name).
  *
- * `slug` is the canonical slug these used to provision with — kept only so we
- * can dedupe a suggestion that's already been created.
+ * The presets used to be persona rooms — "Client Project Room", "Consultant &
+ * Client", "Consultant & PM" — and the first of them auto-added whoever resolved
+ * to the consultant or client persona. A project is the execution layer: it has
+ * members with permissions, not a client and a consultant, so a preset can suggest
+ * a shape but never a membership. Whoever creates the channel adds the people.
+ *
+ * `slug` is the canonical slug these provision with, kept so an already-created
+ * suggestion can be deduped out of the list.
  */
 export interface ChannelSuggestion {
 	slug: string;
 	name: string;
 	isPrivate: boolean;
 	description: string;
-	defaultAudience?: "client_core";
 }
 
 export const CHANNEL_SUGGESTIONS: ChannelSuggestion[] = [
 	{
-		slug: "client-room",
-		name: "Client Project Room",
-		isPrivate: true,
-		defaultAudience: "client_core",
-		description:
-			"Private space for the consultant, project owner, and client. Managers can add selected teammates.",
-	},
-	{
 		slug: "internal-team",
 		name: "Internal Team",
 		isPrivate: true,
-		description: "Private space for your internal team only.",
+		description: "Private space for the people delivering the work.",
 	},
 	{
-		slug: "consultant-client",
-		name: "Consultant & Client",
+		// Kept under its original slug so an existing room dedupes correctly on
+		// projects that were auto-provisioned before presets existed.
+		slug: "client-room",
+		name: "Stakeholders",
 		isPrivate: true,
-		description: "Private room for the consultant and the client.",
+		description:
+			"Private space for the people commissioning the work and whoever leads it. Add members explicitly.",
 	},
 	{
-		slug: "consultant-pm",
-		name: "Consultant & PM",
-		isPrivate: true,
-		description: "Private room for the consultant and the project manager.",
+		slug: "announcements",
+		name: "Announcements",
+		isPrivate: false,
+		description: "Open channel for updates everyone on the project should see.",
 	},
 ];

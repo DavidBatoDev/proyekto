@@ -174,12 +174,6 @@ export function ChannelDetailsPanel({
 									participant.user?.display_name ||
 									participant.user?.email ||
 									participant.user_id;
-								const isCoreClientRoomMember =
-									(room.slug === "client-project-room" ||
-										room.slug === "client-room") &&
-									(participant.role === "consultant" ||
-										participant.role === "client" ||
-										participant.access_role === "owner");
 								return (
 									<div
 										key={participant.user_id}
@@ -203,12 +197,11 @@ export function ChannelDetailsPanel({
 											<span className="block truncate text-xs capitalize text-slate-500">
 												{participant.position ||
 													participant.access_role ||
-													participant.role ||
 													"Project member"}
 												{participant.team ? ` · ${participant.team.name}` : ""}
 											</span>
 										</span>
-										{canManage && !isCoreClientRoomMember && (
+										{canManage && (
 											<button
 												type="button"
 												disabled={isBusy}

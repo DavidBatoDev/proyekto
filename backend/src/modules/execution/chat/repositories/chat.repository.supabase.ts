@@ -13,7 +13,6 @@ import type {
   ChatMessageSearchHit,
   ChatParticipant,
   ChatRepository,
-  ChatRole,
   ChatRoom,
   ChatRoomWithLastMessage,
 } from './chat.repository.interface';
@@ -108,18 +107,6 @@ export class SupabaseChatRepository implements ChatRepository {
     return Array.isArray(value) ? (value[0] ?? null) : value;
   }
 
-  private roleFromOrigin(origin?: string | null): ChatRole {
-    if (origin === 'consultant') return 'consultant';
-    if (
-      origin === 'client' ||
-      origin === 'personal_workspace' ||
-      origin === 'legacy'
-    ) {
-      return 'client';
-    }
-    return 'freelancer';
-  }
-
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
     const { data, error } = await this.supabase
       .from('project_access')
@@ -129,31 +116,6 @@ export class SupabaseChatRepository implements ChatRepository {
       .limit(1);
 
     return !error && Boolean(data && data.length > 0);
-  }
-
-  async resolveProjectRole(
-    projectId: string,
-    userId: string,
-  ): Promise<ChatRole | null> {
-    const { data, error } = await this.supabase
-      .from('project_access')
-      .select('role, origin')
-      .eq('project_id', projectId)
-      .eq('user_id', userId);
-
-    if (error) return null;
-
-    if (!data || data.length === 0) return null;
-
-    const accessRows = data as Array<{
-      role: string | null;
-      origin: string | null;
-    }>;
-    const preferred =
-      accessRows.find((row) => !(row.origin ?? '').startsWith('team:')) ??
-      accessRows[0];
-
-    return this.roleFromOrigin(preferred.origin);
   }
 
   async listProjectMemberCandidates(
@@ -264,7 +226,6 @@ export class SupabaseChatRepository implements ChatRepository {
 
       map.set(row.user_id, {
         user_id: row.user_id,
-        role: this.roleFromOrigin(row.origin),
         access_role: (row.role ??
           'member') as ChatMemberCandidate['access_role'],
         position: row.position?.trim() || null,

@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **Last updated:** 2026-08-18 · **Status:** draft
 
 Proyekto has no parent above a project. A client with four engagements is four unrelated
 `projects` rows whose client relationship is repeated in access and contract data, and an
@@ -152,7 +152,7 @@ flowchart TD
 
 Likewise there is **no profile-completeness gate** on joining an organization. None exists in
 the product today (see
-[clients/README.md](../11-domains/clients/README.md#known-gaps)); adding one is separate work.
+[11-domains/finance](../11-domains/finance/README.md#contract-parties)); adding one is separate work.
 
 ## Back-compat: `projects.owner_id` stays
 
@@ -220,7 +220,7 @@ no new origin value is introduced. Per-org default role comes from
 `organizations.default_project_role`, mirroring `project_teams.default_role`.
 
 > **Bonus:** this also fixes the gap noted in
-> [clients/user-flows.md](../11-domains/clients/user-flows.md#where-origin--client-comes-from) —
+> [11-domains/finance](../11-domains/finance/README.md#contract-parties) —
 > org members of the client org would finally receive `origin='client'` without being the
 > project creator.
 
@@ -387,5 +387,5 @@ confirm with `list_migrations` and check `get_advisors`. Follow the `/db-migrati
 ## See also
 
 - [delivery-tree-visualization.md](./delivery-tree-visualization.md) — what this structure enables.
-- [11-domains/clients/client-structure.md](../11-domains/clients/client-structure.md) — today's model.
+- [11-domains/finance](../11-domains/finance/README.md#contract-parties) — today's model.
 - [11-domains/teams-and-time](../11-domains/teams-and-time/README.md) — the fan-out trigger to extend.

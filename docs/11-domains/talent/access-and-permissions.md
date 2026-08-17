@@ -1,6 +1,6 @@
 # Talent Access and Permissions
 
-> **Last updated:** 2026-08-16 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Nothing account-level grants project capabilities. A Talent participant receives a
 project role through a direct invite or team curation, then the shared permission resolver
@@ -10,13 +10,14 @@ combines that role with an origin delta and explicit capability overrides.
 
 ```text
 ROLE_DEFAULTS[project role]
-  + ORIGIN_DELTAS[access origin]
   + project_access.capabilities
   = resolved project permissions
 ```
 
-There is no `ORIGIN_DELTAS.talent` or `ORIGIN_DELTAS.freelancer`. Talent normally arrives
-with either `origin='invited'` or a team-derived `origin='team:<id>'`.
+There used to be an `ORIGIN_DELTAS[access origin]` term between the two. It was removed:
+origin records *how* someone joined, and that never determined what they could do. Talent
+normally arrives with either `origin='invited'` or a team-derived `origin='team:<id>'`,
+and either way their permissions come from their role plus their own capabilities.
 
 | Entry path | Project role | Origin behavior |
 | --- | --- | --- |
@@ -79,5 +80,5 @@ collaboration but is not enough for activation rate checks or payout generation.
 ## See also
 
 - [user-flows.md](./user-flows.md)
-- [Clients: access and permissions](../clients/access-and-permissions.md)
+- [Finance: contract parties](../finance/README.md#contract-parties)
 - [Teams and time](../teams-and-time/README.md)

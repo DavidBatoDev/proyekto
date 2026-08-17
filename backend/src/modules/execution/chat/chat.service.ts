@@ -430,32 +430,18 @@ export class ChatService {
   }
 
   /**
-   * Resolve the viewer's persona context on a project. Consultant/client come
-   * from the chat persona resolver; PM is approximated by the IAM admin/owner
-   * role (no dedicated PM role exists yet).
+   * Whether the viewer may see `room` (Slack-style membership). Public channels
+   * are visible to every project member; private channels only to explicit
+   * participants.
+   *
+   * There used to be an `isConsultant` branch returning true before either check,
+   * so one persona read every private channel in the project. It also made channel
+   * membership unenforceable for them: because `listRooms` lazily joins whatever
+   * this permits, a consultant was silently re-added to every private channel on
+   * each sidebar load, so removing them or having them leave never stuck. Private
+   * now means private, for everyone.
    */
-  /** True when the viewer is the project's consultant (all-channel access). */
-  private async isProjectConsultant(
-    projectId: string,
-    userId: string,
-  ): Promise<boolean> {
-    return (
-      (await this.chatRepo.resolveProjectRole(projectId, userId)) ===
-      'consultant'
-    );
-  }
-
-  /**
-   * Whether the viewer may see `room` (Slack-style membership). The consultant
-   * keeps all-channel access; public channels are visible to every project
-   * member; private channels only to explicit participants.
-   */
-  private canViewChannel(
-    room: ChatRoom,
-    isConsultant: boolean,
-    isParticipant: boolean,
-  ): boolean {
-    if (isConsultant) return true;
+  private canViewChannel(room: ChatRoom, isParticipant: boolean): boolean {
     if (!room.is_private) return true;
     return isParticipant;
   }
@@ -473,11 +459,7 @@ export class ChatService {
     if (await this.chatRepo.isRoomParticipant(room.id, userId)) return;
     if (!(await this.chatRepo.isProjectMember(room.project_id, userId))) return;
 
-    const isConsultant = await this.isProjectConsultant(
-      room.project_id,
-      userId,
-    );
-    if (this.canViewChannel(room, isConsultant, false)) {
+    if (this.canViewChannel(room, false)) {
       await this.chatRepo.upsertParticipants(room.id, [userId]);
     }
   }
@@ -549,7 +531,6 @@ export class ChatService {
     // no-room send); no backfill here.
     const channels = await this.chatRepo.listProjectChannels(projectId);
 
-    const isConsultant = await this.isProjectConsultant(projectId, userId);
     const channelIds = channels.map((room) => room.id);
     const myParticipantRoomIds = new Set(
       await this.chatRepo.listParticipantRoomIds(userId, channelIds),
@@ -559,7 +540,7 @@ export class ChatService {
     const toJoin: string[] = [];
     for (const room of channels) {
       const isParticipant = myParticipantRoomIds.has(room.id);
-      if (!this.canViewChannel(room, isConsultant, isParticipant)) continue;
+      if (!this.canViewChannel(room, isParticipant)) continue;
       visibleIds.push(room.id);
       if (!isParticipant) toJoin.push(room.id);
     }
@@ -588,14 +569,6 @@ export class ChatService {
 
   async listMembers(projectId: string, userId: string) {
     await this.assertProjectAccess(projectId, userId);
-    const actorRole = await this.chatRepo.resolveProjectRole(projectId, userId);
-    if (!actorRole) {
-      throw new MissingPermissionException({
-        path: 'access.chat',
-        message: 'You are not a member of this project.',
-      });
-    }
-
     const members = await this.chatRepo.listProjectMemberCandidates(projectId);
     return members
       .filter((member) => member.user_id !== userId)
@@ -1219,28 +1192,19 @@ export class ChatService {
     }
 
     const slug = await this.uniqueChannelSlug(projectId, name);
-    const isClientProjectRoom = dto.kind === 'client_project';
+    const isPrivate = !!dto.is_private;
     const room = await this.chatRepo.upsertChannel({
       projectId,
       slug,
       name,
-      isPrivate: isClientProjectRoom || !!dto.is_private,
+      isPrivate,
       createdBy: userId,
     });
+    // Only the creator. A `kind: 'client_project'` preset used to force the room
+    // private and auto-seed "core members" — whoever resolved to the consultant or
+    // client persona, plus the owner. Membership of a private channel is now
+    // something a person chooses to grant, not something an identity confers.
     await this.chatRepo.upsertParticipants(room.id, [userId]);
-    if (isClientProjectRoom) {
-      const coreMemberIds = (
-        await this.chatRepo.listProjectMemberCandidates(projectId)
-      )
-        .filter(
-          (member) =>
-            member.role === 'consultant' ||
-            member.role === 'client' ||
-            member.access_role === 'owner',
-        )
-        .map((member) => member.user_id);
-      await this.chatRepo.upsertParticipants(room.id, coreMemberIds);
-    }
 
     this.audit.log({
       projectId,
@@ -1251,8 +1215,7 @@ export class ChatService {
       metadata: {
         name,
         slug,
-        is_private: isClientProjectRoom || !!dto.is_private,
-        kind: dto.kind,
+        is_private: isPrivate,
       },
     });
     this.notifyProjectRoomsChanged(projectId, room.id);
@@ -1280,14 +1243,6 @@ export class ChatService {
     if (DEFAULT_CHANNEL_SLUGS.has(room.slug) && dto.is_archived === true) {
       throw new BadRequestException(
         'Default project channels cannot be archived.',
-      );
-    }
-    if (
-      (room.slug === 'client-project-room' || room.slug === 'client-room') &&
-      dto.is_private === false
-    ) {
-      throw new BadRequestException(
-        'The client project room must stay private.',
       );
     }
 
@@ -1334,7 +1289,6 @@ export class ChatService {
       return candidate
         ? {
             ...participant,
-            role: candidate.role,
             access_role: candidate.access_role,
             position: candidate.position,
             team: candidate.team,
@@ -1360,7 +1314,6 @@ export class ChatService {
             joined_at: '',
             last_read_at: null,
             user: c.user,
-            role: c.role,
             access_role: c.access_role,
             position: c.position,
             team: c.team,
@@ -1420,22 +1373,6 @@ export class ChatService {
       throw new NotFoundException('Chat room not found.');
     }
 
-    if (room.slug === 'client-project-room' || room.slug === 'client-room') {
-      const member = (
-        await this.chatRepo.listProjectMemberCandidates(projectId)
-      ).find((candidate) => candidate.user_id === memberId);
-      if (
-        member &&
-        (member.role === 'consultant' ||
-          member.role === 'client' ||
-          member.access_role === 'owner')
-      ) {
-        throw new BadRequestException(
-          'The consultant, project owner, and client cannot be removed from the client project room.',
-        );
-      }
-    }
-
     await this.chatRepo.removeParticipant(roomId, memberId);
 
     this.audit.log({
@@ -1466,22 +1403,6 @@ export class ChatService {
     const room = await this.chatRepo.findRoomById(roomId);
     if (!room || room.type !== 'channel' || room.project_id !== projectId) {
       throw new NotFoundException('Chat room not found.');
-    }
-
-    if (room.slug === 'client-project-room' || room.slug === 'client-room') {
-      const member = (
-        await this.chatRepo.listProjectMemberCandidates(projectId)
-      ).find((candidate) => candidate.user_id === userId);
-      if (
-        member &&
-        (member.role === 'consultant' ||
-          member.role === 'client' ||
-          member.access_role === 'owner')
-      ) {
-        throw new BadRequestException(
-          'Core members cannot leave the client project room.',
-        );
-      }
     }
 
     await this.chatRepo.removeParticipant(roomId, userId);

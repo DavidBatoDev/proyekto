@@ -1,0 +1,32 @@
+-- Migration: 20260817200000_drop_project_chat_role_persona_helper.sql
+-- Date: August 17, 2026
+-- Description:
+--   Drops `public.project_chat_role(uuid, uuid)`, the SQL half of the execution
+--   layer's client/consultant persona derivation.
+--
+--   It mapped `project_access.origin` onto three personas:
+--       origin = 'consultant'                              -> 'consultant'
+--       origin IN ('client','personal_workspace','legacy')  -> 'client'
+--       anything else                                       -> 'freelancer'
+--
+--   A project is the execution layer: it has members with a permissions catalog,
+--   not a client and a consultant. The TypeScript mirror of this function
+--   (`roleFromOrigin` / `resolveProjectRole` in
+--   backend/src/modules/execution/chat/repositories/chat.repository.supabase.ts)
+--   was deleted in the same change, along with the one behaviour it drove — a
+--   consultant reading every private channel in the project regardless of
+--   membership.
+--
+--   Verified unreferenced before dropping, against the live catalog:
+--     * no RLS policy mentions it (pg_policies qual/with_check)
+--     * no other function or view mentions it (pg_get_functiondef / views)
+--     * no backend code calls it (grep over backend/src)
+--   The persona DM matrix that once used it was already removed by
+--   20260505000030_chat_dm_open_within_project.sql ("Both parties must be project
+--   members. Self-DMs blocked. That's it."), which is what left this orphaned.
+--
+--   `project_chat_is_member` and `project_chat_users_share_any_project` — the two
+--   helpers that answer membership rather than identity — are deliberately kept;
+--   RLS policies do depend on those.
+
+DROP FUNCTION IF EXISTS public.project_chat_role(uuid, uuid);

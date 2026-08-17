@@ -53,7 +53,6 @@ describe('ChatService', () => {
   const buildRepo = (overrides: Partial<ChatRepository>): ChatRepository =>
     ({
       isProjectMember: jest.fn().mockResolvedValue(true),
-      resolveProjectRole: jest.fn().mockResolvedValue('consultant'),
       listProjectMemberCandidates: jest.fn().mockResolvedValue([]),
       listProjectParticipantUserIds: jest.fn().mockResolvedValue([]),
       usersShareAnyProject: jest.fn().mockResolvedValue(true),
@@ -171,7 +170,13 @@ describe('ChatService', () => {
       is_private: isPrivate,
     });
 
-  const personaRooms = (): ChatRoom[] => [
+  /**
+   * The four rooms older projects were auto-provisioned with. They are ordinary
+   * channels now — nothing keys off these slugs — but real projects still hold
+   * them, so visibility is worth asserting against the shape that exists in
+   * production rather than an invented one.
+   */
+  const legacyRooms = (): ChatRoom[] => [
     channel('client-room', false),
     channel('internal-team', true),
     channel('consultant-client', true),
@@ -194,12 +199,10 @@ describe('ChatService', () => {
     );
 
   const visibleSlugs = async (
-    persona: 'consultant' | 'client' | 'freelancer',
     rooms: ChatRoom[],
     participantRoomIds: string[] = [],
   ): Promise<string[]> => {
     const repo = buildRepo({
-      resolveProjectRole: jest.fn().mockResolvedValue(persona),
       listProjectChannels: jest.fn().mockResolvedValue(rooms),
       listParticipantRoomIds: jest.fn().mockResolvedValue(participantRoomIds),
       hydrateRoomsByIds: hydrateFrom(rooms),
@@ -208,28 +211,27 @@ describe('ChatService', () => {
     return result.map((r) => r.slug).sort();
   };
 
-  it('consultant sees every channel including private ones', async () => {
-    const slugs = await visibleSlugs('consultant', personaRooms());
-    expect(slugs).toEqual(
-      [
-        'client-room',
-        'consultant-client',
-        'consultant-pm',
-        'internal-team',
-      ].sort(),
-    );
+  /**
+   * No member sees a private channel they were not added to — not even the person
+   * who used to be the project's consultant.
+   *
+   * This replaces a "consultant sees every channel including private ones" case.
+   * That bypass was worse than it looked: because `listRooms` lazily joins
+   * whatever it makes visible, the consultant was silently written into every
+   * private channel on each sidebar load, which also made removing them or having
+   * them leave impossible to make stick.
+   */
+  it('shows nobody a private channel they are not a participant of', async () => {
+    const slugs = await visibleSlugs(legacyRooms());
+
+    expect(slugs).toEqual(['client-room']);
   });
 
-  it('a non-consultant member sees only public channels until added to private ones', async () => {
-    // Visibility is pure membership now: with no participant rows a freelancer
-    // only sees the public client-room; the 3 private default rooms are hidden.
-    const base = await visibleSlugs('freelancer', personaRooms());
-    expect(base).toEqual(['client-room']);
-
-    // Once added to internal-team (private) it becomes visible too.
-    const withMembership = await visibleSlugs('freelancer', personaRooms(), [
+  it('shows a private channel once the member is a participant', async () => {
+    const withMembership = await visibleSlugs(legacyRooms(), [
       'room-internal-team',
     ]);
+
     expect(withMembership).toEqual(['client-room', 'internal-team'].sort());
   });
 
@@ -252,7 +254,6 @@ describe('ChatService', () => {
 
     // Not a participant of the private channel → hidden.
     const hidden = buildRepo({
-      resolveProjectRole: jest.fn().mockResolvedValue('freelancer'),
       listProjectChannels: jest.fn().mockResolvedValue(rooms),
       listParticipantRoomIds: jest.fn().mockResolvedValue([]),
       hydrateRoomsByIds: hydrateFrom(rooms),
@@ -265,7 +266,6 @@ describe('ChatService', () => {
 
     // Participant of the private channel → visible.
     const shown = buildRepo({
-      resolveProjectRole: jest.fn().mockResolvedValue('freelancer'),
       listProjectChannels: jest.fn().mockResolvedValue(rooms),
       listParticipantRoomIds: jest.fn().mockResolvedValue(['room-priv']),
       hydrateRoomsByIds: hydrateFrom(rooms),
@@ -346,62 +346,42 @@ describe('ChatService', () => {
     expect(upsertChannel).toHaveBeenCalledTimes(1);
   });
 
-  it('creates the client project room as private and seeds its core audience', async () => {
+  /**
+   * A private channel starts with its creator and nobody else.
+   *
+   * This replaces a test for the `kind: 'client_project'` preset, which forced the
+   * room private and auto-seeded whoever resolved to the consultant or client
+   * persona plus the project owner. Membership of a private channel is now
+   * something a person grants, not something an identity confers.
+   */
+  it('creates a private channel with only its creator as a participant', async () => {
     const upsertParticipants = jest.fn().mockResolvedValue(undefined);
     const upsertChannel = jest
       .fn()
       .mockImplementation((params) =>
         Promise.resolve(channel(params.slug, params.isPrivate ?? false)),
       );
+    const listProjectMemberCandidates = jest.fn().mockResolvedValue([]);
     const repo = buildRepo({
-      listProjectMemberCandidates: jest.fn().mockResolvedValue([
-        {
-          user_id: 'consultant-1',
-          role: 'consultant',
-          access_role: 'owner',
-          position: 'Consultant',
-          team: null,
-          user: null,
-        },
-        {
-          user_id: 'client-1',
-          role: 'client',
-          access_role: 'admin',
-          position: 'Client',
-          team: null,
-          user: null,
-        },
-        {
-          user_id: 'freelancer-1',
-          role: 'freelancer',
-          access_role: 'editor',
-          position: 'Designer',
-          team: null,
-          user: null,
-        },
-      ]),
+      listProjectMemberCandidates,
       upsertChannel,
       upsertParticipants,
     });
 
     await makeService(repo).createChannel('project-1', 'admin-1', {
-      name: 'Client Project Room',
-      kind: 'client_project',
+      name: 'Stakeholders',
+      is_private: true,
     });
 
     expect(upsertChannel).toHaveBeenCalledWith(
       expect.objectContaining({ isPrivate: true }),
     );
-    expect(upsertParticipants).toHaveBeenNthCalledWith(
-      1,
-      'room-client-project-room',
-      ['admin-1'],
-    );
-    expect(upsertParticipants).toHaveBeenNthCalledWith(
-      2,
-      'room-client-project-room',
-      ['consultant-1', 'client-1'],
-    );
+    expect(upsertParticipants).toHaveBeenCalledTimes(1);
+    expect(upsertParticipants).toHaveBeenCalledWith('room-stakeholders', [
+      'admin-1',
+    ]);
+    // The roster is not consulted at all — there is no audience to derive.
+    expect(listProjectMemberCandidates).not.toHaveBeenCalled();
   });
 
   it('updateChannel toggles visibility via manage_channels', async () => {
@@ -451,33 +431,34 @@ describe('ChatService', () => {
     );
   });
 
-  it('keeps core members in the client project room', async () => {
+  /**
+   * Leaving now sticks for everyone.
+   *
+   * This replaces a "core members cannot leave the client project room" case,
+   * which refused when the leaver resolved to the consultant or client persona (or
+   * was the owner). For a consultant that refusal was largely theatre anyway: the
+   * all-channel bypass re-added them on the next sidebar load.
+   */
+  it('lets any participant leave a channel, including the project owner', async () => {
     const removeParticipant = jest.fn().mockResolvedValue(undefined);
     const repo = buildRepo({
       findRoomById: jest
         .fn()
         .mockResolvedValue(channel('client-project-room', true)),
-      listProjectMemberCandidates: jest.fn().mockResolvedValue([
-        {
-          user_id: 'consultant-1',
-          role: 'consultant',
-          access_role: 'owner',
-          position: 'Consultant',
-          team: null,
-          user: null,
-        },
-      ]),
       removeParticipant,
     });
 
     await expect(
       makeService(repo).leaveChannel(
         'project-1',
-        'consultant-1',
+        'owner-1',
         'room-client-project-room',
       ),
-    ).rejects.toThrow('cannot leave');
-    expect(removeParticipant).not.toHaveBeenCalled();
+    ).resolves.toBeDefined();
+    expect(removeParticipant).toHaveBeenCalledWith(
+      'room-client-project-room',
+      'owner-1',
+    );
   });
 
   // ── Channel member list ───────────────────────────────────────────────────
@@ -597,22 +578,19 @@ describe('ChatService', () => {
     expect(listProjectMemberCandidates).toHaveBeenCalledWith('project-1');
   });
 
-  it('does not remove core members from the client project room', async () => {
+  /**
+   * Removal now sticks for everyone too — and, unlike before, permanently.
+   *
+   * This replaces a "does not remove core members from the client project room"
+   * case. Removal is gated on `chat.manage_channels`, which is the check that
+   * matters; who the member is on the project is not.
+   */
+  it('removes any participant when the actor can manage channels', async () => {
     const removeParticipant = jest.fn().mockResolvedValue(undefined);
     const repo = buildRepo({
       findRoomById: jest
         .fn()
         .mockResolvedValue(channel('client-project-room', true)),
-      listProjectMemberCandidates: jest.fn().mockResolvedValue([
-        {
-          user_id: 'client-1',
-          role: 'client',
-          access_role: 'owner',
-          position: 'Client',
-          team: null,
-          user: null,
-        },
-      ]),
       removeParticipant,
     });
 
@@ -621,10 +599,13 @@ describe('ChatService', () => {
         'project-1',
         'admin-1',
         'room-client-project-room',
-        'client-1',
+        'owner-1',
       ),
-    ).rejects.toThrow('cannot be removed');
-    expect(removeParticipant).not.toHaveBeenCalled();
+    ).resolves.toBeDefined();
+    expect(removeParticipant).toHaveBeenCalledWith(
+      'room-client-project-room',
+      'owner-1',
+    );
   });
 
   // ── DMs (unchanged behavior) ──────────────────────────────────────────────
@@ -693,29 +674,28 @@ describe('ChatService', () => {
     expect(createMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects a named consultant without a project_access permission row', async () => {
+  // `project_access` is the only authorization source: no resolved permission row
+  // means no posting, whatever the sender's standing on the project elsewhere.
+  it('rejects a sender without a project_access permission row', async () => {
     const room = buildRoom({
       id: 'room-chan',
       project_id: 'project-1',
       type: 'channel',
       slug: 'general',
     });
-    const resolveProjectRole = jest.fn().mockResolvedValue('consultant');
     const repo = buildRepo({
       findRoomForParticipant: jest.fn().mockResolvedValue(room),
-      resolveProjectRole,
     });
     const service = makeService(repo, {
       resolvePermissions: jest.fn().mockResolvedValue(null),
     });
 
     await expect(
-      service.sendChannelMessage('project-1', 'consultant-1', {
+      service.sendChannelMessage('project-1', 'sender-1', {
         room_id: 'room-chan',
         content: 'hello',
       }),
     ).rejects.toThrow('permission to post');
-    expect(resolveProjectRole).not.toHaveBeenCalled();
   });
 
   // ── Attachments ───────────────────────────────────────────────────────────

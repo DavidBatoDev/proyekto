@@ -131,7 +131,7 @@ export function PersonAccessDrawer({
 						<p className="text-xs capitalize text-muted-foreground">
 							{person.role}
 							{person.position ? ` · ${person.position}` : ""}
-							{person.isExternal ? " · External" : ""}
+							{person.isExternal ? " · Not on a team" : ""}
 						</p>
 					</div>
 				</div>

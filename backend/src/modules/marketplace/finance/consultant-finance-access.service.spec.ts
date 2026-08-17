@@ -94,7 +94,7 @@ describe('ConsultantFinanceAccessService', () => {
     ).rejects.toThrow('Finance project not found');
   });
 
-  it('requires an owner access row with consultant origin', async () => {
+  it('requires an owner access row on the project', async () => {
     const eqCalls: Array<[string, unknown]> = [];
     const service = new ConsultantFinanceAccessService(
       fakeSupabase({ accessCount: 0, eqCalls }),
@@ -104,10 +104,9 @@ describe('ConsultantFinanceAccessService', () => {
       service.assertProject('consultant-1', project.id),
     ).rejects.toThrow('Finance project not found');
     expect(eqCalls).toContainEqual(['role', 'owner']);
-    expect(eqCalls).toContainEqual(['origin', 'consultant']);
   });
 
-  it('lists only owner/consultant-origin project_access rows', async () => {
+  it('lists only projects the caller owns', async () => {
     const inaccessible = {
       ...project,
       id: '22222222-2222-4222-8222-222222222222',
@@ -124,14 +123,36 @@ describe('ConsultantFinanceAccessService', () => {
     ]);
   });
 
-  it('excludes a client-origin admin even when the caller is verified', async () => {
+  /**
+   * Still excluded, but for the honest reason.
+   *
+   * This used to pass because the query required `origin='consultant'`. It now
+   * passes because an admin is not an owner — the exclusion comes from the role
+   * ladder rather than from a label saying who the person is.
+   */
+  it('excludes an admin-role member even when the caller is verified', async () => {
     const eqCalls: Array<[string, unknown]> = [];
     const service = new ConsultantFinanceAccessService(
       fakeSupabase({ accessRows: [], eqCalls }),
     );
 
-    await expect(service.listProjects('client-admin-1')).resolves.toEqual([]);
+    await expect(service.listProjects('admin-1')).resolves.toEqual([]);
     expect(eqCalls).toContainEqual(['role', 'owner']);
-    expect(eqCalls).toContainEqual(['origin', 'consultant']);
+  });
+
+  /**
+   * The regression guard for this phase: finance scope must never ask the
+   * execution layer who the consultant is. The marketplace half of the rule is
+   * `assertVerified` (consultant_profiles), which stays.
+   */
+  it('never filters project_access by origin', async () => {
+    const eqCalls: Array<[string, unknown]> = [];
+    const service = new ConsultantFinanceAccessService(
+      fakeSupabase({ accessRows: [{ project_id: project.id }], eqCalls }),
+    );
+
+    await service.listProjects('consultant-1');
+
+    expect(eqCalls.map(([column]) => column)).not.toContain('origin');
   });
 });

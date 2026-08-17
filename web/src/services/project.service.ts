@@ -33,8 +33,6 @@ export interface Project {
 	currency?: string;
 	banner_url?: string;
 	owner_id: string;
-	/** True when the project owner is distinct from the consultant of record. */
-	has_client: boolean;
 	owner?: {
 		id: string;
 		display_name?: string;
@@ -94,8 +92,6 @@ export interface ProjectMember {
 		email?: string;
 		first_name?: string;
 		last_name?: string;
-		consultant_status?: "pending" | "verified" | "suspended" | "revoked" | null;
-		is_consultant_verified?: boolean;
 	};
 }
 
@@ -108,6 +104,28 @@ export interface ProjectPermissions {
 		resources: boolean;
 		project_settings: boolean;
 		time: boolean;
+		/** One gate for Deliverables, Change Requests, Risks & Issues, Decisions. */
+		delivery: boolean;
+	};
+	deliverables: {
+		edit: boolean;
+		/** Granted to the client origin regardless of role — they are the acceptor. */
+		approve: boolean;
+	};
+	change_requests: {
+		create: boolean;
+		decide: boolean;
+	};
+	risks: {
+		edit: boolean;
+		/** False for the client origin: internal risks stay internal. */
+		view_internal: boolean;
+	};
+	decisions: {
+		/** Editor and above — the same tier as editing a deliverable. */
+		edit: boolean;
+		/** False for the client origin, mirroring `risks.view_internal`. */
+		view_internal: boolean;
 	};
 	roadmap: {
 		view: boolean;
@@ -148,9 +166,6 @@ export interface ProjectPermissions {
 		share_files: boolean;
 		start_dm: boolean;
 		send_dm: boolean;
-		message_clients: boolean;
-		message_consultants: boolean;
-		message_freelancers: boolean;
 	};
 	resources: {
 		view: boolean;
@@ -1021,38 +1036,6 @@ class ProjectService {
 			const err = await response.json();
 			throw new Error(
 				extractApiErrorMessage(err, "Failed to transfer project owner"),
-			);
-		}
-
-		const result = await response.json();
-		return result.data ?? result;
-	}
-
-	async reassignConsultant(
-		projectId: string,
-		newConsultantId: string,
-	): Promise<Project> {
-		const {
-			data: { session },
-		} = await supabase.auth.getSession();
-		if (!session) throw new Error("Authentication required");
-
-		const response = await fetch(
-			`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/reassign-consultant`,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${session.access_token}`,
-				},
-				body: JSON.stringify({ new_consultant_id: newConsultantId }),
-			},
-		);
-
-		if (!response.ok) {
-			const err = await response.json();
-			throw new Error(
-				extractApiErrorMessage(err, "Failed to reassign consultant"),
 			);
 		}
 

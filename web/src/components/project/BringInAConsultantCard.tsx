@@ -3,23 +3,28 @@ import { ArrowRight, Crown } from "lucide-react";
 
 interface BringInAConsultantCardProps {
 	isPersonalWorkspace: boolean;
-	hasConsultant: boolean;
+	memberCount: number;
 }
 
 /**
- * Non-blocking prompt shown on the project Overview tab when a marketplace
- * project doesn't yet have a consultant assigned.
+ * Non-blocking prompt shown on the project Overview tab, pointing at the
+ * marketplace: a discoverable CTA for someone running a project on their own.
  *
- * Visibility rules (per specs/platform-foundations/requirements.md):
- *   - hide entirely on personal workspaces (they don't need a consultant)
- *   - hide once a consultant is assigned
+ * Visibility rules:
+ *   - hide entirely on personal workspaces (they are not delivery projects)
+ *   - hide once anybody else is on the project
  *   - otherwise: show as a discoverable but non-blocking card
+ *
+ * The second rule used to be "hide once a consultant is assigned", asking the
+ * execution layer which member row carried origin 'consultant'. A project has
+ * members, not a consultant, so the card now keys off whether the owner is
+ * still working alone — which is the thing it was really asking.
  */
 export function BringInAConsultantCard({
 	isPersonalWorkspace,
-	hasConsultant,
+	memberCount,
 }: BringInAConsultantCardProps) {
-	if (isPersonalWorkspace || hasConsultant) return null;
+	if (isPersonalWorkspace || memberCount > 1) return null;
 
 	return (
 		<div className="mb-6 overflow-hidden rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-amber-50/50 p-5 shadow-[0_4px_12px_rgba(245,158,11,0.08)] sm:p-6">

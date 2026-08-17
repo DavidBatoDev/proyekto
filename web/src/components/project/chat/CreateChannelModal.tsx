@@ -36,13 +36,11 @@ export function CreateChannelModal({
 	onCreate: (payload: {
 		name: string;
 		isPrivate: boolean;
-		kind?: "client_project";
 		memberIds: string[];
 	}) => void | Promise<void>;
 }) {
 	const [name, setName] = useState("");
 	const [isPrivate, setIsPrivate] = useState(false);
-	const [kind, setKind] = useState<"client_project" | undefined>();
 	const [memberIds, setMemberIds] = useState<string[]>([]);
 
 	// Reset whenever the modal (re)opens.
@@ -50,7 +48,6 @@ export function CreateChannelModal({
 		if (open) {
 			setName("");
 			setIsPrivate(false);
-			setKind(undefined);
 			setMemberIds([]);
 		}
 	}, [open]);
@@ -89,7 +86,7 @@ export function CreateChannelModal({
 
 	const submit = () => {
 		if (!canSubmit) return;
-		void onCreate({ name: trimmed, isPrivate, kind, memberIds });
+		void onCreate({ name: trimmed, isPrivate, memberIds });
 	};
 
 	return (
@@ -124,25 +121,12 @@ export function CreateChannelModal({
 											type="button"
 											title={suggestion.description}
 											onClick={() => {
+												// A preset suggests a name and a privacy setting, never a
+												// membership. It used to auto-select whoever resolved to
+												// the consultant or client persona — the creator picks.
 												setName(suggestion.name);
 												setIsPrivate(suggestion.isPrivate);
-												setKind(
-													suggestion.defaultAudience === "client_core"
-														? "client_project"
-														: undefined,
-												);
-												setMemberIds(
-													suggestion.defaultAudience === "client_core"
-														? selectableMembers
-																.filter(
-																	(member) =>
-																		member.role === "consultant" ||
-																		member.role === "client" ||
-																		member.access_role === "owner",
-																)
-																.map((member) => member.user_id)
-														: [],
-												);
+												setMemberIds([]);
 											}}
 											className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-100"
 										>
@@ -175,7 +159,6 @@ export function CreateChannelModal({
 									maxLength={120}
 									onChange={(e) => {
 										setName(e.target.value);
-										setKind(undefined);
 										setMemberIds([]);
 									}}
 									onKeyDown={(e) => {
@@ -191,7 +174,6 @@ export function CreateChannelModal({
 							<input
 								type="checkbox"
 								checked={isPrivate}
-								disabled={kind === "client_project"}
 								onChange={(e) => {
 									setIsPrivate(e.target.checked);
 									if (!e.target.checked) setMemberIds([]);
@@ -203,8 +185,7 @@ export function CreateChannelModal({
 									Make private
 								</span>
 								<span className="block text-xs text-slate-500">
-									Only invited members (and the consultant) can see this
-									channel.
+									Only invited members can see this channel.
 								</span>
 							</span>
 						</label>
@@ -244,9 +225,7 @@ export function CreateChannelModal({
 														{label}
 													</span>
 													<span className="block truncate text-xs capitalize text-slate-500">
-														{member.position ||
-															member.access_role ||
-															member.role}
+														{member.position || member.access_role}
 														{member.team ? ` · ${member.team.name}` : ""}
 													</span>
 												</span>

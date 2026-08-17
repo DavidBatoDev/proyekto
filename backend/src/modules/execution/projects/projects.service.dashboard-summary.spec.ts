@@ -96,7 +96,60 @@ describe('ProjectsService dashboard fee visibility', () => {
     expect(summary.time.total_fees).toBe(50);
   });
 
-  it('sums only permitted projects in a fan-out request', async () => {
+  // Fee visibility follows `time.view_team_logs`, which is a rung on the ladder
+  // (admin and up) or an explicit capability — never a fact about how the member
+  // joined. An editor does not hold it, so their project's fees stay out of the
+  // total even though their time logs are counted.
+  it('sums fees only for projects where the member can see team logs', async () => {
+    const service = buildService({
+      accessRows: [
+        {
+          project_id: 'editor-project',
+          role: 'editor',
+          origin: 'invited',
+          capabilities: {},
+        },
+        {
+          project_id: 'admin-project',
+          role: 'admin',
+          origin: 'invited',
+          capabilities: {},
+        },
+      ],
+      logs: [log('editor-project', 75), log('admin-project', 100)],
+    });
+
+    const summary = await service.getDashboardSummary('user-1', {});
+
+    expect(summary.time.total_logs).toBe(2);
+    expect(summary.time.total_hours).toBe(2);
+    expect(summary.time.total_fees).toBe(100);
+  });
+
+  // A capability denial withholds it from someone the ladder would have granted —
+  // the replacement for what ORIGIN_DELTAS.client used to do to client admins.
+  it('honours a capability that withholds team-log visibility', async () => {
+    const service = buildService({
+      accessRows: [
+        {
+          project_id: 'withheld-project',
+          role: 'admin',
+          origin: 'invited',
+          capabilities: { 'time.view_team_logs': false },
+        },
+      ],
+      logs: [log('withheld-project', 75)],
+    });
+
+    const summary = await service.getDashboardSummary('user-1', {});
+
+    expect(summary.time.total_logs).toBe(1);
+    expect(summary.time.total_fees).toBe(0);
+  });
+
+  // The accepted consequence of removing the persona model: a member who joined
+  // as a "client" is now just an admin, and admins see fees.
+  it('no longer hides fees from an admin based on how they joined', async () => {
     const service = buildService({
       accessRows: [
         {
@@ -105,20 +158,12 @@ describe('ProjectsService dashboard fee visibility', () => {
           origin: 'client',
           capabilities: {},
         },
-        {
-          project_id: 'consultant-project',
-          role: 'owner',
-          origin: 'consultant',
-          capabilities: {},
-        },
       ],
-      logs: [log('client-project', 75), log('consultant-project', 100)],
+      logs: [log('client-project', 75)],
     });
 
     const summary = await service.getDashboardSummary('user-1', {});
 
-    expect(summary.time.total_logs).toBe(2);
-    expect(summary.time.total_hours).toBe(2);
-    expect(summary.time.total_fees).toBe(100);
+    expect(summary.time.total_fees).toBe(75);
   });
 });

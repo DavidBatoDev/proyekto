@@ -1,47 +1,41 @@
 import { useMemo } from "react";
 import {
-	useProjectDetailQuery,
 	useProjectMembersQuery,
+	useProjectMyPermissionsQuery,
 } from "@/hooks/useProjectQueries";
-import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import { useUser } from "@/stores/authStore";
 
-const ADMIN_ROLES = new Set(["owner", "admin", "consultant", "client"]);
-
 /**
- * Coarse persona gate for the administrative pages inside Project > Team.
- * Freelancers still see the combined people/team roster, but not permissions,
- * the permissions catalog, or invites.
+ * Who may see the administrative pages inside Project > Team — permissions, the
+ * permissions catalog, and invites.
+ *
+ * Gated on `members.manage`, the same permission `ProjectTeamAdminGate`'s deny
+ * banner already names as its `path`. It used to be a role set — owner, admin,
+ * consultant, client — which asked two questions at once: half of it was the
+ * share_role ladder and half was a persona a project does not have. Reading the
+ * permission means a member whose capabilities withhold roster management is
+ * correctly refused even at owner rung, which the role set could not express.
  */
 export function useProjectTeamAccess(projectId: string) {
 	const user = useUser();
-	const projectQuery = useProjectDetailQuery(projectId);
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
 	const membersQuery = useProjectMembersQuery(projectId);
 
 	const access = useMemo(() => {
-		const project = projectQuery.data;
 		const userId = user?.id;
-		if (!project || !userId) {
-			return { role: null, isFreelancer: false, canViewAdmin: false };
-		}
+		if (!userId) return { role: null, canViewAdmin: false };
 
-		const isProjectPrincipal = hasProjectAdminAccess(project, userId);
 		const membership = (membersQuery.data ?? []).find(
 			(member) => member.user_id === userId,
 		);
-		const role = membership?.role ?? null;
-		const canViewAdmin =
-			isProjectPrincipal || (role ? ADMIN_ROLES.has(role) : false);
-
 		return {
-			role,
-			isFreelancer: !canViewAdmin,
-			canViewAdmin,
+			role: membership?.role ?? null,
+			canViewAdmin: permissionsQuery.data?.members.manage === true,
 		};
-	}, [membersQuery.data, projectQuery.data, user?.id]);
+	}, [membersQuery.data, permissionsQuery.data, user?.id]);
 
 	return {
 		...access,
-		isPending: projectQuery.isPending || membersQuery.isPending,
+		isPending: permissionsQuery.isPending || membersQuery.isPending,
 	};
 }

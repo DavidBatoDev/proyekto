@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-14 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -45,7 +45,14 @@ PDF.
 HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.
 
 Finance access requires active consultant capability plus a `project_access` row with
-`role=owner` and `origin=consultant`; that access row is also the consultant-of-record.
+`role=owner` — a verified consultant, on a project they own. The predicate used to also
+require `origin=consultant`; that origin no longer exists, and the execution layer no longer
+designates a consultant of record. Note this is deliberately narrower than the finance RLS
+(`20260811092000_finance_rls_project_access_only.sql`), which allows `owner|admin`: only
+`finance.controller.ts` carries `ConsultantOnlyGuard`, so on the other four finance
+controllers `assertProject` *is* the authorization, and these services run as
+`SUPABASE_ADMIN` where RLS never backstops them.
+
 Project deletion is refused while contracts are sent or signed, or while
 invoices are issued/sent. Drafts are discarded; ended/cancelled contracts and paid/void
 invoices survive with `project_id=NULL` and their project-title snapshots intact.
@@ -56,6 +63,35 @@ stored parties retain read-only access after severance. The portfolio summary an
 scheduler remain attached-project views: severed rows are intentionally absent from portfolio
 totals and cannot drive future scheduled billing. Project lifecycle status does not control
 whether a signed contract schedules invoice drafts.
+
+## Contract parties
+
+A contract is where the two sides of a piece of work are recorded. **A project is not.**
+A project is the execution layer: it has members with a permissions catalog, and it does not
+assume it has "a client" and "a consultant". Never infer a billing counterparty from
+`projects.owner_id` or from a `project_access` row.
+
+The paying counterparty is **snapshotted on the contract** — `client_name`,
+`client_contact_name`, `client_address`, `client_tin`, `client_email`, and a nullable
+`client_user_id`. They may never hold an account at all. `client_hourly_rate` is what the
+client pays and is the invoice price; it is not a cost figure.
+
+A signed contract's party snapshot is the billing authority.
+
+| Action | Who |
+| --- | --- |
+| Read a live or severed contract | `client_user_id`, or the distinct live project owner when no client seat is stored |
+| Sign the client party | Same rule |
+| Edit, unsign, or move a signature | Not allowed from the client side |
+| Sign a severed contract | Not allowed; severed contracts are durable read-only history |
+
+### Tokenized signing
+
+A counterparty with no account reaches exactly one surface in the product: the signing page
+at `/contract/sign/$token`, which needs no login. `contract_signature_links` holds a
+single-use 256-bit `token`, a `party` column constrained to `'client'`, and an `expires_at`
+defaulting to 14 days. Token signing runs the same enrollment and severance checks as in-app
+signing — the link is a delivery mechanism, not a bypass.
 
 ## Contract signing and invoice provenance
 

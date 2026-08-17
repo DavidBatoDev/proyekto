@@ -2,7 +2,7 @@
  * The per-member permission-matrix editor, mounted by
  * `/project/:id/team/permissions` whenever `?memberId=` is set.
  */
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, HelpCircle, Search } from "lucide-react";
@@ -29,17 +29,20 @@ import {
 } from "@/services/project.service";
 import { getTeam } from "@/services/teams.service";
 
-// ─── Multi-origin row helpers ──────────────────────────────────────────────
+// ─── Origin labels ─────────────────────────────────────────────────────────
 //
-// `project_access` has PK `(project_id, user_id, origin)`. A single user
-// can hold several rows on one project (e.g. a direct consultant grant
-// + a team-derived grant from being curated via an attached team).
-// These helpers group rows per user, compute the effective access, and
-// label origins for the chip stack so the UI doesn't double-list anyone.
+// `origin` records HOW a member joined — provenance, never what they can do.
+// The `Direct · Consultant` and `Direct · Client` entries below named positions
+// a project does not have; both origins were folded into `direct`.
+//
+// The comment here used to claim `project_access` has PK
+// `(project_id, user_id, origin)` and that one user can hold several rows on a
+// project. That stopped being true in migration 20260507000130, which collapsed
+// the key to `(project_id, user_id)`. The tab strip that presented a member's
+// several grants has been removed along with it.
 
 const DIRECT_ORIGIN_LABELS: Record<string, string> = {
-	consultant: "Direct · Consultant",
-	client: "Direct · Client",
+	direct: "Direct",
 	invited: "Direct · Invited",
 	personal_workspace: "Personal workspace",
 	legacy: "Direct · Legacy",
@@ -103,6 +106,7 @@ const ACCESS_GATE_LABELS: Record<AccessGateKey, string> = {
 	resources: "Access Resources",
 	project_settings: "Access Project Settings",
 	time: "Access Time",
+	delivery: "Access Delivery",
 };
 
 const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
@@ -137,12 +141,6 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
 	["chat", "share_files", "chat", "send_messages"],
 	["chat", "start_dm", "access", "chat"],
 	["chat", "send_dm", "chat", "start_dm"],
-	["chat", "message_clients", "chat", "start_dm"],
-	["chat", "message_clients", "chat", "send_dm"],
-	["chat", "message_consultants", "chat", "start_dm"],
-	["chat", "message_consultants", "chat", "send_dm"],
-	["chat", "message_freelancers", "chat", "start_dm"],
-	["chat", "message_freelancers", "chat", "send_dm"],
 	["resources", "upload", "resources", "view"],
 	["resources", "delete", "resources", "view"],
 	["logs", "view_sensitive", "logs", "view"],
@@ -199,176 +197,14 @@ function getUnmetRequires(
 // that catalog directly — the duplicated structure that used to live here is
 // gone.
 
-const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["chat", "logs"];
-
-// ─── Default templates (matches backend PERMISSION_TEMPLATES) ────────────────
-
-const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
-	consultant: {
-		access: {
-			roadmap: true,
-			work_items: true,
-			team: true,
-			chat: true,
-			resources: true,
-			project_settings: true,
-			time: true,
-		},
-		roadmap: {
-			view: true,
-			edit: true,
-			comment: true,
-			promote: true,
-			assign: true,
-			edit_metadata: true,
-			view_internal: true,
-			create_tasks: true,
-			edit_tasks: true,
-			share: true,
-			export: true,
-			dev_mode: true,
-		},
-		members: {
-			view: true,
-			manage: true,
-			edit_permissions: true,
-			edit_position: true,
-		},
-		teams: { view: true, manage: true },
-		project: {
-			settings: true,
-			edit_content: true,
-			view_internal_content: true,
-		},
-		chat: {
-			view_channels: true,
-			send_messages: true,
-			create_channels: true,
-			manage_channels: true,
-			view_internal_channels: true,
-			mention_members: true,
-			share_files: true,
-			start_dm: true,
-			send_dm: true,
-			message_clients: true,
-			message_consultants: true,
-			message_freelancers: true,
-		},
-		resources: { view: true, upload: true, delete: true },
-		logs: { view: true, view_sensitive: true },
-		time: { view_team_logs: true },
-	},
-	client: {
-		access: {
-			roadmap: true,
-			work_items: true,
-			team: true,
-			chat: true,
-			resources: true,
-			project_settings: false,
-			time: false,
-		},
-		roadmap: {
-			view: true,
-			edit: true,
-			comment: true,
-			promote: true,
-			assign: false,
-			edit_metadata: true,
-			view_internal: false,
-			create_tasks: false,
-			edit_tasks: false,
-			share: false,
-			export: false,
-			dev_mode: false,
-		},
-		members: {
-			view: true,
-			manage: false,
-			edit_permissions: false,
-			edit_position: false,
-		},
-		teams: { view: true, manage: false },
-		project: {
-			settings: false,
-			edit_content: true,
-			view_internal_content: false,
-		},
-		chat: {
-			view_channels: true,
-			send_messages: true,
-			create_channels: false,
-			manage_channels: false,
-			view_internal_channels: false,
-			mention_members: true,
-			share_files: true,
-			start_dm: true,
-			send_dm: true,
-			message_clients: false,
-			message_consultants: true,
-			message_freelancers: false,
-		},
-		resources: { view: true, upload: true, delete: false },
-		logs: { view: false, view_sensitive: false },
-		// A client doesn't log time, so the page would just be empty for them.
-		time: { view_team_logs: false },
-	},
-	freelancer: {
-		access: {
-			roadmap: true,
-			work_items: true,
-			team: true,
-			chat: true,
-			resources: true,
-			project_settings: false,
-			time: true,
-		},
-		roadmap: {
-			view: true,
-			edit: false,
-			comment: true,
-			promote: false,
-			assign: false,
-			edit_metadata: false,
-			view_internal: false,
-			create_tasks: true,
-			edit_tasks: true,
-			share: false,
-			export: false,
-			dev_mode: false,
-		},
-		members: {
-			view: true,
-			manage: false,
-			edit_permissions: false,
-			edit_position: false,
-		},
-		teams: { view: true, manage: false },
-		project: {
-			settings: false,
-			edit_content: false,
-			view_internal_content: false,
-		},
-		chat: {
-			view_channels: true,
-			send_messages: true,
-			create_channels: false,
-			manage_channels: false,
-			view_internal_channels: false,
-			mention_members: true,
-			share_files: true,
-			start_dm: true,
-			send_dm: true,
-			message_clients: false,
-			message_consultants: true,
-			message_freelancers: true,
-		},
-		resources: { view: true, upload: true, delete: false },
-		logs: { view: false, view_sensitive: false },
-		// Freelancers track time here, but only see their own.
-		time: { view_team_logs: false },
-	},
-};
+// ─── Default templates ───────────────────────────────────────────────────────
+//
+// Keyed by the role ladder, reusing ROLE_PRESETS so there is one definition of
+// what a rung means. This used to be a persona-keyed table
+// (consultant / client / freelancer) mirroring a backend PERMISSION_TEMPLATES
+// that no longer exists — and since ProjectMember.role only ever carries ladder
+// values, the lookup always fell through to the freelancer entry, quietly
+// showing the wrong baseline in the "reset to default" diff.
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 
@@ -392,13 +228,11 @@ export function ProjectPermissionsEditor({
 	const [member, setMember] = useState<ProjectMember | null>(null);
 	// Other project_access rows held by the same user. Drives the
 	// "switch grant" tab strip above the matrix when set has 2+ rows.
-	const [siblings, setSiblings] = useState<ProjectMember[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const isMemberMode = true;
-	const isConsultantRole = member?.origin === "consultant";
 
 	useEffect(() => {
 		let cancelled = false;
@@ -409,7 +243,6 @@ export function ProjectPermissionsEditor({
 			setInitialPermissions(null);
 			setDefaultPermissions(null);
 			setMember(null);
-			setSiblings([]);
 
 			try {
 				if (memberId) {
@@ -421,15 +254,17 @@ export function ProjectPermissionsEditor({
 					let resolvedDefaultTemplate: ProjectPermissions | null = null;
 
 					if (found) {
-						const templateKey =
-							found.role === "consultant"
-								? "consultant"
-								: found.role === "client"
-									? "client"
-									: "freelancer";
-						const fallbackTemplate = ROLE_TEMPLATES[templateKey];
+						// The baseline the "reset to default" diff compares against is the
+						// member's own rung. Owner has no preset because it holds
+						// everything; anything below editor reads as viewer.
+						const preset: RolePresetKey =
+							found.role === "admin" || found.role === "owner"
+								? "admin"
+								: found.role === "editor"
+									? "editor"
+									: "viewer";
 						resolvedDefaultTemplate = enforceDeps(
-							structuredClone(fallbackTemplate),
+							structuredClone(ROLE_PRESETS[preset]),
 						);
 					}
 
@@ -438,18 +273,6 @@ export function ProjectPermissionsEditor({
 						setPermissions(normalized);
 						setInitialPermissions(structuredClone(normalized));
 						setMember(found);
-						// Siblings = other project_access rows held by the same
-						// user. Surface them as a tab strip so the editor can
-						// switch between origin grants without leaving the page.
-						if (found && found.user_id) {
-							setSiblings(
-								members.filter(
-									(m) => m.id !== found.id && m.user_id === found.user_id,
-								),
-							);
-						} else {
-							setSiblings([]);
-						}
 						if (resolvedDefaultTemplate) {
 							setDefaultPermissions(resolvedDefaultTemplate);
 						}
@@ -600,31 +423,26 @@ export function ProjectPermissionsEditor({
 		})).filter((s) => s.permissions.length > 0);
 	}, [query]);
 
-	// Resolve team names for the multi-origin tab strip below.
-	const siblingTeamIds = useMemo(() => {
-		const ids = new Set<string>();
-		const collect = (origin: string | null | undefined) => {
-			if (origin?.startsWith("team:")) {
-				ids.add(origin.slice("team:".length));
-			}
-		};
-		collect(member?.origin);
-		for (const s of siblings) collect(s.origin);
-		return Array.from(ids);
-	}, [member?.origin, siblings]);
-	const siblingTeamQueries = useQueries({
-		queries: siblingTeamIds.map((id) => ({
-			queryKey: ["teams", "detail", id],
-			queryFn: () => getTeam(id),
-		})),
+	// A member holds exactly one access row, so there is at most one team name to
+	// resolve for the origin chip. This used to gather team ids across the
+	// member's "sibling" rows too — see the note on DIRECT_ORIGIN_LABELS above:
+	// the multi-row model it served has been impossible since migration
+	// 20260507000130 collapsed the key to (project_id, user_id).
+	const originTeamId = member?.origin?.startsWith("team:")
+		? member.origin.slice("team:".length)
+		: null;
+	const originTeamQuery = useQuery({
+		queryKey: ["teams", "detail", originTeamId],
+		queryFn: () => getTeam(originTeamId as string),
+		enabled: Boolean(originTeamId),
 	});
-	const siblingTeamNames = useMemo(() => {
+	const originTeamNames = useMemo(() => {
 		const map = new Map<string, string>();
-		for (const q of siblingTeamQueries) {
-			if (q.data) map.set(q.data.id, q.data.name);
+		if (originTeamQuery.data) {
+			map.set(originTeamQuery.data.id, originTeamQuery.data.name);
 		}
 		return map;
-	}, [siblingTeamQueries]);
+	}, [originTeamQuery.data]);
 
 	const pageTitle = member
 		? `${member.user?.display_name || member.user?.email || "Member"} — Permissions`
@@ -653,37 +471,12 @@ export function ProjectPermissionsEditor({
 						</span>
 						{member.origin && (
 							<span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-700">
-								Origin: {formatOriginLabel(member.origin, siblingTeamNames)}
+								Origin: {formatOriginLabel(member.origin, originTeamNames)}
 							</span>
 						)}
 						<span className="text-slate-500">
-							Overrides on this row layer on top of the role + origin baseline.
+							Overrides on this row layer on top of the role's baseline.
 						</span>
-					</div>
-				)}
-				{isMemberMode && member && siblings.length > 0 && (
-					<div className="mt-4 rounded-md border border-slate-200 bg-slate-50/60 p-3">
-						<p className="mb-2 text-[11px] text-slate-600">
-							This person is on the project via{" "}
-							<span className="font-semibold text-slate-900">
-								{siblings.length + 1} sources
-							</span>
-							. Their role and capabilities are unified across all sources —
-							editing here applies to every grant. Removing one source still
-							leaves the others intact.
-						</p>
-						<div className="flex flex-wrap items-center gap-1.5">
-							{[member, ...siblings].map((row) => (
-								<span
-									key={row.id}
-									className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700"
-								>
-									<span className="truncate max-w-40">
-										{formatOriginLabel(row.origin, siblingTeamNames)}
-									</span>
-								</span>
-							))}
-						</div>
 					</div>
 				)}
 			</div>
@@ -748,16 +541,13 @@ export function ProjectPermissionsEditor({
 							</div>
 						) : (
 							visibleSections.map((section) => {
-								const isLockedSection =
-									isConsultantRole &&
-									CONSULTANT_LOCKED_SECTIONS.includes(section.key);
 								const requiredAccessGate =
 									SECTION_ACCESS_REQUIREMENTS[section.key];
 								const isAccessBlocked =
 									section.key !== "access" &&
 									!!requiredAccessGate &&
 									permissions.access[requiredAccessGate] !== true;
-								const isSectionDisabled = isLockedSection || isAccessBlocked;
+								const isSectionDisabled = isAccessBlocked;
 								const isCollapsed = collapsed[section.key] === true;
 
 								return (
@@ -774,13 +564,10 @@ export function ProjectPermissionsEditor({
 										}
 										sectionDisabled={isSectionDisabled}
 										sectionDisabledReason={
-											isLockedSection
-												? "Always enabled for consultants."
-												: isAccessBlocked && requiredAccessGate
-													? `Enable ${ACCESS_GATE_LABELS[requiredAccessGate]} in Access first.`
-													: null
+											isAccessBlocked && requiredAccessGate
+												? `Enable ${ACCESS_GATE_LABELS[requiredAccessGate]} in Access first.`
+												: null
 										}
-										isLockedSection={isLockedSection}
 										saving={saving}
 										onToggleField={(field, checked) =>
 											setPermission(section.key, field, checked)
@@ -905,7 +692,6 @@ function SectionBlock({
 	onToggle,
 	sectionDisabled,
 	sectionDisabledReason,
-	isLockedSection,
 	saving,
 	onToggleField,
 	isPermissionChanged,
@@ -917,7 +703,6 @@ function SectionBlock({
 	onToggle: () => void;
 	sectionDisabled: boolean;
 	sectionDisabledReason: string | null;
-	isLockedSection: boolean;
 	saving: boolean;
 	onToggleField: (field: string, checked: boolean) => void;
 	isPermissionChanged: (section: SectionKey, key: string) => boolean;
@@ -975,9 +760,9 @@ function SectionBlock({
 									string,
 									boolean
 								>;
-								const checked = isLockedSection
-									? true
-									: group[perm.field] === true;
+								// The real stored value. A persona lock used to force this to
+								// render checked for a consultant regardless of what was saved.
+								const checked = group[perm.field] === true;
 								const changed =
 									!sectionDisabled &&
 									isPermissionChanged(section.key, perm.field);

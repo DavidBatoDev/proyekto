@@ -28,7 +28,7 @@ export function ProjectTeamAdminGate({
 					label: "Manage project members",
 					requiredRole: "admin",
 					message:
-						"Permissions and invitations are available to the project client, consultant, owners, and admins.",
+						"Permissions and invitations are available to members who can manage the roster.",
 				}}
 			/>
 		);

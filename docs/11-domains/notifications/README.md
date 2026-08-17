@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -254,10 +254,12 @@ both halves: `RoadmapMentionInviteService` reads it before creating anything, an
 permissions payload so the client affordance appears and disappears with it. One
 UPDATE moves both, with no deploy.
 
-That permission is computed from a **role comparison**, not from `members.manage` —
-`ORIGIN_DELTAS` grants `members.manage` to consultant and client origins regardless of
-role, so an editor-role consultant holds it while `assertRole('admin')` would refuse
-them. Using it would have offered an affordance the server then declined.
+That permission is computed from a **role comparison**, not from `members.manage`. The
+original reason was that `ORIGIN_DELTAS` granted `members.manage` on origin regardless of
+role, so the two could disagree and the UI would offer an affordance the server then
+declined. `ORIGIN_DELTAS` is gone and they can no longer diverge that way, but the role
+comparison is what ships — treat switching it to `members.manage` as a deliberate change
+to verify, not a cleanup.
 
 ### Watching it
 

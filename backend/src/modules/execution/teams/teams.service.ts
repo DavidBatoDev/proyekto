@@ -16,10 +16,6 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
-import {
-  type ProjectClientFlag,
-  attachProjectClientFlag,
-} from '../projects/repositories/project-payload.mapper';
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
@@ -45,7 +41,7 @@ export interface TeamMemberPreview {
   last_name: string | null;
 }
 
-export interface TeamAttachedProject extends ProjectClientFlag {
+export interface TeamAttachedProject {
   id: string;
   title: string | null;
   status: string | null;
@@ -56,7 +52,6 @@ export interface TeamAttachedProject extends ProjectClientFlag {
     display_name: string | null;
     avatar_url: string | null;
   } | null;
-  members?: unknown[];
 }
 
 export interface TeamRow {
@@ -547,8 +542,7 @@ export class TeamsService {
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
            id, title, status, banner_url, owner_id,
-           owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url),
-           members:project_access(user_id, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))
+           owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url)
          )`,
       )
       .eq('team_id', teamId)
@@ -559,7 +553,7 @@ export class TeamsService {
       team_id: string;
       is_primary: boolean;
       attached_at: string;
-      project: Omit<TeamAttachedProject, keyof ProjectClientFlag> | null;
+      project: TeamAttachedProject | null;
     }>;
     const projectIds = rows.map((r) => r.project_id).filter(Boolean);
     let accessSet = new Set<string>();
@@ -581,7 +575,7 @@ export class TeamsService {
     }
     return rows.map((r) => ({
       ...r,
-      project: r.project ? attachProjectClientFlag(r.project) : null,
+      project: r.project,
       viewer_has_access: accessSet.has(r.project_id),
       viewer_role: roleMap.get(r.project_id) ?? null,
     }));

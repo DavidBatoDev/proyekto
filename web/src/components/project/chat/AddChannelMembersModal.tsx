@@ -116,7 +116,7 @@ export function AddChannelMembersModal({
 													{label}
 												</span>
 												<span className="block truncate text-xs capitalize text-slate-500">
-													{member.position || member.access_role || member.role}
+													{member.position || member.access_role}
 													{member.team ? ` · ${member.team.name}` : ""}
 												</span>
 											</span>

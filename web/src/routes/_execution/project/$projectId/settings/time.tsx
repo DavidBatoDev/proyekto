@@ -9,8 +9,8 @@ import { Clock, Loader2, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { RateBudgetCalculator } from "@/components/team-time/RateBudgetCalculator";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
-import { isProjectConsultant } from "@/lib/projectAccess";
 import { projectService } from "@/services/project.service";
 import {
 	listCuratedMembers,
@@ -21,7 +21,7 @@ import {
 	type TeamMemberRate,
 	updateMemberRate,
 } from "@/services/teams.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute(
 	"/_execution/project/$projectId/settings/time",
@@ -43,19 +43,21 @@ function memberLabel(m: TeamMember): string {
 
 function ProjectTimeSettings() {
 	const { projectId } = Route.useParams();
-	const user = useUser();
 
 	const projectQuery = useQuery({
 		queryKey: ["project", projectId],
 		queryFn: () => projectService.get(projectId),
 	});
-	const project = projectQuery.data;
-	const isConsultant = isProjectConsultant(project, user?.id);
+	// Managing other people's hour caps is a team-time grant, not something the
+	// project's lead holds by virtue of being the lead. `time.view_team_logs` is
+	// the admin-rung permission that already gates the team tab on /time.
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+	const canManageTeamTime = permissionsQuery.data?.time.view_team_logs === true;
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],
 		queryFn: () => listProjectTeams(projectId),
-		enabled: isConsultant,
+		enabled: canManageTeamTime,
 	});
 	const teams = teamsQuery.data ?? [];
 
@@ -64,7 +66,7 @@ function ProjectTimeSettings() {
 		queries: teams.map((t) => ({
 			queryKey: ["team", t.team_id, "members"] as const,
 			queryFn: () => listTeamMembers(t.team_id),
-			enabled: isConsultant,
+			enabled: canManageTeamTime,
 		})),
 	});
 	// The members actually ADDED to this project (curated participants). A team's
@@ -74,7 +76,7 @@ function ProjectTimeSettings() {
 		queries: teams.map((t) => ({
 			queryKey: ["project", projectId, "teams", t.team_id, "curated"] as const,
 			queryFn: () => listCuratedMembers(projectId, t.team_id),
-			enabled: isConsultant,
+			enabled: canManageTeamTime,
 		})),
 	});
 	const rows = teams.flatMap((t, i) => {
@@ -104,14 +106,14 @@ function ProjectTimeSettings() {
 					<div className="flex justify-center p-12">
 						<Loader2 className="h-6 w-6 animate-spin text-slate-400" />
 					</div>
-				) : !isConsultant ? (
+				) : !canManageTeamTime ? (
 					<div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
 						<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
 						<div>
-							<div className="font-semibold">Consultant only</div>
+							<div className="font-semibold">You don't have access</div>
 							<p className="mt-0.5">
-								Only the project's consultant can view and manage per-member
-								hour limits.
+								Viewing and managing per-member hour limits needs permission to
+								see the team's time.
 							</p>
 						</div>
 					</div>

@@ -17,7 +17,6 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
-import { AdminGuard } from '../../../common/guards/admin.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import {
@@ -26,7 +25,6 @@ import {
 } from '../../../common/cache/redis-data-cache.service';
 import {
   AddProjectMemberDto,
-  AssignConsultantDto,
   CreateProjectDto,
   CreateProjectFromRoadmapDto,
   CreateProjectResourceFolderDto,
@@ -34,7 +32,6 @@ import {
   InviteProjectByEmailDto,
   ProjectDashboardSummaryQueryDto,
   ProjectInviteQueryDto,
-  ReassignProjectConsultantDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
   RespondProjectInviteDto,
@@ -141,20 +138,18 @@ export class ProjectsController {
     return this.projectsService.transferProjectOwner(id, user.id, dto);
   }
 
-  @Post(':id/reassign-consultant')
-  reassignConsultant(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ReassignProjectConsultantDto,
-  ) {
-    return this.projectsService.reassignProjectConsultant(id, user.id, dto);
-  }
-
-  @Post(':id/assign-consultant')
-  @UseGuards(AdminGuard)
-  assignConsultant(@Param('id') id: string, @Body() dto: AssignConsultantDto) {
-    return this.projectsService.assignConsultant(id, dto.consultant_id);
-  }
+  /*
+   * `POST :id/reassign-consultant` and `POST :id/assign-consultant` used to sit
+   * here. Both existed to move `project_access.origin = 'consultant'` — a
+   * designation the execution layer no longer keeps, because a project has members
+   * with permissions rather than a client and a consultant.
+   *
+   * `transfer-owner` above is the replacement, and covers the same ground: every
+   * row that carried the consultant origin was also `projects.owner_id`, so nobody
+   * loses an affordance. It also logs member activity, which the consultant path
+   * never did. `assign-consultant` had no web caller at all — the admin match tool
+   * posts to `/admin/match-assign`, which stays.
+   */
 
   @Get(':id/resources')
   listResources(

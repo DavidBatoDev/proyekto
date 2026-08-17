@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-16 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `freelancer` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -61,4 +61,4 @@ security boundary.
 ## See also
 
 - [access-and-permissions.md](./access-and-permissions.md)
-- [Web routing and personas](../../04-web/routing-and-personas.md)
+- [Web routing and access](../../04-web/routing-and-access.md)

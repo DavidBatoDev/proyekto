@@ -1,6 +1,6 @@
 # Identity and Enrollment
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-18 · **Status:** draft
 
 > **⚠️ Proposed runtime — not built.** P4b's expand schema is applied, but its runtime is
 > inactive; P4c's client projection remains undesigned. Phases 1–3,
@@ -198,7 +198,7 @@ P4a ships six bounded corrections:
 The shipped phases required rewriting the current-state
 docs built on the `account_role` and profile-flag models — chiefly
 [01-product/personas.md](../01-product/personas.md) ("`profiles.role` is the identity
-source of truth"), [04-web/routing-and-personas.md](../04-web/routing-and-personas.md)
+source of truth"), [04-web/routing-and-access.md](../04-web/routing-and-access.md)
 (the three signup lanes), [03-backend/auth-and-guards.md](../03-backend/auth-and-guards.md)
 (lane payloads and role guards),
 [07-data-and-db/schema-overview.md](../07-data-and-db/schema-overview.md) (the

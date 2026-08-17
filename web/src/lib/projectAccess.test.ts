@@ -19,7 +19,7 @@ describe("isPersonalWorkspace", () => {
 	it("does not classify ordinary projects as personal workspaces", () => {
 		expect(
 			isPersonalWorkspace({
-				members: [{ user_id: "user-1", role: "owner", origin: "client" }],
+				members: [{ user_id: "user-1", role: "owner", origin: "direct" }],
 			}),
 		).toBe(false);
 	});

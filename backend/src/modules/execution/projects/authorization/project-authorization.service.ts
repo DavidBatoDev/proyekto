@@ -46,11 +46,17 @@ export interface ProjectShare {
   granted_at: string;
 }
 
-export type ProjectShareOrigin =
-  | 'client'
-  | 'consultant'
-  | 'invited'
-  | 'personal_workspace';
+/**
+ * How a member came to be on a project — provenance, not a role. What they can
+ * do is `role` plus `capabilities`; origin never affects that.
+ *
+ * `client` and `consultant` used to live here and were folded into `direct`:
+ * they named positions the execution layer does not have, and a project's
+ * parties belong on a contract. Rows written before that still exist as
+ * `legacy`, and team-derived rows carry a `team:<id>` prefix, so readers must
+ * tolerate values outside this union.
+ */
+export type ProjectShareOrigin = 'direct' | 'invited' | 'personal_workspace';
 
 interface GrantParams {
   projectId: string;
@@ -70,25 +76,22 @@ export class ProjectAuthorizationService {
     private readonly audit: AuditService,
   ) {}
 
-  /** The project's consultant (cannot be removed) — null if none assigned. */
-  async getProjectConsultantId(projectId: string): Promise<string | null> {
-    const { data, error } = await this.supabase
-      .from('project_access')
-      .select('user_id, has_direct_grant, granted_at')
-      .eq('project_id', projectId)
-      .eq('origin', 'consultant')
-      .order('has_direct_grant', { ascending: false })
-      .order('granted_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) {
-      this.logger.error(
-        `getProjectConsultantId(${projectId}) failed: ${error.message}`,
-      );
-      throw new Error(error.message);
-    }
-    return (data?.user_id as string | null) ?? null;
-  }
+  /*
+   * There is deliberately no `getProjectConsultantId` here.
+   *
+   * It read `project_access.origin = 'consultant'`, tie-breaking on
+   * `has_direct_grant` then `granted_at`, and let execution-layer code ask "who is
+   * the consultant on this project?". A project is the execution layer: it has
+   * MEMBERS with a permissions catalog, and no notion of a client or a consultant.
+   *
+   * Its callers were replaced according to what they actually needed:
+   *   - guards ("the consultant cannot be removed / cannot leave") — deleted; the
+   *     role ladder's last-owner check protects every owner equally;
+   *   - notification audiences — `listUsersWithPermission(projectId, path)`;
+   *   - the invoice and contract flows, which genuinely need the delivery lead —
+   *     `contracts.consultant_user_id`, which is the marketplace's own record and
+   *     always exists where those flows do.
+   */
 
   /**
    * Returns the caller's effective role on a project — the maximum
@@ -180,10 +183,6 @@ export class ProjectAuthorizationService {
     for (const row of data) {
       const resolved = resolvePermissions(
         row.role as ProjectRole,
-        // Team-derived origins look like 'team:<uuid>' and have no
-        // delta in ORIGIN_DELTAS — pass null so resolvePermissions
-        // treats them as plain role baselines.
-        this.normalizeOrigin(row.origin as string | null),
         (row.capabilities as Record<string, unknown> | null) ?? null,
       );
       merged = merged ? this.unionPermissions(merged, resolved) : resolved;
@@ -191,10 +190,58 @@ export class ProjectAuthorizationService {
     return merged;
   }
 
-  private normalizeOrigin(origin: string | null): ProjectShareOrigin | null {
-    if (!origin) return null;
-    if (origin.startsWith('team:')) return null;
-    return origin as ProjectShareOrigin;
+  /**
+   * Every user on the project who holds `path`, for fan-out — "who should be
+   * told this needs a decision?".
+   *
+   * One query for all rows, then the pure resolution per user in process. The
+   * naive alternative (list members, then `resolvePermissions` per member) is a
+   * round trip per member on a surface that fans out on every write.
+   *
+   * Ordering is not meaningful; callers treat the result as a set.
+   */
+  async listUsersWithPermission(
+    projectId: string,
+    path: PermissionPath,
+  ): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('project_access')
+      .select('user_id, role, origin, capabilities')
+      .eq('project_id', projectId);
+
+    if (error) {
+      this.logger.error(
+        `listUsersWithPermission(${projectId}, ${path}) failed: ${error.message}`,
+      );
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) return [];
+
+    // Union per user first, exactly as resolvePermissions does for one caller:
+    // a user with several rows (a direct grant plus team-derived rows) holds a
+    // permission if ANY row grants it, so testing rows individually would miss
+    // whoever is only granted it through their weaker row.
+    const byUser = new Map<string, ProjectPermissions>();
+    for (const row of data) {
+      const userId = row.user_id as string | null;
+      if (!userId) continue;
+
+      const resolved = resolvePermissions(
+        row.role as ProjectRole,
+        (row.capabilities as Record<string, unknown> | null) ?? null,
+      );
+      const existing = byUser.get(userId);
+      byUser.set(
+        userId,
+        existing ? this.unionPermissions(existing, resolved) : resolved,
+      );
+    }
+
+    const holders: string[] = [];
+    for (const [userId, perms] of byUser) {
+      if (getPermission(perms, path)) holders.push(userId);
+    }
+    return holders;
   }
 
   private unionPermissions(
@@ -310,9 +357,11 @@ export class ProjectAuthorizationService {
         has_direct_grant: true,
         granted_by: params.grantedBy,
       };
-      if (params.origin === 'consultant') {
-        updatePayload.origin = 'consultant';
-      }
+      // A re-grant deliberately leaves `origin` alone. It used to overwrite the
+      // stored value when the incoming one was 'consultant' — the mechanism that
+      // made that designation sticky, and the only path that rewrote provenance
+      // after the fact. How somebody first joined does not change because they
+      // were re-granted later.
 
       const { data, error } = await this.supabase
         .from('project_access')
@@ -401,13 +450,14 @@ export class ProjectAuthorizationService {
    *                            no remaining team curations, deletes
    *                            project_access.
    *
-   * Refuses to delete the last owner row in any branch.
+   * Refuses to delete the last owner row in any branch. That is the only
+   * protection: there is no separate "the consultant is unremovable" rule, so an
+   * owner is an owner whoever they are.
    */
   async revoke(
     projectId: string,
     userId: string,
     origin?: string,
-    opts?: { allowConsultantRemoval?: boolean },
   ): Promise<void> {
     const { data: row } = await this.supabase
       .from('project_access')
@@ -417,18 +467,11 @@ export class ProjectAuthorizationService {
       .maybeSingle();
     if (!row) return;
 
-    // The consultant cannot be removed from a project (PRD guarantee).
-    const consultantId = opts?.allowConsultantRemoval
-      ? null
-      : await this.getProjectConsultantId(projectId);
-    if (consultantId && userId === consultantId) {
-      throw new MissingPermissionException({
-        path: null,
-        message: 'The consultant cannot be removed from a project.',
-        label: 'remove the consultant',
-      });
-    }
-
+    // There used to be a guard here refusing to remove "the consultant", found by
+    // reading project_access.origin. A project is the execution layer: it has
+    // members with permissions, so it cannot know who the consultant is. The rung
+    // is what protects the project — the last-owner check below — and it protects
+    // every owner equally rather than one labelled person.
     if (row.role === 'owner') {
       const ownerCount = await this.countOwners(projectId);
       if (ownerCount <= 1) {

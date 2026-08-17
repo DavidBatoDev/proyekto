@@ -161,7 +161,7 @@ export class AdminService {
       projectId: dto.project_id,
       userId: dto.consultant_id,
       role: 'owner',
-      origin: 'consultant',
+      origin: 'direct',
       grantedBy: dto.consultant_id,
     });
     const assigned = await this.adminRepo.assignConsultant(dto.project_id);

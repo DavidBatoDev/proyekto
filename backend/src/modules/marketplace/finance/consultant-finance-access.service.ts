@@ -12,6 +12,26 @@ export interface ConsultantFinanceProject {
   created_at: string;
 }
 
+/**
+ * Which projects' money a caller may see.
+ *
+ * Two conditions, ANDed:
+ *   1. the caller is a verified consultant (`consultant_profiles.status='verified'`)
+ *      — a MARKETPLACE capability, and legitimately a persona question;
+ *   2. the caller holds `role='owner'` on the project — an EXECUTION fact.
+ *
+ * Condition 2 used to also require `origin='consultant'`, which made the
+ * execution layer answer "who is the consultant here?" — something a project must
+ * not know. Dropping the origin is very nearly a no-op in practice: measured on
+ * production, the scope goes from 17 (user, project) pairs to 18, losing none.
+ *
+ * Deliberately NOT widened to `owner|admin`, even though the finance RLS
+ * (20260811092000_finance_rls_project_access_only.sql) is exactly that: only
+ * `finance.controller.ts` carries ConsultantOnlyGuard, so on the invoices,
+ * contracts, financials and project-economics controllers `assertProject` IS the
+ * authorization — and these services use the service-role client, so RLS never
+ * backstops them. Staying narrower than the policy is the point.
+ */
 @Injectable()
 export class ConsultantFinanceAccessService {
   constructor(
@@ -35,8 +55,7 @@ export class ConsultantFinanceAccessService {
         .select('id', { count: 'exact', head: true })
         .eq('project_id', projectId)
         .eq('user_id', callerId)
-        .eq('role', 'owner')
-        .eq('origin', 'consultant'),
+        .eq('role', 'owner'),
     ]);
 
     if (
@@ -66,8 +85,7 @@ export class ConsultantFinanceAccessService {
       .from('project_access')
       .select('project_id')
       .eq('user_id', callerId)
-      .eq('role', 'owner')
-      .eq('origin', 'consultant');
+      .eq('role', 'owner');
     if (accessError) throw new Error(accessError.message);
 
     const projectIds = Array.from(

@@ -1,7 +1,7 @@
 import type { PeopleSummary } from "@/lib/projectPeople";
 
 /**
- * "5 people · 2 can edit · 2 view-only · 1 external", as filter pills.
+ * "5 people · 2 can edit · 2 view-only · 1 not on a team", as filter pills.
  *
  * The point is the question a non-technical consultant actually asks — *who
  * can change things, and who here isn't ours?* — answered before they read a
@@ -30,7 +30,7 @@ export function PeopleAccessSummary({
 		},
 		{ key: "can-edit", label: "can edit", count: summary.canEdit },
 		{ key: "view-only", label: "view-only", count: summary.viewOnly },
-		{ key: "external", label: "external", count: summary.external },
+		{ key: "external", label: "not on a team", count: summary.external },
 	];
 
 	return (

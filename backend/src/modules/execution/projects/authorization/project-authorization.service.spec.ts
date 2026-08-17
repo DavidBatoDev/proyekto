@@ -56,19 +56,6 @@ function buildService(...queued: ReturnType<typeof thenable>[]) {
   };
 }
 
-// Consultant-of-record lookup used by revoke.
-const consultantLookup = (consultantId: string | null) =>
-  thenable({
-    data: consultantId
-      ? {
-          user_id: consultantId,
-          has_direct_grant: true,
-          granted_at: '2026-08-11T00:00:00Z',
-        }
-      : null,
-    error: null,
-  });
-
 describe('ProjectAuthorizationService', () => {
   describe('roleSatisfies (role hierarchy)', () => {
     const { service } = buildService();
@@ -119,29 +106,6 @@ describe('ProjectAuthorizationService', () => {
     });
   });
 
-  describe('getProjectConsultantId', () => {
-    it('orders direct grants before the newest consultant grant', async () => {
-      const query = consultantLookup('direct-consultant');
-      const { service } = buildService(query);
-
-      await expect(service.getProjectConsultantId('p1')).resolves.toBe(
-        'direct-consultant',
-      );
-      expect(query.order).toHaveBeenNthCalledWith(1, 'has_direct_grant', {
-        ascending: false,
-      });
-      expect(query.order).toHaveBeenNthCalledWith(2, 'granted_at', {
-        ascending: false,
-      });
-      expect(query.limit).toHaveBeenCalledWith(1);
-    });
-
-    it('returns null when there is no consultant access row', async () => {
-      const { service } = buildService(consultantLookup(null));
-      await expect(service.getProjectConsultantId('p1')).resolves.toBeNull();
-    });
-  });
-
   describe('assertRole', () => {
     it('passes when the user has exactly the required role', async () => {
       const { service } = buildService(
@@ -185,7 +149,7 @@ describe('ProjectAuthorizationService', () => {
         project_id: 'p1',
         user_id: 'u1',
         role: 'admin',
-        origin: 'client',
+        origin: 'direct',
         capabilities: {},
         granted_by: null,
         granted_at: '2026-05-03T00:00:00Z',
@@ -201,7 +165,7 @@ describe('ProjectAuthorizationService', () => {
         projectId: 'p1',
         userId: 'u1',
         role: 'admin',
-        origin: 'client',
+        origin: 'direct',
         grantedBy: null,
       });
       expect(share.role).toBe('admin');
@@ -210,7 +174,7 @@ describe('ProjectAuthorizationService', () => {
           project_id: 'p1',
           user_id: 'u1',
           role: 'admin',
-          origin: 'client',
+          origin: 'direct',
           has_direct_grant: true,
         }),
       );
@@ -220,7 +184,7 @@ describe('ProjectAuthorizationService', () => {
       const existing = {
         id: 's1',
         role: 'owner',
-        origin: 'consultant',
+        origin: 'direct',
         capabilities: { 'roadmap.edit': true },
       };
       const updated = {
@@ -228,7 +192,7 @@ describe('ProjectAuthorizationService', () => {
         project_id: 'p1',
         user_id: 'u1',
         role: 'owner',
-        origin: 'consultant',
+        origin: 'direct',
         capabilities: { 'roadmap.edit': true },
         granted_by: null,
         granted_at: '2026-05-03T00:00:00Z',
@@ -257,7 +221,12 @@ describe('ProjectAuthorizationService', () => {
       );
     });
 
-    it('promotes an existing row to consultant origin', async () => {
+    // This used to be "promotes an existing row to consultant origin": a
+    // re-grant carrying origin 'consultant' overwrote whatever provenance the
+    // row already had, which is what made that designation stick. Origin is
+    // provenance — how somebody first joined does not change because they were
+    // re-granted later — so the re-grant now leaves it alone whatever it says.
+    it('never rewrites the stored origin on a re-grant, whatever comes in', async () => {
       const existing = {
         id: 's1',
         role: 'editor',
@@ -269,7 +238,6 @@ describe('ProjectAuthorizationService', () => {
         project_id: 'p1',
         user_id: 'u1',
         role: 'owner',
-        origin: 'consultant',
         has_direct_grant: true,
       };
       const { service, queued } = buildService(
@@ -281,58 +249,41 @@ describe('ProjectAuthorizationService', () => {
         projectId: 'p1',
         userId: 'u1',
         role: 'owner',
-        origin: 'consultant',
+        origin: 'direct',
         grantedBy: 'u1',
       });
 
       expect(queued[1].update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: 'owner',
-          origin: 'consultant',
-          has_direct_grant: true,
-        }),
+        expect.objectContaining({ role: 'owner', has_direct_grant: true }),
+      );
+      expect(queued[1].update).toHaveBeenCalledWith(
+        expect.not.objectContaining({ origin: expect.anything() }),
       );
     });
   });
 
-  describe('revoke (last-owner + consultant protection)', () => {
+  /**
+   * The last-owner check is the only protection now.
+   *
+   * There used to be a second one refusing to remove "the consultant", found by
+   * reading `project_access.origin`, with an `allowConsultantRemoval` escape hatch
+   * for the reassignment flow. Both are gone: an owner is an owner, and the rung
+   * protects them all equally. Note each case is one `from()` call shorter than it
+   * was, because the consultant lookup no longer happens.
+   */
+  describe('revoke (last-owner protection)', () => {
     it('removes a non-owner share without checking owner count', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'editor' }, error: null }),
-        consultantLookup(null),
         thenable({ error: null }),
         thenable({ error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
     });
 
-    it('refuses to remove the consultant', async () => {
-      const { service } = buildService(
-        thenable({ data: { role: 'editor' }, error: null }),
-        consultantLookup('u1'),
-      );
-      await expect(service.revoke('p1', 'u1')).rejects.toThrow(
-        /consultant cannot be removed/i,
-      );
-    });
-
-    it('allows explicit consultant removal during reassignment', async () => {
-      const { service } = buildService(
-        thenable({ data: { role: 'editor' }, error: null }),
-        thenable({ error: null }),
-        thenable({ error: null }),
-      );
-      await expect(
-        service.revoke('p1', 'u1', undefined, {
-          allowConsultantRemoval: true,
-        }),
-      ).resolves.toBeUndefined();
-    });
-
     it('refuses to remove the last owner', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'owner' }, error: null }),
-        consultantLookup(null),
         thenable({ count: 1, error: null }),
       );
       await expect(service.revoke('p1', 'u1')).rejects.toThrow(/last owner/);
@@ -341,12 +292,28 @@ describe('ProjectAuthorizationService', () => {
     it('removes an owner when other owners exist', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'owner' }, error: null }),
-        consultantLookup(null),
         thenable({ count: 2, error: null }),
         thenable({ error: null }),
         thenable({ error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
+    });
+
+    // The guarantee that replaced the persona guard: whoever the owner is, the
+    // only question asked is how many owners remain.
+    it('never looks up who the consultant is', async () => {
+      const { service, queued } = buildService(
+        thenable({ data: { role: 'owner' }, error: null }),
+        thenable({ count: 2, error: null }),
+        thenable({ error: null }),
+        thenable({ error: null }),
+      );
+
+      await service.revoke('p1', 'u1');
+
+      for (const query of queued) {
+        expect(query.eq).not.toHaveBeenCalledWith('origin', 'consultant');
+      }
     });
 
     it('is a no-op when the share row does not exist', async () => {
@@ -421,6 +388,129 @@ describe('ProjectAuthorizationService', () => {
           'members.edit_permissions',
         ),
       ).rejects.toThrow(/equal authority/i);
+    });
+  });
+
+  describe('listUsersWithPermission', () => {
+    const rows = (
+      ...entries: Array<{
+        user_id: string | null;
+        role: string;
+        origin?: string | null;
+        capabilities?: Record<string, unknown> | null;
+      }>
+    ) =>
+      thenable({
+        data: entries.map((e) => ({
+          user_id: e.user_id,
+          role: e.role,
+          origin: e.origin ?? null,
+          capabilities: e.capabilities ?? {},
+        })),
+        error: null,
+      });
+
+    it('returns only the users who hold the permission', async () => {
+      const { service } = buildService(
+        rows(
+          { user_id: 'admin-1', role: 'admin' },
+          { user_id: 'viewer-1', role: 'viewer' },
+        ),
+      );
+
+      const holders = await service.listUsersWithPermission(
+        'p1',
+        'change_requests.decide',
+      );
+
+      expect(holders).toEqual(['admin-1']);
+    });
+
+    // A user with several rows holds a permission if ANY row grants it. Testing
+    // rows individually would miss whoever gets it only from their stronger row —
+    // a weak team-derived grant alongside a direct admin grant is the common shape.
+    it('unions a users rows rather than judging each one alone', async () => {
+      const { service } = buildService(
+        rows(
+          { user_id: 'member-1', role: 'viewer', origin: 'team:abc' },
+          { user_id: 'member-1', role: 'admin', origin: 'invited' },
+        ),
+      );
+
+      const holders = await service.listUsersWithPermission(
+        'p1',
+        'change_requests.decide',
+      );
+
+      expect(holders).toEqual(['member-1']);
+    });
+
+    // The same union, but where the grant comes from a per-member capability
+    // rather than the rung — the mechanism that replaced the origin deltas.
+    it('unions a capability grant on a weaker row', async () => {
+      const { service } = buildService(
+        rows(
+          { user_id: 'member-1', role: 'viewer', origin: 'team:abc' },
+          {
+            user_id: 'member-1',
+            role: 'viewer',
+            origin: 'invited',
+            capabilities: { 'change_requests.decide': true },
+          },
+        ),
+      );
+
+      await expect(
+        service.listUsersWithPermission('p1', 'change_requests.decide'),
+      ).resolves.toEqual(['member-1']);
+    });
+
+    it('reports each holder once, however many rows they have', async () => {
+      const { service } = buildService(
+        rows(
+          { user_id: 'admin-1', role: 'admin' },
+          { user_id: 'admin-1', role: 'editor' },
+          { user_id: 'owner-1', role: 'owner' },
+        ),
+      );
+
+      const holders = await service.listUsersWithPermission(
+        'p1',
+        'change_requests.decide',
+      );
+
+      expect(holders.sort()).toEqual(['admin-1', 'owner-1']);
+    });
+
+    it('ignores rows with no user_id', async () => {
+      const { service } = buildService(
+        rows(
+          { user_id: null, role: 'owner' },
+          { user_id: 'admin-1', role: 'admin' },
+        ),
+      );
+
+      await expect(
+        service.listUsersWithPermission('p1', 'change_requests.decide'),
+      ).resolves.toEqual(['admin-1']);
+    });
+
+    it('returns empty for a project with no access rows', async () => {
+      const { service } = buildService(thenable({ data: [], error: null }));
+
+      await expect(
+        service.listUsersWithPermission('p1', 'change_requests.decide'),
+      ).resolves.toEqual([]);
+    });
+
+    it('throws when the query fails, rather than reporting nobody', async () => {
+      const { service } = buildService(
+        thenable({ data: null, error: { message: 'connection reset' } }),
+      );
+
+      await expect(
+        service.listUsersWithPermission('p1', 'change_requests.decide'),
+      ).rejects.toThrow('connection reset');
     });
   });
 });

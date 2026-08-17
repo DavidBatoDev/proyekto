@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-16 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -42,7 +42,7 @@ for the rationale.
 > **No `client/` route subtree.** Client-facing surfaces live under `project/`,
 > `dashboard`, and the public `contract/sign/$token` page — `web/src/routes/client/`
 > **does not exist**. See
-> [Feature Domains → clients](../11-domains/clients/client-surfaces.md) for the full
+> [Finance → contract parties](../11-domains/finance/README.md#contract-parties) for the full
 > inventory of what a client actually reaches.
 
 > **⚠️ `oauth/authorize` is deliberately absent from `Header.tsx`'s `validPaths`.**
@@ -58,14 +58,45 @@ for the rationale.
 `ProjectBottomNav`, grouped Plan / Collaborate / Manage):
 
 `overview`, `roadmap` (+ `roadmap/$roadmapId`, `roadmap/create`), `timeline`
-(+ `timeline/$roadmapId`), `work-items` (+ `work-items/$roadmapId`), `team/*`,
-`resources`, `time`, `logs`, `chat/$chatRef`, and `settings/*`. There's also
+(+ `timeline/$roadmapId`), `work-items` (+ `work-items/$roadmapId`), `deliverables`
+(+ `deliverables/$deliverableId`), `change-requests`, `risks`, `decisions`
+(+ `decisions/$decisionId`), `team/*`,
+`resources`, `time`, `logs`,
+`chat/$chatRef`, and `settings/*`. There's also
 `project/roadmap/convert/$roadmapId` for the guest-roadmap → project conversion.
 
-> **Two nav labels differ from their paths.** `work-items` is labelled **Board**, and
-> `timeline` is the milestones timeline promoted out of the roadmap canvas into its own
-> page (it renders `RoadmapViewContent` with the view mode pinned; the old
-> `roadmap/$roadmapId?view=timelineView` deep link redirects to it).
+The rail groups these as **Project** (overview, roadmap, board, timeline, deliverables),
+**Collaborate** (team, chat, resources), and **Management** (change requests, decisions,
+risks, activity), with `time` and `settings/*` behind a gear pinned to the bottom. The
+grouping, the labels, and active-state matching all come from one source,
+[`projectNavItems.ts`](../../web/src/components/project/projectNavItems.ts), which the
+sidebar, the mobile bar, and the header breadcrumb share.
+
+> **Three nav labels differ from their paths.** `work-items` is labelled **Board**;
+> `logs` is labelled **Activity** (the route and the `logs.view` permission are a shipped
+> contract, so only the label moved); and `timeline` is the milestones timeline promoted
+> out of the roadmap canvas into its own page (it renders `RoadmapViewContent` with the
+> view mode pinned; the old `roadmap/$roadmapId?view=timelineView` deep link redirects
+> to it).
+
+> **Match whole path segments, never prefixes.** `/time` is a prefix of `/timeline`, so a
+> `startsWith` check lights the Time entry on every Timeline page — a bug that shipped
+> once already. `ownsSegment` in `projectNavItems.ts` is the shared predicate, and
+> `projectNavItems.test.ts` pins the case.
+
+> **`deliverables`, `change-requests`, `risks`, and `decisions`** are backed by the
+> `execution/delivery/` backend module and share a **single `access.delivery` gate**
+> rather than one key each — every `access.*` key has to be hand-mirrored into three web
+> files with no automated check, and these four are always granted together. Approval
+> authority (`deliverables.approve`, `change_requests.decide`) is granted on the role
+> ladder like every other key, and can be handed to an individual member through their
+> `capabilities`. It used to come from an `ORIGIN_DELTAS.client` patch instead — a
+> project-level "client" the execution layer no longer models.
+>
+> **Reading is one gate; writing is not.** Each surface has its own write key —
+> `deliverables.edit`, `change_requests.create`, `risks.edit`, `decisions.edit` — all
+> granted at **editor**. `risks.view_internal` and `decisions.view_internal` gate the
+> `internal` rows on those two tables and are granted at **admin**.
 
 > **There is no `payments` project tab.** Invoicing and contracts live in the top-level
 > `finance/` subtree, which is consultant-only.
@@ -83,9 +114,11 @@ Gating happens in three places:
   confirms a verified `consultant_profiles` enrollment (there is no account role).
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
-  exactly six route bodies — `roadmap`, `timeline`, `work-items`, `resources`,
-  `chat/$chatRef`, and `time` — keyed on the corresponding `access.*` flag (`timeline`
-  reuses `access.roadmap`). `logs` gates **inline** on
+  exactly twelve route bodies — `roadmap`, `timeline`, `work-items`, `resources`,
+  `chat/$chatRef`, `time`, `deliverables`, `deliverables/$deliverableId`,
+  `change-requests`, `risks`, `decisions`, and `decisions/$decisionId` — keyed on the
+  corresponding `access.*` flag. `timeline` reuses `access.roadmap`, and the last six all
+  reuse `access.delivery`. `logs` gates **inline** on
   `permissions.logs.view` because the component's `access` prop is typed to the `access.*`
   section, which has no `logs` key. `overview`, `team/*`, and `settings/*` are **not
   wrapped** and rely on backend 403s surfacing as toasts. `ProtectedRoute` handles
@@ -108,4 +141,4 @@ Gating happens in three places:
 
 - [architecture.md](./architecture.md) — the app shell and providers.
 - [Product → roles and capabilities](../01-product/personas.md) — the access model these routes serve.
-- [Feature Domains → clients](../11-domains/clients/client-surfaces.md) — which of these routes a client reaches, and the gate on each.
+- [Finance → contract parties](../11-domains/finance/README.md#contract-parties) — where the paying counterparty is recorded, and the tokenized signing route.

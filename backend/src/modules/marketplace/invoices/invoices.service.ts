@@ -245,6 +245,11 @@ export class InvoicesService {
     if (dto.contract_id && !contract) {
       throw new BadRequestException('The selected contract does not exist.');
     }
+    if (contract && contract.relationship_kind !== 'client_services') {
+      throw new BadRequestException(
+        'Talent contracts are cost agreements and cannot be used for client invoices.',
+      );
+    }
     if (contract && contract.project_id !== dto.project_id) {
       throw new BadRequestException(
         'The selected contract does not belong to this project.',
@@ -258,7 +263,11 @@ export class InvoicesService {
     const number =
       dto.number?.trim() ||
       (await this.nextInvoiceNumber(dto.project_id, contract));
-    const detail = dto.hours_detail_level ?? 'summary';
+    // P4b fixed-price agreements are manually invoiced. Their invoice can
+    // carry explicit manual line items, but must never attach delivery hours.
+    const fixedPrice = contract?.billing_mode === 'fixed';
+    const detail = fixedPrice ? 'none' : (dto.hours_detail_level ?? 'summary');
+    const attachHours = fixedPrice ? false : (dto.attach_hours ?? false);
 
     // The shared Supabase client is intentionally untyped at this boundary.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -284,7 +293,7 @@ export class InvoicesService {
         issued_by: this.issuedBySnapshot(contract),
         payment_method: contract?.payment_method ?? null,
         notes: dto.notes?.trim() || null,
-        attach_hours: dto.attach_hours ?? false,
+        attach_hours: attachHours,
       })
       .select('*')
       .single();
@@ -298,7 +307,7 @@ export class InvoicesService {
     const invoice = data as InvoiceRow;
     const lines = await this.composeInvoiceLines(invoice, contract, {
       line_items: dto.line_items,
-      attach_hours: dto.attach_hours ?? false,
+      attach_hours: attachHours,
       hours_from: dto.hours_from ?? dto.period_start,
       hours_to: dto.hours_to ?? dto.period_end,
       hours_detail_level: detail,
@@ -327,8 +336,16 @@ export class InvoicesService {
     dueDate: string,
     issueDate: string,
   ): Promise<InvoiceWithLines | null> {
-    // Keep the service fail-closed if a severed contract is passed directly.
-    if (!contract.project_id) return null;
+    // Keep the service fail-closed if an ineligible contract is passed
+    // directly. P4b schedules only live hourly/retainer Client agreements;
+    // fixed-price contracts are manual until milestone billing exists.
+    if (
+      !contract.project_id ||
+      contract.relationship_kind !== 'client_services' ||
+      contract.billing_mode === 'fixed'
+    ) {
+      return null;
+    }
     if (await this.qaFixtures.isFixtureProject(contract.project_id))
       return null;
     const number = await this.nextInvoiceNumber(contract.project_id, contract);
@@ -589,7 +606,7 @@ export class InvoicesService {
     // An invoice can only be issued/sent once there is a client to reach:
     // a linked client account, a client email on the contract, or a real
     // client on the project. Otherwise "issue" would be a no-op.
-    await this.assertInvoiceHasClient(invoice);
+    this.assertInvoiceHasClient(invoice);
 
     const now = new Date().toISOString();
     const issueDate = invoice.issue_date ?? now.slice(0, 10);
@@ -1004,29 +1021,21 @@ export class InvoicesService {
   }
 
   /**
-   * True-or-throw: the invoice has a client to send to. Accepts any of a linked
-   * recipient account, a client email snapshotted onto the invoice, or a real
-   * project owner when that owner is distinct from the consultant.
+   * True-or-throw: the invoice names somebody to send it to.
+   *
+   * A recipient account or a bill-to email on the invoice. It used to also accept
+   * "the project has an owner who is not the consultant" as a third proof, read
+   * out of `project_access.origin` — an inference about who the parties are rather
+   * than a fact about this invoice, and one the execution layer should not be
+   * asked to make. Requiring the invoice to name its recipient is both stricter
+   * and unambiguous.
    */
-  private async assertInvoiceHasClient(invoice: InvoiceRow): Promise<void> {
+  private assertInvoiceHasClient(invoice: InvoiceRow): void {
     const billToEmail = (invoice.bill_to as InvoiceParty | null)?.email?.trim();
     if (invoice.recipient_user_id || billToEmail) return;
 
-    const projectId = this.requireInvoiceProjectId(invoice);
-    const { data } = await this.supabase
-      .from('projects')
-      .select('owner_id')
-      .eq('id', projectId)
-      .maybeSingle();
-    const project = data as { owner_id: string | null } | null;
-    const consultantId =
-      await this.projectAuth.getProjectConsultantId(projectId);
-    if (project?.owner_id && project.owner_id !== consultantId) {
-      return;
-    }
-
     throw new BadRequestException(
-      'This invoice has no client to send to. Add a client to the project, or fill in the client details on the contract, before issuing.',
+      'This invoice has no recipient to send to. Link a recipient account, or fill in the bill-to details on the invoice or contract, before issuing.',
     );
   }
 

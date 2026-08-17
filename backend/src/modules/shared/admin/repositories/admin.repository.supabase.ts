@@ -7,7 +7,6 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import { AdminRepository } from './admin.repository.interface';
-import { attachProjectClientFlag } from '../../../execution/projects/repositories/project-payload.mapper';
 import { attachMarketplaceEnrollmentFields } from '../../../../common/auth/consultant-capability';
 
 type ConsultantEnrollmentStatus =
@@ -425,7 +424,7 @@ export class SupabaseAdminRepository implements AdminRepository {
       .single();
     if (error || !data) throw new NotFoundException('Project not found');
 
-    return attachProjectClientFlag(data as Record<string, unknown>);
+    return data as Record<string, unknown>;
   }
 
   async listProjects() {
@@ -435,8 +434,7 @@ export class SupabaseAdminRepository implements AdminRepository {
         '*, owner:profiles!projects_owner_id_fkey(id, display_name, avatar_url), members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))',
       )
       .order('created_at', { ascending: false });
-    const projects = (data ?? []) as unknown as Array<Record<string, unknown>>;
-    return projects.map((project) => attachProjectClientFlag(project));
+    return (data ?? []) as unknown as Array<Record<string, unknown>>;
   }
 
   async listUsers() {

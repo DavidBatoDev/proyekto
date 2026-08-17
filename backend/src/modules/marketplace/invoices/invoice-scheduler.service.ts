@@ -152,6 +152,7 @@ export class InvoiceSchedulerService {
       .select('*')
       .eq('project_id', projectId)
       .eq('status', 'signed')
+      .eq('relationship_kind', 'client_services')
       .order('version', { ascending: false })
       .limit(1);
     if (error) throw new BadRequestException(error.message);
@@ -160,6 +161,11 @@ export class InvoiceSchedulerService {
     if (!contract) {
       throw new BadRequestException(
         'This project has no signed contract yet. Sign the contract before generating invoices.',
+      );
+    }
+    if (contract.billing_mode === 'fixed') {
+      throw new BadRequestException(
+        'Fixed-price contracts are invoiced manually until milestone billing ships.',
       );
     }
     if (!contract.service_start_date || !contract.service_end_date) {
@@ -328,10 +334,15 @@ export class InvoiceSchedulerService {
       .from('contracts')
       .select('*')
       .eq('status', 'signed')
+      .eq('relationship_kind', 'client_services')
       .lte('service_start_date', addDaysIso(today, MAX_ADVANCE_LEAD_DAYS));
     if (error) throw new Error(error.message);
 
     const candidates = ((data ?? []) as ContractRow[]).filter((row) => {
+      // P4b fixed-price client contracts deliberately remain manual-invoice
+      // only until milestone billing exists. Flexible contracts likewise have
+      // no invoice project yet, so cannot enter the scheduler.
+      if (row.billing_mode === 'fixed' || !row.project_id) return false;
       // Keep billing through the final period after service ends, but stop
       // once the wind-down window has also closed.
       const cutoff = row.contract_end_date ?? row.service_end_date;
@@ -354,14 +365,18 @@ export class InvoiceSchedulerService {
   ): Promise<void> {
     // Severed contracts are historical records and never schedule new drafts.
     if (!contract.project_id) return;
-    const consultantId = await this.projectAuth.getProjectConsultantId(
-      contract.project_id,
-    );
-    if (!consultantId) return;
+
+    // The contract already names the provider, so there is nothing to look up.
+    // This used to ask the execution layer "who is the consultant on this
+    // project?" via project_access.origin — an odd question to ask when the
+    // contract that generated this draft is in hand. `created_by` is the same
+    // fallback the contract service itself uses.
+    const recipientId = contract.consultant_user_id ?? contract.created_by;
+    if (!recipientId) return;
 
     try {
       await this.notifications.createNotification({
-        user_id: consultantId,
+        user_id: recipientId,
         project_id: contract.project_id,
         // System-generated: no acting user.
         type_name: 'invoice_draft_ready',
@@ -376,7 +391,7 @@ export class InvoiceSchedulerService {
       });
     } catch (err) {
       this.logger.warn(
-        `Could not notify consultant about invoice ${invoiceId}: ${
+        `Could not notify the provider about invoice ${invoiceId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

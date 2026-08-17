@@ -1,6 +1,6 @@
 # Project Lifecycle
 
-> **Last updated:** 2026-08-14 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 A **project** is the structured container for delivery — it holds the roadmap, the
 team, the conversations, the meetings, and the money. This page walks a project from
@@ -85,8 +85,8 @@ Progress turns into money through the **live** financial path:
   detail the client sees is controlled by `invoices.hours_detail_level`
   (`none` / `summary` / `detailed`); member identity never appears on an invoice.
 - **Automated invoicing** — a Cloud Scheduler cron (`POST /api/invoices/cron/run`)
-  drafts one invoice per contract per closed billing period and notifies the
-  consultant. Nothing is sent to a client automatically.
+  drafts one invoice per contract per closed billing period and notifies the provider
+  named on the contract. Nothing is issued or sent automatically.
 - **Payouts** (`payouts` + `payout_methods`) — manual payouts grouping a member's
   approved, single-currency time logs; proofs stored privately on R2.
 
@@ -98,8 +98,8 @@ Progress turns into money through the **live** financial path:
 ## 7. Completion
 
 As features complete, progress rolls up (feature → epic → milestone → roadmap), the
-client tracks health, and `user_stats` update on completion. The `project_activity_log`
-records the audit trail throughout.
+project's health strip reflects it, and `user_stats` update on completion. The
+`project_activity_log` records the audit trail throughout.
 
 ## See also
 

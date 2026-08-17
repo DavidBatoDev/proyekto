@@ -33,12 +33,16 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
 
     const result = await repo.findDashboardByUser('user-1');
 
-    const enrollmentEmbed =
-      'consultant_profiles!consultant_profiles_user_id_fkey(status)';
-    expect(projectsBuilder.select).toHaveBeenCalledWith(
+    // The member embed used to reach into consultant_profiles to stamp
+    // `is_consultant_verified` on every project member. Nothing read it — the
+    // one consumer was the "reassign consultant" picker — and a member's
+    // marketplace enrollment is not something a project payload should carry.
+    // Assert the join stays gone: it rode on every dashboard load.
+    const enrollmentEmbed = 'consultant_profiles';
+    expect(projectsBuilder.select).not.toHaveBeenCalledWith(
       expect.stringContaining(enrollmentEmbed),
     );
-    expect(projectAccessBuilder.select).toHaveBeenCalledWith(
+    expect(projectAccessBuilder.select).not.toHaveBeenCalledWith(
       expect.stringContaining(enrollmentEmbed),
     );
 

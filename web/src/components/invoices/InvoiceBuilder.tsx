@@ -133,13 +133,11 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 		email: contract?.client_email,
 	};
 
-	// Issue/send is gated on there being a client to reach (mirrors the backend
-	// guard): a linked recipient, a client email on the contract, or a real
-	// project client.
+	// Issue/send is gated on the invoice naming somebody to reach (mirrors the
+	// backend guard): a linked recipient account, or a bill-to email.
 	const canIssue = invoiceHasClient({
 		recipientUserId: existing?.recipient_user_id,
 		billToEmail: billTo.email,
-		projectHasClient: projectQuery.data?.has_client,
 	});
 
 	const previewLines = lines.map((l) => ({

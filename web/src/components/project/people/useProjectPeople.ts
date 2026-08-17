@@ -79,15 +79,15 @@ export interface ProjectPeople {
 	isPending: boolean;
 }
 
-// Highest first — the effective role when someone holds several grants.
+// The share_role ladder, highest first. It used to also carry "consultant",
+// "member" and "client" — none of which are share_role values, so none ever
+// matched — and they sat in positions that would have mis-sorted the real rungs
+// if they had.
 const ROLE_ORDER = [
 	"owner",
-	"consultant",
 	"admin",
-	"member",
 	"editor",
 	"commenter",
-	"client",
 	"viewer",
 ] as const;
 

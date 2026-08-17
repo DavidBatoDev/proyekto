@@ -30,7 +30,6 @@ import {
 	type InvoiceStatus,
 	invoiceService,
 } from "@/services/invoice.service";
-import { projectService } from "@/services/project.service";
 
 export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const qc = useQueryClient();
@@ -50,12 +49,6 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const invoicesQuery = useQuery({
 		queryKey: ["invoices", "project", projectId],
 		queryFn: () => invoiceService.listByProject(projectId, { limit: 100 }),
-	});
-
-	// Needed to know whether the project has a real client, which gates issuing.
-	const projectQuery = useQuery({
-		queryKey: ["project", projectId],
-		queryFn: () => projectService.get(projectId),
 	});
 
 	// Generating scheduled drafts needs a signed contract to bill against.
@@ -267,7 +260,6 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 		canIssue: invoiceHasClient({
 			recipientUserId: invoice.recipient_user_id,
 			billToEmail: invoice.bill_to?.email,
-			projectHasClient: projectQuery.data?.has_client,
 		}),
 		onIssue: () => setConfirmIssue(invoice),
 		onResend: () => resendMutation.mutate(invoice.id),

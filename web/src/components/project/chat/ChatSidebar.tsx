@@ -166,7 +166,7 @@ export function ChatSidebar({
 											{label}
 										</p>
 										<p className="text-xs uppercase text-slate-500">
-											{member.role}
+											{member.position || member.access_role}
 										</p>
 									</button>
 								);

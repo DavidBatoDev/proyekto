@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-16 · **Status:** draft
+> **Last updated:** 2026-08-18 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;
@@ -24,10 +24,9 @@ deliberately leaves that future party expansion additive.
 4. **Proposals cite source.** A design that contradicts the current code must say so and point
    at the file, so the cost of the change is visible.
 
-> **⚠️ Diagram exception.** [STYLE.md](../STYLE.md) mandates ASCII diagrams. This section and
-> [11-domains/clients](../11-domains/clients/README.md) use **Mermaid** — these pages carry ER
-> diagrams, state machines, and multi-actor sequences that ASCII renders badly. GitHub renders
-> Mermaid natively. The rest of `docs/` stays ASCII.
+> **⚠️ Diagram exception.** [STYLE.md](../STYLE.md) mandates ASCII diagrams. This section uses
+> **Mermaid** — these pages carry ER diagrams, state machines, and multi-actor sequences that
+> ASCII renders badly. GitHub renders Mermaid natively. The rest of `docs/` stays ASCII.
 
 ## Documentation index
 
@@ -116,7 +115,7 @@ spent (and burned) elsewhere.
 
 ## See also
 
-- [11-domains/clients](../11-domains/clients/README.md) — what exists today, and the gaps these
+- [11-domains/](../11-domains/README.md) — what exists today, and the gaps these
   proposals close.
 - [Architecture → system overview](../02-architecture/system-overview.md) — the six units these
   designs touch.

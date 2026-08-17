@@ -1,55 +1,52 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
-grant access to every project. Project authority still requires `project_access`. When the
-person is consultant-of-record, Proyekto grants owner access with a consultant-origin delta.
+grant access to any project. Project authority comes from `project_access` — a `role` on the
+share_role ladder plus per-member `capabilities`, and nothing else.
+
+> **⚠️ The execution layer no longer designates a consultant.** A project has MEMBERS with a
+> permissions catalog; it does not assume it has a client and a consultant. Those are
+> positions on a **contract**. Everything on this page that used to describe a
+> "consultant-of-record" designation stored on the project was removed between 2026-08-17 and
+> 2026-08-18 — see the note below for exactly what is gone.
 
 ## Project creation and assignment
 
 | Path | Result |
 | --- | --- |
-| Active consultant creates in consultant mode | Draft project, creator receives project `owner`, origin `consultant` |
-| Consultant assigned to client-created project | Named consultant receives `owner` + origin `consultant` |
-| Consultant reassigned | Replacement must already be a member and active; receives `owner` + consultant origin |
-| Consultant joins only by invite/team | Receives the ordinary invited/team project role; not automatically the named consultant |
+| Active consultant creates in consultant mode | Draft project, creator receives project `owner` |
+| Admin match-assign | Named consultant receives `owner` on the project |
+| Joins by invite or team | Receives the ordinary invited/team project role |
 
-The consultant-origin owner access grant is both the relationship pointer and the
-authorization record. Reassignment promotes an existing invited/team access row to
-`origin=consultant` while preserving the stronger of its stored and incoming roles. Finance
-requires the resulting exact `owner` + `consultant` access pair as well as active consultant
-capability; a client-origin admin or owner is not admitted.
+Every one of these writes `origin = 'direct'` (or `invited` / `team:<id>`), because origin is
+provenance and never authority. **`role = 'owner'` is what carries the authority**, and it is
+also what finance scopes on: `/finance` returns projects where the caller has active
+consultant capability *and* a `role=owner` access row.
 
-## Consultant origin delta
+## What was removed
 
-The project permission resolver applies these paths additively, regardless of stored project
-role:
+The designation used to be carried by `project_access.origin = 'consultant'`, which four
+things read as a role. All four are gone:
 
-| Permission | Consultant-origin value |
+| Mechanism | Status |
 | --- | --- |
-| `chat.message_freelancers` | `true` |
-| `members.manage` | `true` |
-| `teams.manage` | `true` |
-| `time.view_team_logs` | `true` |
+| `ORIGIN_DELTAS` — additively granted `chat.message_freelancers`, `members.manage`, `teams.manage`, `time.view_team_logs` on origin, regardless of stored role | Deleted. Permissions resolve from `role` + `capabilities` only. |
+| A chat bypass letting the "consultant" read every private channel without being a participant | Deleted; private-channel membership is granted, never conferred by identity. |
+| `origin='consultant'` in the finance project scope | Dropped; the predicate is `role=owner`. |
+| `getProjectConsultantId` — a "who is the consultant of record" lookup, plus `assign-consultant` / `reassign-consultant` endpoints and a guard refusing to remove the consultant | Deleted. **Transfer project** covers the same ground and also logs member activity. |
 
-This means an editor-role access row carrying consultant origin gets the operator toolkit.
-It does not get every owner permission: settings, permission editing, sensitive logs, and
-other owner/admin paths still depend on project role unless explicitly overridden.
+The `client` and `consultant` origin values were then folded into `direct`
+(`20260818090000_neutralise_project_access_persona_origins.sql`). Effective permissions were
+unchanged for every affected row — `effective-permissions.spec.ts` snapshots all eight
+production role/capability tuples and pins that.
 
-## Typical owner outcome
+## Removal guards
 
-Consultant-mode creation and assignment grant `owner`, whose baseline is all permission paths.
-The consultant delta is therefore redundant in that common case but remains important if an
-admin later demotes the stored project role while keeping the origin.
-
-## Removal and reassignment guards
-
-- The named consultant cannot be casually revoked by project authorization.
-- Reassignment validates active-consultant status for the replacement.
-- The replacement is granted owner access before the previous consultant is revoked.
-- Last-owner protection may leave the previous consultant as a co-owner instead of orphaning
-  the project; an admin can demote them later.
+Last-owner protection is the only guard now: a project cannot be left without an owner. There
+is no separate rule shielding a particular person from removal, and someone leading a project
+can leave it or be removed like any other owner.
 
 ## Team authority is separate
 
@@ -88,6 +85,6 @@ RLS and SQL triggers              database invariants
 
 ## See also
 
-- [Clients: consultant interaction](../clients/consultant-interaction.md)
+- [Finance: contract parties](../finance/README.md#contract-parties)
 - [Talent: access and permissions](../talent/access-and-permissions.md)
 - [Project lifecycle](../../01-product/project-lifecycle.md)

@@ -1,6 +1,6 @@
 # Feature Domains
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
@@ -15,7 +15,6 @@ vetting. See [Product → roles and capabilities](../01-product/personas.md).
 
 | Doc | What's in it |
 | --- | --- |
-| [clients/](./clients/README.md) | The client position — structure, permission resolution, user flows, surfaces, and the consultant handoff (a full sub-set) |
 | [talent/](./talent/README.md) | The Talent position — discovery, project access, delivery, time, and payout boundaries (a full sub-set) |
 | [consultants/](./consultants/README.md) | The Consultant position — vetting, active capabilities, project operation, and consultant-only surfaces (a full sub-set) |
 

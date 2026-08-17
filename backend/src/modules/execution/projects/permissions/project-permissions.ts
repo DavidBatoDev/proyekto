@@ -1,18 +1,20 @@
-// IAM-style fine-grained permissions for project_shares.
+// IAM-style fine-grained permissions for project_access.
 //
 // Permissions are computed at every check via:
 //
-//   resolvePermissions(role, origin, capabilities)
+//   resolvePermissions(role, capabilities)
 //     = ROLE_DEFAULTS[role]
-//     ⊕ ORIGIN_DELTAS[origin]
-//     ⊕ capabilities          // flat path overrides win
+//     ⊕ capabilities          // flat path overrides win, and may deny
 //
-// Capabilities are stored on `project_shares.capabilities` (JSONB) as a
-// flat map of { 'roadmap.edit': true, 'members.edit_position': true } —
-// only the *delta* from the (role, origin) baseline is persisted, so
-// rows stay small and templates can evolve without backfill.
-
-import type { ProjectShareOrigin } from '../authorization/project-authorization.service';
+// Two inputs, deliberately. How a member came to be on the project
+// (`project_access.origin`) does NOT affect what they can do — a project is the
+// execution layer, so it has members with permissions, not a client and a
+// consultant. See the note where ORIGIN_DELTAS used to be.
+//
+// Capabilities are stored on `project_access.capabilities` (JSONB) as a flat map
+// of { 'roadmap.edit': true, 'members.edit_position': true } — only the *delta*
+// from the role baseline is persisted, so rows stay small and templates can
+// evolve without backfill.
 
 export type ProjectRole = 'viewer' | 'commenter' | 'editor' | 'admin' | 'owner';
 
@@ -34,10 +36,10 @@ const ROLE_ORDER: readonly ProjectRole[] = [
  * back into the service layer would be a module cycle.
  *
  * NOTE: this is deliberately NOT `permissions.members.manage`. That looks like the
- * same predicate and is not: `ORIGIN_DELTAS` grants `members.manage` to consultant
- * and client origins *regardless of role*, so an editor-role consultant has it
- * while `assertRole('admin')` would refuse them. Anything that must agree with
- * enforcement has to compare roles.
+ * same predicate and is not: a per-member capability can grant `members.manage` to
+ * an editor, who `assertRole('admin')` would then refuse. Anything that must agree
+ * with enforcement has to compare roles. (The divergence used to come from
+ * ORIGIN_DELTAS granting it by origin; capabilities produce the same gap.)
  */
 export function roleSatisfies(
   actual: ProjectRole,
@@ -57,6 +59,35 @@ export type ProjectPermissions = {
     resources: boolean;
     project_settings: boolean;
     time: boolean;
+    /**
+     * One gate for the whole delivery-governance group — Deliverables, Change
+     * Requests, Risks & Issues, Decisions.
+     *
+     * Deliberately a single key rather than one per page: every `access.*` key
+     * has to be hand-mirrored into three web files with no automated check, and
+     * these four surfaces are always granted and revoked together.
+     */
+    delivery: boolean;
+  };
+  deliverables: {
+    edit: boolean;
+    /** Accept or bounce a submitted deliverable. Clients get this by origin. */
+    approve: boolean;
+  };
+  change_requests: {
+    create: boolean;
+    /** Approve, reject, or send back a change request. */
+    decide: boolean;
+  };
+  risks: {
+    edit: boolean;
+    /** See risks marked `internal`. */
+    view_internal: boolean;
+  };
+  decisions: {
+    edit: boolean;
+    /** See decisions marked `internal`. Mirrors `risks.view_internal`. */
+    view_internal: boolean;
   };
   roadmap: {
     view: boolean;
@@ -97,9 +128,6 @@ export type ProjectPermissions = {
     share_files: boolean;
     start_dm: boolean;
     send_dm: boolean;
-    message_clients: boolean;
-    message_consultants: boolean;
-    message_freelancers: boolean;
   };
   resources: {
     view: boolean;
@@ -140,6 +168,15 @@ export type PermissionPath =
   | 'access.resources'
   | 'access.project_settings'
   | 'access.time'
+  | 'access.delivery'
+  | 'deliverables.edit'
+  | 'deliverables.approve'
+  | 'change_requests.create'
+  | 'change_requests.decide'
+  | 'risks.edit'
+  | 'risks.view_internal'
+  | 'decisions.edit'
+  | 'decisions.view_internal'
   | 'roadmap.view'
   | 'roadmap.edit'
   | 'roadmap.comment'
@@ -170,9 +207,6 @@ export type PermissionPath =
   | 'chat.share_files'
   | 'chat.start_dm'
   | 'chat.send_dm'
-  | 'chat.message_clients'
-  | 'chat.message_consultants'
-  | 'chat.message_freelancers'
   | 'resources.view'
   | 'resources.upload'
   | 'resources.delete'
@@ -189,6 +223,15 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'access.resources',
   'access.project_settings',
   'access.time',
+  'access.delivery',
+  'deliverables.edit',
+  'deliverables.approve',
+  'change_requests.create',
+  'change_requests.decide',
+  'risks.edit',
+  'risks.view_internal',
+  'decisions.edit',
+  'decisions.view_internal',
   'roadmap.view',
   'roadmap.edit',
   'roadmap.comment',
@@ -219,9 +262,6 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'chat.share_files',
   'chat.start_dm',
   'chat.send_dm',
-  'chat.message_clients',
-  'chat.message_consultants',
-  'chat.message_freelancers',
   'resources.view',
   'resources.upload',
   'resources.delete',
@@ -232,24 +272,55 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
 
 // ─── Path helpers ──────────────────────────────────────────────────────────
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Every section of `ProjectPermissions` is a flat bag of booleans, so a path can
+ * be resolved structurally. Typed rather than cast to `any`: these two helpers are
+ * the only writers of the permission object, and an `any` here silently swallowed
+ * the unknown-path bugs described on `setPermission`.
+ */
+type PermissionSection = Record<string, boolean>;
+
+function sectionOf(
+  perms: ProjectPermissions,
+  section: string,
+): PermissionSection | undefined {
+  return (perms as unknown as Record<string, PermissionSection | undefined>)[
+    section
+  ];
+}
+
 export function getPermission(
   perms: ProjectPermissions,
   path: PermissionPath,
 ): boolean {
   const [section, field] = path.split('.');
-  return Boolean((perms as any)[section]?.[field]);
+  return Boolean(sectionOf(perms, section)?.[field]);
 }
 
+/**
+ * Set one path, ignoring anything the catalog does not declare.
+ *
+ * The guard is not defensive noise: `applyPaths` feeds this from
+ * `project_access.capabilities`, which is stored JSON and therefore may name a
+ * path that has since been retired — the three `chat.message_*` keys deleted with
+ * the persona model being the live example. Without the guard, an unknown SECTION
+ * threw a TypeError (`undefined[field] = value`) and an unknown FIELD silently
+ * added a stray key to the resolved payload, re-exposing a permission the type no
+ * longer has.
+ *
+ * Trusted callers are unaffected: every path in `PERMISSION_PATHS` exists on the
+ * `allFalse()` shape, so a real path is never skipped.
+ */
 export function setPermission(
   perms: ProjectPermissions,
   path: PermissionPath,
   value: boolean,
 ): void {
   const [section, field] = path.split('.');
-  (perms as any)[section][field] = value;
+  const target = sectionOf(perms, section);
+  if (!target || !Object.hasOwn(target, field)) return;
+  target[field] = value;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ─── Baselines ─────────────────────────────────────────────────────────────
 
@@ -263,7 +334,12 @@ function allFalse(): ProjectPermissions {
       resources: false,
       project_settings: false,
       time: false,
+      delivery: false,
     },
+    deliverables: { edit: false, approve: false },
+    change_requests: { create: false, decide: false },
+    risks: { edit: false, view_internal: false },
+    decisions: { edit: false, view_internal: false },
     roadmap: {
       view: false,
       edit: false,
@@ -303,9 +379,6 @@ function allFalse(): ProjectPermissions {
       share_files: false,
       start_dm: false,
       send_dm: false,
-      message_clients: false,
-      message_consultants: false,
-      message_freelancers: false,
     },
     resources: { view: false, upload: false, delete: false },
     logs: { view: false, view_sensitive: false },
@@ -357,8 +430,11 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     // OWN logs there. Seeing the rest of the team's time is
     // `time.view_team_logs`, granted at admin and to the consultant below.
     'access.time': true,
-    // The money surfaces stay consultant-and-owner by default. The client
-    // origin re-opens the billing three (contract/invoices/financials) below.
+    // Deliverables / Change Requests / Risks / Decisions are readable by anyone
+    // who can see the project; the verbs below are what actually differ.
+    'access.delivery': true,
+    // The money surfaces are off at this rung by default; the billing three
+    // (contract/invoices/financials) are granted further up the ladder.
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
@@ -366,8 +442,6 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'chat.view_channels': true,
     'resources.view': true,
     'logs.view': true,
-    'chat.message_clients': true,
-    'chat.message_consultants': true,
   });
 
   if (role === 'viewer') return p;
@@ -379,6 +453,8 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'chat.mention_members': true,
     'chat.start_dm': true,
     'chat.send_dm': true,
+    // Raising a change request is asking a question about scope, not editing it.
+    'change_requests.create': true,
   });
 
   if (role === 'commenter') return p;
@@ -393,6 +469,11 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'roadmap.share': true,
     'chat.share_files': true,
     'resources.upload': true,
+    'deliverables.edit': true,
+    'risks.edit': true,
+    // Recording a decision is describing what the team chose, not changing what
+    // the project is committed to — the same tier as editing a deliverable.
+    'decisions.edit': true,
   });
 
   if (role === 'editor') return p;
@@ -416,6 +497,10 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'chat.view_internal_channels': true,
     'resources.delete': true,
     'logs.view_sensitive': true,
+    'deliverables.approve': true,
+    'change_requests.decide': true,
+    'risks.view_internal': true,
+    'decisions.view_internal': true,
   });
 
   return p;
@@ -429,38 +514,26 @@ export const ROLE_DEFAULTS: Record<ProjectRole, ProjectPermissions> = {
   owner: buildRoleDefault('owner'),
 };
 
-// ─── Origin deltas ─────────────────────────────────────────────────────────
-
-export const ORIGIN_DELTAS: Record<
-  ProjectShareOrigin,
-  Partial<Record<PermissionPath, boolean>>
-> = {
-  // Clients can see their financial picture but cannot DM the freelance
-  // pool directly — the consultant mediates (per soft-isolation design).
-  client: {
-    'chat.message_freelancers': false,
-    'time.view_team_logs': false,
-    // They fund the work, so billing stays open; team-wide Time is the
-    // delivery cost side. access.time still exposes their own logs.
-  },
-  // Consultants get the operator toolkit additively, regardless of role.
-  consultant: {
-    'chat.message_freelancers': true,
-    'members.manage': true,
-    'teams.manage': true,
-    'time.view_team_logs': true,
-  },
-  // Pure invite — no extra capabilities beyond the role baseline.
-  invited: {},
-  // Personal workspace owner is a superset.
-  personal_workspace: PERMISSION_PATHS.reduce(
-    (acc, p) => {
-      acc[p] = true;
-      return acc;
-    },
-    {} as Partial<Record<PermissionPath, boolean>>,
-  ),
-};
+/*
+ * There are deliberately no origin deltas.
+ *
+ * `ORIGIN_DELTAS` used to patch permissions by how a member came to be on the
+ * project — a `client` origin denied internal risks, a `consultant` origin added
+ * the operator toolkit. That made a project assume it had a client and a
+ * consultant, which the execution layer must not do: a project has MEMBERS with a
+ * permissions catalog, and nothing else.
+ *
+ * It was also almost entirely dead weight. Every origin except `client` was paired
+ * in production with a role whose baseline already granted everything the delta
+ * did — consultant and personal_workspace are always `owner`, and `invited` was
+ * empty — and `effective-permissions.spec.ts` proves that combination by
+ * combination. The `client` delta's only live effect was denying three paths
+ * (`time.view_team_logs`, `risks.view_internal`, `decisions.view_internal`) to
+ * client-origin admins; those were deliberately released when this was removed.
+ *
+ * Permissions now resolve from exactly two inputs: the role ladder, and the
+ * per-member `capabilities` override.
+ */
 
 // ─── Dependencies ──────────────────────────────────────────────────────────
 
@@ -503,29 +576,36 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'logs.view_sensitive': ['logs.view'],
 
   'time.view_team_logs': ['access.time'],
+
+  'deliverables.edit': ['access.delivery'],
+  'deliverables.approve': ['access.delivery'],
+  'change_requests.create': ['access.delivery'],
+  'change_requests.decide': ['access.delivery'],
+  'risks.edit': ['access.delivery'],
+  'risks.view_internal': ['access.delivery'],
+  'decisions.edit': ['access.delivery'],
+  'decisions.view_internal': ['access.delivery'],
 };
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
 /**
- * Compute the resolved fine-grained permissions for a project_shares row.
+ * Compute the resolved fine-grained permissions for a `project_access` row.
  *
- * Layers, in order: role baseline → origin delta → capabilities overrides.
- * `capabilities` is a flat `{ 'section.field': boolean }` map.
+ * Two layers, in order: role baseline → capabilities overrides. `capabilities` is
+ * a flat `{ 'section.field': boolean }` map, applied last, and can deny as well as
+ * grant.
+ *
+ * How the member joined the project (`project_access.origin`) deliberately does
+ * NOT participate — see the note where ORIGIN_DELTAS used to be.
  */
 export function resolvePermissions(
   role: ProjectRole,
-  origin: ProjectShareOrigin | null,
   capabilities: Record<string, unknown> | null | undefined,
 ): ProjectPermissions {
-  // Deep clone the role baseline so we don't mutate the constant.
-  const base: ProjectPermissions = JSON.parse(
-    JSON.stringify(ROLE_DEFAULTS[role]),
-  );
-
-  if (origin && ORIGIN_DELTAS[origin]) {
-    applyPaths(base, ORIGIN_DELTAS[origin]);
-  }
+  // Deep clone the role baseline so we don't mutate the constant. structuredClone
+  // rather than JSON round-tripping: it is typed, so the result is not `any`.
+  const base: ProjectPermissions = structuredClone(ROLE_DEFAULTS[role]);
 
   if (capabilities && typeof capabilities === 'object') {
     const flat: Partial<Record<PermissionPath, boolean>> = {};
@@ -566,16 +646,15 @@ export function validateDependencies(
 }
 
 /**
- * Compute the capabilities delta — the minimal set of path→boolean entries
- * that, layered on top of the (role, origin) baseline, reproduces the
- * desired full ProjectPermissions. Stored on the share row as JSONB.
+ * Compute the capabilities delta — the minimal set of path→boolean entries that,
+ * layered on top of the role baseline, reproduces the desired full
+ * ProjectPermissions. Stored on the access row as JSONB.
  */
 export function diffCapabilities(
   role: ProjectRole,
-  origin: ProjectShareOrigin | null,
   desired: ProjectPermissions,
 ): Record<string, boolean> {
-  const baseline = resolvePermissions(role, origin, null);
+  const baseline = resolvePermissions(role, null);
   const delta: Record<string, boolean> = {};
   for (const path of PERMISSION_PATHS) {
     const want = getPermission(desired, path);

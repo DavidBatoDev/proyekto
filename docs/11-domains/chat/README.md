@@ -1,6 +1,6 @@
 # Chat
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Project-scoped chat: flexible **channels**, **direct messages**, reactions, stars,
 and a per-project **activity feed**. It's Slack-style — channels are created per
@@ -10,7 +10,7 @@ Message events push live to connected clients via the realtime Worker.
 ## What it does
 
 - **Channels** — create/rename channels within a project; manage members; leave.
-  Some are **system rooms** (persona-scoped, lazily joined); others are ad-hoc.
+  Some are **system rooms** (identified by `system_key`, lazily joined); others are ad-hoc.
 - **Direct messages** — 1:1 DMs resolved on demand between eligible members.
 - **Messages** — send, edit, unsend, react (emoji), reply, attachments, mentions;
   mark-read; search; a media/library view; star a room.
@@ -34,12 +34,17 @@ Reads use RPCs (`chat_latest_messages_by_room`, `chat_search_room_messages`,
 ## Authorization
 
 Chat access derives only from `project_access` membership; `projects.owner_id` is not an
-authorization fallback. Persona comes from access origin:
-`consultant` is consultant; `client`, `personal_workspace`, and `legacy` are client; every
-other origin (including `team:*`) is freelancer. This is enforced by SQL helpers
-(`project_chat_is_member`, `project_chat_role`, `project_chat_can_dm`,
-`project_chat_users_share_any_project`) and in the `ChatService`. See
-  [Data → RLS & security](../../07-data-and-db/rls-and-security.md).
+authorization fallback.
+
+There is **no chat persona**. Access origin used to be mapped to one — `consultant` was the
+consultant; `client`, `personal_workspace` and `legacy` were the client; everything else was
+a freelancer — and that persona then let the "consultant" read every private channel without
+being a participant. Both the mapping and the bypass were removed on 2026-08-17, along with
+the `project_chat_role()` SQL helper. Membership of a private channel is now something a
+person is granted, not something an identity confers. The remaining helpers
+(`project_chat_is_member`, `project_chat_can_dm`, `project_chat_users_share_any_project`)
+and the `ChatService` enforce it. See
+[Data → RLS & security](../../07-data-and-db/rls-and-security.md).
 
 ## HTTP surface
 

@@ -1,5 +1,3 @@
-export type ChatRole = 'consultant' | 'client' | 'freelancer';
-
 export type ChatProjectRole =
   | 'owner'
   | 'admin'
@@ -129,7 +127,6 @@ export type ChatParticipant = {
   last_read_at: string | null;
   user: ChatUser | null;
   /** Project context, enriched by ChatService for channel member lists. */
-  role?: ChatRole;
   access_role?: ChatProjectRole;
   position?: string | null;
   team?: ChatTeam | null;
@@ -143,7 +140,6 @@ export type ChatRoomWithLastMessage = ChatRoom & {
 
 export type ChatMemberCandidate = {
   user_id: string;
-  role: ChatRole;
   access_role: ChatProjectRole;
   position: string | null;
   team: ChatTeam | null;
@@ -152,10 +148,6 @@ export type ChatMemberCandidate = {
 
 export interface ChatRepository {
   isProjectMember(projectId: string, userId: string): Promise<boolean>;
-  resolveProjectRole(
-    projectId: string,
-    userId: string,
-  ): Promise<ChatRole | null>;
   listProjectMemberCandidates(
     projectId: string,
   ): Promise<ChatMemberCandidate[]>;

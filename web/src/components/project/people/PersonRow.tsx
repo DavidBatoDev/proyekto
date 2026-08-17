@@ -46,7 +46,7 @@ export function PersonRow({
 	onOpen: (person: PersonAccess) => void;
 }) {
 	const badge: AvatarBadge | null = person.isExternal
-		? { kind: "external", title: "External — not on one of your teams" }
+		? { kind: "external", title: "Not on one of your teams" }
 		: badgeTeam
 			? {
 					kind: "team",
@@ -81,7 +81,7 @@ export function PersonRow({
 							)}
 							{person.isExternal && (
 								<SemanticBadge icon={Building2} iconClassName="text-warning">
-									External
+									Not on a team
 								</SemanticBadge>
 							)}
 							{person.isSelf && (

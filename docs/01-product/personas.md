@@ -1,6 +1,6 @@
 # Roles and Capabilities
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Proyekto has **no stored account role**. "Client", "Talent", and "Consultant" are
 words for **market positions** — who pays, who leads, who executes on a given
@@ -28,11 +28,13 @@ The first three are contract positions, not account attributes. Consultant is th
 one position with an account-level prerequisite: completed vetting. Admin is not a
 participant position at all — it comes from `admin_profiles`.
 
-> **Do not confuse positions with `project_access.origin`.** Its `'client'` value is a
-> *source label* for a project grant, and it is only assigned to the person who **created** the
-> project: `respondInvite` hardcodes `origin: 'invited'`, so an invited client does not
-> get it. See [Feature Domains → clients](../11-domains/clients/README.md) for the full
-> model, the resolved permission matrix, and the client user flows.
+> **Do not look for these positions in `project_access.origin`.** Origin records *how*
+> someone joined a project — `direct`, `invited`, `personal_workspace`, `legacy`,
+> `team:<id>` — and takes no part in permission resolution. It carried `'client'` and
+> `'consultant'` values until 2026-08-18, when both were folded into `direct`: a project is
+> the execution layer and does not model the two sides of a commercial arrangement. Those
+> live on a contract — see
+> [Finance → contract parties](../11-domains/finance/README.md#contract-parties).
 
 ## Authorization sources
 
@@ -68,5 +70,5 @@ work migrates to a real account on signup. See
 
 - [project-lifecycle.md](./project-lifecycle.md) — how participants move a project from idea to delivery.
 - [roadmap-and-milestones.md](./roadmap-and-milestones.md) — the planning model they share.
-- [Feature Domains → clients](../11-domains/clients/README.md) — the Client position in depth: structure, permissions, flows, and surfaces.
+- [Finance → contract parties](../11-domains/finance/README.md#contract-parties) — where the paying counterparty is actually recorded.
 - [Proposals → identity and enrollment](../13-proposals/identity-and-enrollment.md) — why account roles were removed and where enrollment goes next.

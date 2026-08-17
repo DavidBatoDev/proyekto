@@ -2,7 +2,21 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-14 · **Status:** draft
+> **⚠️ Its permission design is obsolete (2026-08-18).** The mechanism this page specifies —
+> an `onboarding.respond` path granted through an `ORIGIN_DELTAS` entry keyed on
+> `project_access.origin = 'client'` — no longer exists. `ORIGIN_DELTAS` was deleted, origin
+> no longer takes part in permission resolution at all, and the `client` / `consultant` origin
+> values were folded into `direct`. The execution layer does not model a client or a
+> consultant; a project has members with a permissions catalog, and the parties to a piece of
+> work live on a contract.
+>
+> The `project_access_grant_items` / `_events` schema and the handover flow below are
+> unaffected and still stand. What must be redesigned before P1 is **who may respond to a
+> checklist** — express it as a capability on the permissions catalog, granted per member.
+> That also settles the "two traps" section, whose open design question was an artefact of
+> origin-driven permissions.
+
+> **Last updated:** 2026-08-18 · **Status:** draft
 
 When a consultant starts work, the client has to hand over access to a pile of external
 systems: the Canva brand kit, Google Drive, GA4, Google Tag Manager, Search Console, the
@@ -232,7 +246,7 @@ delta is every path `true`.
 >    every client and confuses admins reading the permission editor. Add a comment saying so.
 > 2. **`origin='client'` is only ever granted to the project creator** — `respondInvite`
 >    hardcodes `origin: 'invited'` (see
->    [clients/user-flows.md](../11-domains/clients/user-flows.md#where-origin--client-comes-from)).
+>    the removed origin model).
 >    So an *invited* client would get no `onboarding.respond` from the origin delta. Either the
 >    invite path must learn to grant `origin='client'`, or the checklist must additionally
 >    grant `respond` to `projects.owner_id`. **This is an open design question and must be
@@ -371,6 +385,6 @@ deploy.
 
 ## See also
 
-- [11-domains/clients](../11-domains/clients/README.md) — the client model this extends.
+- [11-domains/finance](../11-domains/finance/README.md#contract-parties) — where the paying counterparty is recorded now.
 - [organizations-and-services.md](./organizations-and-services.md) — the other half of the
   client structure work.

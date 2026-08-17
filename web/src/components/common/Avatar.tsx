@@ -5,9 +5,9 @@ import type { ProfileSummary } from "@/services/teams.service";
  * A person's avatar, optionally carrying a corner badge.
  *
  * The badge is the Slack pattern: a small square in the bottom-right that says
- * *where this person comes from*. On the project People surface that is what
- * distinguishes an internal teammate (their team's logo) from an external
- * client — a distinction the data has always carried in `project_access.origin`
+ * *where this person comes from*. On the project People surface it marks whether
+ * someone reaches the project through one of your teams (their team's logo) or
+ * holds a grant of their own — a distinction carried by `project_access.origin`
  * but which never surfaced anywhere the eye could catch it.
  *
  * `MemberDisplay` renders this internally, so its existing call sites get the

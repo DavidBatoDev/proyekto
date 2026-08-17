@@ -157,8 +157,6 @@ export interface Project {
   description?: string;
   status: ProjectStatus;
   owner_id: string;
-  /** Whether the project owner differs from the consultant of record. */
-  has_client?: boolean;
   duration?: string;
   created_at: string;
   updated_at: string;
