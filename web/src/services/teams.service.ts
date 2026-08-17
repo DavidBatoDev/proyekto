@@ -40,6 +40,12 @@ export interface Team {
 	name: string;
 	description: string | null;
 	avatar_url: string | null;
+	/**
+	 * Freeform descriptive labels. NOT NULL in the DB, but optional here so
+	 * query-cache entries persisted before this shipped don't type-error —
+	 * read sites use `team.tags ?? []`.
+	 */
+	tags?: string[];
 	is_personal: boolean;
 	/**
 	 * Billing identity — the service-provider block on contracts and invoices
@@ -216,11 +222,35 @@ export async function getTeam(teamId: string): Promise<Team> {
 	}
 }
 
-export async function createTeam(input: {
+/**
+ * Named rather than inlined because the same shape was being retyped at every
+ * call site — including the settings page's mutation generic — which is how
+ * they drift apart when a field is added.
+ */
+export interface CreateTeamInput {
 	name: string;
 	description?: string;
 	avatar_url?: string;
-}): Promise<Team> {
+	tags?: string[];
+}
+
+export interface UpdateTeamPatch {
+	name?: string;
+	description?: string;
+	avatar_url?: string;
+	/** `[]` clears them; omitting the field leaves them alone. */
+	tags?: string[];
+	legal_name?: string;
+	billing_address?: string;
+	tax_id?: string;
+	billing_email?: string;
+	time_tracking_enabled?: boolean;
+	retroactive_log_days?: number;
+	default_currency?: "USD" | "CAD" | "PHP";
+	pay_period_config?: PayPeriodConfig | null;
+}
+
+export async function createTeam(input: CreateTeamInput): Promise<Team> {
 	try {
 		const { data } = await apiClient.post<{ data: Team }>("/api/teams", input);
 		return data.data;
@@ -236,19 +266,7 @@ export async function createTeam(input: {
 
 export async function updateTeam(
 	teamId: string,
-	patch: {
-		name?: string;
-		description?: string;
-		avatar_url?: string;
-		legal_name?: string;
-		billing_address?: string;
-		tax_id?: string;
-		billing_email?: string;
-		time_tracking_enabled?: boolean;
-		retroactive_log_days?: number;
-		default_currency?: "USD" | "CAD" | "PHP";
-		pay_period_config?: PayPeriodConfig | null;
-	},
+	patch: UpdateTeamPatch,
 ): Promise<Team> {
 	try {
 		const { data } = await apiClient.patch<{ data: Team }>(

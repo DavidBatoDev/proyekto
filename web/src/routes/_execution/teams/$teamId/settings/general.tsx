@@ -12,11 +12,17 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { TagInput } from "@/components/common/TagInput";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
-import { deleteTeam, getTeam, updateTeam } from "@/services/teams.service";
+import {
+	deleteTeam,
+	getTeam,
+	type UpdateTeamPatch,
+	updateTeam,
+} from "@/services/teams.service";
 import { uploadService } from "@/services/upload.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -50,6 +56,8 @@ function TeamGeneralSettings() {
 	const [nameDraft, setNameDraft] = useState("");
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [descriptionDraft, setDescriptionDraft] = useState("");
+	const [isEditingTags, setIsEditingTags] = useState(false);
+	const [tagsDraft, setTagsDraft] = useState<string[]>([]);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [deleteText, setDeleteText] = useState("");
 	const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -66,6 +74,7 @@ function TeamGeneralSettings() {
 		if (team) {
 			setNameDraft(team.name || "");
 			setDescriptionDraft(team.description ?? "");
+			setTagsDraft(team.tags ?? []);
 			setBillingDraft({
 				legal_name: team.legal_name ?? "",
 				billing_address: team.billing_address ?? "",
@@ -76,15 +85,7 @@ function TeamGeneralSettings() {
 	}, [team]);
 
 	const updateMutation = useMutation({
-		mutationFn: (patch: {
-			name?: string;
-			description?: string;
-			avatar_url?: string;
-			legal_name?: string;
-			billing_address?: string;
-			tax_id?: string;
-			billing_email?: string;
-		}) => updateTeam(teamId, patch),
+		mutationFn: (patch: UpdateTeamPatch) => updateTeam(teamId, patch),
 		onSuccess: (updated) => {
 			queryClient.setQueryData(["teams", "detail", teamId], updated);
 			// Broad prefix so the left-rail team group and the dashboard
@@ -120,6 +121,11 @@ function TeamGeneralSettings() {
 			description: descriptionDraft.trim(),
 		});
 		setIsEditingDescription(false);
+	};
+
+	const saveTags = async () => {
+		await updateMutation.mutateAsync({ tags: tagsDraft });
+		setIsEditingTags(false);
 	};
 
 	const saveBilling = async () => {
@@ -380,6 +386,82 @@ function TeamGeneralSettings() {
 												No description added yet.
 											</span>
 										)}
+									</p>
+								)}
+							</section>
+
+							<section>
+								<div className="mb-2.5 flex items-center justify-between gap-2">
+									<h3 className="text-[18px] font-semibold text-slate-900">
+										Labels
+									</h3>
+									{isOwner && !isEditingTags && (
+										<button
+											type="button"
+											onClick={() => setIsEditingTags(true)}
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+										>
+											<Edit2 className="h-4 w-4" />
+											Edit
+										</button>
+									)}
+								</div>
+
+								{isEditingTags ? (
+									<div className="space-y-3">
+										<p className="text-[13px] leading-6 text-slate-600">
+											Freeform labels for your own organisation — they don't
+											affect who can see or do anything.
+										</p>
+										<TagInput
+											value={tagsDraft}
+											onChange={setTagsDraft}
+											disabled={updateMutation.isPending}
+											ariaLabel="Team labels"
+											inputClassName="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
+										/>
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => void saveTags()}
+												disabled={updateMutation.isPending}
+												className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+											>
+												{updateMutation.isPending ? (
+													<Loader2 className="h-4 w-4 animate-spin" />
+												) : (
+													<Save className="h-4 w-4" />
+												)}
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													setTagsDraft(team.tags ?? []);
+													setIsEditingTags(false);
+												}}
+												disabled={updateMutation.isPending}
+												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+											>
+												<X className="h-4 w-4" />
+												Cancel
+											</button>
+										</div>
+									</div>
+								) : (team.tags ?? []).length > 0 ? (
+									<div className="flex flex-wrap gap-1.5">
+										{(team.tags ?? []).map((tag) => (
+											<span
+												key={tag}
+												className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+											>
+												{tag}
+											</span>
+										))}
+									</div>
+								) : (
+									<p className="text-[13px] leading-6 text-slate-400">
+										No labels added yet.
 									</p>
 								)}
 							</section>
