@@ -32,7 +32,8 @@ Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbo
 
 Signup is **lane-free**: a 4-step wizard (Account → Password → Profile → Verify) in
 [`SignupForm.tsx`](../../web/src/components/auth/signup/SignupForm.tsx) with no role
-or lane selection anywhere. `/welcome` shows a single deck (project setup + invites)
+or lane selection anywhere. `/welcome` shows a single deck (project setup + team
+creation + invites)
 with no role picker, and the OAuth callback completes onboarding unconditionally —
 there is no stored account role to choose. The old lane step, `SignupStepLane.tsx`,
 and `onboardingLane.ts` are deleted; see

@@ -1,6 +1,6 @@
 # Consultant User Flows
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The Consultant flow deliberately separates vetting from project authority. Signup is
 the same lane-free flow as everyone else's; approval unlocks product capability;
@@ -13,6 +13,8 @@ Lane-free 4-step signup (Account -> Password -> Profile -> Verify)
   -> settings.onboarding = { completed_at }
   -> personal workspace provisioned
   -> single welcome deck
+       -> required team step (user-named, is_personal = false;
+          the personal team still comes at vetting approval)
 ```
 
 There is no consultant signup lane and no role selection at `/welcome` — nothing

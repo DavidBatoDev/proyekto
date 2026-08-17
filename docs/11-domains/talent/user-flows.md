@@ -1,6 +1,6 @@
 # Talent User Flows
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The Talent journey crosses three independent transitions: creating the account, becoming
 discoverable, and receiving delivery access. Finishing one never silently completes another.
@@ -15,6 +15,7 @@ Signup is lane-free — no role choice exists anywhere in the wizard:
   -> settings.onboarding = { completed_at }
   -> personal workspace provisioned
   -> single welcome deck
+       -> required team step (user-named, is_personal = false)
 ```
 
 OAuth callbacks complete onboarding unconditionally; `/welcome` has no role

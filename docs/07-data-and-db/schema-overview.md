@@ -1,6 +1,6 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
 [`supabase/migrations/`](../../supabase/migrations/) — **255 migrations** spanning
@@ -60,7 +60,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `teams`, `team_members`, `team_invites` | Reusable teams + roster + invites |
+| `teams`, `team_members`, `team_invites` | Reusable teams (incl. freeform `tags text[]` labels) + roster + invites |
 | `project_teams`, `project_team_members` | Attach a team to a project; curation fans out to `project_access` via trigger |
 | `team_member_rates` | Per-member (per-project) rate cards |
 | `task_time_logs`, `time_log_comments` | Billable time logs + threads; project/task/member FKs sever with `SET NULL`, while member name and rates remain snapshotted |

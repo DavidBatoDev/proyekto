@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -14,7 +14,10 @@ empty body and writes only `settings.onboarding = { completed_at }`. The DTO
 optional `lane` and `intent` fields as accepted-but-ignored legacy — the global
 `forbidNonWhitelisted` ValidationPipe would 400 older web/mobile bundles otherwise.
 Every user gets a personal workspace at onboarding; nobody gets an auto-created
-team (consultants create teams after vetting, not at signup).
+team. The `/welcome` deck does ask the user to name a team, but that is a user
+action creating an ordinary `is_personal = false` team — the **personal** team is
+still provisioned only at consultant vetting approval, and nothing in the
+onboarding path writes `is_personal`.
 
 ## The guards
 
