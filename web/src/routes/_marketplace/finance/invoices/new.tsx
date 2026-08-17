@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
-import { DashboardShell } from "@/components/layout/DashboardShell";
+import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
 import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_marketplace/finance/invoices/new")({
@@ -18,8 +18,8 @@ export const Route = createFileRoute("/_marketplace/finance/invoices/new")({
 function NewInvoicePage() {
 	const { projectId } = Route.useSearch();
 	return (
-		<DashboardShell>
+		<MarketplaceShell>
 			<InvoiceBuilder projectId={projectId} />
-		</DashboardShell>
+		</MarketplaceShell>
 	);
 }

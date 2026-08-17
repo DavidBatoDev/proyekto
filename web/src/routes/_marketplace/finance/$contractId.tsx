@@ -3,7 +3,7 @@ import {
 	ProjectContract,
 	type StepKey,
 } from "@/components/finance/ProjectContract";
-import { DashboardShell } from "@/components/layout/DashboardShell";
+import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
 import { useAuthStore } from "@/stores/authStore";
 
 const CONTRACT_SECTIONS: StepKey[] = [
@@ -36,7 +36,7 @@ function ContractEditorPage() {
 	const navigate = useNavigate();
 
 	return (
-		<DashboardShell>
+		<MarketplaceShell>
 			<ProjectContract
 				contractId={contractId}
 				initialStep={section}
@@ -52,6 +52,6 @@ function ContractEditorPage() {
 					})
 				}
 			/>
-		</DashboardShell>
+		</MarketplaceShell>
 	);
 }

@@ -45,7 +45,7 @@ import { ModalPortal } from "@/components/common/ModalPortal";
 import type { StepKey } from "@/components/finance/ProjectContract";
 import { ProjectFinancials } from "@/components/finance/ProjectFinancials";
 import { ProjectInvoices } from "@/components/finance/ProjectInvoices";
-import { DashboardShell } from "@/components/layout/DashboardShell";
+import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { CURRENCY_CODE_OPTIONS, formatCurrency } from "@/lib/currency";
@@ -284,7 +284,7 @@ function FinancePage() {
 
 	if (profile && !isConsultant) {
 		return (
-			<DashboardShell>
+			<MarketplaceShell>
 				<div className="mx-auto max-w-4xl px-5 py-10">
 					<AppEmptyState
 						icon={CircleDollarSign}
@@ -292,12 +292,12 @@ function FinancePage() {
 						description="Once your consultant profile is verified, contracts, client invoices, and portfolio financials will appear here."
 					/>
 				</div>
-			</DashboardShell>
+			</MarketplaceShell>
 		);
 	}
 
 	return (
-		<DashboardShell>
+		<MarketplaceShell>
 			<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
 				<div className="mx-auto w-full max-w-7xl">
 					<header>
@@ -451,7 +451,7 @@ function FinancePage() {
 					onCreate={(input) => createContractMutation.mutate(input)}
 				/>
 			</div>
-		</DashboardShell>
+		</MarketplaceShell>
 	);
 }
 
