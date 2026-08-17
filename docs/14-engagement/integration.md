@@ -132,25 +132,19 @@ engagement. Signing does **not** create an assignment — that stays an explicit
 
 ## Error codes
 
-The RPC raises typed tokens. The backend currently maps exactly one of them:
+The RPC, its legacy wrapper, and the `tg_contracts_lock_parties` trigger all signal with
+typed tokens. `SIGNING_ERRORS` in `contracts.service.ts` translates all 22 into human copy
+and the right status:
 
-| Token | Current HTTP result |
-| --- | --- |
-| `CONSULTANT_ENROLLMENT_INACTIVE` | 409 with a written explanation |
-| everything else below | 400 carrying the **raw token** as the message |
+| Kind | Status | Examples |
+| --- | --- | --- |
+| Missing row | 404 | `CONTRACT_NOT_FOUND` |
+| State conflict | 409 | `CONSULTANT_ENROLLMENT_INACTIVE`, `CONTRACT_ALREADY_SIGNED`, `CONTRACT_NOT_SIGNABLE`, `ENGAGEMENT_PARTIES_MISMATCH`, `ENGAGEMENT_REQUIRES_TWO_PARTIES`, the four `*_LOCKED` tokens |
+| Incomplete agreement | 400 | `CONTRACT_REQUIRES_TWO_POSITIONS`, `CONTRACT_TERM_INCOMPLETE`, `CONTRACT_{FIXED_FEE,MONTHLY_RATE,HOURLY_RATE}_REQUIRED`, `CONTRACT_SELF_DEALING`, `CONTRACT_PROJECT_SEVERED`, `CONTRACT_POSITION_INVALID`, `AMENDMENT_EFFECTIVE_DATE_{PAST,NOT_PROSPECTIVE}` |
 
-The unmapped tokens are `CONTRACT_POSITION_INVALID`, `CONTRACT_NOT_FOUND`,
-`CONTRACT_NOT_SIGNABLE`, `CONTRACT_ALREADY_SIGNED`, `CONTRACT_PROJECT_SEVERED`,
-`CONTRACT_TERM_INCOMPLETE`, `CONTRACT_FIXED_FEE_REQUIRED`, `CONTRACT_MONTHLY_RATE_REQUIRED`,
-`CONTRACT_HOURLY_RATE_REQUIRED`, `CONTRACT_REQUIRES_TWO_POSITIONS`,
-`CONTRACT_SELF_DEALING`, `ENGAGEMENT_PARTIES_MISMATCH`, `AMENDMENT_EFFECTIVE_DATE_PAST`,
-and `AMENDMENT_EFFECTIVE_DATE_NOT_PROSPECTIVE`. The `tg_contracts_lock_parties` trigger
-adds `CONTRACT_CONSULTANT_PARTY_LOCKED`, `CONTRACT_CLIENT_PARTY_LOCKED`,
-`CONTRACT_COMMERCIAL_IDENTITY_LOCKED`, and `CONTRACT_PROJECT_SCOPE_LOCKED`.
-
-**Known gap:** most of these reach the user as a raw token. Any signing UI built now
-should map them to human copy in the client, and the durable fix is a mapping layer in
-`stampSignature` rather than per-page string matching.
+Add new tokens to that table rather than matching strings per page. An unrecognised token
+still surfaces its raw message instead of being swallowed, so a newly added one is visible
+in support rather than silently generic — there is a test asserting exactly that.
 
 ## Invariants a page may rely on
 

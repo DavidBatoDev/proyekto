@@ -9,6 +9,12 @@
 > and [`20260816090000_contract_positions_runtime.sql`](../../supabase/migrations/20260816090000_contract_positions_runtime.sql)
 > (applied 2026-08-18) — and the matching backend and web are deployed.
 >
+> Activation was broken on arrival and is now repaired by
+> [`20260818101000_fix_engagement_require_parties_case.sql`](../../supabase/migrations/20260818101000_fix_engagement_require_parties_case.sql):
+> a deferred constraint trigger aborted every final signature, so no engagement
+> could be created at all. It was caught by the first real-DB test of the
+> activation path and is covered by `backend/test/integration/engagement-activation.integration-spec.ts`.
+>
 > Engagement rows are therefore created by contract signing, but they are currently
 > **write-only**: no backend route and no web surface reads any engagement table yet.
 > Assignments, attributed time logs, submission and approval, and position-redacted
