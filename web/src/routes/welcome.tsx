@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -15,6 +16,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/api";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { normalizeTags } from "@/components/common/TagInput";
+import {
+	EMPTY_TEAM_DRAFT,
+	type TeamDraft,
+	TeamFormFields,
+} from "@/components/team/TeamFormFields";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { useToast } from "@/hooks/useToast";
@@ -22,6 +29,7 @@ import { completeOnboarding } from "@/lib/auth-api";
 import { clearAuthContinuation } from "@/lib/authContinuation";
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
 import { supabase } from "@/lib/supabase";
+import { createTeam, listMyTeams, updateTeam } from "@/services/teams.service";
 import { useAppearanceStore } from "@/stores/appearanceStore";
 import { useAuthStore } from "@/stores/authStore";
 import { PRESET_THEMES, THEME_OPTIONS } from "@/theme/presets";
@@ -96,7 +104,13 @@ function WelcomePage() {
 // Ordered step keys. The "theme" step is inserted only when the theme system is
 // enabled, so navigation and the stepper total are driven off this array rather
 // than a fixed number.
-type CFStep = "welcome" | "capabilities" | "workspace" | "theme" | "invite";
+type CFStep =
+	| "welcome"
+	| "capabilities"
+	| "workspace"
+	| "theme"
+	| "team"
+	| "invite";
 
 type InviteRole = "editor" | "viewer";
 
@@ -128,10 +142,17 @@ function navigateAfterWelcome(navigate: ReturnType<typeof useNavigate>) {
 	navigate({ to: "/dashboard" });
 }
 
-function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
+// Exported for tests: the route still renders WelcomePage, but the deck is
+// where the step logic lives and mounting it directly skips profile hydration.
+export function ClientFreelancerWelcomeDeck({
+	firstName,
+}: {
+	firstName: string;
+}) {
 	const navigate = useNavigate();
 	const toast = useToast();
 	const user = useAuthStore((s) => s.user);
+	const queryClient = useQueryClient();
 
 	// ── Workspace lookup ─────────────────────────────────────────────────────
 	const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -168,6 +189,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 	const steps = useMemo<CFStep[]>(() => {
 		const list: CFStep[] = ["welcome", "capabilities", "workspace"];
 		if (featureFlags.themeSystem) list.push("theme");
+		list.push("team");
 		list.push("invite");
 		return list;
 	}, []);
@@ -184,6 +206,105 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 		if (index > 0) {
 			setDirection(-1);
 			setIndex(index - 1);
+		}
+	};
+
+	// ── Team step ────────────────────────────────────────────────────────────
+	const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_TEAM_DRAFT);
+	const [teamId, setTeamId] = useState<string | null>(null);
+	const [existingTeamName, setExistingTeamName] = useState<string | null>(null);
+	const [teamLookupFailed, setTeamLookupFailed] = useState(false);
+	const [savingTeam, setSavingTeam] = useState(false);
+	const [teamFailureCount, setTeamFailureCount] = useState(0);
+	const lastSavedTeamRef = useRef<TeamDraft | null>(null);
+
+	// Re-entry: /welcome is revisitable (the completeOnboarding backstop above,
+	// legacy accounts, a failed OAuth callback). Without this, every revisit
+	// would make another team. Look up teams this user already OWNS and prefill.
+	//
+	// `is_personal` teams are excluded deliberately: a consultant vetted before
+	// revisiting has one, and prefilling from it would let the deck rename the
+	// team that vetting provisioned.
+	useEffect(() => {
+		if (!user?.id) return;
+		let cancelled = false;
+		(async () => {
+			try {
+				const teams = await listMyTeams();
+				if (cancelled) return;
+				const existing = teams
+					.filter((t) => t.owner_id === user.id && !t.is_personal)
+					.sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+				if (!existing) return;
+				const draft: TeamDraft = {
+					name: existing.name,
+					description: existing.description ?? "",
+					tags: existing.tags ?? [],
+				};
+				setTeamId(existing.id);
+				setExistingTeamName(existing.name);
+				setTeamDraft(draft);
+				lastSavedTeamRef.current = draft;
+			} catch (err) {
+				if (cancelled) return;
+				console.error("Welcome-deck team lookup failed:", err);
+				// Enables the skip escape hatch — a lookup we can't do must not
+				// leave the user stuck behind a required step.
+				setTeamLookupFailed(true);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [user?.id]);
+
+	const persistTeam = async () => {
+		const name = teamDraft.name.trim();
+		if (!name) {
+			toast.error("Give your team a name");
+			throw new Error("empty team name");
+		}
+		const description = teamDraft.description.trim();
+		const tags = normalizeTags(teamDraft.tags);
+		const saved = lastSavedTeamRef.current;
+		const unchanged =
+			saved !== null &&
+			saved.name === name &&
+			saved.description === description &&
+			saved.tags.length === tags.length &&
+			saved.tags.every((t, i) => t === tags[i]);
+		if (unchanged) return;
+
+		setSavingTeam(true);
+		try {
+			if (teamId) {
+				// Re-entry, or already created earlier in this session: PATCH.
+				// Never a second POST.
+				const updated = await updateTeam(teamId, { name, description, tags });
+				setExistingTeamName(updated.name);
+			} else {
+				const created = await createTeam({
+					name,
+					description: description || undefined,
+					tags,
+				});
+				// Storing the id is the in-session duplicate guard: a later edit
+				// on this slide updates instead of creating a second team.
+				setTeamId(created.id);
+				setExistingTeamName(created.name);
+			}
+			lastSavedTeamRef.current = { name, description, tags };
+			setTeamFailureCount(0);
+			void queryClient.invalidateQueries({ queryKey: ["teams"] });
+		} catch (err) {
+			console.error("Welcome-deck team save failed:", err);
+			setTeamFailureCount((n) => n + 1);
+			toast.error(
+				(err as Error).message || "Couldn't save your team. Try again.",
+			);
+			throw err;
+		} finally {
+			setSavingTeam(false);
 		}
 	};
 
@@ -264,10 +385,10 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 
 	// ── Close confirmation (only offered from the first slide) ───────────────
 	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-	const handleClose = () => {
-		if (index === 0) setShowCloseConfirm(true);
-		else goBack();
-	};
+	// Always offer the exit. This used to act as Back on slides 2+, which was
+	// already redundant with NavRow's Back — and with a required team step it
+	// would leave the X as the only visible way out while not actually being one.
+	const handleClose = () => setShowCloseConfirm(true);
 
 	return (
 		<DeckShell
@@ -330,6 +451,30 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
 						key="cf-theme"
 						onBack={goBack}
 						onNext={goNext}
+						direction={direction}
+					/>
+				)}
+				{current === "team" && (
+					<SlideTeamCF
+						key="cf-team"
+						draft={teamDraft}
+						setDraft={setTeamDraft}
+						existingTeamName={existingTeamName}
+						submitting={savingTeam}
+						// Two failed saves, or a lookup we couldn't do at all, means
+						// something is wrong on our side — don't hold the user hostage
+						// to a required step we can't complete.
+						allowSkip={teamLookupFailed || teamFailureCount >= 2}
+						onSkip={goNext}
+						onBack={goBack}
+						onNext={async () => {
+							try {
+								await persistTeam();
+								goNext();
+							} catch {
+								/* toast already shown */
+							}
+						}}
 						direction={direction}
 					/>
 				)}
@@ -621,6 +766,89 @@ function SlideThreeCF({
 
 // ─── C/F Slide 4: Invite ────────────────────────────────────────────────────
 
+/**
+ * Required step: every user leaves onboarding owning a team.
+ *
+ * The team created here is deliberately NOT the personal team — that one is
+ * still provisioned only at consultant vetting approval, and nothing on this
+ * slide writes `is_personal`.
+ */
+function SlideTeamCF({
+	draft,
+	setDraft,
+	existingTeamName,
+	submitting,
+	allowSkip,
+	onSkip,
+	onBack,
+	onNext,
+	direction,
+}: {
+	draft: TeamDraft;
+	setDraft: (next: TeamDraft) => void;
+	existingTeamName: string | null;
+	submitting: boolean;
+	allowSkip: boolean;
+	onSkip: () => void;
+	onBack: () => void;
+	onNext: () => void;
+	direction: 1 | -1;
+}) {
+	return (
+		<motion.div
+			custom={direction}
+			variants={slideVariants}
+			initial="enter"
+			animate="center"
+			exit="exit"
+			transition={slideTransition}
+		>
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+				Create your team
+			</h1>
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+				A team is a reusable group of people you attach to projects. You'll be
+				its owner — the name and everything else can change later.
+			</p>
+
+			{existingTeamName && (
+				<p className="mx-auto mt-4 max-w-md rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+					You already have <strong>{existingTeamName}</strong> — we've filled it
+					in. Continuing keeps it and saves any edits.
+				</p>
+			)}
+
+			<div className="mx-auto mt-8 max-w-md">
+				<TeamFormFields
+					draft={draft}
+					onChange={setDraft}
+					disabled={submitting}
+					autoFocus
+					variant="deck"
+				/>
+			</div>
+
+			<NavRow
+				onBack={onBack}
+				onNext={onNext}
+				nextLabel={submitting ? "Saving…" : "Next"}
+				nextDisabled={submitting || !draft.name.trim()}
+				extraAction={
+					allowSkip ? (
+						<button
+							type="button"
+							onClick={onSkip}
+							className="text-sm font-semibold text-slate-500 transition-colors hover:text-slate-900"
+						>
+							Skip for now
+						</button>
+					) : undefined
+				}
+			/>
+		</motion.div>
+	);
+}
+
 function SlideFourCF({
 	invites,
 	addInviteRow,
@@ -653,11 +881,15 @@ function SlideFourCF({
 			transition={slideTransition}
 		>
 			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				Invite your team
+				Invite people to your workspace
 			</h1>
+			{/* Deliberately workspace invites, not team invites: only a
+			    project_access row lets someone actually open anything, and team
+			    membership alone grants none until the team is attached to a
+			    project and its members curated in. */}
 			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				Add the people you want collaborating on this workspace. You can skip
-				and add them later.
+				These people get access to your workspace. Managing your team's roster
+				happens later, in Team settings. You can skip and add them anytime.
 			</p>
 
 			<div className="mx-auto mt-8 max-w-xl space-y-3">
@@ -900,10 +1132,15 @@ function NavRow({
 	onBack,
 	onNext,
 	nextLabel,
+	nextDisabled,
+	extraAction,
 }: {
 	onBack: () => void;
 	onNext: () => void;
 	nextLabel: string;
+	nextDisabled?: boolean;
+	/** Optional third control between Back and Next (the team step's skip). */
+	extraAction?: React.ReactNode;
 }) {
 	return (
 		<div className="mx-auto mt-10 flex max-w-xl items-center justify-between gap-3">
@@ -915,11 +1152,13 @@ function NavRow({
 				<ArrowLeft className="h-4 w-4" />
 				Back
 			</button>
+			{extraAction}
 			<Button
 				variant="contained"
 				colorScheme="primary"
 				onClick={onNext}
-				className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
+				disabled={nextDisabled}
+				className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
 			>
 				{nextLabel}
 				<ArrowRight className="ml-2 h-4 w-4" />
