@@ -49,9 +49,9 @@ import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { CURRENCY_CODE_OPTIONS, formatCurrency } from "@/lib/currency";
 import {
-	contractService,
 	type ContractRelationshipKind,
 	type ContractScopeMode,
+	contractService,
 } from "@/services/contract.service";
 import {
 	type FinanceContractSummary,
@@ -395,11 +395,11 @@ function FinancePage() {
 								onCreate={
 									search.projectId
 										? () =>
-										createContractMutation.mutate({
-											project_id: search.projectId as string,
-											relationship_kind: "client_services",
-											scope_mode: "project_specific",
-										})
+												createContractMutation.mutate({
+													project_id: search.projectId as string,
+													relationship_kind: "client_services",
+													scope_mode: "project_specific",
+												})
 										: undefined
 								}
 								creating={createContractMutation.isPending}
@@ -423,7 +423,7 @@ function FinancePage() {
 					loading={projectOptionsQuery.isPending}
 					creating={createContractMutation.isPending}
 					onClose={() => setCreateContractOpen(false)}
-				onCreate={(input) => createContractMutation.mutate(input)}
+					onCreate={(input) => createContractMutation.mutate(input)}
 				/>
 			</div>
 		</DashboardShell>
@@ -509,7 +509,8 @@ function CreateContractDialog({
 								Create a contract
 							</h2>
 							<p className="mt-1 text-xs leading-5 text-muted-foreground">
-								Set up the relationship and scope. You will add the terms in the draft.
+								Set up the relationship and scope. You will add the terms in the
+								draft.
 							</p>
 						</div>
 						<button
@@ -522,10 +523,12 @@ function CreateContractDialog({
 						</button>
 					</div>
 					<div className="mt-4 grid grid-cols-2 gap-2">
-						{([
-							["client_services", "Client hires Consultant"],
-							["talent_services", "Consultant hires Talent"],
-						] as const).map(([value, label]) => (
+						{(
+							[
+								["client_services", "Client hires Consultant"],
+								["talent_services", "Consultant hires Talent"],
+							] as const
+						).map(([value, label]) => (
 							<button
 								type="button"
 								key={value}
@@ -541,10 +544,12 @@ function CreateContractDialog({
 						))}
 					</div>
 					<div className="mt-2 flex gap-2">
-						{([
-							["project_specific", "One project"],
-							["flexible", "Flexible"],
-						] as const).map(([value, label]) => (
+						{(
+							[
+								["project_specific", "One project"],
+								["flexible", "Flexible"],
+							] as const
+						).map(([value, label]) => (
 							<button
 								type="button"
 								key={value}
@@ -562,55 +567,58 @@ function CreateContractDialog({
 					{scopeMode === "project_specific" && (
 						<>
 							<div className="relative mt-4">
-						<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-						<input
-							autoFocus
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder="Search projects…"
-							className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-						/>
+								<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+								<input
+									autoFocus
+									value={query}
+									onChange={(event) => setQuery(event.target.value)}
+									placeholder="Search projects…"
+									className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+								/>
 							</div>
 							<div className="mt-3 max-h-44 overflow-y-auto rounded-lg border border-border p-1">
-						{loading ? (
-							<div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
-								<Loader2 className="h-4 w-4 animate-spin" /> Loading projects…
-							</div>
-						) : visibleProjects.length ? (
-							visibleProjects.map((project) => {
-								const selected = project.id === selectedProjectId;
-								return (
-									<button
-										type="button"
-										key={project.id}
-										onClick={() => setSelectedProjectId(project.id)}
-										className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-											selected
-												? "bg-primary/10 text-foreground"
-												: "hover:bg-muted"
-										}`}
-									>
-										<span className="truncate">{project.title}</span>
-										{selected && (
-											<Check className="h-4 w-4 shrink-0 text-primary" />
-										)}
-									</button>
-								);
-							})
-						) : (
-							<p className="px-3 py-8 text-center text-xs text-muted-foreground">
-								No matching projects.
-							</p>
-						)}
+								{loading ? (
+									<div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
+										<Loader2 className="h-4 w-4 animate-spin" /> Loading
+										projects…
+									</div>
+								) : visibleProjects.length ? (
+									visibleProjects.map((project) => {
+										const selected = project.id === selectedProjectId;
+										return (
+											<button
+												type="button"
+												key={project.id}
+												onClick={() => setSelectedProjectId(project.id)}
+												className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+													selected
+														? "bg-primary/10 text-foreground"
+														: "hover:bg-muted"
+												}`}
+											>
+												<span className="truncate">{project.title}</span>
+												{selected && (
+													<Check className="h-4 w-4 shrink-0 text-primary" />
+												)}
+											</button>
+										);
+									})
+								) : (
+									<p className="px-3 py-8 text-center text-xs text-muted-foreground">
+										No matching projects.
+									</p>
+								)}
 							</div>
 						</>
 					)}
 					{requiresCounterparty && (
 						<div className="mt-4 rounded-lg border border-border p-3">
-							<p className="text-xs font-medium text-foreground">Counterparty account</p>
+							<p className="text-xs font-medium text-foreground">
+								Counterparty account
+							</p>
 							<p className="mt-1 text-[11px] text-muted-foreground">
-								Enter their exact Proyekto email. Private Talent contracts do not
-								require a public freelancer listing.
+								Enter their exact Proyekto email. Private Talent contracts do
+								not require a public freelancer listing.
 							</p>
 							<div className="mt-2 flex gap-2">
 								<input
@@ -628,10 +636,14 @@ function CreateContractDialog({
 										!counterpartyEmail.trim() ||
 										resolveCounterpartyMutation.isPending
 									}
-									onClick={() => resolveCounterpartyMutation.mutate(counterpartyEmail)}
+									onClick={() =>
+										resolveCounterpartyMutation.mutate(counterpartyEmail)
+									}
 									className="rounded-md bg-muted px-2.5 text-xs font-medium text-foreground disabled:opacity-50"
 								>
-									{resolveCounterpartyMutation.isPending ? "Checking…" : "Confirm"}
+									{resolveCounterpartyMutation.isPending
+										? "Checking…"
+										: "Confirm"}
 								</button>
 							</div>
 							{counterparty && (
@@ -658,12 +670,17 @@ function CreateContractDialog({
 						<button
 							type="button"
 							disabled={!canCreate || creating}
-							onClick={() => onCreate({
-								project_id: scopeMode === "project_specific" ? selectedProjectId : null,
-								relationship_kind: relationshipKind,
-								scope_mode: scopeMode,
-								...(counterparty ? { counterparty_user_id: counterparty.id } : {}),
-							})}
+							onClick={() =>
+								onCreate({
+									project_id:
+										scopeMode === "project_specific" ? selectedProjectId : null,
+									relationship_kind: relationshipKind,
+									scope_mode: scopeMode,
+									...(counterparty
+										? { counterparty_user_id: counterparty.id }
+										: {}),
+								})
+							}
 							className="app-cta inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -1538,8 +1555,8 @@ function ContractPortfolio({
 								<span className="mt-1 block truncate text-xs text-muted-foreground">
 									{item.contract_number ?? `Version ${item.version}`} ·{" "}
 									{item.relationship_kind === "talent_services"
-										? item.provider_name ?? "Talent not set"
-										: item.client_name ?? "Client not set"}
+										? (item.provider_name ?? "Talent not set")
+										: (item.client_name ?? "Client not set")}
 								</span>
 							</span>
 						</span>

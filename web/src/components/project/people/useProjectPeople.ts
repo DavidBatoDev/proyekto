@@ -83,13 +83,7 @@ export interface ProjectPeople {
 // "member" and "client" — none of which are share_role values, so none ever
 // matched — and they sat in positions that would have mis-sorted the real rungs
 // if they had.
-const ROLE_ORDER = [
-	"owner",
-	"admin",
-	"editor",
-	"commenter",
-	"viewer",
-] as const;
+const ROLE_ORDER = ["owner", "admin", "editor", "commenter", "viewer"] as const;
 
 /**
  * ProjectMember.user uses `string | undefined` where ProfileSummary uses

@@ -40,7 +40,8 @@ export function ClientSigningLinkModal({
 	const counterparty = contract.positions.find(
 		(position) => position.capacity !== "consultant",
 	);
-	const counterpartyEmail = counterparty?.email_snapshot ?? contract.client_email;
+	const counterpartyEmail =
+		counterparty?.email_snapshot ?? contract.client_email;
 	const counterpartyLabel =
 		contract.relationship_kind === "talent_services" ? "Talent" : "Client";
 	const [sendEmail, setSendEmail] = useState(Boolean(counterpartyEmail));
@@ -63,9 +64,7 @@ export function ClientSigningLinkModal({
 			contractService.createSignatureLink(contract.id, {
 				expires_in_days: days,
 				send_email: sendEmail,
-				...(counterpartyEmail
-					? { recipient_email: counterpartyEmail }
-					: {}),
+				...(counterpartyEmail ? { recipient_email: counterpartyEmail } : {}),
 			}),
 		onSuccess: (created) => {
 			// Report from the server's delivery result, never from local state:
@@ -173,8 +172,8 @@ export function ClientSigningLinkModal({
 				</label>
 			) : (
 				<p className="text-[11px] text-muted-foreground">
-					No {counterpartyLabel.toLowerCase()} email on the contract — you'll need to send the link
-					yourself.
+					No {counterpartyLabel.toLowerCase()} email on the contract — you'll
+					need to send the link yourself.
 				</p>
 			)}
 		</div>
