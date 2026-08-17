@@ -7,6 +7,15 @@
  * enrollment recheck, engagement + parties + link + settings + rates, amendment
  * rollover) shipped unverified. It runs against hosted dev, not production,
  * because activation writes rows the model never deletes.
+ *
+ * ⚠️ This spec is NOT fully self-cleaning, and cannot be. The activated
+ * engagement graph is append-only: engagements / time_rates / time_settings /
+ * project_links raise `*_DELETE_FORBIDDEN`, and `tg_engagement_parties_guard`
+ * raises `ENGAGEMENT_PARTY_IMMUTABLE` on UPDATE and DELETE alike — triggers
+ * fire for service_role too. Only contracts and contract_positions are
+ * removable, and only after rewinding the contract to 'draft'. Each engagement
+ * is cancelled and left in place, and `afterAll` prints what it could not
+ * remove. Budget two permanent engagement rows per run before adding cases.
  */
 import request from 'supertest';
 import { randomUUID } from 'crypto';
@@ -128,41 +137,105 @@ describe('engagement activation (real DB)', () => {
     await h.grantAccess(projectId, consultant.id, 'owner');
   }, 120000);
 
+  /**
+   * supabase-js reports failures in `error` instead of throwing, so an
+   * unchecked `.delete()` leaves rows behind with no signal at all. That is
+   * exactly how earlier runs of this spec littered hosted dev. Collect every
+   * failure and report it rather than pretending the teardown worked.
+   */
+  const cleanupProblems: string[] = [];
+
+  async function tryDelete(
+    table: string,
+    column: string,
+    value: string,
+  ): Promise<void> {
+    const { error } = await h.admin.from(table).delete().eq(column, value);
+    if (error) {
+      cleanupProblems.push(
+        `delete ${table}.${column}=${value}: ${error.message}`,
+      );
+    }
+  }
+
   afterAll(async () => {
-    // Engagement children first: the model has no cascade from contracts, and
-    // the harness only tracks the tables it created itself.
+    // The activated engagement graph is append-only and cannot be removed:
+    // engagements / time_rates / time_settings / project_links raise
+    // *_DELETE_FORBIDDEN, and engagement_parties raises
+    // ENGAGEMENT_PARTY_IMMUTABLE on UPDATE and DELETE alike. Triggers fire for
+    // service_role too, so retiring the engagement is the only teardown there
+    // is. active -> cancelled is the sole transition tg_engagements_guard
+    // permits, and engagements_terminal_timestamp_check demands cancelled_at
+    // alongside it.
     for (const engagementId of createdEngagements) {
-      for (const table of [
-        'engagement_time_rates',
-        'engagement_time_settings',
-        'engagement_project_links',
-        'engagement_parties',
-      ]) {
-        await h.admin.from(table).delete().eq('engagement_id', engagementId);
+      const { error } = await h.admin
+        .from('engagements')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          status_reason: 'integration test fixture',
+        })
+        .eq('id', engagementId)
+        .eq('status', 'active');
+      if (error) {
+        cleanupProblems.push(
+          `cancel engagement ${engagementId}: ${error.message}`,
+        );
       }
     }
+
+    // Contracts and their positions ARE removable, but only from 'draft':
+    // tg_contract_positions_guard refuses DELETE while the contract is sent or
+    // signed. A contract that actually activated an engagement is pinned for
+    // good, though — engagements.activated_by_contract_id and
+    // engagement_time_settings.source_contract_id both reference it — so don't
+    // even try, or the teardown cries wolf on every single run.
+    const permanentContracts: string[] = [];
     for (const contractId of createdContracts) {
-      await h.admin
-        .from('contract_positions')
-        .delete()
-        .eq('contract_id', contractId);
-      await h.admin
+      const { data } = await h.admin
         .from('contracts')
-        .update({ engagement_id: null })
+        .select('engagement_id')
+        .eq('id', contractId)
+        .maybeSingle();
+      if (data?.engagement_id) {
+        permanentContracts.push(contractId);
+        continue;
+      }
+
+      const { error } = await h.admin
+        .from('contracts')
+        .update({ status: 'draft' })
         .eq('id', contractId);
+      if (error) {
+        cleanupProblems.push(`rewind contract ${contractId}: ${error.message}`);
+        continue;
+      }
+      await tryDelete('contract_positions', 'contract_id', contractId);
+      await tryDelete('contracts', 'id', contractId);
     }
-    for (const engagementId of createdEngagements) {
-      await h.admin.from('engagements').delete().eq('id', engagementId);
+
+    // The consultant enrollment is referenced by every surviving contract, so
+    // it only goes when nothing is pinned.
+    if (permanentContracts.length === 0) {
+      await tryDelete('consultant_profiles', 'user_id', consultant.id);
     }
-    for (const contractId of createdContracts) {
-      await h.admin.from('contracts').delete().eq('id', contractId);
-    }
-    await h.admin
-      .from('consultant_profiles')
-      .delete()
-      .eq('user_id', consultant.id);
+
     await h.cleanup();
     await h.close();
+
+    // Deliberately noisy. Every run permanently adds these rows, and purging
+    // them needs a maintenance query with session_replication_role = 'replica',
+    // which the harness cannot issue over PostgREST.
+    if (createdEngagements.length > 0) {
+      console.warn(
+        `[cleanup] permanent by design — ${createdEngagements.length} engagement(s) cancelled not deleted (${createdEngagements.join(', ')}); ${permanentContracts.length} activating contract(s) and the consultant enrollment left in place`,
+      );
+    }
+    if (cleanupProblems.length > 0) {
+      console.warn(
+        `[cleanup] ${cleanupProblems.length} teardown step(s) failed: ${cleanupProblems.join(' | ')}`,
+      );
+    }
   }, 120000);
 
   describe('the first signature does not activate anything', () => {
