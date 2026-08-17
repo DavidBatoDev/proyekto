@@ -1041,18 +1041,10 @@ describe('RoadmapAiService authz cache hardening', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
     ) as unknown as {
-      authzDecisionCache: Map<
-        string,
-        { expiresAtMs: number; roadmap: Record<string, unknown> }
-      >;
+      authzDecisionCache: Map<string, { expiresAtMs: number; allowed: true }>;
       buildAuthzDecisionCacheKey: (roadmapId: string, userId: string) => string;
-      writeAuthzDecisionCache: (
-        cacheKey: string,
-        roadmap: Record<string, unknown>,
-      ) => void;
-      readAuthzDecisionCache: (
-        cacheKey: string,
-      ) => Record<string, unknown> | null;
+      writeAuthzDecisionCache: (cacheKey: string) => void;
+      readAuthzDecisionCache: (cacheKey: string) => boolean;
     };
 
   it('evicts old entries when max size is exceeded', () => {
@@ -1063,7 +1055,7 @@ describe('RoadmapAiService authz cache hardening', () => {
         `roadmap-${index}`,
         `user-${index}`,
       );
-      service.writeAuthzDecisionCache(key, { id: `roadmap-${index}` });
+      service.writeAuthzDecisionCache(key);
     }
 
     expect(service.authzDecisionCache.size).toBeLessThanOrEqual(5000);
@@ -1073,14 +1065,30 @@ describe('RoadmapAiService authz cache hardening', () => {
     const service = createService();
     const key = service.buildAuthzDecisionCacheKey('roadmap-1', 'user-1');
     service.authzDecisionCache.set(key, {
-      roadmap: { id: 'roadmap-1' },
+      allowed: true,
       expiresAtMs: Date.now() - 1,
     });
 
     const hit = service.readAuthzDecisionCache(key);
 
-    expect(hit).toBeNull();
+    expect(hit).toBe(false);
     expect(service.authzDecisionCache.has(key)).toBe(false);
+  });
+
+  // The cache stores a verdict, never the roadmap row. Callers derive
+  // `revision_token` from `updated_at`, so a cached row would hand out tokens
+  // for a superseded revision and `commit` would 409 STALE_REVISION against a
+  // roadmap the caller had in fact read at its latest state.
+  it('caches only the verdict, so no roadmap row can be served stale', () => {
+    const service = createService();
+    const key = service.buildAuthzDecisionCacheKey('roadmap-1', 'user-1');
+
+    service.writeAuthzDecisionCache(key);
+
+    expect(service.readAuthzDecisionCache(key)).toBe(true);
+    expect(
+      Object.keys(service.authzDecisionCache.get(key) ?? {}).sort(),
+    ).toEqual(['allowed', 'expiresAtMs']);
   });
 
   it('includes configured authz cache version in cache key', () => {
@@ -1346,12 +1354,12 @@ describe('RoadmapAiService operation semantics parity', () => {
     ]);
 
     expect(result.issues).toEqual([]);
-    const tasks =
-      state.roadmap_epics[0].roadmap_features[0].roadmap_tasks as Array<{
-        id: string;
-        status: string;
-        priority?: string;
-      }>;
+    const tasks = state.roadmap_epics[0].roadmap_features[0]
+      .roadmap_tasks as Array<{
+      id: string;
+      status: string;
+      priority?: string;
+    }>;
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe(taskB);
     expect(tasks[0].status).toBe('done');
@@ -1409,10 +1417,10 @@ describe('RoadmapAiService operation semantics parity', () => {
     ]);
 
     expect(result.issues).toEqual([]);
-    const tasks =
-      state.roadmap_epics[0].roadmap_features[0].roadmap_tasks as Array<{
-        assignee_id: string | null;
-      }>;
+    const tasks = state.roadmap_epics[0].roadmap_features[0]
+      .roadmap_tasks as Array<{
+      assignee_id: string | null;
+    }>;
     expect(tasks).toHaveLength(3);
     for (const task of tasks) {
       expect(task.assignee_id).toBe(assignee);

@@ -226,9 +226,20 @@ type ContextStateSelection = {
   previewId?: string;
 };
 
+/**
+ * A cached authorization VERDICT — deliberately not the roadmap row.
+ *
+ * An earlier version cached the row alongside the verdict, which turned this
+ * into a stale-read cache: `preview` and `commit` derive `revision_token` from
+ * `roadmap.updated_at`, so for up to the TTL after any write, a caller could be
+ * handed a token built from a superseded row. `commit` then compared that token
+ * against the same cached value (passing) and `upsertFullRoadmap` rejected at
+ * the RPC with 409 STALE_REVISION. The row read is a single indexed lookup; the
+ * expensive part worth caching is the permission resolution and parent walk.
+ */
 type AuthzDecisionCacheValue = {
   expiresAtMs: number;
-  roadmap: Record<string, unknown>;
+  allowed: true;
 };
 
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
@@ -2480,13 +2491,14 @@ export class RoadmapAiService {
    */
   private async assertCanViewRoadmap(roadmapId: string, userId: string) {
     const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId, 'view');
-    const cached = this.readAuthzDecisionCache(cacheKey);
-    if (cached) {
-      return cached;
-    }
 
+    // The row is always read fresh — only the verdict is cached. Callers derive
+    // `revision_token` from `updated_at`, so serving a cached row here would
+    // hand out tokens for a superseded revision. See AuthzDecisionCacheValue.
     const existing = await this.roadmapsRepo.findById(roadmapId);
     if (!existing) throw new NotFoundException('Roadmap not found');
+
+    if (this.readAuthzDecisionCache(cacheKey)) return existing;
 
     if (existing.project_id) {
       const canView = await this.roadmapAuthz.canViewRoadmap(roadmapId, userId);
@@ -2496,10 +2508,7 @@ export class RoadmapAiService {
           message: 'Insufficient permissions for roadmap context access.',
         });
       }
-      this.writeAuthzDecisionCache(
-        cacheKey,
-        existing as Record<string, unknown>,
-      );
+      this.writeAuthzDecisionCache(cacheKey);
       return existing;
     }
 
@@ -2509,19 +2518,20 @@ export class RoadmapAiService {
         message: 'Not the owner',
       });
     }
-    this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
+    this.writeAuthzDecisionCache(cacheKey);
     return existing;
   }
 
   private async assertCanEditRoadmap(roadmapId: string, userId: string) {
     const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId, 'edit');
-    const cached = this.readAuthzDecisionCache(cacheKey);
-    if (cached) {
-      return cached;
-    }
 
+    // Fresh row, cached verdict — see assertCanViewRoadmap and
+    // AuthzDecisionCacheValue. This is the path `commit` runs on, so a stale
+    // `updated_at` here is what produced spurious 409 STALE_REVISION responses.
     const existing = await this.roadmapsRepo.findById(roadmapId);
     if (!existing) throw new NotFoundException('Roadmap not found');
+
+    if (this.readAuthzDecisionCache(cacheKey)) return existing;
 
     if (existing.project_id) {
       try {
@@ -2536,10 +2546,7 @@ export class RoadmapAiService {
           message: 'Insufficient permissions for roadmap context access.',
         });
       }
-      this.writeAuthzDecisionCache(
-        cacheKey,
-        existing as Record<string, unknown>,
-      );
+      this.writeAuthzDecisionCache(cacheKey);
       return existing;
     }
 
@@ -2549,7 +2556,7 @@ export class RoadmapAiService {
         message: 'Not the owner',
       });
     }
-    this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
+    this.writeAuthzDecisionCache(cacheKey);
     return existing;
   }
 
@@ -2605,26 +2612,22 @@ export class RoadmapAiService {
     return `${AUTHZ_DECISION_CACHE_VERSION}:${roadmapId}:${userId}:${level}`;
   }
 
-  private readAuthzDecisionCache(
-    cacheKey: string,
-  ): Record<string, unknown> | null {
+  /** True when this exact (roadmap, user, level) was already allowed and the entry is live. */
+  private readAuthzDecisionCache(cacheKey: string): boolean {
     const cached = this.authzDecisionCache.get(cacheKey);
-    if (!cached) return null;
+    if (!cached) return false;
     if (cached.expiresAtMs <= Date.now()) {
       this.authzDecisionCache.delete(cacheKey);
-      return null;
+      return false;
     }
-    return cached.roadmap;
+    return cached.allowed;
   }
 
-  private writeAuthzDecisionCache(
-    cacheKey: string,
-    roadmap: Record<string, unknown>,
-  ): void {
+  private writeAuthzDecisionCache(cacheKey: string): void {
     this.pruneExpiredAuthzDecisionCache();
     this.enforceAuthzDecisionCacheMaxEntries();
     this.authzDecisionCache.set(cacheKey, {
-      roadmap,
+      allowed: true,
       expiresAtMs: Date.now() + AUTHZ_DECISION_CACHE_TTL_MS,
     });
   }
