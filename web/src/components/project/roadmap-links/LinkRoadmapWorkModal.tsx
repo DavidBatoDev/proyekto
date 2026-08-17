@@ -1,11 +1,14 @@
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+	AppPrimaryButton,
+	AppSecondaryButton,
+} from "@/components/common/AppButton";
 import { AppDialog } from "@/components/common/AppDialog";
 import {
 	useLinkedRoadmapQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
-import { PrimaryButton, SecondaryButton } from "./DeliveryPrimitives";
 
 /**
  * Picks the roadmap work a delivery object covers.
@@ -137,17 +140,17 @@ export function LinkRoadmapWorkModal({
 					)}
 				</span>
 				{existingLinkId ? (
-					<SecondaryButton
+					<AppSecondaryButton
 						onClick={() => onUnlink(existingLinkId)}
 						disabled={busy}
 						tone="danger"
 					>
 						Unlink
-					</SecondaryButton>
+					</AppSecondaryButton>
 				) : (
-					<SecondaryButton onClick={() => onLink(target)} disabled={busy}>
+					<AppSecondaryButton onClick={() => onLink(target)} disabled={busy}>
 						Link
-					</SecondaryButton>
+					</AppSecondaryButton>
 				)}
 			</div>
 		);
@@ -160,7 +163,7 @@ export function LinkRoadmapWorkModal({
 			size="lg"
 			title={title}
 			description={description}
-			footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
+			footer={<AppPrimaryButton onClick={onClose}>Done</AppPrimaryButton>}
 		>
 			<div>
 				{roadmap.isPending && linkedRoadmap.data?.id ? (
@@ -218,7 +221,7 @@ export function LinkRoadmapWorkModal({
 									</button>
 									{permits("epic") &&
 										(linkedByTarget.has(epic.id) ? (
-											<SecondaryButton
+											<AppSecondaryButton
 												onClick={() =>
 													onUnlink(linkedByTarget.get(epic.id) as string)
 												}
@@ -226,14 +229,14 @@ export function LinkRoadmapWorkModal({
 												tone="danger"
 											>
 												Unlink
-											</SecondaryButton>
+											</AppSecondaryButton>
 										) : (
-											<SecondaryButton
+											<AppSecondaryButton
 												onClick={() => onLink({ epic_id: epic.id })}
 												disabled={busy}
 											>
 												Link
-											</SecondaryButton>
+											</AppSecondaryButton>
 										))}
 								</div>
 
