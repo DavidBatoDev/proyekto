@@ -19,6 +19,7 @@ import { MissingPermissionException } from '../projects/authorization/missing-pe
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
+import { normalizeTeamTags } from './team-tags';
 import {
   AddTeamMemberDto,
   CreateTeamDto,
@@ -60,6 +61,11 @@ export interface TeamRow {
   name: string;
   description: string | null;
   avatar_url: string | null;
+  /**
+   * Freeform descriptive labels. NOT NULL DEFAULT '{}' in the DB, so this is
+   * always an array. Descriptive only — never read by any authorization path.
+   */
+  tags: string[];
   is_personal: boolean;
   /**
    * Billing identity — the service-provider block on contracts and invoices
@@ -332,6 +338,7 @@ export class TeamsService {
         name: dto.name,
         description: dto.description ?? null,
         avatar_url: dto.avatar_url ?? null,
+        tags: normalizeTeamTags(dto.tags),
       })
       .select('*')
       .single();
@@ -345,7 +352,23 @@ export class TeamsService {
       user_id: userId,
       role: 'owner',
     });
-    if (insertOwner.error) throw new Error(insertOwner.error.message);
+    if (insertOwner.error) {
+      // Compensating delete: these two writes are not in one transaction, and
+      // without the rollback a failed roster insert leaves a team nobody is a
+      // member of. That matters now that the welcome deck calls this on a
+      // retryable step — every retry would strand another orphan, and the
+      // deck's re-entry lookup would then prefill from one.
+      const cleanup = await this.supabase
+        .from('teams')
+        .delete()
+        .eq('id', (data as TeamRow).id);
+      if (cleanup.error) {
+        this.logger.error(
+          `Orphan team ${(data as TeamRow).id}: owner insert failed (${insertOwner.error.message}) and rollback failed (${cleanup.error.message})`,
+        );
+      }
+      throw new Error(insertOwner.error.message);
+    }
     return data as TeamRow;
   }
 
@@ -364,6 +387,11 @@ export class TeamsService {
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
+    // Tags clear with `[]`, never with `null` — deliberately kept out of the
+    // ''→null billing loop below, which is string-specific. No consultant gate:
+    // these are descriptive labels and gating them on a capability would be
+    // exactly the anti-pattern the glossary forbids.
+    if (dto.tags !== undefined) patch.tags = normalizeTeamTags(dto.tags);
 
     // Billing identity. '' clears the field rather than storing an empty
     // string, so `legal_name || name` in the contract seeder falls through
