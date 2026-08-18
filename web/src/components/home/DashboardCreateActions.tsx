@@ -6,7 +6,10 @@ export function DashboardCreateActions() {
 	const roadmapNoticeId = useId();
 
 	return (
-		<div className="flex w-fit shrink-0 flex-col items-start">
+		<div
+			data-tour="dashboard-create"
+			className="flex w-fit shrink-0 flex-col items-start"
+		>
 			<Link
 				to="/marketplace/project-posting"
 				search={{ roadmapId: undefined }}

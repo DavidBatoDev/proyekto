@@ -174,7 +174,10 @@ export function SidebarContent() {
 
 	return (
 		<>
-			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
+			<nav
+				data-tour="sidebar-nav"
+				className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4"
+			>
 				<div className="space-y-0.5">
 					{EXECUTION_PRIMARY_NAV_ITEMS.map((item) => (
 						<SidebarNavLink

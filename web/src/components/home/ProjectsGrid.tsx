@@ -13,6 +13,10 @@ import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
 import {
+	useTourDemo,
+	useTourDemoActive,
+} from "@/lib/tours/demo/TourDemoContext";
+import {
 	type Project,
 	type ProjectInvite,
 	projectService,
@@ -92,7 +96,12 @@ export function ProjectsGrid() {
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
+	// See TeamsGrid: fixtures are swapped in ahead of the card-building memos so
+	// the real derivation logic runs unchanged during a tour replay.
+	const projects = useTourDemo<Project[]>(
+		"projects",
+		(projectsQuery.data as Project[] | undefined) ?? [],
+	);
 	const invitesQuery = useQuery({
 		queryKey: ["projects", "my-invites"],
 		queryFn: () => projectService.getMyInvites(),
@@ -102,7 +111,7 @@ export function ProjectsGrid() {
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const pendingInvites = useMemo(
+	const realPendingInvites = useMemo(
 		() =>
 			((invitesQuery.data as ProjectInvite[] | undefined) ?? [])
 				.filter((invite) => invite.status === "pending")
@@ -112,7 +121,13 @@ export function ProjectsGrid() {
 				),
 		[invitesQuery.data],
 	);
-	const isLoading = projectsQuery.isPending || invitesQuery.isPending;
+	const pendingInvites = useTourDemo<ProjectInvite[]>(
+		"projectInvites",
+		realPendingInvites,
+	);
+	const isDemo = useTourDemoActive();
+	const isLoading =
+		!isDemo && (projectsQuery.isPending || invitesQuery.isPending);
 
 	const primaryCards = useMemo<DashboardCard[]>(() => {
 		const inviteCards: DashboardCard[] = pendingInvites.map((invite) => ({
@@ -225,7 +240,7 @@ function ProjectsSection({
 	const visibleCards = showAll ? cards : cards.slice(0, INITIAL_VISIBLE_CARDS);
 
 	return (
-		<section>
+		<section data-tour="dashboard-projects">
 			<div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
 				{isLoading ? (
 					<>

@@ -4,6 +4,10 @@ import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import {
+	useTourDemo,
+	useTourDemoActive,
+} from "@/lib/tours/demo/TourDemoContext";
+import {
 	listMyTeamInvites,
 	listMyTeams,
 	type ProfileSummary,
@@ -32,11 +36,21 @@ export function TeamsGrid() {
 		enabled: Boolean(user?.id),
 		staleTime: 30 * 1000,
 	});
-	const teams = (teamsQuery.data as Team[] | undefined) ?? [];
-	const pendingInvites = (
-		(invitesQuery.data as TeamInvite[] | undefined) ?? []
-	).filter((i) => i.status === "pending");
-	const isLoading = teamsQuery.isPending || invitesQuery.isPending;
+	// Demo-mode swap sits between the query result and the card-building logic
+	// below, so sorting/slicing runs against fixtures exactly as it does against
+	// real rows. Returns the real value untouched when no tour is replaying.
+	const teams = useTourDemo<Team[]>(
+		"teams",
+		(teamsQuery.data as Team[] | undefined) ?? [],
+	);
+	const pendingInvites = useTourDemo<TeamInvite[]>(
+		"teamInvites",
+		((invitesQuery.data as TeamInvite[] | undefined) ?? []).filter(
+			(i) => i.status === "pending",
+		),
+	);
+	const isDemo = useTourDemoActive();
+	const isLoading = !isDemo && (teamsQuery.isPending || invitesQuery.isPending);
 
 	// Dashboard preview is a single row: pending invites first (they're
 	// time-sensitive), then the 3 most recently updated teams. Anything
@@ -54,7 +68,11 @@ export function TeamsGrid() {
 	].slice(0, 3);
 
 	return (
-		<div id="my-teams" className="app-slide-up scroll-mt-6">
+		<div
+			id="my-teams"
+			data-tour="dashboard-teams"
+			className="app-slide-up scroll-mt-6"
+		>
 			<div className="mb-4 flex items-end justify-between gap-3">
 				<div>
 					<div className="flex items-center gap-2">

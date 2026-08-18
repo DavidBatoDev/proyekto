@@ -141,6 +141,25 @@ export interface Profile {
   updated_at: string;
 }
 
+/**
+ * Mirrors public.user_tour_progress. The web client owns reads and writes
+ * (direct Supabase under own-row RLS); this exists so backend code that grows
+ * into tours later starts from the same shape.
+ */
+export interface UserTourProgress {
+  id: string;
+  user_id: string;
+  tour_key: string;
+  scope_type: 'global' | 'project' | 'roadmap' | 'team';
+  scope_id: string | null;
+  status: 'completed' | 'skipped';
+  last_step: number;
+  replay_count: number;
+  completed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminProfile {
   user_id: string;
   access_level: AdminAccessLevel;

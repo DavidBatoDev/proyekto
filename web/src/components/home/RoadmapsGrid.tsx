@@ -15,6 +15,10 @@ import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import {
+	useTourDemo,
+	useTourDemoActive,
+} from "@/lib/tours/demo/TourDemoContext";
 
 // Dashboard shows this many roadmap cards before the "View more" toggle reveals
 // the rest with a staggered slide-up.
@@ -110,27 +114,33 @@ export function RoadmapsGrid() {
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const loading = roadmapsQuery.isPending;
-	const isUnavailable = Boolean(roadmapsQuery.error);
+	const isDemo = useTourDemoActive();
+	// See TeamsGrid: fixtures replace the query result before the card mapping,
+	// and the loading/error states are suppressed so a skeleton or an error
+	// panel never covers the element the tour is spotlighting.
+	const roadmaps = useTourDemo<RoadmapPreview[]>(
+		"roadmaps",
+		roadmapsQuery.data ?? [],
+	);
+	const loading = !isDemo && roadmapsQuery.isPending;
+	const isUnavailable = !isDemo && Boolean(roadmapsQuery.error);
 	const templates = useMemo(
 		() =>
-			(roadmapsQuery.data ?? []).map(
-				(roadmap: RoadmapPreview, index: number) => ({
-					id: roadmap.id,
-					title: roadmap.name,
-					category: roadmap.description || "Project Roadmap",
-					milestones: "View plan",
-					budget: "Custom",
-					tag:
-						index === 0
-							? "Active"
-							: roadmap.status === "completed"
-								? "Completed"
-								: "Draft",
-					preview: roadmap,
-				}),
-			),
-		[roadmapsQuery.data],
+			roadmaps.map((roadmap: RoadmapPreview, index: number) => ({
+				id: roadmap.id,
+				title: roadmap.name,
+				category: roadmap.description || "Project Roadmap",
+				milestones: "View plan",
+				budget: "Custom",
+				tag:
+					index === 0
+						? "Active"
+						: roadmap.status === "completed"
+							? "Completed"
+							: "Draft",
+				preview: roadmap,
+			})),
+		[roadmaps],
 	);
 	const hasMoreRoadmaps = templates.length > INITIAL_VISIBLE_ROADMAPS;
 	const visibleTemplates = showAllRoadmaps
@@ -141,6 +151,7 @@ export function RoadmapsGrid() {
 		<div
 			id={roadmapsSectionId}
 			data-roadmaps-section="my-roadmaps-section"
+			data-tour="dashboard-roadmaps"
 			className="app-slide-up"
 		>
 			<div className="mb-6">

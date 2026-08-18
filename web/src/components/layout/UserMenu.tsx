@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
 	ChevronDown,
+	Compass,
 	KeyRound,
 	LogOut,
 	Settings,
@@ -9,14 +10,22 @@ import {
 	User,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { replayProductTour } from "@/components/tour/tourEvents";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { resolveTourForPath } from "@/lib/tours/registry";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function UserMenu() {
 	const [isOpen, setIsOpen] = useState(false);
+	// The entry only appears on surfaces that actually register a tour, so it
+	// lights up on new pages automatically as tours are added to the registry.
+	const pathname = useRouterState({
+		select: (state) => state.location.pathname,
+	});
+	const tourForSurface = resolveTourForPath(pathname);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const { data: profile } = useProfileQuery();
 	const { user, signOut } = useAuthStore();
@@ -160,6 +169,20 @@ export default function UserMenu() {
 							<KeyRound size={16} />
 							MCP Tokens
 						</Link>
+
+						{tourForSurface && (
+							<button
+								type="button"
+								onClick={() => {
+									setIsOpen(false);
+									replayProductTour(tourForSurface.key);
+								}}
+								className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+							>
+								<Compass size={16} />
+								Replay product tour
+							</button>
+						)}
 
 						<button
 							type="button"

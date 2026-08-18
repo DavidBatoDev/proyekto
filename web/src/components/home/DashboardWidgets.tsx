@@ -7,6 +7,11 @@ import {
 	type RoadmapPreview,
 } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
+import { TourDemoBanner } from "@/components/tour/TourDemoBanner";
+import {
+	useTourDemo,
+	useTourDemoActive,
+} from "@/lib/tours/demo/TourDemoContext";
 import {
 	MEETING_TYPE_LABELS,
 	type Meeting,
@@ -131,8 +136,15 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
-	const isProjectsLoading = projectsQuery.isPending;
+	// Same demo swap as the grids: the stat counters below are derived from this
+	// array, so fixtures make the numbers on the welcome card non-zero during a
+	// tour replay instead of spotlighting three zeroes.
+	const isDemo = useTourDemoActive();
+	const projects = useTourDemo<Project[]>(
+		"projects",
+		(projectsQuery.data as Project[] | undefined) ?? [],
+	);
+	const isProjectsLoading = !isDemo && projectsQuery.isPending;
 	const isMilestonesLoading = timelineQuery.isPending;
 	const isMeetingsLoading = meetingsQuery.isPending;
 
@@ -314,12 +326,16 @@ export function DashboardWidgets({
 	};
 
 	return (
-		<div className="space-y-4 app-slide-up sm:space-y-6">
+		<div data-tour-demo-root className="space-y-4 app-slide-up sm:space-y-6">
+			<TourDemoBanner />
 			{leadContent}
 
 			<section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="space-y-6 min-w-0">
-					<div className="app-surface-card-strong p-5 sm:p-8">
+					<div
+						data-tour="dashboard-welcome"
+						className="app-surface-card-strong p-5 sm:p-8"
+					>
 						<div className="mb-4 flex flex-col items-start gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
 							<div className="min-w-0">
 								<h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[22px]">

@@ -23,6 +23,38 @@
 /* Global header (h-14) extended up under the status bar: bg fills it, content below. */
 .h-app-header { height: calc(3.5rem + var(--safe-top)); }
 .pt-app-header { padding-top: calc(3.5rem + var(--safe-top)); }
+/* Tour demo bar. While a tour replay is running a bar is pinned to the very top
+   of the viewport; rather than overlay the app chrome, it pushes the whole
+   layout down. --tour-banner-h is measured from the bar itself (so wrapped text
+   on narrow screens still clears) and is 0px whenever no replay is running. */
+:root { --tour-banner-h: 0px; }
+.tour-demo-active header.h-app-header { top: var(--tour-banner-h); }
+.tour-demo-active .pt-app-header {
+  padding-top: calc(3.5rem + var(--safe-top) + var(--tour-banner-h));
+}
+.tour-demo-active aside.sticky {
+  top: calc(3.5rem + var(--tour-banner-h));
+  height: calc(100vh - 3.5rem - var(--tour-banner-h));
+}
+
+/* Tour launcher pulse. Only applied while the surface's tour is unseen, so the
+   animation is a one-time invitation rather than permanent motion on the page.
+   Colour comes from the primary token, not a literal, so it tracks the theme. */
+@keyframes tour-launcher-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); }
+  70% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--primary) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+.tour-launcher-glow {
+  animation: tour-launcher-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-launcher-glow {
+    animation: none;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 35%, transparent);
+  }
+}
+
 /* Mobile bottom nav (h-16) extended down under the gesture bar + content clearance.
    Scoped to <768px so no md:pb-0 override is needed on desktop. */
 .h-app-nav { height: calc(4rem + var(--safe-bottom)); }
