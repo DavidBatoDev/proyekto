@@ -8,7 +8,14 @@ import {
 	useSensors,
 } from "@dnd-kit/core";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Rocket, X } from "lucide-react";
+import {
+	AlertTriangle,
+	Eraser,
+	Highlighter,
+	LogOut,
+	Rocket,
+	X,
+} from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	useCallback,
@@ -17,6 +24,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import {
 	JSONRoadmapSidePanel,
@@ -61,6 +69,7 @@ import { RoadmapTopBar } from "../../RoadmapTopBar";
 import { TimelinePageIdentity } from "../../TimelinePageIdentity";
 import type { RoadmapPerformanceMode } from "../models/types";
 import { MobileRoadmapView } from "./MobileRoadmapView";
+import { PresentationHighlighter } from "./PresentationHighlighter";
 
 interface PendingAssignment {
 	taskId: string;
@@ -217,6 +226,8 @@ export function RoadmapViewContent({
 		canvasViewMode,
 		setCanvasViewMode,
 		updateTask,
+		presentationMode,
+		setPresentationMode,
 	} = useRoadmapStore(
 		useShallow((state) => ({
 			roadmap: state.roadmap,
@@ -234,6 +245,8 @@ export function RoadmapViewContent({
 			canvasViewMode: state.canvasViewMode,
 			setCanvasViewMode: state.setCanvasViewMode,
 			updateTask: state.updateTask,
+			presentationMode: state.presentationMode,
+			setPresentationMode: state.setPresentationMode,
 		})),
 	);
 	const resolveCanonicalNodeId = useRoadmapStore(
@@ -332,6 +345,54 @@ export function RoadmapViewContent({
 
 		onViewChange?.(nextUrlView);
 	}, [canvasViewMode, forcedViewMode, onViewChange, urlView]);
+
+	// Presentation mode: land on a presentable view (never the Epic detail tab),
+	// and let Escape exit — mirroring AppDialog's own Escape-to-close handling.
+	useEffect(() => {
+		if (!presentationMode) return;
+		if (canvasViewMode === "epic") setCanvasViewMode("roadmap");
+	}, [presentationMode, canvasViewMode, setCanvasViewMode]);
+
+	useEffect(() => {
+		if (!presentationMode) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setPresentationMode(false);
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [presentationMode, setPresentationMode]);
+
+	// Request/exit real browser fullscreen alongside the CSS overlay — without
+	// this, the tab/address bar stay on screen, which defeats "presenting to a
+	// client" as much as leaving the sidebar up would.
+	useEffect(() => {
+		if (presentationMode) {
+			document.documentElement.requestFullscreen?.().catch(() => {
+				// Denied or unsupported (e.g. embedded in an iframe) — the CSS
+				// overlay still hides the in-app chrome on its own.
+			});
+		} else if (document.fullscreenElement) {
+			document.exitFullscreen?.().catch(() => {});
+		}
+	}, [presentationMode]);
+
+	// The browser's own fullscreen exit (native Esc handling, F11, or the
+	// "Exit full screen" button some browsers show) bypasses our state — sync
+	// back so a stale presentation overlay never survives it.
+	useEffect(() => {
+		const onFullscreenChange = () => {
+			if (!document.fullscreenElement && presentationMode) {
+				setPresentationMode(false);
+			}
+		};
+		document.addEventListener("fullscreenchange", onFullscreenChange);
+		return () =>
+			document.removeEventListener("fullscreenchange", onFullscreenChange);
+	}, [presentationMode, setPresentationMode]);
+
+	useEffect(() => {
+		if (!presentationMode) setHighlightActive(false);
+	}, [presentationMode]);
 
 	useEffect(() => {
 		const normalizedNodeId =
@@ -605,6 +666,10 @@ export function RoadmapViewContent({
 
 	// Share Modal state
 	const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+	// Presentation-mode highlighter (laser-pointer-style annotation, never persisted)
+	const [highlightActive, setHighlightActive] = useState(false);
+	const [highlightClearToken, setHighlightClearToken] = useState(0);
 
 	const roadmapJsonValue = useMemo(() => {
 		if (!isJsonPanelOpen || !roadmap) return "{}";
@@ -956,6 +1021,109 @@ export function RoadmapViewContent({
 						initialAiMessage={initialAiMessage}
 						onInitialAiMessageConsumed={handleInitialAiMessageConsumed}
 					/>
+				) : presentationMode ? (
+					createPortal(
+						// z-55: above the global Header (z-50) so it fully replaces it, but
+						// below RoadmapModalLayout's epic/feature/task modals (z-60) so those
+						// can still open on top — AppDialog (1200+), AnchoredPopover (1100),
+						// toasts (9999), and the roadmap SidePanel (10000) all clear it too.
+						<div className="fixed inset-0 z-55 flex flex-col bg-background">
+							<div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-4 py-2">
+								<span className="truncate text-sm font-semibold text-card-foreground">
+									{roadmap.name}
+								</span>
+								<div className="flex items-center gap-2">
+									<button
+										type="button"
+										onClick={() => setHighlightActive((prev) => !prev)}
+										aria-pressed={highlightActive}
+										className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+											highlightActive
+												? "border-primary bg-primary/10 text-primary"
+												: "border-border bg-card text-card-foreground hover:bg-muted"
+										}`}
+									>
+										<Highlighter className="h-4 w-4" />
+										Highlight
+									</button>
+									{highlightActive && (
+										<button
+											type="button"
+											onClick={() =>
+												setHighlightClearToken((token) => token + 1)
+											}
+											className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
+										>
+											<Eraser className="h-4 w-4" />
+											Clear
+										</button>
+									)}
+									<button
+										type="button"
+										onClick={() => setPresentationMode(false)}
+										className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
+									>
+										<LogOut className="h-4 w-4" />
+										Exit presentation
+									</button>
+								</div>
+							</div>
+							<div className="flex flex-1 overflow-hidden">
+								{/* Roadmap Structure sidebar — same as the normal view, hidden in
+								    Timeline (which never had it either). Read-only per useCanvasNodeData's
+								    canEditRoadmap gate; opening an item still shows its modal for reference. */}
+								{canvasViewMode !== "milestones" && (
+									<div
+										id="roadmap-left-panel-presentation"
+										className="relative h-full flex-shrink-0 border-r border-border bg-card/95 backdrop-blur"
+										style={{
+											width: leftPanelWidth,
+											minWidth: LEFT_PANEL_MIN_WIDTH,
+										}}
+									>
+										<RoadmapLeftSidePanel
+											messages={[]}
+											onSendMessage={() => {}}
+											isGenerating={false}
+											isCollapsed={false}
+											onSelectFeature={(epicId, featureId) => {
+												if (activeEpicId) {
+													navigateToFeatureNode(epicId, featureId);
+													return;
+												}
+												navigateToNode(featureId);
+											}}
+											onOpenEpicEditor={openEpicEditor}
+											onOpenFeatureEditor={openFeatureEditor}
+											onOpenTaskDetail={openTaskDetail}
+											onNavigateToNode={navigateToNode}
+											onNavigateToEpicTab={navigateToEpicTab}
+											highlightedEpicId={activeEpicId}
+										/>
+									</div>
+								)}
+								{/* min-w-0 is load-bearing, same as the normal view's canvas wrapper:
+								    without it this flex item's automatic minimum size is its content's
+								    min-content width, and the Timeline grid is far wider than the
+								    viewport — the column would stretch past the screen and clip
+								    everything right-aligned (toolbar controls, the bars themselves)
+								    against the overflow-hidden ancestor. */}
+								<div className="relative min-h-0 min-w-0 flex-1">
+									<RoadmapCanvas
+										roadmap={roadmap}
+										onNodeOpen={handleNodeOpen}
+										onNodeClose={handleNodeClose}
+										performanceMode={performanceMode}
+									/>
+									<PresentationHighlighter
+										active={highlightActive}
+										clearToken={highlightClearToken}
+									/>
+								</div>
+							</div>
+						</div>,
+						document.body,
+					)
 				) : (
 					<>
 						{/* Top navigation bar: view tabs + share/export */}

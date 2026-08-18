@@ -113,7 +113,7 @@ export function AnchoredPopover({
 			}}
 			className={
 				className ??
-				"overflow-auto rounded-xl border border-gray-100 bg-white shadow-2xl"
+				"overflow-auto rounded-xl border border-border bg-popover shadow-(--app-shadow-lg)"
 			}
 		>
 			{children}

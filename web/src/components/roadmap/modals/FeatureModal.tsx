@@ -96,6 +96,7 @@ export const FeatureModal = ({
 		pendingCommentId,
 		setPendingCommentId,
 		reorderTasksInFeature,
+		presentationMode,
 	} = useRoadmapStore(
 		useShallow((s) => ({
 			milestones: s.milestones,
@@ -103,6 +104,7 @@ export const FeatureModal = ({
 			pendingCommentId: s.pendingCommentId,
 			setPendingCommentId: s.setPendingCommentId,
 			reorderTasksInFeature: s.reorderTasksInFeature,
+			presentationMode: s.presentationMode,
 		})),
 	);
 	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? null);
@@ -174,7 +176,10 @@ export const FeatureModal = ({
 		status: FeatureStatus;
 		assigneeKey: string;
 	} | null>(null);
-	const isReadOnlyPending = isPendingCreate;
+	// Presentation mode folds in here too: every gate below that already exists
+	// to keep a not-yet-created node from being edited also blocks editing
+	// while presenting, for free.
+	const isReadOnlyPending = isPendingCreate || presentationMode;
 
 	// Populate form from initialData when modal opens
 	useEffect(() => {
@@ -438,9 +443,10 @@ export const FeatureModal = ({
 	};
 	const handleReorderTasks = useCallback(
 		(fId: string, orderedIds: string[]) => {
+			if (isReadOnlyPending) return;
 			void reorderTasksInFeature(fId, orderedIds);
 		},
-		[reorderTasksInFeature],
+		[reorderTasksInFeature, isReadOnlyPending],
 	);
 
 	const autoProgress = calculateFeatureProgressFromTasks(tasks);
@@ -907,6 +913,64 @@ export const FeatureModal = ({
 					)}
 				</div>
 			</div>
+
+			{/* Tasks Section */}
+			<div className="space-y-3 border-t border-gray-200 pt-4">
+				<div className="flex items-center justify-between">
+					<h3 className="text-sm font-semibold text-gray-900">Tasks</h3>
+					{onAddTask && featureId && (
+						<button
+							type="button"
+							onClick={() => {
+								if (isReadOnlyPending) return;
+								onAddTask(featureId);
+							}}
+							disabled={isReadOnlyPending}
+							className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
+						>
+							<Plus className="w-3.5 h-3.5" />
+							Add Task
+						</button>
+					)}
+				</div>
+
+				{tasks.length ? (
+					<div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+						{featureId ? (
+							<SortableTaskList
+								tasks={tasks}
+								featureId={featureId}
+								onReorder={handleReorderTasks}
+								onDelete={isReadOnlyPending ? undefined : onDeleteTask}
+								onClick={onSelectTask}
+								onToggleComplete={(taskId) => {
+									if (isReadOnlyPending) return;
+									const taskToUpdate = tasks.find((t) => t.id === taskId);
+									if (!taskToUpdate || !onUpdateTask) return;
+									void Promise.resolve(
+										onUpdateTask({
+											...taskToUpdate,
+											status: taskToUpdate.status === "done" ? "todo" : "done",
+										}),
+									).catch(() => undefined);
+								}}
+								onUpdateStatus={(taskId, status) => {
+									if (isReadOnlyPending) return;
+									const taskToUpdate = tasks.find((t) => t.id === taskId);
+									if (!taskToUpdate || !onUpdateTask) return;
+									void Promise.resolve(
+										onUpdateTask({ ...taskToUpdate, status }),
+									).catch(() => undefined);
+								}}
+							/>
+						) : null}
+					</div>
+				) : (
+					<div className="text-center py-6 border border-dashed border-gray-200 rounded-lg">
+						<p className="text-sm text-gray-500">No tasks yet.</p>
+					</div>
+				)}
+			</div>
 		</>
 	);
 
@@ -925,9 +989,11 @@ export const FeatureModal = ({
 					currentUserId={user?.id}
 					canComment={Boolean(user) && !isReadOnlyPending}
 					disabledMessage={
-						isReadOnlyPending
-							? "Comments will unlock once this feature is created."
-							: undefined
+						presentationMode
+							? "Comments are read-only while presenting."
+							: isReadOnlyPending
+								? "Comments will unlock once this feature is created."
+								: undefined
 					}
 					isLoading={loadingComments}
 					emptyMessage="No comments yet for this feature."
@@ -939,71 +1005,6 @@ export const FeatureModal = ({
 					<p className="text-sm text-gray-500">
 						Save feature first to add comments
 					</p>
-				</div>
-			),
-		},
-		{
-			id: "tasks",
-			label: "Tasks",
-			content: (
-				<div className="space-y-3">
-					{/* Tasks List */}
-					{tasks.length ? (
-						<div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-							{featureId ? (
-								<SortableTaskList
-									tasks={tasks}
-									featureId={featureId}
-									onReorder={handleReorderTasks}
-									onDelete={isReadOnlyPending ? undefined : onDeleteTask}
-									onClick={onSelectTask}
-									onToggleComplete={(taskId) => {
-										if (isReadOnlyPending) return;
-										const taskToUpdate = tasks.find((t) => t.id === taskId);
-										if (!taskToUpdate || !onUpdateTask) return;
-										void Promise.resolve(
-											onUpdateTask({
-												...taskToUpdate,
-												status:
-													taskToUpdate.status === "done" ? "todo" : "done",
-											}),
-										).catch(() => undefined);
-									}}
-									onUpdateStatus={(taskId, status) => {
-										if (isReadOnlyPending) return;
-										const taskToUpdate = tasks.find((t) => t.id === taskId);
-										if (!taskToUpdate || !onUpdateTask) return;
-										void Promise.resolve(
-											onUpdateTask({ ...taskToUpdate, status }),
-										).catch(() => undefined);
-									}}
-								/>
-							) : null}
-						</div>
-					) : (
-						<div className="text-center py-8">
-							<p className="text-sm text-gray-600">No tasks yet.</p>
-							<p className="text-xs text-gray-500">
-								Add tasks to see them here.
-							</p>
-						</div>
-					)}
-
-					{/* Add Task Button */}
-					{onAddTask && featureId && (
-						<button
-							type="button"
-							onClick={() => {
-								if (isReadOnlyPending) return;
-								onAddTask(featureId);
-							}}
-							disabled={isReadOnlyPending}
-							className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors mt-4"
-						>
-							<Plus className="w-4 h-4" />
-							Add Task
-						</button>
-					)}
 				</div>
 			),
 		},

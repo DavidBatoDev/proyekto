@@ -58,6 +58,7 @@ const RoadmapCanvas = ({
 }: RoadmapCanvasProps) => {
 	const user = useUser();
 	const profile = useAuthStore((s) => s.profile);
+	const presentationMode = useRoadmapStore((s) => s.presentationMode);
 	const [isPanningCanvas, setIsPanningCanvas] = useState(false);
 	const [taskPanelInitialTab, setTaskPanelInitialTab] = useState<
 		"details" | "comments"
@@ -416,6 +417,8 @@ const RoadmapCanvas = ({
 								roadmap={roadmap}
 								epics={epics}
 								performanceMode={performanceMode}
+								readOnly={presentationMode}
+								presentationMode={presentationMode}
 								remoteCursors={shouldTrackCursors ? remoteCursors : []}
 								editors={collaborators}
 								onTrackCursor={shouldTrackCursors ? trackCursor : undefined}
@@ -490,13 +493,19 @@ const RoadmapCanvas = ({
 								onDeleteMilestone={onDeleteMilestone}
 								onUpdateEpic={onUpdateEpic}
 								onUpdateFeature={onUpdateFeature}
-								onAddFeature={handleOpenAddFeatureModal}
+								onAddFeature={
+									presentationMode ? undefined : handleOpenAddFeatureModal
+								}
 								onOpenFeatureEditor={handleOpenEditFeatureModal}
-								canEditTimelineDates={canEditTimelineDates}
-								onNavigateToEpic={handleNavigateToEpicTab}
-								onAddEpic={() => setIsAddEpicModalOpen(true)}
+								onOpenEpicEditor={handleSelectEpic}
+								canEditTimelineDates={canEditTimelineDates && !presentationMode}
+								onAddEpic={
+									presentationMode
+										? undefined
+										: () => setIsAddEpicModalOpen(true)
+								}
 								onLinkRoadmap={
-									canLinkExisting
+									canLinkExisting && !presentationMode
 										? () => setIsLinkRoadmapModalOpen(true)
 										: undefined
 								}

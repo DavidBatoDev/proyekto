@@ -86,6 +86,14 @@ export interface FlowProps {
 	/** Fires once the first real layout is committed. */
 	onReady?: () => void;
 	onApi?: (api: FlowApi) => void;
+	/**
+	 * Fires with the full measured-size map whenever any node's rendered card
+	 * size changes (same batching as the internal edge-anchoring observer).
+	 * Lets callers re-layout off real sizes instead of estimates.
+	 */
+	onNodeSizesChange?: (
+		sizes: Map<string, { width: number; height: number }>,
+	) => void;
 }
 
 const NOOP = () => {};
@@ -203,6 +211,7 @@ export function Flow({
 	onPanEnd,
 	onReady,
 	onApi,
+	onNodeSizesChange,
 }: FlowProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const paneRef = useRef<HTMLDivElement | null>(null);
@@ -246,9 +255,10 @@ export function Flow({
 			queueMicrotask(() => {
 				contentFlushRef.current = false;
 				setContentVersion((version) => version + 1);
+				onNodeSizesChange?.(new Map(contentSizesRef.current));
 			});
 		},
-		[],
+		[onNodeSizesChange],
 	);
 
 	const nodesRef = useRef(nodes);

@@ -71,7 +71,7 @@ export const TimelineBarContextMenu = ({
 			ref={menuRef}
 			data-no-pan="true"
 			role="menu"
-			className="fixed z-[60] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+			className="fixed z-[60] overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-(--app-shadow-lg)"
 			style={{ left: position.x, top: position.y, width: MENU_WIDTH }}
 		>
 			<button
@@ -81,9 +81,9 @@ export const TimelineBarContextMenu = ({
 					onEdit(state.row);
 					onClose();
 				}}
-				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-gray-700 hover:bg-gray-50"
+				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-popover-foreground hover:bg-muted"
 			>
-				<Pencil className="h-3.5 w-3.5 text-gray-400" />
+				<Pencil className="h-3.5 w-3.5 text-muted-foreground" />
 				Edit {label}
 			</button>
 
@@ -95,7 +95,7 @@ export const TimelineBarContextMenu = ({
 						onFixSchedule(state.row);
 						onClose();
 					}}
-					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-amber-700 hover:bg-amber-50"
+					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-warning hover:bg-warning/10"
 				>
 					<CalendarCheck className="h-3.5 w-3.5" />
 					Fix schedule
@@ -110,7 +110,7 @@ export const TimelineBarContextMenu = ({
 						onClearDates(state.row);
 						onClose();
 					}}
-					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50"
+					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-destructive hover:bg-destructive/10"
 				>
 					<CalendarX className="h-3.5 w-3.5" />
 					Remove from timeline

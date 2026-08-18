@@ -6,6 +6,7 @@ export const getLayoutedElements = (
 	nodes: CanvasNode<StructuralNodeData>[],
 	edges: CanvasEdge[],
 	epics: RoadmapEpic[],
+	measuredHeights?: Map<string, number>,
 ) => {
 	const epicNodes = nodes.filter((node) => node.type === "epicWidget");
 	const featureNodes = nodes.filter((node) => node.type === "featureWidget");
@@ -48,6 +49,11 @@ export const getLayoutedElements = (
 		const featureHeights = (epic.features || [])
 			.filter((feature) => featureIds.includes(feature.id))
 			.map((feature) => {
+				// Prefer the card's real rendered height once Flow has measured it —
+				// the estimate below is only a placeholder for the first paint,
+				// before any node has mounted and reported its size.
+				const measured = measuredHeights?.get(feature.id);
+				if (measured != null) return measured;
 				const featureDescriptionLength = feature.description?.length ?? 0;
 				const featureEstimatedLines = Math.ceil(
 					featureDescriptionLength / FEATURE_DESCRIPTION_CHARS_PER_LINE,
@@ -69,10 +75,9 @@ export const getLayoutedElements = (
 			estimatedDescriptionLines * DESCRIPTION_LINE_HEIGHT,
 			MAX_EPIC_HEIGHT - BASE_EPIC_HEIGHT,
 		);
-		const epicHeight = Math.min(
-			MAX_EPIC_HEIGHT,
-			BASE_EPIC_HEIGHT + estimatedDescriptionHeight,
-		);
+		const epicHeight =
+			measuredHeights?.get(epic.id) ??
+			Math.min(MAX_EPIC_HEIGHT, BASE_EPIC_HEIGHT + estimatedDescriptionHeight);
 		const averageFeatureHeight =
 			featureHeights.length > 0
 				? featureHeights.reduce((sum, height) => sum + height, 0) /

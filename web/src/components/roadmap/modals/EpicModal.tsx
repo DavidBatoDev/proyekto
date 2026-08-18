@@ -93,6 +93,7 @@ export const EpicModal = ({
 	const { mentionUsers, canInviteByEmail } = useMentionUsers(mentionProjectId);
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
+	const presentationMode = useRoadmapStore((s) => s.presentationMode);
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [priority, setPriority] = useState<EpicPriority>("medium");
@@ -118,7 +119,10 @@ export const EpicModal = ({
 	} | null>(null);
 
 	const epicId = initialData?.id;
-	const isReadOnlyPending = isPendingCreate;
+	// Presentation mode folds in here too: every gate below that already exists
+	// to keep a not-yet-created node from being edited also blocks editing
+	// while presenting, for free.
+	const isReadOnlyPending = isPendingCreate || presentationMode;
 
 	useEffect(() => {
 		if (isOpen) {
@@ -544,7 +548,9 @@ export const EpicModal = ({
 									<div
 										className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm hover:border-primary hover:shadow-md transition-all cursor-pointer"
 										onClick={() => {
-											if (isReadOnlyPending) return;
+											// Presentation mode blocks edits, not viewing — only an
+											// unsaved (isPendingCreate) epic has no real feature to open.
+											if (isPendingCreate) return;
 											onSelectFeature?.(feature);
 										}}
 									>
@@ -665,9 +671,11 @@ export const EpicModal = ({
 					currentUserId={user?.id}
 					canComment={Boolean(user) && !isReadOnlyPending}
 					disabledMessage={
-						isReadOnlyPending
-							? "Comments will unlock once this epic is created."
-							: undefined
+						presentationMode
+							? "Comments are read-only while presenting."
+							: isReadOnlyPending
+								? "Comments will unlock once this epic is created."
+								: undefined
 					}
 					isLoading={loadingComments}
 					emptyMessage="No comments yet for this epic."

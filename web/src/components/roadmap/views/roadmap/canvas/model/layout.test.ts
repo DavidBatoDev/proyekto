@@ -211,6 +211,28 @@ describe("getLayoutedElements", () => {
 		expect(a.position.y).toBeGreaterThan(epic?.position.y ?? 0);
 	});
 
+	it("prefers a measured height over the description-length estimate", () => {
+		// A short description would normally estimate to BASE_FEATURE_HEIGHT, but
+		// the real rendered card is much taller (e.g. many tasks) — the measured
+		// value must win so siblings don't get packed too close and overlap it.
+		const epics = [
+			makeEpic("e1", 0, {
+				description: "x".repeat(4000),
+				features: [makeFeature("f1", "e1", 0)],
+			}),
+		];
+		const measuredHeights = new Map([
+			["e1", 137],
+			["f1", 500],
+		]);
+		const nodes = byId(
+			getLayoutedElements(makeNodes(epics), [], epics, measuredHeights).nodes,
+		);
+
+		expect(nodes.get("e1")?.height).toBe(137);
+		expect(nodes.get("f1")?.height).toBe(500);
+	});
+
 	it("ignores features that have no corresponding node", () => {
 		// epic.features lists f2, but no featureWidget node exists for it.
 		const epics = [

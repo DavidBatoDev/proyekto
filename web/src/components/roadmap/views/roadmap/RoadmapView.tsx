@@ -66,6 +66,8 @@ interface RoadmapViewProps {
 	epics: RoadmapEpic[];
 	minZoom?: number;
 	readOnly?: boolean;
+	/** Hides on-canvas chrome (zoom controls) for a clean presentation view. */
+	presentationMode?: boolean;
 	fitView?: boolean;
 	remoteCursors?: RemoteCursor[];
 	/** Collaborators present in the room; those with `editingNodeId` set render
@@ -122,6 +124,7 @@ const RoadmapCanvasShell = ({
 	epics,
 	minZoom = 0.4,
 	readOnly = false,
+	presentationMode = false,
 	fitView = false,
 	remoteCursors = [],
 	editors,
@@ -165,6 +168,17 @@ const RoadmapCanvasShell = ({
 		taskId: string;
 		token: number;
 	} | null>(null);
+	// Real card sizes as measured by the renderer, fed back into layout so
+	// spacing tracks actual content instead of the description-length estimate.
+	const [measuredSizes, setMeasuredSizes] = useState<
+		Map<string, { width: number; height: number }>
+	>(new Map());
+	const handleNodeSizesChange = useCallback(
+		(sizes: Map<string, { width: number; height: number }>) => {
+			setMeasuredSizes(sizes);
+		},
+		[],
+	);
 	// The renderer publishes its imperative API here; `viewportReady` stands in
 	// for the old `if (!reactFlowInstance)` guards.
 	const viewport = useCanvasViewport();
@@ -326,8 +340,11 @@ const RoadmapCanvasShell = ({
 
 		const allEdges = [...epicEdges, ...featureEdges];
 
+		const measuredHeights = new Map(
+			Array.from(measuredSizes, ([id, size]) => [id, size.height]),
+		);
 		const { nodes: positionedNodes, edges: positionedEdges } =
-			getLayoutedElements(allNodes, allEdges, orderedEpics);
+			getLayoutedElements(allNodes, allEdges, orderedEpics, measuredHeights);
 
 		return {
 			layoutedNodes: positionedNodes,
@@ -337,7 +354,7 @@ const RoadmapCanvasShell = ({
 		// layoutKey is a stable string that only changes when structure/positions
 		// change — prevents full layout recalculation for task-content-only updates.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [layoutKey, edgeAnimationsEnabled]);
+	}, [layoutKey, edgeAnimationsEnabled, measuredSizes]);
 
 	// "Who is editing what": collapse the collaborator list into a node-id → editors
 	// map. Keyed on a small signature so the node memo below only rebuilds when the
@@ -633,6 +650,7 @@ const RoadmapCanvasShell = ({
 				onPanStart={() => onPanStart?.()}
 				onPanEnd={() => onPanEnd?.()}
 				onReady={handleCanvasReady}
+				onNodeSizesChange={handleNodeSizesChange}
 				defaultViewport={{
 					x: DEFAULT_VIEWPORT_X,
 					y: DEFAULT_VIEWPORT_Y,
@@ -650,15 +668,17 @@ const RoadmapCanvasShell = ({
 				<CollaborationCursorsOverlay remoteCursors={remoteCursors} />
 			)}
 
-			<CanvasControls
-				onZoomIn={() => viewport.zoomIn()}
-				onZoomOut={() => viewport.zoomOut()}
-				onFitView={() =>
-					viewport.fitView({ padding: 0.12, maxZoom: DEFAULT_ZOOM })
-				}
-				zoomInDisabled={zoom >= MAX_ZOOM}
-				zoomOutDisabled={zoom <= MIN_ZOOM}
-			/>
+			{!presentationMode && (
+				<CanvasControls
+					onZoomIn={() => viewport.zoomIn()}
+					onZoomOut={() => viewport.zoomOut()}
+					onFitView={() =>
+						viewport.fitView({ padding: 0.12, maxZoom: DEFAULT_ZOOM })
+					}
+					zoomInDisabled={zoom >= MAX_ZOOM}
+					zoomOutDisabled={zoom <= MIN_ZOOM}
+				/>
+			)}
 
 			{!isCanvasReady && (
 				<output

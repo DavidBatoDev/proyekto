@@ -73,6 +73,13 @@ export interface CanvasRendererProps {
 	 * reveal the canvas. Replaces waiting on React Flow's `useNodesInitialized`.
 	 */
 	onReady: () => void;
+	/**
+	 * Fires with the full measured-size map whenever a node's rendered card size
+	 * changes. Lets the shell re-layout off real sizes instead of estimates.
+	 */
+	onNodeSizesChange?: (
+		sizes: Map<string, { width: number; height: number }>,
+	) => void;
 }
 
 export type CanvasRenderer = ComponentType<CanvasRendererProps>;

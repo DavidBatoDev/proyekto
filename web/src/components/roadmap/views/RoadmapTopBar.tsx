@@ -15,7 +15,7 @@ import {
 	useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileText, MessageCircle, Share2, X } from "lucide-react";
+import { FileText, MessageCircle, Presentation, Share2, X } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -108,6 +108,7 @@ export function RoadmapTopBar({
 		setSelectedEpicId,
 		setOpenEpicTabs,
 		closeCanvasEpicTab,
+		setPresentationMode,
 	} = useRoadmapStore(
 		useShallow((state) => ({
 			epics: state.epics,
@@ -118,6 +119,7 @@ export function RoadmapTopBar({
 			setSelectedEpicId: state.setCanvasSelectedEpicId,
 			setOpenEpicTabs: state.setCanvasOpenEpicTabs,
 			closeCanvasEpicTab: state.closeCanvasEpicTab,
+			setPresentationMode: state.setPresentationMode,
 		})),
 	);
 
@@ -233,6 +235,15 @@ export function RoadmapTopBar({
 						AI Chat
 					</button>
 				)}
+
+				<button
+					onClick={() => setPresentationMode(true)}
+					className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
+					title="Present roadmap"
+				>
+					<Presentation className="w-4 h-4" />
+					Present
+				</button>
 			</div>
 		</div>
 	);

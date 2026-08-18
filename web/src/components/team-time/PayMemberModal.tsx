@@ -6,10 +6,10 @@ import {
 	Paperclip,
 	QrCode,
 	Wallet,
-	X,
 	XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AppDialog } from "@/components/common/AppDialog";
 import { useToast } from "@/hooks/useToast";
 import {
 	type Payout,
@@ -151,8 +151,6 @@ export function PayMemberModal({
 		return Array.from(map.values()).sort((a, b) => a.sortKey - b.sortKey);
 	}, [logs, payPeriodConfig]);
 
-	if (!isOpen) return null;
-
 	const selectedMethod: PayoutMethod | undefined = methods.find(
 		(m) => m.id === methodId,
 	);
@@ -188,232 +186,26 @@ export function PayMemberModal({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-[165] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-[2px]"
-			onClick={onClose}
-		>
-			<div
-				className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-					<div>
-						<h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
-							<Wallet className="h-4 w-4 text-indigo-600" />
-							Pay {memberLabel}
-						</h3>
-						<p className="mt-1 text-xs text-slate-500">
-							Record a payment you made outside the app. This marks the selected
-							logs as paid.
-						</p>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-					>
-						<X className="h-4 w-4" />
-					</button>
-				</div>
-
-				<div className="space-y-4 p-5">
-					{/* Summary */}
-					<div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
-						<div>
-							<div className="text-[10px] uppercase tracking-wide text-slate-400">
-								Logs
-							</div>
-							<div className="text-sm font-semibold text-slate-800">
-								{logs.length}
-							</div>
-						</div>
-						<div>
-							<div className="text-[10px] uppercase tracking-wide text-slate-400">
-								Hours
-							</div>
-							<div className="text-sm font-semibold text-slate-800">
-								{(totalSeconds / 3600).toFixed(2)}
-							</div>
-						</div>
-						<div>
-							<div className="text-[10px] uppercase tracking-wide text-slate-400">
-								Total
-							</div>
-							<div className="text-sm font-semibold text-emerald-700">
-								{formatMoney(total, currency)}
-							</div>
-						</div>
-					</div>
-
-					{/* Cut-off breakdown (only when the payment spans multiple cut-offs) */}
-					{breakdown.length > 1 && (
-						<div className="rounded-xl border border-slate-200 p-3">
-							<div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-								Across {breakdown.length} cut-offs
-							</div>
-							<ul className="space-y-1">
-								{breakdown.map((b) => (
-									<li
-										key={b.key}
-										className="flex items-center justify-between gap-3 text-xs"
-									>
-										<span className="text-slate-600">
-											{b.label}{" "}
-											<span className="text-slate-400">
-												· {b.logs} log{b.logs === 1 ? "" : "s"} ·{" "}
-												{(b.seconds / 3600).toFixed(2)}h
-											</span>
-										</span>
-										<span className="font-semibold tabular-nums text-slate-700">
-											{formatMoney(b.amount, currency)}
-										</span>
-									</li>
-								))}
-							</ul>
-						</div>
-					)}
-
-					{/* Method */}
-					<div className="space-y-1.5">
-						<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-							Pay to
-						</label>
-						{methodsQuery.isPending ? (
-							<div className="flex items-center gap-2 text-xs text-slate-400">
-								<Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading
-								methods…
-							</div>
-						) : methods.length === 0 ? (
-							<div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-								{memberLabel} hasn't added a payout method yet. You can still
-								record this payout without one.
-							</div>
-						) : (
-							<>
-								<select
-									value={methodId}
-									onChange={(e) => setMethodId(e.target.value)}
-									className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-								>
-									<option value="">No specific method</option>
-									{methods.map((m) => (
-										<option key={m.id} value={m.id}>
-											{METHOD_LABEL[m.method_type] ?? m.method_type}
-											{m.label ? ` · ${m.label}` : ""} ·{" "}
-											{maskIdentifier(m.account_identifier)}
-										</option>
-									))}
-								</select>
-								{selectedMethod && (
-									<div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-										<div>
-											<div className="font-medium text-slate-800">
-												{selectedMethod.account_name}
-												{selectedMethod.bank_name
-													? ` · ${selectedMethod.bank_name}`
-													: ""}
-											</div>
-											<div className="tabular-nums">
-												{reveal
-													? selectedMethod.account_identifier
-													: maskIdentifier(selectedMethod.account_identifier)}
-											</div>
-										</div>
-										<button
-											type="button"
-											onClick={() => setReveal((v) => !v)}
-											className="rounded-md p-1 text-slate-400 hover:bg-slate-200"
-											title={reveal ? "Hide" : "Reveal"}
-										>
-											{reveal ? (
-												<EyeOff className="h-3.5 w-3.5" />
-											) : (
-												<Eye className="h-3.5 w-3.5" />
-											)}
-										</button>
-									</div>
-								)}
-								{selectedMethod?.qr_url && (
-									<div className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-3">
-										<span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-											<QrCode className="h-3.5 w-3.5" />
-											Scan to pay
-										</span>
-										<img
-											src={selectedMethod.qr_url}
-											alt="Scan-to-pay QR"
-											className="h-44 w-44 rounded-md object-contain"
-										/>
-									</div>
-								)}
-							</>
-						)}
-					</div>
-
-					{/* Reference + date */}
-					<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-						<div className="space-y-1.5">
-							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Reference #
-							</label>
-							<input
-								type="text"
-								value={reference}
-								onChange={(e) => setReference(e.target.value)}
-								placeholder="e.g. GCash ref 8821…"
-								className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Date paid
-							</label>
-							<input
-								type="date"
-								value={paidAt}
-								onChange={(e) => setPaidAt(e.target.value)}
-								className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-							/>
-						</div>
-					</div>
-
-					{/* Proof */}
-					<div className="space-y-1.5">
-						<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-							Proof (optional)
-						</label>
-						<label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
-							<Paperclip className="h-3.5 w-3.5" />
-							{proofFile ? proofFile.name : "Attach a screenshot or PDF"}
-							<input
-								type="file"
-								accept="image/*,application/pdf"
-								className="hidden"
-								onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-							/>
-						</label>
-					</div>
-
-					{/* Note */}
-					<div className="space-y-1.5">
-						<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-							Note (optional)
-						</label>
-						<textarea
-							value={note}
-							onChange={(e) => setNote(e.target.value)}
-							rows={2}
-							className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-						/>
-					</div>
-				</div>
-
-				<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+		<AppDialog
+			open={isOpen}
+			onClose={onClose}
+			busy={submitting}
+			size="md"
+			className="max-h-[92vh]"
+			title={
+				<span className="flex items-center gap-2">
+					<Wallet className="h-4 w-4 text-primary" />
+					Pay {memberLabel}
+				</span>
+			}
+			description="Record a payment you made outside the app. This marks the selected logs as paid."
+			footer={
+				<>
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={submitting}
-						className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
 					>
 						<XCircle className="h-3.5 w-3.5" />
 						Cancel
@@ -422,7 +214,7 @@ export function PayMemberModal({
 						type="button"
 						onClick={() => void handleSubmit()}
 						disabled={submitting || logs.length === 0}
-						className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 					>
 						{submitting ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -431,8 +223,199 @@ export function PayMemberModal({
 						)}
 						Record payout
 					</button>
+				</>
+			}
+		>
+			<div className="space-y-4">
+				{/* Summary */}
+				<div className="grid grid-cols-3 gap-2 rounded-xl border border-border bg-muted p-3 text-center">
+					<div>
+						<div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+							Logs
+						</div>
+						<div className="text-sm font-semibold text-foreground">
+							{logs.length}
+						</div>
+					</div>
+					<div>
+						<div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+							Hours
+						</div>
+						<div className="text-sm font-semibold text-foreground">
+							{(totalSeconds / 3600).toFixed(2)}
+						</div>
+					</div>
+					<div>
+						<div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+							Total
+						</div>
+						<div className="text-sm font-semibold text-success">
+							{formatMoney(total, currency)}
+						</div>
+					</div>
+				</div>
+
+				{/* Cut-off breakdown (only when the payment spans multiple cut-offs) */}
+				{breakdown.length > 1 && (
+					<div className="rounded-xl border border-border p-3">
+						<div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+							Across {breakdown.length} cut-offs
+						</div>
+						<ul className="space-y-1">
+							{breakdown.map((b) => (
+								<li
+									key={b.key}
+									className="flex items-center justify-between gap-3 text-xs"
+								>
+									<span className="text-muted-foreground">
+										{b.label}{" "}
+										<span className="text-muted-foreground/70">
+											· {b.logs} log{b.logs === 1 ? "" : "s"} ·{" "}
+											{(b.seconds / 3600).toFixed(2)}h
+										</span>
+									</span>
+									<span className="font-semibold tabular-nums text-foreground">
+										{formatMoney(b.amount, currency)}
+									</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
+
+				{/* Method */}
+				<div className="space-y-1.5">
+					<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Pay to
+					</label>
+					{methodsQuery.isPending ? (
+						<div className="flex items-center gap-2 text-xs text-muted-foreground">
+							<Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading methods…
+						</div>
+					) : methods.length === 0 ? (
+						<div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+							{memberLabel} hasn't added a payout method yet. You can still
+							record this payout without one.
+						</div>
+					) : (
+						<>
+							<select
+								value={methodId}
+								onChange={(e) => setMethodId(e.target.value)}
+								className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+							>
+								<option value="">No specific method</option>
+								{methods.map((m) => (
+									<option key={m.id} value={m.id}>
+										{METHOD_LABEL[m.method_type] ?? m.method_type}
+										{m.label ? ` · ${m.label}` : ""} ·{" "}
+										{maskIdentifier(m.account_identifier)}
+									</option>
+								))}
+							</select>
+							{selectedMethod && (
+								<div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+									<div>
+										<div className="font-medium text-foreground">
+											{selectedMethod.account_name}
+											{selectedMethod.bank_name
+												? ` · ${selectedMethod.bank_name}`
+												: ""}
+										</div>
+										<div className="tabular-nums">
+											{reveal
+												? selectedMethod.account_identifier
+												: maskIdentifier(selectedMethod.account_identifier)}
+										</div>
+									</div>
+									<button
+										type="button"
+										onClick={() => setReveal((v) => !v)}
+										className="rounded-md p-1 text-muted-foreground hover:bg-muted-foreground/10"
+										title={reveal ? "Hide" : "Reveal"}
+									>
+										{reveal ? (
+											<EyeOff className="h-3.5 w-3.5" />
+										) : (
+											<Eye className="h-3.5 w-3.5" />
+										)}
+									</button>
+								</div>
+							)}
+							{selectedMethod?.qr_url && (
+								<div className="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card p-3">
+									<span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+										<QrCode className="h-3.5 w-3.5" />
+										Scan to pay
+									</span>
+									<img
+										src={selectedMethod.qr_url}
+										alt="Scan-to-pay QR"
+										className="h-44 w-44 rounded-md object-contain"
+									/>
+								</div>
+							)}
+						</>
+					)}
+				</div>
+
+				{/* Reference + date */}
+				<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+					<div className="space-y-1.5">
+						<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Reference #
+						</label>
+						<input
+							type="text"
+							value={reference}
+							onChange={(e) => setReference(e.target.value)}
+							placeholder="e.g. GCash ref 8821…"
+							className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+						/>
+					</div>
+					<div className="space-y-1.5">
+						<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Date paid
+						</label>
+						<input
+							type="date"
+							value={paidAt}
+							onChange={(e) => setPaidAt(e.target.value)}
+							className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+						/>
+					</div>
+				</div>
+
+				{/* Proof */}
+				<div className="space-y-1.5">
+					<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Proof (optional)
+					</label>
+					<label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted">
+						<Paperclip className="h-3.5 w-3.5" />
+						{proofFile ? proofFile.name : "Attach a screenshot or PDF"}
+						<input
+							type="file"
+							accept="image/*,application/pdf"
+							className="hidden"
+							onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+						/>
+					</label>
+				</div>
+
+				{/* Note */}
+				<div className="space-y-1.5">
+					<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Note (optional)
+					</label>
+					<textarea
+						value={note}
+						onChange={(e) => setNote(e.target.value)}
+						rows={2}
+						className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+					/>
 				</div>
 			</div>
-		</div>
+		</AppDialog>
 	);
 }

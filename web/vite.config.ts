@@ -13,14 +13,20 @@ const DEVELOPMENT_SUPABASE_REF = 'vyiedlwasdwmjbztqznl'
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const supabaseUrl = process.env.VITE_SUPABASE_URL ?? env.VITE_SUPABASE_URL
+  const allowProdInDev =
+    (process.env.VITE_ALLOW_PROD_SUPABASE_IN_DEV ?? env.VITE_ALLOW_PROD_SUPABASE_IN_DEV) ===
+    'true'
   if (
     command === 'serve' &&
     mode === 'development' &&
-    !supabaseUrl?.includes(DEVELOPMENT_SUPABASE_REF)
+    !supabaseUrl?.includes(DEVELOPMENT_SUPABASE_REF) &&
+    !allowProdInDev
   ) {
     throw new Error(
       `Development must use Supabase project ${DEVELOPMENT_SUPABASE_REF}. ` +
-        'Copy .env.development.example to .env.development.local and add the dev anon key.',
+        'Copy .env.development.example to .env.development.local and add the dev anon key. ' +
+        'To intentionally point local dev at another project, set VITE_ALLOW_PROD_SUPABASE_IN_DEV=true ' +
+        'in your local (gitignored) .env.development.local — do not commit that override.',
     )
   }
   const themeSystemEnabled =

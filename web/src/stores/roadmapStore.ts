@@ -68,6 +68,7 @@ interface RoadmapState {
 	canvasViewMode: CanvasViewMode;
 	canvasSelectedEpicId: string | null;
 	canvasOpenEpicTabs: string[];
+	presentationMode: boolean;
 
 	// UI State - Kanban Board
 	boardFilters: KanbanBoardFilters;
@@ -219,6 +220,7 @@ interface RoadmapActions {
 		tabs: string[] | ((prev: string[]) => string[]),
 	) => void;
 	closeCanvasEpicTab: (epicId: string) => void;
+	setPresentationMode: (enabled: boolean) => void;
 
 	// Optimistic ID helpers
 	isOptimisticNodeId: (id: string | null | undefined) => boolean;
@@ -405,6 +407,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 	canvasViewMode: "roadmap",
 	canvasSelectedEpicId: null,
 	canvasOpenEpicTabs: [],
+	presentationMode: false,
 	boardFilters: EMPTY_BOARD_FILTERS,
 
 	// Initialize - Load full roadmap data
@@ -851,6 +854,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			canvasViewMode: "roadmap",
 			canvasSelectedEpicId: null,
 			canvasOpenEpicTabs: [],
+			presentationMode: false,
 		});
 	},
 
@@ -2752,6 +2756,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 
 	setCanvasViewMode: (mode: CanvasViewMode) => {
 		set({ canvasViewMode: mode });
+	},
+
+	setPresentationMode: (enabled: boolean) => {
+		set({ presentationMode: enabled });
 	},
 
 	setCanvasSelectedEpicId: (epicId: string | null) => {

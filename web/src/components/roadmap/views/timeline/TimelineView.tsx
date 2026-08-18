@@ -99,8 +99,8 @@ export interface TimelineViewProps {
 	onUpdateEpic?: (epic: RoadmapEpic) => Promise<void> | void;
 	onAddFeature?: (epicId: string) => void;
 	onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
+	onOpenEpicEditor?: (epicId: string) => void;
 	canEditTimelineDates?: boolean;
-	onNavigateToEpic?: (epicId: string) => void;
 	onAddEpic?: () => void;
 	onLinkRoadmap?: () => void;
 }
@@ -166,8 +166,8 @@ export const TimelineView = ({
 	onUpdateEpic,
 	onAddFeature,
 	onOpenFeatureEditor,
+	onOpenEpicEditor,
 	canEditTimelineDates = true,
-	onNavigateToEpic,
 	onAddEpic,
 	onLinkRoadmap,
 }: TimelineViewProps) => {
@@ -916,12 +916,12 @@ export const TimelineView = ({
 	const openRow = useCallback(
 		(row: TimelineRow) => {
 			if (row.kind === "epic") {
-				onNavigateToEpic?.(row.epic.id);
+				onOpenEpicEditor?.(row.epic.id);
 				return;
 			}
 			onOpenFeatureEditor?.(row.feature.epic_id, row.feature.id);
 		},
-		[onNavigateToEpic, onOpenFeatureEditor],
+		[onOpenEpicEditor, onOpenFeatureEditor],
 	);
 
 	const handleBarContextMenu = useCallback(

@@ -45,6 +45,7 @@ export function DomSvgRenderer({
 	onPanStart,
 	onPanEnd,
 	onReady,
+	onNodeSizesChange,
 }: CanvasRendererProps) {
 	const [api, setApi] = useState<FlowApi | null>(null);
 	const registerViewport = useRegisterCanvasViewport();
@@ -95,6 +96,7 @@ export function DomSvgRenderer({
 			onPanEnd={onPanEnd}
 			onReady={onReady}
 			onApi={handleApi}
+			onNodeSizesChange={onNodeSizesChange}
 		/>
 	);
 }

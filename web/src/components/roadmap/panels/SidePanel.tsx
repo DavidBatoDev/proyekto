@@ -253,6 +253,7 @@ export const SidePanel = ({
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
 	const setTaskCommentCount = useRoadmapStore((s) => s.setTaskCommentCount);
+	const presentationMode = useRoadmapStore((s) => s.presentationMode);
 	const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
 	const [comments, setComments] = useState<Comment[]>([]);
 	const [isLoadingComments, setIsLoadingComments] = useState(false);
@@ -306,7 +307,10 @@ export const SidePanel = ({
 
 	const isCreateMode = isCreating || (!!isOpen && !task);
 	const isReadOnlyPending = !isCreateMode && isPendingCreate;
-	const isInteractionDisabled = isLoading || isReadOnlyPending;
+	// Presentation mode blocks the same mutation controls this already blocks
+	// for a not-yet-created task — viewing/navigation stays unaffected.
+	const isInteractionDisabled =
+		isLoading || isReadOnlyPending || presentationMode;
 
 	useEffect(() => {
 		// Re-seed the draft only while the panel is actually open. Some hosts (e.g.
@@ -1819,17 +1823,25 @@ export const SidePanel = ({
 						comments={comments}
 						onAddComment={handleAddComment}
 						onUpdateComment={
-							isReadOnlyPending ? undefined : handleUpdateComment
+							isReadOnlyPending || presentationMode
+								? undefined
+								: handleUpdateComment
 						}
 						onDeleteComment={
-							isReadOnlyPending ? undefined : handleDeleteComment
+							isReadOnlyPending || presentationMode
+								? undefined
+								: handleDeleteComment
 						}
 						currentUserId={user?.id}
-						canComment={Boolean(user) && !isReadOnlyPending}
+						canComment={
+							Boolean(user) && !isReadOnlyPending && !presentationMode
+						}
 						disabledMessage={
-							isReadOnlyPending
-								? "Comments will unlock once this task is created."
-								: undefined
+							presentationMode
+								? "Comments are read-only while presenting."
+								: isReadOnlyPending
+									? "Comments will unlock once this task is created."
+									: undefined
 						}
 						isLoading={isLoadingComments}
 						emptyMessage="No comments yet for this task."

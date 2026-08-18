@@ -118,7 +118,7 @@ export function MessageActionsMenu({
 				ref={btnRef}
 				type="button"
 				onClick={() => setOpen((value) => !value)}
-				className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-opacity hover:bg-slate-100 hover:text-slate-700 ${
+				className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground ${
 					open ? "opacity-100" : "opacity-0 group-hover/line:opacity-100"
 				}`}
 				aria-label="Message actions"
@@ -135,7 +135,7 @@ export function MessageActionsMenu({
 						ref={menuRef}
 						role="menu"
 						style={{ position: "fixed", top: coords.top, left: coords.left }}
-						className="z-50 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+						className="z-50 w-40 overflow-hidden rounded-xl border border-border bg-popover py-1 shadow-(--app-shadow-lg)"
 					>
 						{showReply && (
 							<MenuItem
@@ -167,9 +167,9 @@ export function MessageActionsMenu({
 									setOpen(false);
 									onDelete?.(bypass);
 								}}
-								className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+								className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
 							>
-								<span className="text-red-500">
+								<span className="text-destructive">
 									<Trash2 className="h-4 w-4" />
 								</span>
 								Delete
@@ -196,9 +196,9 @@ function MenuItem({
 			type="button"
 			role="menuitem"
 			onClick={onClick}
-			className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+			className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-popover-foreground hover:bg-muted"
 		>
-			<span className="text-slate-400">{icon}</span>
+			<span className="text-muted-foreground">{icon}</span>
 			{label}
 		</button>
 	);
