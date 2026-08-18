@@ -53,7 +53,6 @@ export interface Profile {
 	date_of_birth: string | null;
 	city: string | null;
 	zip_code: string | null;
-	skills?: string[];
 	settings: ProfileSettings;
 	has_completed_onboarding: boolean;
 	tutorials_completed?: Record<string, any>;

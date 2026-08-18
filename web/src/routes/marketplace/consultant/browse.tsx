@@ -49,10 +49,7 @@ function BrowseConsultants() {
 			(c) =>
 				c.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				c.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				c.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				c.skills?.some((s) =>
-					s.toLowerCase().includes(searchQuery.toLowerCase()),
-				),
+				c.last_name?.toLowerCase().includes(searchQuery.toLowerCase()),
 		) || [];
 
 	return (
@@ -153,26 +150,6 @@ function BrowseConsultants() {
 											<p className="text-gray-400 text-sm italic mb-4 grow">
 												No bio provided
 											</p>
-										)}
-
-										{consultant.skills && consultant.skills.length > 0 && (
-											<div className="mt-auto">
-												<div className="flex flex-wrap gap-2">
-													{consultant.skills.slice(0, 3).map((skill, idx) => (
-														<span
-															key={idx}
-															className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-md border border-blue-100"
-														>
-															{skill}
-														</span>
-													))}
-													{consultant.skills.length > 3 && (
-														<span className="px-2.5 py-1 text-xs font-medium bg-gray-50 text-gray-600 rounded-md border border-gray-100">
-															+{consultant.skills.length - 3}
-														</span>
-													)}
-												</div>
-											</div>
 										)}
 									</div>
 								</Link>

@@ -1,9 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BadgeCheck, MapPin, User } from "lucide-react";
+import { BadgeCheck, MapPin, MessageCircle, User } from "lucide-react";
 import { useState } from "react";
+import { ConsultantExperience } from "@/components/marketplace/consultant/ConsultantExperience";
+import {
+	ConsultantServices,
+	formatPrice,
+} from "@/components/marketplace/consultant/ConsultantServices";
+import { ConsultantSkills } from "@/components/marketplace/consultant/ConsultantSkills";
+import { ConsultantTemplates } from "@/components/marketplace/consultant/ConsultantTemplates";
 import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
 import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
 import { useConsultantProfileQuery } from "@/hooks/useConsultants";
+import type { ConsultantPublicRates } from "@/queries/consultants";
 import { useAuthStore } from "@/stores/authStore";
 import type { ConsultantExpertise } from "@/types/marketplace-taxonomy";
 
@@ -14,17 +22,24 @@ export const Route = createFileRoute("/marketplace/consultant/$profileId")({
 /**
  * The public consultant profile.
  *
- * Laid out flat — headings and text directly on the page, with the only bordered
- * surface being the engage panel in the right rail. Wrapping each section in a
- * card broke the reading order into competing boxes; the sections are a single
- * column of prose about one person, so they read as one.
+ * Prose flows flat down the left — headings and text directly on the page — and
+ * the two things you can act on are bordered: the engage panel in the right
+ * rail, and the service cards. Everything else reads as one column about one
+ * person rather than a stack of competing boxes.
  *
  * Every field comes from the profile endpoint's own allowlist: name, avatar,
- * banner, headline, bio, location, when they joined, when they were verified,
- * and the taxonomy sub-categories they sit in. There is deliberately no rate,
- * star rating, review count, response time or availability dot — none of those
- * exist in the data model, and inventing them on a real person's public page
- * would be a lie a client could act on.
+ * headline, bio, location, languages, taxonomy sub-categories, skills, the
+ * published service catalog, the shared rate card, work history and published
+ * roadmap templates.
+ *
+ * Still deliberately absent, and not to be added without the data behind them:
+ * a star rating, a review count, a response time, and an online/offline dot.
+ * `user_stats` has rating columns and NOTHING writes them; there is no review
+ * table and no completed-engagement signal to derive one from. A rating is the
+ * single number a client trusts most, so inventing one would be the most
+ * damaging lie this page could tell. Availability is shown only as the word the
+ * consultant themselves set, never as a live presence indicator — a profile
+ * carries no timezone or session to compute one from.
  */
 function ConsultantProfile() {
 	const { profileId } = Route.useParams();
@@ -43,6 +58,11 @@ function ConsultantProfile() {
 	const initial = name.charAt(0).toUpperCase();
 	const location = [profile.city, profile.country].filter(Boolean).join(", ");
 	const expertise = profile.expertise ?? [];
+	const services = profile.services ?? [];
+	const skills = profile.skills ?? [];
+	const languages = profile.languages ?? [];
+	const experiences = profile.experiences ?? [];
+	const templates = profile.templates ?? [];
 
 	return (
 		<div className="min-h-screen bg-background pt-app-header">
@@ -83,12 +103,20 @@ function ConsultantProfile() {
 									)
 								)}
 
-								{location && (
-									<p className="mt-2 inline-flex items-center gap-1.5 text-[14px] text-muted-foreground">
-										<MapPin className="h-4 w-4 shrink-0" />
-										{location}
-									</p>
-								)}
+								<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted-foreground">
+									{location && (
+										<span className="inline-flex items-center gap-1.5">
+											<MapPin className="h-4 w-4 shrink-0" />
+											{location}
+										</span>
+									)}
+									{languages.length > 0 && (
+										<span className="inline-flex items-center gap-1.5">
+											<MessageCircle className="h-4 w-4 shrink-0" />
+											{languages.map((entry) => entry.name).join(", ")}
+										</span>
+									)}
+								</div>
 							</div>
 						</div>
 
@@ -102,14 +130,58 @@ function ConsultantProfile() {
 						</h2>
 						<Expertise expertise={expertise} isOwner={isOwner} />
 
+						{(skills.length > 0 || isOwner) && (
+							<>
+								<h2 className="mt-8 text-[15px] font-bold text-foreground">
+									Skills
+								</h2>
+								<ConsultantSkills skills={skills} isOwner={isOwner} />
+							</>
+						)}
+
+						<h2 className="mt-10 text-[19px] font-bold text-foreground">
+							See my services
+						</h2>
+						<ConsultantServices
+							services={services}
+							isOwner={isOwner}
+							name={name}
+						/>
+
+						{(experiences.length > 0 || isOwner) && (
+							<>
+								<h2 className="mt-10 text-[19px] font-bold text-foreground">
+									Work experience
+								</h2>
+								<ConsultantExperience
+									experiences={experiences}
+									isOwner={isOwner}
+									name={name}
+								/>
+							</>
+						)}
+
+						{(templates.length > 0 || isOwner) && (
+							<>
+								<h2 className="mt-10 text-[19px] font-bold text-foreground">
+									Roadmap templates
+								</h2>
+								<ConsultantTemplates
+									templates={templates}
+									isOwner={isOwner}
+									name={name}
+								/>
+							</>
+						)}
+
 						<h2 className="mt-10 text-[15px] font-bold text-foreground">
-							Work and reviews
+							Reviews
 						</h2>
 						<p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
-							Completed engagements and client feedback appear here. Proyekto
-							records them from signed contracts and accepted deliverables
-							rather than from self-reported claims, so nothing shows until{" "}
-							{name} has finished work on the platform.
+							Client feedback appears here once {name} has completed work on
+							Proyekto. It is recorded from signed contracts and accepted
+							deliverables rather than self-reported, which is why there is no
+							rating on this page yet.
 						</p>
 					</div>
 
@@ -120,6 +192,7 @@ function ConsultantProfile() {
 							avatarUrl={profile.avatar_url}
 							verifiedAt={profile.consultant_verified_at}
 							createdAt={profile.created_at}
+							rates={profile.rates ?? null}
 							isOwner={isOwner}
 							profileId={profileId}
 						/>
@@ -240,6 +313,7 @@ function EngagePanel({
 	avatarUrl,
 	verifiedAt,
 	createdAt,
+	rates,
 	isOwner,
 	profileId,
 }: {
@@ -248,6 +322,7 @@ function EngagePanel({
 	avatarUrl: string | null;
 	verifiedAt: string | null;
 	createdAt: string | null;
+	rates: ConsultantPublicRates | null;
 	isOwner: boolean;
 	profileId: string;
 }) {
@@ -289,13 +364,29 @@ function EngagePanel({
 						<p className="truncate text-[15px] font-semibold text-foreground">
 							{name}
 						</p>
-						{verifiedLabel && (
-							<p className="text-[13px] text-muted-foreground">
-								Verified {verifiedLabel}
+						{rates?.hourlyRate !== undefined && rates?.hourlyRate !== null ? (
+							<p className="text-[15px] font-bold text-foreground">
+								{formatPrice(rates.hourlyRate, rates.currency)}
+								<span className="font-normal text-muted-foreground">/hour</span>
 							</p>
+						) : (
+							verifiedLabel && (
+								<p className="text-[13px] text-muted-foreground">
+									Verified {verifiedLabel}
+								</p>
+							)
 						)}
 					</div>
 				</div>
+
+				{/* The consultant's own word, not a live presence check. There is no
+				    session or timezone on a profile to compute one from, so an
+				    online dot here would be invented. */}
+				{rates?.availability && (
+					<p className="mt-3 text-[13px] text-muted-foreground">
+						{formatAvailability(rates.availability)}
+					</p>
+				)}
 
 				{isOwner ? (
 					<>
@@ -342,6 +433,23 @@ function EngagePanel({
  * wrong for anyone in another timezone — and a profile carries no timezone to
  * compute the real one from.
  */
+/**
+ * `availability_status` is an enum of snake_case values; this is the only place
+ * it is shown to a reader, so the wording lives here rather than in the DB.
+ */
+function formatAvailability(value: string): string {
+	switch (value) {
+		case "available":
+			return "Available for new work";
+		case "partially_available":
+			return "Partly available";
+		case "unavailable":
+			return "Not taking new work";
+		default:
+			return value;
+	}
+}
+
 function formatMonthYear(value: string | null): string | null {
 	if (!value) return null;
 	const date = new Date(value);
