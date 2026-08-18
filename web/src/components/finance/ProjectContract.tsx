@@ -54,6 +54,11 @@ import type {
 	PreviewParties,
 	PreviewTerms,
 } from "@/components/project/ContractDocumentPreview";
+import {
+	type CapturedInitials,
+	InitialsPad,
+	initialsFromName,
+} from "@/components/project/signature/InitialsPad";
 import { SignaturePad } from "@/components/project/signature/SignaturePad";
 import { SignaturePlacementField } from "@/components/project/signature/SignaturePlacementField";
 import { type AutosaveStatus, useAutosave } from "@/hooks/useAutosave";
@@ -67,6 +72,10 @@ import {
 	type InvoiceCadence,
 } from "@/lib/contract-term";
 import { CURRENCIES } from "@/lib/currency";
+import {
+	financeStatusBadgeClass,
+	financeStatusMeta,
+} from "@/lib/finance-status";
 import {
 	type BillingTiming,
 	type Contract,
@@ -432,6 +441,7 @@ export function ProjectContract({
 						onZoomChange={setZoom}
 						fitSignal={fitSignal}
 						onStatsChange={setCanvasStats}
+						pageInitials={contract.page_initials}
 					/>
 				</div>
 				<aside className="min-w-0 overflow-y-auto border-l border-border bg-background">
@@ -481,6 +491,27 @@ export function ProjectContract({
 								clauses={documentClauses}
 								onChange={updateDocumentClauses}
 								saveStatus={clausesSaveStatus}
+							/>
+						)}
+						{activeStep === "signatures" && (
+							<PageInitialsPanel
+								contract={contract}
+								pageCount={canvasStats.pageCount}
+								viewerPosition={
+									contract.positions.find((p) => p.user_id === user?.id)
+										?.position ?? null
+								}
+								// The seat's own identity snapshot, which is what the
+								// document already prints for this party.
+								viewerName={
+									contract.positions.find((p) => p.user_id === user?.id)
+										?.display_name_snapshot ?? null
+								}
+								onSaved={() =>
+									void qc.invalidateQueries({
+										queryKey: ["contract", contract.id],
+									})
+								}
 							/>
 						)}
 						{activeStep === "signatures" && (
@@ -677,18 +708,13 @@ function termsPreview(contract: Contract | null): PreviewTerms {
 /* ── Status chip ──────────────────────────────────────────────────────────── */
 
 function ContractStatusChip({ status }: { status: Contract["status"] }) {
-	const classes: Record<Contract["status"], string> = {
-		draft: "bg-muted text-muted-foreground border-border",
-		sent: "bg-amber-500/15 text-amber-600 border-amber-500/30",
-		signed: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-		ended: "bg-muted text-muted-foreground border-border",
-		cancelled: "bg-destructive/10 text-destructive border-destructive/30",
-	};
+	const meta = financeStatusMeta(status);
 	return (
 		<span
-			className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${classes[status]}`}
+			title={meta.hint || undefined}
+			className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${financeStatusBadgeClass(meta.tone)}`}
 		>
-			{status}
+			{meta.label}
 		</span>
 	);
 }
@@ -2322,7 +2348,7 @@ function SignatureSection({
 			)}
 
 			{!termsReady && (
-				<p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-4 text-amber-600">
+				<p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[11px] leading-4 text-warning-foreground">
 					Set the service start date and term before signing.
 				</p>
 			)}
@@ -2426,7 +2452,7 @@ function SignatureBlock({
 }) {
 	if (signedAt) {
 		return (
-			<div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+			<div className="rounded-lg border border-success/30 bg-success/10 p-3">
 				<div className="flex items-start justify-between gap-2">
 					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 						{heading}
@@ -2502,4 +2528,97 @@ function isEditableStatus(status: Contract["status"]): boolean {
 function numberOrNull(value: string): number | null {
 	const parsed = Number(value);
 	return value.trim() && Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Per-page initials, captured once and applied to every page.
+ *
+ * Adobe Sign's model: the signer marks once and the mark is stamped on each
+ * page, because initialling a twelve-page agreement is one decision rather than
+ * twelve. The seat is taken from the viewer's own contract position — nobody can
+ * initial on another party's behalf.
+ */
+function PageInitialsPanel({
+	contract,
+	pageCount,
+	viewerPosition,
+	viewerName,
+	onSaved,
+}: {
+	contract: Contract;
+	pageCount: number;
+	viewerPosition: "hirer" | "provider" | null;
+	viewerName: string | null;
+	onSaved: () => void;
+}) {
+	const toast = useToast();
+	const [saving, setSaving] = useState(false);
+	const mine = contract.page_initials.filter(
+		(mark) => mark.position === viewerPosition,
+	);
+	const terminal =
+		contract.status === "ended" || contract.status === "cancelled";
+
+	if (!viewerPosition) {
+		return (
+			<section className="border-b border-border px-4 py-4">
+				<h3 className="text-sm font-semibold text-foreground">Page initials</h3>
+				<p className="mt-1 text-xs text-muted-foreground">
+					Only a named party on this agreement can initial its pages.
+				</p>
+			</section>
+		);
+	}
+
+	const apply = async (captured: CapturedInitials) => {
+		setSaving(true);
+		try {
+			await contractService.saveInitials(contract.id, {
+				position: viewerPosition,
+				method: captured.method,
+				pages: Array.from({ length: Math.max(1, pageCount) }, (_, i) => i),
+				initials_text: captured.text ?? undefined,
+				image_png: captured.png,
+			});
+			toast.success(
+				`Initialled ${pageCount} ${pageCount === 1 ? "page" : "pages"}`,
+			);
+			onSaved();
+		} catch (error) {
+			toast.error((error as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<section className="border-b border-border px-4 py-4">
+			<h3 className="text-sm font-semibold text-foreground">Page initials</h3>
+			<p className="mt-1 mb-3 text-xs text-muted-foreground">
+				Initial once and it is stamped on every page — the mark that shows each
+				page of this agreement was seen, not just the last one.
+			</p>
+			{mine.length > 0 ? (
+				<div className="rounded-lg border border-success/30 bg-success/5 p-3">
+					<p className="text-xs font-medium text-success-foreground">
+						{mine.length} of {Math.max(1, pageCount)} pages initialled
+					</p>
+					{mine[0]?.initials_text && (
+						<p className="mt-0.5 text-[11px] text-muted-foreground">
+							Typed “{mine[0].initials_text}”
+						</p>
+					)}
+				</div>
+			) : null}
+			{!terminal && (
+				<div className={mine.length > 0 ? "mt-3" : ""}>
+					<InitialsPad
+						defaultText={initialsFromName(viewerName)}
+						onCapture={(captured) => void apply(captured)}
+						disabled={saving}
+					/>
+				</div>
+			)}
+		</section>
+	);
 }

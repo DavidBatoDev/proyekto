@@ -51,5 +51,11 @@ export function invoiceToPreviewProps(invoice: Invoice): InvoicePreviewProps {
 		paymentMethod: invoice.payment_method,
 		notes: invoice.notes,
 		lines,
+		// A saved invoice knows what it is and what has been settled against it;
+		// the document should say so rather than looking identical whether it is
+		// a draft, part paid, or three weeks late.
+		status: invoice.status,
+		amountPaid: invoice.amount_paid,
+		isOverdue: invoice.is_overdue,
 	};
 }

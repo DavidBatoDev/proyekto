@@ -2,6 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
+import {
+  type Aging,
+  BILLED_STATUSES,
+  agingBucket,
+  collectedByInvoice,
+  emptyAging,
+  endOfDay,
+} from '../finance/receivables';
 
 interface MonthBucket {
   month: string; // YYYY-MM
@@ -17,6 +25,18 @@ export interface CurrencyTotals {
   margin_percent: number | null;
 }
 
+/** What is billed, what came back, and how late the rest is. */
+export interface ProjectReceivables {
+  billed: number;
+  collected: number;
+  outstanding: number;
+  overdue_amount: number;
+  overdue_count: number;
+  invoice_count: number;
+  aging: Aging;
+  as_of: string;
+}
+
 export interface ProjectFinancials {
   project_id: string;
   /** The project's own currency — the headline bucket. */
@@ -27,6 +47,8 @@ export interface ProjectFinancials {
     team_burn: number;
     pool_remaining: number;
   };
+  /** Cash position in the project currency. */
+  receivables: ProjectReceivables;
   /** Every currency seen (a project can mix), so nothing is summed across FX. */
   by_currency: CurrencyTotals[];
   /** Monthly revenue vs cost in the project currency, for the charts. */
@@ -124,9 +146,17 @@ export class FinancialsService {
     const companyPercent = economics?.company_percent ?? 0;
     const teamPool = round2((head.revenue * teamPercent) / 100);
 
+    // Receivables cover the project's OWN currency only — the same rule the
+    // headline totals follow, since a balance in two currencies cannot be added.
+    const ownCurrencyInvoices = invoices.filter(
+      (inv) => inv.currency.toUpperCase() === projectCurrency,
+    );
+    const receivables = await this.buildReceivables(ownCurrencyInvoices);
+
     return {
       project_id: projectId,
       currency: projectCurrency,
+      receivables,
       totals: {
         ...head,
         company_share: round2((head.revenue * companyPercent) / 100),
@@ -140,6 +170,62 @@ export class FinancialsService {
         company_percent: companyPercent,
         team_percent: teamPercent,
       },
+    };
+  }
+
+  private async buildReceivables(
+    invoices: Array<{
+      id: string;
+      amount: number;
+      status: string;
+      due_date: string | null;
+    }>,
+  ): Promise<ProjectReceivables> {
+    const asOf = new Date().toISOString().slice(0, 10);
+    const paid = await collectedByInvoice(
+      this.supabase,
+      invoices.map((inv) => ({
+        id: inv.id,
+        total: inv.amount,
+        status: inv.status,
+      })),
+    );
+
+    const aging = emptyAging();
+    let billed = 0;
+    let collected = 0;
+    let outstanding = 0;
+    let overdueAmount = 0;
+    let overdueCount = 0;
+
+    for (const invoice of invoices) {
+      const received = paid.get(invoice.id) ?? 0;
+      const balance = Math.max(0, invoice.amount - received);
+      const bucket = agingBucket(invoice.due_date, asOf, balance);
+      billed += invoice.amount;
+      collected += received;
+      outstanding += balance;
+      aging[bucket] += balance;
+      if (balance > 0 && bucket !== 'current') {
+        overdueAmount += balance;
+        overdueCount += 1;
+      }
+    }
+
+    return {
+      billed: round2(billed),
+      collected: round2(collected),
+      outstanding: round2(outstanding),
+      overdue_amount: round2(overdueAmount),
+      overdue_count: overdueCount,
+      invoice_count: invoices.length,
+      aging: {
+        current: round2(aging.current),
+        d1_30: round2(aging.d1_30),
+        d31_60: round2(aging.d31_60),
+        d61_plus: round2(aging.d61_plus),
+      },
+      as_of: asOf,
     };
   }
 
@@ -185,36 +271,57 @@ export class FinancialsService {
     };
   }
 
-  /** Issued/sent/paid invoices — draft and void don't count as revenue. */
+  /**
+   * Billed invoices — draft and void are not revenue.
+   *
+   * The status list used to read `issued | sent | paid`. `sent` is not an
+   * invoice status at all (see INVOICE_STATUSES), and `partially_paid` was
+   * missing — so a project's headline revenue DROPPED the moment a client made a
+   * part payment, while the portfolio, which used the right list, disagreed.
+   */
   private async getRevenueRows(
     projectId: string,
     range?: { from?: string; to?: string },
   ): Promise<
-    Array<{ currency: string; amount: number; month: string | null }>
+    Array<{
+      id: string;
+      currency: string;
+      amount: number;
+      status: string;
+      due_date: string | null;
+      month: string | null;
+    }>
   > {
     let q = this.supabase
       .from('invoices')
       .select(
-        'currency, total, period_start, period_end, issue_date, created_at',
+        'id, currency, total, status, due_date, period_start, period_end, issue_date, created_at',
       )
       .eq('project_id', projectId)
-      .in('status', ['issued', 'sent', 'paid']);
-    if (range?.from) q = q.gte('created_at', range.from);
-    if (range?.to) q = q.lte('created_at', range.to);
+      .in('status', BILLED_STATUSES);
+    // Dated by when it was billed, to match the portfolio.
+    if (range?.from) q = q.gte('issue_date', range.from);
+    if (range?.to) q = q.lte('issue_date', range.to);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
 
     return (
       (data ?? []) as Array<{
+        id: string;
         currency: string;
         total: string | number;
+        status: string;
+        due_date: string | null;
         period_start: string | null;
         issue_date: string | null;
         created_at: string;
       }>
     ).map((row) => ({
+      id: String(row.id),
       currency: row.currency ?? 'USD',
       amount: Number(row.total ?? 0),
+      status: String(row.status),
+      due_date: row.due_date,
       // Attribute revenue to the covered period, else the issue/creation month.
       month: monthOf(row.period_start ?? row.issue_date ?? row.created_at),
     }));
@@ -242,7 +349,9 @@ export class FinancialsService {
         .order('started_at', { ascending: true })
         .range(page * pageSize, page * pageSize + pageSize - 1);
       if (range?.from) q = q.gte('started_at', range.from);
-      if (range?.to) q = q.lte('started_at', range.to);
+      // started_at is a timestamptz; a date-only end bound has to reach the end
+      // of that day or the last day's logs vanish.
+      if (range?.to) q = q.lte('started_at', endOfDay(range.to));
       const { data, error } = await q;
       if (error) throw new Error(error.message);
       const batch = (data ?? []) as Array<{

@@ -225,7 +225,9 @@ export class ContractSignatureLinksService {
     const positions = await this.contracts.getContractPositions(contract.id);
     const recipient =
       dto.recipient_email?.trim() ||
-      positions.find((position) => position.capacity !== 'consultant')?.email_snapshot?.trim() ||
+      positions
+        .find((position) => position.capacity !== 'consultant')
+        ?.email_snapshot?.trim() ||
       contract.client_email?.trim() ||
       null;
 

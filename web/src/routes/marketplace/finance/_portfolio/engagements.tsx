@@ -41,11 +41,18 @@ function FinanceEngagementsPage() {
 			loading={engagementsQuery.isPending}
 			error={engagementsQuery.error as Error | null}
 			items={engagementsQuery.data ?? []}
-			onOpenContract={(contractId) =>
+			filtered={Boolean(search.projectId)}
+			onClearProject={() =>
 				void navigate({
-					to: "/marketplace/finance/$contractId",
-					params: { contractId },
-					search: { section: undefined },
+					to: "/marketplace/finance/engagements",
+					search: { ...search, projectId: undefined },
+					replace: true,
+				})
+			}
+			onOpen={(engagementId) =>
+				void navigate({
+					to: "/marketplace/finance/engagements/$engagementId",
+					params: { engagementId },
 				})
 			}
 		/>

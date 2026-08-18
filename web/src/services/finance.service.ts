@@ -24,7 +24,17 @@ export interface FinanceProject {
 	margin: number;
 	margin_percent: number | null;
 	invoice_count: number;
+	overdue_amount: number;
+	overdue_count: number;
 	latest_contract: { id: string; status: string; version: number } | null;
+}
+
+/** Outstanding balance split by how far past due it is. */
+export interface FinanceAging {
+	current: number;
+	d1_30: number;
+	d31_60: number;
+	d61_plus: number;
 }
 
 export interface FinanceCurrencyTotals {
@@ -37,11 +47,16 @@ export interface FinanceCurrencyTotals {
 	margin_percent: number | null;
 	invoice_count: number;
 	project_count: number;
+	overdue_amount: number;
+	overdue_count: number;
+	aging: FinanceAging;
 }
 
 export interface FinancePortfolio {
 	projects: FinanceProject[];
 	totals_by_currency: FinanceCurrencyTotals[];
+	/** Server date the ageing bands were computed against. */
+	as_of: string;
 }
 
 export interface FinanceContractSummary {
@@ -77,15 +92,29 @@ export interface FinanceInvoiceSummary {
 	currency: string;
 	total: number;
 	origin: string;
+	contract_id: string | null;
 	issue_date: string | null;
 	due_date: string | null;
+	period_start: string | null;
+	period_end: string | null;
 	updated_at: string;
 	project: FinanceProject | null;
+	amount_paid: number;
+	balance_due: number;
+	is_overdue: boolean;
+	days_overdue: number;
 }
 
-interface Page<T> {
+export interface Page<T> {
 	items: T[];
 	total: number;
+	page: number;
+	limit: number;
+}
+
+export interface FinancePageQuery {
+	page?: number;
+	limit?: number;
 }
 
 async function get<T>(path: string, params: object): Promise<T> {
@@ -105,8 +134,10 @@ async function get<T>(path: string, params: object): Promise<T> {
 export const financeService = {
 	portfolio: (filters: FinanceFilters) =>
 		get<FinancePortfolio>("/api/finance/portfolio", filters),
-	contracts: (filters: FinanceFilters & { contract_status?: string }) =>
-		get<Page<FinanceContractSummary>>("/api/finance/contracts", filters),
-	invoices: (filters: FinanceFilters & { invoice_status?: string }) =>
-		get<Page<FinanceInvoiceSummary>>("/api/finance/invoices", filters),
+	contracts: (
+		filters: FinanceFilters & FinancePageQuery & { contract_status?: string },
+	) => get<Page<FinanceContractSummary>>("/api/finance/contracts", filters),
+	invoices: (
+		filters: FinanceFilters & FinancePageQuery & { invoice_status?: string },
+	) => get<Page<FinanceInvoiceSummary>>("/api/finance/invoices", filters),
 };

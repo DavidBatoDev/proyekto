@@ -1159,6 +1159,12 @@ export class InvoicesService {
       paymentMethod: invoice.payment_method,
       notes: invoice.notes,
       total: Number(invoice.total ?? 0),
+      // The document states what it is and what has been settled against it,
+      // so a re-sent PDF cannot look identical to the one issued before a
+      // payment landed.
+      status: invoice.status,
+      amountPaid: invoice.amount_paid,
+      isOverdue: invoice.is_overdue,
       lines: invoice.line_items.map((item) => ({
         description: item.description,
         quantity: Number(item.quantity ?? 0),

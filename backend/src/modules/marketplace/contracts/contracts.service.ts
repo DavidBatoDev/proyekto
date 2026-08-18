@@ -10,6 +10,11 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
+import {
+  type ContractPageInitial,
+  ContractPageInitialsService,
+} from './contract-page-initials.service';
+import type { SaveContractInitialsDto } from './dto/contract-page-initials.dto';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import {
@@ -152,6 +157,8 @@ export interface ContractRow {
 /** A contract plus the billing schedule derived from its terms. */
 export interface ContractWithSchedule extends ContractRow {
   periods: BillingPeriod[];
+  /** Per-page initials, so the document can stamp each page it renders. */
+  page_initials: ContractPageInitial[];
 }
 
 /** The project's primary team, as far as contracts care about it. */
@@ -314,7 +321,37 @@ export class ContractsService {
     private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly notifications: NotificationsService,
     private readonly projectAuth: ProjectAuthorizationService,
+    private readonly pageInitials: ContractPageInitialsService,
   ) {}
+
+  /**
+   * Records per-page initials for a seat the caller actually holds.
+   *
+   * Authorization is the same question as "may this person act on the
+   * agreement", so it reuses the signing check rather than inventing a second
+   * rule: a caller may only mark the seat they are seated in.
+   */
+  async savePageInitials(
+    callerId: string,
+    contractId: string,
+    dto: SaveContractInitialsDto,
+  ): Promise<ContractPageInitial[]> {
+    const contract = await this.getContractRow(contractId);
+    const positions = await this.getPositions(contractId);
+    const seat = positions.find((p) => p.user_id === callerId);
+    if (!seat) {
+      // A position-less legacy contract still has a consultant who may act.
+      await this.assertConsultantContractControl(callerId, contract);
+      if (dto.position !== 'provider' && dto.position !== 'hirer') {
+        throw new BadRequestException('Choose which seat is initialling.');
+      }
+    } else if (seat.position !== dto.position) {
+      throw new BadRequestException(
+        'You can only initial on behalf of your own seat.',
+      );
+    }
+    return this.pageInitials.save(contractId, callerId, dto);
+  }
 
   async listByProject(
     callerId: string,
@@ -1265,6 +1302,7 @@ export class ContractsService {
       ...row,
       positions: await this.getPositions(row.id),
       periods: await this.resolvePeriods(row),
+      page_initials: await this.pageInitials.listForContract(row.id),
     };
   }
 
@@ -1582,9 +1620,15 @@ export class ContractsService {
         (data as { owner_id: string | null } | null)?.owner_id ?? null;
     }
 
-    const counterpartyId =
-      requestedUserId ??
-      (relationshipKind === 'client_services' ? projectOwnerId : null);
+    // The named account wins. Falling back to the project owner is only a
+    // convenience for the arrangement where the client happens to own the
+    // project, and it is skipped when that owner is the caller — a contract
+    // cannot seat one person on both sides.
+    const ownerFallback =
+      relationshipKind === 'client_services' && projectOwnerId !== callerId
+        ? projectOwnerId
+        : null;
+    const counterpartyId = requestedUserId ?? ownerFallback;
     if (!counterpartyId || counterpartyId === callerId) {
       throw new BadRequestException(
         relationshipKind === 'client_services'
@@ -1592,15 +1636,23 @@ export class ContractsService {
           : 'Choose a Talent account before creating this contract.',
       );
     }
-    if (
-      relationshipKind === 'client_services' &&
-      projectId &&
-      (!projectOwnerId || counterpartyId !== projectOwnerId)
-    ) {
-      throw new BadRequestException(
-        'A project Client contract requires the project owner as its Client position.',
-      );
-    }
+    /*
+     * There is deliberately NO requirement that the Client be the project owner.
+     *
+     * That rule made project-scoped client contracts unreachable: creating one
+     * runs through financeAccess.assertProject, which requires the CALLER to own
+     * the project, so "client must be the owner" and "caller must be the owner"
+     * could only both hold by seating one person on both sides — which
+     * contract_positions forbids. Every client agreement was therefore forced to
+     * be `flexible`, and because createInvoice rejects a contract whose
+     * project_id does not match the invoice's, no project invoice could ever
+     * carry contract provenance.
+     *
+     * It also contradicted the domain rule in docs/11-domains/finance/README.md:
+     * "Never infer a billing counterparty from projects.owner_id or from a
+     * project_access row." A project is the execution layer; who is paying is a
+     * fact of the contract, named by the consultant.
+     */
     return this.resolveProfile(counterpartyId);
   }
 

@@ -5,7 +5,10 @@ import type { StepKey } from "@/components/finance/ProjectContract";
 import { ContractPortfolio } from "@/components/finance/portfolio/ContractPortfolio";
 import { CreateContractDialog } from "@/components/finance/portfolio/CreateContractDialog";
 import {
+	activeFilterCount,
+	FINANCE_PAGE_SIZE,
 	type FinanceContractsSearch,
+	pageValue,
 	stringValue,
 	validateContractStep,
 	validateFinanceSharedSearch,
@@ -40,6 +43,7 @@ export const Route = createFileRoute(
 		...validateFinanceSharedSearch(search),
 		contractStatus: stringValue(search.contractStatus),
 		step: validateContractStep(search.step),
+		page: pageValue(search.page),
 	}),
 	component: FinanceContractsPage,
 });
@@ -61,12 +65,15 @@ function FinanceContractsPage() {
 		from: search.from,
 		to: search.to,
 	};
+	const page = search.page ?? 1;
 	const contractsQuery = useQuery({
-		queryKey: ["finance", "contracts", filters, search.contractStatus],
+		queryKey: ["finance", "contracts", filters, search.contractStatus, page],
 		queryFn: () =>
 			financeService.contracts({
 				...filters,
 				contract_status: search.contractStatus,
+				page,
+				limit: FINANCE_PAGE_SIZE,
 			}),
 		enabled: isConsultant,
 	});
@@ -77,6 +84,12 @@ function FinanceContractsPage() {
 			to: "/marketplace/finance/$contractId",
 			params: { contractId },
 			search: { section },
+		});
+	const updateSearch = (patch: Partial<FinanceContractsSearch>) =>
+		void navigate({
+			to: "/marketplace/finance/contracts",
+			search: { ...search, ...patch },
+			replace: true,
 		});
 
 	const createContractMutation = useMutation({
@@ -122,26 +135,22 @@ function FinanceContractsPage() {
 			<ContractPortfolio
 				loading={contractsQuery.isPending}
 				items={contractsQuery.data?.items ?? []}
+				total={contractsQuery.data?.total ?? 0}
+				page={page}
+				limit={FINANCE_PAGE_SIZE}
+				onPageChange={(next) => updateSearch({ page: next })}
 				onOpen={(contractId) => openContract(contractId)}
 				onAddContract={() => setCreateContractOpen(true)}
 				projectId={search.projectId}
-				onCreate={
-					search.projectId
-						? () =>
-								createContractMutation.mutate({
-									project_id: search.projectId as string,
-									relationship_kind: "client_services",
-									scope_mode: "project_specific",
-								})
-						: undefined
-				}
-				creating={createContractMutation.isPending}
+				filtered={activeFilterCount(search, "contracts") > 0}
+				onClearProject={() => updateSearch({ projectId: undefined })}
 			/>
 			<CreateContractDialog
 				open={createContractOpen}
 				projects={projectOptionsQuery.data?.projects ?? []}
 				loading={projectOptionsQuery.isPending}
 				creating={createContractMutation.isPending}
+				initialProjectId={search.projectId}
 				onClose={() => setCreateContractOpen(false)}
 				onCreate={(input) => createContractMutation.mutate(input)}
 			/>

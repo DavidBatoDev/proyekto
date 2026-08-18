@@ -8,7 +8,10 @@ import {
 	type PreviewTerms,
 	splitContractClauseBody,
 } from "@/components/project/ContractDocumentPreview";
-import type { ContractClause } from "@/services/contract.service";
+import type {
+	ContractClause,
+	ContractPageInitial,
+} from "@/services/contract.service";
 
 /**
  * Where the viewport centre should move to when the zoom changes, so the spot
@@ -194,6 +197,7 @@ export function ContractEditorCanvas({
 	onZoomChange,
 	fitSignal,
 	onStatsChange,
+	pageInitials = [],
 }: {
 	contract: ContractDocumentView;
 	parties: PreviewParties;
@@ -210,6 +214,8 @@ export function ContractEditorCanvas({
 	zoom: number;
 	onZoomChange: (zoom: number) => void;
 	fitSignal: number;
+	/** Per-page marks, stamped into each page's footer. */
+	pageInitials?: ContractPageInitial[];
 	onStatsChange?: (stats: ContractCanvasStats) => void;
 }) {
 	const canvasRef = useRef<HTMLDivElement>(null);
@@ -397,6 +403,8 @@ export function ContractEditorCanvas({
 						onZoomChange(100);
 					}
 				}}
+				// A document editor's desk is a fixed neutral by design — it must not
+				// follow the app theme, or the paper would stop reading as paper.
 				className="hide-scrollbar relative h-full overflow-auto bg-slate-200/80 outline-none dark:bg-slate-950"
 				aria-label="Contract document canvas"
 			>
@@ -442,6 +450,11 @@ export function ContractEditorCanvas({
 										editable={editable}
 										onClauseChange={onClauseChange}
 									/>
+									<PageInitials
+										initials={pageInitials.filter(
+											(mark) => mark.page_index === index,
+										)}
+									/>
 									<span className="absolute right-16 bottom-8 text-[10px] tabular-nums text-slate-400">
 										{index + 1} / {pages.length}
 									</span>
@@ -473,5 +486,44 @@ export function ContractEditorCanvas({
 				/>
 			</div>
 		</>
+	);
+}
+
+/**
+ * The initials footer on one page.
+ *
+ * Sits in the bottom margin, opposite the page number, where every e-signature
+ * product puts it — inside the page so it prints, outside the text block so it
+ * never collides with a clause. A page nobody has initialled shows nothing
+ * rather than an empty placeholder box, so an unsigned draft still reads as a
+ * clean document.
+ */
+function PageInitials({ initials }: { initials: ContractPageInitial[] }) {
+	if (initials.length === 0) return null;
+	const seat = (position: "hirer" | "provider") =>
+		initials.find((mark) => mark.position === position);
+	const provider = seat("provider");
+	const hirer = seat("hirer");
+
+	return (
+		<div className="absolute bottom-6 left-16 flex items-end gap-6">
+			{[
+				{ label: "Provider", mark: provider },
+				{ label: "Client", mark: hirer },
+			]
+				.filter((entry) => entry.mark)
+				.map((entry) => (
+					<div key={entry.label} className="flex flex-col items-center gap-0.5">
+						<img
+							src={entry.mark?.image_url}
+							alt={`${entry.label} initials`}
+							className="h-7 w-auto object-contain"
+						/>
+						<span className="border-t border-slate-300 px-3 text-[8px] uppercase tracking-wider text-slate-400">
+							{entry.label}
+						</span>
+					</div>
+				))}
+		</div>
 	);
 }

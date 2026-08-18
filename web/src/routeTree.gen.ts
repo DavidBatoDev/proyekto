@@ -69,6 +69,7 @@ import { Route as MarketplaceCategoryCategorySlugIndexRouteImport } from './rout
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/marketplace/finance/invoices/new'
+import { Route as MarketplaceFinanceEngagementsEngagementIdRouteImport } from './routes/marketplace/finance/engagements/$engagementId'
 import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
 import { Route as MarketplaceFinancePortfolioEngagementsRouteImport } from './routes/marketplace/finance/_portfolio/engagements'
 import { Route as MarketplaceFinancePortfolioContractsRouteImport } from './routes/marketplace/finance/_portfolio/contracts'
@@ -435,6 +436,12 @@ const MarketplaceFinanceInvoicesNewRoute =
   MarketplaceFinanceInvoicesNewRouteImport.update({
     id: '/invoices/new',
     path: '/invoices/new',
+    getParentRoute: () => MarketplaceFinanceRouteRoute,
+  } as any)
+const MarketplaceFinanceEngagementsEngagementIdRoute =
+  MarketplaceFinanceEngagementsEngagementIdRouteImport.update({
+    id: '/engagements/$engagementId',
+    path: '/engagements/$engagementId',
     getParentRoute: () => MarketplaceFinanceRouteRoute,
   } as any)
 const MarketplaceFinancePortfolioInvoicesRoute =
@@ -820,6 +827,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
+  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -927,6 +935,7 @@ export interface FileRoutesByTo {
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
+  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1041,6 +1050,7 @@ export interface FileRoutesById {
   '/marketplace/finance/_portfolio/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/_portfolio/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
+  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1155,6 +1165,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
+    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId/'
@@ -1262,6 +1273,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
+    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId'
@@ -1375,6 +1387,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/_portfolio/contracts'
     | '/marketplace/finance/_portfolio/engagements'
     | '/marketplace/finance/_portfolio/invoices'
+    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
@@ -1863,6 +1876,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceFinanceInvoicesNewRouteImport
       parentRoute: typeof MarketplaceFinanceRouteRoute
     }
+    '/marketplace/finance/engagements/$engagementId': {
+      id: '/marketplace/finance/engagements/$engagementId'
+      path: '/engagements/$engagementId'
+      fullPath: '/marketplace/finance/engagements/$engagementId'
+      preLoaderRoute: typeof MarketplaceFinanceEngagementsEngagementIdRouteImport
+      parentRoute: typeof MarketplaceFinanceRouteRoute
+    }
     '/marketplace/finance/_portfolio/invoices': {
       id: '/marketplace/finance/_portfolio/invoices'
       path: '/invoices'
@@ -2278,6 +2298,7 @@ const MarketplaceFinancePortfolioRouteWithChildren =
 interface MarketplaceFinanceRouteRouteChildren {
   MarketplaceFinanceContractIdRoute: typeof MarketplaceFinanceContractIdRoute
   MarketplaceFinancePortfolioRoute: typeof MarketplaceFinancePortfolioRouteWithChildren
+  MarketplaceFinanceEngagementsEngagementIdRoute: typeof MarketplaceFinanceEngagementsEngagementIdRoute
   MarketplaceFinanceInvoicesNewRoute: typeof MarketplaceFinanceInvoicesNewRoute
   MarketplaceFinanceInvoicesInvoiceIdEditRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
 }
@@ -2287,6 +2308,8 @@ const MarketplaceFinanceRouteRouteChildren: MarketplaceFinanceRouteRouteChildren
     MarketplaceFinanceContractIdRoute: MarketplaceFinanceContractIdRoute,
     MarketplaceFinancePortfolioRoute:
       MarketplaceFinancePortfolioRouteWithChildren,
+    MarketplaceFinanceEngagementsEngagementIdRoute:
+      MarketplaceFinanceEngagementsEngagementIdRoute,
     MarketplaceFinanceInvoicesNewRoute: MarketplaceFinanceInvoicesNewRoute,
     MarketplaceFinanceInvoicesInvoiceIdEditRoute:
       MarketplaceFinanceInvoicesInvoiceIdEditRoute,

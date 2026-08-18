@@ -4,6 +4,7 @@ import { FinanceModule } from '../finance/finance.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
 import { UploadsModule } from '../../shared/uploads/uploads.module';
+import { ContractPageInitialsService } from './contract-page-initials.service';
 import { ContractSignatureLinksController } from './contract-signature-links.controller';
 import { ContractSignatureLinksService } from './contract-signature-links.service';
 import { ContractsController } from './contracts.controller';
@@ -33,6 +34,7 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
   ],
   providers: [
     ContractsService,
+    ContractPageInitialsService,
     ContractSignatureLinksService,
     ProjectEconomicsService,
   ],

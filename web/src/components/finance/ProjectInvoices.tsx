@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	CalendarClock,
+	CircleCheck,
 	CircleDollarSign,
 	Download,
 	FileText,
@@ -20,16 +21,17 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import {
+	FinanceStatusBadge,
+	formatFinanceDate,
+} from "@/components/finance/portfolio/FinancePrimitives";
 import { ConfirmIssueInvoiceModal } from "@/components/invoices/ConfirmIssueInvoiceModal";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney } from "@/lib/contract-term";
+import { effectiveInvoiceStatus } from "@/lib/finance-status";
 import { invoiceHasClient, NO_CLIENT_HINT } from "@/lib/invoiceClient";
 import { contractService } from "@/services/contract.service";
-import {
-	type Invoice,
-	type InvoiceStatus,
-	invoiceService,
-} from "@/services/invoice.service";
+import { type Invoice, invoiceService } from "@/services/invoice.service";
 
 export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const qc = useQueryClient();
@@ -224,20 +226,27 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const invoices = invoicesQuery.data?.items ?? [];
 
 	/**
-	 * Three groups, ordered by what needs attention:
-	 *   Sent — with the client, waiting on payment (issued / sent / paid / void)
-	 *   Scheduled — auto-drafted from the contract, awaiting review
-	 *   Drafts — hand-made, still being written
+	 * Four groups, ordered by what needs attention.
+	 *
+	 * `awaiting` used to be everything that was not a draft, so a paid invoice
+	 * and a voided one both sat under the heading "Issued and emailed. Waiting on
+	 * payment." — which was false of both, and hid the ones genuinely still owed
+	 * among rows that need nothing. Settled work now moves out of the way.
 	 */
 	const groups = useMemo(() => {
-		const sent = invoices.filter((i) => i.status !== "draft");
+		const awaiting = invoices.filter(
+			(i) => i.status === "issued" || i.status === "partially_paid",
+		);
+		const settled = invoices.filter(
+			(i) => i.status === "paid" || i.status === "void",
+		);
 		const scheduled = invoices.filter(
 			(i) => i.status === "draft" && i.origin === "scheduled",
 		);
 		const drafts = invoices.filter(
-			(i) => i.status === "draft" && i.origin === "manual",
+			(i) => i.status === "draft" && i.origin !== "scheduled",
 		);
-		return { sent, scheduled, drafts };
+		return { awaiting, settled, scheduled, drafts };
 	}, [invoices]);
 
 	const outstanding = useMemo(() => {
@@ -356,10 +365,10 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 				) : (
 					<div className="space-y-6">
 						<InvoiceGroup
-							title="Sent to client"
-							hint="Issued and emailed. Waiting on payment."
+							title="Awaiting payment"
+							hint="With the client. Money still owed."
 							icon={Send}
-							invoices={groups.sent}
+							invoices={groups.awaiting}
 							renderRow={(invoice) => (
 								<InvoiceRow key={invoice.id} {...rowProps(invoice)} />
 							)}
@@ -378,6 +387,15 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 							hint="Written by hand. Not visible to the client until issued."
 							icon={Pencil}
 							invoices={groups.drafts}
+							renderRow={(invoice) => (
+								<InvoiceRow key={invoice.id} {...rowProps(invoice)} />
+							)}
+						/>
+						<InvoiceGroup
+							title="Settled"
+							hint="Paid in full or voided. Nothing outstanding."
+							icon={CircleCheck}
+							invoices={groups.settled}
 							renderRow={(invoice) => (
 								<InvoiceRow key={invoice.id} {...rowProps(invoice)} />
 							)}
@@ -509,31 +527,40 @@ function InvoiceRow({
 					<p className="text-sm font-semibold text-foreground">
 						{invoice.number}
 					</p>
-					<StatusChip status={invoice.status} />
+					<FinanceStatusBadge status={effectiveInvoiceStatus(invoice)} />
 					{invoice.origin === "scheduled" && (
-						<span className="rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
-							auto
+						<span
+							title="Drafted automatically from the contract's billing schedule"
+							className="rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info-foreground"
+						>
+							Auto
 						</span>
 					)}
 					{invoice.sent_at && (
 						<span
-							className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600"
-							title={`Emailed ${invoice.sent_at.slice(0, 10)}`}
+							className="inline-flex items-center gap-1 text-[11px] font-medium text-success-foreground"
+							title={`Emailed ${formatFinanceDate(invoice.sent_at.slice(0, 10))}`}
 						>
 							<Mail className="h-3 w-3" />
-							emailed
+							Emailed
 						</span>
 					)}
 				</div>
 				{invoice.period_start && invoice.period_end && (
 					<p className="mt-1 text-xs font-medium text-muted-foreground">
-						Covers {invoice.period_start} – {invoice.period_end}
+						Covers {formatFinanceDate(invoice.period_start)} –{" "}
+						{formatFinanceDate(invoice.period_end)}
 					</p>
 				)}
 				<p className="mt-0.5 text-xs text-muted-foreground">
-					{invoice.issue_date ? `Issued ${invoice.issue_date}` : "Not issued"} ·{" "}
-					{invoice.due_date ? `Due ${invoice.due_date}` : "No due date"} ·{" "}
-					{hoursDetailLabel(invoice.hours_detail_level)}
+					{invoice.issue_date
+						? `Issued ${formatFinanceDate(invoice.issue_date)}`
+						: "Not issued"}{" "}
+					·{" "}
+					{invoice.due_date
+						? `Due ${formatFinanceDate(invoice.due_date)}`
+						: "No due date"}{" "}
+					· {hoursDetailLabel(invoice.hours_detail_level)}
 				</p>
 				<p className="mt-1.5 text-base font-bold tabular-nums text-foreground">
 					{formatMoney(invoice.currency, Number(invoice.total ?? 0))}
@@ -564,7 +591,7 @@ function InvoiceRow({
 										className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground"
 									>
 										{formatMoney(invoice.currency, payment.amount)} ·{" "}
-										{payment.payment_date}
+										{formatFinanceDate(payment.payment_date)}
 										{reversed ? (
 											" · reversed"
 										) : (
@@ -986,21 +1013,4 @@ function hoursDetailLabel(level: Invoice["hours_detail_level"]): string {
 	if (level === "none") return "No hours shown";
 	if (level === "detailed") return "Hours itemised by task";
 	return "Hours summarised";
-}
-
-function StatusChip({ status }: { status: InvoiceStatus }) {
-	const classes: Record<InvoiceStatus, string> = {
-		draft: "bg-slate-100 text-slate-700 border-slate-200",
-		issued: "bg-amber-100 text-amber-700 border-amber-200",
-		partially_paid: "bg-sky-100 text-sky-700 border-sky-200",
-		paid: "bg-emerald-100 text-emerald-700 border-emerald-200",
-		void: "bg-rose-100 text-rose-700 border-rose-200",
-	};
-	return (
-		<span
-			className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${classes[status]}`}
-		>
-			{status}
-		</span>
-	);
 }

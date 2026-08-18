@@ -8,16 +8,12 @@ import {
 	contractService,
 } from "@/services/contract.service";
 
-/**
- * The "create a contract" modal, lifted out of the finance route when the four
- * sections became separate routes. Only the Contracts section opens it, so it
- * belongs beside that section rather than in the shared layout.
- */
 export function CreateContractDialog({
 	open,
 	projects,
 	loading,
 	creating,
+	initialProjectId,
 	onClose,
 	onCreate,
 }: {
@@ -25,6 +21,12 @@ export function CreateContractDialog({
 	projects: Array<{ id: string; title: string }>;
 	loading: boolean;
 	creating: boolean;
+	/**
+	 * Preselected when the dialog is opened from inside a project's finance
+	 * view — otherwise the reader has to pick the project they are already
+	 * looking at out of a list of every project they own.
+	 */
+	initialProjectId?: string;
 	onClose: () => void;
 	onCreate: (input: {
 		project_id?: string | null;
@@ -52,18 +54,23 @@ export function CreateContractDialog({
 	useEffect(() => {
 		if (!open) return;
 		setQuery("");
-		setSelectedProjectId(undefined);
+		setSelectedProjectId(initialProjectId);
 		setRelationshipKind("client_services");
 		setScopeMode("project_specific");
 		setCounterpartyEmail("");
 		setCounterparty(null);
-	}, [open]);
+	}, [open, initialProjectId]);
 	if (!open) return null;
 	const visibleProjects = projects.filter((project) =>
 		project.title.toLowerCase().includes(query.trim().toLowerCase()),
 	);
-	const requiresCounterparty =
-		relationshipKind === "talent_services" || scopeMode === "flexible";
+	/*
+	 * Every contract names its counterparty, including a project-scoped client
+	 * agreement. The Client used to be inferred from the project owner, which
+	 * both contradicted the domain rule (a project does not know who is paying)
+	 * and made project-scoped client contracts impossible to create at all.
+	 */
+	const requiresCounterparty = true;
 	const canCreate =
 		(scopeMode === "flexible" || Boolean(selectedProjectId)) &&
 		(!requiresCounterparty || Boolean(counterparty));
@@ -197,11 +204,14 @@ export function CreateContractDialog({
 					{requiresCounterparty && (
 						<div className="mt-4 rounded-lg border border-border p-3">
 							<p className="text-xs font-medium text-foreground">
-								Counterparty account
+								{relationshipKind === "talent_services"
+									? "Talent account"
+									: "Client account"}
 							</p>
 							<p className="mt-1 text-[11px] text-muted-foreground">
-								Enter their exact Proyekto email. Private Talent contracts do
-								not require a public freelancer listing.
+								{relationshipKind === "talent_services"
+									? "Enter their exact Proyekto email. Private Talent contracts do not require a public freelancer listing."
+									: "Enter the paying client's exact Proyekto email. Who pays is a fact of the contract, not of the project."}
 							</p>
 							<div className="mt-2 flex gap-2">
 								<input
@@ -230,7 +240,7 @@ export function CreateContractDialog({
 								</button>
 							</div>
 							{counterparty && (
-								<p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+								<p className="mt-2 text-xs font-medium text-success-foreground">
 									{counterparty.display_name || counterparty.email} confirmed
 								</p>
 							)}

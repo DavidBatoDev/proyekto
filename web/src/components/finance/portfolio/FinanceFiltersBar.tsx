@@ -32,6 +32,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { CURRENCY_CODE_OPTIONS } from "@/lib/currency";
 import {
+	activeFilterCount,
 	CONTRACT_STATUS_OPTIONS,
 	type FinanceSearchState,
 	type FinanceSection,
@@ -39,6 +40,7 @@ import {
 	INVOICE_STATUS_OPTIONS,
 	PROJECT_STATUS_OPTIONS,
 	parseYmd,
+	SECTION_FILTERS,
 	toIsoDate,
 } from "./financeSearch";
 
@@ -48,6 +50,12 @@ import {
  * `section` is passed in rather than read off a `?tab=` param: the sections are
  * separate routes now, so the component cannot infer which status facet to
  * offer from the search state alone.
+ *
+ * Only the facets that actually reach the section's query are rendered (see
+ * SECTION_FILTERS). The bar previously showed all four everywhere while the
+ * engagements query passed on only `project_id` and the project-scoped invoice
+ * workbench read none of them, so three controls were decorative — a user could
+ * pick a currency, watch nothing change, and have no way to tell why.
  */
 export function FinanceFiltersBar({
 	search,
@@ -60,17 +68,18 @@ export function FinanceFiltersBar({
 	projects: Array<{ id: string; title: string }>;
 	onChange: (patch: Partial<FinanceSearchState>) => void;
 }) {
-	const activeFilterCount = [
-		search.q,
-		search.projectId,
-		search.projectStatus,
-		search.currency,
-		search.from || search.to,
-		section === "contracts" ? search.contractStatus : undefined,
-		section === "invoices" ? search.invoiceStatus : undefined,
-	].filter(Boolean).length;
+	const allowed = SECTION_FILTERS[section];
+	// A project-scoped invoice view is its own workbench and reads none of these.
+	const scopedToProjectWorkbench =
+		Boolean(search.projectId) &&
+		(section === "invoices" || section === "overview");
+	const count = activeFilterCount(search, section);
+	// Changing any facet returns to the first page: page 3 of the old result set
+	// is rarely a page of the new one, and is often past its end.
+	const update = (patch: Partial<FinanceSearchState>) =>
+		onChange({ ...patch, page: undefined });
 	const clearFilters = () =>
-		onChange({
+		update({
 			q: undefined,
 			projectId: undefined,
 			projectStatus: undefined,
@@ -82,6 +91,8 @@ export function FinanceFiltersBar({
 			step: undefined,
 		});
 
+	if (scopedToProjectWorkbench) return null;
+
 	return (
 		<div className="relative my-4 rounded-xl border border-border bg-card p-3 shadow-sm">
 			<div
@@ -89,89 +100,99 @@ export function FinanceFiltersBar({
 				aria-label="Finance filters"
 				className="flex flex-col gap-3 lg:flex-row lg:items-center"
 			>
-				<div className="relative min-w-0 flex-1 lg:max-w-sm">
-					<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-					<input
-						aria-label="Search projects"
-						value={search.q ?? ""}
-						onChange={(event) =>
-							onChange({ q: event.target.value || undefined })
-						}
-						placeholder="Search projects…"
-						className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-9 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-					/>
-					{search.q && (
-						<button
-							type="button"
-							aria-label="Clear project search"
-							onClick={() => onChange({ q: undefined })}
-							className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-						>
-							<X className="h-3.5 w-3.5" />
-						</button>
-					)}
-				</div>
+				{allowed.search && (
+					<div className="relative min-w-0 flex-1 lg:max-w-sm">
+						<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+						<input
+							aria-label="Search projects"
+							value={search.q ?? ""}
+							onChange={(event) =>
+								update({ q: event.target.value || undefined })
+							}
+							placeholder="Search projects…"
+							className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-9 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+						/>
+						{search.q && (
+							<button
+								type="button"
+								aria-label="Clear project search"
+								onClick={() => update({ q: undefined })}
+								className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+							>
+								<X className="h-3.5 w-3.5" />
+							</button>
+						)}
+					</div>
+				)}
 
 				<div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-0.5">
-					<FinanceFacetFilter
-						icon={FolderKanban}
-						label="Project"
-						emptyLabel="All projects"
-						value={search.projectId}
-						onChange={(projectId) => onChange({ projectId })}
-						searchable
-						options={projects.map((project) => ({
-							value: project.id,
-							label: project.title,
-						}))}
-					/>
-					<FinanceFacetFilter
-						icon={Activity}
-						label="Status"
-						emptyLabel="Any project status"
-						value={search.projectStatus}
-						onChange={(projectStatus) => onChange({ projectStatus })}
-						options={PROJECT_STATUS_OPTIONS}
-					/>
-					<FinanceFacetFilter
-						icon={CircleDollarSign}
-						label="Currency"
-						emptyLabel="All currencies"
-						value={search.currency}
-						onChange={(currency) => onChange({ currency })}
-						options={CURRENCY_CODE_OPTIONS.map((value) => ({
-							value,
-							label: value,
-						}))}
-					/>
-					<FinanceDateFilter
-						from={search.from}
-						to={search.to}
-						onChange={onChange}
-					/>
-					{section === "contracts" && (
+					{allowed.project && (
+						<FinanceFacetFilter
+							icon={FolderKanban}
+							label="Project"
+							emptyLabel="All projects"
+							value={search.projectId}
+							onChange={(projectId) => update({ projectId })}
+							searchable
+							options={projects.map((project) => ({
+								value: project.id,
+								label: project.title,
+							}))}
+						/>
+					)}
+					{allowed.projectStatus && (
+						<FinanceFacetFilter
+							icon={Activity}
+							label="Status"
+							emptyLabel="Any project status"
+							value={search.projectStatus}
+							onChange={(projectStatus) => update({ projectStatus })}
+							options={PROJECT_STATUS_OPTIONS}
+						/>
+					)}
+					{allowed.currency && (
+						<FinanceFacetFilter
+							icon={CircleDollarSign}
+							label="Currency"
+							emptyLabel="All currencies"
+							value={search.currency}
+							onChange={(currency) => update({ currency })}
+							options={CURRENCY_CODE_OPTIONS.map((value) => ({
+								value,
+								label: value,
+							}))}
+						/>
+					)}
+					{allowed.date && (
+						<FinanceDateFilter
+							from={search.from}
+							to={search.to}
+							onChange={update}
+						/>
+					)}
+					{allowed.contractStatus && (
 						<FinanceFacetFilter
 							icon={FileSignature}
 							label="Contract"
 							emptyLabel="Any contract status"
 							value={search.contractStatus}
-							onChange={(contractStatus) => onChange({ contractStatus })}
+							onChange={(contractStatus) => update({ contractStatus })}
 							options={CONTRACT_STATUS_OPTIONS}
 						/>
 					)}
-					{section === "invoices" && (
+					{allowed.invoiceStatus && (
 						<FinanceFacetFilter
 							icon={ReceiptText}
 							label="Invoice"
 							emptyLabel="Any invoice status"
 							value={search.invoiceStatus}
-							onChange={(invoiceStatus) => onChange({ invoiceStatus })}
+							onChange={(invoiceStatus) => update({ invoiceStatus })}
 							options={INVOICE_STATUS_OPTIONS}
 						/>
 					)}
 				</div>
 			</div>
-			{activeFilterCount > 0 && (
+			{count > 0 && (
 				<button
 					type="button"
 					onClick={clearFilters}

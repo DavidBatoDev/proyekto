@@ -26,6 +26,8 @@ export interface FinanceSearchState extends FinanceSharedSearch {
 	contractStatus?: string;
 	invoiceStatus?: string;
 	step?: StepKey;
+	/** 1-based, and omitted from the URL while it is 1. */
+	page?: number;
 }
 
 /**
@@ -46,10 +48,12 @@ export interface FinanceOverviewSearch extends FinanceSharedSearch {
 export interface FinanceContractsSearch extends FinanceSharedSearch {
 	contractStatus?: string;
 	step?: StepKey;
+	page?: number;
 }
 
 export interface FinanceInvoicesSearch extends FinanceSharedSearch {
 	invoiceStatus?: string;
+	page?: number;
 }
 
 export interface ContractEditorSearch {
@@ -73,8 +77,16 @@ export const CONTRACT_STEPS: StepKey[] = [
 	"signatures",
 ];
 
+export const FINANCE_PAGE_SIZE = 25;
+
 export function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Page 1 is the default, so it stays out of the URL rather than as `?page=1`. */
+export function pageValue(value: unknown): number | undefined {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 1 ? parsed : undefined;
 }
 
 export function validateFinanceSharedSearch(
@@ -134,19 +146,23 @@ export const PROJECT_STATUS_OPTIONS = [
 	"archived",
 ].map(toFilterOption);
 
+// Mirrors CONTRACT_STATUSES in backend contracts.dto.ts. `active` is not a
+// contract status there; listing it only ever produced an empty result.
 export const CONTRACT_STATUS_OPTIONS = [
 	"draft",
 	"sent",
 	"signed",
-	"active",
+	"superseded",
 	"ended",
 	"cancelled",
 ].map(toFilterOption);
 
+// Mirrors INVOICE_STATUSES in backend invoices.dto.ts. `sent` is not one of
+// them — the old list offered a filter the API rejects.
 export const INVOICE_STATUS_OPTIONS = [
 	"draft",
 	"issued",
-	"sent",
+	"partially_paid",
 	"paid",
 	"void",
 ].map(toFilterOption);
@@ -154,7 +170,7 @@ export const INVOICE_STATUS_OPTIONS = [
 function toFilterOption(value: string) {
 	return {
 		value,
-		label: value.charAt(0).toUpperCase() + value.slice(1),
+		label: value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " "),
 	};
 }
 
@@ -191,6 +207,82 @@ export function formatDateRange(from?: string, to?: string): string {
  * are. Anything that is not one of the three named sections is the overview,
  * which is the layout's index route.
  */
+/**
+ * Which filter controls actually reach the query behind each section.
+ *
+ * The bar used to render the same four facets everywhere while three of them
+ * were dropped on the floor by the engagements query, so picking a currency
+ * there silently did nothing. Rendering from this map keeps the controls
+ * honest: `/api/engagements` scopes by party membership and takes only
+ * `project_id`, so that is the only facet it can offer.
+ */
+export const SECTION_FILTERS: Record<
+	FinanceSection,
+	{
+		search: boolean;
+		project: boolean;
+		projectStatus: boolean;
+		currency: boolean;
+		date: boolean;
+		contractStatus: boolean;
+		invoiceStatus: boolean;
+	}
+> = {
+	overview: {
+		search: true,
+		project: true,
+		projectStatus: true,
+		currency: true,
+		date: true,
+		contractStatus: false,
+		invoiceStatus: false,
+	},
+	contracts: {
+		search: true,
+		project: true,
+		projectStatus: true,
+		currency: true,
+		date: true,
+		contractStatus: true,
+		invoiceStatus: false,
+	},
+	engagements: {
+		search: false,
+		project: true,
+		projectStatus: false,
+		currency: false,
+		date: false,
+		contractStatus: false,
+		invoiceStatus: false,
+	},
+	invoices: {
+		search: true,
+		project: true,
+		projectStatus: true,
+		currency: true,
+		date: true,
+		contractStatus: false,
+		invoiceStatus: true,
+	},
+};
+
+/** Count of filters that are both set AND meaningful in the current section. */
+export function activeFilterCount(
+	search: FinanceSearchState,
+	section: FinanceSection,
+): number {
+	const allowed = SECTION_FILTERS[section];
+	return [
+		allowed.search ? search.q : undefined,
+		allowed.project ? search.projectId : undefined,
+		allowed.projectStatus ? search.projectStatus : undefined,
+		allowed.currency ? search.currency : undefined,
+		allowed.date ? search.from || search.to : undefined,
+		allowed.contractStatus ? search.contractStatus : undefined,
+		allowed.invoiceStatus ? search.invoiceStatus : undefined,
+	].filter(Boolean).length;
+}
+
 export function financeSectionFromPathname(pathname: string): FinanceSection {
 	if (pathname.startsWith("/marketplace/finance/contracts")) return "contracts";
 	if (pathname.startsWith("/marketplace/finance/engagements")) {

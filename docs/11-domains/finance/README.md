@@ -62,7 +62,53 @@ labeled from `project_title_snapshot`. Direct contract reads are position-based,
 stored parties retain read-only access after severance. The portfolio summary and invoice
 scheduler remain attached-project views: severed rows are intentionally absent from portfolio
 totals and cannot drive future scheduled billing. Project lifecycle status does not control
-whether a signed contract schedules invoice drafts.
+whether a signed contract schedules invoice drafts. The finance lists mark such rows
+"Detached" so the gap between a list and the totals above it is visible rather than silent.
+
+## Receivables and ageing
+
+`GET /api/finance/portfolio` returns, per currency, an `aging` split of the outstanding
+balance (`current` / `d1_30` / `d31_60` / `d61_plus`), an `overdue_amount` and
+`overdue_count`, and the `as_of` date the bands were computed against. An invoice with no
+due date can never age, so it stays in `current`. `GET /api/finance/invoices` decorates each
+row with `amount_paid`, `balance_due`, `is_overdue` and `days_overdue` — the same receivable
+facts the detail endpoint carries, so a list can show a balance without opening every row.
+
+Two dating rules the reports depend on:
+
+- Revenue is dated by `invoices.issue_date`, not by when the row was inserted, and contracts
+  by `created_at` rather than `updated_at` — editing a contract must not move it in time.
+- A date-only `to` bound is INCLUSIVE. Comparing it against a `timestamptz` column requires
+  the end of that day (`endOfDay` in `finance.service.ts`); a bare `lte` resolves to midnight
+  and drops everything that happened on the day the reader picked.
+
+`collected` reads the `invoice_payments` ledger, where a reversal is an ordinary row pointing
+at what it undoes and therefore subtracts. An invoice marked `paid` that carries no ledger
+rows at all — the pre-receivables path, and anything reconciled outside Proyekto — counts as
+collected in full: its status is the only evidence there is, and reading it as zero reported
+settled money as still owed.
+
+### Scope and the project filter
+
+A `project_specific` client contract puts an active `contract_scope` link on its
+engagement, so the project facet on Contracts and Engagements finds it. A `flexible`
+agreement covers the relationship rather than one project: it carries no `project_id` and
+its engagement gains project links only through `operational_assignment`, which nothing
+writes yet. A project filter therefore cannot match a flexible agreement — the empty states
+say so and offer a "Show all" escape rather than reporting it as "no match".
+
+## Engagements in the finance surface
+
+`/marketplace/finance?tab=engagements` lists the caller's engagements, and
+`/marketplace/finance/engagements/$engagementId` shows one: both seats, the projects it
+covers, the rates in effect today, and the signed time policy in plain English. Authorization
+is party membership and a miss returns 404 rather than 403, so ids cannot be probed.
+
+An engagement opens only when a contract carrying two `contract_positions` rows is fully
+signed. Contracts created before party seats existed stay valid but activate nothing, which
+is why a consultant can hold a signed agreement and still see an empty engagements tab; the
+empty state says so. Amending such a contract mints the positions
+(`cloneOrCreateAmendmentPositions`) and brings it across. There is no backfill.
 
 ## Contract parties
 
@@ -77,6 +123,17 @@ The paying counterparty is **snapshotted on the contract** — `client_name`,
 client pays and is the invoice price; it is not a cost figure.
 
 A signed contract's party snapshot is the billing authority.
+
+The Client is **named on the contract, never inferred from the project.** Contract
+creation used to additionally require the Client seat to BE the project owner, which made
+project-scoped client agreements impossible to create: `createContract` runs
+`assertProject`, so the CALLER must own the project, and one person cannot hold both seats
+(`contract_positions` forbids it). Every client agreement was therefore forced to
+`scope_mode='flexible'` — and since `createInvoice` rejects a contract whose `project_id`
+does not match the invoice's, no project invoice could carry contract provenance and
+"Generate from contract" was permanently unavailable. The requirement was removed on
+2026-08-18. The project owner is still used as a convenience default when no Client is
+named and that owner is not the caller.
 
 | Action | Who |
 | --- | --- |
@@ -121,5 +178,7 @@ payouts and invoices.
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/marketplace/payouts/`](../../../backend/src/modules/marketplace/payouts/), [`backend/src/modules/marketplace/invoices/`](../../../backend/src/modules/marketplace/invoices/)
+- **Backend:** [`backend/src/modules/marketplace/payouts/`](../../../backend/src/modules/marketplace/payouts/), [`backend/src/modules/marketplace/invoices/`](../../../backend/src/modules/marketplace/invoices/), [`backend/src/modules/marketplace/finance/`](../../../backend/src/modules/marketplace/finance/)
+- **Web finance surface:** [`web/src/routes/marketplace/finance/`](../../../web/src/routes/marketplace/finance/) (thin route) over [`web/src/components/finance/portfolio/`](../../../web/src/components/finance/portfolio/) (the four tab panels, filters, and shared list primitives)
+- **Status vocabulary:** [`web/src/lib/finance-status.ts`](../../../web/src/lib/finance-status.ts) — one label/tone map for contract, invoice and engagement statuses, built on the `--success` / `--warning` / `--info` / `--destructive` theme tokens
 - **Payout RPCs:** `create_payout_and_mark_paid`, `void_payout_and_revert` (see [migrations-workflow.md](../../07-data-and-db/migrations-workflow.md))

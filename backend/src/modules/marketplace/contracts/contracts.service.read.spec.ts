@@ -29,6 +29,8 @@ function serviceFor(contract: ContractRow, ownerId: string | null = null) {
       financeAccess as never,
       { createNotification: jest.fn() } as never,
       { getProjectConsultantId: jest.fn() } as never,
+      // Initials are not exercised by these specs.
+      { listForContract: async () => [] } as never,
     ),
     financeAccess,
   };

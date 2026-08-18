@@ -12,7 +12,9 @@ import {
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
+import { ContractPageInitialsService } from './contract-page-initials.service';
 import { ContractsService } from './contracts.service';
+import { SaveContractInitialsDto } from './dto/contract-page-initials.dto';
 import {
   AmendContractDto,
   CreateContractDto,
@@ -27,7 +29,10 @@ import {
 @UseGuards(SupabaseAuthGuard)
 @Controller('contracts')
 export class ContractsController {
-  constructor(private readonly contracts: ContractsService) {}
+  constructor(
+    private readonly contracts: ContractsService,
+    private readonly initials: ContractPageInitialsService,
+  ) {}
 
   @Get('project/:projectId')
   listByProject(
@@ -86,6 +91,19 @@ export class ContractsController {
     @Body() dto: SignContractDto,
   ) {
     return this.contracts.signContract(user.id, id, dto);
+  }
+
+  /**
+   * Per-page initials. Authorization rides on the same check as editing the
+   * contract: only a party that may act on this agreement may mark its pages.
+   */
+  @Post(':id/initials')
+  saveInitials(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveContractInitialsDto,
+  ) {
+    return this.contracts.savePageInitials(user.id, id, dto);
   }
 
   @Post(':id/unsign')

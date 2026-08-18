@@ -33,15 +33,46 @@ const baseProps = {
 };
 
 describe("InvoicePreview", () => {
-	it("renders the Canva-layout fields", () => {
+	it("carries every party, date and money field onto the page", () => {
 		render(<InvoicePreview {...baseProps} />);
+		// Names, descriptions and payment methods keep the casing they were
+		// entered with — upper-casing arbitrary prose is shouting.
 		expect(screen.getByText("Prodigitality Services Inc.")).toBeTruthy();
-		expect(screen.getByText("TIN: 617-100-003-00000")).toBeTruthy();
+		expect(screen.getByText("TIN 617-100-003-00000")).toBeTruthy();
 		expect(screen.getByText("Filro Caregivers")).toBeTruthy();
-		expect(screen.getByText("#BS2026-001")).toBeTruthy();
+		expect(screen.getByText("BS2026-001")).toBeTruthy();
 		expect(screen.getByText("Digital marketing services")).toBeTruthy();
-		expect(screen.getByText("25.75 HOURS")).toBeTruthy();
-		expect(screen.getByText("ONLINE PAYMENT")).toBeTruthy();
+		expect(screen.getByText("25.75 hours")).toBeTruthy();
+		expect(screen.getByText("Online payment")).toBeTruthy();
+		expect(screen.getByText("Total due")).toBeTruthy();
+	});
+
+	it("states the balance and what has already been settled", () => {
+		render(
+			<InvoicePreview
+				{...baseProps}
+				status="partially_paid"
+				amountPaid={100}
+			/>,
+		);
+		expect(screen.getByText("Partially paid")).toBeTruthy();
+		expect(screen.getByText("Paid to date")).toBeTruthy();
+		expect(screen.getByText("− USD 100.00")).toBeTruthy();
+		// 386.25 billed less 100.00 settled.
+		expect(screen.getByText("Balance due")).toBeTruthy();
+		expect(screen.getByText("USD 286.25")).toBeTruthy();
+	});
+
+	it("marks an overdue invoice on the document itself", () => {
+		render(<InvoicePreview {...baseProps} status="issued" isOverdue />);
+		expect(screen.getByText("Overdue")).toBeTruthy();
+	});
+
+	it("says nothing about status when the caller supplies none", () => {
+		render(<InvoicePreview {...baseProps} />);
+		for (const word of ["Draft", "Overdue", "Void", "Paid in full"]) {
+			expect(screen.queryByText(word)).toBeNull();
+		}
 	});
 
 	it("computes the total from the line items in the given currency", () => {
@@ -66,11 +97,11 @@ describe("InvoicePreview", () => {
 			/>,
 		);
 		expect(screen.getByText("1")).toBeTruthy();
-		expect(screen.queryByText("1 HOURS")).toBeNull();
+		expect(screen.queryByText("1 hours")).toBeNull();
 	});
 
 	it("falls back to Draft when no number is set", () => {
 		render(<InvoicePreview {...baseProps} number="" />);
-		expect(screen.getByText("#Draft")).toBeTruthy();
+		expect(screen.getByText("Draft")).toBeTruthy();
 	});
 });

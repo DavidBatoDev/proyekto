@@ -690,7 +690,7 @@ export function ContractPaperDocument({
 	return (
 		<div
 			data-contract-paper
-			className={`bg-white text-slate-700 ${
+			className={`bg-white text-[#1f2937] ${
 				large
 					? "px-16 py-12 text-sm leading-relaxed"
 					: "px-5 py-5 text-[12px] leading-relaxed"
@@ -699,33 +699,53 @@ export function ContractPaperDocument({
 			{/* Provider header */}
 			{includesBlock("header") && (
 				<div data-contract-block="header">
-					<div className="text-right">
-						<p
-							className={`font-bold uppercase tracking-wide text-slate-900 ${large ? "text-lg" : "text-sm"}`}
-						>
-							{provider}
-						</p>
-						{parties.provider_email && (
+					{/* Letterhead: the issuing party, in full. The document used to
+					    print only a name and an email, dropping the registered address
+					    and TIN it already held — the two things that make a service
+					    agreement identify a real legal entity. */}
+					<div className="flex items-start justify-between gap-6">
+						<div className="min-w-0">
 							<p
-								className={`text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+								className={`font-semibold text-[#111827] ${large ? "text-base" : "text-[13px]"}`}
 							>
-								{parties.provider_email}
+								{provider}
 							</p>
-						)}
+							<div
+								className={`mt-0.5 space-y-0.5 text-[#6b7280] ${large ? "text-[11px]" : "text-[9px]"}`}
+							>
+								{parties.provider_address && <p>{parties.provider_address}</p>}
+								{parties.provider_tin && <p>TIN {parties.provider_tin}</p>}
+								{parties.provider_email && <p>{parties.provider_email}</p>}
+							</div>
+						</div>
+						<div className="shrink-0 text-right">
+							{contract.contract_number && (
+								<p
+									className={`font-semibold text-[#111827] tabular-nums ${large ? "text-[11px]" : "text-[9px]"}`}
+								>
+									{contract.contract_number}
+								</p>
+							)}
+							<p
+								className={`text-[#9ca3af] ${large ? "text-[11px]" : "text-[9px]"}`}
+							>
+								{formatContractDate(contract.service_start_date)}
+							</p>
+						</div>
 					</div>
 
-					<h1
-						className={`mt-5 text-center font-bold text-[#1f3a93] ${large ? "text-2xl" : "text-lg"}`}
-					>
-						Service Agreement
-					</h1>
-					{contract.contract_number && (
-						<p
-							className={`mt-0.5 text-center text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+					{/* The title carries the document's one accent, as a rule beneath
+					    it rather than as coloured type — a contract's title is ink. */}
+					<div className={large ? "mt-8" : "mt-5"}>
+						<h1
+							className={`text-center font-semibold tracking-tight text-[#111827] ${large ? "text-[22px]" : "text-base"}`}
 						>
-							#{contract.contract_number}
-						</p>
-					)}
+							Service Agreement
+						</h1>
+						<div
+							className={`mx-auto mt-2 h-[2px] bg-[#2563eb] ${large ? "w-16" : "w-10"}`}
+						/>
+					</div>
 				</div>
 			)}
 
@@ -770,11 +790,11 @@ export function ContractPaperDocument({
 							{termRows.map((row) => (
 								<div key={row.label} className="flex gap-3">
 									<dt
-										className={`shrink-0 text-slate-400 ${large ? "w-36" : "w-28"}`}
+										className={`shrink-0 text-[#9ca3af] ${large ? "w-36" : "w-28"}`}
 									>
 										{row.label}
 									</dt>
-									<dd className="font-medium text-slate-800">{row.value}</dd>
+									<dd className="font-medium text-[#1f2937]">{row.value}</dd>
 								</div>
 							))}
 						</dl>
@@ -795,10 +815,10 @@ export function ContractPaperDocument({
 						<ul className="mt-1 space-y-0.5">
 							{contract.services.map((service: ContractService) => (
 								<li key={service.id} className="flex justify-between gap-3">
-									<span className="text-slate-700">
+									<span className="text-[#374151]">
 										{service.name || "Untitled service"}
 									</span>
-									<span className="tabular-nums text-slate-500">
+									<span className="tabular-nums text-[#6b7280]">
 										{formatMoney(terms.currency, service.unit_rate)}
 										{service.unit ? ` / ${service.unit}` : ""}
 									</span>
@@ -858,10 +878,10 @@ export function ContractPaperDocument({
 																body: `${clause.body.slice(0, fragment.start)}${body}${clause.body.slice(fragment.end)}`,
 															})
 														}
-														className="mt-1 block whitespace-pre-wrap text-slate-600 outline-none cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200"
+														className="mt-1 block whitespace-pre-wrap outline-none cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200"
 													/>
 												) : (
-													<p className="mt-1 whitespace-pre-wrap text-slate-600">
+													<p className="mt-1 whitespace-pre-wrap">
 														{renderClause(fragment.text, parties)}
 													</p>
 												)}
@@ -932,15 +952,15 @@ function PartyBlock({
 	return (
 		<div>
 			<p
-				className={`font-semibold uppercase tracking-wide text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+				className={`font-semibold uppercase tracking-wide text-[#9ca3af] ${large ? "text-xs" : "text-[10px]"}`}
 			>
 				{heading}
 			</p>
-			<p className="mt-0.5 font-semibold text-slate-900">{name}</p>
+			<p className="mt-0.5 font-semibold text-[#111827]">{name}</p>
 			{contact && contact !== name && (
-				<p className="text-slate-500">Contact: {contact}</p>
+				<p className="text-[#6b7280]">Contact: {contact}</p>
 			)}
-			{address && <p className="text-slate-500">{address}</p>}
+			{address && <p className="text-[#6b7280]">{address}</p>}
 		</div>
 	);
 }
@@ -968,11 +988,11 @@ function Section({
 					parties={titleParties}
 					singleLine
 					onCommit={(value) => onTitleChange?.(value)}
-					className={`block font-bold text-[#1f3a93] outline-none ${large ? "text-sm" : "text-[11px]"} cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200`}
+					className={`block font-bold text-[#111827] outline-none ${large ? "text-sm" : "text-[11px]"} cursor-text rounded px-1 py-0.5 hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-blue-200`}
 				/>
 			) : (
 				<p
-					className={`font-bold text-[#1f3a93] ${large ? "text-sm" : "text-[11px]"}`}
+					className={`font-bold text-[#111827] ${large ? "text-sm" : "text-[11px]"}`}
 				>
 					{renderClause(title, titleParties ?? {})}
 				</p>
@@ -1122,7 +1142,7 @@ function SignatureColumn({
 	return (
 		<div>
 			<p
-				className={`font-semibold uppercase tracking-wide text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+				className={`font-semibold uppercase tracking-wide text-[#9ca3af] ${large ? "text-xs" : "text-[10px]"}`}
 			>
 				{heading}
 			</p>
@@ -1148,20 +1168,20 @@ function SignatureColumn({
 					/>
 				) : null}
 			</div>
-			<p className="mt-1 text-slate-700">
+			<p className="mt-1 text-[#374151]">
 				{name ? (
 					<>
 						{name}
 						<br />
 						<span
-							className={`text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+							className={`text-[#9ca3af] ${large ? "text-xs" : "text-[10px]"}`}
 						>
 							Signed {formatContractDate((at ?? "").slice(0, 10))}
 						</span>
 					</>
 				) : (
 					<span
-						className={`text-slate-400 ${large ? "text-xs" : "text-[10px]"}`}
+						className={`text-[#9ca3af] ${large ? "text-xs" : "text-[10px]"}`}
 					>
 						Name / Signature / Date
 					</span>
