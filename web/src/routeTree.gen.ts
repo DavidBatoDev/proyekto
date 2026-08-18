@@ -15,6 +15,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
+import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as MarketplaceRouteRouteImport } from './routes/marketplace/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -141,6 +142,11 @@ const ExecutionRoute = ExecutionRouteImport.update({
   id: '/_execution',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRouteRoute = SettingsRouteRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RoadmapTemplatesRouteRoute = RoadmapTemplatesRouteRouteImport.update({
   id: '/roadmap-templates',
   path: '/roadmap-templates',
@@ -172,19 +178,19 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   getParentRoute: () => AdminRoute,
 } as any)
 const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
-  id: '/settings/notifications',
-  path: '/settings/notifications',
-  getParentRoute: () => rootRouteImport,
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
-  id: '/settings/mcp-tokens',
-  path: '/settings/mcp-tokens',
-  getParentRoute: () => rootRouteImport,
+  id: '/mcp-tokens',
+  path: '/mcp-tokens',
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
-  id: '/settings/appearance',
-  path: '/settings/appearance',
-  getParentRoute: () => rootRouteImport,
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const RoadmapTemplatesSlugRoute = RoadmapTemplatesSlugRouteImport.update({
   id: '/$slug',
@@ -685,6 +691,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -786,6 +793,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -887,6 +895,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/notifications': typeof NotificationsRoute
@@ -993,6 +1002,7 @@ export interface FileRouteTypes {
     | '/'
     | '/marketplace'
     | '/roadmap-templates'
+    | '/settings'
     | '/admin'
     | '/notifications'
     | '/onboarding'
@@ -1094,6 +1104,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/settings'
     | '/notifications'
     | '/onboarding'
     | '/unsubscribe'
@@ -1194,6 +1205,7 @@ export interface FileRouteTypes {
     | '/'
     | '/marketplace'
     | '/roadmap-templates'
+    | '/settings'
     | '/_execution'
     | '/admin'
     | '/notifications'
@@ -1299,6 +1311,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MarketplaceRouteRoute: typeof MarketplaceRouteRouteWithChildren
   RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
+  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
   NotificationsRoute: typeof NotificationsRoute
@@ -1313,9 +1326,6 @@ export interface RootRouteChildren {
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
-  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
-  SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
-  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
   ContractSignTokenRoute: typeof ContractSignTokenRoute
@@ -1365,6 +1375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/roadmap-templates': {
       id: '/roadmap-templates'
       path: '/roadmap-templates'
@@ -1409,24 +1426,24 @@ declare module '@tanstack/react-router' {
     }
     '/settings/notifications': {
       id: '/settings/notifications'
-      path: '/settings/notifications'
+      path: '/notifications'
       fullPath: '/settings/notifications'
       preLoaderRoute: typeof SettingsNotificationsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SettingsRouteRoute
     }
     '/settings/mcp-tokens': {
       id: '/settings/mcp-tokens'
-      path: '/settings/mcp-tokens'
+      path: '/mcp-tokens'
       fullPath: '/settings/mcp-tokens'
       preLoaderRoute: typeof SettingsMcpTokensRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SettingsRouteRoute
     }
     '/settings/appearance': {
       id: '/settings/appearance'
-      path: '/settings/appearance'
+      path: '/appearance'
       fullPath: '/settings/appearance'
       preLoaderRoute: typeof SettingsAppearanceRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SettingsRouteRoute
     }
     '/roadmap-templates/$slug': {
       id: '/roadmap-templates/$slug'
@@ -2091,6 +2108,22 @@ const RoadmapTemplatesRouteRouteWithChildren =
     RoadmapTemplatesRouteRouteChildren,
   )
 
+interface SettingsRouteRouteChildren {
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
+  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
+}
+
+const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsMcpTokensRoute: SettingsMcpTokensRoute,
+  SettingsNotificationsRoute: SettingsNotificationsRoute,
+}
+
+const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
+  SettingsRouteRouteChildren,
+)
+
 interface ExecutionProjectProjectIdChangeRequestsRouteChildren {
   ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
 }
@@ -2382,6 +2415,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MarketplaceRouteRoute: MarketplaceRouteRouteWithChildren,
   RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
+  SettingsRouteRoute: SettingsRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
   NotificationsRoute: NotificationsRoute,
@@ -2396,9 +2430,6 @@ const rootRouteChildren: RootRouteChildren = {
   FreelancerInvitesRoute: FreelancerInvitesRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   ProfileProfileIdRoute: ProfileProfileIdRoute,
-  SettingsAppearanceRoute: SettingsAppearanceRoute,
-  SettingsMcpTokensRoute: SettingsMcpTokensRoute,
-  SettingsNotificationsRoute: SettingsNotificationsRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,
   ContractSignTokenRoute: ContractSignTokenRoute,
