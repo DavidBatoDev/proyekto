@@ -215,9 +215,27 @@ describe('engagement activation (real DB)', () => {
     }
 
     // The consultant enrollment is referenced by every surviving contract, so
-    // it only goes when nothing is pinned.
+    // it only goes when nothing is pinned. When it cannot go it must at least
+    // stop being *verified*: `/api/consultants` is public and filters on that
+    // status, so a leftover verified fixture shows up as an anonymous
+    // "Consultant" card in the live marketplace directory. Nine of them had
+    // accumulated before anyone noticed.
     if (permanentContracts.length === 0) {
       await tryDelete('consultant_profiles', 'user_id', consultant.id);
+    } else {
+      const { error } = await h.admin
+        .from('consultant_profiles')
+        .update({
+          status: 'revoked',
+          revoked_at: new Date().toISOString(),
+          status_reason: 'integration test fixture',
+        })
+        .eq('user_id', consultant.id);
+      if (error) {
+        cleanupProblems.push(
+          `revoke consultant enrolment ${consultant.id}: ${error.message}`,
+        );
+      }
     }
 
     await h.cleanup();
