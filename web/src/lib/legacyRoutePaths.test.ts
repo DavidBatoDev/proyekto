@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+import { mapLegacyPath } from "./legacyRoutePaths";
+
+describe("mapLegacyPath", () => {
+	it("rewrites a bare moved path", () => {
+		expect(mapLegacyPath("/finance")).toBe("/marketplace/finance");
+		expect(mapLegacyPath("/project-posting")).toBe(
+			"/marketplace/project-posting",
+		);
+	});
+
+	// notifications.link_url in production holds exactly this shape.
+	it("keeps path params and the query string", () => {
+		expect(mapLegacyPath("/finance/abc-123?section=signatures")).toBe(
+			"/marketplace/finance/abc-123?section=signatures",
+		);
+		expect(mapLegacyPath("/finance?tab=invoices&projectId=p1")).toBe(
+			"/marketplace/finance?tab=invoices&projectId=p1",
+		);
+	});
+
+	it("keeps the hash", () => {
+		expect(mapLegacyPath("/consultant/browse#results")).toBe(
+			"/marketplace/consultant/browse#results",
+		);
+	});
+
+	it("prefers the longer prefix", () => {
+		expect(mapLegacyPath("/consultant/apply")).toBe(
+			"/marketplace/consultant/apply",
+		);
+		expect(mapLegacyPath("/consultant/some-profile-id")).toBe(
+			"/marketplace/consultant/some-profile-id",
+		);
+	});
+
+	it("sends the old consultant talent pool to its renamed home", () => {
+		expect(mapLegacyPath("/consultant/marketplace")).toBe(
+			"/marketplace/talent",
+		);
+	});
+
+	it("only matches on a segment boundary", () => {
+		// A route that merely starts with the same letters must not be rewritten.
+		expect(mapLegacyPath("/financial-report")).toBe("/financial-report");
+		expect(mapLegacyPath("/consultants")).toBe("/consultants");
+	});
+
+	it("leaves /freelancer/invites alone", () => {
+		// A live SQL trigger still writes this exact string, and it has its own
+		// top-level shim to /invites.
+		expect(mapLegacyPath("/freelancer/invites")).toBe("/freelancer/invites");
+		expect(mapLegacyPath("/freelancer/invites?inviteId=x")).toBe(
+			"/freelancer/invites?inviteId=x",
+		);
+	});
+
+	it("leaves /freelancer/profile alone", () => {
+		expect(mapLegacyPath("/freelancer/profile")).toBe("/freelancer/profile");
+	});
+
+	it("passes through unrelated and already-migrated paths", () => {
+		expect(mapLegacyPath("/dashboard")).toBe("/dashboard");
+		expect(mapLegacyPath("/marketplace/finance")).toBe("/marketplace/finance");
+		expect(mapLegacyPath("/invites")).toBe("/invites");
+	});
+
+	it("ignores anything that is not an app path", () => {
+		expect(mapLegacyPath("https://example.com/finance")).toBe(
+			"https://example.com/finance",
+		);
+		expect(mapLegacyPath("")).toBe("");
+	});
+});
