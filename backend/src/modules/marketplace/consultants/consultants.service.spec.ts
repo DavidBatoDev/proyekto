@@ -19,6 +19,8 @@ function awaitedRowsFor(
     services?: unknown[];
     skills?: unknown[];
     templates?: unknown[];
+    languages?: unknown[];
+    rates?: unknown[];
   },
 ): unknown[] {
   switch (table) {
@@ -28,6 +30,10 @@ function awaitedRowsFor(
       return options.services ?? [];
     case 'user_skills':
       return options.skills ?? [];
+    case 'user_languages':
+      return options.languages ?? [];
+    case 'user_rate_settings':
+      return options.rates ?? [];
     case 'roadmap_public_templates':
       return options.templates ?? [];
     default:
@@ -47,6 +53,9 @@ function createDb(options: {
   skills?: unknown[];
   rates?: unknown | null;
   templates?: unknown[];
+  /** Rows for the tables the new browse filters read. */
+  languageRows?: unknown[];
+  rateRows?: unknown[];
 }) {
   const calls: { table: string; filters: Record<string, unknown> }[] = [];
 
@@ -65,6 +74,22 @@ function createDb(options: {
       }),
       in: jest.fn((column: string, values: unknown[]) => {
         filters[`in:${column}`] = values;
+        return builder;
+      }),
+      or: jest.fn((expression: string) => {
+        filters.or = expression;
+        return builder;
+      }),
+      ilike: jest.fn((column: string, value: unknown) => {
+        filters[`ilike:${column}`] = value;
+        return builder;
+      }),
+      gte: jest.fn((column: string, value: unknown) => {
+        filters[`gte:${column}`] = value;
+        return builder;
+      }),
+      lte: jest.fn((column: string, value: unknown) => {
+        filters[`lte:${column}`] = value;
         return builder;
       }),
       order: jest.fn(() => builder),
@@ -89,7 +114,14 @@ function createDb(options: {
       // Awaiting the builder itself is how PostgREST reads without a terminal
       // call. The fan-out tables all read this way.
       then: (resolve: (value: unknown) => unknown) =>
-        resolve({ data: awaitedRowsFor(table, options), error: null }),
+        resolve({
+          data: awaitedRowsFor(table, {
+            ...options,
+            languages: options.languageRows,
+            rates: options.rateRows,
+          }),
+          error: null,
+        }),
     };
 
     if (table === 'consultant_subcategories') {
@@ -112,7 +144,7 @@ function createDb(options: {
 
 function createService(
   db: unknown,
-  taxonomy: { resolveSubcategoryIds: jest.Mock },
+  taxonomy: { resolveSubcategoryIds: jest.Mock; resolveTopicIds?: jest.Mock },
 ) {
   const cache = {
     rememberJson: jest.fn((_key: string, _ttl: number, loader: () => unknown) =>
@@ -246,6 +278,95 @@ describe('ConsultantsService.directory', () => {
     );
   });
 
+  // Two filters that each live in their own table have to AND, not OR: a
+  // visitor asking for Spanish speakers in AI & Data means both, and unioning
+  // the candidate lists would answer a question nobody asked.
+  it('intersects the candidate sets two filters produce', async () => {
+    const { db, calls } = createDb({
+      profiles: { data: [{ id: 'user-1' }], count: 1 },
+      membershipRows: [{ user_id: 'user-1' }, { user_id: 'user-2' }],
+      languageRows: [{ user_id: 'user-2' }, { user_id: 'user-3' }],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn().mockResolvedValue(['sub-1']),
+    });
+
+    await service.directory(query({ category: 'ai-and-data', language: 'es' }));
+
+    const profileCall = calls.find((call) => call.table === 'profiles');
+    expect(profileCall?.filters['in:id']).toEqual(['user-2']);
+  });
+
+  // PostgREST parses `or=(...)` as a comma-separated list, so an unescaped
+  // comma in the term would rewrite the filter rather than be searched for.
+  it('strips the characters that would rewrite the or() filter', async () => {
+    const { db, calls } = createDb({ profiles: { data: [], count: 0 } });
+    const { service } = createService(db, { resolveSubcategoryIds: jest.fn() });
+
+    await service.directory(query({ q: 'data),*.eq' }));
+
+    const profileCall = calls.find((call) => call.table === 'profiles');
+    const expression = String(profileCall?.filters.or);
+    // Three clauses, so exactly two separating commas - none of them from the
+    // search term itself.
+    expect(expression.split(',')).toHaveLength(3);
+    expect(expression).toBe(
+      'display_name.ilike.%data .eq%,headline.ilike.%data .eq%,bio.ilike.%data .eq%',
+    );
+  });
+
+  it('ignores a search term too short to narrow anything', async () => {
+    const { db, calls } = createDb({ profiles: { data: [], count: 0 } });
+    const { service } = createService(db, { resolveSubcategoryIds: jest.fn() });
+
+    await service.directory(query({ q: 'a' }));
+
+    const profileCall = calls.find((call) => call.table === 'profiles');
+    expect(profileCall?.filters.or).toBeUndefined();
+  });
+
+  it('attaches the catalog, skills and rate card each card renders', async () => {
+    const { db } = createDb({
+      profiles: { data: [{ id: 'user-1' }], count: 1 },
+      services: [
+        {
+          id: 'svc-2',
+          user_id: 'user-1',
+          title: 'Rebuild',
+          starting_price: '9000.00',
+          currency: 'USD',
+          price_unit: 'project',
+        },
+        {
+          id: 'svc-1',
+          user_id: 'user-1',
+          title: 'Audit',
+          starting_price: '900.00',
+          currency: 'USD',
+          price_unit: 'project',
+        },
+      ],
+      skills: [{ user_id: 'user-1', skill: { name: 'React', slug: 'react' } }],
+      rateRows: [
+        { user_id: 'user-1', hourly_rate: '120.00', currency: 'USD' },
+      ],
+    });
+    const { service } = createService(db, { resolveSubcategoryIds: jest.fn() });
+
+    const result = await service.directory(query());
+    const card = result.items[0] as Record<string, unknown>;
+
+    // The cheapest entry is what "From $X" claims, whatever order it arrived in.
+    expect(card.starting_from).toEqual({
+      amount: 900,
+      currency: 'USD',
+      unit: 'project',
+    });
+    expect(card.service_count).toBe(2);
+    expect(card.skills).toEqual([{ name: 'React', slug: 'react' }]);
+    expect(card.rates).toMatchObject({ hourlyRate: 120 });
+  });
+
   it('keys different filters separately and identical filters together', async () => {
     const { db } = createDb({ profiles: { data: [], count: 0 } });
     const { service, cache } = createService(db, {
@@ -259,6 +380,43 @@ describe('ConsultantsService.directory', () => {
     const keys = cache.rememberJson.mock.calls.map((call) => call[0]);
     expect(keys[0]).not.toBe(keys[1]);
     expect(keys[0]).toBe(keys[2]);
+  });
+
+  it('keys on every filter the listing actually applies', async () => {
+    // The key is a hash of a hand-built object, so a filter left out of it
+    // makes two different searches share one cache entry for the whole TTL.
+    // This drives every filter one at a time and asserts each produces a key
+    // of its own; `q` and `language` were the two that did not.
+    const { db } = createDb({ profiles: { data: [], count: 0 } });
+    const { service, cache } = createService(db, {
+      resolveSubcategoryIds: jest.fn().mockResolvedValue(['sub-1']),
+      resolveTopicIds: jest.fn().mockResolvedValue(['topic-1']),
+    });
+
+    const variants: Partial<ConsultantDirectoryQueryDto>[] = [
+      {},
+      { q: 'security' },
+      { q: 'design' },
+      { country: 'PH' },
+      { language: 'en' },
+      { language: 'fr' },
+      { budgetMin: 100 },
+      { budgetMax: 900 },
+      { hourlyMin: 10 },
+      { hourlyMax: 90 },
+      { offersHourly: true },
+      { availableNow: true },
+      { hasServices: true },
+      { deliveryDays: 7 },
+      { category: 'ai-and-data', subcategory: 'llm-application-development', topic: 'rag-systems' },
+    ];
+
+    for (const variant of variants) {
+      await service.directory(query(variant));
+    }
+
+    const keys = cache.rememberJson.mock.calls.map((call) => call[0] as string);
+    expect(new Set(keys).size).toBe(variants.length);
   });
 });
 

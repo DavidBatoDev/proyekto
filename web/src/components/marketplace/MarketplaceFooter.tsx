@@ -1,36 +1,39 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { getRoadmapTemplateCategories } from "@/api";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { useMarketplaceCategoryNavigationQuery } from "@/hooks/useMarketplaceTaxonomy";
 
 /**
  * The marketplace's link directory.
  *
  * Every entry points at a route that exists today — a footer full of dead links
  * is worse than a short one, and this is the surface people use to work out
- * what the product actually does. Categories come from the live catalogue
- * rather than a duplicated hardcoded list.
+ * what the product actually does. Categories come from the live taxonomy rather
+ * than a duplicated hardcoded list, so retiring one cannot leave a 404 down
+ * here.
+ *
+ * There is deliberately no social row, language picker or currency switcher:
+ * the product has none of those, and a control that does nothing is a worse
+ * lie in a footer than anywhere else, because that is where people go looking
+ * for the real thing.
  */
 export function MarketplaceFooter() {
-	const { data: categories } = useQuery({
-		queryKey: ["roadmap-template-categories"],
-		queryFn: getRoadmapTemplateCategories,
-		staleTime: 1000 * 60 * 30,
-	});
+	const { data: categories } = useMarketplaceCategoryNavigationQuery();
 
 	return (
-		<footer className="mt-14 border-t border-border bg-card">
-			<div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-				<div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+		<footer className="border-t border-border bg-card">
+			<div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+				<div className="grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-3 lg:grid-cols-5">
 					<div>
 						<h4 className="mb-3 text-[13px] font-semibold text-foreground">
 							Categories
 						</h4>
 						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
-							{(categories ?? []).slice(0, 6).map((category) => (
+							{(categories ?? []).slice(0, 8).map((category) => (
 								<li key={category.id}>
 									<Link
-										to="/roadmap-templates"
+										to="/marketplace/category/$categorySlug"
+										params={{ categorySlug: category.slug }}
+										preload="intent"
 										className="transition-colors hover:text-foreground"
 									>
 										{category.name}
@@ -60,6 +63,14 @@ export function MarketplaceFooter() {
 									className="transition-colors hover:text-foreground"
 								>
 									Browse consultants
+								</Link>
+							</li>
+							<li>
+								<Link
+									to="/marketplace/talent"
+									className="transition-colors hover:text-foreground"
+								>
+									Browse talent
 								</Link>
 							</li>
 							<li>
@@ -96,10 +107,10 @@ export function MarketplaceFooter() {
 							</li>
 							<li>
 								<Link
-									to="/marketplace/talent"
+									to="/marketplace/consultant/templates"
 									className="transition-colors hover:text-foreground"
 								>
-									Find work
+									Publish a template
 								</Link>
 							</li>
 						</ul>
@@ -120,10 +131,10 @@ export function MarketplaceFooter() {
 							</li>
 							<li>
 								<Link
-									to="/dashboard"
+									to="/marketplace/talent"
 									className="transition-colors hover:text-foreground"
 								>
-									Your workspace
+									Find work
 								</Link>
 							</li>
 							<li>
@@ -133,6 +144,38 @@ export function MarketplaceFooter() {
 									className="transition-colors hover:text-foreground"
 								>
 									Invitations
+								</Link>
+							</li>
+						</ul>
+					</div>
+
+					<div>
+						<h4 className="mb-3 text-[13px] font-semibold text-foreground">
+							Your workspace
+						</h4>
+						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
+							<li>
+								<Link
+									to="/dashboard"
+									className="transition-colors hover:text-foreground"
+								>
+									Dashboard
+								</Link>
+							</li>
+							<li>
+								<Link
+									to="/notifications"
+									className="transition-colors hover:text-foreground"
+								>
+									Notifications
+								</Link>
+							</li>
+							<li>
+								<Link
+									to="/settings/appearance"
+									className="transition-colors hover:text-foreground"
+								>
+									Settings
 								</Link>
 							</li>
 						</ul>

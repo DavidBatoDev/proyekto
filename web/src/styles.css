@@ -82,6 +82,46 @@ body.presentation-mode {
   border-radius: 4px;
 }
 
+/*
+ * A slim scrollbar for panels that scroll inside the page — the marketplace
+ * filter rail is the first.
+ *
+ * Both spellings on purpose: the standard `scrollbar-*` pair is what current
+ * Chromium and Firefox honour, the ::-webkit- rules cover older WebKit, and
+ * `scrollbar-gutter: stable` reserves the track either way so the contents do
+ * not shift sideways the moment a section is expanded. Whether the thumb rests
+ * visible or fades is then the platform's own scrollbar mode, which is the
+ * behaviour people already expect from every other panel on their machine.
+ */
+.panel-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+.dark .panel-scrollbar {
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+.panel-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.panel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 9999px;
+}
+.panel-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184);
+}
+.dark .panel-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105);
+}
+.dark .panel-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(100 116 139);
+}
+
 /* Slim scrollbar for scrollable panels (calendar time grid, agenda, etc.). */
 .thin-scrollbar {
   scrollbar-width: thin;

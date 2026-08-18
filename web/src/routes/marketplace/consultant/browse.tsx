@@ -1,163 +1,227 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Briefcase, MapPin, Search } from "lucide-react";
-import { useState } from "react";
-import { useConsultantsQuery } from "@/hooks/useConsultants";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ChevronRight, Search, SlidersHorizontal } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+	BrowseAbout,
+	BrowseFaq,
+	RelatedSpecialities,
+	WaysToStartBand,
+} from "@/components/marketplace/browse/BrowseSections";
+import { ConsultantFilterRail } from "@/components/marketplace/browse/ConsultantFilterRail";
+import { ConsultantResultCard } from "@/components/marketplace/browse/ConsultantResultCard";
+import { CategoryEmptyState } from "@/components/marketplace/category/CategoryEmptyState";
+import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
+import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
+import {
+	useConsultantDirectoryFacetsQuery,
+	useConsultantDirectoryQuery,
+} from "@/hooks/useConsultants";
+import {
+	type ConsultantBrowseSearch,
+	countActiveFilters,
+	parseConsultantBrowseSearch,
+	toDirectoryParams,
+} from "@/lib/consultantBrowseFilters";
+
+const PAGE_SIZE = 12;
+/** The directory endpoint rejects a larger page, so the growth stops here. */
+const MAX_LIMIT = 48;
 
 export const Route = createFileRoute("/marketplace/consultant/browse")({
 	component: BrowseConsultants,
+	validateSearch: parseConsultantBrowseSearch,
 });
 
+/**
+ * The consultant directory.
+ *
+ * Filter state lives in the URL rather than in component state, so a filtered
+ * view is shareable, survives a reload, and lands somebody back where they were
+ * when they come out of a profile with the back button.
+ *
+ * Pagination grows `limit` instead of stepping `offset`, matching
+ * `ConsultantDirectoryGrid`: "Load more" then appends rather than replacing the
+ * page, and a refetch cannot make earlier results disappear.
+ */
 function BrowseConsultants() {
-	const { data: consultants, isLoading, error } = useConsultantsQuery();
-	const [searchQuery, setSearchQuery] = useState("");
+	const navigate = useNavigate({ from: Route.fullPath });
+	const search = Route.useSearch();
+	const [limit, setLimit] = useState(PAGE_SIZE);
+	const [railOpen, setRailOpen] = useState(false);
+	const [searchDraft, setSearchDraft] = useState(search.q ?? "");
 
-	if (isLoading) {
-		return (
-			<div className="min-h-screen bg-gray-50 p-8 pt-24">
-				<div className="max-w-6xl mx-auto">
-					<div className="animate-pulse space-y-8">
-						<div className="h-12 w-64 bg-gray-200 rounded-lg"></div>
-						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-							{[1, 2, 3, 4, 5, 6].map((i) => (
-								<div
-									key={i}
-									className="h-64 bg-white rounded-2xl shadow-sm border border-gray-100"
-								></div>
-							))}
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
+	const params = toDirectoryParams(search);
+	const query = useConsultantDirectoryQuery({ ...params, limit, offset: 0 });
+	const facetsQuery = useConsultantDirectoryFacetsQuery();
 
-	if (error) {
-		return (
-			<div className="min-h-screen bg-gray-50 flex items-center justify-center pt-24">
-				<div className="text-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-					<h2 className="text-2xl font-bold text-gray-900 mb-2">
-						Error loading consultants
-					</h2>
-					<p className="text-gray-600">Please try again later.</p>
-				</div>
-			</div>
-		);
-	}
+	// A new filter set is a new result list, so the "Load more" depth resets
+	// with it — otherwise switching category would silently fetch 48 rows.
+	const filterFingerprint = JSON.stringify(params);
+	useEffect(() => {
+		setLimit(PAGE_SIZE);
+	}, [filterFingerprint]);
 
-	const filteredConsultants =
-		consultants?.filter(
-			(c) =>
-				c.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				c.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				c.last_name?.toLowerCase().includes(searchQuery.toLowerCase()),
-		) || [];
+	useEffect(() => {
+		setSearchDraft(search.q ?? "");
+	}, [search.q]);
+
+	const applyFilters = (next: Partial<ConsultantBrowseSearch>) => {
+		void navigate({
+			search: (current) => ({ ...current, ...next }),
+			replace: true,
+		});
+	};
+
+	const clearFilters = () => {
+		void navigate({ search: search.q ? { q: search.q } : {}, replace: true });
+	};
+
+	const items = query.data?.items ?? [];
+	const total = query.data?.total ?? 0;
+	const activeCount = countActiveFilters(search);
 
 	return (
-		<div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 mt-16">
-			<div className="max-w-7xl mx-auto space-y-8">
-				<div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-					<div>
-						<h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
-							Browse Consultants
-						</h1>
-						<p className="mt-2 text-lg text-gray-600 max-w-2xl">
-							Find and connect with top-tier verified consultants to elevate
-							your projects.
-						</p>
-					</div>
+		<div className="min-h-screen bg-background pt-app-header">
+			<MarketplaceCategoryBar />
 
-					<div className="relative max-w-md w-full">
-						<div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-							<Search className="h-5 w-5 text-gray-400" />
+			<main className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8">
+				<nav aria-label="Breadcrumb" className="mb-3">
+					<ol className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+						<li>
+							<Link to="/marketplace" className="hover:text-foreground">
+								Marketplace
+							</Link>
+						</li>
+						<ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+						<li className="text-foreground">Consultants</li>
+					</ol>
+				</nav>
+
+				<header>
+					<h1 className="text-[26px] font-bold tracking-tight text-foreground sm:text-[30px]">
+						Hire a vetted consultant to lead your project
+					</h1>
+					<p className="mt-1.5 max-w-2xl text-[14px] text-muted-foreground">
+						One accountable lead who scopes the work, builds the team and
+						delivers it.
+					</p>
+				</header>
+
+				<div className="mt-6 flex flex-col gap-8 lg:flex-row">
+					<aside className="lg:w-[268px] lg:shrink-0">
+						<button
+							type="button"
+							onClick={() => setRailOpen((open) => !open)}
+							aria-expanded={railOpen}
+							className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-2.5 text-[13px] font-semibold text-foreground lg:hidden"
+						>
+							<SlidersHorizontal className="h-4 w-4" />
+							Filters
+							{activeCount > 0 && ` (${activeCount})`}
+						</button>
+
+						{/*
+						 * Sticky, and scrolls within itself once it outgrows the
+						 * viewport — on a short screen the last filters would otherwise
+						 * be unreachable while the results column scrolled past them. The
+						 * scrollbar is the app's thin one so the rail does not gain a
+						 * second visual edge.
+						 */}
+						<div
+							className={`${railOpen ? "mt-4 block" : "hidden"} panel-scrollbar lg:sticky lg:top-20 lg:mt-0 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1.5`}
+						>
+							<ConsultantFilterRail
+								search={search}
+								facets={facetsQuery.data}
+								onChange={applyFilters}
+								onClear={clearFilters}
+							/>
 						</div>
-						<input
-							type="text"
-							placeholder="Search by name or skills..."
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-							className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-hidden focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out shadow-xs h-full"
-						/>
-					</div>
-				</div>
+					</aside>
 
-				{filteredConsultants.length === 0 ? (
-					<div className="text-center bg-white p-16 rounded-2xl shadow-sm border border-gray-200">
-						<Briefcase className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-						<h3 className="text-lg font-medium text-gray-900">
-							No consultants found
-						</h3>
-						<p className="mt-1 text-gray-500">
-							We couldn't find anyone matching your search criteria.
+					<section className="min-w-0 flex-1 lg:max-w-[1000px]">
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								applyFilters({ q: searchDraft.trim() || undefined });
+							}}
+							className="relative"
+						>
+							<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<input
+								type="search"
+								value={searchDraft}
+								onChange={(event) => setSearchDraft(event.target.value)}
+								placeholder="Search consultants by name, headline or focus"
+								aria-label="Search consultants"
+								className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-3 text-[13.5px] text-foreground outline-none transition-colors focus:border-primary"
+							/>
+						</form>
+
+						<p className="mt-3 text-[12.5px] text-muted-foreground">
+							{query.isPending
+								? "Loading consultants…"
+								: `${total} ${total === 1 ? "consultant" : "consultants"} available`}
 						</p>
-					</div>
-				) : (
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-						{filteredConsultants.map((consultant) => {
-							const fullName =
-								consultant.display_name ||
-								`${consultant.first_name || ""} ${consultant.last_name || ""}`.trim() ||
-								"Consultant";
-							const initial = fullName.charAt(0).toUpperCase();
 
-							return (
-								<Link
+						<div className="mt-4 space-y-4">
+							{query.isPending &&
+								Array.from({ length: 3 }, (_, index) => (
+									<div
+										key={`browse-skeleton-${index}`}
+										className="h-[260px] animate-pulse rounded-xl border border-border bg-card"
+									/>
+								))}
+
+							{query.isError && (
+								<div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-[13px] text-destructive">
+									Could not load consultants right now. Try again shortly.
+								</div>
+							)}
+
+							{!query.isPending && !query.isError && items.length === 0 && (
+								<CategoryEmptyState
+									label={
+										activeCount > 0 || search.q
+											? "this search"
+											: "the marketplace"
+									}
+								/>
+							)}
+
+							{items.map((consultant) => (
+								<ConsultantResultCard
 									key={consultant.id}
-									to="/marketplace/consultant/$profileId"
-									params={{ profileId: consultant.id }}
-									className="group bg-white rounded-2xl shadow-xs hover:shadow-xl border border-gray-200 transition-all duration-300 overflow-hidden flex flex-col items-start translate-y-0 hover:-translate-y-1"
+									consultant={consultant}
+								/>
+							))}
+						</div>
+
+						{items.length < total && limit < MAX_LIMIT && (
+							<div className="mt-6 text-center">
+								<button
+									type="button"
+									onClick={() =>
+										setLimit((current) =>
+											Math.min(current + PAGE_SIZE, MAX_LIMIT),
+										)
+									}
+									disabled={query.isFetching}
+									className="rounded-xl border border-border px-4 py-2 text-[13px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
 								>
-									<div className="p-6 flex items-start gap-4 w-full border-b border-gray-100">
-										<div className="relative">
-											{consultant.avatar_url ? (
-												<img
-													src={consultant.avatar_url}
-													alt={fullName}
-													className="w-16 h-16 rounded-full object-cover shadow-sm bg-gray-50"
-												/>
-											) : (
-												<div className="w-16 h-16 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-sm">
-													{initial}
-												</div>
-											)}
-											<span
-												className="absolute bottom-0 right-0 block h-4 w-4 rounded-full bg-green-400 ring-2 ring-white"
-												title="Verified"
-											></span>
-										</div>
+									{query.isFetching ? "Loading…" : "Load more"}
+								</button>
+							</div>
+						)}
+					</section>
+				</div>
+			</main>
 
-										<div className="flex-1 min-w-0">
-											<h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-												{fullName}
-											</h3>
-
-											{consultant.country && consultant.city && (
-												<div className="flex items-center text-sm text-gray-500 mt-1">
-													<MapPin className="w-3.5 h-3.5 mr-1" />
-													<span className="truncate">
-														{consultant.city}, {consultant.country}
-													</span>
-												</div>
-											)}
-										</div>
-									</div>
-
-									<div className="p-6 grow flex flex-col w-full">
-										{consultant.bio ? (
-											<p className="text-gray-600 text-sm line-clamp-3 mb-4 grow">
-												{consultant.bio}
-											</p>
-										) : (
-											<p className="text-gray-400 text-sm italic mb-4 grow">
-												No bio provided
-											</p>
-										)}
-									</div>
-								</Link>
-							);
-						})}
-					</div>
-				)}
-			</div>
+			<BrowseAbout />
+			<RelatedSpecialities categorySlug={search.category} />
+			<BrowseFaq />
+			<WaysToStartBand />
+			<MarketplaceFooter />
 		</div>
 	);
 }

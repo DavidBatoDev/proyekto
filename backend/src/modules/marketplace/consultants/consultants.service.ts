@@ -168,6 +168,67 @@ export interface ConsultantDirectoryPage {
   offset: number;
 }
 
+/** One published catalog entry as a directory card renders it. */
+export interface ConsultantCardService {
+  id: string;
+  title: string;
+  cover_url: string | null;
+  starting_price: number | null;
+  currency: string;
+  price_unit: string;
+  delivery_days: number | null;
+}
+
+interface ConsultantCatalogSummary {
+  startingFrom: { amount: number; currency: string; unit: string } | null;
+  services: ConsultantCardService[];
+  count: number;
+}
+
+/**
+ * The options the browse rail can offer, derived from the verified roster
+ * rather than hardcoded.
+ */
+export interface ConsultantDirectoryFacets {
+  /** How many verified consultants sit under each category, by slug. */
+  categories: { slug: string; count: number }[];
+  /** The same per speciality, scoped by its category slug. */
+  subcategories: { categorySlug: string; slug: string; count: number }[];
+  countries: { value: string; count: number }[];
+  languages: { code: string; name: string; count: number }[];
+  priceRange: { min: number; max: number } | null;
+  total: number;
+}
+
+/**
+ * The intersection of every candidate list a filter produced, or null when no
+ * filter produced one - which means "do not constrain by id at all", and is
+ * deliberately different from an empty list, which means "nothing matched".
+ */
+function intersectIds(sets: string[][]): string[] | null {
+  if (sets.length === 0) return null;
+  return sets.reduce((accumulator, current) => {
+    const lookup = new Set(current);
+    return accumulator.filter((id) => lookup.has(id));
+  });
+}
+
+/**
+ * PostgREST parses `or=(...)` as a comma-separated list with parenthesised
+ * groups, so a comma or bracket in the term would change the filter rather
+ * than being searched for. `%` and `_` are ilike wildcards and are stripped
+ * for the same reason.
+ */
+function sanitizeSearchTerm(term: string | undefined): string | null {
+  if (!term) return null;
+  const cleaned = term
+    .replace(/[,()%_*\\"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  return cleaned.length >= 2 ? cleaned : null;
+}
+
 @Injectable()
 export class ConsultantsService {
   constructor(
@@ -208,9 +269,28 @@ export class ConsultantsService {
     query: ConsultantDirectoryQueryDto,
     options?: CacheReadOptions,
   ): Promise<ConsultantDirectoryPage> {
+    /**
+     * EVERY field `loadDirectory` reads has to appear here. The key is a hash
+     * of this object, so a filter left out makes two different searches share
+     * one cache entry -- `q=security` and `q=design` under the same category
+     * would return whichever ran first, for the whole TTL. Adding a filter to
+     * the DTO means adding it here in the same commit.
+     */
     const normalized = {
       category: query.category?.trim().toLowerCase() || undefined,
       subcategory: query.subcategory?.trim().toLowerCase() || undefined,
+      topic: query.topic?.trim().toLowerCase() || undefined,
+      q: query.q?.trim().toLowerCase() || undefined,
+      country: query.country?.trim().toLowerCase() || undefined,
+      language: query.language?.trim().toLowerCase() || undefined,
+      budgetMin: query.budgetMin,
+      budgetMax: query.budgetMax,
+      hourlyMin: query.hourlyMin,
+      hourlyMax: query.hourlyMax,
+      offersHourly: query.offersHourly,
+      availableNow: query.availableNow,
+      hasServices: query.hasServices,
+      deliveryDays: query.deliveryDays,
       limit: query.limit,
       offset: query.offset,
     };
@@ -228,11 +308,188 @@ export class ConsultantsService {
     );
   }
 
+  /**
+   * The facets the browse rail offers.
+   *
+   * Published from the data rather than hardcoded, so the rail can only ever
+   * offer a country or a language somebody is actually in - an option that
+   * always returns nothing is worse than no option at all.
+   */
+  async facets(options?: CacheReadOptions): Promise<ConsultantDirectoryFacets> {
+    return this.cache.rememberJson(
+      REDIS_CACHE_KEYS.consultantsFacets,
+      this.cache.getPublicTtlSeconds(),
+      () => this.loadFacets(),
+      {
+        onStatus: options?.onCacheStatus,
+        indexKey: REDIS_CACHE_KEYS.consultantsIndex,
+      },
+    );
+  }
+
+  private async loadFacets(): Promise<ConsultantDirectoryFacets> {
+    const { data: profileRows, error } = await this.supabase
+      .from('profiles')
+      .select(
+        'id, country, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status)',
+      )
+      .eq('consultant_profile.status', 'verified');
+    if (error) throw error;
+
+    const rows = (profileRows ?? []) as Record<string, unknown>[];
+    const ids = rows.map((row) => row.id as string);
+
+    const countries = new Map<string, number>();
+    for (const row of rows) {
+      const country = (row.country as string | null)?.trim();
+      if (!country) continue;
+      countries.set(country, (countries.get(country) ?? 0) + 1);
+    }
+
+    const [languages, priceRange, placements] = await Promise.all([
+      this.loadLanguageFacet(ids),
+      this.loadPriceBounds(ids),
+      this.loadPlacementFacet(ids),
+    ]);
+
+    return {
+      ...placements,
+      countries: [...countries.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)),
+      languages,
+      priceRange,
+      total: ids.length,
+    };
+  }
+
+  private async loadLanguageFacet(
+    userIds: string[],
+  ): Promise<{ code: string; name: string; count: number }[]> {
+    if (userIds.length === 0) return [];
+    const { data, error } = await this.supabase
+      .from('user_languages')
+      .select('user_id, language:languages!inner(code, name)')
+      .in('user_id', userIds);
+    if (error) throw error;
+
+    const counts = new Map<string, { name: string; count: number }>();
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const language = firstOf(
+        row.language as Record<string, unknown> | Record<string, unknown>[],
+      );
+      if (!language) continue;
+      const code = language.code as string;
+      const current = counts.get(code);
+      counts.set(code, {
+        name: language.name as string,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+
+    return [...counts.entries()]
+      .map(([code, entry]) => ({ code, name: entry.name, count: entry.count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Consultants per category and per speciality.
+   *
+   * Counted over DISTINCT users: somebody placed in three specialities of one
+   * category is one consultant on that category's row, and a count that said
+   * three would promise a roster the page cannot show.
+   */
+  private async loadPlacementFacet(userIds: string[]): Promise<{
+    categories: { slug: string; count: number }[];
+    subcategories: { categorySlug: string; slug: string; count: number }[];
+  }> {
+    if (userIds.length === 0) return { categories: [], subcategories: [] };
+
+    const { data, error } = await this.supabase
+      .from('consultant_subcategories')
+      .select(
+        'user_id, subcategory:marketplace_subcategories!inner(slug, is_active, category:marketplace_categories!inner(slug, is_active))',
+      )
+      .in('user_id', userIds)
+      .eq('subcategory.is_active', true)
+      .eq('subcategory.category.is_active', true);
+    if (error) throw error;
+
+    const byCategory = new Map<string, Set<string>>();
+    const bySubcategory = new Map<string, Set<string>>();
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const subcategory = firstOf(
+        row.subcategory as Record<string, unknown> | Record<string, unknown>[],
+      );
+      const category = firstOf(
+        subcategory?.category as
+          | Record<string, unknown>
+          | Record<string, unknown>[]
+          | undefined,
+      );
+      // A de-activated branch narrows the embed rather than dropping the row,
+      // so it arrives empty and must not become a facet.
+      if (!subcategory || !category) continue;
+
+      const userId = row.user_id as string;
+      const categorySlug = category.slug as string;
+      const subcategorySlug = subcategory.slug as string;
+
+      const categoryUsers = byCategory.get(categorySlug) ?? new Set<string>();
+      categoryUsers.add(userId);
+      byCategory.set(categorySlug, categoryUsers);
+
+      const key = `${categorySlug}/${subcategorySlug}`;
+      const subcategoryUsers = bySubcategory.get(key) ?? new Set<string>();
+      subcategoryUsers.add(userId);
+      bySubcategory.set(key, subcategoryUsers);
+    }
+
+    return {
+      categories: [...byCategory.entries()].map(([slug, users]) => ({
+        slug,
+        count: users.size,
+      })),
+      subcategories: [...bySubcategory.entries()].map(([key, users]) => {
+        const [categorySlug, slug] = key.split('/');
+        return { categorySlug, slug, count: users.size };
+      }),
+    };
+  }
+
+  private async loadPriceBounds(
+    userIds: string[],
+  ): Promise<{ min: number; max: number } | null> {
+    if (userIds.length === 0) return null;
+    const { data, error } = await this.supabase
+      .from('consultant_services')
+      .select('starting_price')
+      .in('user_id', userIds)
+      .eq('status', 'published')
+      .not('starting_price', 'is', null);
+    if (error) throw error;
+
+    const amounts = ((data ?? []) as Record<string, unknown>[])
+      .map((row) => Number(row.starting_price))
+      .filter((amount) => Number.isFinite(amount));
+    if (amounts.length === 0) return null;
+    return { min: Math.min(...amounts), max: Math.max(...amounts) };
+  }
+
   private async loadDirectory(
     query: ConsultantDirectoryQueryDto,
   ): Promise<ConsultantDirectoryPage> {
     const { limit, offset } = query;
-    let candidateIds: string[] | null = null;
+
+    /**
+     * Every filter that lives in another table contributes a candidate id
+     * list, and the lists are intersected. Done this way rather than as
+     * embedded inner joins because PostgREST has no DISTINCT: a consultant
+     * with three matching services would otherwise arrive three times, and the
+     * exact count would be wrong as well as the page.
+     */
+    const candidateSets: string[][] = [];
 
     if (query.category) {
       const subcategoryIds = await this.taxonomy.resolveSubcategoryIds(
@@ -242,16 +499,51 @@ export class ConsultantsService {
       if (subcategoryIds === null) {
         throw new NotFoundException('Category not found');
       }
+      candidateSets.push(
+        subcategoryIds.length ? await this.findMembers(subcategoryIds) : [],
+      );
+    }
 
-      candidateIds = subcategoryIds.length
-        ? await this.findMembers(subcategoryIds)
-        : [];
-
-      // Short-circuit: an empty candidate set can never match a profile, and
-      // `.in('id', [])` is a wasted round trip.
-      if (candidateIds.length === 0) {
-        return { items: [], total: 0, limit, offset };
+    if (query.topic) {
+      const topicIds = await this.taxonomy.resolveTopicIds(
+        query.category,
+        query.subcategory,
+        query.topic,
+      );
+      if (topicIds === null) {
+        throw new NotFoundException('Topic not found');
       }
+      candidateSets.push(await this.findTopicMembers(topicIds));
+    }
+
+    if (query.language) {
+      candidateSets.push(await this.findSpeakers(query.language));
+    }
+
+    if (
+      query.offersHourly !== undefined ||
+      query.availableNow !== undefined ||
+      query.hourlyMin !== undefined ||
+      query.hourlyMax !== undefined
+    ) {
+      candidateSets.push(await this.findByRateCard(query));
+    }
+
+    if (
+      query.hasServices !== undefined ||
+      query.budgetMin !== undefined ||
+      query.budgetMax !== undefined ||
+      query.deliveryDays !== undefined
+    ) {
+      candidateSets.push(await this.findByCatalog(query));
+    }
+
+    const candidateIds = intersectIds(candidateSets);
+
+    // Short-circuit: an empty candidate set can never match a profile, and
+    // `.in('id', [])` is a wasted round trip.
+    if (candidateIds && candidateIds.length === 0) {
+      return { items: [], total: 0, limit, offset };
     }
 
     let builder = this.supabase
@@ -264,6 +556,14 @@ export class ConsultantsService {
       .eq('consultant_profile.status', 'verified');
 
     if (candidateIds) builder = builder.in('id', candidateIds);
+    if (query.country) builder = builder.ilike('country', query.country.trim());
+
+    const search = sanitizeSearchTerm(query.q);
+    if (search) {
+      builder = builder.or(
+        `display_name.ilike.%${search}%,headline.ilike.%${search}%,bio.ilike.%${search}%`,
+      );
+    }
 
     const { data, count, error } = await builder
       .order('created_at', { ascending: false })
@@ -272,60 +572,250 @@ export class ConsultantsService {
     if (error) throw error;
 
     const items = (data ?? []).map(toPublicConsultant);
-
-    // "From $X/project" on each card. One batched query for the whole page
-    // rather than one per card: the directory renders up to 48 of them, and a
-    // per-card lookup would be 48 round trips on every cold cache read.
-    const startingFrom = await this.findStartingPrices(
-      items.map((item) => (item as Record<string, unknown>).id as string),
+    const ids = items.map(
+      (item) => (item as Record<string, unknown>).id as string,
     );
 
+    // Everything a card renders, batched for the whole page rather than per
+    // row: the directory shows up to 48 of them, and a per-card lookup would
+    // be 48 round trips on every cold cache read.
+    const [catalog, skills, languages, rates] = await Promise.all([
+      this.findCatalogSummaries(ids),
+      this.findSkillNames(ids),
+      this.findLanguageNames(ids),
+      this.findRateCards(ids),
+    ]);
+
     return {
-      items: items.map((item) => ({
-        ...item,
-        starting_from:
-          startingFrom.get((item as Record<string, unknown>).id as string) ??
-          null,
-      })),
+      items: items.map((item) => {
+        const id = (item as Record<string, unknown>).id as string;
+        const entry = catalog.get(id);
+        return {
+          ...item,
+          starting_from: entry?.startingFrom ?? null,
+          services: entry?.services ?? [],
+          service_count: entry?.count ?? 0,
+          skills: skills.get(id) ?? [],
+          languages: languages.get(id) ?? [],
+          rates: rates.get(id) ?? null,
+        };
+      }),
       total: count ?? 0,
       limit,
       offset,
     };
   }
 
+  /** Consultants who speak a given language, by ISO code. */
+  private async findSpeakers(code: string): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('user_languages')
+      .select('user_id, language:languages!inner(code)')
+      .eq('language.code', code.trim().toLowerCase());
+    if (error) throw error;
+    return [...new Set((data ?? []).map((row) => row.user_id as string))];
+  }
+
   /**
-   * The cheapest published service per consultant. Reduced in memory because
-   * PostgREST has no GROUP BY, and the row count here is bounded by
-   * (cards on a page x services each), which is small.
+   * The rate-card filters. One row per user, so no dedupe is needed - but it
+   * still returns an id list so it can be intersected with the others.
    */
-  private async findStartingPrices(
+  private async findByRateCard(
+    query: ConsultantDirectoryQueryDto,
+  ): Promise<string[]> {
+    let builder = this.supabase.from('user_rate_settings').select('user_id');
+
+    if (query.offersHourly) builder = builder.not('hourly_rate', 'is', null);
+    if (query.availableNow) builder = builder.eq('availability', 'available');
+    if (query.hourlyMin !== undefined) {
+      builder = builder.gte('hourly_rate', query.hourlyMin);
+    }
+    if (query.hourlyMax !== undefined) {
+      builder = builder.lte('hourly_rate', query.hourlyMax);
+    }
+
+    const { data, error } = await builder;
+    if (error) throw error;
+    return [...new Set((data ?? []).map((row) => row.user_id as string))];
+  }
+
+  /**
+   * The catalog filters - budget, delivery time, and "has published anything".
+   *
+   * Budget is matched against any published service rather than only the
+   * cheapest: a consultant with a $200 audit and a $40k rebuild belongs in
+   * both brackets, and matching the minimum alone would hide them from
+   * everyone with a real budget.
+   */
+  private async findByCatalog(
+    query: ConsultantDirectoryQueryDto,
+  ): Promise<string[]> {
+    let builder = this.supabase
+      .from('consultant_services')
+      .select('user_id')
+      .eq('status', 'published');
+
+    if (query.budgetMin !== undefined) {
+      builder = builder.gte('starting_price', query.budgetMin);
+    }
+    if (query.budgetMax !== undefined) {
+      builder = builder.lte('starting_price', query.budgetMax);
+    }
+    if (query.deliveryDays !== undefined) {
+      builder = builder.lte('delivery_days', query.deliveryDays);
+    }
+
+    const { data, error } = await builder;
+    if (error) throw error;
+    return [...new Set((data ?? []).map((row) => row.user_id as string))];
+  }
+
+  /**
+   * The published catalog for a page of cards: the cheapest entry, which
+   * becomes the "From $X" line, plus the first few covers the card renders as
+   * a strip. Unpublished rows are excluded here as well as by RLS, because
+   * this client bypasses RLS.
+   */
+  private async findCatalogSummaries(
     userIds: string[],
-  ): Promise<Map<string, { amount: number; currency: string; unit: string }>> {
-    const result = new Map<
-      string,
-      { amount: number; currency: string; unit: string }
-    >();
+  ): Promise<Map<string, ConsultantCatalogSummary>> {
+    const result = new Map<string, ConsultantCatalogSummary>();
     if (userIds.length === 0) return result;
 
     const { data, error } = await this.supabase
       .from('consultant_services')
-      .select('user_id, starting_price, currency, price_unit')
+      .select(
+        'id, user_id, title, cover_url, starting_price, currency, price_unit, delivery_days, position',
+      )
       .in('user_id', userIds)
       .eq('status', 'published')
-      .not('starting_price', 'is', null);
+      .order('position', { ascending: true });
     if (error) throw error;
 
     for (const row of (data ?? []) as Record<string, unknown>[]) {
-      const amount = Number(row.starting_price);
       const userId = row.user_id as string;
-      const current = result.get(userId);
-      if (!current || amount < current.amount) {
-        result.set(userId, {
+      const entry = result.get(userId) ?? {
+        startingFrom: null,
+        services: [],
+        count: 0,
+      };
+      entry.count += 1;
+
+      // numeric(12,2) arrives as a string from PostgREST; the API must not
+      // hand the browser a price it has to parse.
+      const amount =
+        row.starting_price === null || row.starting_price === undefined
+          ? null
+          : Number(row.starting_price);
+
+      if (
+        amount !== null &&
+        (entry.startingFrom === null || amount < entry.startingFrom.amount)
+      ) {
+        entry.startingFrom = {
           amount,
           currency: row.currency as string,
           unit: row.price_unit as string,
+        };
+      }
+
+      if (entry.services.length < 3) {
+        entry.services.push({
+          id: row.id as string,
+          title: row.title as string,
+          cover_url: (row.cover_url as string | null) ?? null,
+          starting_price: amount,
+          currency: row.currency as string,
+          price_unit: row.price_unit as string,
+          delivery_days: (row.delivery_days as number | null) ?? null,
         });
       }
+
+      result.set(userId, entry);
+    }
+    return result;
+  }
+
+  /** The skill chips on a card. Capped: a card shows a sample, not a CV. */
+  private async findSkillNames(
+    userIds: string[],
+  ): Promise<Map<string, { name: string; slug: string }[]>> {
+    const result = new Map<string, { name: string; slug: string }[]>();
+    if (userIds.length === 0) return result;
+
+    const { data, error } = await this.supabase
+      .from('user_skills')
+      .select('user_id, skill:skills!inner(name, slug)')
+      .in('user_id', userIds);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const skill = firstOf(
+        row.skill as Record<string, unknown> | Record<string, unknown>[],
+      );
+      if (!skill) continue;
+      const userId = row.user_id as string;
+      const list = result.get(userId) ?? [];
+      if (list.length < 12) {
+        list.push({ name: skill.name as string, slug: skill.slug as string });
+      }
+      result.set(userId, list);
+    }
+    return result;
+  }
+
+  private async findLanguageNames(
+    userIds: string[],
+  ): Promise<Map<string, { code: string; name: string }[]>> {
+    const result = new Map<string, { code: string; name: string }[]>();
+    if (userIds.length === 0) return result;
+
+    const { data, error } = await this.supabase
+      .from('user_languages')
+      .select('user_id, language:languages!inner(code, name)')
+      .in('user_id', userIds);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const language = firstOf(
+        row.language as Record<string, unknown> | Record<string, unknown>[],
+      );
+      if (!language) continue;
+      const userId = row.user_id as string;
+      const list = result.get(userId) ?? [];
+      list.push({
+        code: language.code as string,
+        name: language.name as string,
+      });
+      result.set(userId, list);
+    }
+    return result;
+  }
+
+  /**
+   * The card's hourly line. `min_project_budget` and `weekly_hours` stay out of
+   * this on purpose - they are negotiating positions and appear on no public
+   * surface.
+   */
+  private async findRateCards(
+    userIds: string[],
+  ): Promise<Map<string, ConsultantPublicRates>> {
+    const result = new Map<string, ConsultantPublicRates>();
+    if (userIds.length === 0) return result;
+
+    const { data, error } = await this.supabase
+      .from('user_rate_settings')
+      .select('user_id, hourly_rate, currency, availability')
+      .in('user_id', userIds);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      if (row.hourly_rate === null || row.hourly_rate === undefined) continue;
+      result.set(row.user_id as string, {
+        hourlyRate: Number(row.hourly_rate),
+        currency: (row.currency as string) ?? 'USD',
+        availability: (row.availability as string | null) ?? null,
+      });
     }
     return result;
   }
@@ -339,6 +829,19 @@ export class ConsultantsService {
       .from('consultant_subcategories')
       .select('user_id')
       .in('subcategory_id', subcategoryIds);
+
+    if (error) throw error;
+    return [...new Set((data ?? []).map((row) => row.user_id as string))];
+  }
+
+  /** The topic-level counterpart to findMembers, deduped for the same reason. */
+  private async findTopicMembers(topicIds: string[]): Promise<string[]> {
+    if (topicIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from('consultant_topics')
+      .select('user_id')
+      .in('topic_id', topicIds);
 
     if (error) throw error;
     return [...new Set((data ?? []).map((row) => row.user_id as string))];

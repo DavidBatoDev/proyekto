@@ -171,6 +171,10 @@ export type ConsultantDirectoryPage = {
  * a country or language only appears once somebody is actually there.
  */
 export interface ConsultantDirectoryFacets {
+	/** Verified consultants per category, by slug. */
+	categories: { slug: string; count: number }[];
+	/** The same per speciality, scoped by its category slug. */
+	subcategories: { categorySlug: string; slug: string; count: number }[];
 	countries: { value: string; count: number }[];
 	languages: { code: string; name: string; count: number }[];
 	priceRange: { min: number; max: number } | null;

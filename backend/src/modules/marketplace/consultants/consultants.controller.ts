@@ -48,6 +48,19 @@ export class ConsultantsController {
     });
   }
 
+  /**
+   * The filter options the browse rail renders. Declared above `:id` for the
+   * same reason `directory` is.
+   */
+  @Get('directory/facets')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
+  facets(@Res({ passthrough: true }) response: Response) {
+    return this.consultantsService.facets({
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
+  }
+
   @Get(':id')
   @Public()
   @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
