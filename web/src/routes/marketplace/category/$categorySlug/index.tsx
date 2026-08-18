@@ -1,13 +1,24 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { CategoryArt } from "@/components/marketplace/category/CategoryArt";
 import {
 	useMarketplaceCategoryNavigationQuery,
 	useMarketplaceCategoryQuery,
 } from "@/hooks/useMarketplaceTaxonomy";
+import { mapRetiredCategorySlug } from "@/lib/marketplaceCategoryRedirects";
 import type { MarketplaceCategoryNav } from "@/types/marketplace-taxonomy";
 
 export const Route = createFileRoute("/marketplace/category/$categorySlug/")({
+	beforeLoad: ({ params }) => {
+		const merged = mapRetiredCategorySlug(params.categorySlug);
+		if (merged) {
+			throw redirect({
+				to: "/marketplace/category/$categorySlug",
+				params: { categorySlug: merged },
+				replace: true,
+			});
+		}
+	},
 	component: MarketplaceCategoryPage,
 });
 
