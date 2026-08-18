@@ -1,10 +1,10 @@
 import {
-	FileSignature,
-	GitBranch,
-	Handshake,
-	PackageCheck,
-	ScrollText,
-} from "lucide-react";
+	ChangeRequestIcon,
+	DeliverableAcceptedIcon,
+	EngagementRecordIcon,
+	RoadmapPreviewIcon,
+	SignedContractIcon,
+} from "./CapabilityIcons";
 
 /**
  * What separates Proyekto from a freelancer directory: the delivery machinery
@@ -15,27 +15,27 @@ import {
  */
 const CAPABILITIES = [
 	{
-		icon: GitBranch,
+		icon: RoadmapPreviewIcon,
 		title: "A roadmap, before you commit",
 		body: "See the epics, features and tasks your project breaks into while you are still deciding.",
 	},
 	{
-		icon: PackageCheck,
+		icon: DeliverableAcceptedIcon,
 		title: "Deliverables with acceptance",
 		body: "Work arrives against criteria and evidence, and is accepted explicitly rather than assumed.",
 	},
 	{
-		icon: ScrollText,
+		icon: ChangeRequestIcon,
 		title: "Change requests, not surprises",
 		body: "Scope changes carry their own budget and timeline impact, reviewed before they land.",
 	},
 	{
-		icon: FileSignature,
+		icon: SignedContractIcon,
 		title: "Signed contracts and terms",
 		body: "Rates, dates and scope live in a signed agreement; amendments take effect prospectively.",
 	},
 	{
-		icon: Handshake,
+		icon: EngagementRecordIcon,
 		title: "Engagements that hold the history",
 		body: "Who hired whom, on which projects, at which rates — durable long after a project closes.",
 	},
@@ -53,9 +53,7 @@ export function WhyProyekto() {
 						key={title}
 						className="rounded-xl border border-border bg-card p-4"
 					>
-						<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-							<Icon className="h-4 w-4" />
-						</span>
+						<Icon className="h-11 w-11" />
 						<h3 className="mt-2.5 text-[13.5px] font-semibold text-foreground">
 							{title}
 						</h3>
