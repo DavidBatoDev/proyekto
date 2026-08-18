@@ -4,11 +4,13 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import {
   TAXONOMY_REPOSITORY,
   type TaxonomyRepository,
 } from './repositories/taxonomy.repository.interface';
 import type {
+  ConsultantPlacement,
   MarketplaceCategoryWithSubcategories,
   MarketplaceSubcategoryWithCategory,
 } from './taxonomy.types';
@@ -20,6 +22,7 @@ export class TaxonomyService {
   constructor(
     @Inject(TAXONOMY_REPOSITORY) private readonly repo: TaxonomyRepository,
     private readonly cache: RedisDataCacheService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async navigation(
@@ -86,5 +89,32 @@ export class TaxonomyService {
     subcategorySlug: string | undefined,
   ): Promise<string[] | null> {
     return this.repo.findSubcategoryIds(categorySlug, subcategorySlug);
+  }
+
+  /** A consultant's own placements. Uncached: it is a per-user editor read. */
+  listMyPlacements(userId: string): Promise<ConsultantPlacement[]> {
+    return this.repo.findConsultantSubcategories(userId);
+  }
+
+  async replaceMyPlacements(
+    userId: string,
+    subcategoryIds: string[],
+  ): Promise<ConsultantPlacement[]> {
+    // Duplicates would trip the composite primary key mid-insert and leave the
+    // consultant with a partially-written set, since the delete has already
+    // happened. De-duplicating here keeps that impossible.
+    const unique = Array.from(new Set(subcategoryIds));
+
+    const placements = await this.repo.replaceConsultantSubcategories(
+      userId,
+      unique,
+    );
+
+    // The directory is category-filtered and the public profile renders these
+    // chips, so both must be purged. `invalidateConsultantsCache` clears the
+    // consultants index as well as the profile key, which covers the category
+    // landing pages without a second call.
+    await this.cacheInvalidation.invalidateConsultantsCache(userId);
+    return placements;
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  ConsultantPlacement,
   MarketplaceCategoryWithSubcategories,
   MarketplaceSubcategoryWithCategory,
 } from '../taxonomy.types';
@@ -30,4 +31,17 @@ export interface TaxonomyRepository {
     categorySlug: string | undefined,
     subcategorySlug: string | undefined,
   ): Promise<string[] | null>;
+
+  /** A consultant's own placements, with enough context to render chips. */
+  findConsultantSubcategories(userId: string): Promise<ConsultantPlacement[]>;
+
+  /**
+   * Full replace, in one round trip per side. Replace rather than add/remove
+   * because the editor is a multi-select that already knows the whole intended
+   * set; a diffing API would invent an ordering problem for no gain.
+   */
+  replaceConsultantSubcategories(
+    userId: string,
+    subcategoryIds: string[],
+  ): Promise<ConsultantPlacement[]>;
 }

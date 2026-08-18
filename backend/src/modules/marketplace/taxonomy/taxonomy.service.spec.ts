@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/unbound-method --
+ * `repo` is a jest mock object; passing its members to expect() is an
+ * identity check on the mock, never a call, so `this` scoping is
+ * irrelevant. */
 import { NotFoundException } from '@nestjs/common';
 import { TaxonomyService } from './taxonomy.service';
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
@@ -15,11 +19,20 @@ describe('TaxonomyService', () => {
     findCategoryBySlug: jest.fn(),
     findSubcategoryBySlugs: jest.fn(),
     findSubcategoryIds: jest.fn(),
+    findConsultantSubcategories: jest.fn(),
+    replaceConsultantSubcategories: jest.fn(),
+  };
+
+  const cacheInvalidation = {
+    invalidateConsultantsCache: jest.fn().mockResolvedValue(undefined),
   };
 
   const service = new TaxonomyService(
     repo,
     cache as unknown as ConstructorParameters<typeof TaxonomyService>[1],
+    cacheInvalidation as unknown as ConstructorParameters<
+      typeof TaxonomyService
+    >[2],
   );
 
   beforeEach(() => {
@@ -118,6 +131,49 @@ describe('TaxonomyService', () => {
         service.resolveSubcategoryIds('ai-and-data', undefined),
       ).resolves.toEqual(['s1', 's2']);
       expect(rememberJson).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('consultant placements', () => {
+    beforeEach(() => {
+      repo.replaceConsultantSubcategories.mockResolvedValue([]);
+    });
+
+    /**
+     * The delete-then-insert in the repository means a duplicated id would
+     * violate the composite primary key half way through, after the old set is
+     * already gone — leaving the consultant with fewer placements than they
+     * started with and an error on screen.
+     */
+    it('de-duplicates before replacing, so a repeated id cannot half-write the set', async () => {
+      await service.replaceMyPlacements('me', ['a', 'b', 'a', 'b', 'a']);
+
+      expect(repo.replaceConsultantSubcategories).toHaveBeenCalledWith('me', [
+        'a',
+        'b',
+      ]);
+    });
+
+    it('accepts an empty set as "remove me from every category"', async () => {
+      await service.replaceMyPlacements('me', []);
+
+      expect(repo.replaceConsultantSubcategories).toHaveBeenCalledWith(
+        'me',
+        [],
+      );
+    });
+
+    /**
+     * The category landing pages and the public profile both render these, and
+     * both are cached. Skipping this leaves a consultant absent from a category
+     * they just joined for a full TTL.
+     */
+    it('purges the consultant caches after a change', async () => {
+      await service.replaceMyPlacements('me', ['a']);
+
+      expect(cacheInvalidation.invalidateConsultantsCache).toHaveBeenCalledWith(
+        'me',
+      );
     });
   });
 });

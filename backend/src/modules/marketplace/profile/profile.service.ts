@@ -75,7 +75,10 @@ export class ProfileService {
     dto: ReplaceSkillsDto,
   ): Promise<UserSkill[]> {
     const skills = await this.profileRepo.replaceUserSkills(userId, dto.skills);
-    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    // Both directories, because skills are account-level: they render on the
+    // freelancer cards AND on the cached public consultant profile. Purging
+    // only one leaves the other showing yesterday's skills for a whole TTL.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return skills;
   }
 
@@ -179,7 +182,10 @@ export class ProfileService {
     dto: UpsertRateSettingsDto,
   ): Promise<UserRateSettings> {
     const settings = await this.profileRepo.upsertRateSettings(userId, dto);
-    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    // One rate card, two surfaces. `user_rate_settings` is deliberately shared
+    // between the enrollment paths (20260812100000), so a consultant editing
+    // their rate moves the freelancer directory too — and vice versa.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return settings;
   }
 

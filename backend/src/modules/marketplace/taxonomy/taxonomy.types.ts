@@ -27,3 +27,21 @@ export interface MarketplaceSubcategoryWithCategory extends MarketplaceSubcatego
    */
   siblings: MarketplaceSubcategory[];
 }
+
+/**
+ * One placement of a consultant in the curated taxonomy, flattened to the
+ * slugs and names a chip needs.
+ *
+ * Defined here rather than in the consultants module because both read the
+ * same `consultant_subcategories` rows — the public profile shows somebody
+ * else's, the console shows your own — and consultants already depends on
+ * taxonomy, so this is the direction that does not create a cycle.
+ * `ConsultantExpertise` in consultants.service.ts is an alias of this.
+ */
+export interface ConsultantPlacement {
+  categorySlug: string;
+  categoryName: string;
+  subcategorySlug: string;
+  subcategoryName: string;
+  isPrimary: boolean;
+}

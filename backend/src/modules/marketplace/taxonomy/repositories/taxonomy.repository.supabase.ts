@@ -4,6 +4,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import type { TaxonomyRepository } from './taxonomy.repository.interface';
 import type {
+  ConsultantPlacement,
   MarketplaceCategory,
   MarketplaceCategoryWithSubcategories,
   MarketplaceSubcategory,
@@ -15,6 +16,35 @@ const SUBCATEGORY_COLUMNS = 'id, slug, name, description, position';
 const NAVIGATION_SELECT = `${CATEGORY_COLUMNS}, subcategories:marketplace_subcategories(${SUBCATEGORY_COLUMNS})`;
 
 type Row = Record<string, any>;
+
+/**
+ * A consultant's own placements. `!inner` on both levels so a placement in a
+ * retired category or sub-category simply stops being returned rather than
+ * arriving with a null parent the mapper would have to guess at.
+ */
+const PLACEMENT_SELECT =
+  'is_primary, position, subcategory:marketplace_subcategories!inner(slug, name, category:marketplace_categories!inner(slug, name))';
+
+function firstOf<T>(value: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : (value ?? undefined);
+}
+
+function toPlacements(data: unknown): ConsultantPlacement[] {
+  return ((data ?? []) as Row[])
+    .map((row) => {
+      const subcategory = firstOf(row.subcategory as Row | Row[] | null);
+      const category = firstOf(subcategory?.category as Row | Row[] | null);
+      if (!subcategory || !category) return null;
+      return {
+        categorySlug: category.slug as string,
+        categoryName: category.name as string,
+        subcategorySlug: subcategory.slug as string,
+        subcategoryName: subcategory.name as string,
+        isPrimary: row.is_primary === true,
+      };
+    })
+    .filter((row): row is ConsultantPlacement => row !== null);
+}
 
 function toSubcategory(row: Row): MarketplaceSubcategory {
   return {
@@ -128,5 +158,47 @@ export class SupabaseTaxonomyRepository implements TaxonomyRepository {
       (item) => item.slug === subcategorySlug,
     );
     return match ? [match.id] : null;
+  }
+
+  async findConsultantSubcategories(
+    userId: string,
+  ): Promise<ConsultantPlacement[]> {
+    const { data, error } = await this.db
+      .from('consultant_subcategories')
+      .select(PLACEMENT_SELECT)
+      .eq('user_id', userId)
+      .order('position', { ascending: true });
+    if (error) throw error;
+    return toPlacements(data);
+  }
+
+  async replaceConsultantSubcategories(
+    userId: string,
+    subcategoryIds: string[],
+  ): Promise<ConsultantPlacement[]> {
+    // Delete-then-insert rather than a diff. The set is at most 5 and the
+    // editor submits the whole intended set, so a diff would buy nothing --
+    // and clearing first is what lets somebody swap all five at once without
+    // transiently tripping the cap trigger, which counts existing rows.
+    const { error: deleteError } = await this.db
+      .from('consultant_subcategories')
+      .delete()
+      .eq('user_id', userId);
+    if (deleteError) throw deleteError;
+
+    if (subcategoryIds.length > 0) {
+      const { error: insertError } = await this.db
+        .from('consultant_subcategories')
+        .insert(
+          subcategoryIds.map((id, index) => ({
+            user_id: userId,
+            subcategory_id: id,
+            position: index,
+          })),
+        );
+      if (insertError) throw insertError;
+    }
+
+    return this.findConsultantSubcategories(userId);
   }
 }
