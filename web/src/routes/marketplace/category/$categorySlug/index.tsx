@@ -35,8 +35,13 @@ function MarketplaceCategoryPage() {
 	return (
 		<main>
 			<section className="bg-foreground px-4 py-14 text-center sm:px-6 lg:px-8">
+				{/* "Solutions lead" is display copy only. The model, the enrolment
+				    table and every identifier stay `consultant` — renaming those was
+				    explicitly deferred. */}
 				<h1 className="mx-auto max-w-3xl text-[28px] font-bold leading-tight text-background sm:text-[34px]">
-					{name ? `Hire vetted ${name} consultants` : "Hire vetted consultants"}
+					{name
+						? `Hire vetted ${name} solutions leads`
+						: "Hire vetted solutions leads"}
 				</h1>
 				<p className="mx-auto mt-3 max-w-xl text-[14px] text-background/70">
 					{category?.description ??

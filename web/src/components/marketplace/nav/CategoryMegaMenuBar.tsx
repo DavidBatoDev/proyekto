@@ -119,7 +119,7 @@ export function CategoryMegaMenuBar({ categories }: CategoryMegaMenuBarProps) {
 			className="border-b border-border bg-card"
 			onMouseLeave={scheduleClose}
 		>
-			<div className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 py-2.5 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+			<div className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 				{categories.map((category, index) => {
 					const triggerId = `${baseId}-trigger-${index}`;
 					const panelId = `${baseId}-panel-${index}`;
@@ -149,7 +149,17 @@ export function CategoryMegaMenuBar({ categories }: CategoryMegaMenuBarProps) {
 								open(index);
 							}}
 							onKeyDown={(event) => onKeyDown(event, index)}
-							className="whitespace-nowrap text-[13px] text-muted-foreground transition-colors hover:text-foreground aria-expanded:text-foreground"
+							// The vertical padding lives on the link, not the row, so the
+							// underline can sit on the bar's own bottom edge and the whole
+							// strip height stays a click target rather than just the text.
+							className="relative whitespace-nowrap py-3 text-[13px] text-muted-foreground transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent after:transition-colors hover:text-foreground hover:after:bg-border aria-expanded:text-foreground"
+							activeProps={{
+								className:
+									"font-semibold text-foreground after:bg-foreground hover:after:bg-foreground",
+							}}
+							// A sub-category page keeps its parent category marked, so the
+							// strip says where you are rather than going blank one level in.
+							activeOptions={{ exact: false }}
 						>
 							{category.name}
 						</Link>
