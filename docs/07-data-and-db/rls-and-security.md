@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-19 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -72,15 +72,18 @@ policies are defense-in-depth allows, and there is no client write path:
 - `consultant_profiles`, `freelancer_profiles` — owners may read their enrollment
   and admins may manage all rows, but authenticated callers get no direct INSERT or
   UPDATE policy. Approval and self-service go-live/pause use the service-role API.
-- `marketplace_categories`, `marketplace_subcategories`, `consultant_subcategories` —
-  the curated marketplace taxonomy. All three are **public-read, write-nowhere**: each
-  carries a single `*_public_read` SELECT policy for `anon` and `authenticated`, and no
-  INSERT/UPDATE/DELETE policy at all, so only `service_role` (and migrations) can write.
-  The membership table's policy is `public.is_active_consultant(user_id)` rather than a
-  plain `true`, which is what makes suspending a consultant remove them from every
-  category page **without any membership row being deleted**. Consultant self-service
-  selection is deferred and will need its own policy plus a per-user row cap; the
-  intended shape is recorded in `20260818110000_marketplace_taxonomy.sql`.
+- `marketplace_categories`, `marketplace_subcategories` — the curated taxonomy itself.
+  Both are **public-read, write-nowhere**: a single `*_public_read` SELECT policy for
+  `anon` and `authenticated`, and no INSERT/UPDATE/DELETE policy at all, so only
+  `service_role` (and migrations) can write.
+- `consultant_subcategories` — membership. Public-read under
+  `public.is_active_consultant(user_id)` rather than a plain `true`, which is what makes
+  suspending a consultant remove them from every category page **without any membership
+  row being deleted**. No longer write-nowhere: `20260818120100` added the owner-write
+  policy (`user_id = auth.uid() AND public.is_active_consultant(auth.uid())`) plus a
+  `BEFORE INSERT` cap trigger at 5 rows, and `20260818120200` gave that trigger a
+  per-user `pg_advisory_xact_lock` so two concurrent inserts cannot both read a stale
+  count and overshoot the cap.
 - `project_activity_log` — the audit trail (service-role writes only), fed via the
   `@Global` `AuditService`. Domains append their own dotted actions; e.g. roadmap AI
   commit/rollback of a project-linked roadmap writes `roadmap.committed` /
@@ -94,6 +97,23 @@ policies are defense-in-depth allows, and there is no client write path:
   **only** a `service_role` policy — it belongs to no user (written by an
   unauthenticated RFC 7591 registration call), so RLS denies `authenticated`
   outright. See [Backend → MCP](../03-backend/mcp.md#storage).
+
+## Owner-only tables (no public read)
+
+- `marketplace_survey_responses`, `marketplace_survey_categories` — the marketplace
+  intake survey (`20260819100000`). A single `*_owner_all` policy per table,
+  `USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid())`, and **no `anon`
+  policy at all**: unlike the taxonomy and the service catalog, nothing here is a public
+  listing — it is what one person said about themselves. Deliberately *not* gated on
+  `is_active_consultant`, because everyone takes the survey and gating a personalization
+  row on a capability is the first step back towards an account role. A 3-row cap trigger
+  on the categories table copies the advisory-lock shape from
+  `tg_consultant_subcategories_cap`.
+
+  `marketplace_survey_responses.intents` must never appear in a policy, a guard, or a
+  route loader — `profiles.settings->'onboarding'->'intent'` held the same shape and was
+  deleted with `profiles.role`. `scripts/check_survey_is_not_authz.mjs` enforces this and
+  fails the build on a violation.
 
 ## Secrets & keys
 

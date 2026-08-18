@@ -6,6 +6,14 @@ import { MEGA_CLOSE_DELAY_MS, nextTriggerIndex } from "./categoryMegaMenu";
 
 interface CategoryMegaMenuBarProps {
 	categories: MarketplaceCategoryNav[];
+	/**
+	 * Categories the viewer named in the marketplace intake survey, marked with a
+	 * dot. Purely a marker: every category stays present, in the same order, and
+	 * equally clickable. The strip is the taxonomy, not a personalized list, and
+	 * reordering or hiding entries here would make the product's own structure
+	 * look different to different people.
+	 */
+	highlightSlugs?: readonly string[];
 }
 
 /**
@@ -19,7 +27,10 @@ interface CategoryMegaMenuBarProps {
  * sliding from one category to the next swaps panels instead of closing one and
  * reopening another.
  */
-export function CategoryMegaMenuBar({ categories }: CategoryMegaMenuBarProps) {
+export function CategoryMegaMenuBar({
+	categories,
+	highlightSlugs,
+}: CategoryMegaMenuBarProps) {
 	const baseId = useId();
 	const [openIndex, setOpenIndex] = useState<number | null>(null);
 	const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
@@ -168,6 +179,12 @@ export function CategoryMegaMenuBar({ categories }: CategoryMegaMenuBarProps) {
 							// strip says where you are rather than going blank one level in.
 							activeOptions={{ exact: false }}
 						>
+							{highlightSlugs?.includes(category.slug) && (
+								<span
+									aria-hidden="true"
+									className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle"
+								/>
+							)}
 							{category.name}
 						</Link>
 					);

@@ -20,6 +20,7 @@ import { AdminModule } from './modules/shared/admin/admin.module';
 import { ConsultantsModule } from './modules/marketplace/consultants/consultants.module';
 import { TaxonomyModule } from './modules/marketplace/taxonomy/taxonomy.module';
 import { ConsultantServicesModule } from './modules/marketplace/consultant-services/consultant-services.module';
+import { SurveyModule } from './modules/marketplace/survey/survey.module';
 import { ApplicationsModule } from './modules/marketplace/applications/applications.module';
 import { UploadsModule } from './modules/shared/uploads/uploads.module';
 import { GuestsModule } from './modules/shared/guests/guests.module';
@@ -81,6 +82,7 @@ import { AppController } from './app.controller';
     ConsultantsModule,
     TaxonomyModule,
     ConsultantServicesModule,
+    SurveyModule,
     ApplicationsModule,
     UploadsModule,
     GuestsModule,
