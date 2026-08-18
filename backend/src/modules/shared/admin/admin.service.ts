@@ -79,7 +79,7 @@ export class AdminService {
           message: 'Your consultant application was not approved.',
           reason: dto.reason ?? null,
         },
-        link_url: '/consultant/apply',
+        link_url: '/marketplace/consultant/apply',
       });
     }
     return rejected;

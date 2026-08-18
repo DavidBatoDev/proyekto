@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
@@ -17,6 +18,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { TEAM_TAG_MAX_COUNT, TEAM_TAG_MAX_LENGTH } from '../team-tags';
 
 /**
  * A single payout cut-off period. Kept as a plain interface (not a validated
@@ -51,6 +53,18 @@ export class CreateTeamDto {
   @IsOptional()
   @IsString()
   avatar_url?: string;
+
+  /**
+   * Freeform descriptive labels. Normalized (trim/dedupe/cap) in the service;
+   * the decorators here only bound the raw payload so a 10k-element array never
+   * reaches normalization. Never consulted for authorization.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(TEAM_TAG_MAX_COUNT)
+  @IsString({ each: true })
+  @MaxLength(TEAM_TAG_MAX_LENGTH, { each: true })
+  tags?: string[];
 }
 
 export class UpdateTeamDto {
@@ -67,6 +81,18 @@ export class UpdateTeamDto {
   @IsOptional()
   @IsString()
   avatar_url?: string;
+
+  /**
+   * Freeform descriptive labels. `[]` clears them; omitting the field leaves
+   * them alone (the same convention `pay_period_config` uses below). Never
+   * consulted for authorization, so this is deliberately ungated.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(TEAM_TAG_MAX_COUNT)
+  @IsString({ each: true })
+  @MaxLength(TEAM_TAG_MAX_LENGTH, { each: true })
+  tags?: string[];
 
   // ── Billing identity ──────────────────────────────────────────────────────
   // The service-provider block on contracts and invoices. All four accept ''

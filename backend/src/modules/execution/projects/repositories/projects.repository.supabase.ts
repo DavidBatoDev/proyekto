@@ -48,20 +48,21 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
 
-  async getCreatorProfileForProjectCreation(userId: string): Promise<{
-    consultant_profile: unknown;
-  } | null> {
+  async getCreatorProfileForProjectCreation(
+    userId: string,
+  ): Promise<{ id: string } | null> {
+    // Existence only. The consultant-capability embed that used to ride along
+    // here moved to ProjectAuthorizationService.isActiveConsultant, so this
+    // query no longer touches a marketplace table.
     const { data, error } = await this.supabase
       .from('profiles')
-      .select(
-        'id, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)',
-      )
+      .select('id')
       .eq('id', userId)
       .single();
 
     if (error || !data) return null;
 
-    return { consultant_profile: data.consultant_profile };
+    return { id: data.id as string };
   }
 
   private toProjectsTablePayload(

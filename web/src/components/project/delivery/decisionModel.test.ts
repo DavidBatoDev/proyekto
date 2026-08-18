@@ -15,6 +15,7 @@ import {
 	decisionLinkSegments,
 	decisionReference,
 	needsAttention,
+	needsOptionChoice,
 	selectedOption,
 	summarizeDecisions,
 	uncategorizedCount,
@@ -310,6 +311,41 @@ describe("selectedOption", () => {
 
 	it("returns null when nothing has been chosen yet", () => {
 		expect(selectedOption(decision({ options: [] }))).toBeNull();
+	});
+});
+
+describe("needsOptionChoice", () => {
+	const option = (id: string, isSelected = false) => ({
+		id,
+		decision_id: "dec-1",
+		title: id,
+		detail: null,
+		is_selected: isSelected,
+		position: 0,
+	});
+
+	it("asks when options were listed but none was marked", () => {
+		expect(
+			needsOptionChoice(decision({ options: [option("o1"), option("o2")] })),
+		).toBe(true);
+	});
+
+	it("stays quiet once one is marked", () => {
+		expect(
+			needsOptionChoice(
+				decision({ options: [option("o1", true), option("o2")] }),
+			),
+		).toBe(false);
+	});
+
+	it("stays quiet when no options were listed at all", () => {
+		// Nothing was weighed, so there is nothing to choose between — prompting
+		// here would be a dialog with an empty list.
+		expect(needsOptionChoice(decision({ options: [] }))).toBe(false);
+	});
+
+	it("stays quiet when options were never loaded", () => {
+		expect(needsOptionChoice(decision({ options: undefined }))).toBe(false);
 	});
 });
 

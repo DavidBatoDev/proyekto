@@ -1,4 +1,5 @@
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import { mapLegacyPath } from "./legacyRoutePaths";
 
 export const AUTH_CONTINUATION_KEY = "proyekto_auth_continuation";
 
@@ -34,7 +35,12 @@ function normalizeRedirectPath(value?: string | null): string | undefined {
 	const trimmed = value?.trim();
 	if (!trimmed) return undefined;
 	if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return undefined;
-	return trimmed;
+	// Mapped AFTER the origin check, never before — mapLegacyPath passes
+	// non-app strings straight through, so an absolute URL must already have
+	// been rejected. This is the one place both stale sessionStorage values and
+	// a fresh `?redirect=` from an email land, because SignupForm funnels the
+	// search param through here too.
+	return mapLegacyPath(trimmed);
 }
 
 function isAuthContinuation(value: unknown): value is AuthContinuation {

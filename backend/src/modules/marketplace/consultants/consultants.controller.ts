@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ConsultantsService } from './consultants.service';
+import { ConsultantDirectoryQueryDto } from './dto/consultants.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { SetCachePolicy } from '../../../common/decorators/cache-policy.decorator';
 import { CACHE_POLICY_PRESETS } from '../../../common/cache/cache-policy';
@@ -26,6 +27,23 @@ export class ConsultantsController {
   @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
   findAll(@Res({ passthrough: true }) response: Response) {
     return this.consultantsService.findAll({
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
+  }
+
+  /**
+   * Declared before `:id` on purpose - Nest matches in declaration order, so a
+   * dynamic segment above this would resolve `directory` as a consultant id and
+   * 404.
+   */
+  @Get('directory')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
+  directory(
+    @Query() query: ConsultantDirectoryQueryDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.consultantsService.directory(query, {
       onCacheStatus: (status) => this.setCacheHeader(response, status),
     });
   }

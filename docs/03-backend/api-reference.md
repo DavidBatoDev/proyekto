@@ -133,7 +133,8 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 
 ## teams · `teams` / `projects/:projectId/teams` / `…/rates`
 
-**`teams`** — list/create, `GET /teams/me/invites` + respond, workspace defaults,
+**`teams`** — list/create (create and update accept `tags: string[]`, normalized
+server-side to at most 20 labels of 40 chars), `GET /teams/me/invites` + respond, workspace defaults,
 `GET/PATCH/DELETE /teams/:id`, members list/update/remove, `POST/GET/DELETE
 /teams/:id/invites`. **`project-teams`** (base `projects/:projectId/teams`) — attach/
 detach a team, curated + available members. **`team-member-rates`** (base

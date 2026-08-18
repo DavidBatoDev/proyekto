@@ -1,6 +1,6 @@
 # Consultant Structure
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 `consultant_profiles` stores the lifecycle of the vetted marketplace capability.
 It does not duplicate the public profile: presentation and professional facts remain
@@ -38,6 +38,11 @@ Signup is lane-free and identical for everyone: onboarding writes
 `settings.onboarding.completed_at` and provisions a personal **workspace**. The
 personal **team** is provisioned at admin approval, idempotently and before
 verification, so an active consultant never exists without their required team.
+
+The `/welcome` deck asks every user to create a team, but that is an ordinary
+user-named team with `is_personal = false`. It does not claim the personal-team
+slot guarded by the partial unique index `teams(owner_id) WHERE is_personal`, so
+`provisionPersonalTeam` at approval still creates the personal team as before.
 
 ## Public directory
 

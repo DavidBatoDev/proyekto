@@ -711,7 +711,7 @@ function ProfilePage() {
 											{/* Apply as Consultant CTA — only shown when not yet verified */}
 											{!profile.is_consultant_verified && !appLoading && (
 												<Link
-													to="/consultant/apply"
+													to="/marketplace/consultant/apply"
 													className="text-sm font-semibold bg-teal-50 border border-teal-400 text-teal-600 px-4 py-1.5 rounded-full hover:bg-teal-100 transition-colors flex items-center gap-1.5"
 												>
 													{existingApp && existingApp.status !== "draft"
@@ -721,7 +721,7 @@ function ProfilePage() {
 											)}
 											{profile.freelancer_status === null && (
 												<Link
-													to="/freelancer/go-live"
+													to="/marketplace/freelancer/go-live"
 													className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 transition-colors"
 												>
 													I Want to Work
@@ -755,7 +755,7 @@ function ProfilePage() {
 												</button>
 											)}
 											<Link
-												to="/consultant/$profileId"
+												to="/marketplace/consultant/$profileId"
 												params={{ profileId }}
 												className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 transition-colors"
 											>

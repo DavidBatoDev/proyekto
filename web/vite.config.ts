@@ -47,7 +47,10 @@ export default defineConfig(({ command, mode }) => {
       tanstackRouter({
         target: 'react',
         autoCodeSplitting: true,
-        routeFileIgnorePattern: 'workItemsOptimistic\\.ts$',
+        // Co-located tests live beside the routes they cover; without this the
+        // generator warns that they "contain no route piece" and tries to
+        // treat them as routes.
+        routeFileIgnorePattern: 'workItemsOptimistic\\.ts$|\\.test\\.tsx?$',
       }),
       viteReact(),
       tailwindcss(),

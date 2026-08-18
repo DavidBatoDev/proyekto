@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	BookOpen,
@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { useId, useState } from "react";
 import { API_BASE_URL } from "@/api/axios";
-import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
 import {
 	listMcpConnections,
@@ -42,14 +41,9 @@ import {
 	type McpTokenSummary,
 	revokeMcpToken,
 } from "@/services/mcp-tokens.service";
-import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/settings/mcp-tokens")({
-	beforeLoad: () => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-	},
+	beforeLoad: () => {},
 	component: McpTokensPage,
 });
 
@@ -379,7 +373,7 @@ function McpTokensPage() {
 	const activeCount = tokens.filter((t) => tokenStatus(t) === "active").length;
 
 	return (
-		<DashboardShell>
+		<>
 			<div className="app-fade-in mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
 				{/* Header */}
 				<div className="mb-8 flex items-start gap-4">
@@ -705,6 +699,6 @@ function McpTokensPage() {
 					)}
 				</section>
 			</div>
-		</DashboardShell>
+		</>
 	);
 }

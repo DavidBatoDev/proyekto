@@ -4,6 +4,18 @@ export const REDIS_CACHE_KEYS = {
   consultantsList: 'cache:v1:consultants:list',
   consultantsProfile: (userId: string) =>
     `cache:v1:consultants:profile:${userId}`,
+  consultantsDirectoryByHash: (queryHash: string) =>
+    `cache:v1:consultants:directory:${queryHash}`,
+  consultantsIndex: 'cache:v1:index:consultants',
+  marketplaceTaxonomyNavigation: 'cache:v1:marketplace:taxonomy:navigation',
+  marketplaceTaxonomyCategory: (slug: string) =>
+    `cache:v1:marketplace:taxonomy:category:${slug.toLowerCase()}`,
+  marketplaceTaxonomySubcategory: (
+    categorySlug: string,
+    subcategorySlug: string,
+  ) =>
+    `cache:v1:marketplace:taxonomy:subcategory:${categorySlug.toLowerCase()}:${subcategorySlug.toLowerCase()}`,
+  marketplaceTaxonomyIndex: 'cache:v1:index:marketplace:taxonomy',
   roadmapTemplatesByHash: (queryHash: string) =>
     `cache:v3:roadmap-templates:catalog:${queryHash}`,
   roadmapTemplatesFeatured: 'cache:v3:roadmap-templates:featured',

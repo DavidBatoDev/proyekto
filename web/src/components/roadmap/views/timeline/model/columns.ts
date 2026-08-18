@@ -3,6 +3,7 @@ import {
 	addInterval,
 	floorToUnit,
 	getISOWeek,
+	toTimelinePx,
 } from "../../milestones/model/utils";
 
 export interface TimelineColumn {
@@ -18,20 +19,12 @@ export interface TimelineColumn {
 export interface TimelineGroup {
 	key: string;
 	label: string;
-	startIndex: number;
-	colCount: number;
-}
-
-/**
- * The Thursday of the ISO week containing `date`. ISO weeks belong to the month
- * (and year) of their Thursday, so a week straddling a month boundary is
- * grouped under exactly one month instead of being split.
- */
-export function isoWeekAnchor(date: Date): Date {
-	const anchor = new Date(date);
-	anchor.setHours(0, 0, 0, 0);
-	anchor.setDate(anchor.getDate() + 3 - ((anchor.getDay() + 6) % 7));
-	return anchor;
+	/**
+	 * Left edge in timeline px, on the same scale as every bar. NOT snapped to a
+	 * column edge — see buildGroups.
+	 */
+	left: number;
+	width: number;
 }
 
 export function columnLabel(date: Date, granularity: Granularity): string {
@@ -48,28 +41,36 @@ export function columnLabel(date: Date, granularity: Granularity): string {
 }
 
 /**
- * Label of the band above the date row. Each scale is grouped by the next
- * coarser unit, which is what makes the header readable:
+ * The unit the band above the date row is cut into. Each scale is grouped by
+ * the next coarser unit, which is what makes the header readable:
  *   day -> month, week -> month, month -> year, year -> none.
  */
+function bandUnit(granularity: Granularity): Granularity | null {
+	switch (granularity) {
+		case "day":
+		case "week":
+			return "month";
+		case "month":
+			return "year";
+		case "year":
+			return null;
+	}
+}
+
+/** Label of the band that `date` falls in. */
 export function groupLabel(
 	date: Date,
 	granularity: Granularity,
 ): string | null {
-	switch (granularity) {
-		case "day":
+	switch (bandUnit(granularity)) {
+		case "month":
 			return date.toLocaleDateString("en-US", {
 				month: "long",
 				year: "numeric",
 			});
-		case "week":
-			return isoWeekAnchor(date).toLocaleDateString("en-US", {
-				month: "long",
-				year: "numeric",
-			});
-		case "month":
-			return String(date.getFullYear());
 		case "year":
+			return String(date.getFullYear());
+		default:
 			return null;
 	}
 }
@@ -99,30 +100,65 @@ export function buildColumns(
 	return columns;
 }
 
+/**
+ * The bands above the date row, measured in pixels at the *true* period
+ * boundary rather than snapped to the nearest column edge.
+ *
+ * This matters only at the week scale, and it is the whole point of the
+ * function. A week straddles a month: W27 of 2026 runs Mon 29 Jun to Sun 5 Jul.
+ * Counting whole columns forces that week entirely into one month, so the
+ * header claims all of W27 is July while a bar ending 30 June is drawn two
+ * sevenths of the way into the same cell. The header and the bars are then
+ * describing different timelines, and the bar is the one telling the truth.
+ *
+ * Cutting the band where the month actually turns puts both on one scale: a bar
+ * ending on the last day of July now ends exactly on the August divider.
+ *
+ * At the day and month scales every boundary already falls on a column edge, so
+ * this returns what the old column-counting did, to the pixel.
+ */
 export function buildGroups(
 	columns: TimelineColumn[],
 	granularity: Granularity,
+	colWidth: number,
 ): TimelineGroup[] {
-	if (granularity === "year") return [];
+	const unit = bandUnit(granularity);
+	if (unit === null || columns.length === 0) return [];
+
+	const rangeStart = columns[0].start;
+	const totalWidth = columns.length * colWidth;
+	const rangeEnd = addInterval(
+		columns[columns.length - 1].start,
+		granularity,
+		1,
+	);
 
 	const groups: TimelineGroup[] = [];
+	let cursor = floorToUnit(rangeStart, unit);
 
-	columns.forEach((column, index) => {
-		const label = groupLabel(column.start, granularity);
-		if (label === null) return;
+	while (cursor.getTime() < rangeEnd.getTime()) {
+		const next = addInterval(cursor, unit, 1);
+		const label = groupLabel(cursor, granularity);
+		// Clamped: the first and last bands are usually partial.
+		const left = Math.max(
+			0,
+			toTimelinePx(cursor, rangeStart, granularity, colWidth),
+		);
+		const right = Math.min(
+			totalWidth,
+			toTimelinePx(next, rangeStart, granularity, colWidth),
+		);
 
-		const previous = groups[groups.length - 1];
-		if (previous && previous.label === label) {
-			previous.colCount += 1;
-			return;
+		if (label !== null && right > left) {
+			groups.push({
+				key: String(cursor.getTime()),
+				label,
+				left,
+				width: right - left,
+			});
 		}
-		groups.push({
-			key: `${label}-${index}`,
-			label,
-			startIndex: index,
-			colCount: 1,
-		});
-	});
+		cursor = next;
+	}
 
 	return groups;
 }

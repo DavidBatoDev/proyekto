@@ -5,6 +5,7 @@ import { Bell } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { mapLegacyPath } from "@/lib/legacyRoutePaths";
 import { notificationsService } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -118,10 +119,13 @@ export function NotificationBell() {
 		markReadMutation.mutate(id);
 
 		if (linkUrl) {
+			// link_url is backend-authored and persisted, so historical rows still
+			// carry pre-/marketplace paths; mapLegacyPath rewrites them without a
+			// visible bounce through the route shim.
 			const resolved =
 				linkUrl === "/freelancer/profile" && profile?.id
 					? `/profile/${profile.id}`
-					: linkUrl;
+					: mapLegacyPath(linkUrl);
 			window.location.href = resolved;
 		}
 	};

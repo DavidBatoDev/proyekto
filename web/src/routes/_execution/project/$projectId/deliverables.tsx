@@ -27,7 +27,7 @@ import {
 	pipelineColumnFor,
 	summarize,
 } from "@/components/project/delivery/deliveryModel";
-import { LinkRoadmapWorkModal } from "@/components/project/delivery/LinkRoadmapWorkModal";
+import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
 import {
 	useDeliverableMutations,
 	useDeliverablesQuery,

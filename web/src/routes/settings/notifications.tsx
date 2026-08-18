@@ -1,20 +1,14 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Bell, Loader2, Mail } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
 import {
 	type NotificationPreferences,
 	notificationsService,
 } from "@/services/notifications.service";
-import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/settings/notifications")({
-	beforeLoad: () => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-	},
+	beforeLoad: () => {},
 	component: NotificationSettingsPage,
 });
 
@@ -146,7 +140,7 @@ function NotificationSettingsPage() {
 	};
 
 	return (
-		<DashboardShell>
+		<>
 			<div className="mx-auto w-full max-w-2xl px-4 py-8">
 				<header className="mb-6 flex items-center gap-3">
 					<Bell className="h-6 w-6 text-primary" />
@@ -227,6 +221,6 @@ function NotificationSettingsPage() {
 					</div>
 				)}
 			</div>
-		</DashboardShell>
+		</>
 	);
 }

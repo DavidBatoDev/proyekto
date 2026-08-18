@@ -1,6 +1,6 @@
 # Consultant User Flows
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The Consultant flow deliberately separates vetting from project authority. Signup is
 the same lane-free flow as everyone else's; approval unlocks product capability;
@@ -13,6 +13,8 @@ Lane-free 4-step signup (Account -> Password -> Profile -> Verify)
   -> settings.onboarding = { completed_at }
   -> personal workspace provisioned
   -> single welcome deck
+       -> required team step (user-named, is_personal = false;
+          the personal team still comes at vetting approval)
 ```
 
 There is no consultant signup lane and no role selection at `/welcome` — nothing
@@ -41,7 +43,7 @@ assignment changes the project relationship.
 
 ## 4. Find and invite Talent
 
-The consultant opens `/consultant/marketplace`, searches public profiles, and selects a
+The consultant opens `/marketplace/talent`, searches public profiles, and selects a
 project they administer. The service rechecks active status, project admin authority, public
 visibility, and self-invite prevention. Acceptance gives Talent editor access.
 

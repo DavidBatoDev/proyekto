@@ -1,8 +1,19 @@
+import { Flag } from "lucide-react";
+
 /**
  * Epic / Feature / Task glyphs — the same artwork as
  * `web/public/svgs/nodes/{epic,feature,task}.svg`, inlined so the epic tile can
  * be tinted with the epic's own colour instead of the fixed purple.
  */
+
+/**
+ * The kinds of roadmap node anything can point at.
+ *
+ * Lives here rather than in a feature's model file because every surface that
+ * links to roadmap work needs it. It used to sit in `delivery/deliveryModel.ts`,
+ * which made the shared glyph component depend on the Deliverables model.
+ */
+export type RoadmapNodeKind = "epic" | "feature" | "task" | "milestone";
 
 type NodeGlyphProps = {
 	/** Rendered size in px. The artwork is authored on a 64px grid. */
@@ -83,3 +94,30 @@ export const TaskGlyph = ({ size = 16, className }: NodeGlyphProps) => (
 		</g>
 	</svg>
 );
+
+/**
+ * A node of any kind, so a link trail renders exactly as it does on the canvas,
+ * the board and the left panel.
+ *
+ * There is no milestone artwork above — `Flag` is the only milestone icon
+ * anywhere in the app — so that level is a lucide icon boxed to match the tiles.
+ */
+export function RoadmapNodeGlyph({
+	kind,
+	size = 14,
+}: {
+	kind: RoadmapNodeKind;
+	size?: number;
+}) {
+	if (kind === "epic") return <EpicGlyph size={size} />;
+	if (kind === "feature") return <FeatureGlyph size={size} />;
+	if (kind === "task") return <TaskGlyph size={size} />;
+	return (
+		<span
+			className="flex shrink-0 items-center justify-center rounded-[4px] bg-amber-500"
+			style={{ width: size, height: size }}
+		>
+			<Flag className="h-2.5 w-2.5 text-white" />
+		</span>
+	);
+}

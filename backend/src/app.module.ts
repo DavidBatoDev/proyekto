@@ -18,6 +18,7 @@ import { ProjectsModule } from './modules/execution/projects/projects.module';
 import { PayoutsModule } from './modules/marketplace/payouts/payouts.module';
 import { AdminModule } from './modules/shared/admin/admin.module';
 import { ConsultantsModule } from './modules/marketplace/consultants/consultants.module';
+import { TaxonomyModule } from './modules/marketplace/taxonomy/taxonomy.module';
 import { ApplicationsModule } from './modules/marketplace/applications/applications.module';
 import { UploadsModule } from './modules/shared/uploads/uploads.module';
 import { GuestsModule } from './modules/shared/guests/guests.module';
@@ -35,6 +36,7 @@ import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
 import { ContractsModule } from './modules/marketplace/contracts/contracts.module';
 import { EngagementsModule } from './modules/marketplace/engagements/engagements.module';
+import { ProjectCommerceModule } from './modules/marketplace/project-commerce/project-commerce.module';
 import { FinancialsModule } from './modules/marketplace/financials/financials.module';
 import { FinanceModule } from './modules/marketplace/finance/finance.module';
 import { RealtimeModule } from './modules/shared/realtime/realtime.module';
@@ -76,6 +78,7 @@ import { AppController } from './app.controller';
     PayoutsModule,
     AdminModule,
     ConsultantsModule,
+    TaxonomyModule,
     ApplicationsModule,
     UploadsModule,
     GuestsModule,
@@ -93,6 +96,7 @@ import { AppController } from './app.controller';
     InvoicesModule,
     ContractsModule,
     EngagementsModule,
+    ProjectCommerceModule,
     FinancialsModule,
     FinanceModule,
     RealtimePublisherModule,

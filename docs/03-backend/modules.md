@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-08-14 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 The backend is **31 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
@@ -62,7 +62,9 @@ group-level barrel modules.
 **`auth`** — Supabase-backed auth (session + email OTP) and lane-free onboarding:
 `PATCH /auth/onboarding/complete` takes an empty body, writes
 `settings.onboarding = { completed_at }`, and provisions a personal workspace for
-every user (no team at signup — that happens at vetting approval). Imports
+every user (no team is auto-provisioned at signup; the `/welcome` deck asks the
+user to create a non-personal one, while the *personal* team is still provisioned
+at vetting approval). Imports
 `ProjectsModule`, `ProfileModule`, `TeamsModule`. Files: `auth.service.ts`,
 `email-otp.service.ts`.
 

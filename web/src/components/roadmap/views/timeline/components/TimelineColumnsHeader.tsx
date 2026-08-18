@@ -73,12 +73,11 @@ export const TimelineColumnsHeader = ({
 					style={{ height: SUPER_ROW_H, width: totalWidth }}
 				>
 					{groups.map((group) => {
-						const left = group.startIndex * cw;
-						const width = group.colCount * cw;
-						// Only render groups that intersect the window.
+						// Culled in px, not in columns: a band boundary can fall inside a
+						// column at the week scale, so it has no column index to compare.
 						if (
-							group.startIndex + group.colCount < windowStart ||
-							group.startIndex > windowEnd
+							group.left + group.width < windowStart * cw ||
+							group.left > windowEnd * cw
 						) {
 							return null;
 						}
@@ -86,7 +85,7 @@ export const TimelineColumnsHeader = ({
 							<div
 								key={group.key}
 								className="absolute top-0 h-full overflow-hidden border-r border-gray-200"
-								style={{ left, width }}
+								style={{ left: group.left, width: group.width }}
 							>
 								{/* Sticky inside its own band: a group wider than the
 								    viewport keeps its label on screen instead of centring

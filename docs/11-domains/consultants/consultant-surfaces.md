@@ -11,28 +11,28 @@ not automatically protected; each surface has its own gate.
 | Route | Purpose | Gate |
 | --- | --- | --- |
 | `/consultant` | Consultant landing page | Public |
-| `/consultant/browse` | Browse active consultant directory | Public API joined to `consultant_profiles.status='verified'` |
-| `/consultant/$profileId` | View an active consultant profile | Public API joined to `consultant_profiles.status='verified'` |
+| `/marketplace/consultant/browse` | Browse active consultant directory | Public API joined to `consultant_profiles.status='verified'` |
+| `/marketplace/consultant/$profileId` | View an active consultant profile | Public API joined to `consultant_profiles.status='verified'` |
 
 ## Application and shared routes
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/consultant/apply` | Create and submit a consultant application | Authentication; open to any account |
+| `/marketplace/consultant/apply` | Create and submit a consultant application | Authentication; open to any account |
 | `/dashboard` | Shared project and workspace dashboard | Authentication |
 | `/teams/*` | Personal/reusable teams, invites, rates, and time | Team membership and operation-specific checks |
 | `/project/$projectId/*` | Delivery workspace | Resolved project access and backend permission checks |
-| `/project-posting` | Client- or consultant-mode project creation UI | Active status required only for consultant mode |
+| `/marketplace/project-posting` | Client- or consultant-mode project creation UI | Active status required only for consultant mode |
 
 ## Active-consultant routes
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/consultant/marketplace` | Search and invite Talent | Web predicate plus guarded marketplace API |
-| `/consultant/templates` | Manage consultant-authored roadmap templates | Web predicate plus guarded write endpoints |
-| `/finance` | Portfolio summary | Finance controller guard |
-| `/finance/contracts` and related views | Contract operations | Finance/controller and project checks |
-| `/finance/invoices` and related views | Invoice operations | Finance/controller and project checks |
+| `/marketplace/talent` | Search and invite Talent | Web predicate plus guarded marketplace API |
+| `/marketplace/consultant/templates` | Manage consultant-authored roadmap templates | Web predicate plus guarded write endpoints |
+| `/marketplace/finance` | Portfolio summary | Finance controller guard |
+| `/marketplace/finance/contracts` and related views | Contract operations | Finance/controller and project checks |
+| `/marketplace/finance/invoices` and related views | Invoice operations | Finance/controller and project checks |
 
 The sidebar displays Finance only for an active consultant. Direct navigation still reaches a
 page shell in some cases, but protected API calls return 403 when the predicate fails.

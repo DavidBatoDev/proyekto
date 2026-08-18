@@ -38,7 +38,9 @@ describe("DashboardCreateActions", () => {
 		const projectLink = screen.getByRole("link", { name: /create project/i });
 		const roadmapLink = screen.getByRole("link", { name: /create roadmap/i });
 
-		expect(projectLink.getAttribute("href")).toBe("/project-posting");
+		expect(projectLink.getAttribute("href")).toBe(
+			"/marketplace/project-posting",
+		);
 		expect(projectLink.getAttribute("data-hierarchy-level")).toBe("project");
 		expect(roadmapLink.getAttribute("href")).toBe("/roadmap-templates");
 		expect(roadmapLink.getAttribute("data-hierarchy-level")).toBe("roadmap");

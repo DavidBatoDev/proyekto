@@ -22,6 +22,13 @@ interface AnchoredPopoverProps {
 	maxHeight?: number;
 	/** Align the popover to the anchor's "left" (default) or "right" edge. */
 	align?: "left" | "right";
+	/**
+	 * Stacking order. The 1100 default sits above page chrome but BELOW
+	 * `AppDialog`, which starts at 1200 — so a popover opened from inside a modal
+	 * must be given a higher value or it renders behind the dialog panel and
+	 * swallows its own clicks. See the z-index ladder in `AppDialog`.
+	 */
+	zIndex?: number;
 	ariaLabel?: string;
 	className?: string;
 }
@@ -34,6 +41,7 @@ export function AnchoredPopover({
 	width,
 	maxHeight = 340,
 	align = "left",
+	zIndex = 1100,
 	ariaLabel,
 	className,
 }: AnchoredPopoverProps) {
@@ -109,7 +117,7 @@ export function AnchoredPopover({
 				left: coords.left,
 				width: coords.width,
 				maxHeight,
-				zIndex: 1100,
+				zIndex,
 			}}
 			className={
 				className ??

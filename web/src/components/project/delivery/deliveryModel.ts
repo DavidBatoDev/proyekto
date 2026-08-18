@@ -1,5 +1,14 @@
+import {
+	type LinkSegment,
+	trailSegment,
+} from "@/components/project/roadmap-links/linkTrail";
 import type { Deliverable, DeliverableLink } from "@/services/delivery.service";
 import type { StatusTone } from "./DeliveryPrimitives";
+
+// Re-exported so the many existing `from "./deliveryModel"` imports of these two
+// keep working; both now live in the neutral roadmap-links module.
+export type { LinkSegment } from "@/components/project/roadmap-links/linkTrail";
+export type { RoadmapNodeKind } from "@/components/roadmap/shared/NodeGlyph";
 
 /**
  * Presentation rules for deliverables, kept out of the components so they are
@@ -128,23 +137,13 @@ export function linkTrail(link: DeliverableLink): string[] | null {
 	return null;
 }
 
-export type RoadmapNodeKind = "epic" | "feature" | "task" | "milestone";
-
-export interface LinkSegment {
-	kind: RoadmapNodeKind;
-	title: string;
-}
-
 /**
  * The same trail as `linkTrail`, but each segment keeps its kind so the UI can
  * give it its own glyph. Ordered outermost first (epic → feature → task), which
  * is the order a tree draws in.
  */
 export function linkSegments(link: DeliverableLink): LinkSegment[] {
-	const segment = (
-		kind: RoadmapNodeKind,
-		title: string | undefined | null,
-	): LinkSegment[] => (title ? [{ kind, title }] : []);
+	const segment = trailSegment;
 
 	if (link.task) {
 		return [

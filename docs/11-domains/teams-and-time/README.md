@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -13,7 +13,7 @@ A team is owned by any user and reused across projects.
 
 | Table | Holds |
 | --- | --- |
-| `teams` | The team (rate/time flags, default currency) |
+| `teams` | The team (rate/time flags, default currency, freeform `tags`) |
 | `team_members` | Roster + role (`owner` \| `admin` \| `member`) |
 | `team_invites` | Email invites to join a team |
 | `project_teams` | Attaches a team to a project (primary / contributor) |
@@ -27,6 +27,21 @@ don't grant access twice. See [Data → RLS & security](../../07-data-and-db/rls
 
 Rate rules are guarded: a trigger requires a verified consultant for certain rate
 operations, and the team owner can't be removed.
+
+**Tags are labels, not permissions.** `teams.tags` is a freeform `text[]` (GIN-indexed,
+`NOT NULL DEFAULT '{}'`) that the API normalizes on write — trimmed, whitespace-collapsed,
+case-insensitively deduped, capped at 20 tags of 40 characters. They are descriptive in
+exactly the sense `project_access.origin` is descriptive: nothing in authorization reads
+them, and nothing may start. They are set when a team is created (the `/welcome` deck and
+the `/teams` modal) and edited under Team settings → General.
+
+**Where onboarding invites go.** The `/welcome` invite step invites people to the personal
+*workspace project*, not to the team created a step earlier. Team membership alone grants no
+project access — access appears only once a team is attached (`project_teams`) and its
+members are curated in (`project_team_members`), which is what fires the trigger above. A
+variant that invites to the team *and* auto-attaches it to the personal workspace was
+considered and deferred: it changes what a personal workspace is and doubles the invite
+fan-out.
 
 ## Time tracking
 

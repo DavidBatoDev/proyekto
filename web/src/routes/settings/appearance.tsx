@@ -9,11 +9,9 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
-import { DashboardShell } from "@/components/layout/DashboardShell";
 import { featureFlags } from "@/config/featureFlags";
 import { useToast } from "@/hooks/useToast";
 import { useAppearanceStore } from "@/stores/appearanceStore";
-import { useAuthStore } from "@/stores/authStore";
 import { THEME_OPTIONS } from "@/theme/presets";
 import {
 	normalizeHex,
@@ -25,9 +23,6 @@ import type { HexColor } from "@/theme/types";
 export const Route = createFileRoute("/settings/appearance")({
 	beforeLoad: () => {
 		if (!featureFlags.themeSystem) throw redirect({ to: "/dashboard" });
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
 	},
 	component: AppearanceSettingsPage,
 });
@@ -298,7 +293,7 @@ function AppearanceSettingsPage() {
 	};
 
 	return (
-		<DashboardShell>
+		<>
 			<div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
 				<div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 					<div>
@@ -459,6 +454,6 @@ function AppearanceSettingsPage() {
 				</section>
 			</div>
 			{importOpen && <ImportThemeDialog onClose={() => setImportOpen(false)} />}
-		</DashboardShell>
+		</>
 	);
 }

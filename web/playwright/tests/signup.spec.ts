@@ -106,7 +106,7 @@ test.describe("Signup Flow", () => {
     // Step 5 — email OTP (manual input required)
     await waitForEmailVerification(page);
 
-    // ── /welcome — client/freelancer deck (4 slides) ──────────────────────
+    // ── /welcome — the deck (6 slides with the theme flag on) ─────────────
 
     // Slide 1: Welcome
     await expect(page.getByText(/Welcome to Proyekto/)).toBeVisible();
@@ -128,9 +128,24 @@ test.describe("Signup Flow", () => {
     await workspaceInput.fill("Proyekto Test Workspace");
     await page.getByRole("button", { name: /Next/ }).click();
 
-    // Slide 4: Invite a team member then finish
+    // Slide 4: Theme picker — flag-gated (featureFlags.themeSystem), so it is
+    // stepped past only when it actually rendered.
+    const themeHeading = page.getByRole("heading", { name: "Make it yours" });
+    if (await themeHeading.isVisible().catch(() => false)) {
+      await page.getByRole("button", { name: /Next/ }).click();
+    }
+
+    // Slide 5: Create your team — required, so Next stays disabled until named
     await expect(
-      page.getByRole("heading", { name: "Invite your team" }),
+      page.getByRole("heading", { name: "Create your team" }),
+    ).toBeVisible();
+    await page.getByPlaceholder("e.g. Engineering Squad").fill("QA Test Squad");
+    await page.getByLabel("Team labels").fill("qa-automation");
+    await page.getByRole("button", { name: /Next/ }).click();
+
+    // Slide 6: Invite a workspace collaborator then finish
+    await expect(
+      page.getByRole("heading", { name: "Invite people to your workspace" }),
     ).toBeVisible();
     const inviteInput = page.getByPlaceholder("teammate@company.com");
     await inviteInput.fill("testinvite@proyekto.tech");

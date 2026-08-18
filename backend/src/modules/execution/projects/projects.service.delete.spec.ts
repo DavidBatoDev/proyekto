@@ -1,66 +1,33 @@
 import { BadRequestException } from '@nestjs/common';
+import type { ProjectCommercePort } from './ports/project-commerce.port';
 import { ProjectsService } from './projects.service';
 
-type QueryResponse = {
-  data?: unknown;
-  error?: { message: string } | null;
-  count?: number;
-};
-
-type QueryCall = {
-  table: string;
-  operations: Array<[string, ...unknown[]]>;
-};
-
-function queryStub(
-  table: string,
-  response: QueryResponse,
-  calls: QueryCall[],
-  sequence: string[],
-) {
-  const call: QueryCall = { table, operations: [] };
-  calls.push(call);
-  const builder: Record<string, jest.Mock | ((...args: unknown[]) => unknown)> =
-    {};
-  for (const method of ['select', 'eq', 'in']) {
-    builder[method] = jest.fn((...args: unknown[]) => {
-      call.operations.push([method, ...args]);
-      return builder;
-    });
-  }
-  builder.delete = jest.fn(() => {
-    call.operations.push(['delete']);
-    sequence.push(`delete:${table}`);
-    return builder;
-  });
-  builder.then = (resolve: (value: QueryResponse) => unknown) =>
-    Promise.resolve(response).then(resolve);
-  return builder;
-}
-
-function buildHarness(input: {
-  contractBlockers?: number;
-  invoiceBlockers?: number;
-}) {
+/**
+ * Deletion is the ordering-sensitive half of the commerce inversion: refuse
+ * first, stop running timers while the project still exists, then clear drafts.
+ *
+ * The harness deliberately builds ProjectsService with NO Supabase table stubs
+ * for contracts or invoices and no marketplace module anywhere. If execution
+ * ever reaches back into those tables directly, these tests stop passing —
+ * which is the point of them.
+ */
+function buildHarness(input: { vetoWith?: Error } = {}) {
   const sequence: string[] = [];
-  const calls: QueryCall[] = [];
-  const responses: Record<string, QueryResponse[]> = {
-    contracts: [
-      { data: null, error: null, count: input.contractBlockers ?? 0 },
-      { data: null, error: null },
-    ],
-    invoices: [
-      { data: null, error: null, count: input.invoiceBlockers ?? 0 },
-      { data: null, error: null },
-    ],
-  };
-  const supabase = {
-    from: jest.fn((table: string) => {
-      const response = responses[table]?.shift();
-      if (!response) throw new Error(`Unexpected query for ${table}`);
-      return queryStub(table, response, calls, sequence);
+
+  const commerce: jest.Mocked<ProjectCommercePort> = {
+    assertProjectDeletable: jest.fn().mockImplementation(() => {
+      sequence.push('veto:checked');
+      return input.vetoWith
+        ? Promise.reject(input.vetoWith)
+        : Promise.resolve();
     }),
+    purgeDraftCommerce: jest.fn().mockImplementation(() => {
+      sequence.push('purge:drafts');
+      return Promise.resolve();
+    }),
+    getInvoiceSummary: jest.fn(),
   };
+
   const projectsRepo = {
     findById: jest.fn().mockResolvedValue({
       id: 'project-1',
@@ -81,87 +48,121 @@ function buildHarness(input: {
   const cacheInvalidation = {
     invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
   };
+  // Throws on any property access, so a stray direct table read fails loudly
+  // instead of silently returning undefined.
+  const supabase = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error(
+          'deleteProject must not touch Supabase directly — use the commerce port',
+        );
+      },
+    },
+  );
 
   const service = new ProjectsService(
-    projectsRepo as any,
-    { createNotification: jest.fn() } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    supabase as any,
-    {} as any,
-    cacheInvalidation as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    teamTime as any,
+    projectsRepo as never,
+    { createNotification: jest.fn() } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    supabase as never,
+    {} as never,
+    cacheInvalidation as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    teamTime as never,
+    commerce,
   );
-  return {
-    service,
-    projectsRepo,
-    teamTime,
-    cacheInvalidation,
-    calls,
-    sequence,
-  };
+  return { service, projectsRepo, teamTime, cacheInvalidation, commerce, sequence };
 }
 
 describe('ProjectsService.deleteProject', () => {
-  it('blocks deletion when a sent or signed contract exists', async () => {
-    const harness = buildHarness({ contractBlockers: 1 });
+  it('refuses when the commerce port vetoes, before touching anything else', async () => {
+    const harness = buildHarness({
+      vetoWith: new BadRequestException(
+        'Cannot delete this project while it has sent or signed contracts or issued or sent invoices.',
+      ),
+    });
 
     await expect(
       harness.service.deleteProject('project-1', 'owner-1'),
     ).rejects.toThrow(BadRequestException);
+
     expect(harness.teamTime.stopRunningLogsForProject).not.toHaveBeenCalled();
+    expect(harness.commerce.purgeDraftCommerce).not.toHaveBeenCalled();
     expect(harness.projectsRepo.deleteProject).not.toHaveBeenCalled();
   });
 
-  it('blocks deletion when an issued or sent invoice exists', async () => {
-    const harness = buildHarness({ invoiceBlockers: 1 });
+  it('checks ownership before asking the commerce port anything', async () => {
+    const harness = buildHarness();
 
     await expect(
-      harness.service.deleteProject('project-1', 'owner-1'),
-    ).rejects.toThrow(/pay or void invoices/i);
-    expect(harness.teamTime.stopRunningLogsForProject).not.toHaveBeenCalled();
-    expect(harness.projectsRepo.deleteProject).not.toHaveBeenCalled();
+      harness.service.deleteProject('project-1', 'not-the-owner'),
+    ).rejects.toThrow();
+
+    expect(harness.commerce.assertProjectDeletable).not.toHaveBeenCalled();
   });
 
-  it('allows terminal-only finance history, stops timers, and deletes drafts', async () => {
-    const harness = buildHarness({});
+  it('vetoes, stops timers, purges drafts, then deletes — in that order', async () => {
+    const harness = buildHarness();
 
     await expect(
       harness.service.deleteProject('project-1', 'owner-1'),
     ).resolves.toBeUndefined();
 
-    expect(harness.teamTime.stopRunningLogsForProject).toHaveBeenCalledWith(
+    expect(harness.commerce.assertProjectDeletable).toHaveBeenCalledWith(
       'project-1',
     );
-    const invoiceDelete = harness.calls.find(
-      (call) =>
-        call.table === 'invoices' &&
-        call.operations.some(([operation]) => operation === 'delete'),
+    expect(harness.commerce.purgeDraftCommerce).toHaveBeenCalledWith(
+      'project-1',
     );
-    const contractDelete = harness.calls.find(
-      (call) =>
-        call.table === 'contracts' &&
-        call.operations.some(([operation]) => operation === 'delete'),
-    );
-    expect(invoiceDelete?.operations).toContainEqual(['eq', 'status', 'draft']);
-    expect(contractDelete?.operations).toContainEqual([
-      'eq',
-      'status',
-      'draft',
-    ]);
+    // Timers must stop while the project still exists, and drafts must go
+    // before the row does.
     expect(harness.sequence).toEqual([
+      'veto:checked',
       'stop:timers',
-      'delete:invoices',
-      'delete:contracts',
+      'purge:drafts',
       'delete:project',
     ]);
     expect(
       harness.cacheInvalidation.invalidateAllDashboardCache,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs with no commerce implementation at all', async () => {
+    // Execution standalone: the port defaults to a no-op, so nothing forbids
+    // deletion and there is nothing to purge.
+    const projectsRepo = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'project-1',
+        title: 'Standalone project',
+        owner_id: 'owner-1',
+      }),
+      deleteProject: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ProjectsService(
+      projectsRepo as never,
+      { createNotification: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { stopRunningLogsForProject: jest.fn().mockResolvedValue(0) } as never,
+    );
+
+    await expect(
+      service.deleteProject('project-1', 'owner-1'),
+    ).resolves.toBeUndefined();
+    expect(projectsRepo.deleteProject).toHaveBeenCalledWith('project-1');
   });
 });

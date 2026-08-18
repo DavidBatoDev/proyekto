@@ -15,6 +15,13 @@ import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { AppTabs } from "@/components/common/AppTabs";
 import { Avatar } from "@/components/common/Avatar";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import {
+	CrButton,
+	CrFact,
+	CrSection,
+	CrSkeleton,
+	CrStatusDot,
+} from "@/components/project/change-requests/CrPrimitives";
 import { ChangeRequestDecisionModal } from "@/components/project/delivery/ChangeRequestDecisionModal";
 import { ChangeRequestFormModal } from "@/components/project/delivery/ChangeRequestFormModal";
 import {
@@ -25,25 +32,14 @@ import {
 } from "@/components/project/delivery/changeRequestCache";
 import {
 	CHANGE_REQUEST_STATUS_LABEL,
-	CHANGE_REQUEST_STATUS_TONE,
 	changeRequestReference,
 	crLinkSegments,
 	timelineImpact,
 } from "@/components/project/delivery/changeRequestModel";
-import {
-	DeliverySkeleton,
-	FieldLabel,
-	ListBox,
-	ListEmpty,
-	ListRow,
-	PrimaryButton,
-	RoadmapNodeGlyph,
-	SecondaryButton,
-	StatusPill,
-} from "@/components/project/delivery/DeliveryPrimitives";
-import { LinkRoadmapWorkModal } from "@/components/project/delivery/LinkRoadmapWorkModal";
 import { RecordAppliedModal } from "@/components/project/delivery/RecordAppliedModal";
 import { ActivityFeed } from "@/components/project/logs/ActivityFeed";
+import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
+import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import {
 	useChangeRequestMutations,
@@ -85,7 +81,7 @@ function ChangeRequestDetailPage() {
 		<RequireProjectAccess
 			projectId={projectId}
 			access="delivery"
-			loadingFallback={<DeliverySkeleton rows={1} />}
+			loadingFallback={<CrSkeleton groups={1} />}
 		>
 			<DetailBody />
 		</RequireProjectAccess>
@@ -108,7 +104,7 @@ function DetailBody() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-	if (query.isPending) return <DeliverySkeleton rows={1} />;
+	if (query.isPending) return <CrSkeleton groups={1} />;
 
 	const request = query.data;
 	if (!request) {
@@ -135,29 +131,32 @@ function DetailBody() {
 
 	return (
 		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			{/* Same top bar as the list page: page chrome running edge to edge,
-			    holding its ground while the tabs scroll under it. */}
-			<header className="sticky top-0 z-10 border-b border-border bg-card/90 px-6 py-3.5 backdrop-blur md:px-10">
-				<div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+			{/* A register entry's masthead: the reference reads as an identifier and
+			    the verbs sit on their own line, so the page opens with what this IS
+			    rather than with a toolbar. */}
+			<header className="border-b border-border px-6 pb-4 pt-3.5 md:px-10">
+				<Link
+					to="/project/$projectId/change-requests"
+					params={{ projectId }}
+					className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+				>
+					<ArrowLeft className="h-3 w-3" />
+					Change Requests
+				</Link>
+				<div className="mt-2 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
 					<div className="min-w-0">
-						<Link
-							to="/project/$projectId/change-requests"
-							params={{ projectId }}
-							className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-						>
-							<ArrowLeft className="h-3 w-3" />
-							Change Requests
-						</Link>
-						<div className="flex flex-wrap items-center gap-2">
-							<span className="font-mono text-sm font-semibold text-muted-foreground">
+						<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+							<span className="font-mono text-xs text-muted-foreground">
 								{changeRequestReference(request)}
 							</span>
-							<h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+							<h1 className="text-xl font-semibold tracking-tight text-foreground">
 								{request.title}
 							</h1>
-							<StatusPill
+						</div>
+						<div className="mt-1.5">
+							<CrStatusDot
+								status={request.status}
 								label={CHANGE_REQUEST_STATUS_LABEL[request.status]}
-								tone={CHANGE_REQUEST_STATUS_TONE[request.status]}
 							/>
 						</div>
 					</div>
@@ -166,59 +165,56 @@ function DetailBody() {
 					    guards, so a button never offers a write the server refuses. */}
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						{statusAllowsDecision(request) && canDecide && (
-							<PrimaryButton
+							<CrButton
+								tone="primary"
 								onClick={() => setIsDeciding(true)}
 								disabled={busy}
 							>
-								<CheckCircle2 className="h-4 w-4" />
+								<CheckCircle2 className="h-3.5 w-3.5" />
 								Decide
-							</PrimaryButton>
+							</CrButton>
 						)}
 						{canMarkApplied(request) && canDecide && (
-							<PrimaryButton
+							<CrButton
+								tone="primary"
 								onClick={() => setIsApplying(true)}
 								disabled={busy}
 							>
-								<GitBranch className="h-4 w-4" />
+								<GitBranch className="h-3.5 w-3.5" />
 								Apply to roadmap
-							</PrimaryButton>
+							</CrButton>
 						)}
 						{statusIsOpen(request) && canCreate && (
 							<>
-								<PrimaryButton
+								<CrButton
+									tone="primary"
 									onClick={() => mutations.submit.mutate(request.id)}
 									disabled={busy}
 								>
-									<Send className="h-4 w-4" />
+									<Send className="h-3.5 w-3.5" />
 									Submit for decision
-								</PrimaryButton>
-								<SecondaryButton
-									onClick={() => setIsEditing(true)}
-									disabled={busy}
-								>
+								</CrButton>
+								<CrButton onClick={() => setIsEditing(true)} disabled={busy}>
 									<Pencil className="h-3.5 w-3.5" />
 									Edit
-								</SecondaryButton>
+								</CrButton>
 							</>
 						)}
 						{canWithdraw(request) && canCreate && (
-							<SecondaryButton
-								onClick={() => setIsWithdrawing(true)}
-								disabled={busy}
-							>
+							<CrButton onClick={() => setIsWithdrawing(true)} disabled={busy}>
 								<Undo2 className="h-3.5 w-3.5" />
 								Withdraw
-							</SecondaryButton>
+							</CrButton>
 						)}
 						{canDecide && (
-							<SecondaryButton
+							<CrButton
 								tone="danger"
 								onClick={() => setIsDeleting(true)}
 								disabled={mutations.remove.isPending}
 							>
 								<Trash2 className="h-3.5 w-3.5" />
 								Delete
-							</SecondaryButton>
+							</CrButton>
 						)}
 					</div>
 				</div>
@@ -480,106 +476,89 @@ function OverviewTab({
 	const decided = Boolean(request.decided_at);
 
 	return (
-		<div className="grid gap-4 lg:grid-cols-2">
-			<ListBox title="The request" bodyClassName="min-h-[12rem]">
-				<ListRow>
-					<span className="w-32 shrink-0 text-muted-foreground">Raised by</span>
+		// One column of labelled facts, read top to bottom. The two side-by-side
+		// ListBoxes this replaces were the same shape the deliverable and decision
+		// detail pages used, which is most of why all three felt like one screen.
+		<div className="max-w-3xl">
+			<CrSection title="The request">
+				<CrFact label="Raised by">
 					<span className="flex min-w-0 items-center gap-2">
 						<Avatar
 							user={profileFor(request.requested_by)}
 							fallbackId={request.requested_by ?? undefined}
 							size="xs"
 						/>
-						<span className="truncate text-foreground">
+						<span className="truncate">
 							{profileFor(request.requested_by)?.display_name ?? "Someone"}
 						</span>
 					</span>
-				</ListRow>
-				<ListRow>
-					<span className="w-32 shrink-0 text-muted-foreground">Raised</span>
-					<span className="text-foreground">
-						{new Date(request.created_at).toLocaleDateString()}
-					</span>
-				</ListRow>
-				<ListRow>
-					<span className="w-32 shrink-0 text-muted-foreground">
-						What changes
-					</span>
-					<span className="min-w-0 whitespace-pre-wrap text-foreground">
-						{request.impact_scope ?? (
-							<span className="text-muted-foreground">Not described.</span>
-						)}
-					</span>
-				</ListRow>
-			</ListBox>
+				</CrFact>
+				<CrFact label="Raised">
+					{new Date(request.created_at).toLocaleDateString()}
+				</CrFact>
+				<CrFact label="What changes">
+					{request.impact_scope ? (
+						<span className="whitespace-pre-wrap">{request.impact_scope}</span>
+					) : (
+						<span className="text-muted-foreground/70">Not described.</span>
+					)}
+				</CrFact>
+			</CrSection>
 
-			<ListBox title="The decision" bodyClassName="min-h-[12rem]">
+			<CrSection title="The decision">
 				{!decided ? (
-					<ListEmpty>
+					<p className="text-sm text-muted-foreground/70">
 						{request.status === "submitted"
 							? "Waiting on a decision."
 							: "Not submitted for a decision yet."}
-					</ListEmpty>
+					</p>
 				) : (
 					<>
-						<ListRow>
-							<span className="w-32 shrink-0 text-muted-foreground">
-								Outcome
-							</span>
-							<StatusPill
+						<CrFact label="Outcome">
+							<CrStatusDot
+								status={request.status}
 								label={CHANGE_REQUEST_STATUS_LABEL[request.status]}
-								tone={CHANGE_REQUEST_STATUS_TONE[request.status]}
 							/>
-						</ListRow>
-						<ListRow>
-							<span className="w-32 shrink-0 text-muted-foreground">
-								Decided by
-							</span>
+						</CrFact>
+						<CrFact label="Decided by">
 							<span className="flex min-w-0 items-center gap-2">
 								<Avatar
 									user={profileFor(request.decided_by)}
 									fallbackId={request.decided_by ?? undefined}
 									size="xs"
 								/>
-								<span className="truncate text-foreground">
+								<span className="truncate">
 									{profileFor(request.decided_by)?.display_name ?? "Someone"}
 								</span>
 							</span>
-						</ListRow>
-						<ListRow>
-							<span className="w-32 shrink-0 text-muted-foreground">On</span>
-							<span className="text-foreground">
-								{request.decided_at
-									? new Date(request.decided_at).toLocaleString()
-									: "—"}
-							</span>
-						</ListRow>
+						</CrFact>
+						<CrFact label="On">
+							{request.decided_at
+								? new Date(request.decided_at).toLocaleString()
+								: "—"}
+						</CrFact>
 						{request.decision_note && (
-							<ListRow>
-								<span className="w-32 shrink-0 text-muted-foreground">
-									Note
-								</span>
-								<span className="min-w-0 whitespace-pre-wrap text-foreground">
+							<CrFact label="Note">
+								<span className="whitespace-pre-wrap">
 									{request.decision_note}
 								</span>
-							</ListRow>
+							</CrFact>
 						)}
 					</>
 				)}
 
 				{request.status === "approved" && (
-					<div className="border-t border-border bg-info/5 px-4 py-3 text-xs text-muted-foreground">
+					// The thesis of the whole feature, restated where the decision is read.
+					<p className="mt-3 rounded-md border border-info/30 bg-info/10 p-2.5 text-xs text-foreground">
 						Approved, but not yet on the roadmap. Applying is a separate step so
 						the change goes through the normal review-and-commit path and cannot
 						overwrite concurrent edits.
-					</div>
+					</p>
 				)}
 
 				{request.status === "applied" && request.applied_change && (
-					<div className="border-t border-border bg-success/5 px-4 py-3 text-xs text-muted-foreground">
-						<span className="font-semibold text-foreground">
-							On the roadmap.
-						</span>{" "}
+					<p className="mt-3 rounded-md border border-success/30 bg-success/10 p-2.5 text-xs text-foreground">
+						<span className="font-semibold">On the roadmap.</span>{" "}
 						{request.applied_change.semantic_change_count ??
 							request.applied_change.operations_count ??
 							0}{" "}
@@ -588,9 +567,9 @@ function OverviewTab({
 							? ` on ${new Date(request.applied_change.committed_at).toLocaleDateString()}`
 							: ""}
 						.
-					</div>
+					</p>
 				)}
-			</ListBox>
+			</CrSection>
 		</div>
 	);
 }
@@ -612,7 +591,7 @@ function ScopeTab({
 
 	return (
 		<div className="grid gap-4 lg:grid-cols-2">
-			<ListBox
+			<CrSection
 				title="Affected work"
 				meta={`${links.length} linked`}
 				action={
@@ -627,18 +606,20 @@ function ScopeTab({
 						</button>
 					) : undefined
 				}
-				bodyClassName="min-h-[12rem]"
 			>
 				{links.length === 0 ? (
-					<ListEmpty>
+					<p className="text-sm text-muted-foreground/70">
 						Nothing linked yet. Linking the epics and features this change
 						touches is what turns it from a note into a scope change.
-					</ListEmpty>
+					</p>
 				) : (
 					links.map((link) => {
 						const segments = crLinkSegments(link);
 						return (
-							<ListRow key={link.id}>
+							<div
+								key={link.id}
+								className="flex items-center gap-3 border-b border-border/60 py-2 text-sm last:border-b-0"
+							>
 								<span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
 									{segments.map((segment, index) => (
 										<span
@@ -669,32 +650,31 @@ function ScopeTab({
 									)}
 								</span>
 								{canEdit && (
-									<SecondaryButton
+									<CrButton
 										tone="danger"
 										onClick={() => onUnlink(link.id)}
 										disabled={busy}
 									>
 										Unlink
-									</SecondaryButton>
+									</CrButton>
 								)}
-							</ListRow>
+							</div>
 						);
 					})
 				)}
-			</ListBox>
+			</CrSection>
 
-			<ListBox title="What changes" bodyClassName="min-h-[12rem]">
+			<CrSection title="What changes" meta="as described by whoever raised it">
 				{request.impact_scope ? (
-					<div className="p-4">
-						<FieldLabel>Described by whoever raised it</FieldLabel>
-						<p className="whitespace-pre-wrap text-sm text-foreground">
-							{request.impact_scope}
-						</p>
-					</div>
+					<p className="max-w-2xl whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+						{request.impact_scope}
+					</p>
 				) : (
-					<ListEmpty>No scope description was given.</ListEmpty>
+					<p className="text-sm text-muted-foreground/70">
+						No scope description was given.
+					</p>
 				)}
-			</ListBox>
+			</CrSection>
 		</div>
 	);
 }
@@ -717,7 +697,7 @@ function ActivityTab({
 	// first page is still in flight, which reads as a fact rather than a wait.
 	if (query.isPending) {
 		return (
-			<ListBox title="History" bodyClassName="min-h-[16rem] p-4">
+			<CrSection title="History">
 				<div className="animate-pulse space-y-3">
 					{["a", "b", "c", "d"].map((key) => (
 						<div key={key} className="flex items-start gap-3">
@@ -729,12 +709,12 @@ function ActivityTab({
 						</div>
 					))}
 				</div>
-			</ListBox>
+			</CrSection>
 		);
 	}
 
 	return (
-		<ListBox title="History" bodyClassName="min-h-[16rem] p-4">
+		<CrSection title="History">
 			<ActivityFeed
 				items={entries}
 				hasFilters={false}
@@ -744,6 +724,6 @@ function ActivityTab({
 				onClearFilters={() => undefined}
 				canViewSensitive
 			/>
-		</ListBox>
+		</CrSection>
 	);
 }

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { COL_WIDTH } from "../../milestones/model/constants";
 import {
 	buildColumns,
 	buildGroups,
 	columnLabel,
 	findColumnIndex,
 	groupLabel,
-	isoWeekAnchor,
 } from "./columns";
 
 describe("column labels", () => {
@@ -25,11 +25,11 @@ describe("column labels", () => {
 		expect(groupLabel(date, "year")).toBeNull();
 	});
 
-	it("anchors an ISO week to the month of its Thursday", () => {
-		// Week starting Mon 29 Jun 2026 has its Thursday on 2 Jul -> July.
-		const straddling = new Date(2026, 5, 29);
-		expect(isoWeekAnchor(straddling).getMonth()).toBe(6);
-		expect(groupLabel(straddling, "week")).toBe("July 2026");
+	it("labels the band by the month the date itself is in", () => {
+		// Mon 29 Jun 2026 opens a week that runs into July, but the date is June.
+		// The straddle is expressed by where the band is cut, not by relabelling
+		// the whole week — see the buildGroups tests below.
+		expect(groupLabel(new Date(2026, 5, 29), "week")).toBe("June 2026");
 	});
 });
 
@@ -56,37 +56,95 @@ describe("buildColumns", () => {
 });
 
 describe("buildGroups", () => {
+	const DAY = COL_WIDTH.day;
+	const WEEK = COL_WIDTH.week;
+
 	it("splits months into contiguous bands with correct spans", () => {
 		const columns = buildColumns(
 			new Date(2026, 0, 1),
 			new Date(2026, 2, 31),
 			"day",
 		);
-		const groups = buildGroups(columns, "day");
+		const groups = buildGroups(columns, "day", DAY);
 
 		expect(groups.map((g) => g.label)).toEqual([
 			"January 2026",
 			"February 2026",
 			"March 2026",
 		]);
-		expect(groups[0].colCount).toBe(31);
-		expect(groups[1].colCount).toBe(28);
-		expect(groups[1].startIndex).toBe(31);
-		expect(groups.reduce((sum, g) => sum + g.colCount, 0)).toBe(columns.length);
+		expect(groups[0].left).toBe(0);
+		expect(groups[0].width).toBe(31 * DAY);
+		expect(groups[1].left).toBe(31 * DAY);
+		expect(groups[1].width).toBe(28 * DAY);
+		expect(groups.reduce((sum, g) => sum + g.width, 0)).toBe(
+			columns.length * DAY,
+		);
 	});
 
-	it("groups weeks by month rather than by ISO week-year", () => {
+	it("keeps every day-scale boundary on a column edge", () => {
+		const columns = buildColumns(
+			new Date(2026, 0, 1),
+			new Date(2026, 2, 31),
+			"day",
+		);
+		for (const group of buildGroups(columns, "day", DAY)) {
+			expect(group.left % DAY).toBe(0);
+			expect(group.width % DAY).toBe(0);
+		}
+	});
+
+	it("cuts the band inside the week that straddles a month", () => {
+		// The reported bug. Mon 1 Jun 2026 is a Monday, so the columns start
+		// there; W27 is column 4 and runs Mon 29 Jun -> Sun 5 Jul. July begins
+		// two sevenths of the way into that cell, not at its left edge.
+		const columns = buildColumns(
+			new Date(2026, 5, 1),
+			new Date(2026, 7, 31),
+			"week",
+		);
+		expect(columns[4].start).toEqual(new Date(2026, 5, 29));
+
+		const groups = buildGroups(columns, "week", WEEK);
+		const july = groups.find((g) => g.label === "July 2026");
+		const june = groups.find((g) => g.label === "June 2026");
+		if (!july || !june) throw new Error("expected June and July bands");
+
+		const straddledColumnLeft = 4 * WEEK;
+		expect(july.left).toBeCloseTo(straddledColumnLeft + (2 / 7) * WEEK, 6);
+		expect(july.left).toBeGreaterThan(straddledColumnLeft);
+		expect(july.left).toBeLessThan(straddledColumnLeft + WEEK);
+
+		// No gap and no overlap: June ends exactly where July starts.
+		expect(june.left + june.width).toBeCloseTo(july.left, 6);
+	});
+
+	it("covers the full width with no gaps at the week scale", () => {
 		const columns = buildColumns(
 			new Date(2026, 0, 1),
 			new Date(2026, 3, 1),
 			"week",
 		);
-		const groups = buildGroups(columns, "week");
+		const groups = buildGroups(columns, "week", WEEK);
 
-		// The old behaviour produced a single "2026" band spanning everything.
 		expect(groups.length).toBeGreaterThan(1);
-		expect(groups[0].label).toContain("2026");
-		expect(groups[0].label).not.toBe("2026");
+		expect(groups[0].left).toBe(0);
+		expect(groups.reduce((sum, g) => sum + g.width, 0)).toBeCloseTo(
+			columns.length * WEEK,
+			6,
+		);
+	});
+
+	it("groups the month scale by year, still on column edges", () => {
+		const columns = buildColumns(
+			new Date(2025, 10, 1),
+			new Date(2026, 4, 1),
+			"month",
+		);
+		const groups = buildGroups(columns, "month", COL_WIDTH.month);
+
+		expect(groups.map((g) => g.label)).toEqual(["2025", "2026"]);
+		expect(groups[0].width).toBe(2 * COL_WIDTH.month); // Nov, Dec
+		expect(groups[1].left).toBe(2 * COL_WIDTH.month);
 	});
 
 	it("returns no groups for the year scale", () => {
@@ -95,7 +153,7 @@ describe("buildGroups", () => {
 			new Date(2026, 0, 1),
 			"year",
 		);
-		expect(buildGroups(columns, "year")).toEqual([]);
+		expect(buildGroups(columns, "year", COL_WIDTH.year)).toEqual([]);
 	});
 });
 

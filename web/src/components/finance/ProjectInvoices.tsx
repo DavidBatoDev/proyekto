@@ -158,7 +158,7 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 			invalidate();
 			void qc.invalidateQueries({ queryKey: ["finance"] });
 			void navigate({
-				to: "/finance/invoices/$invoiceId/edit",
+				to: "/marketplace/finance/invoices/$invoiceId/edit",
 				params: { invoiceId: replacement.id },
 				search: { projectId },
 			});
@@ -309,7 +309,7 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 									type="button"
 									onClick={() =>
 										void navigate({
-											to: "/finance/invoices/new",
+											to: "/marketplace/finance/invoices/new",
 											search: { projectId },
 										})
 									}
@@ -589,7 +589,7 @@ function InvoiceRow({
 						type="button"
 						onClick={() =>
 							void navigate({
-								to: "/finance/invoices/$invoiceId/edit",
+								to: "/marketplace/finance/invoices/$invoiceId/edit",
 								params: { invoiceId: invoice.id },
 								search: { projectId },
 							})

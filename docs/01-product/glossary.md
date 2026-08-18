@@ -22,6 +22,7 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Canvas view mode** | The four projections of one roadmap — roadmap tree, epic, Gantt/milestones, and kanban. Views are projections, not separate entities. |
 | **Team** | A reusable group of people; attached to projects and curated per project. |
 | **`project_access`** | The authorization row — exactly one per (project, user) since `20260507000130` — carrying a `share_role` (`owner > admin > editor > commenter > viewer`), an `origin` label, and a capabilities delta. |
+| **Team tag** | A freeform descriptive label on a team (`teams.tags text[]`) — cohort, source, intent. Normalized on write (trimmed, deduped, max 20 × 40 chars). Like **Origin** below, it is descriptive only and takes no part in permission resolution. |
 | **Origin** | Provenance of an access grant — *how* someone joined, never what they can do: `direct`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. It takes no part in permission resolution. The former `client` and `consultant` values were folded into `direct` on 2026-08-18. |
 | **Client** | The market position of people commissioning work — not an account attribute. Project participation and the legal payer come from `project_access` and contract snapshots. See [Finance → contract parties](../11-domains/finance/README.md#contract-parties). |
 | **Project owner** | The profile referenced by `projects.owner_id`. Any account may own a project; ownership implies nothing else about the account. |

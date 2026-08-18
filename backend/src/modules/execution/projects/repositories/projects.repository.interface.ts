@@ -31,9 +31,9 @@ export type ProjectResourcesPayload = {
 };
 
 export interface ProjectsRepository {
-  getCreatorProfileForProjectCreation(userId: string): Promise<{
-    consultant_profile: unknown;
-  } | null>;
+  getCreatorProfileForProjectCreation(
+    userId: string,
+  ): Promise<{ id: string } | null>;
   findByUser(userId: string): Promise<Project[]>;
   findDashboardByUser(userId: string): Promise<Project[]>;
   findById(id: string): Promise<

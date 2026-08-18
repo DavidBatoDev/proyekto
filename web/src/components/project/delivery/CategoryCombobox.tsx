@@ -190,6 +190,10 @@ export function CategoryCombobox({
 				</span>
 			</div>
 
+			{/* Absolutely positioned, deliberately. Portaling this list would put it
+			    above `AppDialog`'s panel only with a hand-tuned z-index, and measured
+			    in place it never overflows the dialog body: the field sits at the top
+			    of the form, so the 256px list always has room below it. */}
 			{open && (
 				<div
 					id={listId}

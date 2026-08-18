@@ -142,7 +142,7 @@ export function LinkToProjectModal({
 											<p>No projects with an empty roadmap.</p>
 											<p className="text-sm mt-1">
 												<RouterLink
-													to="/project-posting"
+													to="/marketplace/project-posting"
 													search={{ roadmapId }}
 													className="font-semibold text-[#ff9933] hover:underline"
 												>

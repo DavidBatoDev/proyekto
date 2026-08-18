@@ -6,10 +6,16 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  NoopProjectCommerce,
+  PROJECT_COMMERCE_PORT,
+  type ProjectCommercePort,
+} from './ports/project-commerce.port';
 import {
   AppCacheStatus,
   RedisDataCacheService,
@@ -32,7 +38,6 @@ import {
   type ProjectRole,
 } from './authorization/project-authorization.service';
 import { MissingPermissionException } from './authorization/missing-permission.exception';
-import { consultantFlagFromEmbed } from '../../../common/auth/consultant-capability';
 import {
   AddProjectMemberDto,
   CreateProjectFromRoadmapDto,
@@ -122,6 +127,11 @@ export class ProjectsService {
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
     private readonly teamTime: TeamTimeService,
+    // Optional so execution boots without marketplace: absent the binding, the
+    // no-op applies and nothing forbids deletion or reports invoices.
+    @Optional()
+    @Inject(PROJECT_COMMERCE_PORT)
+    private readonly commerce: ProjectCommercePort = new NoopProjectCommerce(),
   ) {}
 
   /**
@@ -822,31 +832,10 @@ export class ProjectsService {
       }
     }
 
-    let invoicesQuery = this.supabase
-      .from('invoices')
-      .select('status, total, project_id, created_at')
-      .in('project_id', projectIds);
-    if (query.from) invoicesQuery = invoicesQuery.gte('created_at', query.from);
-    if (query.to) invoicesQuery = invoicesQuery.lte('created_at', query.to);
-    const { data: invoiceRows, error: invErr } = await invoicesQuery;
-    if (invErr) throw new Error(invErr.message);
-    const invoices = (invoiceRows ?? []) as Array<{
-      status: string;
-      total: string | number;
-    }>;
-    const invoiceStatusCounts: Record<string, number> = {
-      draft: 0,
-      issued: 0,
-      sent: 0,
-      paid: 0,
-      void: 0,
-    };
-    let invoiceTotalAmount = 0;
-    for (const row of invoices) {
-      invoiceStatusCounts[row.status] =
-        (invoiceStatusCounts[row.status] ?? 0) + 1;
-      invoiceTotalAmount += Number(row.total ?? 0);
-    }
+    const invoiceSummary = await this.commerce.getInvoiceSummary(projectIds, {
+      from: query.from,
+      to: query.to,
+    });
 
     return {
       filters: {
@@ -868,9 +857,11 @@ export class ProjectsService {
         overage_hours_total: invoiceRound(overageHoursTotal),
       },
       invoices: {
-        total_count: invoices.length,
-        total_amount: invoiceRound(invoiceTotalAmount),
-        status_counts: invoiceStatusCounts,
+        total_count: invoiceSummary.total_count,
+        // Rounding stays here rather than in the adapter: it is a presentation
+        // rule of this summary, not a property of the invoices themselves.
+        total_amount: invoiceRound(invoiceSummary.total_amount),
+        status_counts: invoiceSummary.status_counts,
       },
     };
   }
@@ -923,7 +914,7 @@ export class ProjectsService {
       };
     }
 
-    if (!consultantFlagFromEmbed(profile.consultant_profile)) {
+    if (!(await this.authorization.isActiveConsultant(userId))) {
       throw new ForbiddenException(
         'Consultant mode requires an active consultant account.',
       );
@@ -1260,41 +1251,14 @@ export class ProjectsService {
       });
     }
 
-    const [contractResult, invoiceResult] = await Promise.all([
-      this.supabase
-        .from('contracts')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', id)
-        .in('status', ['sent', 'signed']),
-      this.supabase
-        .from('invoices')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', id)
-        .in('status', ['issued', 'sent']),
-    ]);
-    if (contractResult.error) throw new Error(contractResult.error.message);
-    if (invoiceResult.error) throw new Error(invoiceResult.error.message);
-    if ((contractResult.count ?? 0) > 0 || (invoiceResult.count ?? 0) > 0) {
-      throw new BadRequestException(
-        'Cannot delete this project while it has sent or signed contracts or issued or sent invoices. End or cancel contracts and pay or void invoices, then try again.',
-      );
-    }
+    // Order matters and is the reason veto and cascade are separate port
+    // methods: refuse first, stop running timers while the project still
+    // exists, then clear drafts.
+    await this.commerce.assertProjectDeletable(id);
 
     await this.teamTime.stopRunningLogsForProject(id);
 
-    const { error: invoiceDeleteError } = await this.supabase
-      .from('invoices')
-      .delete()
-      .eq('project_id', id)
-      .eq('status', 'draft');
-    if (invoiceDeleteError) throw new Error(invoiceDeleteError.message);
-
-    const { error: contractDeleteError } = await this.supabase
-      .from('contracts')
-      .delete()
-      .eq('project_id', id)
-      .eq('status', 'draft');
-    if (contractDeleteError) throw new Error(contractDeleteError.message);
+    await this.commerce.purgeDraftCommerce(id);
 
     await this.projectsRepo.deleteProject(id);
     await this.invalidateDashboardCache();
