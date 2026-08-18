@@ -88,9 +88,12 @@ export function PickUpWhereYouLeftOff() {
 
 	return (
 		<section className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8">
-			<h2 className="text-[17px] font-semibold text-foreground">
-				Pick up where you left off
-			</h2>
+			<div className="flex items-baseline justify-between gap-4">
+				<h2 className="text-[17px] font-semibold text-foreground">
+					Pick up where you left off
+				</h2>
+				<SeeAllLink active={active} consultant={consultant} />
+			</div>
 
 			<div className="mt-4 grid gap-4 lg:grid-cols-[220px_1fr]">
 				<nav className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
@@ -136,6 +139,41 @@ export function PickUpWhereYouLeftOff() {
 				</div>
 			</div>
 		</section>
+	);
+}
+
+/**
+ * The way out of the panel and into the full surface behind the active tab.
+ *
+ * Only the two finance-backed tabs have a "rest of it" to point at, and finance
+ * is consultant-gated, so an unverified user is offered nothing rather than a
+ * link that would bounce them off an empty state. Projects lead back to the
+ * workspace, which is execution's surface, not the marketplace's.
+ */
+function SeeAllLink({
+	active,
+	consultant,
+}: {
+	active: TabKey;
+	consultant: boolean;
+}) {
+	const className = "text-[13px] font-medium text-primary hover:underline";
+	if (active === "projects") {
+		return (
+			<Link to="/dashboard" className={className}>
+				See all
+			</Link>
+		);
+	}
+	if (!consultant) return null;
+	return active === "engagements" ? (
+		<Link to="/marketplace/finance/engagements" className={className}>
+			See all in Finance
+		</Link>
+	) : (
+		<Link to="/marketplace/finance/contracts" className={className}>
+			See all in Finance
+		</Link>
 	);
 }
 
@@ -274,11 +312,7 @@ function EngagementRows({
 						subtitle={`${kind} engagement · ${engagement.status}`}
 					>
 						{(content) => (
-							<Link
-								to="/marketplace/finance"
-								search={{ tab: "engagements" }}
-								className={ROW_CLASS}
-							>
+							<Link to="/marketplace/finance/engagements" className={ROW_CLASS}>
 								{content}
 							</Link>
 						)}
@@ -306,11 +340,7 @@ function ContractRows({
 				title="No contracts yet"
 				body="Draft an agreement for a project, set its terms, and send it for signature. Signing it is what activates the engagement."
 				cta={
-					<Link
-						to="/marketplace/finance"
-						search={{ tab: "contracts" }}
-						className={CTA_CLASS}
-					>
+					<Link to="/marketplace/finance/contracts" className={CTA_CLASS}>
 						Go to contracts
 					</Link>
 				}

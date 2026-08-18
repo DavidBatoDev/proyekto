@@ -1,14 +1,12 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
-import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
-import { useAuthStore } from "@/stores/authStore";
 
+/**
+ * A new invoice. Auth and the marketplace shell come from
+ * `finance/route.tsx`; the builder is a full-page document, so it stays a
+ * sibling of the `_portfolio` chrome rather than a child of it.
+ */
 export const Route = createFileRoute("/marketplace/finance/invoices/new")({
-	beforeLoad: () => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-	},
 	validateSearch: (search: Record<string, unknown>) => ({
 		projectId: typeof search.projectId === "string" ? search.projectId : "",
 	}),
@@ -17,9 +15,5 @@ export const Route = createFileRoute("/marketplace/finance/invoices/new")({
 
 function NewInvoicePage() {
 	const { projectId } = Route.useSearch();
-	return (
-		<MarketplaceShell>
-			<InvoiceBuilder projectId={projectId} />
-		</MarketplaceShell>
-	);
+	return <InvoiceBuilder projectId={projectId} />;
 }

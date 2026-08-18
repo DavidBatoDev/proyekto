@@ -47,10 +47,11 @@ import { Route as ExecutionInvitesRouteImport } from './routes/_execution/invite
 import { Route as ExecutionInboxRouteImport } from './routes/_execution/inbox'
 import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dashboard'
 import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
-import { Route as MarketplaceFinanceIndexRouteImport } from './routes/marketplace/finance/index'
+import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceConsultantIndexRouteImport } from './routes/marketplace/consultant/index'
 import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/teams/index'
 import { Route as MarketplaceFreelancerGoLiveRouteImport } from './routes/marketplace/freelancer/go-live'
+import { Route as MarketplaceFinancePortfolioRouteImport } from './routes/marketplace/finance/_portfolio'
 import { Route as MarketplaceFinanceContractIdRouteImport } from './routes/marketplace/finance/$contractId'
 import { Route as MarketplaceConsultantTemplatesRouteImport } from './routes/marketplace/consultant/templates'
 import { Route as MarketplaceConsultantBrowseRouteImport } from './routes/marketplace/consultant/browse'
@@ -62,9 +63,13 @@ import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
 import { Route as ExecutionTeamsTeamIdRouteImport } from './routes/_execution/teams/$teamId'
 import { Route as ExecutionRoadmapSharedWithMeRouteImport } from './routes/_execution/roadmap/shared-with-me'
 import { Route as ExecutionProjectProjectIdRouteImport } from './routes/_execution/project/$projectId'
+import { Route as MarketplaceFinancePortfolioIndexRouteImport } from './routes/marketplace/finance/_portfolio/index'
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/marketplace/finance/invoices/new'
+import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
+import { Route as MarketplaceFinancePortfolioEngagementsRouteImport } from './routes/marketplace/finance/_portfolio/engagements'
+import { Route as MarketplaceFinancePortfolioContractsRouteImport } from './routes/marketplace/finance/_portfolio/contracts'
 import { Route as ExecutionTeamsMeInvitesRouteImport } from './routes/_execution/teams/me/invites'
 import { Route as ExecutionRoadmapSharedTokenRouteImport } from './routes/_execution/roadmap/shared/$token'
 import { Route as ExecutionProjectProjectIdWorkItemsRouteImport } from './routes/_execution/project/$projectId/work-items'
@@ -303,9 +308,9 @@ const ExecutionCommandCenterRoute = ExecutionCommandCenterRouteImport.update({
   path: '/command-center',
   getParentRoute: () => ExecutionRoute,
 } as any)
-const MarketplaceFinanceIndexRoute = MarketplaceFinanceIndexRouteImport.update({
-  id: '/finance/',
-  path: '/finance/',
+const MarketplaceFinanceRouteRoute = MarketplaceFinanceRouteRouteImport.update({
+  id: '/finance',
+  path: '/finance',
   getParentRoute: () => MarketplaceRouteRoute,
 } as any)
 const MarketplaceConsultantIndexRoute =
@@ -325,11 +330,16 @@ const MarketplaceFreelancerGoLiveRoute =
     path: '/freelancer/go-live',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const MarketplaceFinancePortfolioRoute =
+  MarketplaceFinancePortfolioRouteImport.update({
+    id: '/_portfolio',
+    getParentRoute: () => MarketplaceFinanceRouteRoute,
+  } as any)
 const MarketplaceFinanceContractIdRoute =
   MarketplaceFinanceContractIdRouteImport.update({
-    id: '/finance/$contractId',
-    path: '/finance/$contractId',
-    getParentRoute: () => MarketplaceRouteRoute,
+    id: '/$contractId',
+    path: '/$contractId',
+    getParentRoute: () => MarketplaceFinanceRouteRoute,
   } as any)
 const MarketplaceConsultantTemplatesRoute =
   MarketplaceConsultantTemplatesRouteImport.update({
@@ -387,6 +397,12 @@ const ExecutionProjectProjectIdRoute =
     path: '/project/$projectId',
     getParentRoute: () => ExecutionRoute,
   } as any)
+const MarketplaceFinancePortfolioIndexRoute =
+  MarketplaceFinancePortfolioIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => MarketplaceFinancePortfolioRoute,
+  } as any)
 const ExecutionTeamsTeamIdIndexRoute =
   ExecutionTeamsTeamIdIndexRouteImport.update({
     id: '/',
@@ -401,9 +417,27 @@ const ExecutionProjectRoadmapIndexRoute =
   } as any)
 const MarketplaceFinanceInvoicesNewRoute =
   MarketplaceFinanceInvoicesNewRouteImport.update({
-    id: '/finance/invoices/new',
-    path: '/finance/invoices/new',
-    getParentRoute: () => MarketplaceRouteRoute,
+    id: '/invoices/new',
+    path: '/invoices/new',
+    getParentRoute: () => MarketplaceFinanceRouteRoute,
+  } as any)
+const MarketplaceFinancePortfolioInvoicesRoute =
+  MarketplaceFinancePortfolioInvoicesRouteImport.update({
+    id: '/invoices',
+    path: '/invoices',
+    getParentRoute: () => MarketplaceFinancePortfolioRoute,
+  } as any)
+const MarketplaceFinancePortfolioEngagementsRoute =
+  MarketplaceFinancePortfolioEngagementsRouteImport.update({
+    id: '/engagements',
+    path: '/engagements',
+    getParentRoute: () => MarketplaceFinancePortfolioRoute,
+  } as any)
+const MarketplaceFinancePortfolioContractsRoute =
+  MarketplaceFinancePortfolioContractsRouteImport.update({
+    id: '/contracts',
+    path: '/contracts',
+    getParentRoute: () => MarketplaceFinancePortfolioRoute,
   } as any)
 const ExecutionTeamsMeInvitesRoute = ExecutionTeamsMeInvitesRouteImport.update({
   id: '/teams/me/invites',
@@ -514,9 +548,9 @@ const ExecutionProjectProjectIdSettingsIndexRoute =
   } as any)
 const MarketplaceFinanceInvoicesInvoiceIdEditRoute =
   MarketplaceFinanceInvoicesInvoiceIdEditRouteImport.update({
-    id: '/finance/invoices/$invoiceId/edit',
-    path: '/finance/invoices/$invoiceId/edit',
-    getParentRoute: () => MarketplaceRouteRoute,
+    id: '/invoices/$invoiceId/edit',
+    path: '/invoices/$invoiceId/edit',
+    getParentRoute: () => MarketplaceFinanceRouteRoute,
   } as any)
 const ExecutionTeamsTeamIdTimeTeamLogsRoute =
   ExecutionTeamsTeamIdTimeTeamLogsRouteImport.update({
@@ -697,6 +731,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
+  '/marketplace/finance': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
@@ -739,7 +774,6 @@ export interface FileRoutesByFullPath {
   '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
-  '/marketplace/finance': typeof MarketplaceFinanceIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
@@ -754,9 +788,13 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
+  '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
+  '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
+  '/marketplace/finance/': typeof MarketplaceFinancePortfolioIndexRoute
   '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
   '/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
@@ -798,6 +836,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
+  '/marketplace/finance': typeof MarketplaceFinancePortfolioIndexRoute
   '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
@@ -839,7 +878,6 @@ export interface FileRoutesByTo {
   '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
-  '/marketplace/finance': typeof MarketplaceFinanceIndexRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
   '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
@@ -853,6 +891,9 @@ export interface FileRoutesByTo {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
+  '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
+  '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
@@ -902,6 +943,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
+  '/marketplace/finance': typeof MarketplaceFinanceRouteRouteWithChildren
   '/_execution/command-center': typeof ExecutionCommandCenterRoute
   '/_execution/dashboard': typeof ExecutionDashboardRoute
   '/_execution/inbox': typeof ExecutionInboxRoute
@@ -941,10 +983,10 @@ export interface FileRoutesById {
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
   '/marketplace/consultant/templates': typeof MarketplaceConsultantTemplatesRoute
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
+  '/marketplace/finance/_portfolio': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant/': typeof MarketplaceConsultantIndexRoute
-  '/marketplace/finance/': typeof MarketplaceFinanceIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/_execution/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/_execution/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
@@ -959,9 +1001,13 @@ export interface FileRoutesById {
   '/_execution/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/_execution/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/_execution/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/marketplace/finance/_portfolio/contracts': typeof MarketplaceFinancePortfolioContractsRoute
+  '/marketplace/finance/_portfolio/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
+  '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
+  '/marketplace/finance/_portfolio/': typeof MarketplaceFinancePortfolioIndexRoute
   '/_execution/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/_execution/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
   '/_execution/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
@@ -1008,6 +1054,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/unsubscribe'
     | '/welcome'
+    | '/marketplace/finance'
     | '/command-center'
     | '/dashboard'
     | '/inbox'
@@ -1050,7 +1097,6 @@ export interface FileRouteTypes {
     | '/marketplace/freelancer/go-live'
     | '/teams'
     | '/marketplace/consultant'
-    | '/marketplace/finance'
     | '/teams/$teamId/time'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
@@ -1065,9 +1111,13 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
+    | '/marketplace/finance/contracts'
+    | '/marketplace/finance/engagements'
+    | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId/'
+    | '/marketplace/finance/'
     | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/decisions/$decisionId'
@@ -1109,6 +1159,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/unsubscribe'
     | '/welcome'
+    | '/marketplace/finance'
     | '/command-center'
     | '/dashboard'
     | '/inbox'
@@ -1150,7 +1201,6 @@ export interface FileRouteTypes {
     | '/marketplace/freelancer/go-live'
     | '/teams'
     | '/marketplace/consultant'
-    | '/marketplace/finance'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
     | '/project/$projectId/deliverables'
@@ -1164,6 +1214,9 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
+    | '/marketplace/finance/contracts'
+    | '/marketplace/finance/engagements'
+    | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId'
@@ -1212,6 +1265,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/unsubscribe'
     | '/welcome'
+    | '/marketplace/finance'
     | '/_execution/command-center'
     | '/_execution/dashboard'
     | '/_execution/inbox'
@@ -1251,10 +1305,10 @@ export interface FileRouteTypes {
     | '/marketplace/consultant/browse'
     | '/marketplace/consultant/templates'
     | '/marketplace/finance/$contractId'
+    | '/marketplace/finance/_portfolio'
     | '/marketplace/freelancer/go-live'
     | '/_execution/teams/'
     | '/marketplace/consultant/'
-    | '/marketplace/finance/'
     | '/_execution/teams/$teamId/time'
     | '/_execution/project/$projectId/change-requests'
     | '/_execution/project/$projectId/decisions'
@@ -1269,9 +1323,13 @@ export interface FileRouteTypes {
     | '/_execution/project/$projectId/work-items'
     | '/_execution/roadmap/shared/$token'
     | '/_execution/teams/me/invites'
+    | '/marketplace/finance/_portfolio/contracts'
+    | '/marketplace/finance/_portfolio/engagements'
+    | '/marketplace/finance/_portfolio/invoices'
     | '/marketplace/finance/invoices/new'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
+    | '/marketplace/finance/_portfolio/'
     | '/_execution/project/$projectId/change-requests/$changeRequestId'
     | '/_execution/project/$projectId/chat/$chatRef'
     | '/_execution/project/$projectId/decisions/$decisionId'
@@ -1599,11 +1657,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionCommandCenterRouteImport
       parentRoute: typeof ExecutionRoute
     }
-    '/marketplace/finance/': {
-      id: '/marketplace/finance/'
+    '/marketplace/finance': {
+      id: '/marketplace/finance'
       path: '/finance'
       fullPath: '/marketplace/finance'
-      preLoaderRoute: typeof MarketplaceFinanceIndexRouteImport
+      preLoaderRoute: typeof MarketplaceFinanceRouteRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
     '/marketplace/consultant/': {
@@ -1627,12 +1685,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceFreelancerGoLiveRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/marketplace/finance/_portfolio': {
+      id: '/marketplace/finance/_portfolio'
+      path: ''
+      fullPath: '/marketplace/finance'
+      preLoaderRoute: typeof MarketplaceFinancePortfolioRouteImport
+      parentRoute: typeof MarketplaceFinanceRouteRoute
+    }
     '/marketplace/finance/$contractId': {
       id: '/marketplace/finance/$contractId'
-      path: '/finance/$contractId'
+      path: '/$contractId'
       fullPath: '/marketplace/finance/$contractId'
       preLoaderRoute: typeof MarketplaceFinanceContractIdRouteImport
-      parentRoute: typeof MarketplaceRouteRoute
+      parentRoute: typeof MarketplaceFinanceRouteRoute
     }
     '/marketplace/consultant/templates': {
       id: '/marketplace/consultant/templates'
@@ -1704,6 +1769,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/marketplace/finance/_portfolio/': {
+      id: '/marketplace/finance/_portfolio/'
+      path: '/'
+      fullPath: '/marketplace/finance/'
+      preLoaderRoute: typeof MarketplaceFinancePortfolioIndexRouteImport
+      parentRoute: typeof MarketplaceFinancePortfolioRoute
+    }
     '/_execution/teams/$teamId/': {
       id: '/_execution/teams/$teamId/'
       path: '/'
@@ -1720,10 +1792,31 @@ declare module '@tanstack/react-router' {
     }
     '/marketplace/finance/invoices/new': {
       id: '/marketplace/finance/invoices/new'
-      path: '/finance/invoices/new'
+      path: '/invoices/new'
       fullPath: '/marketplace/finance/invoices/new'
       preLoaderRoute: typeof MarketplaceFinanceInvoicesNewRouteImport
-      parentRoute: typeof MarketplaceRouteRoute
+      parentRoute: typeof MarketplaceFinanceRouteRoute
+    }
+    '/marketplace/finance/_portfolio/invoices': {
+      id: '/marketplace/finance/_portfolio/invoices'
+      path: '/invoices'
+      fullPath: '/marketplace/finance/invoices'
+      preLoaderRoute: typeof MarketplaceFinancePortfolioInvoicesRouteImport
+      parentRoute: typeof MarketplaceFinancePortfolioRoute
+    }
+    '/marketplace/finance/_portfolio/engagements': {
+      id: '/marketplace/finance/_portfolio/engagements'
+      path: '/engagements'
+      fullPath: '/marketplace/finance/engagements'
+      preLoaderRoute: typeof MarketplaceFinancePortfolioEngagementsRouteImport
+      parentRoute: typeof MarketplaceFinancePortfolioRoute
+    }
+    '/marketplace/finance/_portfolio/contracts': {
+      id: '/marketplace/finance/_portfolio/contracts'
+      path: '/contracts'
+      fullPath: '/marketplace/finance/contracts'
+      preLoaderRoute: typeof MarketplaceFinancePortfolioContractsRouteImport
+      parentRoute: typeof MarketplaceFinancePortfolioRoute
     }
     '/_execution/teams/me/invites': {
       id: '/_execution/teams/me/invites'
@@ -1853,10 +1946,10 @@ declare module '@tanstack/react-router' {
     }
     '/marketplace/finance/invoices/$invoiceId/edit': {
       id: '/marketplace/finance/invoices/$invoiceId/edit'
-      path: '/finance/invoices/$invoiceId/edit'
+      path: '/invoices/$invoiceId/edit'
       fullPath: '/marketplace/finance/invoices/$invoiceId/edit'
       preLoaderRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRouteImport
-      parentRoute: typeof MarketplaceRouteRoute
+      parentRoute: typeof MarketplaceFinanceRouteRoute
     }
     '/_execution/teams/$teamId/time/team-logs': {
       id: '/_execution/teams/$teamId/time/team-logs'
@@ -2057,7 +2150,54 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface MarketplaceFinancePortfolioRouteChildren {
+  MarketplaceFinancePortfolioContractsRoute: typeof MarketplaceFinancePortfolioContractsRoute
+  MarketplaceFinancePortfolioEngagementsRoute: typeof MarketplaceFinancePortfolioEngagementsRoute
+  MarketplaceFinancePortfolioInvoicesRoute: typeof MarketplaceFinancePortfolioInvoicesRoute
+  MarketplaceFinancePortfolioIndexRoute: typeof MarketplaceFinancePortfolioIndexRoute
+}
+
+const MarketplaceFinancePortfolioRouteChildren: MarketplaceFinancePortfolioRouteChildren =
+  {
+    MarketplaceFinancePortfolioContractsRoute:
+      MarketplaceFinancePortfolioContractsRoute,
+    MarketplaceFinancePortfolioEngagementsRoute:
+      MarketplaceFinancePortfolioEngagementsRoute,
+    MarketplaceFinancePortfolioInvoicesRoute:
+      MarketplaceFinancePortfolioInvoicesRoute,
+    MarketplaceFinancePortfolioIndexRoute:
+      MarketplaceFinancePortfolioIndexRoute,
+  }
+
+const MarketplaceFinancePortfolioRouteWithChildren =
+  MarketplaceFinancePortfolioRoute._addFileChildren(
+    MarketplaceFinancePortfolioRouteChildren,
+  )
+
+interface MarketplaceFinanceRouteRouteChildren {
+  MarketplaceFinanceContractIdRoute: typeof MarketplaceFinanceContractIdRoute
+  MarketplaceFinancePortfolioRoute: typeof MarketplaceFinancePortfolioRouteWithChildren
+  MarketplaceFinanceInvoicesNewRoute: typeof MarketplaceFinanceInvoicesNewRoute
+  MarketplaceFinanceInvoicesInvoiceIdEditRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
+}
+
+const MarketplaceFinanceRouteRouteChildren: MarketplaceFinanceRouteRouteChildren =
+  {
+    MarketplaceFinanceContractIdRoute: MarketplaceFinanceContractIdRoute,
+    MarketplaceFinancePortfolioRoute:
+      MarketplaceFinancePortfolioRouteWithChildren,
+    MarketplaceFinanceInvoicesNewRoute: MarketplaceFinanceInvoicesNewRoute,
+    MarketplaceFinanceInvoicesInvoiceIdEditRoute:
+      MarketplaceFinanceInvoicesInvoiceIdEditRoute,
+  }
+
+const MarketplaceFinanceRouteRouteWithChildren =
+  MarketplaceFinanceRouteRoute._addFileChildren(
+    MarketplaceFinanceRouteRouteChildren,
+  )
+
 interface MarketplaceRouteRouteChildren {
+  MarketplaceFinanceRouteRoute: typeof MarketplaceFinanceRouteRouteWithChildren
   MarketplaceProjectPostingRoute: typeof MarketplaceProjectPostingRoute
   MarketplaceTalentRoute: typeof MarketplaceTalentRoute
   MarketplaceIndexRoute: typeof MarketplaceIndexRoute
@@ -2065,15 +2205,12 @@ interface MarketplaceRouteRouteChildren {
   MarketplaceConsultantApplyRoute: typeof MarketplaceConsultantApplyRoute
   MarketplaceConsultantBrowseRoute: typeof MarketplaceConsultantBrowseRoute
   MarketplaceConsultantTemplatesRoute: typeof MarketplaceConsultantTemplatesRoute
-  MarketplaceFinanceContractIdRoute: typeof MarketplaceFinanceContractIdRoute
   MarketplaceFreelancerGoLiveRoute: typeof MarketplaceFreelancerGoLiveRoute
   MarketplaceConsultantIndexRoute: typeof MarketplaceConsultantIndexRoute
-  MarketplaceFinanceIndexRoute: typeof MarketplaceFinanceIndexRoute
-  MarketplaceFinanceInvoicesNewRoute: typeof MarketplaceFinanceInvoicesNewRoute
-  MarketplaceFinanceInvoicesInvoiceIdEditRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
 }
 
 const MarketplaceRouteRouteChildren: MarketplaceRouteRouteChildren = {
+  MarketplaceFinanceRouteRoute: MarketplaceFinanceRouteRouteWithChildren,
   MarketplaceProjectPostingRoute: MarketplaceProjectPostingRoute,
   MarketplaceTalentRoute: MarketplaceTalentRoute,
   MarketplaceIndexRoute: MarketplaceIndexRoute,
@@ -2081,13 +2218,8 @@ const MarketplaceRouteRouteChildren: MarketplaceRouteRouteChildren = {
   MarketplaceConsultantApplyRoute: MarketplaceConsultantApplyRoute,
   MarketplaceConsultantBrowseRoute: MarketplaceConsultantBrowseRoute,
   MarketplaceConsultantTemplatesRoute: MarketplaceConsultantTemplatesRoute,
-  MarketplaceFinanceContractIdRoute: MarketplaceFinanceContractIdRoute,
   MarketplaceFreelancerGoLiveRoute: MarketplaceFreelancerGoLiveRoute,
   MarketplaceConsultantIndexRoute: MarketplaceConsultantIndexRoute,
-  MarketplaceFinanceIndexRoute: MarketplaceFinanceIndexRoute,
-  MarketplaceFinanceInvoicesNewRoute: MarketplaceFinanceInvoicesNewRoute,
-  MarketplaceFinanceInvoicesInvoiceIdEditRoute:
-    MarketplaceFinanceInvoicesInvoiceIdEditRoute,
 }
 
 const MarketplaceRouteRouteWithChildren =

@@ -50,10 +50,9 @@ export function MarketplaceHero() {
 				{user && isActiveConsultant(profile) && (
 					<Link
 						to="/marketplace/finance"
-						search={{ tab: "contracts" }}
 						className="text-[13px] font-medium text-primary hover:underline"
 					>
-						Your contracts
+						Your finance
 					</Link>
 				)}
 			</div>
