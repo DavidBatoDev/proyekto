@@ -5,7 +5,6 @@ import {
 } from "./marketplaceCategoryRedirects";
 
 const SURVIVING = [
-	"product-and-strategy",
 	"software-engineering",
 	"ai-and-data",
 	"cloud-devops-and-security",
@@ -49,10 +48,13 @@ describe("mapRetiredCategorySlug", () => {
 		}
 	});
 
-	it("does not forward industry-practices", () => {
-		// Retired outright rather than merged: it classified sectors, not
-		// disciplines, so any destination would be a guess.
+	it("does not forward the categories that were retired outright", () => {
+		// Neither was merged into anything, so any destination would be a guess:
+		// `industry-practices` classified sectors rather than disciplines, and
+		// `product-and-strategy` overlapped every remaining category instead of
+		// narrowing to one.
 		expect(mapRetiredCategorySlug("industry-practices")).toBeUndefined();
+		expect(mapRetiredCategorySlug("product-and-strategy")).toBeUndefined();
 	});
 
 	it("matches case-insensitively and ignores unknown slugs", () => {
