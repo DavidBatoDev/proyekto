@@ -19,8 +19,13 @@ describe('TaxonomyService', () => {
     findCategoryBySlug: jest.fn(),
     findSubcategoryBySlugs: jest.fn(),
     findSubcategoryIds: jest.fn(),
+    findCategoryIdsBySlugs: jest.fn(),
     findConsultantSubcategories: jest.fn(),
     replaceConsultantSubcategories: jest.fn(),
+    findTopicBySlugs: jest.fn(),
+    findTopicIds: jest.fn(),
+    findConsultantTopics: jest.fn(),
+    replaceConsultantTopics: jest.fn(),
   };
 
   const cacheInvalidation = {

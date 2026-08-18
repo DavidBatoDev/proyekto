@@ -6,6 +6,7 @@ export const REDIS_CACHE_KEYS = {
     `cache:v1:consultants:profile:${userId}`,
   consultantsDirectoryByHash: (queryHash: string) =>
     `cache:v1:consultants:directory:${queryHash}`,
+  consultantsFacets: 'cache:v1:consultants:facets',
   consultantsIndex: 'cache:v1:index:consultants',
   marketplaceTaxonomyNavigation: 'cache:v1:marketplace:taxonomy:navigation',
   marketplaceTaxonomyCategory: (slug: string) =>
@@ -15,6 +16,12 @@ export const REDIS_CACHE_KEYS = {
     subcategorySlug: string,
   ) =>
     `cache:v1:marketplace:taxonomy:subcategory:${categorySlug.toLowerCase()}:${subcategorySlug.toLowerCase()}`,
+  marketplaceTaxonomyTopic: (
+    categorySlug: string,
+    subcategorySlug: string,
+    topicSlug: string,
+  ) =>
+    `cache:v1:marketplace:taxonomy:topic:${categorySlug.toLowerCase()}:${subcategorySlug.toLowerCase()}:${topicSlug.toLowerCase()}`,
   marketplaceTaxonomyIndex: 'cache:v1:index:marketplace:taxonomy',
   roadmapTemplatesByHash: (queryHash: string) =>
     `cache:v3:roadmap-templates:catalog:${queryHash}`,

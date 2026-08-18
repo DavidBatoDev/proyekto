@@ -23,7 +23,9 @@ import { TaxonomyService } from './taxonomy.service';
 import {
   CategorySlugParamDto,
   ReplaceConsultantSubcategoriesDto,
+  ReplaceConsultantTopicsDto,
   SubcategorySlugParamDto,
+  TopicSlugParamDto,
 } from './dto/taxonomy.dto';
 
 @Controller('marketplace/categories')
@@ -80,6 +82,26 @@ export class TaxonomyController {
     return this.taxonomy.replaceMyPlacements(user.id, dto.subcategory_ids);
   }
 
+  /**
+   * The topic-level pair, declared here for the same reason `mine` is: Nest
+   * matches in declaration order, and `topics` would otherwise be read as a
+   * category slug by the route below.
+   */
+  @Get('topics/mine')
+  @UseGuards(ConsultantOnlyGuard)
+  listMyTopics(@CurrentUser() user: AuthenticatedUser) {
+    return this.taxonomy.listMyTopics(user.id);
+  }
+
+  @Put('topics/mine')
+  @UseGuards(ConsultantOnlyGuard)
+  replaceMyTopics(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReplaceConsultantTopicsDto,
+  ) {
+    return this.taxonomy.replaceMyTopics(user.id, dto.topic_ids);
+  }
+
   @Get(':categorySlug')
   @Public()
   @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
@@ -102,6 +124,23 @@ export class TaxonomyController {
     return this.taxonomy.subcategory(
       params.categorySlug,
       params.subcategorySlug,
+      { onCacheStatus: (status) => this.setCacheHeader(response, status) },
+    );
+  }
+
+  // Last: the most specific path, and the one a shorter dynamic route would
+  // never reach anyway.
+  @Get(':categorySlug/:subcategorySlug/:topicSlug')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
+  topic(
+    @Param() params: TopicSlugParamDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.taxonomy.topic(
+      params.categorySlug,
+      params.subcategorySlug,
+      params.topicSlug,
       { onCacheStatus: (status) => this.setCacheHeader(response, status) },
     );
   }

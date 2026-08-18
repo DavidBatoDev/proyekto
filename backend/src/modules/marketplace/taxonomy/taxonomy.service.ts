@@ -11,8 +11,11 @@ import {
 } from './repositories/taxonomy.repository.interface';
 import type {
   ConsultantPlacement,
+  ConsultantTopicPlacement,
+  MarketplaceCategoryDetail,
   MarketplaceCategoryWithSubcategories,
   MarketplaceSubcategoryWithCategory,
+  MarketplaceTopicWithParents,
 } from './taxonomy.types';
 
 type CacheOptions = { onCacheStatus?: (status: AppCacheStatus) => void };
@@ -42,7 +45,7 @@ export class TaxonomyService {
   async category(
     categorySlug: string,
     options?: CacheOptions,
-  ): Promise<MarketplaceCategoryWithSubcategories> {
+  ): Promise<MarketplaceCategoryDetail> {
     const category = await this.cache.rememberJson(
       REDIS_CACHE_KEYS.marketplaceTaxonomyCategory(categorySlug),
       this.cache.getPublicTtlSeconds(),
@@ -77,6 +80,63 @@ export class TaxonomyService {
 
     if (!subcategory) throw new NotFoundException('Subcategory not found');
     return subcategory;
+  }
+
+  async topic(
+    categorySlug: string,
+    subcategorySlug: string,
+    topicSlug: string,
+    options?: CacheOptions,
+  ): Promise<MarketplaceTopicWithParents> {
+    const topic = await this.cache.rememberJson(
+      REDIS_CACHE_KEYS.marketplaceTaxonomyTopic(
+        categorySlug,
+        subcategorySlug,
+        topicSlug,
+      ),
+      this.cache.getPublicTtlSeconds(),
+      () =>
+        this.repo.findTopicBySlugs(categorySlug, subcategorySlug, topicSlug),
+      {
+        onStatus: options?.onCacheStatus,
+        indexKey: REDIS_CACHE_KEYS.marketplaceTaxonomyIndex,
+      },
+    );
+
+    if (!topic) throw new NotFoundException('Topic not found');
+    return topic;
+  }
+
+  /**
+   * Resolves a full slug path to topic ids for the consultant listing. Same
+   * null-vs-empty contract as `resolveSubcategoryIds`.
+   */
+  resolveTopicIds(
+    categorySlug: string | undefined,
+    subcategorySlug: string | undefined,
+    topicSlug: string | undefined,
+  ): Promise<string[] | null> {
+    return this.repo.findTopicIds(categorySlug, subcategorySlug, topicSlug);
+  }
+
+  /** A consultant's own topic placements. Uncached, like the speciality read. */
+  listMyTopics(userId: string): Promise<ConsultantTopicPlacement[]> {
+    return this.repo.findConsultantTopics(userId);
+  }
+
+  async replaceMyTopics(
+    userId: string,
+    topicIds: string[],
+  ): Promise<ConsultantTopicPlacement[]> {
+    // De-duplicated for the same reason the speciality replace is: the delete
+    // has already happened by the time a duplicate trips the composite primary
+    // key, which would leave the consultant with a partially-written set.
+    const unique = Array.from(new Set(topicIds));
+
+    const placements = await this.repo.replaceConsultantTopics(userId, unique);
+
+    await this.cacheInvalidation.invalidateConsultantsCache(userId);
+    return placements;
   }
 
   /**

@@ -39,6 +39,25 @@ export class SubcategorySlugParamDto extends CategorySlugParamDto {
  * `consultant_subcategories_cap` trigger (20260818120100), which also covers
  * anything reaching PostgREST directly.
  */
+export class TopicSlugParamDto extends SubcategorySlugParamDto {
+  @IsString()
+  @MaxLength(80)
+  @Matches(MARKETPLACE_SLUG_PATTERN)
+  topicSlug: string;
+}
+
+/**
+ * Fifteen, matching the `consultant_topics` cap trigger. Declared here as well
+ * as in the database because the pipe gives a field-level 400 naming the limit,
+ * where the trigger raises CONSULTANT_TOPIC_LIMIT after a round trip.
+ */
+export class ReplaceConsultantTopicsDto {
+  @IsArray()
+  @ArrayMaxSize(15)
+  @IsUUID('4', { each: true })
+  topic_ids: string[];
+}
+
 export class ReplaceConsultantSubcategoriesDto {
   @IsArray()
   @ArrayMaxSize(5)
