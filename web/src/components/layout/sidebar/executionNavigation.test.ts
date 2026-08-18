@@ -13,23 +13,13 @@ describe("EXECUTION_PRIMARY_NAV_ITEMS", () => {
 		}
 	});
 
-	it("keeps marketplace surfaces out of the execution shell", () => {
-		// Finance moved to the marketplace nav. The execution sidebar offers the
-		// marketplace as a destination, not its individual pages.
+	it("keeps the marketplace out of the execution shell entirely", () => {
+		// Crossing between the two halves of the product is a top-level move and
+		// belongs to the global header nav. Finance left this sidebar when the
+		// shells split; the marketplace entry followed it out rather than giving
+		// one jump two homes.
 		const targets = EXECUTION_PRIMARY_NAV_ITEMS.map((item) => item.to);
-		expect(targets).toContain("/marketplace");
-		expect(targets.some((to) => to.startsWith("/marketplace/"))).toBe(false);
-	});
-
-	it("matches the marketplace entry across the whole subtree", () => {
-		const marketplace = EXECUTION_PRIMARY_NAV_ITEMS.find(
-			(item) => item.key === "marketplace",
-		);
-		if (!marketplace) throw new Error("marketplace nav item missing");
-		expect(isExecutionNavItemActive(marketplace, "/marketplace")).toBe(true);
-		expect(isExecutionNavItemActive(marketplace, "/marketplace/finance")).toBe(
-			true,
-		);
+		expect(targets.some((to) => to.startsWith("/marketplace"))).toBe(false);
 	});
 
 	it("matches exact items only on their own path", () => {

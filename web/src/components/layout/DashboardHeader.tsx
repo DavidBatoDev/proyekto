@@ -14,9 +14,15 @@ const DashboardHeader = () => {
 	const isLoading = isAuthLoading || (isAuthenticated && !profile);
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+	// The header is global, so this is the one nav that spans both halves of the
+	// product. Marketplace is the top-level counterpart to the execution
+	// sidebar's entry and the marketplace sidebar's "Back to workspace" link —
+	// without it the only way across is from inside a sidebar, which the
+	// marketplace's own public pages do not render.
 	const navItems = [
 		{ label: "Home", to: "/dashboard" },
 		{ label: "Projects", to: "/dashboard", hash: "my-projects" },
+		{ label: "Marketplace", to: "/marketplace" },
 	];
 
 	return (
