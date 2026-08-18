@@ -11,17 +11,21 @@
  * swapped: `/category/sales-and-revenue/sales-strategy` still resolves, under
  * `growth-and-sales`.
  *
- * `industry-practices` is deliberately absent. It was retired outright rather
- * than merged — it classified sectors, not disciplines — so there is no honest
- * destination for it, and forwarding it to an unrelated discipline would be
- * worse than the not-found page it now gets.
+ * `industry-practices` and `product-and-strategy` are deliberately absent. Both
+ * were retired outright rather than merged, so there is no honest destination,
+ * and forwarding either to an unrelated discipline would be worse than the
+ * not-found page they now get.
+ *
+ * `people-and-organisation` was here and is not any more: it was un-merged back
+ * out of Business Operations into its own category, so it is live again. A
+ * redirect on a live slug is an infinite loop, because the route doing the
+ * forwarding is the one being forwarded to.
  */
 export const RETIRED_CATEGORY_SLUGS: Readonly<Record<string, string>> = {
 	"growth-and-marketing": "growth-and-sales",
 	"sales-and-revenue": "growth-and-sales",
 	"finance-and-fundraising": "business-operations",
 	"operations-and-delivery": "business-operations",
-	"people-and-organisation": "business-operations",
 };
 
 /**

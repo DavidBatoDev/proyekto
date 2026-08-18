@@ -119,7 +119,14 @@ export function CategoryMegaMenuBar({ categories }: CategoryMegaMenuBarProps) {
 			className="border-b border-border bg-card"
 			onMouseLeave={scheduleClose}
 		>
-			<div className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+			{/* Full-bleed and evenly distributed, rather than centred inside the
+			    page's max-width. The strip is chrome attached to the header above
+			    it, not page content, so inheriting the content column left it
+			    inset from a header that runs edge to edge. `justify-between` only
+			    applies once there is room for it — below `lg` the row keeps its
+			    natural width and scrolls, because spreading six items across a
+			    phone would strand them at the two edges. */}
+			<div className="flex w-full gap-6 overflow-x-auto px-4 sm:px-6 lg:justify-between lg:px-12 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 				{categories.map((category, index) => {
 					const triggerId = `${baseId}-trigger-${index}`;
 					const panelId = `${baseId}-panel-${index}`;

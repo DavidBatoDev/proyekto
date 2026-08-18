@@ -9,7 +9,9 @@ const SURVIVING = [
 	"ai-and-data",
 	"cloud-devops-and-security",
 	"design-and-brand",
+	"content-and-writing",
 	"growth-and-sales",
+	"people-and-organisation",
 	"business-operations",
 ];
 
@@ -22,9 +24,6 @@ describe("mapRetiredCategorySlug", () => {
 			"growth-and-sales",
 		);
 		expect(mapRetiredCategorySlug("operations-and-delivery")).toBe(
-			"business-operations",
-		);
-		expect(mapRetiredCategorySlug("people-and-organisation")).toBe(
 			"business-operations",
 		);
 		expect(mapRetiredCategorySlug("finance-and-fundraising")).toBe(
