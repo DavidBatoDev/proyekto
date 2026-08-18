@@ -1,4 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  NoopProjectCommerce,
+  type ProjectCommercePort,
+} from './ports/project-commerce.port';
 import { ProjectsService } from './projects.service';
 
 type Row = Record<string, unknown>;
@@ -17,6 +21,7 @@ function buildService(input: {
   accessRows?: Row[];
   logs: Row[];
   singleProjectCanViewFees?: boolean;
+  commerce?: Partial<ProjectCommercePort>;
 }) {
   const supabase = {
     from: jest.fn((table: string) => {
@@ -49,6 +54,12 @@ function buildService(input: {
     {} as never,
     {} as never,
     {} as never,
+    // Object.assign, not a spread: NoopProjectCommerce's methods live on the
+    // prototype, and spreading an instance copies only own properties.
+    Object.assign(
+      new NoopProjectCommerce(),
+      input.commerce ?? {},
+    ) as ProjectCommercePort,
   );
 }
 
@@ -165,5 +176,84 @@ describe('ProjectsService dashboard fee visibility', () => {
     const summary = await service.getDashboardSummary('user-1', {});
 
     expect(summary.time.total_fees).toBe(75);
+  });
+});
+
+describe('ProjectsService dashboard invoice summary', () => {
+  it('reports invoice totals from the commerce port, not from Supabase', async () => {
+    const getInvoiceSummary = jest.fn().mockResolvedValue({
+      total_count: 3,
+      total_amount: 1200.456,
+      status_counts: { draft: 1, issued: 0, sent: 1, paid: 1, void: 0 },
+    });
+    const service = buildService({
+      logs: [log('project-1', 50)],
+      accessRows: [
+        {
+          project_id: 'project-1',
+          role: 'admin',
+          origin: 'invited',
+          capabilities: {},
+        },
+      ],
+      commerce: { getInvoiceSummary },
+    });
+
+    const summary = await service.getDashboardSummary('user-1', {});
+
+    expect(getInvoiceSummary).toHaveBeenCalledTimes(1);
+    expect(summary.invoices.total_count).toBe(3);
+    // Rounding is the summary's presentation rule and stays in execution.
+    expect(summary.invoices.total_amount).toBe(1200.46);
+    expect(summary.invoices.status_counts.paid).toBe(1);
+  });
+
+  it('passes the date filters through to the port', async () => {
+    const getInvoiceSummary = jest.fn().mockResolvedValue({
+      total_count: 0,
+      total_amount: 0,
+      status_counts: {},
+    });
+    const service = buildService({
+      logs: [],
+      accessRows: [
+        {
+          project_id: 'project-1',
+          role: 'admin',
+          origin: 'invited',
+          capabilities: {},
+        },
+      ],
+      commerce: { getInvoiceSummary },
+    });
+
+    await service.getDashboardSummary('user-1', {
+      from: '2026-01-01',
+      to: '2026-02-01',
+    });
+
+    expect(getInvoiceSummary).toHaveBeenCalledWith(expect.any(Array), {
+      from: '2026-01-01',
+      to: '2026-02-01',
+    });
+  });
+
+  it('reports zeroes when no commerce implementation is bound', async () => {
+    const service = buildService({
+      logs: [],
+      accessRows: [
+        {
+          project_id: 'project-1',
+          role: 'admin',
+          origin: 'invited',
+          capabilities: {},
+        },
+      ],
+    });
+
+    const summary = await service.getDashboardSummary('user-1', {});
+
+    expect(summary.invoices.total_count).toBe(0);
+    expect(summary.invoices.total_amount).toBe(0);
   });
 });

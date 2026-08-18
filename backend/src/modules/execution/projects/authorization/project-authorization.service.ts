@@ -7,6 +7,7 @@ import {
   getPermission,
   resolvePermissions,
 } from '../permissions/project-permissions';
+import { isActiveConsultantEnrollment } from '../../../../common/auth/consultant-capability';
 import { MissingPermissionException } from './missing-permission.exception';
 import { AuditService } from '../../../shared/audit/audit.service';
 
@@ -75,6 +76,18 @@ export class ProjectAuthorizationService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Whether the user currently holds the verified-consultant capability.
+   *
+   * Lives here rather than in ProjectsService so execution asks its own
+   * authorization surface a question, instead of reaching for a marketplace
+   * capability helper directly. The underlying predicate is the shared one, so
+   * this and the SQL `is_active_consultant` cannot drift.
+   */
+  async isActiveConsultant(userId: string): Promise<boolean> {
+    return isActiveConsultantEnrollment(this.supabase, userId);
+  }
 
   /*
    * There is deliberately no `getProjectConsultantId` here.

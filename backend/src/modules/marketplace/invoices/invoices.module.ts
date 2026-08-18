@@ -3,7 +3,7 @@ import { InvoicesController } from './invoices.controller';
 import { InvoicesService } from './invoices.service';
 import { InvoiceCompositionService } from './invoice-composition.service';
 import { InvoiceSchedulerService } from './invoice-scheduler.service';
-import { ProjectsModule } from '../../execution/projects/projects.module';
+import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { UploadsModule } from '../../shared/uploads/uploads.module';
@@ -12,7 +12,7 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
 
 @Module({
   imports: [
-    ProjectsModule,
+    AuthorizationModule,
     NotificationsModule,
     ContractsModule,
     UploadsModule,
