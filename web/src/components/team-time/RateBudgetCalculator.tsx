@@ -541,7 +541,7 @@ function MemberCard({
 					}
 					action={
 						<Link
-							to="/finance"
+							to="/marketplace/finance"
 							search={{ tab: "overview", projectId }}
 							className="text-[11px] font-semibold text-blue-600 hover:underline"
 						>

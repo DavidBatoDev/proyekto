@@ -43,7 +43,7 @@ assignment changes the project relationship.
 
 ## 4. Find and invite Talent
 
-The consultant opens `/consultant/marketplace`, searches public profiles, and selects a
+The consultant opens `/marketplace/talent`, searches public profiles, and selects a
 project they administer. The service rechecks active status, project admin authority, public
 visibility, and self-invite prevention. Acceptance gives Talent editor access.
 

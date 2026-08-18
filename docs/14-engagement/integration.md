@@ -10,7 +10,7 @@ available but cannot be reached from the web client at all.
 ## The one-sentence summary
 
 Contract signing creates engagements, and a **party-scoped read path now exists** —
-`GET /api/engagements` plus an Engagements tab on `/finance`. What is still missing is
+`GET /api/engagements` plus an Engagements tab on `/marketplace/finance`. What is still missing is
 everything downstream: assignments, attributed time, submission, and approval have no
 writer and no route.
 
@@ -79,10 +79,14 @@ redaction pass. Two consequences worth knowing before extending this:
 
 ### Web routes
 
-`web/src/routes/_marketplace/` holds `finance/index.tsx` (portfolio and creation),
-`finance/$contractId.tsx` (editor, terms, signatures, amendments), `contract/sign/$token.tsx`
-(public signing), the two invoice routes, plus the `consultant/`, `freelancer/`, and
-`project-posting` surfaces.
+`web/src/routes/marketplace/` holds `finance/index.tsx` (portfolio and creation),
+`finance/$contractId.tsx` (editor, terms, signatures, amendments), the two invoice routes,
+plus the `consultant/`, `freelancer/` and `project-posting` surfaces.
+
+`contract/sign/$token.tsx` sits **outside** that tree, at the top level, and keeps its
+original `/contract/sign/$token` URL. It is the account-free signing page whose link is
+mailed to clients who may have no login, so it must never live under a namespace that
+could gate it.
 
 ## Access posture — read this before designing a query
 
@@ -174,7 +178,7 @@ only place they can be enforced:
 
 1. ~~**Read APIs first**, with redaction — a position-redacted engagement list and detail.~~
    Shipped 2026-08-18: `EngagementsService`, the two `/api/engagements` routes, and the
-   Engagements tab on `/finance`.
+   Engagements tab on `/marketplace/finance`.
 2. Engagement assignment APIs and UI, including flexible-engagement project placement.
 3. Attributed timers and manual time logs writing `task_time_logs.engagement_assignment_id`.
 4. Talent submission, then Consultant approval/rejection.

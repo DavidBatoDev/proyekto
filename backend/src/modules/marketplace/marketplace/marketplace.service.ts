@@ -528,7 +528,7 @@ export class MarketplaceService {
         invite_id: inviteId,
         status: dto.status,
       },
-      link_url: '/consultant/marketplace',
+      link_url: '/marketplace/talent',
     });
 
     await this.cacheInvalidation.invalidateAllDashboardCache();

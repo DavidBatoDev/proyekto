@@ -27,10 +27,15 @@ describe("dashboard primary navigation", () => {
 		);
 		if (!finance) throw new Error("Finance navigation is missing");
 
-		expect(finance.to).toBe("/finance");
-		expect(isDashboardPrimaryNavItemActive(finance, "/finance")).toBe(true);
+		expect(finance.to).toBe("/marketplace/finance");
 		expect(
-			isDashboardPrimaryNavItemActive(finance, "/finance/invoices/new"),
+			isDashboardPrimaryNavItemActive(finance, "/marketplace/finance"),
+		).toBe(true);
+		expect(
+			isDashboardPrimaryNavItemActive(
+				finance,
+				"/marketplace/finance/invoices/new",
+			),
 		).toBe(true);
 	});
 });

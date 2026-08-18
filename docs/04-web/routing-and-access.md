@@ -14,21 +14,45 @@ gating done in route `beforeLoad` hooks and project components.
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
 | `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
-| `consultant/` | `browse`, `marketplace`, `templates`, `apply`, `$profileId` |
-| `freelancer/` | `invites`, `go-live` |
+| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `freelancer/go-live`, `project-posting` |
+| `freelancer/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
 | `project/` | `$projectId` layout + tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
 | `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps), `notifications` |
-| `finance/` | `index`, `$contractId`, `invoices/new`, `invoices/$invoiceId/edit` — consultant-only (`ConsultantOnlyGuard` on `/api/finance`) |
 | `contract/` | `sign/$token` — the public, account-free client signing page |
 | `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
 Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,
-`notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `project-posting`,
-`command-center`.
+`notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `command-center`.
+
+## The marketplace / execution split
+
+`marketplace/` is a **real URL segment**; `_execution/` is a **pathless group**. The
+asymmetry is deliberate: execution is the surface every user lands on after signup, so
+`/dashboard` stays `/dashboard` rather than becoming `/execution/dashboard`, while the
+marketplace gets an addressable prefix it can later be hostname-routed on.
+
+Two routes deliberately sit **outside** `marketplace/` even though they are marketplace
+features:
+
+- **`contract/sign/$token`** — the account-free client signing page. Its URL is the CTA of
+  an email sent to someone who may have no login, so it must never move under a namespace
+  that could gate it. `mapLegacyPath` deliberately does not rewrite it.
+- **`freelancer/invites`** — a redirect shim to `/invites`. A live SQL trigger
+  (`handle_profile_project_invites_reconciliation`) writes that exact string into
+  `notifications.link_url`, and migrations are immutable, so the path must keep resolving.
+  It is in `PRESERVED` in [`legacyRoutePaths.ts`](../../web/src/lib/legacyRoutePaths.ts).
+
+**Old URLs are kept alive permanently, not temporarily.** `/finance`, `/consultant/*`,
+`/freelancer/go-live` and `/project-posting` still arrive from `notifications.link_url`
+rows, FCM payloads already in device trays, `signup_redirect` values, and third-party
+links — none of which can be rewritten. There is no edge redirect layer (wrangler serves
+`index.html` with a 200 for any unmatched path), so the root `notFoundComponent`
+([`NotFoundRoute.tsx`](../../web/src/components/layout/NotFoundRoute.tsx)) consults
+`mapLegacyPath` and forwards before rendering anything. Do not delete it.
 
 Signup is **lane-free**: a 4-step wizard (Account → Password → Profile → Verify) in
 [`SignupForm.tsx`](../../web/src/components/auth/signup/SignupForm.tsx) with no role

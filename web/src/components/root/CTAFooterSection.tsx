@@ -146,7 +146,7 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 							<ul className="space-y-2 text-sm text-slate-600">
 								<li>
 									<Link
-										to="/consultant"
+										to="/marketplace/consultant"
 										preload="intent"
 										className="font-semibold text-slate-700 transition-colors hover:text-slate-900"
 									>

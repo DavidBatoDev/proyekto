@@ -27,7 +27,7 @@ import {
 import { uploadService } from "@/services/upload.service";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_marketplace/freelancer/go-live")({
+export const Route = createFileRoute("/marketplace/freelancer/go-live")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });

@@ -66,4 +66,4 @@ rate, and availability. Invites reuse `project_invites`.
 ## Code locations
 
 - **Backend:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/), [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
-- **Web:** `web/src/routes/_marketplace/consultant/`, `web/src/routes/_marketplace/freelancer/`, `web/src/components/marketplace/` (public consultant marketing routes remain ungrouped)
+- **Web:** `web/src/routes/marketplace/` (a real `/marketplace` URL segment) — `consultant/`, `freelancer/`, `finance/`, `talent`, `project-posting` — plus `web/src/components/marketplace/`. `contract/sign/$token` and `freelancer/invites` sit outside it on purpose; see [Routing & access](../../04-web/routing-and-access.md)

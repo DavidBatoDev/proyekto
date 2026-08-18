@@ -1926,7 +1926,7 @@ export class ContractsService {
               row?.title ?? contract.project_title_snapshot ?? null,
             message: 'The service agreement is now fully signed.',
           },
-          link_url: `/finance/${contract.id}?section=signatures`,
+          link_url: `/marketplace/finance/${contract.id}?section=signatures`,
         });
       } catch {
         // A notification failure must not undo a signature.

@@ -39,7 +39,7 @@ import { uploadService } from "@/services/upload.service";
 import { useAuthStore } from "@/stores/authStore";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
-export const Route = createFileRoute("/_marketplace/consultant/apply")({
+export const Route = createFileRoute("/marketplace/consultant/apply")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });

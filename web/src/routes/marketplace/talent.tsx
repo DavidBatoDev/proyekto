@@ -13,7 +13,7 @@ import {
 } from "@/services/profile.service";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/_marketplace/consultant/marketplace")({
+export const Route = createFileRoute("/marketplace/talent")({
 	beforeLoad: () => {
 		const { isAuthenticated, profile } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });

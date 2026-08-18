@@ -4,7 +4,7 @@ import { useConsultantProfileQuery } from "@/hooks/useConsultants";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 
-export const Route = createFileRoute("/consultant/$profileId")({
+export const Route = createFileRoute("/marketplace/consultant/$profileId")({
 	component: ConsultantProfile,
 });
 
@@ -47,7 +47,7 @@ function ConsultantProfile() {
 						exist.
 					</p>
 					<Link
-						to="/consultant/browse"
+						to="/marketplace/consultant/browse"
 						className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-primary hover:bg-primary/90 transition-colors w-full"
 					>
 						<ArrowLeft className="w-5 h-5 mr-2" />
@@ -78,7 +78,7 @@ function ConsultantProfile() {
 					{/* Navigation */}
 					<div className="mb-4">
 						<Link
-							to="/consultant/browse"
+							to="/marketplace/consultant/browse"
 							className="inline-flex items-center text-sm font-medium text-primary hover:text-primary transition-colors"
 						>
 							<ArrowLeft className="w-4 h-4 mr-1" />

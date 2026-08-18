@@ -16,9 +16,9 @@ const PROJECT_ID = "69d405c9-1eee-4b0f-91b4-2e677ba10c23";
 
 // [path, slug, viewportWidth]
 const PAGES = [
-  ["/consultant", "consultant", 390],
+  ["/marketplace/consultant", "consultant", 390],
   ["/landing", "landing", 390],
-  ["/project-posting", "project-posting", 390],
+  ["/marketplace/project-posting", "project-posting", 390],
   ["/auth/verify", "auth_verify", 390],
   ["/dashboard", "dashboard", 390],
   ["/dashboard", "dashboard@320", 320],

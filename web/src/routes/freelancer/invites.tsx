@@ -11,7 +11,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
  * `beforeLoad` runs before the (now absent) component, so the redirect happens
  * without a flash. Deleting this file breaks live links; keep it.
  */
-export const Route = createFileRoute("/_marketplace/freelancer/invites")({
+export const Route = createFileRoute("/freelancer/invites")({
 	validateSearch: (search: Record<string, unknown>): { inviteId?: string } => ({
 		// Passed straight through — `/invites` is what validates it.
 		inviteId: typeof search.inviteId === "string" ? search.inviteId : undefined,

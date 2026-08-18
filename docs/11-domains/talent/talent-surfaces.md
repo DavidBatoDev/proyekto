@@ -10,7 +10,7 @@ dashboard subtree.
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/freelancer/go-live` | Complete professional data and activate marketplace enrollment | Authentication plus server eligibility |
+| `/marketplace/freelancer/go-live` | Complete professional data and activate marketplace enrollment | Authentication plus server eligibility |
 | `/freelancer/invites` | Legacy URL forwarding to `/invites` | Redirect |
 | `/invites` | Review and respond to project invites | Authentication and invite ownership |
 
@@ -23,9 +23,9 @@ dashboard subtree.
 | `/teams`, `/teams/$teamId/*` | Yes according to team membership and team role |
 | `/work-items` (labelled **Board**), `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
 | `/settings/*` | Yes; account settings |
-| `/project-posting` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
-| `/consultant/apply` | Yes; authenticated application flow |
-| `/consultant/browse`, `/consultant/$profileId` | Public consultant discovery |
+| `/marketplace/project-posting` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
+| `/marketplace/consultant/apply` | Yes; authenticated application flow |
+| `/marketplace/consultant/browse`, `/marketplace/consultant/$profileId` | Public consultant discovery |
 
 ## Project routes
 
@@ -47,9 +47,9 @@ Unvetted users are blocked from these by the shared predicate
 
 | Route or API | Gate |
 | --- | --- |
-| `/consultant/marketplace` | Web active-consultant check plus guarded API |
-| `/consultant/templates` authoring actions | Web check and `ConsultantOnlyGuard` |
-| `/finance/*` data | Entire backend finance controller uses `ConsultantOnlyGuard` |
+| `/marketplace/talent` | Web active-consultant check plus guarded API |
+| `/marketplace/consultant/templates` authoring actions | Web check and `ConsultantOnlyGuard` |
+| `/marketplace/finance/*` data | Entire backend finance controller uses `ConsultantOnlyGuard` |
 | Consultant-mode project creation | Backend verifies the active predicate |
 
 ## Navigation behavior

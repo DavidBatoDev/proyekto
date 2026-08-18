@@ -3,9 +3,7 @@ import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
 import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute(
-	"/_marketplace/finance/invoices/$invoiceId/edit",
-)({
+export const Route = createFileRoute("/marketplace/finance/invoices/new")({
 	beforeLoad: () => {
 		if (!useAuthStore.getState().isAuthenticated) {
 			throw redirect({ to: "/auth/login" });
@@ -14,15 +12,14 @@ export const Route = createFileRoute(
 	validateSearch: (search: Record<string, unknown>) => ({
 		projectId: typeof search.projectId === "string" ? search.projectId : "",
 	}),
-	component: EditInvoicePage,
+	component: NewInvoicePage,
 });
 
-function EditInvoicePage() {
-	const { invoiceId } = Route.useParams();
+function NewInvoicePage() {
 	const { projectId } = Route.useSearch();
 	return (
 		<MarketplaceShell>
-			<InvoiceBuilder projectId={projectId} invoiceId={invoiceId} />
+			<InvoiceBuilder projectId={projectId} />
 		</MarketplaceShell>
 	);
 }

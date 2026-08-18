@@ -31,7 +31,7 @@ import {
  * app chrome, so the singular form keeps this page bare, the same way
  * `/roadmap/shared/$token` does.
  */
-export const Route = createFileRoute("/_marketplace/contract/sign/$token")({
+export const Route = createFileRoute("/contract/sign/$token")({
 	// No beforeLoad auth guard: the token IS the authorization.
 	component: PublicSignPage,
 });

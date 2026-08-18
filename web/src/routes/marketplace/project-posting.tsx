@@ -15,7 +15,7 @@ import { roadmapService } from "@/services/roadmap.service";
 import { useProfile } from "@/stores/authStore";
 import type { Roadmap } from "@/types/roadmap";
 
-export const Route = createFileRoute("/_marketplace/project-posting")({
+export const Route = createFileRoute("/marketplace/project-posting")({
 	component: ProjectPostingPage,
 	validateSearch: (search: Record<string, unknown>) => ({
 		roadmapId: (search.roadmapId as string) || undefined,

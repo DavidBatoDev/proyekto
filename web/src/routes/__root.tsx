@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import Header from "../components/layout/Header";
+import { NotFoundRoute } from "../components/layout/NotFoundRoute";
 import { MigrationHandler } from "../components/migration";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
@@ -18,6 +19,9 @@ interface MyRouterContext {
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
 	component: RootLayout,
+	// Also the landing spot for URLs that moved under /marketplace — see
+	// NotFoundRoute, which forwards legacy paths before showing anything.
+	notFoundComponent: NotFoundRoute,
 });
 
 function RootLayout() {

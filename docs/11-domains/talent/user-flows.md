@@ -24,7 +24,7 @@ selection. Nothing about the account marks it as talent — see
 
 ## 2. Build the professional profile
 
-`/freelancer/go-live` collects rate settings, specialization, skills, portfolio material,
+`/marketplace/freelancer/go-live` collects rate settings, specialization, skills, portfolio material,
 and an identity document. The shared profile system also supports experience, education,
 certifications, languages, and licenses.
 

@@ -255,17 +255,19 @@ export function SidebarContent() {
 					<div className="mb-1 flex items-center justify-between pr-1">
 						<SidebarSectionHeader>Projects</SidebarSectionHeader>
 						<Link
-							to="/project-posting"
+							to="/marketplace/project-posting"
 							search={{ roadmapId: undefined }}
 							className={
-								currentPath === "/project-posting"
+								currentPath === "/marketplace/project-posting"
 									? "rounded bg-sidebar-primary p-1 text-sidebar-primary-foreground"
 									: "rounded p-1 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 							}
 							title="New project"
 							aria-label="New project"
 							aria-current={
-								currentPath === "/project-posting" ? "page" : undefined
+								currentPath === "/marketplace/project-posting"
+									? "page"
+									: undefined
 							}
 						>
 							<Plus className="h-3.5 w-3.5" />
@@ -279,7 +281,7 @@ export function SidebarContent() {
 							icon={<StackedPapersIcon />}
 							label="No projects yet"
 							ctaLabel="Add your first project"
-							ctaTo="/project-posting"
+							ctaTo="/marketplace/project-posting"
 						/>
 					) : (
 						<div className="space-y-0.5">

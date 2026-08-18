@@ -17,7 +17,7 @@ import { isActiveConsultant } from "@/lib/auth-utils";
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/consultant/templates")({
+export const Route = createFileRoute("/marketplace/consultant/templates")({
 	beforeLoad: () => {
 		const { isAuthenticated, profile } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });

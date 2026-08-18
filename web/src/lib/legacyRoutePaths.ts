@@ -29,7 +29,6 @@ const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
 	["/consultant/apply", "/marketplace/consultant/apply"],
 	["/freelancer/go-live", "/marketplace/freelancer/go-live"],
 	["/project-posting", "/marketplace/project-posting"],
-	["/contract/sign", "/marketplace/contract/sign"],
 	["/finance", "/marketplace/finance"],
 	["/consultant", "/marketplace/consultant"],
 ];
@@ -42,6 +41,11 @@ const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
  *
  * `/freelancer/profile` is also absent — it has never been a route, and
  * NotificationBell resolves it to the viewer's own profile.
+ *
+ * `/contract/sign` is absent because it did not move. It is the account-free
+ * client signing page, mailed as the CTA of an email to someone who may have no
+ * login, and this map only runs in signed-in contexts (NotificationBell,
+ * authContinuation) — rewriting it would strand exactly the person it is for.
  */
 const PRESERVED = ["/freelancer/invites", "/freelancer/profile"];
 

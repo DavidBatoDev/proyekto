@@ -8,7 +8,7 @@ export function DashboardCreateActions() {
 	return (
 		<div className="flex w-fit shrink-0 flex-col items-start">
 			<Link
-				to="/project-posting"
+				to="/marketplace/project-posting"
 				search={{ roadmapId: undefined }}
 				data-hierarchy-level="project"
 				className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:text-sm"

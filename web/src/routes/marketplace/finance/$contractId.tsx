@@ -14,7 +14,7 @@ const CONTRACT_SECTIONS: StepKey[] = [
 	"signatures",
 ];
 
-export const Route = createFileRoute("/_marketplace/finance/$contractId")({
+export const Route = createFileRoute("/marketplace/finance/$contractId")({
 	beforeLoad: () => {
 		if (!useAuthStore.getState().isAuthenticated) {
 			throw redirect({ to: "/auth/login" });
@@ -41,11 +41,14 @@ function ContractEditorPage() {
 				contractId={contractId}
 				initialStep={section}
 				onBack={() =>
-					void navigate({ to: "/finance", search: { tab: "contracts" } })
+					void navigate({
+						to: "/marketplace/finance",
+						search: { tab: "contracts" },
+					})
 				}
 				onOpenContract={(nextContractId) =>
 					void navigate({
-						to: "/finance/$contractId",
+						to: "/marketplace/finance/$contractId",
 						params: { contractId: nextContractId },
 						search: { section: "terms" },
 						replace: true,

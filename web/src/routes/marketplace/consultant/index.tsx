@@ -19,7 +19,7 @@ import { RootFooter } from "@/components/root/RootFooter";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 
-export const Route = createFileRoute("/consultant/")({
+export const Route = createFileRoute("/marketplace/consultant/")({
 	component: ConsultantLandingPage,
 });
 
@@ -517,7 +517,7 @@ function ApplyButton({ dark = false }: { dark?: boolean }) {
 
 	if (isAuthenticated) {
 		return (
-			<Link to="/consultant/apply">
+			<Link to="/marketplace/consultant/apply">
 				<Button variant="contained" colorScheme="primary" className={className}>
 					Continue your application
 					<ArrowRight className="ml-2 h-4 w-4" />
@@ -527,7 +527,10 @@ function ApplyButton({ dark = false }: { dark?: boolean }) {
 	}
 
 	return (
-		<Link to="/auth/signup" search={{ redirect: "/consultant/apply" }}>
+		<Link
+			to="/auth/signup"
+			search={{ redirect: "/marketplace/consultant/apply" }}
+		>
 			<Button variant="contained" colorScheme="primary" className={className}>
 				Apply to lead on Proyekto
 				<ArrowRight className="ml-2 h-4 w-4" />

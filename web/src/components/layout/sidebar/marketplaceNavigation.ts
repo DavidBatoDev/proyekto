@@ -29,7 +29,7 @@ export interface MarketplaceNavItem {
 export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 	{
 		key: "finance",
-		to: "/finance",
+		to: "/marketplace/finance",
 		label: "Finance",
 		icon: CircleDollarSign,
 		match: "prefix",
@@ -37,7 +37,7 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 	},
 	{
 		key: "consultant-marketplace",
-		to: "/consultant/marketplace",
+		to: "/marketplace/talent",
 		label: "Find work",
 		icon: Compass,
 		match: "prefix",
@@ -45,14 +45,14 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 	},
 	{
 		key: "browse-consultants",
-		to: "/consultant/browse",
+		to: "/marketplace/consultant/browse",
 		label: "Browse consultants",
 		icon: Search,
 		match: "prefix",
 	},
 	{
 		key: "project-posting",
-		to: "/project-posting",
+		to: "/marketplace/project-posting",
 		label: "Post a project",
 		icon: FileSignature,
 		match: "exact",

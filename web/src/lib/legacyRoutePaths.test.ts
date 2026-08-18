@@ -59,6 +59,16 @@ describe("mapLegacyPath", () => {
 		expect(mapLegacyPath("/freelancer/profile")).toBe("/freelancer/profile");
 	});
 
+	it("leaves the account-free contract signing path alone", () => {
+		// /contract/sign did not move. It is mailed to clients who may have no
+		// login, and this map only runs in signed-in contexts — rewriting it
+		// would strand exactly the person the page exists for.
+		expect(mapLegacyPath("/contract/sign/abc123")).toBe(
+			"/contract/sign/abc123",
+		);
+		expect(mapLegacyPath("/contract/sign")).toBe("/contract/sign");
+	});
+
 	it("passes through unrelated and already-migrated paths", () => {
 		expect(mapLegacyPath("/dashboard")).toBe("/dashboard");
 		expect(mapLegacyPath("/marketplace/finance")).toBe("/marketplace/finance");

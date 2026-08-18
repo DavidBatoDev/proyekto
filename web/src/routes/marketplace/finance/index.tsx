@@ -127,7 +127,7 @@ const CONTRACT_STEPS: StepKey[] = [
 	"signatures",
 ];
 
-export const Route = createFileRoute("/_marketplace/finance/")({
+export const Route = createFileRoute("/marketplace/finance/")({
 	beforeLoad: () => {
 		if (!useAuthStore.getState().isAuthenticated) {
 			throw redirect({ to: "/auth/login" });
@@ -227,7 +227,7 @@ function FinancePage() {
 
 	const updateSearch = (patch: Partial<FinanceSearch>) =>
 		void navigate({
-			to: "/finance",
+			to: "/marketplace/finance",
 			search: { ...search, ...patch },
 			replace: true,
 		});
@@ -236,7 +236,7 @@ function FinancePage() {
 	);
 	const openContract = (contractId: string, section?: StepKey) =>
 		void navigate({
-			to: "/finance/$contractId",
+			to: "/marketplace/finance/$contractId",
 			params: { contractId },
 			search: { section },
 		});

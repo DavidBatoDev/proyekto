@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const THEMED_PROJECT_POSTING_FILES = [
-	new URL("../../routes/_marketplace/project-posting.tsx", import.meta.url),
+	new URL("../../routes/marketplace/project-posting.tsx", import.meta.url),
 	new URL("./ProjectTeamPicker.tsx", import.meta.url),
 ];
 

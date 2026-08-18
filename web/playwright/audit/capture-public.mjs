@@ -25,8 +25,8 @@ const PAGES = [
   { path: "/auth/callback", slug: "auth_callback" },
   { path: "/auth/admin/login", slug: "auth_admin_login" },
   { path: "/auth/admin/signin", slug: "auth_admin_signin" },
-  { path: "/consultant", slug: "consultant" },
-  { path: "/consultant/browse", slug: "consultant_browse" },
+  { path: "/marketplace/consultant", slug: "consultant" },
+  { path: "/marketplace/consultant/browse", slug: "consultant_browse" },
   { path: "/project/roadmap", slug: "project_roadmap" },
 ];
 const VIEWPORTS = DESKTOP_ONLY

@@ -3,7 +3,7 @@ import { Briefcase, MapPin, Search } from "lucide-react";
 import { useState } from "react";
 import { useConsultantsQuery } from "@/hooks/useConsultants";
 
-export const Route = createFileRoute("/_marketplace/consultant/browse")({
+export const Route = createFileRoute("/marketplace/consultant/browse")({
 	component: BrowseConsultants,
 });
 
@@ -105,7 +105,7 @@ function BrowseConsultants() {
 							return (
 								<Link
 									key={consultant.id}
-									to="/consultant/$profileId"
+									to="/marketplace/consultant/$profileId"
 									params={{ profileId: consultant.id }}
 									className="group bg-white rounded-2xl shadow-xs hover:shadow-xl border border-gray-200 transition-all duration-300 overflow-hidden flex flex-col items-start translate-y-0 hover:-translate-y-1"
 								>

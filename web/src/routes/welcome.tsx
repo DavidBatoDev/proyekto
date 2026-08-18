@@ -403,7 +403,7 @@ export function ClientFreelancerWelcomeDeck({
 				<>
 					Considering becoming a consultant?{" "}
 					<a
-						href="/consultant"
+						href="/marketplace/consultant"
 						className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
 					>
 						Apply to lead →

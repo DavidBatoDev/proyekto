@@ -19,8 +19,8 @@ export const STATIC_ROUTES = [
   { path: "/auth/callback", group: "auth", auth: false },
   { path: "/auth/admin/login", group: "auth", auth: false },
   { path: "/auth/admin/signin", group: "auth", auth: false },
-  { path: "/consultant", group: "public", auth: false },
-  { path: "/consultant/browse", group: "public", auth: false },
+  { path: "/marketplace/consultant", group: "public", auth: false },
+  { path: "/marketplace/consultant/browse", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },
@@ -30,7 +30,10 @@ export const STATIC_ROUTES = [
   { path: "/notifications", group: "global", auth: true },
   { path: "/inbox", group: "global", auth: true },
   { path: "/work-items", group: "global", auth: true },
-  { path: "/project-posting", group: "global", auth: true },
+  { path: "/marketplace/project-posting", group: "global", auth: true },
+  { path: "/marketplace", group: "public", auth: false },
+  { path: "/marketplace/finance", group: "consultant", auth: true },
+  { path: "/marketplace/finance/invoices/new", group: "consultant", auth: true },
   { path: "/roadmap/shared-with-me", group: "roadmap", auth: true },
   { path: "/settings/appearance", group: "settings", auth: true },
   { path: "/project/roadmap", group: "roadmap", auth: false },
@@ -40,11 +43,11 @@ export const STATIC_ROUTES = [
   { path: "/teams/me/invites", group: "teams", auth: true },
 
   // ── freelancer / consultant authed ──────────────────────────────────────
-  { path: "/freelancer/go-live", group: "freelancer", auth: true },
+  { path: "/marketplace/freelancer/go-live", group: "freelancer", auth: true },
   { path: "/freelancer/invites", group: "freelancer", auth: true },
-  { path: "/consultant/apply", group: "consultant", auth: true },
-  { path: "/consultant/marketplace", group: "consultant", auth: true },
-  { path: "/consultant/templates", group: "consultant", auth: true },
+  { path: "/marketplace/consultant/apply", group: "consultant", auth: true },
+  { path: "/marketplace/talent", group: "consultant", auth: true },
+  { path: "/marketplace/consultant/templates", group: "consultant", auth: true },
 
   // ── admin (likely `redirected` if the account isn't an admin) ───────────
   { path: "/admin/applications", group: "admin", auth: true },
@@ -98,7 +101,7 @@ export const DYNAMIC_ROUTES = [
 
   // ── profile ─────────────────────────────────────────────────────────────
   { tpl: "/profile/:profileId", needs: ["profileId"], group: "profile", auth: true },
-  { tpl: "/consultant/:profileId", needs: ["profileId"], group: "profile", auth: false },
+  { tpl: "/marketplace/consultant/:profileId", needs: ["profileId"], group: "profile", auth: false },
 
   // ── public shared roadmap (token-gated; no login) ───────────────────────
   { tpl: "/roadmap/shared/:token", needs: ["token"], group: "roadmap", auth: false },
