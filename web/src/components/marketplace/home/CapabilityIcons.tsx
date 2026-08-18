@@ -365,3 +365,89 @@ export function EngagementRecordIcon({ className }: CapabilityIconProps) {
 		</svg>
 	);
 }
+
+/**
+ * Larger empty-state art for the "pick up where you left off" panel.
+ *
+ * Same grammar as the capability icons — muted sheets, one primary tile — but
+ * drawn at 96px where a little more detail survives. Three stacked sheets read
+ * as "nothing here yet, but this is the shape of what goes here".
+ */
+export function EmptyWorkspaceArt({ className }: CapabilityIconProps) {
+	return (
+		<svg
+			viewBox="0 0 96 96"
+			fill="none"
+			xmlns="http://www.w3.org/2000/svg"
+			aria-hidden
+			focusable="false"
+			className={className}
+		>
+			<rect
+				x="8"
+				y="26"
+				width="30"
+				height="44"
+				rx="4"
+				className="fill-muted"
+				opacity="0.55"
+			/>
+			<rect
+				x="58"
+				y="26"
+				width="30"
+				height="44"
+				rx="4"
+				className="fill-muted"
+				opacity="0.55"
+			/>
+			<rect
+				x="28"
+				y="16"
+				width="40"
+				height="60"
+				rx="5"
+				className="fill-background"
+			/>
+			<rect
+				x="28"
+				y="16"
+				width="40"
+				height="60"
+				rx="5"
+				className="stroke-border"
+				strokeWidth="1.5"
+			/>
+			<rect
+				x="35"
+				y="25"
+				width="26"
+				height="3"
+				rx="1.5"
+				className="fill-muted-foreground"
+				opacity="0.3"
+			/>
+			<rect
+				x="35"
+				y="32"
+				width="19"
+				height="3"
+				rx="1.5"
+				className="fill-muted-foreground"
+				opacity="0.3"
+			/>
+			<rect
+				x="35"
+				y="44"
+				width="26"
+				height="24"
+				rx="4"
+				className="fill-primary"
+			/>
+			<path
+				d="M48 50.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6-4.6-1.9 4.6-1.9z"
+				className="fill-primary-foreground"
+			/>
+		</svg>
+	);
+}

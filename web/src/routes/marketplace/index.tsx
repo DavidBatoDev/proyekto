@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FeaturedSolutions } from "@/components/marketplace/home/FeaturedSolutions";
 import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
 import { MarketplaceHero } from "@/components/marketplace/home/MarketplaceHero";
+import { PickUpWhereYouLeftOff } from "@/components/marketplace/home/PickUpWhereYouLeftOff";
 import { VettedConsultants } from "@/components/marketplace/home/VettedConsultants";
 import { WhyProyekto } from "@/components/marketplace/home/WhyProyekto";
 import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
@@ -28,6 +29,7 @@ function MarketplaceHome() {
 		<div className="min-h-screen bg-background pt-app-header">
 			<MarketplaceCategoryBar />
 			<MarketplaceHero />
+			<PickUpWhereYouLeftOff />
 			<FeaturedSolutions />
 			<VettedConsultants />
 			<WhyProyekto />
