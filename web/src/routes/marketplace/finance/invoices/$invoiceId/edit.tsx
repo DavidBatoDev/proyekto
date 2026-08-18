@@ -1,16 +1,14 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
-import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
-import { useAuthStore } from "@/stores/authStore";
 
+/**
+ * An existing invoice. Auth and the marketplace shell come from
+ * `finance/route.tsx`; see `invoices/new.tsx` for why this sits outside the
+ * `_portfolio` chrome.
+ */
 export const Route = createFileRoute(
 	"/marketplace/finance/invoices/$invoiceId/edit",
 )({
-	beforeLoad: () => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-	},
 	validateSearch: (search: Record<string, unknown>) => ({
 		projectId: typeof search.projectId === "string" ? search.projectId : "",
 	}),
@@ -20,9 +18,5 @@ export const Route = createFileRoute(
 function EditInvoicePage() {
 	const { invoiceId } = Route.useParams();
 	const { projectId } = Route.useSearch();
-	return (
-		<MarketplaceShell>
-			<InvoiceBuilder projectId={projectId} invoiceId={invoiceId} />
-		</MarketplaceShell>
-	);
+	return <InvoiceBuilder projectId={projectId} invoiceId={invoiceId} />;
 }

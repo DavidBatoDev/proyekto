@@ -32,7 +32,27 @@ export const STATIC_ROUTES = [
   { path: "/work-items", group: "global", auth: true },
   { path: "/marketplace/project-posting", group: "global", auth: true },
   { path: "/marketplace", group: "public", auth: false },
+  // Public, indexable category pages. Both are seeded taxonomy slugs, so they
+  // resolve without a fixture; they render the empty state until consultants
+  // are attached to sub-categories.
+  {
+    path: "/marketplace/category/ai-and-data",
+    group: "public",
+    auth: false,
+  },
+  {
+    path: "/marketplace/category/ai-and-data/llm-application-development",
+    group: "public",
+    auth: false,
+  },
   { path: "/marketplace/finance", group: "consultant", auth: true },
+  { path: "/marketplace/finance/contracts", group: "consultant", auth: true },
+  {
+    path: "/marketplace/finance/engagements",
+    group: "consultant",
+    auth: true,
+  },
+  { path: "/marketplace/finance/invoices", group: "consultant", auth: true },
   { path: "/marketplace/finance/invoices/new", group: "consultant", auth: true },
   { path: "/roadmap/shared-with-me", group: "roadmap", auth: true },
   { path: "/settings/appearance", group: "settings", auth: true },

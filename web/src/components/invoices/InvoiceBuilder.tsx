@@ -235,8 +235,8 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 				queryKey: ["invoices", "project", projectId],
 			});
 			void navigate({
-				to: "/marketplace/finance",
-				search: { tab: "invoices", projectId },
+				to: "/marketplace/finance/invoices",
+				search: { projectId },
 			});
 		},
 		onError: (err: Error) => {

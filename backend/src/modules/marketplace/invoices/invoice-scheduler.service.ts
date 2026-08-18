@@ -387,7 +387,7 @@ export class InvoiceSchedulerService {
           period_end: periodEnd,
           message: `Invoice ${invoiceNumber} is drafted for ${periodStart} – ${periodEnd}. Review and send it.`,
         },
-        link_url: `/marketplace/finance?tab=invoices&projectId=${contract.project_id}`,
+        link_url: `/marketplace/finance/invoices?projectId=${contract.project_id}`,
       });
     } catch (err) {
       this.logger.warn(

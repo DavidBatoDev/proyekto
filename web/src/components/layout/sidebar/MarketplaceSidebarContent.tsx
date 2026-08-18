@@ -3,10 +3,15 @@ import { ArrowLeft } from "lucide-react";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { useProfile } from "@/stores/authStore";
 import {
+	isMarketplaceNavChildActive,
 	isMarketplaceNavItemActive,
 	MARKETPLACE_NAV_ITEMS,
 } from "./marketplaceNavigation";
-import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
+import {
+	SidebarNavLink,
+	SidebarSectionHeader,
+	SidebarSubLink,
+} from "./SidebarPrimitives";
 
 /**
  * The marketplace shell's navigation.
@@ -30,15 +35,39 @@ export function MarketplaceSidebarContent() {
 		<div className="flex h-full flex-col gap-6 overflow-y-auto px-3 py-4">
 			<nav className="space-y-1">
 				<SidebarSectionHeader>Marketplace</SidebarSectionHeader>
-				{items.map((item) => (
-					<SidebarNavLink
-						key={item.key}
-						to={item.to}
-						icon={item.icon}
-						label={item.label}
-						active={isMarketplaceNavItemActive(item, currentPath)}
-					/>
-				))}
+				{items.map((item) => {
+					const active = isMarketplaceNavItemActive(item, currentPath);
+					return (
+						<div key={item.key} className="space-y-1">
+							<SidebarNavLink
+								to={item.to}
+								icon={item.icon}
+								label={item.label}
+								active={active}
+							/>
+							{/* Sections expand only inside their own area. Listing every
+                finance section from the consultant directory would make the
+                sidebar a sitemap rather than a place-marker. */}
+							{active && item.children && (
+								<div className="ml-4 space-y-0.5 border-l border-sidebar-border pl-2">
+									{item.children.map((child) => (
+										<SidebarSubLink
+											key={child.key}
+											to={child.to}
+											icon={child.icon}
+											label={child.label}
+											active={isMarketplaceNavChildActive(
+												child,
+												item,
+												currentPath,
+											)}
+										/>
+									))}
+								</div>
+							)}
+						</div>
+					);
+				})}
 			</nav>
 
 			<div className="mt-auto border-t border-sidebar-border pt-3">

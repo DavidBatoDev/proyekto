@@ -542,7 +542,7 @@ function MemberCard({
 					action={
 						<Link
 							to="/marketplace/finance"
-							search={{ tab: "overview", projectId }}
+							search={{ projectId }}
 							className="text-[11px] font-semibold text-blue-600 hover:underline"
 						>
 							Edit split

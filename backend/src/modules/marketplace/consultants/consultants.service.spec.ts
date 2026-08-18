@@ -8,9 +8,45 @@ import { ConsultantDirectoryQueryDto } from './dto/consultants.dto';
  * (`range`) settles with; `membershipRows` feeds the consultant_subcategories
  * lookup so the dedupe path can be exercised.
  */
+/**
+ * What a bare `await builder` yields per table, for the reads that have no
+ * terminal call.
+ */
+function awaitedRowsFor(
+  table: string,
+  options: {
+    membershipRows?: { user_id: string }[];
+    services?: unknown[];
+    skills?: unknown[];
+    templates?: unknown[];
+  },
+): unknown[] {
+  switch (table) {
+    case 'consultant_subcategories':
+      return options.membershipRows ?? [];
+    case 'consultant_services':
+      return options.services ?? [];
+    case 'user_skills':
+      return options.skills ?? [];
+    case 'roadmap_public_templates':
+      return options.templates ?? [];
+    default:
+      return [];
+  }
+}
+
 function createDb(options: {
   profiles?: { data: unknown[]; count: number };
   membershipRows?: { user_id: string }[];
+  /**
+   * Rows for the tables the detail endpoint fans out to. Each defaults to
+   * empty, so a test that does not care about them reads as "this consultant
+   * has published nothing", which is the common case.
+   */
+  services?: unknown[];
+  skills?: unknown[];
+  rates?: unknown | null;
+  templates?: unknown[];
 }) {
   const calls: { table: string; filters: Record<string, unknown> }[] = [];
 
@@ -32,6 +68,17 @@ function createDb(options: {
         return builder;
       }),
       order: jest.fn(() => builder),
+      not: jest.fn(() => builder),
+      limit: jest.fn(() => builder),
+      maybeSingle: jest.fn(() =>
+        Promise.resolve({ data: options.rates ?? null, error: null }),
+      ),
+      single: jest.fn(() =>
+        Promise.resolve({
+          data: (options.profiles?.data ?? [])[0] ?? null,
+          error: null,
+        }),
+      ),
       range: jest.fn(() =>
         Promise.resolve({
           data: options.profiles?.data ?? [],
@@ -39,6 +86,10 @@ function createDb(options: {
           error: null,
         }),
       ),
+      // Awaiting the builder itself is how PostgREST reads without a terminal
+      // call. The fan-out tables all read this way.
+      then: (resolve: (value: unknown) => unknown) =>
+        resolve({ data: awaitedRowsFor(table, options), error: null }),
     };
 
     if (table === 'consultant_subcategories') {
@@ -210,3 +261,254 @@ describe('ConsultantsService.directory', () => {
     expect(keys[0]).toBe(keys[2]);
   });
 });
+
+/**
+ * `findOne` walks a different shape to `directory`: a `.single()` on profiles
+ * plus an awaited builder on consultant_subcategories with no terminal call, so
+ * it gets its own stub rather than bending the one above.
+ */
+function createProfileDb(options: {
+  profile?: unknown;
+  expertiseRows?: unknown[];
+  // The rest of the detail fan-out. Default empty, so a test that only cares
+  // about expertise reads as "this consultant has published nothing else".
+  serviceRows?: unknown[];
+  skillRows?: unknown[];
+  rateRow?: unknown | null;
+  templateRows?: unknown[];
+}) {
+  const selects: Record<string, string> = {};
+  const filters: Record<string, string[]> = {};
+
+  const from = jest.fn((table: string) => {
+    const builder: Record<string, unknown> = {
+      select: jest.fn((columns: string) => {
+        selects[table] = columns;
+        return builder;
+      }),
+      eq: jest.fn((column: string, value: unknown) => {
+        (filters[table] ??= []).push(`${column}=${String(value)}`);
+        return builder;
+      }),
+      order: jest.fn(() => builder),
+      not: jest.fn(() => builder),
+      limit: jest.fn(() =>
+        Promise.resolve({ data: options.templateRows ?? [], error: null }),
+      ),
+      maybeSingle: jest.fn(() =>
+        Promise.resolve({ data: options.rateRow ?? null, error: null }),
+      ),
+      single: jest.fn(() =>
+        Promise.resolve({ data: options.profile ?? null, error: null }),
+      ),
+    };
+
+    // `consultant_services` and `user_skills` have no terminal call — the
+    // builder itself is awaited — so they resolve through `then`.
+    if (table === 'consultant_services') {
+      builder.order = jest.fn(() =>
+        Promise.resolve({ data: options.serviceRows ?? [], error: null }),
+      );
+    }
+    if (table === 'user_skills') {
+      builder.eq = jest.fn(() =>
+        Promise.resolve({ data: options.skillRows ?? [], error: null }),
+      );
+    }
+
+    if (table === 'consultant_subcategories') {
+      const result = { data: options.expertiseRows ?? [], error: null };
+      // The second `order` is the last call, so that is what gets awaited.
+      let orderCalls = 0;
+      builder.order = jest.fn(() => {
+        orderCalls += 1;
+        return orderCalls >= 2 ? Promise.resolve(result) : builder;
+      });
+    }
+
+    return builder;
+  });
+
+  return { db: { from }, selects, filters };
+}
+
+const VERIFIED_PROFILE = {
+  id: 'c1',
+  display_name: 'August Teleg',
+  consultant_profile: { status: 'verified', verified_at: '2026-08-17T22:51:31Z' },
+};
+
+describe('ConsultantsService.findOne', () => {
+  it('surfaces the verification date the enrolment embed carries', async () => {
+    // attachMarketplaceEnrollmentFields deletes the whole embed once it has the
+    // capability flags, so verified_at has to be lifted before it goes.
+    const { db } = createProfileDb({ profile: VERIFIED_PROFILE });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.consultant_verified_at).toBe('2026-08-17T22:51:31Z');
+    expect(result.is_consultant_verified).toBe(true);
+    expect(result.consultant_profile).toBeUndefined();
+  });
+
+  it('flattens the expertise embed into category and sub-category pairs', async () => {
+    const { db } = createProfileDb({
+      profile: VERIFIED_PROFILE,
+      expertiseRows: [
+        {
+          is_primary: true,
+          subcategory: {
+            slug: 'llm-application-development',
+            name: 'LLM Application Development',
+            category: { slug: 'ai-and-data', name: 'AI & Data' },
+          },
+        },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.expertise).toEqual([
+      {
+        categorySlug: 'ai-and-data',
+        categoryName: 'AI & Data',
+        subcategorySlug: 'llm-application-development',
+        subcategoryName: 'LLM Application Development',
+        isPrimary: true,
+      },
+    ]);
+  });
+
+  it('drops a row whose category embed came back empty', async () => {
+    // The is_active filters narrow the embed rather than dropping the parent
+    // row, so a de-activated branch arrives as null and must not become a chip
+    // pointing at a category page that no longer exists.
+    const { db } = createProfileDb({
+      profile: VERIFIED_PROFILE,
+      expertiseRows: [
+        { is_primary: false, subcategory: { slug: 's', name: 'S', category: null } },
+        { is_primary: false, subcategory: null },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.expertise).toEqual([]);
+  });
+
+  it('refuses a profile that is not a verified consultant', async () => {
+    const { db } = createProfileDb({ profile: null });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    await expect(service.findOne('nobody')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('ConsultantsService.findOne fan-out', () => {
+  const verifiedProfile = {
+    id: 'c1',
+    display_name: 'Ada',
+    consultant_profile: { status: 'verified', verified_at: '2026-08-01T00:00:00Z' },
+  };
+
+  /**
+   * This client runs as SUPABASE_ADMIN and bypasses RLS, so the filters in the
+   * service ARE the boundary. A draft is the consultant's private working
+   * state — an unpublished price leaking would be the whole point of the
+   * status column defeated.
+   */
+  it('asks for published services only, in author order', async () => {
+    const { db, selects, filters } = createProfileDb({
+      profile: verifiedProfile,
+      serviceRows: [
+        {
+          id: 's1',
+          title: 'Audit',
+          description: null,
+          cover_url: null,
+          starting_price: '50.00',
+          currency: 'USD',
+          price_unit: 'project',
+          delivery_days: 7,
+        },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as {
+      services: Array<{ starting_price: number | null }>;
+    };
+
+    expect(filters['consultant_services']).toContain('status=published');
+    expect(selects['consultant_services']).not.toContain('*');
+    // numeric(12,2) arrives as a string; the API must not hand that to the browser.
+    expect(result.services[0].starting_price).toBe(50);
+  });
+
+  it('returns no rate rather than a placeholder when none is set', async () => {
+    const { db } = createProfileDb({ profile: verifiedProfile, rateRow: null });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as { rates: unknown };
+
+    expect(result.rates).toBeNull();
+  });
+
+  /**
+   * A row can exist with every other field set and no hourly rate. Rendering
+   * that as a rate of nothing would be a claim the consultant did not make.
+   */
+  it('returns no rate when the row exists but the hourly rate is blank', async () => {
+    const { db } = createProfileDb({
+      profile: verifiedProfile,
+      rateRow: { hourly_rate: null, currency: 'USD', availability: 'available' },
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as { rates: unknown };
+
+    expect(result.rates).toBeNull();
+  });
+
+  it('drops a skill whose master row came back empty', async () => {
+    const { db } = createProfileDb({
+      profile: verifiedProfile,
+      skillRows: [
+        { proficiency_level: 'expert', years_experience: 5, skill: null },
+        {
+          proficiency_level: 'expert',
+          years_experience: 5,
+          skill: { name: 'SEO', slug: 'seo', category: 'Marketing' },
+        },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as {
+      skills: Array<{ slug: string }>;
+    };
+
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0].slug).toBe('seo');
+  });
+});
+

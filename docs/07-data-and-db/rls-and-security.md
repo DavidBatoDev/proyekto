@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -72,6 +72,15 @@ policies are defense-in-depth allows, and there is no client write path:
 - `consultant_profiles`, `freelancer_profiles` — owners may read their enrollment
   and admins may manage all rows, but authenticated callers get no direct INSERT or
   UPDATE policy. Approval and self-service go-live/pause use the service-role API.
+- `marketplace_categories`, `marketplace_subcategories`, `consultant_subcategories` —
+  the curated marketplace taxonomy. All three are **public-read, write-nowhere**: each
+  carries a single `*_public_read` SELECT policy for `anon` and `authenticated`, and no
+  INSERT/UPDATE/DELETE policy at all, so only `service_role` (and migrations) can write.
+  The membership table's policy is `public.is_active_consultant(user_id)` rather than a
+  plain `true`, which is what makes suspending a consultant remove them from every
+  category page **without any membership row being deleted**. Consultant self-service
+  selection is deferred and will need its own policy plus a per-user row cap; the
+  intended shape is recorded in `20260818110000_marketplace_taxonomy.sql`.
 - `project_activity_log` — the audit trail (service-role writes only), fed via the
   `@Global` `AuditService`. Domains append their own dotted actions; e.g. roadmap AI
   commit/rollback of a project-linked roadmap writes `roadmap.committed` /

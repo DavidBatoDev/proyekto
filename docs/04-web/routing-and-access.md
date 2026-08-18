@@ -14,7 +14,7 @@ gating done in route `beforeLoad` hooks and project components.
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
 | `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
-| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `freelancer/go-live`, `project-posting` |
+| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `freelancer/go-live`, `project-posting` |
 | `freelancer/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
@@ -53,6 +53,39 @@ links — none of which can be rewritten. There is no edge redirect layer (wrang
 `index.html` with a 200 for any unmatched path), so the root `notFoundComponent`
 ([`NotFoundRoute.tsx`](../../web/src/components/layout/NotFoundRoute.tsx)) consults
 `mapLegacyPath` and forwards before rendering anything. Do not delete it.
+
+## Marketplace category pages
+
+`marketplace/category/` holds three public routes: a `route.tsx` layout carrying the
+category strip and footer, `$categorySlug/index.tsx`, and
+`$categorySlug/$subcategorySlug.tsx`. They list **consultants**, not roadmap templates,
+and are reachable both by clicking a category in the strip and through the hover
+mega-menu it renders
+([`CategoryMegaMenuBar.tsx`](../../web/src/components/marketplace/nav/CategoryMegaMenuBar.tsx)).
+
+Three things about them are load-bearing:
+
+- **They are public.** `marketplace/route.tsx` is a bare `Outlet` with no
+  `ProtectedRoute`, and these pages deliberately do not opt into `MarketplaceShell`.
+- **Sub-category slugs are unique per category, not globally.** The URL always carries
+  both segments, so a bare sub-category slug cannot be resolved and no shortlink form
+  exists.
+- **Most of them are empty.** The taxonomy shipped before enrolment filled it in, so
+  `CategoryEmptyState` is what nearly every visitor sees. Do not add these URLs to a
+  sitemap or to navigation beyond the mega-menu until `consultant_subcategories` has
+  rows — ~84 near-identical resultless pages is thin content, which costs exactly the
+  discoverability the pages exist to build.
+
+### Three taxonomies, three axes — do not unify them
+
+| Table | Classifies | Surface |
+| --- | --- | --- |
+| `marketplace_categories` / `marketplace_subcategories` | consultant **disciplines** | the mega-menu and `/marketplace/category/*` |
+| `roadmap_template_categories` | roadmap **subjects** | `/roadmap-templates` and the marketplace footer |
+| `user_specializations` | self-declared free-text **freelancer** specialities | the `/marketplace/talent` facets |
+
+They look redundant and are not. Forcing one table to serve two products would make
+every future taxonomy edit a negotiation between them.
 
 Signup is **lane-free**: a 4-step wizard (Account → Password → Profile → Verify) in
 [`SignupForm.tsx`](../../web/src/components/auth/signup/SignupForm.tsx) with no role
@@ -160,7 +193,10 @@ Gating happens in three places:
 2. Add a `beforeLoad` auth guard if it's authenticated.
 3. Wrap in `RequireProjectAccess` or check the relevant durable capability if it is access-scoped.
 4. If it's a new top-level page, remember to keep the header/nav's known-paths in
-   sync (per the web theme conventions).
+   sync (per the web theme conventions). `validPaths` in
+   [`Header.tsx`](../../web/src/components/layout/Header.tsx) is a **prefix** allowlist,
+   so anything under an already-listed namespace such as `/marketplace` needs no entry —
+   only a genuinely new top-level segment does.
 
 ## See also
 

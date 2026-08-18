@@ -4,7 +4,6 @@ import {
 	LayoutDashboard,
 	ListChecks,
 	type LucideIcon,
-	Store,
 } from "lucide-react";
 
 /**
@@ -14,11 +13,12 @@ import {
  * map inside SidebarContent, which meant adding an entry took two edits and
  * quietly rendered nothing if you forgot the second.
  *
- * Finance is deliberately NOT here any more. It is a marketplace surface, and
- * leaving it in the execution sidebar would contradict the boundary the shells
- * exist to draw. `marketplace` is the entry point instead — the mirror of the
- * marketplace shell's "Back to workspace" link. It carries no capability gate:
- * the marketplace decides for itself what a given visitor may see.
+ * Nothing marketplace-shaped belongs here — not Finance, and not the
+ * marketplace itself. Crossing between the two halves of the product is a
+ * top-level move, so it lives in the global header nav (DashboardHeader) where
+ * it is reachable from every page, including the marketplace's public ones that
+ * render no sidebar at all. Putting it here as well would give the same jump two
+ * homes at two levels of the hierarchy.
  */
 export interface ExecutionNavItem {
 	key: string;
@@ -49,13 +49,6 @@ export const EXECUTION_PRIMARY_NAV_ITEMS: ExecutionNavItem[] = [
 		to: "/meetings",
 		label: "Meetings",
 		icon: CalendarDays,
-		match: "prefix",
-	},
-	{
-		key: "marketplace",
-		to: "/marketplace",
-		label: "Marketplace",
-		icon: Store,
 		match: "prefix",
 	},
 ];

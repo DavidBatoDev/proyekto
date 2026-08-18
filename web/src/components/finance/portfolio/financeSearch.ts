@@ -1,32 +1,73 @@
 import type { StepKey } from "@/components/finance/ProjectContract";
 
-export type FinanceTab = "overview" | "contracts" | "engagements" | "invoices";
-
-export const FINANCE_TAB_IDS: FinanceTab[] = [
-	"overview",
-	"contracts",
-	"engagements",
-	"invoices",
-];
-
 /**
- * The whole page state lives in the URL, so every view a consultant reaches is
- * a link they can send to their accountant.
+ * Search-param vocabulary shared by the four finance section routes.
+ *
+ * The sections used to be `?tab=` values on one route, so a single validator
+ * covered all of them. Now each section is its own route with its own
+ * `validateSearch`, and these are the filters that survive moving between them:
+ * narrowing to a project on Contracts and then opening Invoices should keep the
+ * project selected rather than silently resetting it.
+ *
+ * Section-specific params (`contractStatus`, `invoiceStatus`) stay declared on
+ * the one route that reads them, so they cannot leak into a URL where nothing
+ * would apply them.
  */
-export interface FinanceSearch {
-	tab: FinanceTab;
+export interface FinanceSharedSearch {
 	q?: string;
 	projectId?: string;
 	projectStatus?: string;
 	currency?: string;
 	from?: string;
 	to?: string;
+}
+
+export interface FinanceSearchState extends FinanceSharedSearch {
 	contractStatus?: string;
 	invoiceStatus?: string;
 	step?: StepKey;
 	/** 1-based, and omitted from the URL while it is 1. */
 	page?: number;
 }
+
+/**
+ * Per-section search shapes.
+ *
+ * Every property is optional on purpose: the router derives a route's search
+ * type from what `validateSearch` is declared to return, and a key typed
+ * `string | undefined` is a REQUIRED key that happens to accept undefined. Left
+ * inferred, `<Link to="/marketplace/finance">` would refuse to compile without
+ * naming every filter — so each validator is annotated with one of these rather
+ * than letting TypeScript infer the object literal.
+ */
+export interface FinanceOverviewSearch extends FinanceSharedSearch {
+	/** Legacy only; `beforeLoad` forwards it and nothing renders from it. */
+	tab?: string;
+}
+
+export interface FinanceContractsSearch extends FinanceSharedSearch {
+	contractStatus?: string;
+	step?: StepKey;
+	page?: number;
+}
+
+export interface FinanceInvoicesSearch extends FinanceSharedSearch {
+	invoiceStatus?: string;
+	page?: number;
+}
+
+export interface ContractEditorSearch {
+	section?: StepKey;
+}
+
+export const FINANCE_SECTIONS = [
+	"overview",
+	"contracts",
+	"engagements",
+	"invoices",
+] as const;
+
+export type FinanceSection = (typeof FINANCE_SECTIONS)[number];
 
 export const CONTRACT_STEPS: StepKey[] = [
 	"parties",
@@ -38,11 +79,62 @@ export const CONTRACT_STEPS: StepKey[] = [
 
 export const FINANCE_PAGE_SIZE = 25;
 
-function toFilterOption(value: string) {
+export function stringValue(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Page 1 is the default, so it stays out of the URL rather than as `?page=1`. */
+export function pageValue(value: unknown): number | undefined {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 1 ? parsed : undefined;
+}
+
+export function validateFinanceSharedSearch(
+	search: Record<string, unknown>,
+): FinanceSharedSearch {
 	return {
-		value,
-		label: value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " "),
+		q: stringValue(search.q),
+		projectId: stringValue(search.projectId),
+		projectStatus: stringValue(search.projectStatus),
+		currency: stringValue(search.currency),
+		from: stringValue(search.from),
+		to: stringValue(search.to),
 	};
+}
+
+export function validateContractStep(value: unknown): StepKey | undefined {
+	return typeof value === "string" && CONTRACT_STEPS.includes(value as StepKey)
+		? (value as StepKey)
+		: undefined;
+}
+
+/**
+ * Maps a legacy `?tab=` value onto the route that replaced it.
+ *
+ * `/marketplace/finance?tab=invoices&projectId=…` is still written by the
+ * invoice scheduler's older notification rows and by anything a user has
+ * bookmarked, and notification rows cannot be rewritten, so the overview route
+ * forwards them rather than quietly rendering the wrong section. Returns
+ * `undefined` for `overview` and for anything unrecognised — both belong on the
+ * overview route, which is where the caller already is.
+ */
+export function legacyTabRoute(
+	tab: unknown,
+):
+	| "/marketplace/finance/contracts"
+	| "/marketplace/finance/engagements"
+	| "/marketplace/finance/invoices"
+	| undefined {
+	switch (tab) {
+		case "contracts":
+			return "/marketplace/finance/contracts";
+		case "engagements":
+			return "/marketplace/finance/engagements";
+		case "invoices":
+			return "/marketplace/finance/invoices";
+		default:
+			return undefined;
+	}
 }
 
 export const PROJECT_STATUS_OPTIONS = [
@@ -75,15 +167,57 @@ export const INVOICE_STATUS_OPTIONS = [
 	"void",
 ].map(toFilterOption);
 
+function toFilterOption(value: string) {
+	return {
+		value,
+		label: value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " "),
+	};
+}
+
+export function parseYmd(value?: string): Date | null {
+	if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+	const date = new Date(`${value}T00:00:00`);
+	return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function toIsoDate(date: Date): string {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
+export function formatDateRange(from?: string, to?: string): string {
+	const formatDay = (value: string) =>
+		new Intl.DateTimeFormat(undefined, {
+			month: "short",
+			day: "numeric",
+		}).format(new Date(`${value}T00:00:00`));
+	if (from && to) return `${formatDay(from)} – ${formatDay(to)}`;
+	if (from) return `From ${formatDay(from)}`;
+	if (to) return `Until ${formatDay(to)}`;
+	return "Any date";
+}
+
 /**
- * Which filter controls actually reach the query behind each tab.
+ * Which section the router is currently showing.
+ *
+ * Derived from the pathname rather than passed down, so the layout does not
+ * need a prop threaded through four route files that already know where they
+ * are. Anything that is not one of the three named sections is the overview,
+ * which is the layout's index route.
+ */
+/**
+ * Which filter controls actually reach the query behind each section.
  *
  * The bar used to render the same four facets everywhere while three of them
- * were dropped on the floor by the engagements tab, so picking a currency there
- * silently did nothing. Rendering from this map keeps the controls honest.
+ * were dropped on the floor by the engagements query, so picking a currency
+ * there silently did nothing. Rendering from this map keeps the controls
+ * honest: `/api/engagements` scopes by party membership and takes only
+ * `project_id`, so that is the only facet it can offer.
  */
-export const TAB_FILTERS: Record<
-	FinanceTab,
+export const SECTION_FILTERS: Record<
+	FinanceSection,
 	{
 		search: boolean;
 		project: boolean;
@@ -132,9 +266,12 @@ export const TAB_FILTERS: Record<
 	},
 };
 
-/** Count of filters that are both set AND meaningful on the current tab. */
-export function activeFilterCount(search: FinanceSearch): number {
-	const allowed = TAB_FILTERS[search.tab];
+/** Count of filters that are both set AND meaningful in the current section. */
+export function activeFilterCount(
+	search: FinanceSearchState,
+	section: FinanceSection,
+): number {
+	const allowed = SECTION_FILTERS[section];
 	return [
 		allowed.search ? search.q : undefined,
 		allowed.project ? search.projectId : undefined,
@@ -144,4 +281,13 @@ export function activeFilterCount(search: FinanceSearch): number {
 		allowed.contractStatus ? search.contractStatus : undefined,
 		allowed.invoiceStatus ? search.invoiceStatus : undefined,
 	].filter(Boolean).length;
+}
+
+export function financeSectionFromPathname(pathname: string): FinanceSection {
+	if (pathname.startsWith("/marketplace/finance/contracts")) return "contracts";
+	if (pathname.startsWith("/marketplace/finance/engagements")) {
+		return "engagements";
+	}
+	if (pathname.startsWith("/marketplace/finance/invoices")) return "invoices";
+	return "overview";
 }

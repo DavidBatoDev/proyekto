@@ -12,7 +12,6 @@ import {
 	startOfMonth,
 	startOfWeek,
 } from "date-fns";
-import type { LucideIcon } from "lucide-react";
 import {
 	Activity,
 	CalendarRange,
@@ -23,6 +22,7 @@ import {
 	CircleDollarSign,
 	FileSignature,
 	FolderKanban,
+	type LucideIcon,
 	ReceiptText,
 	RotateCcw,
 	Search,
@@ -34,38 +34,52 @@ import { CURRENCY_CODE_OPTIONS } from "@/lib/currency";
 import {
 	activeFilterCount,
 	CONTRACT_STATUS_OPTIONS,
-	type FinanceSearch,
+	type FinanceSearchState,
+	type FinanceSection,
+	formatDateRange,
 	INVOICE_STATUS_OPTIONS,
 	PROJECT_STATUS_OPTIONS,
-	TAB_FILTERS,
+	parseYmd,
+	SECTION_FILTERS,
+	toIsoDate,
 } from "./financeSearch";
 
 /**
- * The finance filter toolbar.
+ * The filter toolbar above every finance section.
  *
- * Only the facets that actually reach the tab's query are rendered (see
- * TAB_FILTERS). The bar previously showed all four on every tab while the
+ * `section` is passed in rather than read off a `?tab=` param: the sections are
+ * separate routes now, so the component cannot infer which status facet to
+ * offer from the search state alone.
+ *
+ * Only the facets that actually reach the section's query are rendered (see
+ * SECTION_FILTERS). The bar previously showed all four everywhere while the
  * engagements query passed on only `project_id` and the project-scoped invoice
  * workbench read none of them, so three controls were decorative — a user could
  * pick a currency, watch nothing change, and have no way to tell why.
  */
 export function FinanceFiltersBar({
 	search,
+	section,
 	projects,
 	onChange,
 }: {
-	search: FinanceSearch;
+	search: FinanceSearchState;
+	section: FinanceSection;
 	projects: Array<{ id: string; title: string }>;
-	onChange: (patch: Partial<FinanceSearch>) => void;
+	onChange: (patch: Partial<FinanceSearchState>) => void;
 }) {
-	const allowed = TAB_FILTERS[search.tab];
+	const allowed = SECTION_FILTERS[section];
 	// A project-scoped invoice view is its own workbench and reads none of these.
 	const scopedToProjectWorkbench =
 		Boolean(search.projectId) &&
-		(search.tab === "invoices" || search.tab === "overview");
-	const count = activeFilterCount(search);
+		(section === "invoices" || section === "overview");
+	const count = activeFilterCount(search, section);
+	// Changing any facet returns to the first page: page 3 of the old result set
+	// is rarely a page of the new one, and is often past its end.
+	const update = (patch: Partial<FinanceSearchState>) =>
+		onChange({ ...patch, page: undefined });
 	const clearFilters = () =>
-		onChange({
+		update({
 			q: undefined,
 			projectId: undefined,
 			projectStatus: undefined,
@@ -75,7 +89,6 @@ export function FinanceFiltersBar({
 			contractStatus: undefined,
 			invoiceStatus: undefined,
 			step: undefined,
-			page: undefined,
 		});
 
 	if (scopedToProjectWorkbench) return null;
@@ -94,10 +107,7 @@ export function FinanceFiltersBar({
 							aria-label="Search projects"
 							value={search.q ?? ""}
 							onChange={(event) =>
-								onChange({
-									q: event.target.value || undefined,
-									page: undefined,
-								})
+								update({ q: event.target.value || undefined })
 							}
 							placeholder="Search projects…"
 							className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-9 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -106,7 +116,7 @@ export function FinanceFiltersBar({
 							<button
 								type="button"
 								aria-label="Clear project search"
-								onClick={() => onChange({ q: undefined, page: undefined })}
+								onClick={() => update({ q: undefined })}
 								className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 							>
 								<X className="h-3.5 w-3.5" />
@@ -122,7 +132,7 @@ export function FinanceFiltersBar({
 							label="Project"
 							emptyLabel="All projects"
 							value={search.projectId}
-							onChange={(projectId) => onChange({ projectId, page: undefined })}
+							onChange={(projectId) => update({ projectId })}
 							searchable
 							options={projects.map((project) => ({
 								value: project.id,
@@ -136,9 +146,7 @@ export function FinanceFiltersBar({
 							label="Status"
 							emptyLabel="Any project status"
 							value={search.projectStatus}
-							onChange={(projectStatus) =>
-								onChange({ projectStatus, page: undefined })
-							}
+							onChange={(projectStatus) => update({ projectStatus })}
 							options={PROJECT_STATUS_OPTIONS}
 						/>
 					)}
@@ -148,7 +156,7 @@ export function FinanceFiltersBar({
 							label="Currency"
 							emptyLabel="All currencies"
 							value={search.currency}
-							onChange={(currency) => onChange({ currency, page: undefined })}
+							onChange={(currency) => update({ currency })}
 							options={CURRENCY_CODE_OPTIONS.map((value) => ({
 								value,
 								label: value,
@@ -159,7 +167,7 @@ export function FinanceFiltersBar({
 						<FinanceDateFilter
 							from={search.from}
 							to={search.to}
-							onChange={onChange}
+							onChange={update}
 						/>
 					)}
 					{allowed.contractStatus && (
@@ -168,9 +176,7 @@ export function FinanceFiltersBar({
 							label="Contract"
 							emptyLabel="Any contract status"
 							value={search.contractStatus}
-							onChange={(contractStatus) =>
-								onChange({ contractStatus, page: undefined })
-							}
+							onChange={(contractStatus) => update({ contractStatus })}
 							options={CONTRACT_STATUS_OPTIONS}
 						/>
 					)}
@@ -180,9 +186,7 @@ export function FinanceFiltersBar({
 							label="Invoice"
 							emptyLabel="Any invoice status"
 							value={search.invoiceStatus}
-							onChange={(invoiceStatus) =>
-								onChange({ invoiceStatus, page: undefined })
-							}
+							onChange={(invoiceStatus) => update({ invoiceStatus })}
 							options={INVOICE_STATUS_OPTIONS}
 						/>
 					)}
@@ -195,7 +199,7 @@ export function FinanceFiltersBar({
 					className="absolute -top-3 right-3 inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[11px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
 				>
 					<RotateCcw className="h-3.5 w-3.5" />
-					Reset {count > 1 ? `${count} filters` : "filter"}
+					Reset
 				</button>
 			)}
 		</div>
@@ -357,7 +361,7 @@ function FinanceDateFilter({
 }: {
 	from?: string;
 	to?: string;
-	onChange: (patch: Partial<FinanceSearch>) => void;
+	onChange: (patch: Partial<FinanceSearchState>) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [draftStart, setDraftStart] = useState<Date | null>(null);
@@ -662,29 +666,4 @@ function FinanceMonthGrid({
 			</div>
 		</div>
 	);
-}
-
-function parseYmd(value?: string): Date | null {
-	if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-	const date = new Date(`${value}T00:00:00`);
-	return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function toIsoDate(date: Date): string {
-	const year = date.getFullYear();
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
-}
-
-export function formatDateRange(from?: string, to?: string): string {
-	const format = (value: string) =>
-		new Intl.DateTimeFormat(undefined, {
-			month: "short",
-			day: "numeric",
-		}).format(new Date(`${value}T00:00:00`));
-	if (from && to) return `${format(from)} – ${format(to)}`;
-	if (from) return `From ${format(from)}`;
-	if (to) return `Until ${format(to)}`;
-	return "Any date";
 }

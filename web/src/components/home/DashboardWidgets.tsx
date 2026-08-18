@@ -308,8 +308,8 @@ export function DashboardWidgets({
 	const openFirstProjectInvoices = () => {
 		if (!invoiceTargetProject?.id) return;
 		navigate({
-			to: "/marketplace/finance",
-			search: { tab: "invoices", projectId: invoiceTargetProject.id },
+			to: "/marketplace/finance/invoices",
+			search: { projectId: invoiceTargetProject.id },
 		});
 	};
 

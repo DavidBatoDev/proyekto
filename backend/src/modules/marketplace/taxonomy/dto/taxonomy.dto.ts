@@ -1,4 +1,11 @@
-import { IsString, Matches, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * Lower-case, hyphen-separated, no leading/trailing/doubled hyphens - the same
@@ -23,4 +30,18 @@ export class SubcategorySlugParamDto extends CategorySlugParamDto {
   @MaxLength(80)
   @Matches(MARKETPLACE_SLUG_PATTERN)
   subcategorySlug: string;
+}
+
+/**
+ * Full replace of a consultant's taxonomy placements.
+ *
+ * `@ArrayMaxSize(5)` is the friendly gate; the real backstop is the
+ * `consultant_subcategories_cap` trigger (20260818120100), which also covers
+ * anything reaching PostgREST directly.
+ */
+export class ReplaceConsultantSubcategoriesDto {
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsUUID('4', { each: true })
+  subcategory_ids: string[];
 }
