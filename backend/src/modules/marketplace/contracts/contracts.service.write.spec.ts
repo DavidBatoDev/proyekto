@@ -14,7 +14,8 @@ function awaitable(data: unknown) {
   return builder;
 }
 
-function writeHarness() {
+function writeHarness(options: { ownerId?: string } = {}) {
+  const ownerId = options.ownerId ?? 'client-1';
   let inserted: Record<string, unknown> | null = null;
   const insertedRow = contractFixture();
   const contractsTable = {
@@ -44,7 +45,7 @@ function writeHarness() {
         });
       }
       if (table === 'projects') {
-        return awaitable({ owner_id: 'client-1', title: 'Project One' });
+        return awaitable({ owner_id: ownerId, title: 'Project One' });
       }
       if (table === 'contract_positions') {
         return {
@@ -60,6 +61,8 @@ function writeHarness() {
     { assertProject: jest.fn() } as never,
     {} as never,
     {} as never,
+    // Initials are not exercised by these specs.
+    { listForContract: async () => [] } as never,
   );
   return { service, inserted: () => inserted };
 }
@@ -108,5 +111,72 @@ describe('ContractsService consultant seat writes', () => {
         created_by: 'consultant-2',
       }),
     );
+  });
+});
+
+describe('ContractsService client counterparty rules', () => {
+  /**
+   * A project-scoped client contract used to be impossible to create.
+   *
+   * `createContract` requires the CALLER to own the project, and the old rule
+   * additionally required the Client seat to BE the project owner — so the two
+   * could only agree by seating one person on both sides, which
+   * `contract_positions` forbids. Every client agreement was pushed to
+   * `flexible`, which in turn meant no project invoice could carry contract
+   * provenance.
+   */
+  it('accepts a named Client who does not own the project', async () => {
+    const { service, inserted } = writeHarness({ ownerId: 'consultant-1' });
+
+    await service.createContractInternal('consultant-1', {
+      project_id: 'project-1',
+      relationship_kind: 'client_services',
+      counterparty_user_id: 'client-1',
+    });
+
+    expect(inserted()).toEqual(
+      expect.objectContaining({
+        project_id: 'project-1',
+        relationship_kind: 'client_services',
+        consultant_user_id: 'consultant-1',
+      }),
+    );
+  });
+
+  it('still falls back to the project owner when no Client is named', async () => {
+    const { service, inserted } = writeHarness({ ownerId: 'client-1' });
+
+    await service.createContractInternal('consultant-1', {
+      project_id: 'project-1',
+      relationship_kind: 'client_services',
+    });
+
+    expect(inserted()).toEqual(
+      expect.objectContaining({ consultant_user_id: 'consultant-1' }),
+    );
+  });
+
+  it('refuses to seat the caller on both sides', async () => {
+    const { service } = writeHarness({ ownerId: 'consultant-1' });
+
+    // The owner fallback must not resolve to the caller — that is the shape
+    // that produced the deadlock.
+    await expect(
+      service.createContractInternal('consultant-1', {
+        project_id: 'project-1',
+        relationship_kind: 'client_services',
+      }),
+    ).rejects.toThrow('Choose a Client account before creating this contract.');
+  });
+
+  it('still requires an explicit Talent account', async () => {
+    const { service } = writeHarness({ ownerId: 'client-1' });
+
+    await expect(
+      service.createContractInternal('consultant-1', {
+        project_id: 'project-1',
+        relationship_kind: 'talent_services',
+      }),
+    ).rejects.toThrow('Choose a Talent account before creating this contract.');
   });
 });

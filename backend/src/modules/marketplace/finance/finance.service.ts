@@ -10,6 +10,18 @@ import {
   ConsultantFinanceAccessService,
   ConsultantFinanceProject,
 } from './consultant-finance-access.service';
+import {
+  type Aging,
+  BILLED_STATUSES,
+  agingBucket,
+  collectedByInvoice,
+  daysOverdue,
+  emptyAging,
+  endOfDay,
+  marginPercent,
+  round2,
+  today,
+} from './receivables';
 
 interface CurrencyAccumulator {
   revenue: number;
@@ -17,7 +29,29 @@ interface CurrencyAccumulator {
   outstanding: number;
   cost: number;
   invoice_count: number;
+  overdue_amount: number;
+  overdue_count: number;
+  aging: Aging;
   project_ids: Set<string>;
+}
+
+interface ProjectAccumulator {
+  revenue: number;
+  collected: number;
+  outstanding: number;
+  cost: number;
+  invoice_count: number;
+  overdue_amount: number;
+  overdue_count: number;
+}
+
+interface BilledInvoiceRow {
+  id: string;
+  project_id: string | null;
+  currency: string | null;
+  total: string | number;
+  status: string;
+  due_date: string | null;
 }
 
 @Injectable()
@@ -33,15 +67,15 @@ export class FinanceService {
     // remains deferred to P4b.
     const projects = await this.access.listProjects(callerId, filters);
     if (projects.length === 0) {
-      return { projects: [], totals_by_currency: [] };
+      return { projects: [], totals_by_currency: [], as_of: today() };
     }
 
     const ids = projects.map((project) => project.id);
     let invoicesQuery = this.supabase
       .from('invoices')
-      .select('id, project_id, currency, total, status, created_at')
+      .select('id, project_id, currency, total, status, due_date')
       .in('project_id', ids)
-      .in('status', ['issued', 'partially_paid', 'paid']);
+      .in('status', BILLED_STATUSES);
     let logsQuery = this.supabase
       .from('task_time_logs')
       .select(
@@ -51,13 +85,18 @@ export class FinanceService {
       .in('status', ['approved', 'paid'])
       .eq('work_type_snapshot', 'real_work');
 
+    // Revenue is dated by when it was BILLED, not by when the row happened to be
+    // inserted. Every status in BILLED_STATUSES has been through issue(), which
+    // stamps issue_date, so no fallback arm is needed on this query.
     if (filters.from) {
-      invoicesQuery = invoicesQuery.gte('created_at', filters.from);
+      invoicesQuery = invoicesQuery.gte('issue_date', filters.from);
       logsQuery = logsQuery.gte('started_at', filters.from);
     }
     if (filters.to) {
-      invoicesQuery = invoicesQuery.lte('created_at', filters.to);
-      logsQuery = logsQuery.lte('started_at', filters.to);
+      invoicesQuery = invoicesQuery.lte('issue_date', filters.to);
+      // started_at is a timestamptz: an inclusive end DATE has to reach the end
+      // of that day, or every log after midnight on the last day disappears.
+      logsQuery = logsQuery.lte('started_at', endOfDay(filters.to));
     }
     if (filters.currency) {
       invoicesQuery = invoicesQuery.eq(
@@ -84,51 +123,15 @@ export class FinanceService {
     if (logResult.error) throw new Error(logResult.error.message);
     if (contractResult.error) throw new Error(contractResult.error.message);
 
-    const invoiceRows = (invoiceResult.data ?? []) as Array<{
-      id: string;
-      project_id: string;
-      currency: string | null;
-      total: string | number;
-    }>;
-    const invoiceIds = invoiceRows.map((row) => row.id);
-    const { data: paymentData, error: paymentError } = invoiceIds.length
-      ? await this.supabase
-          .from('invoice_payments')
-          .select('invoice_id, amount, reverses_payment_id')
-          .in('invoice_id', invoiceIds)
-      : { data: [], error: null };
-    // The receivables migration can be deployed after the API during a staged
-    // rollout. Existing portfolio reads must remain available until its table
-    // reaches PostgREST's schema cache.
-    if (paymentError && !isMissingReceivablesSchema(paymentError)) {
-      throw new Error(paymentError.message);
-    }
-    const paidByInvoice = new Map<string, number>();
-    for (const payment of (paymentData ?? []) as Array<{
-      invoice_id: string;
-      amount: string | number;
-      reverses_payment_id: string | null;
-    }>) {
-      paidByInvoice.set(
-        payment.invoice_id,
-        (paidByInvoice.get(payment.invoice_id) ?? 0) +
-          (payment.reverses_payment_id
-            ? -Number(payment.amount)
-            : Number(payment.amount)),
-      );
-    }
+    const invoiceRows = (invoiceResult.data ?? []) as BilledInvoiceRow[];
+    const paidByInvoice = await collectedByInvoice(this.supabase, invoiceRows);
 
     const currencies = new Map<string, CurrencyAccumulator>();
-    const perProject = new Map<
-      string,
-      {
-        revenue: number;
-        collected: number;
-        outstanding: number;
-        cost: number;
-        invoice_count: number;
-      }
-    >();
+    const perProject = new Map<string, ProjectAccumulator>();
+    const projectById = new Map(
+      projects.map((project) => [project.id, project]),
+    );
+
     const ensureCurrency = (currency: string): CurrencyAccumulator => {
       const key = currency.toUpperCase();
       const current = currencies.get(key) ?? {
@@ -137,18 +140,23 @@ export class FinanceService {
         outstanding: 0,
         cost: 0,
         invoice_count: 0,
+        overdue_amount: 0,
+        overdue_count: 0,
+        aging: emptyAging(),
         project_ids: new Set<string>(),
       };
       currencies.set(key, current);
       return current;
     };
-    const ensureProject = (projectId: string) => {
+    const ensureProject = (projectId: string): ProjectAccumulator => {
       const current = perProject.get(projectId) ?? {
         revenue: 0,
         collected: 0,
         outstanding: 0,
         cost: 0,
         invoice_count: 0,
+        overdue_amount: 0,
+        overdue_count: 0,
       };
       perProject.set(projectId, current);
       return current;
@@ -159,28 +167,50 @@ export class FinanceService {
       ensureProject(project.id);
     }
 
+    const asOf = today();
     for (const row of invoiceRows) {
       const projectId = String(row.project_id);
       const currency = String(row.currency ?? 'USD').toUpperCase();
       const amount = Number(row.total ?? 0);
-      const bucket = ensureCurrency(currency);
-      bucket.revenue += amount;
-      const paid = Math.max(0, paidByInvoice.get(row.id) ?? 0);
-      bucket.collected += paid;
-      bucket.outstanding += Math.max(0, amount - paid);
-      bucket.invoice_count += 1;
-      bucket.project_ids.add(projectId);
-      const project = projects.find((item) => item.id === projectId);
+      const paid = paidByInvoice.get(row.id) ?? 0;
+      const balance = Math.max(0, amount - paid);
+      const bucket = agingBucket(row.due_date, asOf, balance);
+      const overdue = balance > 0 && bucket !== 'current';
+
+      const currencyTotals = ensureCurrency(currency);
+      currencyTotals.revenue += amount;
+      currencyTotals.collected += paid;
+      currencyTotals.outstanding += balance;
+      currencyTotals.invoice_count += 1;
+      currencyTotals.aging[bucket] += balance;
+      if (overdue) {
+        currencyTotals.overdue_amount += balance;
+        currencyTotals.overdue_count += 1;
+      }
+      currencyTotals.project_ids.add(projectId);
+
+      // A project's own row only counts invoices raised in the project's own
+      // currency; mixed-currency revenue stays visible in totals_by_currency.
+      const project = projectById.get(projectId);
       if ((project?.currency ?? 'USD').toUpperCase() === currency) {
         const totals = ensureProject(projectId);
         totals.revenue += amount;
         totals.collected += paid;
-        totals.outstanding += Math.max(0, amount - paid);
+        totals.outstanding += balance;
         totals.invoice_count += 1;
+        if (overdue) {
+          totals.overdue_amount += balance;
+          totals.overdue_count += 1;
+        }
       }
     }
 
-    for (const row of logResult.data ?? []) {
+    for (const row of (logResult.data ?? []) as Array<{
+      project_id: string;
+      currency_snapshot: string | null;
+      duration_seconds: number | null;
+      rate_snapshot: number | null;
+    }>) {
       const projectId = String(row.project_id);
       const currency = String(row.currency_snapshot ?? 'USD').toUpperCase();
       const cost =
@@ -189,7 +219,7 @@ export class FinanceService {
       const bucket = ensureCurrency(currency);
       bucket.cost += cost;
       bucket.project_ids.add(projectId);
-      const project = projects.find((item) => item.id === projectId);
+      const project = projectById.get(projectId);
       if ((project?.currency ?? 'USD').toUpperCase() === currency) {
         ensureProject(projectId).cost += cost;
       }
@@ -232,8 +262,17 @@ export class FinanceService {
           ),
           invoice_count: totals.invoice_count,
           project_count: totals.project_ids.size,
+          overdue_amount: round2(totals.overdue_amount),
+          overdue_count: totals.overdue_count,
+          aging: {
+            current: round2(totals.aging.current),
+            d1_30: round2(totals.aging.d1_30),
+            d31_60: round2(totals.aging.d31_60),
+            d61_plus: round2(totals.aging.d61_plus),
+          },
         }))
         .sort((a, b) => a.currency.localeCompare(b.currency)),
+      as_of: asOf,
     };
   }
 
@@ -255,14 +294,19 @@ export class FinanceService {
     if (positionedContractsError) {
       throw new Error(positionedContractsError.message);
     }
-    const allPositionedContractIds = (
-      (positionedContracts ?? []) as Array<{ contract_id: string }>
-    ).map((row) => row.contract_id);
     const positionedContractIds = includeSevered
-      ? allPositionedContractIds
+      ? ((positionedContracts ?? []) as Array<{ contract_id: string }>).map(
+          (row) => row.contract_id,
+        )
       : [];
-    if (projectIds.length === 0 && positionedContractIds.length === 0 && !includeSevered) {
-      return { items: [], total: 0 };
+    // Nothing the caller can reach: return before building a query we would
+    // only throw away.
+    if (
+      projectIds.length === 0 &&
+      positionedContractIds.length === 0 &&
+      !includeSevered
+    ) {
+      return { items: [], total: 0, page: query.page, limit: query.limit };
     }
     const offset = (query.page - 1) * query.limit;
     let contractsQuery = this.supabase
@@ -274,7 +318,9 @@ export class FinanceService {
       .order('updated_at', { ascending: false })
       .range(offset, offset + query.limit - 1);
     const contractArms = [
-      ...(projectIds.length > 0 ? [`project_id.in.(${projectIds.join(',')})`] : []),
+      ...(projectIds.length > 0
+        ? [`project_id.in.(${projectIds.join(',')})`]
+        : []),
       ...(positionedContractIds.length > 0
         ? [`id.in.(${positionedContractIds.join(',')})`]
         : []),
@@ -282,14 +328,21 @@ export class FinanceService {
         ? [`and(project_id.is.null,consultant_user_id.eq.${callerId})`]
         : []),
     ];
-    if (contractArms.length === 0) return { items: [], total: 0 };
+    if (contractArms.length === 0) {
+      return { items: [], total: 0, page: query.page, limit: query.limit };
+    }
     contractsQuery = contractsQuery.or(contractArms.join(','));
     if (query.contract_status) {
       contractsQuery = contractsQuery.eq('status', query.contract_status);
     }
-    if (query.from)
-      contractsQuery = contractsQuery.gte('updated_at', query.from);
-    if (query.to) contractsQuery = contractsQuery.lte('updated_at', query.to);
+    // Dated by when the agreement was raised. Filtering on updated_at made a
+    // contract silently leave the range the moment anyone edited it.
+    if (query.from) {
+      contractsQuery = contractsQuery.gte('created_at', query.from);
+    }
+    if (query.to) {
+      contractsQuery = contractsQuery.lte('created_at', endOfDay(query.to));
+    }
     if (query.currency) {
       contractsQuery = contractsQuery.eq(
         'currency',
@@ -304,6 +357,8 @@ export class FinanceService {
         project: projectById.get(String(contract.project_id)) ?? null,
       })),
       total: count ?? 0,
+      page: query.page,
+      limit: query.limit,
     };
   }
 
@@ -315,7 +370,7 @@ export class FinanceService {
     const projectIds = projects.map((project) => project.id);
     const includeSevered = !query.project_id && !query.project_status;
     if (projectIds.length === 0 && !includeSevered) {
-      return { items: [], total: 0 };
+      return { items: [], total: 0, page: query.page, limit: query.limit };
     }
     const { data: seatedContracts, error: seatedContractsError } =
       includeSevered
@@ -361,8 +416,19 @@ export class FinanceService {
     if (query.invoice_status) {
       invoicesQuery = invoicesQuery.eq('status', query.invoice_status);
     }
-    if (query.from) invoicesQuery = invoicesQuery.gte('created_at', query.from);
-    if (query.to) invoicesQuery = invoicesQuery.lte('created_at', query.to);
+    // Drafts carry no issue_date yet, so each bound needs a created_at fallback
+    // arm or every draft would vanish the moment a date is picked. Successive
+    // .or() calls are ANDed together by PostgREST, which is what we want.
+    if (query.from) {
+      invoicesQuery = invoicesQuery.or(
+        `issue_date.gte.${query.from},and(issue_date.is.null,created_at.gte.${query.from})`,
+      );
+    }
+    if (query.to) {
+      invoicesQuery = invoicesQuery.or(
+        `issue_date.lte.${query.to},and(issue_date.is.null,created_at.lte.${endOfDay(query.to)})`,
+      );
+    }
     if (query.currency) {
       invoicesQuery = invoicesQuery.eq(
         'currency',
@@ -371,26 +437,48 @@ export class FinanceService {
     }
     const { data, error, count } = await invoicesQuery;
     if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<
+      BilledInvoiceRow & Record<string, unknown>
+    >;
+    // The portfolio renders this list, so it has to carry the same receivable
+    // facts the detail endpoint does — otherwise nothing outside a single open
+    // invoice can show a balance or an overdue flag.
+    const paidByInvoice = await collectedByInvoice(
+      this.supabase,
+      rows.filter((row) => BILLED_STATUSES.includes(String(row.status))),
+    );
+    const asOf = today();
+
     return {
-      items: (data ?? []).map((invoice) => ({
-        ...invoice,
-        project: projectById.get(String(invoice.project_id)) ?? null,
-      })),
+      items: rows.map((invoice) => {
+        const total = Number(invoice.total ?? 0);
+        const amountPaid = paidByInvoice.get(String(invoice.id)) ?? 0;
+        const balanceDue =
+          String(invoice.status) === 'void'
+            ? 0
+            : Math.max(0, total - amountPaid);
+        return {
+          ...invoice,
+          total,
+          project: projectById.get(String(invoice.project_id)) ?? null,
+          amount_paid: round2(amountPaid),
+          balance_due: round2(balanceDue),
+          is_overdue:
+            balanceDue > 0 &&
+            agingBucket(invoice.due_date, asOf, balanceDue) !== 'current',
+          days_overdue: daysOverdue(invoice.due_date, asOf),
+        };
+      }),
       total: count ?? 0,
+      page: query.page,
+      limit: query.limit,
     };
   }
 
   private toProjectSummary(
     project: ConsultantFinanceProject,
-    totals:
-      | {
-          revenue: number;
-          collected: number;
-          outstanding: number;
-          cost: number;
-          invoice_count: number;
-        }
-      | undefined,
+    totals: ProjectAccumulator | undefined,
     contracts: Map<string, { id: string; status: string; version: number }>,
   ) {
     const revenue = totals?.revenue ?? 0;
@@ -405,28 +493,9 @@ export class FinanceService {
       margin: round2(revenue - cost),
       margin_percent: marginPercent(revenue, revenue - cost),
       invoice_count: totals?.invoice_count ?? 0,
+      overdue_amount: round2(totals?.overdue_amount ?? 0),
+      overdue_count: totals?.overdue_count ?? 0,
       latest_contract: contracts.get(project.id) ?? null,
     };
   }
-}
-
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function marginPercent(revenue: number, margin: number): number | null {
-  if (!(revenue > 0)) return null;
-  return Math.round((margin / revenue) * 1000) / 10;
-}
-
-function isMissingReceivablesSchema(error: {
-  code?: string;
-  message?: string;
-}): boolean {
-  return (
-    error.code === 'PGRST205' ||
-    error.message?.includes(
-      "Could not find the table 'public.invoice_payments'",
-    ) === true
-  );
 }

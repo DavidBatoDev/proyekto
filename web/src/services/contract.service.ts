@@ -158,8 +158,33 @@ export interface Contract {
 	created_at: string;
 	updated_at: string;
 	positions: ContractPosition[];
+	/** Per-page initials, so each rendered page can stamp them. */
+	page_initials: ContractPageInitial[];
 
 	periods: ContractPeriod[];
+}
+
+/** One party's mark on one page. */
+export interface ContractPageInitial {
+	contract_id: string;
+	position: "hirer" | "provider";
+	page_index: number;
+	method: "typed" | "drawn";
+	initials_text: string | null;
+	image_url: string;
+	signed_by: string | null;
+	signed_at: string;
+}
+
+export interface SaveInitialsPayload {
+	position: "hirer" | "provider";
+	method: "typed" | "drawn";
+	pages: number[];
+	initials_text?: string;
+	/** Signed-in signers upload first and send the URL. */
+	image_url?: string;
+	/** The account-free signing page sends the raster instead. */
+	image_png?: string;
 }
 
 export interface ContractTermsPayload {
@@ -293,6 +318,7 @@ function normalizeContract(contract: Contract): Contract {
 			contract.included_hours == null ? null : Number(contract.included_hours),
 		fixed_fee: contract.fixed_fee == null ? null : Number(contract.fixed_fee),
 		positions: contract.positions ?? [],
+		page_initials: contract.page_initials ?? [],
 		clauses: [...(contract.clauses ?? [])].sort(
 			(a, b) => a.position - b.position,
 		),
@@ -325,6 +351,21 @@ export const contractService = {
 			return normalizeContract(data.data);
 		} catch (err) {
 			fail(err, "Failed to load the contract");
+		}
+	},
+
+	async saveInitials(
+		contractId: string,
+		payload: SaveInitialsPayload,
+	): Promise<ContractPageInitial[]> {
+		try {
+			const { data } = await apiClient.post<{ data: ContractPageInitial[] }>(
+				`/api/contracts/${contractId}/initials`,
+				payload,
+			);
+			return data.data ?? [];
+		} catch (err) {
+			fail(err, "Failed to save your initials");
 		}
 	},
 

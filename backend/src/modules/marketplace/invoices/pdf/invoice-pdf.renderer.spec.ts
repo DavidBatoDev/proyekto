@@ -70,19 +70,66 @@ describe('renderInvoicePdf', () => {
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
-  it('renders every field from the Canva layout', async () => {
+  it('carries every party, date and money field onto the page', async () => {
     const pdf = await renderInvoicePdf(input);
     const text = extractRuns(pdf)
       .map((r) => r.text)
       .join('\n');
 
-    expect(text).toContain('PRODIGITALITY SERVICES INC.');
-    expect(text).toContain('TIN: 617-100-003-00000');
-    expect(text).toContain('FILRO CAREGIVERS');
-    expect(text).toContain('#BS2026-001');
-    expect(text).toContain('DIGITAL MARKETING SERVICES');
-    expect(text).toContain('25.75 HOURS');
-    expect(text).toContain('ONLINE PAYMENT');
+    // Names, descriptions and payment methods keep the casing they were entered
+    // with. Upper-casing arbitrary prose is shouting and it mangles product
+    // names; the previous layout did it to all three.
+    expect(text).toContain('Prodigitality Services Inc.');
+    expect(text).toContain('TIN 617-100-003-00000');
+    expect(text).toContain('Filro Caregivers');
+    expect(text).toContain('BS2026-001');
+    expect(text).toContain('Digital marketing services');
+    expect(text).toContain('25.75 hours');
+    expect(text).toContain('Online payment');
+    // The reader's actual question.
+    expect(text).toContain('TOTAL DUE');
+  });
+
+  it('states the balance and what has already been settled', async () => {
+    const pdf = await renderInvoicePdf({
+      ...input,
+      status: 'partially_paid',
+      amountPaid: 100,
+    });
+    const text = extractRuns(pdf)
+      .map((r) => r.text)
+      .join('\n');
+
+    expect(text).toContain('PARTIALLY PAID');
+    expect(text).toContain('Paid to date');
+    expect(text).toContain('- USD 100.00');
+    // 386.25 billed less 100.00 settled.
+    expect(text).toContain('BALANCE DUE');
+    expect(text).toContain('USD 286.25');
+  });
+
+  it('marks an overdue invoice on the document itself', async () => {
+    const pdf = await renderInvoicePdf({
+      ...input,
+      status: 'issued',
+      isOverdue: true,
+    });
+    const text = extractRuns(pdf)
+      .map((r) => r.text)
+      .join('\n');
+
+    expect(text).toContain('OVERDUE');
+  });
+
+  it('says nothing about status when the caller supplies none', async () => {
+    const pdf = await renderInvoicePdf(input);
+    const text = extractRuns(pdf)
+      .map((r) => r.text)
+      .join('\n');
+
+    for (const word of ['DRAFT', 'OVERDUE', 'VOID', 'PAID IN FULL']) {
+      expect(text).not.toContain(word);
+    }
   });
 
   // Regression: an earlier 12%-wide rate column wrapped "USD 15.00" onto a

@@ -17,9 +17,30 @@ export interface MonthPoint {
 	margin_percent: number | null;
 }
 
+/** Unpaid balance split by how far past due it is. */
+export interface FinanceAgingBands {
+	current: number;
+	d1_30: number;
+	d31_60: number;
+	d61_plus: number;
+}
+
+/** What is billed, what came back, and how late the rest is. */
+export interface ProjectReceivables {
+	billed: number;
+	collected: number;
+	outstanding: number;
+	overdue_amount: number;
+	overdue_count: number;
+	invoice_count: number;
+	aging: FinanceAgingBands;
+	as_of: string;
+}
+
 export interface ProjectFinancials {
 	project_id: string;
 	currency: string;
+	receivables: ProjectReceivables;
 	totals: CurrencyTotals & {
 		company_share: number;
 		team_pool: number;

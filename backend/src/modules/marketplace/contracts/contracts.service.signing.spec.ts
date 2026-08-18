@@ -85,6 +85,8 @@ function harness(options: {
     financeAccess as never,
     notifications as never,
     projectAuth as never,
+    // Initials are not exercised by these specs.
+    { listForContract: async () => [] } as never,
   );
   return { service, rpc, financeAccess, notifications, positions };
 }

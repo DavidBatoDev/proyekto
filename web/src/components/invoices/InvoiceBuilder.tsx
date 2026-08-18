@@ -335,7 +335,7 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 					</div>
 
 					{!contract && (
-						<p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+						<p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
 							No contract on this project yet — the invoice will have no
 							bill-to/from details until a contract is set up.
 						</p>
@@ -536,6 +536,11 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 								? "+ approved hours for the period, added at the client rate on save"
 								: null
 						}
+						// A saved invoice knows what it is and what has been settled; an
+						// unsaved one has neither, and the document correctly says nothing.
+						status={existing?.status}
+						amountPaid={existing?.amount_paid}
+						isOverdue={existing?.is_overdue}
 					/>
 				</div>
 			</div>

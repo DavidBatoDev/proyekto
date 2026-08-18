@@ -51,7 +51,11 @@ export type ContractRelationshipKind =
 export const CONTRACT_SCOPE_MODES = ['project_specific', 'flexible'] as const;
 export type ContractScopeMode = (typeof CONTRACT_SCOPE_MODES)[number];
 
-export const TIME_TRACKING_MODES = ['disabled', 'optional', 'required'] as const;
+export const TIME_TRACKING_MODES = [
+  'disabled',
+  'optional',
+  'required',
+] as const;
 export const TIME_APPROVAL_MODES = [
   'none',
   'provider_submit_hirer_approve',
@@ -232,15 +236,10 @@ export class ContractTermsDto {
 
   @IsOptional()
   @IsIn(TIME_TRACKING_MODES)
-  time_tracking_mode?:
-    | 'disabled'
-    | 'optional'
-    | 'required';
+  time_tracking_mode?: 'disabled' | 'optional' | 'required';
   @IsOptional()
   @IsIn(TIME_APPROVAL_MODES)
-  time_approval_mode?:
-    | 'none'
-    | 'provider_submit_hirer_approve';
+  time_approval_mode?: 'none' | 'provider_submit_hirer_approve';
   @IsOptional() @IsBoolean() allow_manual_time?: boolean;
   @IsOptional()
   @Type(() => Number)
@@ -256,10 +255,7 @@ export class ContractTermsDto {
 
   @IsOptional()
   @IsIn(CLIENT_HOURS_DETAIL_LEVELS)
-  client_hours_detail_level?:
-    | 'none'
-    | 'summary'
-    | 'detailed';
+  client_hours_detail_level?: 'none' | 'summary' | 'detailed';
 
   @IsOptional() @IsDateString() service_start_date?: string;
 
@@ -298,11 +294,13 @@ export class ContractTermsDto {
 }
 
 export class CreateContractDto extends ContractTermsDto {
-  @IsOptional() @IsUUID()
+  @IsOptional()
+  @IsUUID()
   project_id?: string | null;
 
   /** Existing account selected through exact-email resolution. */
-  @IsOptional() @IsUUID()
+  @IsOptional()
+  @IsUUID()
   counterparty_user_id?: string;
 }
 
@@ -350,10 +348,12 @@ export class ReseedProviderDto {
 }
 
 export class SignContractDto {
-  @IsOptional() @IsIn(['consultant', 'client'])
+  @IsOptional()
+  @IsIn(['consultant', 'client'])
   party?: 'consultant' | 'client';
 
-  @IsOptional() @IsIn(['hirer', 'provider'])
+  @IsOptional()
+  @IsIn(['hirer', 'provider'])
   position?: 'hirer' | 'provider';
 
   @IsString()

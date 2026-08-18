@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Caveat:wght@600&family=Dancing+Script:wght@600&display=swap");
 @import "tailwindcss";
 
 @import "tw-animate-css";
@@ -372,6 +372,38 @@ html[data-ui-theme] {
   --success: #22c55e;
   --warning: #f59e0b;
   --info: #3b82f6;
+  /*
+   * The solid hues above are sized for fills and dots. As TEXT on a light
+   * surface, amber-500 sits near 2:1 against white — legible as a shape, not as
+   * a word. These are the readable counterparts, for status labels and any
+   * copy that has to carry a semantic colour.
+   */
+  --success-foreground: #15803d;
+  --warning-foreground: #b45309;
+  --info-foreground: #1d4ed8;
+}
+
+/* Dark themes invert the problem: the deep text hues vanish, so lift them. */
+html[data-ui-theme="classic-dark"],
+html[data-ui-theme="magic-blue"],
+html[data-ui-theme="dark"] {
+  --success-foreground: #4ade80;
+  --warning-foreground: #fbbf24;
+  --info-foreground: #60a5fa;
+}
+
+/*
+ * Signature faces, for typed signatures and initials.
+ *
+ * A typed mark is the legally operative act; rendering it in a script face is
+ * how every e-signature product makes that act look like a signature. Two are
+ * offered so a signer has a choice without turning the picker into a font menu.
+ */
+.font-signature-caveat {
+  font-family: "Caveat", "Segoe Script", cursive;
+}
+.font-signature-script {
+  font-family: "Dancing Script", "Segoe Script", cursive;
 }
 
 @theme inline {
@@ -417,6 +449,9 @@ html[data-ui-theme] {
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info-foreground: var(--info-foreground);
 }
 
 @layer base {
