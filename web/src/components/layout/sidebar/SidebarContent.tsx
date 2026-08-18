@@ -1,17 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-	CalendarDays,
-	CircleDollarSign,
-	Inbox,
-	LayoutDashboard,
-	ListChecks,
-	Plus,
-	UserPlus,
-	Users,
-} from "lucide-react";
+import { Plus, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isActiveConsultant } from "@/lib/auth-utils";
 import { type Project, projectService } from "@/services/project.service";
 import {
 	listMyTeams,
@@ -20,9 +10,9 @@ import {
 } from "@/services/teams.service";
 import { useProfile, useUser } from "@/stores/authStore";
 import {
-	DASHBOARD_PRIMARY_NAV_ITEMS,
-	isDashboardPrimaryNavItemActive,
-} from "./dashboardNavigation";
+	EXECUTION_PRIMARY_NAV_ITEMS,
+	isExecutionNavItemActive,
+} from "./executionNavigation";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
 import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
 import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
@@ -31,14 +21,6 @@ import { TeamSidebarGroup } from "./TeamSidebarGroup";
 const TEAMS_OPEN_KEY = "dashboard_sidebar_open_team";
 /** Sentinel for "the user deliberately collapsed every team this session". */
 const TEAMS_OPEN_NONE = "__none__";
-
-const PRIMARY_NAV_ICONS = {
-	dashboard: LayoutDashboard,
-	inbox: Inbox,
-	"command-center": ListChecks,
-	meetings: CalendarDays,
-	finance: CircleDollarSign,
-} as const;
 
 /**
  * Returns `null` when the session has no recorded choice yet (so the caller
@@ -194,15 +176,13 @@ export function SidebarContent() {
 		<>
 			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
 				<div className="space-y-0.5">
-					{DASHBOARD_PRIMARY_NAV_ITEMS.filter(
-						(item) => item.key !== "finance" || isActiveConsultant(profile),
-					).map((item) => (
+					{EXECUTION_PRIMARY_NAV_ITEMS.map((item) => (
 						<SidebarNavLink
 							key={item.key}
 							to={item.to}
-							icon={PRIMARY_NAV_ICONS[item.key]}
+							icon={item.icon}
 							label={item.label}
-							active={isDashboardPrimaryNavItemActive(item, currentPath)}
+							active={isExecutionNavItemActive(item, currentPath)}
 						/>
 					))}
 				</div>
