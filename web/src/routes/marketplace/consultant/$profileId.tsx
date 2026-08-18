@@ -1,13 +1,37 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, BadgeCheck, MapPin, User } from "lucide-react";
+import {
+	ArrowLeft,
+	BadgeCheck,
+	CalendarDays,
+	MapPin,
+	Sparkles,
+	User,
+} from "lucide-react";
+import { useState } from "react";
+import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
 import { useConsultantProfileQuery } from "@/hooks/useConsultants";
 import { useAuthStore } from "@/stores/authStore";
-import { Button } from "@/ui/button";
+import type { ConsultantExpertise } from "@/types/marketplace-taxonomy";
 
 export const Route = createFileRoute("/marketplace/consultant/$profileId")({
 	component: ConsultantProfile,
 });
 
+/**
+ * The public consultant profile.
+ *
+ * Every field on this page comes from the profile endpoint's own allowlist:
+ * name, avatar, banner, headline, bio, location, when they joined, when they
+ * were verified, and the taxonomy sub-categories they sit in. There is
+ * deliberately no rate, rating, response time, availability dot or completed
+ * project count — none of those exist in the data model, and inventing them on
+ * a real person's public page would be a lie a client could act on.
+ *
+ * Sections that a marketplace profile eventually wants — packaged services,
+ * portfolio, reviews — are represented by a single honest "no track record
+ * yet" panel rather than three separate empty frames. They fill in once
+ * engagements start completing.
+ */
 function ConsultantProfile() {
 	const { profileId } = Route.useParams();
 	const {
@@ -18,334 +42,381 @@ function ConsultantProfile() {
 	const { user } = useAuthStore();
 	const isOwner = user?.id === profileId;
 
-	if (isLoading) {
-		return (
-			<div className="min-h-screen bg-gray-50 p-8 pt-24">
-				<div className="max-w-5xl mx-auto">
-					<div className="animate-pulse space-y-6">
-						<div className="h-40 bg-gray-200 rounded-2xl w-full"></div>
-						<div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-							<div className="lg:col-span-1 h-96 bg-white rounded-2xl border border-gray-100"></div>
-							<div className="lg:col-span-3 h-96 bg-white rounded-2xl border border-gray-100"></div>
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
+	if (isLoading) return <ProfileSkeleton />;
+	if (error || !profile) return <ProfileNotFound />;
 
-	if (error || !profile) {
-		return (
-			<div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center pt-24">
-				<div className="text-center bg-white p-12 rounded-3xl shadow-sm border border-gray-100 max-w-md w-full">
-					<User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-					<h2 className="text-2xl font-bold text-gray-900 mb-2">
-						Consultant not found
-					</h2>
-					<p className="text-gray-600 mb-6">
-						The profile you are looking for might have been removed or does not
-						exist.
-					</p>
-					<Link
-						to="/marketplace/consultant/browse"
-						className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-primary hover:bg-primary/90 transition-colors w-full"
-					>
-						<ArrowLeft className="w-5 h-5 mr-2" />
-						Back to Browse
-					</Link>
-				</div>
-			</div>
-		);
-	}
-
-	const fullName =
-		profile.display_name ||
-		`${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
-		"Consultant";
+	const fullName = profile.display_name?.trim() || "Consultant";
 	const initial = fullName.charAt(0).toUpperCase();
-
-	const currentTime =
-		new Date().toLocaleTimeString("en-US", {
-			hour: "numeric",
-			minute: "2-digit",
-			hour12: true,
-		}) + " local time";
+	const location = [profile.city, profile.country].filter(Boolean).join(", ");
+	const expertise = profile.expertise ?? [];
 
 	return (
-		<>
-			<div className="min-h-screen bg-white pb-12 pt-28 px-4 sm:px-6 lg:px-8">
-				<div className="max-w-[1100px] mx-auto">
-					{/* Navigation */}
-					<div className="mb-4">
-						<Link
-							to="/marketplace/consultant/browse"
-							className="inline-flex items-center text-sm font-medium text-primary hover:text-primary transition-colors"
-						>
-							<ArrowLeft className="w-4 h-4 mr-1" />
-							Back to Browse
-						</Link>
+		<div className="min-h-screen bg-background pt-app-header">
+			<div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+				<Link
+					to="/marketplace/consultant/browse"
+					className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+				>
+					<ArrowLeft className="h-4 w-4" />
+					All consultants
+				</Link>
+
+				<div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+					<div className="min-w-0 space-y-4">
+						<IdentityCard
+							name={fullName}
+							initial={initial}
+							avatarUrl={profile.avatar_url}
+							bannerUrl={profile.banner_url}
+							headline={profile.headline}
+							location={location}
+							verified={profile.is_consultant_verified}
+							isOwner={isOwner}
+						/>
+						<AboutCard bio={profile.bio} isOwner={isOwner} />
+						<ExpertiseCard expertise={expertise} isOwner={isOwner} />
+						<TrackRecordCard name={fullName} />
 					</div>
 
-					{/* Header Section (Upwork Style - Clean, White, No Gradient) */}
-					<div className="bg-white rounded-t-2xl border border-gray-200 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between mb-0">
-						<div className="flex items-center gap-6 w-full sm:w-auto">
-							{/* Avatar */}
-							<div className="relative shrink-0">
-								{profile.avatar_url ? (
-									<img
-										src={profile.avatar_url}
-										alt={fullName}
-										className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border border-gray-200"
-									/>
-								) : (
-									<div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-primary flex items-center justify-center text-white text-3xl font-bold">
-										{initial}
-									</div>
-								)}
-								{/* Online indicator dot - static for UI purposes right now */}
-								<div className="absolute top-1 left-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
-							</div>
-
-							{/* Basic Info */}
-							<div className="flex-1">
-								<div className="flex items-center gap-2 mb-1">
-									<h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-										{fullName}
-									</h1>
-									{profile.is_consultant_verified && (
-										<span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-											<BadgeCheck className="w-3.5 h-3.5 shrink-0" />
-											Verified Consultant
-										</span>
-									)}
-								</div>
-
-								<div className="flex items-center gap-2 text-sm text-gray-600">
-									<MapPin className="w-4 h-4 text-gray-400" />
-									{profile.city || profile.country ? (
-										<span>
-											{profile.city ? `${profile.city}, ` : ""}
-											{profile.country}
-										</span>
-									) : (
-										<span>Location not set</span>
-									)}
-									<span className="text-gray-400 mx-1">–</span>
-									<span>{currentTime}</span>
-								</div>
-							</div>
-						</div>
-
-						{/* Top Right Actions */}
-						<div className="flex items-center gap-3 mt-4 sm:mt-0 w-full sm:w-auto">
-							{isOwner ? (
-								<Button
-									onClick={() => {
-										window.location.href = `/profile/${profile.id}`;
-									}}
-									variant="outlined"
-									className="w-full sm:w-auto text-primary border-primary hover:bg-primary/10 font-medium rounded-full px-6 transition-colors cursor-pointer"
-								>
-									Profile settings
-								</Button>
-							) : (
-								<>
-									<Button
-										variant="outlined"
-										className="w-full sm:w-auto text-primary border-primary hover:bg-primary/10 font-medium rounded-full px-6 transition-colors shadow-[0_0_0_1px_var(--color-primary)] hover:shadow-[0_0_0_1px_var(--color-primary)] cursor-pointer"
-									>
-										Save
-									</Button>
-									<Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-medium rounded-full px-8 transition-colors cursor-pointer">
-										Hire Now
-									</Button>
-								</>
-							)}
-						</div>
-					</div>
-
-					{/* Main 2-Column Layout */}
-					<div className="grid grid-cols-1 lg:grid-cols-4 border-x border-b border-gray-200 rounded-b-2xl overflow-hidden bg-white">
-						{/* LEFT SIDEBAR (Col 1) */}
-						<div className="lg:col-span-1 border-r border-gray-200 bg-white">
-							{/* Availability Badge Mock */}
-							<div className="p-6 border-b border-gray-200 bg-primary/5">
-								<div className="flex gap-2">
-									<div className="mt-1">
-										<BadgeCheck className="w-4 h-4 text-primary" />
-									</div>
-									<div>
-										<h3 className="font-semibold text-gray-900 text-sm">
-											Top Rated Consultant
-										</h3>
-										<p className="text-xs text-gray-600 mt-1">
-											Clients highly rate this professional for their expertise.
-										</p>
-									</div>
-								</div>
-							</div>
-
-							{/* Contact Information */}
-							<div className="p-6 border-b border-gray-200">
-								<h3 className="font-semibold text-gray-900 text-lg mb-4">
-									Direct Context
-								</h3>
-								<div className="space-y-4">
-									<div>
-										<p className="text-gray-500 text-sm mb-0.5">
-											Email address
-										</p>
-										{profile.email ? (
-											<a
-												href={`mailto:${profile.email}`}
-												className="text-primary hover:underline text-sm font-medium break-all block"
-											>
-												{profile.email}
-											</a>
-										) : (
-											<p className="text-gray-400 text-sm italic">
-												Hidden by user
-											</p>
-										)}
-									</div>
-									<div>
-										<p className="text-gray-500 text-sm mb-0.5">Phone number</p>
-										{profile.phone_number ? (
-											<a
-												href={`tel:${profile.phone_number}`}
-												className="text-gray-900 hover:text-primary text-sm font-medium break-all block"
-											>
-												{profile.phone_number}
-											</a>
-										) : (
-											<p className="text-gray-400 text-sm italic">
-												Not provided
-											</p>
-										)}
-									</div>
-								</div>
-							</div>
-
-							{/* Stats block */}
-							<div className="p-6">
-								<h3 className="font-semibold text-gray-900 text-lg mb-4">
-									Activity
-								</h3>
-								<div className="space-y-3 text-sm">
-									<div className="flex justify-between">
-										<span className="text-gray-600">Response time</span>
-										<span className="font-medium text-gray-900">
-											&lt; 24 hrs
-										</span>
-									</div>
-									<div className="flex justify-between">
-										<span className="text-gray-600">Projects completed</span>
-										<span className="font-medium text-gray-900">0</span>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{/* RIGHT MAIN CONTENT (Col 3) */}
-						<div className="lg:col-span-3 bg-white">
-							{/* Bio/Overview Section */}
-							<div className="p-6 sm:p-8 border-b border-gray-200">
-								<div className="flex items-start justify-between mb-6">
-									<div className="max-w-xl">
-										{/* Title (Headline) */}
-										<h2 className="text-2xl font-bold text-gray-900 mb-2 leading-tight">
-											Professional Technology Expert & Consultant
-										</h2>
-									</div>
-
-									{/* Actions (Hourly Rate) */}
-									<div className="flex items-center gap-4 shrink-0 mt-1">
-										<div className="text-lg font-medium text-gray-900">
-											$50.00/hr
-										</div>
-									</div>
-								</div>
-
-								{/* Bio Content */}
-								<div className="prose max-w-none text-gray-800 text-[15px] leading-relaxed relative">
-									{profile.bio ? (
-										<>
-											<p className="whitespace-pre-line">{profile.bio}</p>
-											{profile.bio.length > 300 && (
-												<button className="text-primary font-medium hover:underline mt-2">
-													more
-												</button>
-											)}
-										</>
-									) : (
-										<p className="text-gray-400 italic">
-											This consultant hasn't written an overview yet.
-										</p>
-									)}
-								</div>
-							</div>
-
-							{/* Skills Section */}
-							<div className="p-6 sm:p-8 border-b border-gray-200">
-								<div className="mb-6">
-									<h2 className="text-2xl font-bold text-gray-900">Skills</h2>
-								</div>
-
-								{profile.skills && profile.skills.length > 0 ? (
-									<div className="flex flex-wrap gap-2">
-										{profile.skills.map((skill, index) => (
-											<span
-												key={index}
-												className="px-4 py-1.5 bg-gray-100/80 text-gray-700 text-sm font-medium rounded-full cursor-pointer hover:bg-gray-200 hover:text-primary transition-colors"
-											>
-												{skill}
-											</span>
-										))}
-									</div>
-								) : (
-									<p className="text-gray-500 text-sm">
-										No specific skills listed.
-									</p>
-								)}
-							</div>
-
-							{/* Empty Portfolio Mock */}
-							<div className="p-6 sm:p-8">
-								<div className="mb-6">
-									<h2 className="text-2xl font-bold text-gray-900">
-										Portfolio
-									</h2>
-								</div>
-
-								<div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-gray-200 rounded-xl text-center">
-									<div className="w-16 h-16 bg-gray-50 rounded-full flex flex-col items-center justify-center mb-4">
-										<svg
-											className="w-8 h-8 text-gray-400"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke="currentColor"
-										>
-											<path
-												strokeLinecap="round"
-												strokeLinejoin="round"
-												strokeWidth={1.5}
-												d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-											/>
-										</svg>
-									</div>
-									<h3 className="text-lg font-medium text-gray-900 mb-1">
-										No Portfolio Items
-									</h3>
-									<p className="text-gray-500 text-sm max-w-sm">
-										This consultant hasn't added any portfolio projects to their
-										profile yet.
-									</p>
-								</div>
-							</div>
-						</div>
+					<div className="lg:sticky lg:top-20 lg:self-start">
+						<EngageCard
+							name={fullName}
+							verifiedAt={profile.consultant_verified_at}
+							createdAt={profile.created_at}
+							isOwner={isOwner}
+							profileId={profileId}
+						/>
 					</div>
 				</div>
 			</div>
-		</>
+
+			<MarketplaceFooter />
+		</div>
+	);
+}
+
+const CARD_CLASS = "rounded-xl border border-border bg-card";
+
+function IdentityCard({
+	name,
+	initial,
+	avatarUrl,
+	bannerUrl,
+	headline,
+	location,
+	verified,
+	isOwner,
+}: {
+	name: string;
+	initial: string;
+	avatarUrl: string | null;
+	bannerUrl: string | null;
+	headline: string | null;
+	location: string;
+	verified: boolean;
+	isOwner: boolean;
+}) {
+	return (
+		<section className={`${CARD_CLASS} overflow-hidden`}>
+			{/* No banner is a valid state, so the fallback is a plain tint rather
+			    than a placeholder image pretending something is missing. */}
+			<div className="h-24 w-full bg-primary/10 sm:h-28">
+				{bannerUrl && (
+					<img
+						src={bannerUrl}
+						alt=""
+						className="h-full w-full object-cover"
+						loading="lazy"
+					/>
+				)}
+			</div>
+
+			<div className="px-5 pb-5">
+				<div className="-mt-10 flex items-end gap-4">
+					{avatarUrl ? (
+						<img
+							src={avatarUrl}
+							alt={name}
+							className="h-20 w-20 shrink-0 rounded-full border-4 border-card object-cover"
+						/>
+					) : (
+						<div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 border-card bg-primary text-2xl font-bold text-primary-foreground">
+							{initial}
+						</div>
+					)}
+				</div>
+
+				<div className="mt-3 flex flex-wrap items-center gap-2">
+					<h1 className="text-xl font-semibold text-foreground">{name}</h1>
+					{verified && (
+						<span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300">
+							<BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+							Verified consultant
+						</span>
+					)}
+				</div>
+
+				{headline ? (
+					<p className="mt-1 text-[14px] text-foreground">{headline}</p>
+				) : (
+					isOwner && (
+						<p className="mt-1 text-[13px] text-muted-foreground">
+							Add a headline in your profile settings — it is the one line
+							clients read first.
+						</p>
+					)
+				)}
+
+				{location && (
+					<p className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+						<MapPin className="h-3.5 w-3.5 shrink-0" />
+						{location}
+					</p>
+				)}
+			</div>
+		</section>
+	);
+}
+
+const BIO_CLAMP = 420;
+
+function AboutCard({ bio, isOwner }: { bio: string | null; isOwner: boolean }) {
+	const [expanded, setExpanded] = useState(false);
+	const text = bio?.trim() ?? "";
+	const isLong = text.length > BIO_CLAMP;
+
+	return (
+		<section className={`${CARD_CLASS} p-5`}>
+			<h2 className="text-[15px] font-semibold text-foreground">About</h2>
+			{text ? (
+				<>
+					<p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-foreground">
+						{isLong && !expanded
+							? `${text.slice(0, BIO_CLAMP).trimEnd()}…`
+							: text}
+					</p>
+					{isLong && (
+						// The old page rendered this control but wired nothing to it.
+						<button
+							type="button"
+							onClick={() => setExpanded((current) => !current)}
+							aria-expanded={expanded}
+							className="mt-2 text-[13px] font-semibold text-primary hover:underline"
+						>
+							{expanded ? "Show less" : "Read more"}
+						</button>
+					)}
+				</>
+			) : (
+				<p className="mt-2 text-[13px] text-muted-foreground">
+					{isOwner
+						? "You have not written an overview yet. Describe the kind of work you lead and the outcomes clients get."
+						: "This consultant has not written an overview yet."}
+				</p>
+			)}
+		</section>
+	);
+}
+
+function ExpertiseCard({
+	expertise,
+	isOwner,
+}: {
+	expertise: ConsultantExpertise[];
+	isOwner: boolean;
+}) {
+	return (
+		<section className={`${CARD_CLASS} p-5`}>
+			<h2 className="text-[15px] font-semibold text-foreground">Expertise</h2>
+			{expertise.length > 0 ? (
+				<>
+					<p className="mt-1 text-[13px] text-muted-foreground">
+						The marketplace categories this consultant is listed under.
+					</p>
+					<div className="mt-3 flex flex-wrap gap-2">
+						{expertise.map((entry) => (
+							<Link
+								key={`${entry.categorySlug}/${entry.subcategorySlug}`}
+								to="/marketplace/category/$categorySlug/$subcategorySlug"
+								params={{
+									categorySlug: entry.categorySlug,
+									subcategorySlug: entry.subcategorySlug,
+								}}
+								title={`${entry.categoryName} · ${entry.subcategoryName}`}
+								className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
+									entry.isPrimary
+										? "border-primary/30 bg-primary/5 font-semibold text-foreground hover:bg-primary/10"
+										: "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+								}`}
+							>
+								{entry.isPrimary && (
+									<Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+								)}
+								{entry.subcategoryName}
+							</Link>
+						))}
+					</div>
+				</>
+			) : (
+				<p className="mt-2 text-[13px] text-muted-foreground">
+					{isOwner
+						? "You are not listed under any category yet, so you will not appear when clients browse by discipline."
+						: "This consultant is not listed under a category yet."}
+				</p>
+			)}
+		</section>
+	);
+}
+
+function TrackRecordCard({ name }: { name: string }) {
+	// One honest panel instead of three empty frames for services, portfolio and
+	// reviews. Nothing in the product records any of them yet: there is no
+	// review table, no packaged service, and no published portfolio.
+	return (
+		<section className={`${CARD_CLASS} p-5`}>
+			<h2 className="text-[15px] font-semibold text-foreground">
+				Work and reviews
+			</h2>
+			<p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
+				Completed engagements and client feedback will appear here. Proyekto
+				records them from signed contracts and accepted deliverables rather than
+				from self-reported claims, so nothing shows until {name} has finished
+				work on the platform.
+			</p>
+		</section>
+	);
+}
+
+function EngageCard({
+	name,
+	verifiedAt,
+	createdAt,
+	isOwner,
+	profileId,
+}: {
+	name: string;
+	verifiedAt: string | null;
+	createdAt: string | null;
+	isOwner: boolean;
+	profileId: string;
+}) {
+	const verifiedLabel = formatMonthYear(verifiedAt);
+	const joinedLabel = formatMonthYear(createdAt);
+
+	return (
+		<section className={`${CARD_CLASS} p-5`}>
+			{isOwner ? (
+				<>
+					<h2 className="text-[15px] font-semibold text-foreground">
+						This is your public profile
+					</h2>
+					<p className="mt-1 text-[13px] text-muted-foreground">
+						It is what clients see when they browse the marketplace.
+					</p>
+					<Link
+						to="/profile/$profileId"
+						params={{ profileId }}
+						className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+					>
+						Edit your profile
+					</Link>
+				</>
+			) : (
+				<>
+					<h2 className="text-[15px] font-semibold text-foreground">
+						Work with {name}
+					</h2>
+					<p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+						Describe what you need. Scope, rates and dates are agreed in a
+						signed contract before any work starts.
+					</p>
+					<Link
+						to="/marketplace/project-posting"
+						search={{ roadmapId: undefined }}
+						className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+					>
+						Post a project
+					</Link>
+				</>
+			)}
+
+			<dl className="mt-5 space-y-2.5 border-t border-border pt-4 text-[13px]">
+				{verifiedLabel && (
+					<div className="flex items-center justify-between gap-3">
+						<dt className="inline-flex items-center gap-1.5 text-muted-foreground">
+							<BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+							Verified
+						</dt>
+						<dd className="font-medium text-foreground">{verifiedLabel}</dd>
+					</div>
+				)}
+				{joinedLabel && (
+					<div className="flex items-center justify-between gap-3">
+						<dt className="inline-flex items-center gap-1.5 text-muted-foreground">
+							<CalendarDays className="h-3.5 w-3.5 shrink-0" />
+							Member since
+						</dt>
+						<dd className="font-medium text-foreground">{joinedLabel}</dd>
+					</div>
+				)}
+			</dl>
+		</section>
+	);
+}
+
+/**
+ * Dates render as a month, never a clock reading. The old page showed the
+ * VIEWER's current time labelled as the consultant's "local time", which was
+ * wrong for anyone in a different timezone — and there is no timezone on a
+ * profile to compute the real one from.
+ */
+function formatMonthYear(value: string | null): string | null {
+	if (!value) return null;
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return null;
+	return new Intl.DateTimeFormat(undefined, {
+		month: "long",
+		year: "numeric",
+	}).format(date);
+}
+
+function ProfileSkeleton() {
+	return (
+		<div className="min-h-screen bg-background pt-app-header">
+			<div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+				<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+					<div className="space-y-4">
+						<div className="h-56 animate-pulse rounded-xl bg-muted" />
+						<div className="h-32 animate-pulse rounded-xl bg-muted" />
+						<div className="h-32 animate-pulse rounded-xl bg-muted" />
+					</div>
+					<div className="h-64 animate-pulse rounded-xl bg-muted" />
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function ProfileNotFound() {
+	return (
+		<div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 pt-app-header">
+			<div className={`${CARD_CLASS} w-full max-w-md p-8 text-center`}>
+				<User className="mx-auto h-12 w-12 text-muted-foreground" />
+				<h1 className="mt-4 text-lg font-semibold text-foreground">
+					Consultant not found
+				</h1>
+				<p className="mt-1 text-[13px] text-muted-foreground">
+					This profile may have been removed, or the consultant is no longer
+					verified.
+				</p>
+				<Link
+					to="/marketplace/consultant/browse"
+					className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+				>
+					<ArrowLeft className="h-4 w-4" />
+					Browse consultants
+				</Link>
+			</div>
+		</div>
 	);
 }

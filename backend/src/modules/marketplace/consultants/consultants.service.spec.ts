@@ -210,3 +210,126 @@ describe('ConsultantsService.directory', () => {
     expect(keys[0]).toBe(keys[2]);
   });
 });
+
+/**
+ * `findOne` walks a different shape to `directory`: a `.single()` on profiles
+ * plus an awaited builder on consultant_subcategories with no terminal call, so
+ * it gets its own stub rather than bending the one above.
+ */
+function createProfileDb(options: {
+  profile?: unknown;
+  expertiseRows?: unknown[];
+}) {
+  const selects: Record<string, string> = {};
+
+  const from = jest.fn((table: string) => {
+    const builder: Record<string, unknown> = {
+      select: jest.fn((columns: string) => {
+        selects[table] = columns;
+        return builder;
+      }),
+      eq: jest.fn(() => builder),
+      order: jest.fn(() => builder),
+      single: jest.fn(() =>
+        Promise.resolve({ data: options.profile ?? null, error: null }),
+      ),
+    };
+
+    if (table === 'consultant_subcategories') {
+      const result = { data: options.expertiseRows ?? [], error: null };
+      // The second `order` is the last call, so that is what gets awaited.
+      let orderCalls = 0;
+      builder.order = jest.fn(() => {
+        orderCalls += 1;
+        return orderCalls >= 2 ? Promise.resolve(result) : builder;
+      });
+    }
+
+    return builder;
+  });
+
+  return { db: { from }, selects };
+}
+
+const VERIFIED_PROFILE = {
+  id: 'c1',
+  display_name: 'August Teleg',
+  consultant_profile: { status: 'verified', verified_at: '2026-08-17T22:51:31Z' },
+};
+
+describe('ConsultantsService.findOne', () => {
+  it('surfaces the verification date the enrolment embed carries', async () => {
+    // attachMarketplaceEnrollmentFields deletes the whole embed once it has the
+    // capability flags, so verified_at has to be lifted before it goes.
+    const { db } = createProfileDb({ profile: VERIFIED_PROFILE });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.consultant_verified_at).toBe('2026-08-17T22:51:31Z');
+    expect(result.is_consultant_verified).toBe(true);
+    expect(result.consultant_profile).toBeUndefined();
+  });
+
+  it('flattens the expertise embed into category and sub-category pairs', async () => {
+    const { db } = createProfileDb({
+      profile: VERIFIED_PROFILE,
+      expertiseRows: [
+        {
+          is_primary: true,
+          subcategory: {
+            slug: 'llm-application-development',
+            name: 'LLM Application Development',
+            category: { slug: 'ai-and-data', name: 'AI & Data' },
+          },
+        },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.expertise).toEqual([
+      {
+        categorySlug: 'ai-and-data',
+        categoryName: 'AI & Data',
+        subcategorySlug: 'llm-application-development',
+        subcategoryName: 'LLM Application Development',
+        isPrimary: true,
+      },
+    ]);
+  });
+
+  it('drops a row whose category embed came back empty', async () => {
+    // The is_active filters narrow the embed rather than dropping the parent
+    // row, so a de-activated branch arrives as null and must not become a chip
+    // pointing at a category page that no longer exists.
+    const { db } = createProfileDb({
+      profile: VERIFIED_PROFILE,
+      expertiseRows: [
+        { is_primary: false, subcategory: { slug: 's', name: 'S', category: null } },
+        { is_primary: false, subcategory: null },
+      ],
+    });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    const result = (await service.findOne('c1')) as Record<string, unknown>;
+
+    expect(result.expertise).toEqual([]);
+  });
+
+  it('refuses a profile that is not a verified consultant', async () => {
+    const { db } = createProfileDb({ profile: null });
+    const { service } = createService(db, {
+      resolveSubcategoryIds: jest.fn(),
+    });
+
+    await expect(service.findOne('nobody')).rejects.toThrow(NotFoundException);
+  });
+});

@@ -28,3 +28,19 @@ export interface MarketplaceSubcategoryDetail extends MarketplaceSubcategory {
 	 */
 	siblings: MarketplaceSubcategory[];
 }
+
+/**
+ * One entry in a consultant's declared expertise, as the public profile
+ * endpoint returns it.
+ *
+ * Flattened to slugs and names rather than nested rows because the only thing
+ * the profile does with it is render a chip that links to
+ * `/marketplace/category/$categorySlug/$subcategorySlug`.
+ */
+export interface ConsultantExpertise {
+	categorySlug: string;
+	categoryName: string;
+	subcategorySlug: string;
+	subcategoryName: string;
+	isPrimary: boolean;
+}

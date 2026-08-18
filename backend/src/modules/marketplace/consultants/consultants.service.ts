@@ -24,13 +24,83 @@ export const CONSULTANTS_REPOSITORY = Symbol('CONSULTANTS_REPOSITORY');
  * the other.
  */
 const CONSULTANT_PUBLIC_COLUMNS =
-  'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status)';
+  'id, display_name, avatar_url, banner_url, headline, bio, country, city, created_at, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey!inner(status, verified_at)';
+
+/**
+ * A consultant's declared expertise, for the public profile.
+ *
+ * `consultant_subcategories` is otherwise readable only by the backend (RLS
+ * denies everyone), and this is the one place its contents are meant to be
+ * seen: the taxonomy leaf pages list who is in a category, and this is the
+ * reverse view of the same rows.
+ */
+const CONSULTANT_EXPERTISE_SELECT =
+  'is_primary, position, subcategory:marketplace_subcategories!inner(slug, name, is_active, category:marketplace_categories!inner(slug, name, is_active))';
+
+export interface ConsultantExpertise {
+  categorySlug: string;
+  categoryName: string;
+  subcategorySlug: string;
+  subcategoryName: string;
+  isPrimary: boolean;
+}
+
+/**
+ * Shapes for the expertise embed. The shared SupabaseClient is not generated
+ * from a Database schema, so embedded rows arrive untyped; declaring them here
+ * keeps the narrowing local instead of disabling the `any` rules file-wide.
+ *
+ * PostgREST returns a to-one embed as an object, but the same select against a
+ * different relationship cardinality returns an array, so both are accepted.
+ */
+interface ExpertiseCategoryRow {
+  slug: string;
+  name: string;
+}
+
+interface ExpertiseSubcategoryRow {
+  slug: string;
+  name: string;
+  category: ExpertiseCategoryRow | ExpertiseCategoryRow[] | null;
+}
+
+interface ExpertiseRow {
+  is_primary: boolean | null;
+  subcategory: ExpertiseSubcategoryRow | ExpertiseSubcategoryRow[] | null;
+}
+
+function firstOf<T>(value: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : (value ?? undefined);
+}
+
+function firstRows(data: unknown): ExpertiseRow[] {
+  return (data ?? []) as ExpertiseRow[];
+}
 
 interface CacheReadOptions {
   onCacheStatus?: (status: AppCacheStatus) => void;
 }
 
 export type ConsultantSummary = object & MarketplaceEnrollmentFields;
+
+/**
+ * `attachMarketplaceEnrollmentFields` strips the whole `consultant_profile`
+ * embed once it has derived the capability flags, so `verified_at` has to be
+ * lifted out before it goes. Every endpoint routes through here rather than
+ * calling the helper directly, which is what keeps the three payloads identical
+ * — the same reason the column allowlist is shared.
+ */
+function toPublicConsultant(row: object) {
+  const embed = (row as Record<string, unknown>).consultant_profile;
+  const record = (Array.isArray(embed) ? embed[0] : embed) as
+    | { verified_at?: string | null }
+    | null
+    | undefined;
+  return {
+    ...attachMarketplaceEnrollmentFields(row),
+    consultant_verified_at: record?.verified_at ?? null,
+  };
+}
 
 export interface ConsultantDirectoryPage {
   items: ConsultantSummary[];
@@ -56,9 +126,7 @@ export class ConsultantsService {
           .from('profiles')
           .select(CONSULTANT_PUBLIC_COLUMNS)
           .eq('consultant_profile.status', 'verified');
-        return (data || []).map((profile) =>
-          attachMarketplaceEnrollmentFields(profile),
-        );
+        return (data || []).map(toPublicConsultant);
       },
       { onStatus: options?.onCacheStatus },
     );
@@ -145,9 +213,7 @@ export class ConsultantsService {
     if (error) throw error;
 
     return {
-      items: (data ?? []).map((profile) =>
-        attachMarketplaceEnrollmentFields(profile),
-      ),
+      items: (data ?? []).map(toPublicConsultant),
       total: count ?? 0,
       limit,
       offset,
@@ -180,9 +246,47 @@ export class ConsultantsService {
           .eq('consultant_profile.status', 'verified')
           .single();
         if (!data) throw new NotFoundException('Consultant not found');
-        return attachMarketplaceEnrollmentFields(data);
+        return {
+          ...toPublicConsultant(data),
+          expertise: await this.findExpertise(id),
+        };
       },
       { onStatus: options?.onCacheStatus },
     );
+  }
+
+  /**
+   * Only the detail endpoint carries expertise. The directory already knows
+   * which category it filtered by, and adding a second round trip per row there
+   * would cost one query per card to tell each card what it was selected for.
+   */
+  private async findExpertise(id: string): Promise<ConsultantExpertise[]> {
+    const { data, error } = await this.supabase
+      .from('consultant_subcategories')
+      .select(CONSULTANT_EXPERTISE_SELECT)
+      .eq('user_id', id)
+      .eq('subcategory.is_active', true)
+      .eq('subcategory.category.is_active', true)
+      .order('is_primary', { ascending: false })
+      .order('position', { ascending: true });
+
+    if (error) throw error;
+
+    return firstRows(data).flatMap((row) => {
+      const subcategory = firstOf(row.subcategory);
+      const category = firstOf(subcategory?.category);
+      // The `is_active` filters above narrow the embed rather than dropping the
+      // parent row, so a de-activated branch still arrives as an empty embed.
+      if (!subcategory || !category) return [];
+      return [
+        {
+          categorySlug: category.slug,
+          categoryName: category.name,
+          subcategorySlug: subcategory.slug,
+          subcategoryName: subcategory.name,
+          isPrimary: Boolean(row.is_primary),
+        },
+      ];
+    });
   }
 }

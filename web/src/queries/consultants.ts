@@ -1,5 +1,18 @@
 import { apiClient } from "@/api";
+import type { ConsultantExpertise } from "../types/marketplace-taxonomy";
 import type { Profile } from "../types/profile.types";
+
+/**
+ * A consultant as the public profile endpoint returns them.
+ *
+ * Only the detail route carries `expertise` and `consultant_verified_at`; the
+ * directory deliberately does not, so the extra fields sit on this type rather
+ * than on `Profile`, where every consumer would have to treat them as maybe-set.
+ */
+export interface ConsultantPublicProfile extends Profile {
+	consultant_verified_at: string | null;
+	expertise: ConsultantExpertise[];
+}
 
 /**
  * Fetch all verified consultants
@@ -12,7 +25,9 @@ export async function fetchConsultants(): Promise<Profile[]> {
 /**
  * Fetch a specific consultant by ID
  */
-export async function fetchConsultantProfile(userId: string): Promise<Profile> {
+export async function fetchConsultantProfile(
+	userId: string,
+): Promise<ConsultantPublicProfile> {
 	const response = await apiClient.get(`/api/consultants/${userId}`);
 	return response.data.data ?? response.data;
 }
