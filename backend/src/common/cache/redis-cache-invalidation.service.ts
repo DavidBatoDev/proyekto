@@ -43,8 +43,36 @@ export class RedisCacheInvalidationService {
       this.runBestEffort('redis_del_many_consultants', () =>
         this.cache.delMany(keys),
       ),
+      // The directory is keyed by a query hash, so its entries cannot be named
+      // individually - they are cleared through their index. Every existing
+      // caller of this method (consultant approval, status change, profile
+      // edit) therefore keeps the category pages fresh with no new call sites.
+      this.runBestEffort('redis_clear_consultants_directory', () =>
+        this.cache.clearIndex(REDIS_CACHE_KEYS.consultantsIndex),
+      ),
       this.runBestEffort('edge_purge_consultants', () =>
         this.cloudflarePurge.purgePaths(paths),
+      ),
+    ]);
+  }
+
+  /**
+   * Nothing calls this yet: the taxonomy is editorial and only changes by
+   * migration, which the public TTL absorbs. It exists so the eventual admin
+   * taxonomy editor has a single place to hook rather than inventing one.
+   */
+  async invalidateMarketplaceTaxonomyCache(): Promise<void> {
+    this.logger.log(
+      'cache_invalidate scope=marketplace_taxonomy index_count=1',
+    );
+    await Promise.all([
+      this.runBestEffort('redis_clear_marketplace_taxonomy', () =>
+        this.cache.clearIndex(REDIS_CACHE_KEYS.marketplaceTaxonomyIndex),
+      ),
+      this.runBestEffort('edge_purge_marketplace_taxonomy', () =>
+        this.cloudflarePurge.purgePaths([
+          '/api/marketplace/categories/navigation',
+        ]),
       ),
     ]);
   }
