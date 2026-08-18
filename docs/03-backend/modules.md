@@ -2,12 +2,13 @@
 
 > **Last updated:** 2026-08-18 · **Status:** current
 
-The backend is **31 feature modules** under
+The backend is **35 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
-actual `.from('…')` calls — the identity domain uses **`user_*`** tables (the only
-`consultant_*` table is `consultant_applications`), and file storage is **Cloudflare
+actual `.from('…')` calls — the identity domain uses **`user_*`** tables, with
+`consultant_*` limited to `consultant_applications`, `consultant_profiles` (enrolment)
+and `consultant_subcategories` (category membership), and file storage is **Cloudflare
 R2**, not Supabase Storage.
 
 Modules are grouped by platform responsibility:
@@ -35,7 +36,8 @@ group-level barrel modules.
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
-| `consultants` | Active-consultant directory | `profiles`, `consultant_profiles` |
+| `consultants` | Active-consultant directory, plus the category-filtered public directory | `profiles`, `consultant_profiles`, `consultant_subcategories` |
+| `taxonomy` | Curated marketplace category tree behind the mega-menu and `/marketplace/category/*` | `marketplace_categories`, `marketplace_subcategories` |
 | `applications` | Consultant/freelancer application submission | `consultant_applications` |
 | `marketplace` | Freelancer enrollment, discovery + hiring invites | `freelancer_profiles`, `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
@@ -79,7 +81,17 @@ sub-entity, each in its own `user_*` table: `user_skills`, `user_languages`,
 `freelancer-eligibility.service.ts` gates who can go live.
 
 **`consultants`** — public read-only directory over profiles with a verified
-`consultant_profiles` enrollment (no repository).
+`consultant_profiles` enrollment (no repository). `GET /consultants` returns a bare
+unpaginated array and has three web callers; `GET /consultants/directory` is the
+paginated, category-filtered route the marketplace category pages use. It resolves its
+filter in two steps and dedupes in JS, because PostgREST has no `DISTINCT` and a
+consultant in two sub-categories of one category would otherwise appear twice.
+
+**`taxonomy`** — the curated marketplace category tree (repository-backed, all routes
+`@Public()`). `GET /marketplace/categories/navigation` returns every category with its
+sub-categories nested in one round trip. Slug params are validated against the same
+pattern the database CHECK constraints enforce, since those values reach a Redis cache
+key and a PostgREST filter.
 
 **`applications`** — consultant/freelancer application submit + status; writes
 `consultant_applications`. Its `ApplicationsService` is co-located in the controller file.
@@ -205,7 +217,7 @@ screen, and rotating refresh tokens on durable per-connection grants
 ## Structural notes
 
 - **Co-located services** (no separate `*.service.ts`): `uploads`, `applications`, `guests`.
-- **No repository** (service queries Supabase directly): `consultants`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`.
+- **No repository** (service queries Supabase directly): `consultants`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`. `taxonomy` is repository-backed.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
 - **Global modules**: `SupabaseModule`, `RedisModule`, `R2Module`,
