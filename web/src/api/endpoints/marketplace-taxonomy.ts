@@ -1,6 +1,8 @@
 import type {
+	MarketplaceCategoryDetail,
 	MarketplaceCategoryNav,
 	MarketplaceSubcategoryDetail,
+	MarketplaceTopicDetail,
 } from "@/types/marketplace-taxonomy";
 import apiClient from "../axios";
 
@@ -17,8 +19,12 @@ export async function getMarketplaceCategoryNavigation() {
 	return response.data.data.items;
 }
 
+/**
+ * One category with its specialities AND their topics — the three levels the
+ * category page tiles. Richer than the navigation payload on purpose.
+ */
 export async function getMarketplaceCategory(categorySlug: string) {
-	const response = await apiClient.get<ApiResponse<MarketplaceCategoryNav>>(
+	const response = await apiClient.get<ApiResponse<MarketplaceCategoryDetail>>(
 		`/api/marketplace/categories/${categorySlug}`,
 	);
 	return response.data.data;
@@ -31,5 +37,16 @@ export async function getMarketplaceSubcategory(
 	const response = await apiClient.get<
 		ApiResponse<MarketplaceSubcategoryDetail>
 	>(`/api/marketplace/categories/${categorySlug}/${subcategorySlug}`);
+	return response.data.data;
+}
+
+export async function getMarketplaceTopic(
+	categorySlug: string,
+	subcategorySlug: string,
+	topicSlug: string,
+) {
+	const response = await apiClient.get<ApiResponse<MarketplaceTopicDetail>>(
+		`/api/marketplace/categories/${categorySlug}/${subcategorySlug}/${topicSlug}`,
+	);
 	return response.data.data;
 }

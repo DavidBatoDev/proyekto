@@ -6,7 +6,7 @@ import { useMarketplaceSubcategoryQuery } from "@/hooks/useMarketplaceTaxonomy";
 import { mapRetiredCategorySlug } from "@/lib/marketplaceCategoryRedirects";
 
 export const Route = createFileRoute(
-	"/marketplace/category/$categorySlug/$subcategorySlug",
+	"/marketplace/category/$categorySlug/$subcategorySlug/",
 )({
 	// Sub-category slugs survived the merge untouched, so only the first
 	// segment moves.
@@ -97,6 +97,32 @@ function MarketplaceSubcategoryPage() {
 					}
 				/>
 			</section>
+
+			{subcategory && subcategory.topics.length > 0 && (
+				<section className="mt-10">
+					<h2 className="text-[13px] font-semibold text-foreground">
+						Topics in {subcategory.name}
+					</h2>
+					<ul className="mt-3 flex flex-wrap gap-2">
+						{subcategory.topics.map((topic) => (
+							<li key={topic.id}>
+								<Link
+									to="/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug"
+									params={{
+										categorySlug,
+										subcategorySlug,
+										topicSlug: topic.slug,
+									}}
+									preload="intent"
+									className="inline-block rounded-full border border-border px-3 py-1.5 text-[12.5px] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+								>
+									{topic.name}
+								</Link>
+							</li>
+						))}
+					</ul>
+				</section>
+			)}
 
 			{/*
 			 * Siblings matter most exactly when the list above is empty: without

@@ -20,8 +20,41 @@ export interface MarketplaceCategoryNav extends MarketplaceCategory {
 	subcategories: MarketplaceSubcategory[];
 }
 
+/** The third level: what a client actually searches for under a speciality. */
+export interface MarketplaceTopic {
+	id: string;
+	slug: string;
+	name: string;
+	description: string | null;
+	position: number;
+}
+
+export interface MarketplaceSubcategoryWithTopics
+	extends MarketplaceSubcategory {
+	topics: MarketplaceTopic[];
+}
+
+/**
+ * A category page's payload. Distinct from `MarketplaceCategoryNav` by exactly
+ * one thing — whether topics come along — and kept a separate type because the
+ * mega-menu deliberately does not fetch them. One type carrying an optional
+ * `topics` would claim navigation has them, where it would always be empty.
+ */
+export interface MarketplaceCategoryDetail extends MarketplaceCategory {
+	subcategories: MarketplaceSubcategoryWithTopics[];
+}
+
+export interface MarketplaceTopicDetail extends MarketplaceTopic {
+	category: MarketplaceCategory;
+	subcategory: MarketplaceSubcategory;
+	/** Topics beside this one, so an empty leaf offers a lateral move. */
+	siblings: MarketplaceTopic[];
+}
+
 export interface MarketplaceSubcategoryDetail extends MarketplaceSubcategory {
 	category: MarketplaceCategory;
+	/** This speciality's own topics, for its browse row. */
+	topics: MarketplaceTopic[];
 	/**
 	 * Siblings under the same category, so a leaf page with no consultants can
 	 * still offer somewhere to go.

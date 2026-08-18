@@ -2,6 +2,7 @@ export {
 	getMarketplaceCategory,
 	getMarketplaceCategoryNavigation,
 	getMarketplaceSubcategory,
+	getMarketplaceTopic,
 } from "@/api/endpoints/marketplace-taxonomy";
 
 /**
@@ -19,5 +20,13 @@ export const marketplaceTaxonomyKeys = {
 			"subcategory",
 			categorySlug,
 			subcategorySlug,
+		] as const,
+	topic: (categorySlug: string, subcategorySlug: string, topicSlug: string) =>
+		[
+			...marketplaceTaxonomyKeys.all,
+			"topic",
+			categorySlug,
+			subcategorySlug,
+			topicSlug,
 		] as const,
 };

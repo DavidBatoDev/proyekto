@@ -72,7 +72,6 @@ import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/mark
 import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
 import { Route as MarketplaceFinancePortfolioEngagementsRouteImport } from './routes/marketplace/finance/_portfolio/engagements'
 import { Route as MarketplaceFinancePortfolioContractsRouteImport } from './routes/marketplace/finance/_portfolio/contracts'
-import { Route as MarketplaceCategoryCategorySlugSubcategorySlugRouteImport } from './routes/marketplace/category/$categorySlug/$subcategorySlug'
 import { Route as ExecutionTeamsMeInvitesRouteImport } from './routes/_execution/teams/me/invites'
 import { Route as ExecutionRoadmapSharedTokenRouteImport } from './routes/_execution/roadmap/shared/$token'
 import { Route as ExecutionProjectProjectIdWorkItemsRouteImport } from './routes/_execution/project/$projectId/work-items'
@@ -87,11 +86,13 @@ import { Route as ExecutionProjectProjectIdDeliverablesRouteImport } from './rou
 import { Route as ExecutionProjectProjectIdDecisionsRouteImport } from './routes/_execution/project/$projectId/decisions'
 import { Route as ExecutionProjectProjectIdChangeRequestsRouteImport } from './routes/_execution/project/$projectId/change-requests'
 import { Route as ExecutionTeamsTeamIdTimeRouteRouteImport } from './routes/_execution/teams/$teamId/time/route'
+import { Route as MarketplaceCategoryCategorySlugSubcategorySlugIndexRouteImport } from './routes/marketplace/category/$categorySlug/$subcategorySlug/index'
 import { Route as ExecutionTeamsTeamIdTimeIndexRouteImport } from './routes/_execution/teams/$teamId/time/index'
 import { Route as ExecutionTeamsTeamIdSettingsIndexRouteImport } from './routes/_execution/teams/$teamId/settings/index'
 import { Route as ExecutionProjectProjectIdTeamIndexRouteImport } from './routes/_execution/project/$projectId/team/index'
 import { Route as ExecutionProjectProjectIdSettingsIndexRouteImport } from './routes/_execution/project/$projectId/settings/index'
 import { Route as MarketplaceFinanceInvoicesInvoiceIdEditRouteImport } from './routes/marketplace/finance/invoices/$invoiceId/edit'
+import { Route as MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRouteImport } from './routes/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
 import { Route as ExecutionTeamsTeamIdTimeTeamLogsRouteImport } from './routes/_execution/teams/$teamId/time/team-logs'
 import { Route as ExecutionTeamsTeamIdTimePayoutsRouteImport } from './routes/_execution/teams/$teamId/time/payouts'
 import { Route as ExecutionTeamsTeamIdTimeMyLogsRouteImport } from './routes/_execution/teams/$teamId/time/my-logs'
@@ -454,12 +455,6 @@ const MarketplaceFinancePortfolioContractsRoute =
     path: '/contracts',
     getParentRoute: () => MarketplaceFinancePortfolioRoute,
   } as any)
-const MarketplaceCategoryCategorySlugSubcategorySlugRoute =
-  MarketplaceCategoryCategorySlugSubcategorySlugRouteImport.update({
-    id: '/$categorySlug/$subcategorySlug',
-    path: '/$categorySlug/$subcategorySlug',
-    getParentRoute: () => MarketplaceCategoryRouteRoute,
-  } as any)
 const ExecutionTeamsMeInvitesRoute = ExecutionTeamsMeInvitesRouteImport.update({
   id: '/teams/me/invites',
   path: '/teams/me/invites',
@@ -543,6 +538,12 @@ const ExecutionTeamsTeamIdTimeRouteRoute =
     path: '/time',
     getParentRoute: () => ExecutionTeamsTeamIdRoute,
   } as any)
+const MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute =
+  MarketplaceCategoryCategorySlugSubcategorySlugIndexRouteImport.update({
+    id: '/$categorySlug/$subcategorySlug/',
+    path: '/$categorySlug/$subcategorySlug/',
+    getParentRoute: () => MarketplaceCategoryRouteRoute,
+  } as any)
 const ExecutionTeamsTeamIdTimeIndexRoute =
   ExecutionTeamsTeamIdTimeIndexRouteImport.update({
     id: '/',
@@ -572,6 +573,12 @@ const MarketplaceFinanceInvoicesInvoiceIdEditRoute =
     id: '/invoices/$invoiceId/edit',
     path: '/invoices/$invoiceId/edit',
     getParentRoute: () => MarketplaceFinanceRouteRoute,
+  } as any)
+const MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute =
+  MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRouteImport.update({
+    id: '/$categorySlug/$subcategorySlug/$topicSlug',
+    path: '/$categorySlug/$subcategorySlug/$topicSlug',
+    getParentRoute: () => MarketplaceCategoryRouteRoute,
   } as any)
 const ExecutionTeamsTeamIdTimeTeamLogsRoute =
   ExecutionTeamsTeamIdTimeTeamLogsRouteImport.update({
@@ -810,7 +817,6 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
-  '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
@@ -844,11 +850,13 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/time/my-logs': typeof ExecutionTeamsTeamIdTimeMyLogsRoute
   '/teams/$teamId/time/payouts': typeof ExecutionTeamsTeamIdTimePayoutsRoute
   '/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
   '/project/$projectId/settings': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/project/$projectId/team': typeof ExecutionProjectProjectIdTeamIndexRoute
   '/teams/$teamId/settings': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time/': typeof ExecutionTeamsTeamIdTimeIndexRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
@@ -916,7 +924,6 @@ export interface FileRoutesByTo {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
-  '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
@@ -949,11 +956,13 @@ export interface FileRoutesByTo {
   '/teams/$teamId/time/my-logs': typeof ExecutionTeamsTeamIdTimeMyLogsRoute
   '/teams/$teamId/time/payouts': typeof ExecutionTeamsTeamIdTimePayoutsRoute
   '/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
   '/project/$projectId/settings': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/project/$projectId/team': typeof ExecutionProjectProjectIdTeamIndexRoute
   '/teams/$teamId/settings': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeIndexRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
@@ -1029,7 +1038,6 @@ export interface FileRoutesById {
   '/_execution/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/_execution/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/_execution/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
-  '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugRoute
   '/marketplace/finance/_portfolio/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/_portfolio/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
@@ -1063,11 +1071,13 @@ export interface FileRoutesById {
   '/_execution/teams/$teamId/time/my-logs': typeof ExecutionTeamsTeamIdTimeMyLogsRoute
   '/_execution/teams/$teamId/time/payouts': typeof ExecutionTeamsTeamIdTimePayoutsRoute
   '/_execution/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
   '/_execution/project/$projectId/settings/': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/_execution/project/$projectId/team/': typeof ExecutionProjectProjectIdTeamIndexRoute
   '/_execution/teams/$teamId/settings/': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/_execution/teams/$teamId/time/': typeof ExecutionTeamsTeamIdTimeIndexRoute
+  '/marketplace/category/$categorySlug/$subcategorySlug/': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
   '/_execution/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/_execution/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/_execution/teams/$teamId/time/manage-rates/': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
@@ -1142,7 +1152,6 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
-    | '/marketplace/category/$categorySlug/$subcategorySlug'
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
@@ -1176,11 +1185,13 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/my-logs'
     | '/teams/$teamId/time/payouts'
     | '/teams/$teamId/time/team-logs'
+    | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
     | '/project/$projectId/settings'
     | '/project/$projectId/team'
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time/'
+    | '/marketplace/category/$categorySlug/$subcategorySlug'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/teams/$teamId/time/manage-rates'
@@ -1248,7 +1259,6 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
-    | '/marketplace/category/$categorySlug/$subcategorySlug'
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
@@ -1281,11 +1291,13 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/my-logs'
     | '/teams/$teamId/time/payouts'
     | '/teams/$teamId/time/team-logs'
+    | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
     | '/project/$projectId/settings'
     | '/project/$projectId/team'
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time'
+    | '/marketplace/category/$categorySlug/$subcategorySlug'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/teams/$teamId/time/manage-rates'
@@ -1360,7 +1372,6 @@ export interface FileRouteTypes {
     | '/_execution/project/$projectId/work-items'
     | '/_execution/roadmap/shared/$token'
     | '/_execution/teams/me/invites'
-    | '/marketplace/category/$categorySlug/$subcategorySlug'
     | '/marketplace/finance/_portfolio/contracts'
     | '/marketplace/finance/_portfolio/engagements'
     | '/marketplace/finance/_portfolio/invoices'
@@ -1394,11 +1405,13 @@ export interface FileRouteTypes {
     | '/_execution/teams/$teamId/time/my-logs'
     | '/_execution/teams/$teamId/time/payouts'
     | '/_execution/teams/$teamId/time/team-logs'
+    | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
     | '/_execution/project/$projectId/settings/'
     | '/_execution/project/$projectId/team/'
     | '/_execution/teams/$teamId/settings/'
     | '/_execution/teams/$teamId/time/'
+    | '/marketplace/category/$categorySlug/$subcategorySlug/'
     | '/_execution/teams/$teamId/time/log/$logId'
     | '/_execution/teams/$teamId/time/manage-rates/$userId'
     | '/_execution/teams/$teamId/time/manage-rates/'
@@ -1871,13 +1884,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceFinancePortfolioContractsRouteImport
       parentRoute: typeof MarketplaceFinancePortfolioRoute
     }
-    '/marketplace/category/$categorySlug/$subcategorySlug': {
-      id: '/marketplace/category/$categorySlug/$subcategorySlug'
-      path: '/$categorySlug/$subcategorySlug'
-      fullPath: '/marketplace/category/$categorySlug/$subcategorySlug'
-      preLoaderRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugRouteImport
-      parentRoute: typeof MarketplaceCategoryRouteRoute
-    }
     '/_execution/teams/me/invites': {
       id: '/_execution/teams/me/invites'
       path: '/teams/me/invites'
@@ -1976,6 +1982,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionTeamsTeamIdTimeRouteRouteImport
       parentRoute: typeof ExecutionTeamsTeamIdRoute
     }
+    '/marketplace/category/$categorySlug/$subcategorySlug/': {
+      id: '/marketplace/category/$categorySlug/$subcategorySlug/'
+      path: '/$categorySlug/$subcategorySlug'
+      fullPath: '/marketplace/category/$categorySlug/$subcategorySlug'
+      preLoaderRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRouteImport
+      parentRoute: typeof MarketplaceCategoryRouteRoute
+    }
     '/_execution/teams/$teamId/time/': {
       id: '/_execution/teams/$teamId/time/'
       path: '/'
@@ -2010,6 +2023,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marketplace/finance/invoices/$invoiceId/edit'
       preLoaderRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRouteImport
       parentRoute: typeof MarketplaceFinanceRouteRoute
+    }
+    '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': {
+      id: '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
+      path: '/$categorySlug/$subcategorySlug/$topicSlug'
+      fullPath: '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
+      preLoaderRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRouteImport
+      parentRoute: typeof MarketplaceCategoryRouteRoute
     }
     '/_execution/teams/$teamId/time/team-logs': {
       id: '/_execution/teams/$teamId/time/team-logs'
@@ -2211,16 +2231,19 @@ declare module '@tanstack/react-router' {
 }
 
 interface MarketplaceCategoryRouteRouteChildren {
-  MarketplaceCategoryCategorySlugSubcategorySlugRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugRoute
   MarketplaceCategoryCategorySlugIndexRoute: typeof MarketplaceCategoryCategorySlugIndexRoute
+  MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
+  MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
 }
 
 const MarketplaceCategoryRouteRouteChildren: MarketplaceCategoryRouteRouteChildren =
   {
-    MarketplaceCategoryCategorySlugSubcategorySlugRoute:
-      MarketplaceCategoryCategorySlugSubcategorySlugRoute,
     MarketplaceCategoryCategorySlugIndexRoute:
       MarketplaceCategoryCategorySlugIndexRoute,
+    MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute:
+      MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute,
+    MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute:
+      MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute,
   }
 
 const MarketplaceCategoryRouteRouteWithChildren =

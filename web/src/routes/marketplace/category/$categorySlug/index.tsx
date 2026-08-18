@@ -1,12 +1,16 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { CategoryArt } from "@/components/marketplace/category/CategoryArt";
+import { columnize } from "@/components/marketplace/nav/categoryMegaMenu";
 import {
 	useMarketplaceCategoryNavigationQuery,
 	useMarketplaceCategoryQuery,
 } from "@/hooks/useMarketplaceTaxonomy";
 import { mapRetiredCategorySlug } from "@/lib/marketplaceCategoryRedirects";
-import type { MarketplaceCategoryNav } from "@/types/marketplace-taxonomy";
+import type {
+	MarketplaceCategoryNav,
+	MarketplaceSubcategoryWithTopics,
+} from "@/types/marketplace-taxonomy";
 
 export const Route = createFileRoute("/marketplace/category/$categorySlug/")({
 	beforeLoad: ({ params }) => {
@@ -26,22 +30,26 @@ export const Route = createFileRoute("/marketplace/category/$categorySlug/")({
  * A category landing page: what this discipline covers and how to start work in
  * it, rather than a directory of who is available.
  *
- * It deliberately does NOT list consultants. The leaf pages under
- * `$subcategorySlug` are where people appear, and they are specific enough for
- * the list to mean something; a category-wide roster would be a wall of faces
- * answering a question the visitor has not asked yet. It also degrades badly
- * while the marketplace is young — an empty roster reads as "nobody works
- * here", where a map of the discipline reads as "here is what you can ask for".
+ * The browse grid is scoped to THIS category. It used to be fed by the
+ * navigation query — every category with every speciality — so every category
+ * page rendered an identical grid and clicking one told you nothing. That was
+ * only possible because with two levels there was nothing category-specific to
+ * tile; the third level is what fixed it.
+ *
+ * Consultants are deliberately not listed here. The leaf pages are specific
+ * enough for a roster to mean something; a category-wide one answers a question
+ * the visitor has not asked yet, and reads as "nobody works here" while the
+ * marketplace is young.
  */
 function MarketplaceCategoryPage() {
 	const { categorySlug } = Route.useParams();
 	const categoryQuery = useMarketplaceCategoryQuery(categorySlug);
-	const navigationQuery = useMarketplaceCategoryNavigationQuery();
 	const category = categoryQuery.data;
 
 	if (categoryQuery.isError) return <CategoryNotFound />;
 
 	const name = category?.name ?? "";
+	const specialities = category?.subcategories ?? [];
 
 	return (
 		<main>
@@ -67,80 +75,65 @@ function MarketplaceCategoryPage() {
 				</Link>
 			</section>
 
-			{category && category.subcategories.length > 0 && (
-				<section className="bg-muted/50 px-4 py-10 sm:px-6 lg:px-8">
-					<h2 className="text-center text-[20px] font-semibold text-foreground">
-						{name} specialities
-					</h2>
-					<ul className="mx-auto mt-5 flex max-w-4xl flex-wrap justify-center gap-2.5">
-						{category.subcategories.map((subcategory) => (
-							<li key={subcategory.id}>
-								<Link
-									to="/marketplace/category/$categorySlug/$subcategorySlug"
-									params={{
-										categorySlug: category.slug,
-										subcategorySlug: subcategory.slug,
-									}}
-									preload="intent"
-									className="inline-block rounded-full border border-border bg-background px-4 py-2 text-[13.5px] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
-								>
-									{subcategory.name}
-								</Link>
-							</li>
-						))}
-					</ul>
-				</section>
-			)}
-
 			<LeadPromo categoryName={name} />
 
 			<section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
 				<h2 className="text-center text-[24px] font-semibold tracking-tight text-foreground">
-					Browse by category to find the right fit for your project
+					{name
+						? `Browse ${name} to find the right fit`
+						: "Browse to find the right fit"}
 				</h2>
 
 				<div className="mt-9 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-					{navigationQuery.isPending
+					{categoryQuery.isPending
 						? Array.from({ length: 8 }, (_, index) => (
 								<div key={`tile-skeleton-${index}`}>
 									<div className="aspect-video w-full animate-pulse rounded-lg bg-muted" />
 									<div className="mt-3 h-4 w-32 animate-pulse rounded bg-muted" />
 								</div>
 							))
-						: (navigationQuery.data ?? []).map((entry, index) => (
-								<CategoryTile
-									key={entry.id}
-									entry={entry}
+						: specialities.map((speciality, index) => (
+								<SpecialityTile
+									key={speciality.id}
+									categorySlug={categorySlug}
+									speciality={speciality}
 									index={index}
-									current={entry.slug === categorySlug}
 								/>
 							))}
 				</div>
 			</section>
+
+			<AllCategories currentSlug={categorySlug} />
 		</main>
 	);
 }
 
-function CategoryTile({
-	entry,
+/**
+ * One speciality: its picture, its name, and the topics underneath it.
+ *
+ * `CategoryArt` is reused unchanged — keyed on the speciality's own slug, so it
+ * keeps a stable palette, and on its grid position, so scenes spread evenly.
+ */
+function SpecialityTile({
+	categorySlug,
+	speciality,
 	index,
-	current,
 }: {
-	entry: MarketplaceCategoryNav;
+	categorySlug: string;
+	speciality: MarketplaceSubcategoryWithTopics;
 	index: number;
-	current: boolean;
 }) {
 	return (
 		<div>
 			<Link
-				to="/marketplace/category/$categorySlug"
-				params={{ categorySlug: entry.slug }}
+				to="/marketplace/category/$categorySlug/$subcategorySlug"
+				params={{ categorySlug, subcategorySlug: speciality.slug }}
 				preload="intent"
-				aria-label={entry.name}
+				aria-label={speciality.name}
 				className="block overflow-hidden rounded-lg"
 			>
 				<CategoryArt
-					slug={entry.slug}
+					slug={speciality.slug}
 					index={index}
 					className="aspect-video w-full transition-transform duration-200 hover:scale-[1.03]"
 				/>
@@ -148,36 +141,82 @@ function CategoryTile({
 
 			<h3 className="mt-3 text-[14px] font-bold text-foreground">
 				<Link
-					to="/marketplace/category/$categorySlug"
-					params={{ categorySlug: entry.slug }}
+					to="/marketplace/category/$categorySlug/$subcategorySlug"
+					params={{ categorySlug, subcategorySlug: speciality.slug }}
 					preload="intent"
-					// The category you are already on is marked rather than hidden, so
-					// the grid stays a stable map instead of reshuffling per page.
-					className={current ? "underline" : "hover:underline"}
-					aria-current={current ? "page" : undefined}
+					className="hover:underline"
 				>
-					{entry.name}
+					{speciality.name}
 				</Link>
 			</h3>
 
 			<ul className="mt-2 space-y-1.5">
-				{entry.subcategories.map((subcategory) => (
-					<li key={subcategory.id}>
+				{speciality.topics.map((topic) => (
+					<li key={topic.id}>
 						<Link
-							to="/marketplace/category/$categorySlug/$subcategorySlug"
+							to="/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug"
 							params={{
-								categorySlug: entry.slug,
-								subcategorySlug: subcategory.slug,
+								categorySlug,
+								subcategorySlug: speciality.slug,
+								topicSlug: topic.slug,
 							}}
 							preload="intent"
 							className="text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:underline"
 						>
-							{subcategory.name}
+							{topic.name}
 						</Link>
 					</li>
 				))}
 			</ul>
 		</div>
+	);
+}
+
+/**
+ * The rest of the taxonomy, in a compact row.
+ *
+ * The grid above is this category's own specialities now, so without this the
+ * page would be a dead end for anyone who wanted a different discipline.
+ * Columns rather than a wrapped list, reusing the mega-menu's own splitter.
+ */
+function AllCategories({ currentSlug }: { currentSlug: string }) {
+	const navigationQuery = useMarketplaceCategoryNavigationQuery();
+	const categories = navigationQuery.data ?? [];
+	if (categories.length === 0) return null;
+
+	return (
+		<section className="border-t border-border bg-muted/30 px-4 py-10 sm:px-6 lg:px-8">
+			<div className="mx-auto max-w-7xl">
+				<h2 className="text-[15px] font-semibold text-foreground">
+					All categories
+				</h2>
+				<div className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+					{columnize<MarketplaceCategoryNav>(categories, 4).map((column) => (
+						<ul key={column[0]?.id ?? "empty"} className="space-y-2">
+							{column.map((entry) => (
+								<li key={entry.id}>
+									<Link
+										to="/marketplace/category/$categorySlug"
+										params={{ categorySlug: entry.slug }}
+										preload="intent"
+										aria-current={
+											entry.slug === currentSlug ? "page" : undefined
+										}
+										className={`text-[13.5px] transition-colors hover:text-foreground hover:underline ${
+											entry.slug === currentSlug
+												? "font-semibold text-foreground"
+												: "text-muted-foreground"
+										}`}
+									>
+										{entry.name}
+									</Link>
+								</li>
+							))}
+						</ul>
+					))}
+				</div>
+			</div>
+		</section>
 	);
 }
 

@@ -3,6 +3,7 @@ import {
 	getMarketplaceCategory,
 	getMarketplaceCategoryNavigation,
 	getMarketplaceSubcategory,
+	getMarketplaceTopic,
 	marketplaceTaxonomyKeys,
 } from "@/queries/marketplaceTaxonomy";
 
@@ -43,6 +44,25 @@ export function useMarketplaceSubcategoryQuery(
 		),
 		queryFn: () => getMarketplaceSubcategory(categorySlug, subcategorySlug),
 		enabled: !!categorySlug && !!subcategorySlug,
+		staleTime: DETAIL_STALE_TIME,
+		retry: 1,
+	});
+}
+
+export function useMarketplaceTopicQuery(
+	categorySlug: string,
+	subcategorySlug: string,
+	topicSlug: string,
+) {
+	return useQuery({
+		queryKey: marketplaceTaxonomyKeys.topic(
+			categorySlug,
+			subcategorySlug,
+			topicSlug,
+		),
+		queryFn: () =>
+			getMarketplaceTopic(categorySlug, subcategorySlug, topicSlug),
+		enabled: !!categorySlug && !!subcategorySlug && !!topicSlug,
 		staleTime: DETAIL_STALE_TIME,
 		retry: 1,
 	});
