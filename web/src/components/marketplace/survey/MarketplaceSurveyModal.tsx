@@ -21,6 +21,10 @@ import type {
 	SurveyTalentGoal,
 } from "@/queries/marketplaceSurvey";
 import { Button } from "@/ui/button";
+import {
+	INTENT_ILLUSTRATION_SIZE,
+	INTENT_ILLUSTRATIONS,
+} from "./intentIllustrations";
 
 /**
  * The marketplace intake survey.
@@ -206,9 +210,14 @@ export function MarketplaceSurveyModal({
 					rather than what matches your work.
 				</p>
 			) : (
-				<div className="space-y-6">
-					<Stepper current={safeIndex + 1} total={steps.length} />
-
+				/**
+				 * `overflow-hidden` is load-bearing, not tidiness: the slide moves the
+				 * outgoing and incoming steps 24px sideways, and without a clip that
+				 * overflow widened the dialog and flashed a horizontal scrollbar on
+				 * every Next. The `-mx-1 px-1` pair buys back 4px so a focus ring on
+				 * an edge card is not clipped by the same rule.
+				 */
+				<div className="relative -mx-1 min-h-[16rem] overflow-hidden px-1">
 					<AnimatePresence mode="wait" initial={false} custom={direction}>
 						<motion.div
 							key={step}
@@ -218,21 +227,19 @@ export function MarketplaceSurveyModal({
 							animate="center"
 							exit="exit"
 							transition={slideTransition}
-							className="min-h-[16rem]"
 						>
 							{step === "intents" && (
 								<Question
 									title="What brings you to the marketplace?"
 									hint="Pick everything that applies."
 								>
-									<div className="grid gap-2">
+									<div className="grid gap-3 sm:grid-cols-3">
 										{INTENT_ORDER.map((intent) => (
-											<ChoiceCard
+											<IntentCard
 												key={intent}
+												intent={intent}
 												selected={intents.includes(intent)}
 												onClick={() => toggleIntent(intent)}
-												label={INTENT_LABELS[intent]}
-												description={INTENT_DESCRIPTIONS[intent]}
 											/>
 										))}
 									</div>
@@ -361,27 +368,6 @@ export function MarketplaceSurveyModal({
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
-function Stepper({ current, total }: { current: number; total: number }) {
-	return (
-		<div className="flex items-center gap-3">
-			<div className="flex flex-1 gap-1.5">
-				{Array.from({ length: total }, (_, position) => (
-					<div
-						key={`step-${position}`}
-						className={cn(
-							"h-1.5 flex-1 rounded-full transition-colors",
-							position < current ? "bg-primary" : "bg-muted",
-						)}
-					/>
-				))}
-			</div>
-			<span className="text-xs font-medium text-muted-foreground">
-				{current} of {total}
-			</span>
-		</div>
-	);
-}
-
 function Question({
 	title,
 	hint,
@@ -399,6 +385,79 @@ function Question({
 			</div>
 			{children}
 		</div>
+	);
+}
+
+/**
+ * The intent step's card: illustration, label, one line of explanation, stacked
+ * in a three-column grid.
+ *
+ * A column rather than the full-width rows the other steps use, because this is
+ * the one question where the three answers are peers being compared against
+ * each other — side by side is how you compare, and the illustration gives the
+ * eye something to land on before it reads anything.
+ *
+ * `sm:grid-cols-3` on the parent, so it stacks on a phone rather than crushing
+ * three cards into 110px each.
+ *
+ * The illustrations carry their own pale background, so the selected state is
+ * the border, the tint and the tick — tinting the artwork itself would just
+ * make it muddy.
+ */
+function IntentCard({
+	intent,
+	selected,
+	onClick,
+}: {
+	intent: SurveyIntent;
+	selected: boolean;
+	onClick: () => void;
+}) {
+	const label = INTENT_LABELS[intent];
+
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			aria-pressed={selected}
+			aria-label={label}
+			className={cn(
+				"group relative flex h-full flex-col items-center gap-3 rounded-2xl border p-4 text-center transition-colors",
+				selected
+					? "border-primary bg-primary/5"
+					: "border-border hover:border-primary/50 hover:bg-muted/40",
+			)}
+		>
+			{/* Reserves its own corner so the card does not reflow on selection. */}
+			<span
+				className={cn(
+					"absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border transition-colors",
+					selected
+						? "border-primary bg-primary text-primary-foreground"
+						: "border-border",
+				)}
+			>
+				{selected && <Check className="h-3 w-3" />}
+			</span>
+
+			<img
+				src={INTENT_ILLUSTRATIONS[intent]}
+				alt=""
+				width={INTENT_ILLUSTRATION_SIZE}
+				height={INTENT_ILLUSTRATION_SIZE}
+				decoding="async"
+				className="h-24 w-24 rounded-xl object-contain"
+			/>
+
+			<span className="min-w-0">
+				<span className="block text-sm font-semibold text-foreground">
+					{label}
+				</span>
+				<span className="mt-1 block text-[13px] leading-snug text-muted-foreground">
+					{INTENT_DESCRIPTIONS[intent]}
+				</span>
+			</span>
+		</button>
 	);
 }
 
