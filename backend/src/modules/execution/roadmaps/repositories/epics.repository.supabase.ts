@@ -10,6 +10,7 @@ import {
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
 import { sanitizeCommentHtml } from '../utils/comment-sanitizer';
+import { rethrowCommentThreadError } from '../utils/comment-thread-errors';
 
 @Injectable()
 export class EpicsRepositorySupabase implements IEpicsRepository {
@@ -161,7 +162,9 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
     const { data, error } = await this.db
       .from('epic_comments')
       .select(
-        '*, user:profiles(id, display_name, first_name, last_name, avatar_url, email)',
+        // FK hint required: epic_comments has two FKs to profiles (user_id and
+        // resolved_by), and a bare profiles embed is ambiguous to PostgREST.
+        '*, user:profiles!user_id(id, display_name, first_name, last_name, avatar_url, email)',
       )
       .eq('epic_id', epicId)
       .order('created_at', { ascending: true });
@@ -177,9 +180,38 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
     const content = sanitizeCommentHtml(dto.content);
     const { data, error } = await this.db
       .from('epic_comments')
-      .insert({ epic_id: epicId, content, user_id: userId })
+      .insert({
+        epic_id: epicId,
+        content,
+        user_id: userId,
+        parent_id: dto.parent_id ?? null,
+      })
       .select(
-        '*, user:profiles(id, display_name, first_name, last_name, avatar_url, email)',
+        // FK hint required: epic_comments has two FKs to profiles (user_id and
+        // resolved_by), and a bare profiles embed is ambiguous to PostgREST.
+        '*, user:profiles!user_id(id, display_name, first_name, last_name, avatar_url, email)',
+      )
+      .single();
+    if (error) rethrowCommentThreadError(error.message);
+    return data;
+  }
+
+  /** @see TaskExtrasRepositorySupabase.resolveComment */
+  async resolveComment(
+    commentId: string,
+    resolved: boolean,
+    userId: string,
+  ): Promise<any> {
+    const { data, error } = await this.db
+      .from('epic_comments')
+      .update(
+        resolved
+          ? { resolved_at: new Date().toISOString(), resolved_by: userId }
+          : { resolved_at: null, resolved_by: null },
+      )
+      .eq('id', commentId)
+      .select(
+        '*, user:profiles!user_id(id, display_name, first_name, last_name, avatar_url, email), resolver:profiles!resolved_by(id, display_name, avatar_url)',
       )
       .single();
     if (error) throw new Error(error.message);
@@ -226,7 +258,9 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
       .update({ content, updated_at: new Date().toISOString() })
       .eq('id', commentId)
       .select(
-        '*, user:profiles(id, display_name, first_name, last_name, avatar_url, email)',
+        // FK hint required: epic_comments has two FKs to profiles (user_id and
+        // resolved_by), and a bare profiles embed is ambiguous to PostgREST.
+        '*, user:profiles!user_id(id, display_name, first_name, last_name, avatar_url, email)',
       )
       .single();
     if (error) throw new Error(error.message);

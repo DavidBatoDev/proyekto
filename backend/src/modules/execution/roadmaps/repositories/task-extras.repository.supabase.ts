@@ -8,6 +8,20 @@ import {
   AddAttachmentDto,
 } from '../dto/roadmaps.dto';
 import { sanitizeCommentHtml } from '../utils/comment-sanitizer';
+import { rethrowCommentThreadError } from '../utils/comment-thread-errors';
+
+const COMMENT_PROFILE_COLS = 'id, display_name, avatar_url';
+
+/**
+ * Every profiles embed on task_comments MUST carry an FK hint.
+ *
+ * The table has two foreign keys to profiles — author_id and resolved_by — and
+ * PostgREST refuses a bare `profiles(...)` embed once more than one
+ * relationship exists ("Could not embed because more than one relationship was
+ * found"). Same reason as the ASSIGNEES_EMBED hint in
+ * features.repository.supabase.ts. Adding a third FK to profiles here would not
+ * break anything as long as the hints stay.
+ */
 
 @Injectable()
 export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
@@ -16,7 +30,7 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
   async findComments(taskId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('task_comments')
-      .select('*, author:profiles(id, display_name, avatar_url)')
+      .select(`*, author:profiles!author_id(${COMMENT_PROFILE_COLS})`)
       .eq('task_id', taskId)
       .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
@@ -31,8 +45,41 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
     const content = sanitizeCommentHtml(dto.content);
     const { data, error } = await this.db
       .from('task_comments')
-      .insert({ task_id: taskId, content, author_id: userId })
-      .select('*, author:profiles(id, display_name, avatar_url)')
+      .insert({
+        task_id: taskId,
+        content,
+        author_id: userId,
+        parent_id: dto.parent_id ?? null,
+      })
+      .select(`*, author:profiles!author_id(${COMMENT_PROFILE_COLS})`)
+      .single();
+    if (error) rethrowCommentThreadError(error.message);
+    return data;
+  }
+
+  /**
+   * Resolve or reopen a thread.
+   *
+   * Writes resolved_by alongside resolved_at, and clears BOTH on reopen — the
+   * task_comments_resolver_needs_resolution CHECK rejects a resolver left
+   * behind on an open thread, so clearing one without the other is a 500.
+   */
+  async resolveComment(
+    commentId: string,
+    resolved: boolean,
+    userId: string,
+  ): Promise<any> {
+    const { data, error } = await this.db
+      .from('task_comments')
+      .update(
+        resolved
+          ? { resolved_at: new Date().toISOString(), resolved_by: userId }
+          : { resolved_at: null, resolved_by: null },
+      )
+      .eq('id', commentId)
+      .select(
+        `*, author:profiles!author_id(${COMMENT_PROFILE_COLS}), resolver:profiles!resolved_by(${COMMENT_PROFILE_COLS})`,
+      )
       .single();
     if (error) throw new Error(error.message);
     return data;
@@ -80,7 +127,7 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
         edited_at: new Date().toISOString(),
       })
       .eq('id', commentId)
-      .select('*, author:profiles(id, display_name, avatar_url)')
+      .select(`*, author:profiles!author_id(${COMMENT_PROFILE_COLS})`)
       .single();
     if (error) throw new Error(error.message);
     return data;

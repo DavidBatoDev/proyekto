@@ -335,10 +335,27 @@ export class UpdateTaskDto {
 // Comment/Attachment DTOs
 export class AddCommentDto {
   @IsString() @MaxLength(5000) content: string;
+  /**
+   * Thread root this is a reply to. Omit for a new thread.
+   *
+   * Only validated for shape here — that the parent is a root, and sits on the
+   * same node, is enforced by the assert_comment_reply_shape trigger, so a
+   * forged id fails at the DB rather than on trust in this layer.
+   */
+  @IsUUID() @IsOptional() parent_id?: string;
 }
 
 export class UpdateCommentDto {
   @IsString() @MaxLength(5000) content: string;
+}
+
+/**
+ * Resolve/reopen a thread. Explicit boolean rather than a POST /resolve +
+ * DELETE /resolve pair: the UI is a toggle, and a toggle that sends the state
+ * it wants is idempotent under a double-click.
+ */
+export class ResolveCommentDto {
+  @IsBoolean() resolved: boolean;
 }
 
 export class AddAttachmentDto {
