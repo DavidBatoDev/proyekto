@@ -1274,8 +1274,8 @@ export const SidePanel = ({
 
 			{/* Tabs - only show in edit mode */}
 			{!isCreateMode && (
-				<div className="flex items-center justify-between gap-3 border-b border-gray-200 px-6 shrink-0">
-					<div className="flex items-center">
+				<div className="border-b border-gray-200 shrink-0">
+					<div className="flex items-center px-6">
 						{(["details", "comments", "history"] as TabType[]).map((tab) => (
 							<button
 								key={tab}
@@ -1294,12 +1294,17 @@ export const SidePanel = ({
 							</button>
 						))}
 					</div>
+					{/* Own row: the running cluster (readout + break pill + Break +
+					    Stop) is wider than the space left beside three tabs, so
+					    sharing that row clipped Stop off the panel edge. */}
 					{effectiveProjectId && task?.id ? (
-						<TaskTimerInline
-							projectId={effectiveProjectId}
-							taskId={task.id}
-							className="shrink-0"
-						/>
+						<div className="flex justify-end px-6 pb-2">
+							<TaskTimerInline
+								projectId={effectiveProjectId}
+								taskId={task.id}
+								className="flex-wrap justify-end"
+							/>
+						</div>
 					) : null}
 				</div>
 			)}
