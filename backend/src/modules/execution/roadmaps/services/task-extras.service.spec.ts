@@ -51,7 +51,9 @@ describe('TaskExtrasService.addCommentToTasks', () => {
       repo as never,
       roadmapAuthz as never,
       notifications as never,
-      { inviteMentionedEmails: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        inviteMentionedEmails: jest.fn().mockResolvedValue(undefined),
+      } as never,
       knowledgeOutbox as never,
       effects as never,
       activity as never,
@@ -192,7 +194,9 @@ describe('TaskExtrasService mention scoping', () => {
       repo as never,
       roadmapAuthz as never,
       notifications as never,
-      { inviteMentionedEmails: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        inviteMentionedEmails: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { enqueue: jest.fn() } as never,
       { emit: jest.fn(), record: jest.fn(), touch: jest.fn() } as never,
       {
@@ -203,7 +207,12 @@ describe('TaskExtrasService mention scoping', () => {
     return { service, notifications, roadmapAuthz };
   }
 
-  /** Mentions fire detached (`void ...`), so let the microtask queue drain. */
+  /**
+   * Mention fan-out is now AWAITED inside `addComment` (see the mention
+   * delivery tests below), so this is belt-and-braces rather than load-bearing.
+   * Kept so a future change back to a detached tail fails loudly here instead
+   * of silently dropping notifications in production.
+   */
   const flush = () => new Promise((resolve) => setImmediate(resolve));
 
   it('does not notify a mentioned user who cannot view the roadmap', async () => {
@@ -300,5 +309,273 @@ describe('TaskExtrasService mention scoping', () => {
     await flush();
 
     expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('TaskExtrasService mention delivery', () => {
+  const userId = 'author-1';
+  const roadmapId = 'rm-1';
+
+  const mentionHtml = (id: string) =>
+    `<span class="mention" data-user-id="${id}" contenteditable="false">@Someone</span>`;
+  const emailMentionHtml = (email: string) =>
+    `<span class="mention mention-invite" data-invite-email="${email}">@${email}</span>`;
+
+  function build(
+    overrides: {
+      createNotification?: jest.Mock;
+      inviteMentionedEmails?: jest.Mock;
+      entityTitle?: string | null;
+    } = {},
+  ) {
+    const repo = { addComment: jest.fn(() => Promise.resolve({ id: 'c-1' })) };
+    const roadmapAuthz = {
+      assertTaskCommentPermission: jest.fn().mockResolvedValue({
+        roadmapId,
+        projectId: 'p-1',
+        ownerId: userId,
+        permissions: null,
+        featureId: 'f-1',
+        entityTitle:
+          overrides.entityTitle === undefined
+            ? 'Integrate Stripe SDK'
+            : overrides.entityTitle,
+      }),
+      filterUsersWhoCanViewRoadmap: jest.fn((_rid: string, ids: string[]) =>
+        Promise.resolve(ids),
+      ),
+    };
+    const notifications = {
+      createNotification: overrides.createNotification ?? jest.fn(),
+      resolveActorName: jest.fn().mockResolvedValue('Ada Lovelace'),
+    };
+    const mentionInvites = {
+      inviteMentionedEmails:
+        overrides.inviteMentionedEmails ??
+        jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new TaskExtrasService(
+      repo as never,
+      roadmapAuthz as never,
+      notifications as never,
+      mentionInvites as never,
+      { enqueue: jest.fn() } as never,
+      { emit: jest.fn(), record: jest.fn(), touch: jest.fn() } as never,
+      {
+        commentMetadata: jest.fn().mockReturnValue({}),
+        reorderMetadata: jest.fn().mockReturnValue({}),
+      } as never,
+    );
+    return { service, notifications, mentionInvites };
+  }
+
+  it('awaits the notification fan-out before addComment resolves', async () => {
+    // THE regression that motivates all of this. The fan-out used to run
+    // detached (`void ...`), and Cloud Run throttles CPU the moment the
+    // response flushes — so the tail could be frozen and killed. A lost
+    // notifications row means no bell entry, no push AND no email, since the
+    // email outbox is fed by an AFTER INSERT trigger on that table.
+    let notified = false;
+    const createNotification = jest.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      notified = true;
+    });
+
+    const { service } = build({ createNotification });
+
+    await service.addComment('t-1', { content: mentionHtml('u-2') }, userId);
+
+    // No flush, no timer advance: if this is false the work was detached.
+    expect(notified).toBe(true);
+  });
+
+  it('awaits the account-less invite fan-out too', async () => {
+    // The invite was a SECOND detached tail nested inside the first, so
+    // awaiting only the outer call would have left it just as freezable.
+    let invited = false;
+    const inviteMentionedEmails = jest.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      invited = true;
+    });
+
+    const { service } = build({ inviteMentionedEmails });
+
+    await service.addComment(
+      't-1',
+      { content: emailMentionHtml('newcomer@example.com') },
+      userId,
+    );
+
+    expect(invited).toBe(true);
+  });
+
+  it('still awaits the invite when the comment names nobody with an account', async () => {
+    // Zero user targets is the commonest shape for an email-only mention, and
+    // the old `if (!targets.length) return;` skipped straight past the invite.
+    const inviteMentionedEmails = jest.fn().mockResolvedValue(undefined);
+    const { service, notifications } = build({ inviteMentionedEmails });
+
+    await service.addComment(
+      't-1',
+      { content: emailMentionHtml('newcomer@example.com') },
+      userId,
+    );
+
+    expect(inviteMentionedEmails).toHaveBeenCalledTimes(1);
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('names the task in the notification content and the invite', async () => {
+    const { service, notifications, mentionInvites } = build();
+
+    await service.addComment(
+      't-1',
+      { content: `${mentionHtml('u-2')} ${emailMentionHtml('n@example.com')}` },
+      userId,
+    );
+
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          context_title: 'Integrate Stripe SDK',
+          message: 'Ada Lovelace mentioned you in "Integrate Stripe SDK".',
+        }),
+      }),
+    );
+    expect(mentionInvites.inviteMentionedEmails).toHaveBeenCalledWith(
+      expect.objectContaining({ entityTitle: 'Integrate Stripe SDK' }),
+    );
+  });
+
+  it('falls back to the generic message when the title is unknown', async () => {
+    const { service, notifications } = build({ entityTitle: null });
+
+    await service.addComment('t-1', { content: mentionHtml('u-2') }, userId);
+
+    const payload = notifications.createNotification.mock.calls[0][0];
+    expect(payload.content.message).toBe(
+      'You were mentioned in a task comment.',
+    );
+    expect(payload.content).not.toHaveProperty('context_title');
+  });
+});
+
+describe('TaskExtrasService.updateComment mention diffing', () => {
+  const userId = 'author-1';
+  const roadmapId = 'rm-1';
+
+  const mentionHtml = (...ids: string[]) =>
+    ids
+      .map(
+        (id) =>
+          `<span class="mention" data-user-id="${id}" contenteditable="false">@Someone</span>`,
+      )
+      .join(' ');
+
+  function build(previousContent: string) {
+    const repo = {
+      findCommentContext: jest.fn().mockResolvedValue({
+        task_id: 't-1',
+        author_id: userId,
+        content: previousContent,
+      }),
+      updateComment: jest.fn().mockResolvedValue({ id: 'c-1' }),
+    };
+    const assertTaskCommentPermission = jest.fn().mockResolvedValue({
+      roadmapId,
+      projectId: 'p-1',
+      ownerId: userId,
+      permissions: null,
+      featureId: 'f-1',
+      entityTitle: 'Integrate Stripe SDK',
+    });
+    const notifications = {
+      createNotification: jest.fn(),
+      resolveActorName: jest.fn().mockResolvedValue('Ada Lovelace'),
+    };
+    const service = new TaskExtrasService(
+      repo as never,
+      {
+        assertTaskCommentPermission,
+        filterUsersWhoCanViewRoadmap: jest.fn((_r: string, ids: string[]) =>
+          Promise.resolve(ids),
+        ),
+      } as never,
+      notifications as never,
+      {
+        inviteMentionedEmails: jest.fn().mockResolvedValue(undefined),
+      } as never,
+      { enqueue: jest.fn() } as never,
+      { emit: jest.fn(), record: jest.fn(), touch: jest.fn() } as never,
+      {
+        commentMetadata: jest.fn().mockReturnValue({}),
+        reorderMetadata: jest.fn().mockReturnValue({}),
+      } as never,
+    );
+    return { service, notifications, assertTaskCommentPermission, repo };
+  }
+
+  const notifiedIds = (notifications: { createNotification: jest.Mock }) =>
+    notifications.createNotification.mock.calls.map((c) => c[0].user_id);
+
+  it('notifies only the mention that was ADDED', async () => {
+    // "oh, forgot to tag you" is the commonest way a mention appears, and it
+    // used to notify nobody at all.
+    const { service, notifications } = build(mentionHtml('u-2'));
+
+    await service.updateComment(
+      'c-1',
+      { content: mentionHtml('u-2', 'u-3') },
+      userId,
+    );
+
+    expect(notifiedIds(notifications)).toEqual(['u-3']);
+  });
+
+  it('notifies nobody when an edit adds no mentions', async () => {
+    const { service, notifications } = build(mentionHtml('u-2'));
+
+    await service.updateComment(
+      'c-1',
+      { content: `${mentionHtml('u-2')} fixed a typo` },
+      userId,
+    );
+
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('notifies nobody when an edit only REMOVES a mention', async () => {
+    const { service, notifications } = build(mentionHtml('u-2', 'u-3'));
+
+    await service.updateComment('c-1', { content: mentionHtml('u-2') }, userId);
+
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('never notifies the editor for self-mentioning in an edit', async () => {
+    const { service, notifications } = build('no mentions yet');
+
+    await service.updateComment(
+      'c-1',
+      { content: mentionHtml(userId) },
+      userId,
+    );
+
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('authorizes the roadmap before writing the edit', async () => {
+    // This path had no authorization walk at all — only the repo's authorship
+    // check — so someone who lost roadmap access could still edit.
+    const { service, assertTaskCommentPermission, repo } =
+      build('previous body');
+    assertTaskCommentPermission.mockRejectedValueOnce(
+      new ForbiddenException('nope'),
+    );
+
+    await expect(
+      service.updateComment('c-1', { content: 'edited' }, userId),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.updateComment).not.toHaveBeenCalled();
   });
 });

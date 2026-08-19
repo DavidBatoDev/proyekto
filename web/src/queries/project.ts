@@ -49,6 +49,8 @@ export const projectKeys = {
 		["project", "roadmap-full", roadmapId] as const,
 	featureDependencies: (roadmapId: string) =>
 		["project", "feature-dependencies", roadmapId] as const,
+	roadmapCommentSummary: (roadmapId: string) =>
+		["project", "roadmap-comment-summary", roadmapId] as const,
 	allRoadmapsFull: ["project", "all-roadmaps-full"] as const,
 };
 

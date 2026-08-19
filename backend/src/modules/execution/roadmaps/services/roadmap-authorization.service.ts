@@ -36,6 +36,15 @@ export interface RoadmapWriteContext {
   ownerId: string | null;
   /** Resolved permission set, or null for a personal roadmap (owner-only check). */
   permissions: ProjectPermissions | null;
+  /**
+   * Title of the epic/feature/task the walk started from, when it started from
+   * one. Carried for the same reason the rest of this context is: the scope
+   * walk already reads the row, so a caller that needs the title for a
+   * human-facing message (mention notifications say "in <title>") should not
+   * pay for a second round-trip. Undefined on roadmap- or project-first walks,
+   * which have no single entity to name.
+   */
+  entityTitle?: string | null;
 }
 
 /** Task walks additionally resolve the parent feature. */
@@ -88,28 +97,44 @@ export class RoadmapAuthorizationService {
     return (data?.roadmap_id as string | null | undefined) ?? null;
   }
 
-  private async getRoadmapIdByEpicId(epicId: string): Promise<string | null> {
+  /**
+   * Resolve an epic's owning roadmap AND its title in one query. The title is
+   * free here (same row, one more column) and saves mention notifications a
+   * second read to name the thing they link to.
+   */
+  private async getEpicScope(
+    epicId: string,
+  ): Promise<{ roadmapId: string | null; title: string | null } | null> {
     const { data, error } = await this.db
       .from('roadmap_epics')
-      .select('roadmap_id')
+      .select('roadmap_id, title')
       .eq('id', epicId)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    return (data?.roadmap_id as string | null | undefined) ?? null;
+    if (!data) return null;
+    return {
+      roadmapId: (data.roadmap_id as string | null | undefined) ?? null,
+      title: (data.title as string | null | undefined) ?? null,
+    };
   }
 
-  private async getRoadmapIdByFeatureId(
+  /** Feature equivalent of `getEpicScope`. */
+  private async getFeatureScope(
     featureId: string,
-  ): Promise<string | null> {
+  ): Promise<{ roadmapId: string | null; title: string | null } | null> {
     const { data, error } = await this.db
       .from('roadmap_features')
-      .select('roadmap_id')
+      .select('roadmap_id, title')
       .eq('id', featureId)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    return (data?.roadmap_id as string | null | undefined) ?? null;
+    if (!data) return null;
+    return {
+      roadmapId: (data.roadmap_id as string | null | undefined) ?? null,
+      title: (data.title as string | null | undefined) ?? null,
+    };
   }
 
   private async getFeatureIdByTaskId(taskId: string): Promise<string | null> {
@@ -123,13 +148,15 @@ export class RoadmapAuthorizationService {
    * triggers rely on the same shortcut), so the task -> feature -> roadmap
    * walk does not need two sequential round-trips.
    */
-  private async getTaskScope(
-    taskId: string,
-  ): Promise<{ featureId: string; roadmapId: string | null } | null> {
+  private async getTaskScope(taskId: string): Promise<{
+    featureId: string;
+    roadmapId: string | null;
+    title: string | null;
+  } | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
       .select(
-        'feature_id, feature:roadmap_features!roadmap_tasks_feature_id_fkey(roadmap_id)',
+        'feature_id, title, feature:roadmap_features!roadmap_tasks_feature_id_fkey(roadmap_id)',
       )
       .eq('id', taskId)
       .maybeSingle();
@@ -147,7 +174,11 @@ export class RoadmapAuthorizationService {
       | null
       | undefined;
 
-    return { featureId, roadmapId: feature?.roadmap_id ?? null };
+    return {
+      featureId,
+      roadmapId: feature?.roadmap_id ?? null,
+      title: (data?.title as string | null | undefined) ?? null,
+    };
   }
 
   /**
@@ -173,8 +204,10 @@ export class RoadmapAuthorizationService {
   }): Promise<string | null> {
     if (ref.roadmapId) return ref.roadmapId;
     if (ref.milestoneId) return this.getRoadmapIdByMilestoneId(ref.milestoneId);
-    if (ref.epicId) return this.getRoadmapIdByEpicId(ref.epicId);
-    if (ref.featureId) return this.getRoadmapIdByFeatureId(ref.featureId);
+    if (ref.epicId)
+      return (await this.getEpicScope(ref.epicId))?.roadmapId ?? null;
+    if (ref.featureId)
+      return (await this.getFeatureScope(ref.featureId))?.roadmapId ?? null;
     if (ref.taskId) {
       const scope = await this.getTaskScope(ref.taskId);
       return scope?.roadmapId ?? null;
@@ -370,9 +403,14 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission: RoadmapPermission,
   ): Promise<RoadmapWriteContext> {
-    const roadmapId = await this.getRoadmapIdByEpicId(epicId);
-    if (!roadmapId) throw new NotFoundException('Epic not found');
-    return this.assertRoadmapPermission(roadmapId, userId, permission);
+    const scope = await this.getEpicScope(epicId);
+    if (!scope?.roadmapId) throw new NotFoundException('Epic not found');
+    const ctx = await this.assertRoadmapPermission(
+      scope.roadmapId,
+      userId,
+      permission,
+    );
+    return { ...ctx, entityTitle: scope.title };
   }
 
   async assertFeaturePermission(
@@ -380,9 +418,14 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission: RoadmapPermission,
   ): Promise<RoadmapWriteContext> {
-    const roadmapId = await this.getRoadmapIdByFeatureId(featureId);
-    if (!roadmapId) throw new NotFoundException('Feature not found');
-    return this.assertRoadmapPermission(roadmapId, userId, permission);
+    const scope = await this.getFeatureScope(featureId);
+    if (!scope?.roadmapId) throw new NotFoundException('Feature not found');
+    const ctx = await this.assertRoadmapPermission(
+      scope.roadmapId,
+      userId,
+      permission,
+    );
+    return { ...ctx, entityTitle: scope.title };
   }
 
   async assertTaskPermission(
@@ -400,7 +443,7 @@ export class RoadmapAuthorizationService {
       userId,
       permission,
     );
-    return { ...ctx, featureId: scope.featureId };
+    return { ...ctx, featureId: scope.featureId, entityTitle: scope.title };
   }
 
   async assertRoadmapCommentPermission(
@@ -459,18 +502,26 @@ export class RoadmapAuthorizationService {
     epicId: string,
     userId: string,
   ): Promise<RoadmapWriteContext> {
-    const roadmapId = await this.getRoadmapIdByEpicId(epicId);
-    if (!roadmapId) throw new NotFoundException('Epic not found');
-    return this.assertRoadmapCommentPermission(roadmapId, userId);
+    const scope = await this.getEpicScope(epicId);
+    if (!scope?.roadmapId) throw new NotFoundException('Epic not found');
+    const ctx = await this.assertRoadmapCommentPermission(
+      scope.roadmapId,
+      userId,
+    );
+    return { ...ctx, entityTitle: scope.title };
   }
 
   async assertFeatureCommentPermission(
     featureId: string,
     userId: string,
   ): Promise<RoadmapWriteContext> {
-    const roadmapId = await this.getRoadmapIdByFeatureId(featureId);
-    if (!roadmapId) throw new NotFoundException('Feature not found');
-    return this.assertRoadmapCommentPermission(roadmapId, userId);
+    const scope = await this.getFeatureScope(featureId);
+    if (!scope?.roadmapId) throw new NotFoundException('Feature not found');
+    const ctx = await this.assertRoadmapCommentPermission(
+      scope.roadmapId,
+      userId,
+    );
+    return { ...ctx, entityTitle: scope.title };
   }
 
   async assertTaskCommentPermission(
@@ -484,6 +535,6 @@ export class RoadmapAuthorizationService {
       scope.roadmapId,
       userId,
     );
-    return { ...ctx, featureId: scope.featureId };
+    return { ...ctx, featureId: scope.featureId, entityTitle: scope.title };
   }
 }

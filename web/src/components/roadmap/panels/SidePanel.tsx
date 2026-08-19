@@ -18,6 +18,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
+import { useMentionUsers } from "@/hooks/useMentionUsers";
+import {
+	htmlToPlainExcerpt,
+	useCommentSummaryUpdaters,
+} from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
 import { type ProjectMember, projectService } from "@/services/project.service";
@@ -246,13 +251,21 @@ export const SidePanel = ({
 	const roadmapProjectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
 	const effectiveProjectId = projectId || roadmapProjectId;
 	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+
+	// Canvas comment badges read a sibling query, not the epics tree. Keeping
+	// the count in the tree meant every comment mutation re-derived node data
+	// for EVERY card on the canvas.
+	const {
+		applyDelta: applyCommentDelta,
+		applyAuthoritative: applyCommentAuthoritative,
+		restore: restoreCommentSummary,
+	} = useCommentSummaryUpdaters(roadmapId);
 	const resolveCanonicalNodeId = useRoadmapStore(
 		(s) => s.resolveCanonicalNodeId,
 	);
 	const isOptimisticNodeId = useRoadmapStore((s) => s.isOptimisticNodeId);
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
-	const setTaskCommentCount = useRoadmapStore((s) => s.setTaskCommentCount);
 	const presentationMode = useRoadmapStore((s) => s.presentationMode);
 	const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
 	const [comments, setComments] = useState<Comment[]>([]);
@@ -543,7 +556,7 @@ export const SidePanel = ({
 				const fetched = await commentsService.getTaskComments(task.id);
 				if (!cancelled) {
 					setComments(fetched);
-					setTaskCommentCount(task.id, fetched.length);
+					applyCommentAuthoritative(task.id, "task", fetched);
 				}
 			} catch (error) {
 				if (!cancelled) {
@@ -558,7 +571,7 @@ export const SidePanel = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [activeTab, isCreateMode, isOpen, setTaskCommentCount, task?.id]);
+	}, [activeTab, applyCommentAuthoritative, isCreateMode, isOpen, task?.id]);
 
 	const handleAddComment = async (content: string) => {
 		if (!task?.id) return;
@@ -586,17 +599,35 @@ export const SidePanel = ({
 		};
 
 		// Optimistic: show the comment immediately, swap for the server copy.
-		const previousCount = Math.max(task.comment_count ?? 0, comments.length);
+		// Previews order newest-first, so a new comment is always the preview.
 		setComments((prev) => [...prev, optimisticComment]);
-		setTaskCommentCount(task.id, previousCount + 1);
+		const summarySnapshot = applyCommentDelta(task.id, "task", {
+			countDelta: 1,
+			preview: {
+				id: tempId,
+				created_at: now,
+				author_id: user?.id ?? null,
+				author_name: profile?.display_name ?? null,
+				excerpt: htmlToPlainExcerpt(content),
+			},
+		});
 		try {
 			const created = await commentsService.addTaskComment(task.id, content);
 			setComments((prev) =>
 				prev.map((comment) => (comment.id === tempId ? created : comment)),
 			);
+			applyCommentDelta(task.id, "task", {
+				preview: {
+					id: created.id,
+					created_at: created.created_at,
+					author_id: created.author_id ?? created.user_id ?? null,
+					author_name: created.user?.display_name ?? null,
+					excerpt: htmlToPlainExcerpt(created.content),
+				},
+			});
 		} catch (error) {
 			setComments((prev) => prev.filter((comment) => comment.id !== tempId));
-			setTaskCommentCount(task.id, previousCount);
+			restoreCommentSummary(summarySnapshot);
 			throw error;
 		}
 	};
@@ -637,12 +668,33 @@ export const SidePanel = ({
 
 	const handleDeleteComment = async (commentId: string) => {
 		if (!task?.id) return;
+		const wasPreview = comments[comments.length - 1]?.id === commentId;
 		await commentsService.deleteTaskComment(task.id, commentId);
-		setComments((prev) => prev.filter((comment) => comment.id !== commentId));
-		setTaskCommentCount(
-			task.id,
-			Math.max(0, (task.comment_count ?? comments.length) - 1),
-		);
+		const remaining = comments.filter((comment) => comment.id !== commentId);
+		setComments(remaining);
+		// If the deleted comment WAS the preview, hand back the one before it
+		// rather than guessing — the open panel holds the authoritative list, so
+		// unlike the canvas it does not have to wait for a refetch.
+		applyCommentDelta(task.id, "task", {
+			countDelta: -1,
+			preview: wasPreview
+				? remaining.length
+					? {
+							id: remaining[remaining.length - 1].id,
+							created_at: remaining[remaining.length - 1].created_at,
+							author_id:
+								remaining[remaining.length - 1].author_id ??
+								remaining[remaining.length - 1].user_id ??
+								null,
+							author_name:
+								remaining[remaining.length - 1].user?.display_name ?? null,
+							excerpt: htmlToPlainExcerpt(
+								remaining[remaining.length - 1].content,
+							),
+						}
+					: null
+				: undefined,
+		});
 	};
 
 	useEffect(() => {
@@ -981,19 +1033,13 @@ export const SidePanel = ({
 			.slice(0, 8);
 	}, [depSearchQuery, allRoadmapTasks, dependencies]);
 
-	const mentionUsers = fetchedProjectMembers
-		.filter((m) => m.user_id)
-		.map((m) => ({
-			id: m.user_id as string,
-			display_name:
-				m.user?.display_name ||
-				[m.user?.first_name, m.user?.last_name].filter(Boolean).join(" ") ||
-				m.user?.email ||
-				m.user_id ||
-				"",
-			avatar_url: m.user?.avatar_url,
-		}))
-		.filter((u) => u.display_name);
+	// Shared with the epic and feature comment boxes. `useMentionUsers` exists
+	// precisely to stop this derivation being re-inlined per panel — and the
+	// inline copy here never passed `canInviteByEmail`, so @-mentioning an
+	// email address was silently unavailable on tasks even though the server
+	// accepts source_type 'task_comment'.
+	const { mentionUsers, canInviteByEmail } =
+		useMentionUsers(effectiveProjectId);
 
 	const panelContent = (
 		<div
@@ -1846,6 +1892,7 @@ export const SidePanel = ({
 						isLoading={isLoadingComments}
 						emptyMessage="No comments yet for this task."
 						mentionUsers={mentionUsers}
+						canInviteByEmail={canInviteByEmail}
 						highlightCommentId={pendingCommentId ?? undefined}
 						onHighlightConsumed={() => setPendingCommentId(null)}
 					/>

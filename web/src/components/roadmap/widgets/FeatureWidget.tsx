@@ -8,6 +8,7 @@ import {
 	Link2,
 	List,
 	Maximize2,
+	MessageSquare,
 	Plus,
 	Trash2,
 } from "lucide-react";
@@ -26,13 +27,18 @@ import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import { useToast } from "@/hooks/useToast";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type {
+	NodeCommentSummary,
+	RoadmapFeature,
+	RoadmapTask,
+} from "@/types/roadmap";
 import {
 	EditingAvatars,
 	EditingTaskAvatar,
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
 import { TaskListModal } from "../modals/TaskListModal";
+import { CommentPreviewPopover } from "../shared/CommentPreviewPopover";
 import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
@@ -72,6 +78,12 @@ export interface FeatureWidgetData extends Record<string, unknown> {
 	editors?: CollaboratorInfo[];
 	/** node-id → editors map; the task list looks up each task's own id. */
 	taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
+	/**
+	 * node-id → comment summary, for this feature AND every task inside it.
+	 * Threaded the same way as `taskEditorsByNodeId`. Replaces the old
+	 * `task.comment_count`, which the server never actually sent.
+	 */
+	commentSummaryByNodeId?: Map<string, NodeCommentSummary>;
 }
 
 const CANVAS_TASK_STATUS_OPTIONS: RoadmapTask["status"][] = [
@@ -415,7 +427,14 @@ export const FeatureWidget = memo(
 			canEditRoadmap = false,
 			editors,
 			taskEditorsByNodeId,
+			commentSummaryByNodeId,
 		} = data;
+		// This card's OWN comments (the gutter above covers its tasks).
+		const featureCommentSummary = commentSummaryByNodeId?.get(feature.id);
+		const featureCommentCount = Math.max(
+			0,
+			Math.floor(featureCommentSummary?.comment_count ?? 0),
+		);
 		const toast = useToast();
 		const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
 		const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
@@ -817,11 +836,38 @@ export const FeatureWidget = memo(
 										{taskCount} task{taskCount !== 1 ? "s" : ""}
 									</span>
 								</div>
-								{taskCount > 0 && (
-									<span className="text-gray-500">
-										{completedTasks}/{taskCount} done
-									</span>
-								)}
+								<div className="flex items-center gap-2">
+									{taskCount > 0 && (
+										<span className="text-gray-500">
+											{completedTasks}/{taskCount} done
+										</span>
+									)}
+									{featureCommentCount > 0 && (
+										<CommentPreviewPopover
+											preview={featureCommentSummary?.last_comment ?? null}
+											commentCount={featureCommentCount}
+											contextTitle={feature.title}
+										>
+											<button
+												type="button"
+												className="nodrag flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+												onClick={(event) => {
+													event.stopPropagation();
+													onEdit?.(feature);
+												}}
+												title={`${featureCommentCount} ${featureCommentCount === 1 ? "comment" : "comments"} on ${feature.title}`}
+												aria-label={`Open ${featureCommentCount} ${featureCommentCount === 1 ? "comment" : "comments"} for ${feature.title}`}
+											>
+												<MessageSquare className="h-3 w-3" />
+												<span className="tabular-nums">
+													{featureCommentCount > 99
+														? "99+"
+														: featureCommentCount}
+												</span>
+											</button>
+										</CommentPreviewPopover>
+									)}
+								</div>
 							</div>
 						)}
 
@@ -962,10 +1008,12 @@ export const FeatureWidget = memo(
 												}}
 											>
 												{allTasks.map((task) => {
+													const summary = commentSummaryByNodeId?.get(task.id);
 													const commentCount = Math.max(
 														0,
-														Math.floor(task.comment_count ?? 0),
+														Math.floor(summary?.comment_count ?? 0),
 													);
+													const preview = summary?.last_comment ?? null;
 
 													return (
 														<div
@@ -973,30 +1021,37 @@ export const FeatureWidget = memo(
 															className="flex h-7 items-center justify-start"
 														>
 															{commentCount > 0 && (
-																<button
-																	type="button"
-																	className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
-																	onClick={(event) => {
-																		event.stopPropagation();
-																		onSelectTask(task, "comments");
-																	}}
-																	title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
-																	aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
+																<CommentPreviewPopover
+																	preview={preview}
+																	commentCount={commentCount}
+																	contextTitle={task.title}
+																	className="pointer-events-auto"
 																>
-																	<span
-																		aria-hidden="true"
-																		className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																	<button
+																		type="button"
+																		className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			onSelectTask(task, "comments");
+																		}}
+																		title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
+																		aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
 																	>
-																		<span className="relative z-10 flex items-center gap-0.5">
-																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																			<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																		<span
+																			aria-hidden="true"
+																			className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																		>
+																			<span className="relative z-10 flex items-center gap-0.5">
+																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																			</span>
 																		</span>
-																	</span>
-																	<span className="tabular-nums text-[11px] font-bold tracking-tight">
-																		{commentCount > 99 ? "99+" : commentCount}
-																	</span>
-																</button>
+																		<span className="tabular-nums text-[11px] font-bold tracking-tight">
+																			{commentCount > 99 ? "99+" : commentCount}
+																		</span>
+																	</button>
+																</CommentPreviewPopover>
 															)}
 														</div>
 													);

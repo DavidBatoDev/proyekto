@@ -63,8 +63,12 @@ export function NotificationBell() {
 		queryFn: () => notificationsService.unreadCount(),
 		enabled: isAuthenticated,
 		staleTime: 30 * 1000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
+		// Realtime is the primary path, but it is the transport that fails
+		// SILENTLY — a laptop that slept through a disconnect would otherwise
+		// show a stale zero forever. staleTime keeps tab-switching from
+		// hammering the API.
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
 	});
 
 	const recentNotificationsQuery = useQuery({
@@ -72,8 +76,8 @@ export function NotificationBell() {
 		queryFn: () => notificationsService.list({ limit: 5 }),
 		enabled: isAuthenticated,
 		staleTime: 30 * 1000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
 	});
 
 	const markReadMutation = useMutation({

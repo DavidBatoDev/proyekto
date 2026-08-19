@@ -15,6 +15,7 @@ import type {
 	RemoteCursor,
 	RemoteDrag,
 } from "@/hooks/useRoadmapCollaboration";
+import { useCommentSummaryByNodeId } from "@/hooks/useRoadmapCommentSummary";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
 import type {
@@ -366,6 +367,11 @@ const RoadmapCanvasShell = ({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [editorsSignature]);
 
+	// Comment badges read a sibling query rather than the epics tree. The hook
+	// self-disables when the canvasCommentIndicators flag is off, so a dark
+	// build issues no request and every widget just sees an empty map.
+	const commentSummaryByNodeId = useCommentSummaryByNodeId(roadmap.id);
+
 	const nodes = useCanvasNodeData({
 		layoutedNodes,
 		epics,
@@ -374,6 +380,7 @@ const RoadmapCanvasShell = ({
 		runningTaskId,
 		toolbarDraggingType,
 		editorsByNodeId,
+		commentSummaryByNodeId,
 		pulseNodeFocus,
 		pulseTaskFocus,
 		onUpdateEpic,

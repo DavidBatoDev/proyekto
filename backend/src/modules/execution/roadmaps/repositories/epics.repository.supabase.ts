@@ -186,6 +186,25 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
     return data;
   }
 
+  async findCommentContext(commentId: string): Promise<{
+    epic_id: string;
+    user_id: string | null;
+    content: string;
+  } | null> {
+    const { data, error } = await this.db
+      .from('epic_comments')
+      .select('epic_id, user_id, content')
+      .eq('id', commentId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      epic_id: String(data.epic_id),
+      user_id: (data.user_id as string | null) ?? null,
+      content: String(data.content ?? ''),
+    };
+  }
+
   async updateComment(
     commentId: string,
     dto: UpdateCommentDto,
@@ -266,10 +285,12 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
       .order('position', { ascending: true });
     if (trailingError) throw new Error(trailingError.message);
 
-    const epicsToShift = (trailingEpics ?? []).map((epic: any, index: number) => ({
-      id: String(epic.id),
-      nextPosition: deletedPosition + index,
-    }));
+    const epicsToShift = (trailingEpics ?? []).map(
+      (epic: any, index: number) => ({
+        id: String(epic.id),
+        nextPosition: deletedPosition + index,
+      }),
+    );
     if (epicsToShift.length === 0) {
       return;
     }

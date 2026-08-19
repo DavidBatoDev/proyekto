@@ -58,4 +58,16 @@ export const featureFlags = {
 	 * ahead of the upload, and this flag is what keeps that ordering safe.
 	 */
 	stockPhotos: import.meta.env.VITE_STOCK_PHOTOS_ENABLED === "true",
+
+	/**
+	 * Comment count badges and hover previews on the roadmap canvas, fed by
+	 * GET /api/roadmaps/:roadmapId/comment-summary.
+	 *
+	 * Off by default so the migration, endpoint and optimistic wiring can land
+	 * live while the canvas surface is verified — with the flag off the query
+	 * is disabled, so a dark build makes no extra request at all. Set
+	 * VITE_CANVAS_COMMENT_INDICATORS=true to enable.
+	 */
+	canvasCommentIndicators:
+		import.meta.env.VITE_CANVAS_COMMENT_INDICATORS === "true",
 } as const;

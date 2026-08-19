@@ -185,7 +185,6 @@ export interface RoadmapTask {
 	// Full assignee profiles from the join table.
 	assignees?: AssigneeProfile[];
 	labels?: string[];
-	comment_count?: number;
 }
 
 export interface TaskActivityEntry {
@@ -315,4 +314,24 @@ export interface RoadmapCanvasState {
 	selectedTaskId?: string;
 	sidePanelOpen: boolean;
 	sidePanelContent?: "details" | "comments" | "attachments";
+}
+
+/** Node kinds that can carry comments. Mirrors the RPC's `node_type`. */
+export type CommentSummaryNodeType = "epic" | "feature" | "task";
+
+/** Enough of the latest comment to render a canvas hover preview. */
+export interface CommentPreview {
+	id: string;
+	created_at: string;
+	author_id: string | null;
+	author_name: string | null;
+	/** Plain text — the server has already stripped the comment's HTML. */
+	excerpt: string;
+}
+
+export interface NodeCommentSummary {
+	node_type: CommentSummaryNodeType;
+	node_id: string;
+	comment_count: number;
+	last_comment: CommentPreview | null;
 }

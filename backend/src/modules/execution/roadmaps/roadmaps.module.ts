@@ -10,6 +10,8 @@ import { FeaturesController } from './controllers/features.controller';
 import { TasksController } from './controllers/tasks.controller';
 import { FeatureDependenciesController } from './controllers/feature-dependencies.controller';
 import { TaskExtrasController } from './controllers/task-extras.controller';
+import { RoadmapCommentSummaryController } from './controllers/roadmap-comment-summary.controller';
+import { RoadmapNotesController } from './controllers/roadmap-notes.controller';
 import { RoadmapPatchController } from './controllers/roadmap-patch.controller';
 import { RoadmapAiController } from './controllers/roadmap-ai.controller';
 import { RoadmapAiSessionsController } from './controllers/roadmap-ai-sessions.controller';
@@ -34,6 +36,16 @@ import {
   FEATURE_DEPENDENCIES_REPOSITORY,
 } from './services/feature-dependencies.service';
 import { FeatureDependenciesRepositorySupabase } from './repositories/feature-dependencies.repository.supabase';
+import {
+  RoadmapCommentSummaryService,
+  ROADMAP_COMMENT_SUMMARY_REPOSITORY,
+} from './services/roadmap-comment-summary.service';
+import { RoadmapCommentSummaryRepositorySupabase } from './repositories/roadmap-comment-summary.repository.supabase';
+import {
+  RoadmapNotesService,
+  ROADMAP_NOTES_REPOSITORY,
+} from './services/roadmap-notes.service';
+import { RoadmapNotesRepositorySupabase } from './repositories/roadmap-notes.repository.supabase';
 import {
   TaskExtrasService,
   TASK_EXTRAS_REPOSITORY,
@@ -76,6 +88,8 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     TasksController,
     TaskExtrasController,
     FeatureDependenciesController,
+    RoadmapCommentSummaryController,
+    RoadmapNotesController,
     RoadmapPatchController,
     RoadmapAiController,
     RoadmapAiSessionsController,
@@ -112,9 +126,19 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     TaskExtrasService,
     { provide: TASK_EXTRAS_REPOSITORY, useClass: TaskExtrasRepositorySupabase },
     FeatureDependenciesService,
+    RoadmapCommentSummaryService,
+    RoadmapNotesService,
     {
       provide: FEATURE_DEPENDENCIES_REPOSITORY,
       useClass: FeatureDependenciesRepositorySupabase,
+    },
+    {
+      provide: ROADMAP_COMMENT_SUMMARY_REPOSITORY,
+      useClass: RoadmapCommentSummaryRepositorySupabase,
+    },
+    {
+      provide: ROADMAP_NOTES_REPOSITORY,
+      useClass: RoadmapNotesRepositorySupabase,
     },
     FeatureStatusSyncService,
   ],

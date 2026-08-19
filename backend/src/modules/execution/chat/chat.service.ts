@@ -35,20 +35,10 @@ import { KnowledgeOutboxService } from '../../shared/knowledge/knowledge-outbox.
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { truncatePromptText } from '../../../common/utils/html-to-text.util';
 import { MENTION_EXCERPT_MAX_CHARS } from '../../shared/notifications/notification-content';
+import { runNotifyWork } from '../../shared/notifications/notify-work';
 
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
 const EVERYONE_MENTION_ID = 'everyone';
-
-/**
- * Ceiling on the notification work a message send will wait for.
- *
- * Notification fan-out is awaited rather than detached (see
- * `fireMentionNotifications` for why), so it needs a bound. Generous enough for
- * a probe, an insert, and the push inside `createNotification` — itself capped
- * at PUSH_SEND_TIMEOUT_MS, default 1500ms — while recipients are processed
- * concurrently.
- */
-const NOTIFY_DEADLINE_MS = 2_500;
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 
@@ -207,34 +197,6 @@ export class ChatService {
       );
     } catch {
       // notifications are non-critical
-    }
-  }
-
-  /**
-   * Await best-effort notification work, without ever letting it hang a send.
-   *
-   * Two properties, both deliberate. It is AWAITED, so the work cannot be
-   * frozen by Cloud Run's post-response CPU throttling — the failure this
-   * replaced was a notification that silently never happened. And it is BOUNDED,
-   * so a slow database or push provider degrades to exactly the old behaviour
-   * (message delivered, notification skipped) instead of making the sender wait.
-   *
-   * The timer is cleared when the work wins, so a fast send leaves no handle
-   * behind.
-   */
-  private async runNotifyWork(work: Promise<unknown>): Promise<void> {
-    let deadline: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        work,
-        new Promise<void>((resolve) => {
-          deadline = setTimeout(resolve, NOTIFY_DEADLINE_MS);
-        }),
-      ]);
-    } catch {
-      // Notifications are non-critical; the message is already committed.
-    } finally {
-      if (deadline) clearTimeout(deadline);
     }
   }
 
@@ -837,7 +799,7 @@ export class ChatService {
     // delivery, which TanStack Query heals on the next refetch, and it fires on
     // every message. A lost mention notification heals nothing.
     this.fanoutChat(room.id, projectId, 'message');
-    await this.runNotifyWork(
+    await runNotifyWork(
       this.fireMentionNotifications(room, message, senderId, mentions),
     );
     this.knowledgeOutbox.enqueue({
@@ -924,7 +886,7 @@ export class ChatService {
     // Mentions and the DM notification share one deadline and run concurrently:
     // "mention wins" is decided from the local mentions array, not from what
     // landed in the database, so neither has to observe the other.
-    await this.runNotifyWork(
+    await runNotifyWork(
       (async () => {
         const participants = await this.chatRepo.listRoomParticipantReadState(
           room.id,

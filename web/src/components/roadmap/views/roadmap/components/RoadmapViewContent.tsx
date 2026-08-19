@@ -406,10 +406,15 @@ export function RoadmapViewContent({
 			return;
 		}
 
-		if (consumedNodeIdRef.current === normalizedNodeId) {
+		// Keyed on node AND comment, not node alone. A second mention on a task
+		// you are already viewing arrives as the same nodeId with a different
+		// commentId; keying on the node alone made that a silent no-op — no
+		// scroll, no flash — which is the normal shape of a real discussion.
+		const consumeKey = `${normalizedNodeId}|${deepLinkCommentId ?? ""}`;
+		if (consumedNodeIdRef.current === consumeKey) {
 			return;
 		}
-		consumedNodeIdRef.current = normalizedNodeId;
+		consumedNodeIdRef.current = consumeKey;
 
 		const target = resolveDeepLinkTarget(roadmap, normalizedNodeId);
 		if (!target) {

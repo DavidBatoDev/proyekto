@@ -20,6 +20,7 @@ import {
 	Send,
 	Share2,
 	ShieldCheck,
+	StickyNote,
 	Trash2,
 	Undo2,
 	UserMinus,
@@ -86,6 +87,9 @@ export const ACTIVITY_ACTIONS = {
 	FEATURE_COMMENT_CREATED: "feature_comment.created",
 	FEATURE_COMMENT_UPDATED: "feature_comment.updated",
 	FEATURE_COMMENT_DELETED: "feature_comment.deleted",
+	ROADMAP_NOTE_CREATED: "roadmap_note.created",
+	ROADMAP_NOTE_UPDATED: "roadmap_note.updated",
+	ROADMAP_NOTE_DELETED: "roadmap_note.deleted",
 	TASK_ATTACHMENT_ADDED: "task_attachment.added",
 	TASK_ATTACHMENT_REMOVED: "task_attachment.removed",
 	TASK_DEPENDENCY_ADDED: "task_dependency.added",
@@ -176,6 +180,7 @@ export const ACTIVITY_ENTITY_TYPES = [
 	"change_request_link",
 	"risk",
 	"decision",
+	"roadmap_note",
 ] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 
@@ -209,6 +214,7 @@ export const ACTION_FAMILY_LABELS: Record<string, string> = {
 	change_request: "Change requests",
 	risk: "Risks & issues",
 	decision: "Decisions",
+	roadmap_note: "Roadmap notes",
 	access: "Access",
 	channel: "Channels",
 };
@@ -456,6 +462,24 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 		object: (e) => named(e, "milestone"),
 	},
 
+	"roadmap_note.created": {
+		icon: StickyNote,
+		tone: "create",
+		verb: "added a note",
+		object: (e) => named(e, "note"),
+	},
+	"roadmap_note.updated": {
+		icon: StickyNote,
+		tone: "neutral",
+		verb: "updated a note",
+		object: (e) => named(e, "note"),
+	},
+	"roadmap_note.deleted": {
+		icon: StickyNote,
+		tone: "destroy",
+		verb: "removed a note",
+		object: (e) => named(e, "note"),
+	},
 	"task_comment.created": commentCreated("task"),
 	"task_comment.updated": commentEdited("task"),
 	"task_comment.deleted": commentDeleted("task"),

@@ -22,10 +22,22 @@ import {
 } from '../utils/mention-parser';
 import { RoadmapMentionInviteService } from './roadmap-mention-invite.service';
 import { MENTION_EXCERPT_MAX_CHARS } from '../../../shared/notifications/notification-content';
+import { runNotifyWork } from '../../../shared/notifications/notify-work';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { TASKS_REPOSITORY } from './tasks.service';
+
+/**
+ * Ceiling on the mention fan-out a comment write will wait for.
+ *
+ * Longer than the chat default because this path does strictly more work: an
+ * actor-name read, a bulk roadmap-visibility probe, N bounded pushes, AND the
+ * account-less invite path — which is LIVE (`roadmap_mention_invite` was set
+ * email_eligible in 20260804165000) and costs an authz round-trip plus up to
+ * MAX_EMAIL_MENTIONS_PER_COMMENT inserts and a mail send.
+ */
+const ROADMAP_NOTIFY_DEADLINE_MS = 4_000;
 
 export const FEATURES_REPOSITORY = Symbol('FEATURES_REPOSITORY');
 
@@ -249,7 +261,10 @@ export class FeaturesService {
     const comment = await this.repo.addComment(featureId, dto, userId);
 
     const commentId = (comment as { id?: string }).id;
-    this.effects.record(ctx, userId, {
+    // `emit`, not `record`: a comment now DOES change the canvas — the count
+    // badge and hover preview on the card read from the comment-summary query,
+    // and without a realtime publish a peer's comment leaves them stale.
+    this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.FEATURE_COMMENT_CREATED,
       entityType: 'feature_comment',
       entityId: commentId ?? null,
@@ -259,15 +274,33 @@ export class FeaturesService {
       },
     });
 
-    void this.fireMentionNotifications(
-      featureId,
-      dto.content,
-      userId,
-      ctx,
-      commentId,
-    ).catch(() => {});
+    await runNotifyWork(
+      this.fireMentionNotifications(
+        featureId,
+        dto.content,
+        userId,
+        ctx,
+        commentId,
+      ),
+      ROADMAP_NOTIFY_DEADLINE_MS,
+    );
 
     return comment;
+  }
+
+  /**
+   * Everyone named in a body, minus the author. Split out so an EDIT can diff
+   * against the previous body and notify only the people newly added — a typo
+   * fix must not re-ping the whole thread.
+   */
+  private extractMentionTargets(
+    html: string,
+    authorId: string,
+  ): { ids: string[]; emails: string[] } {
+    return {
+      ids: extractMentionedUserIds(html).filter((id) => id !== authorId),
+      emails: extractMentionedEmails(html),
+    };
   }
 
   private async fireMentionNotifications(
@@ -276,13 +309,15 @@ export class FeaturesService {
     authorId: string,
     ctx: RoadmapWriteContext,
     commentId?: string,
+    /** Defaults to everything in `html`; an edit passes only the additions. */
+    targetsOverride?: { ids: string[]; emails: string[] },
   ): Promise<void> {
-    const mentionedIds = extractMentionedUserIds(html).filter(
-      (id) => id !== authorId,
-    );
+    const targetSet =
+      targetsOverride ?? this.extractMentionTargets(html, authorId);
+    const mentionedIds = targetSet.ids;
     // NOT `!mentionedIds.length` alone: a comment that names only an email
     // address has zero user ids, and that is the commonest case here.
-    const mentionedEmails = extractMentionedEmails(html);
+    const mentionedEmails = targetSet.emails;
     if (!mentionedIds.length && !mentionedEmails.length) return;
 
     // Scope comes from the authz walk the caller already paid for.
@@ -305,13 +340,18 @@ export class FeaturesService {
     const actorName =
       await this.notificationsService.resolveActorName(authorId);
     const excerpt = htmlToText(html, MENTION_EXCERPT_MAX_CHARS);
+    // Free from the authz walk the caller already paid for. Without it every
+    // bell row and email subject reads "in a feature comment" and never says WHICH.
+    const entityTitle = ctx?.entityTitle ?? null;
 
     // Fired BEFORE the `targets` check below on purpose: a comment that names
     // only an email address resolves to zero user targets, and that is exactly
     // the case this feature exists for.
-    void this.mentionInvites
+    const invitePromise = this.mentionInvites
       .inviteMentionedEmails({
         html,
+        // Narrowed on an edit, so previously-invited addresses are not re-invited.
+        onlyEmails: mentionedEmails,
         authorId,
         projectId,
         roadmapId,
@@ -319,7 +359,7 @@ export class FeaturesService {
         sourceId: commentId ?? null,
         entityId: featureId,
         linkUrl,
-        entityTitle: null,
+        entityTitle,
         actorName,
         excerpt,
       })
@@ -329,10 +369,14 @@ export class FeaturesService {
       roadmapId,
       mentionedIds,
     );
-    if (!targets.length) return;
 
-    await Promise.allSettled(
-      targets.map((userId) =>
+    // The invite is awaited HERE rather than early-returned around: a comment
+    // naming only an email address has zero user targets, which is precisely
+    // the case the invite path exists for. Returning on `!targets.length`
+    // would detach it again and reintroduce the bug this method just fixed.
+    await Promise.allSettled([
+      invitePromise,
+      ...targets.map((userId) =>
         this.notificationsService.createNotification({
           user_id: userId,
           actor_id: authorId,
@@ -341,13 +385,16 @@ export class FeaturesService {
           link_url: linkUrl ?? undefined,
           content: {
             feature_id: featureId,
-            message: 'You were mentioned in a feature comment.',
+            message: entityTitle
+              ? `${actorName ?? 'Someone'} mentioned you in "${entityTitle}".`
+              : 'You were mentioned in a feature comment.',
             ...(actorName ? { actor_name: actorName } : {}),
+            ...(entityTitle ? { context_title: entityTitle } : {}),
             ...(excerpt ? { excerpt } : {}),
           },
         }),
       ),
-    );
+    ]);
   }
 
   async updateComment(
@@ -355,7 +402,46 @@ export class FeaturesService {
     dto: UpdateCommentDto,
     userId: string,
   ) {
-    return this.repo.updateComment(commentId, dto, userId);
+    // Resolve scope BEFORE the write. This path previously had no
+    // authorization walk at all — only the repository's authorship check — so
+    // someone who had lost roadmap access could still edit an old comment.
+    // The same read supplies the previous body, which the mention diff needs.
+    const before = await this.repo.findCommentContext(commentId);
+    if (!before) throw new NotFoundException('Comment not found');
+    const featureId = before.feature_id;
+    const ctx = await this.roadmapAuthz.assertFeatureCommentPermission(
+      featureId,
+      userId,
+    );
+
+    const updated = await this.repo.updateComment(commentId, dto, userId);
+
+    // Notify ONLY people newly named. Re-pinging everyone on a typo fix is how
+    // a mention stops meaning anything.
+    const previous = this.extractMentionTargets(before.content, userId);
+    const next = this.extractMentionTargets(dto.content, userId);
+    const seenIds = new Set(previous.ids);
+    const seenEmails = new Set(previous.emails.map((e) => e.toLowerCase()));
+    const added = {
+      ids: next.ids.filter((id) => !seenIds.has(id)),
+      emails: next.emails.filter((e) => !seenEmails.has(e.toLowerCase())),
+    };
+
+    if (added.ids.length || added.emails.length) {
+      await runNotifyWork(
+        this.fireMentionNotifications(
+          featureId,
+          dto.content,
+          userId,
+          ctx,
+          commentId,
+          added,
+        ),
+        ROADMAP_NOTIFY_DEADLINE_MS,
+      );
+    }
+
+    return updated;
   }
 
   async deleteComment(commentId: string, userId: string) {

@@ -13,6 +13,7 @@ import type {
 	FeatureDependency,
 	FeatureDependencyType,
 	FeatureStatus,
+	NodeCommentSummary,
 	Roadmap,
 	RoadmapEpic,
 	RoadmapFeature,
@@ -943,6 +944,30 @@ export const featureService = {
  * the Gantt needs every edge at once; deliberately not folded into the
  * roadmap "full" payload, which is the hottest read in the app.
  */
+/**
+ * Comment counts and last-comment previews for every node on a roadmap.
+ *
+ * A sidecar for the same reason feature dependencies are one: the canvas
+ * decorates every card on screen at once, so per-node requests would mean N
+ * round-trips for a single paint — but it is not wanted on most loads either,
+ * so it stays out of the roadmap "full" payload above.
+ */
+export const roadmapCommentSummaryService = {
+	async listByRoadmap(roadmapId: string): Promise<NodeCommentSummary[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<NodeCommentSummary[]>>(
+				`/api/roadmaps/${roadmapId}/comment-summary`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`List comment summary for roadmap ${roadmapId}`,
+			);
+		}
+	},
+};
+
 export const featureDependencyService = {
 	async listByRoadmap(roadmapId: string): Promise<FeatureDependency[]> {
 		try {

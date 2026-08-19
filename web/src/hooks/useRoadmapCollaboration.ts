@@ -208,6 +208,12 @@ export function useRoadmapCollaboration({
 			void queryClient.invalidateQueries({
 				queryKey: projectKeys.featureDependencies(roadmapId),
 			});
+			// Same story for comment counts and previews: the roadmap payload
+			// deliberately does not carry them, so a comment another
+			// collaborator posts would leave the canvas badge stale.
+			void queryClient.invalidateQueries({
+				queryKey: projectKeys.roadmapCommentSummary(roadmapId),
+			});
 		};
 
 		const applyPresence = (collaboratorsList: PresenceState[]) => {

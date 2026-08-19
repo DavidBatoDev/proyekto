@@ -71,6 +71,11 @@ export const ACTIVITY_ACTIONS = {
   FEATURE_COMMENT_UPDATED: 'feature_comment.updated',
   FEATURE_COMMENT_DELETED: 'feature_comment.deleted',
 
+  // ── Roadmap notes ─────────────────────────────────────────────────────────
+  ROADMAP_NOTE_CREATED: 'roadmap_note.created',
+  ROADMAP_NOTE_UPDATED: 'roadmap_note.updated',
+  ROADMAP_NOTE_DELETED: 'roadmap_note.deleted',
+
   // ── Task extras ───────────────────────────────────────────────────────────
   TASK_ATTACHMENT_ADDED: 'task_attachment.added',
   TASK_ATTACHMENT_REMOVED: 'task_attachment.removed',
@@ -186,6 +191,7 @@ export const ACTIVITY_ENTITY_TYPES = [
   'change_request_link',
   'risk',
   'decision',
+  'roadmap_note',
 ] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 

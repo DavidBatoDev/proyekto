@@ -20,6 +20,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useUser } from "@/auth";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
+import { useCommentSummaryUpdaters } from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
 import { type ProjectMember, projectService } from "@/services/project.service";
 import { commentsService } from "@/services/roadmap.service";
@@ -108,6 +109,10 @@ export const FeatureModal = ({
 		})),
 	);
 	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? null);
+	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+	// Keeps the canvas comment badge in step with edits made in here.
+	const { applyAuthoritative: applyCommentAuthoritative } =
+		useCommentSummaryUpdaters(roadmapId);
 	const { mentionUsers, canInviteByEmail } = useMentionUsers(projectId);
 	const currentMilestoneId = useMemo(() => {
 		if (!initialData?.id) return null;
@@ -398,6 +403,7 @@ export const FeatureModal = ({
 			setLoadingComments(true);
 			const fetched = await commentsService.getFeatureComments(featureId);
 			setComments(fetched);
+			applyCommentAuthoritative(featureId, "feature", fetched);
 		} catch (error) {
 			console.error("Failed to load feature comments:", error);
 			setComments([]);
@@ -421,7 +427,9 @@ export const FeatureModal = ({
 	const handleAddComment = async (content: string) => {
 		if (!featureId) return;
 		const created = await commentsService.addFeatureComment(featureId, content);
-		setComments((prev) => [...prev, created]);
+		const next = [...comments, created];
+		setComments(next);
+		applyCommentAuthoritative(featureId, "feature", next);
 	};
 
 	const handleUpdateComment = async (commentId: string, content: string) => {
@@ -431,15 +439,19 @@ export const FeatureModal = ({
 			commentId,
 			content,
 		);
-		setComments((prev) =>
-			prev.map((comment) => (comment.id === commentId ? updated : comment)),
+		const next = comments.map((comment) =>
+			comment.id === commentId ? updated : comment,
 		);
+		setComments(next);
+		applyCommentAuthoritative(featureId, "feature", next);
 	};
 
 	const handleDeleteComment = async (commentId: string) => {
 		if (!featureId) return;
 		await commentsService.deleteFeatureComment(featureId, commentId);
-		setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+		const next = comments.filter((comment) => comment.id !== commentId);
+		setComments(next);
+		applyCommentAuthoritative(featureId, "feature", next);
 	};
 	const handleReorderTasks = useCallback(
 		(fId: string, orderedIds: string[]) => {

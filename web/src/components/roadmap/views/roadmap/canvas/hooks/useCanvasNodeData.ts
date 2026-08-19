@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
-import type { RoadmapEpic, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type {
+	NodeCommentSummary,
+	RoadmapEpic,
+	RoadmapFeature,
+	RoadmapTask,
+} from "@/types/roadmap";
 import type { EpicWidgetData } from "../../../../widgets/EpicWidget";
 import type { FeatureWidgetData } from "../../../../widgets/FeatureWidget";
 import type { RoadmapPerformanceMode } from "../../models/types";
@@ -33,6 +38,12 @@ export interface UseCanvasNodeDataArgs {
 	runningTaskId: string | null;
 	toolbarDraggingType: ToolbarItemType | null;
 	editorsByNodeId: Map<string, CollaboratorInfo[]>;
+	/**
+	 * node-id → comment summary for every epic, feature and task. Threaded
+	 * exactly like `editorsByNodeId`; empty when the canvas comment
+	 * indicators flag is off, so widgets simply render no badge.
+	 */
+	commentSummaryByNodeId: Map<string, NodeCommentSummary>;
 	pulseNodeFocus: NodePulseFocus | null;
 	pulseTaskFocus: TaskPulseFocus | null;
 	onUpdateEpic: (epic: RoadmapEpic) => void;
@@ -71,6 +82,7 @@ export function useCanvasNodeData({
 	runningTaskId,
 	toolbarDraggingType,
 	editorsByNodeId,
+	commentSummaryByNodeId,
 	pulseNodeFocus,
 	pulseTaskFocus,
 	onUpdateEpic,
@@ -123,6 +135,7 @@ export function useCanvasNodeData({
 						performanceMode,
 						canEditRoadmap,
 						editors: editorsByNodeId.get(epic.id),
+						commentSummary: commentSummaryByNodeId.get(epic.id),
 					} satisfies EpicWidgetData,
 				};
 			}
@@ -164,6 +177,9 @@ export function useCanvasNodeData({
 					editors: editorsByNodeId.get(feature.id),
 					// Same node-id→editors map; the task list looks up its own task ids.
 					taskEditorsByNodeId: editorsByNodeId,
+					// Likewise for comment badges: the map covers this feature AND
+					// every task inside it, so the gutter resolves its own ids.
+					commentSummaryByNodeId,
 				} satisfies FeatureWidgetData,
 			};
 		});
@@ -191,5 +207,6 @@ export function useCanvasNodeData({
 		canEditRoadmap,
 		runningTaskId,
 		editorsByNodeId,
+		commentSummaryByNodeId,
 	]);
 }

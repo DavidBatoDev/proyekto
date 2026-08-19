@@ -5,6 +5,7 @@ import {
 	Edit2,
 	ExternalLink,
 	Link2,
+	MessageSquare,
 	Plus,
 	Trash2,
 } from "lucide-react";
@@ -13,11 +14,12 @@ import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import { useToast } from "@/hooks/useToast";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import type { RoadmapEpic } from "@/types/roadmap";
+import type { NodeCommentSummary, RoadmapEpic } from "@/types/roadmap";
 import {
 	EditingAvatars,
 	editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
+import { CommentPreviewPopover } from "../shared/CommentPreviewPopover";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
 import { EpicGlyph } from "../shared/NodeGlyph";
 import {
@@ -45,6 +47,8 @@ export interface EpicWidgetData extends Record<string, unknown> {
 	canEditRoadmap?: boolean;
 	/** Collaborators who currently have this epic's detail open. */
 	editors?: CollaboratorInfo[];
+	/** Comment count + latest-comment preview for this epic, if any. */
+	commentSummary?: NodeCommentSummary;
 }
 
 export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
@@ -62,7 +66,12 @@ export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 		performanceMode = "normal",
 		canEditRoadmap = false,
 		editors,
+		commentSummary,
 	} = data;
+	const commentCount = Math.max(
+		0,
+		Math.floor(commentSummary?.comment_count ?? 0),
+	);
 	const toast = useToast();
 	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
 	const projectId = useRoadmapStore((s) => s.roadmap?.project_id ?? "");
@@ -484,7 +493,32 @@ export const EpicWidget = memo(({ data }: CanvasNodeProps<EpicWidgetData>) => {
 						{epic.features?.length || 0} feature
 						{epic.features?.length !== 1 ? "s" : ""}
 					</span>
-					{epic.estimated_hours && <span>~{epic.estimated_hours}h</span>}
+					<span className="flex items-center gap-2">
+						{epic.estimated_hours && <span>~{epic.estimated_hours}h</span>}
+						{commentCount > 0 && (
+							<CommentPreviewPopover
+								preview={commentSummary?.last_comment ?? null}
+								commentCount={commentCount}
+								contextTitle={epic.title}
+							>
+								<button
+									type="button"
+									className="nodrag flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+									onClick={(event) => {
+										event.stopPropagation();
+										onEdit?.(epic);
+									}}
+									title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${epic.title}`}
+									aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${epic.title}`}
+								>
+									<MessageSquare className="h-3 w-3" />
+									<span className="tabular-nums">
+										{commentCount > 99 ? "99+" : commentCount}
+									</span>
+								</button>
+							</CommentPreviewPopover>
+						)}
+					</span>
 				</div>
 
 				{/* Date range */}

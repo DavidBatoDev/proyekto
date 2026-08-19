@@ -144,7 +144,6 @@ interface RoadmapActions {
 	// Task CRUD
 	addTask: (featureId: string, data: Partial<RoadmapTask>) => Promise<void>;
 	updateTask: (task: RoadmapTask) => Promise<void>;
-	setTaskCommentCount: (taskId: string, count: number) => void;
 	updateTaskStatusIntent: (
 		taskId: string,
 		nextStatus: RoadmapTask["status"],
@@ -2087,15 +2086,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				pendingTaskById: clearPendingKey(state.pendingTaskById, taskId),
 			}));
 		}
-	},
-
-	setTaskCommentCount: (taskId: string, count: number) => {
-		set((state) => ({
-			epics: patchTaskById(state.epics, taskId, (task) => ({
-				...task,
-				comment_count: Math.max(0, Math.floor(count)),
-			})),
-		}));
 	},
 
 	updateTaskStatusIntent: async (

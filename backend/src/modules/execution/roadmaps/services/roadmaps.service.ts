@@ -154,9 +154,11 @@ export class RoadmapsService {
   }
 
   async findFull(id: string, userId: string) {
-    const roadmap = await this.repo.findFull(id, userId, {
-      includeTaskCommentCount: true,
-    });
+    // NOTE: this used to pass `{ includeTaskCommentCount: true }`, an option
+    // the repository never read — so `comment_count` never reached the client
+    // and the canvas's comment badge was dead UI. Counts now come from
+    // GET /roadmaps/:roadmapId/comment-summary instead.
+    const roadmap = await this.repo.findFull(id, userId);
     if (!roadmap) throw new NotFoundException('Roadmap not found');
     return roadmap;
   }

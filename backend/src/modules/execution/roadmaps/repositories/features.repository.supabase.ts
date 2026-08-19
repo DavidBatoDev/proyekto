@@ -195,6 +195,25 @@ export class FeaturesRepositorySupabase implements IFeaturesRepository {
     return data;
   }
 
+  async findCommentContext(commentId: string): Promise<{
+    feature_id: string;
+    user_id: string | null;
+    content: string;
+  } | null> {
+    const { data, error } = await this.db
+      .from('feature_comments')
+      .select('feature_id, user_id, content')
+      .eq('id', commentId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      feature_id: String(data.feature_id),
+      user_id: (data.user_id as string | null) ?? null,
+      content: String(data.content ?? ''),
+    };
+  }
+
   async updateComment(
     commentId: string,
     dto: UpdateCommentDto,

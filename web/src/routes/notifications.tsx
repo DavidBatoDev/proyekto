@@ -124,8 +124,10 @@ function NotificationsPage() {
 		queryKey: ["notifications", "page"],
 		queryFn: () => notificationsService.list({ limit: 100 }),
 		staleTime: 30 * 1000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
+		// See NotificationBell: realtime fails silently, so focus/reconnect are
+		// the safety net rather than the primary path.
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
 	});
 
 	const markReadMutation = useMutation({

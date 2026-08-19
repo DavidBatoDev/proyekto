@@ -38,6 +38,25 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
     return data;
   }
 
+  async findCommentContext(commentId: string): Promise<{
+    task_id: string;
+    author_id: string | null;
+    content: string;
+  } | null> {
+    const { data, error } = await this.db
+      .from('task_comments')
+      .select('task_id, author_id, content')
+      .eq('id', commentId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      task_id: String(data.task_id),
+      author_id: (data.author_id as string | null) ?? null,
+      content: String(data.content ?? ''),
+    };
+  }
+
   async updateComment(
     commentId: string,
     dto: UpdateCommentDto,
@@ -123,15 +142,21 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
     if (error) throw new Error(error.message);
   }
 
-  async getDependencies(taskId: string): Promise<{ blocking: any[]; blocked_by: any[] }> {
+  async getDependencies(
+    taskId: string,
+  ): Promise<{ blocking: any[]; blocked_by: any[] }> {
     const [blockingRes, blockedByRes] = await Promise.all([
       this.db
         .from('task_dependencies')
-        .select('*, blocking_task:roadmap_tasks!blocking_task_id(id, title, status)')
+        .select(
+          '*, blocking_task:roadmap_tasks!blocking_task_id(id, title, status)',
+        )
         .eq('blocked_task_id', taskId),
       this.db
         .from('task_dependencies')
-        .select('*, blocked_task:roadmap_tasks!blocked_task_id(id, title, status)')
+        .select(
+          '*, blocked_task:roadmap_tasks!blocked_task_id(id, title, status)',
+        )
         .eq('blocking_task_id', taskId),
     ]);
     if (blockingRes.error) throw new Error(blockingRes.error.message);
@@ -149,8 +174,14 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
   ): Promise<any> {
     const { data, error } = await this.db
       .from('task_dependencies')
-      .insert({ blocking_task_id: blockingTaskId, blocked_task_id: blockedTaskId, created_by: userId })
-      .select('*, blocking_task:roadmap_tasks!blocking_task_id(id, title, status)')
+      .insert({
+        blocking_task_id: blockingTaskId,
+        blocked_task_id: blockedTaskId,
+        created_by: userId,
+      })
+      .select(
+        '*, blocking_task:roadmap_tasks!blocking_task_id(id, title, status)',
+      )
       .single();
     if (error) throw new Error(error.message);
     return data;
@@ -158,18 +189,24 @@ export class TaskExtrasRepositorySupabase implements ITaskExtrasRepository {
 
   async findDependencyById(
     dependencyId: string,
-  ): Promise<{ id: string; blocked_task_id: string; blocking_task_id: string } | null> {
+  ): Promise<{
+    id: string;
+    blocked_task_id: string;
+    blocking_task_id: string;
+  } | null> {
     const { data, error } = await this.db
       .from('task_dependencies')
       .select('id, blocked_task_id, blocking_task_id')
       .eq('id', dependencyId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return (data as {
-      id: string;
-      blocked_task_id: string;
-      blocking_task_id: string;
-    } | null) ?? null;
+    return (
+      (data as {
+        id: string;
+        blocked_task_id: string;
+        blocking_task_id: string;
+      } | null) ?? null
+    );
   }
 
   async removeDependency(dependencyId: string): Promise<void> {

@@ -54,6 +54,14 @@ export interface MentionInviteInput {
   entityTitle: string | null;
   actorName: string | null;
   excerpt: string | null;
+  /**
+   * Restrict the invite to these addresses instead of everything in `html`.
+   *
+   * An EDIT passes only the addresses newly added, so re-saving a comment does
+   * not re-invite people who were already invited when it was first posted.
+   * Omitted on create, where every address in the body is new.
+   */
+  onlyEmails?: string[];
 }
 
 /**
@@ -118,7 +126,15 @@ export class RoadmapMentionInviteService {
     // Fail closed on unknown scope, exactly as the user-id mention path does.
     if (!projectId || !roadmapId || !input.sourceId) return;
 
-    const emails = extractMentionedEmails(html);
+    // Intersect rather than trust the override outright: the addresses must
+    // still actually appear in the body being saved.
+    const inBody = extractMentionedEmails(html);
+    const allowed = input.onlyEmails
+      ? new Set(input.onlyEmails.map((e) => e.toLowerCase()))
+      : null;
+    const emails = allowed
+      ? inBody.filter((e) => allowed.has(e.toLowerCase()))
+      : inBody;
     if (emails.length === 0) return;
 
     if (!(await this.isEnabled())) return;

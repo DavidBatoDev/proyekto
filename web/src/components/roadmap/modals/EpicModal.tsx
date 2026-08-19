@@ -4,6 +4,7 @@ import { useUser } from "@/auth";
 import { LabelSelector } from "@/components/common/LabelSelector";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
+import { useCommentSummaryUpdaters } from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
 import { commentsService } from "@/services/roadmap.service";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -91,6 +92,10 @@ export const EpicModal = ({
 		(s) => s.roadmap?.project_id ?? null,
 	);
 	const { mentionUsers, canInviteByEmail } = useMentionUsers(mentionProjectId);
+	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+	// Keeps the canvas comment badge in step with edits made in here.
+	const { applyAuthoritative: applyCommentAuthoritative } =
+		useCommentSummaryUpdaters(roadmapId);
 	const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
 	const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
 	const presentationMode = useRoadmapStore((s) => s.presentationMode);
@@ -176,6 +181,7 @@ export const EpicModal = ({
 			setLoadingComments(true);
 			const fetched = await commentsService.getEpicComments(epicId);
 			setComments(fetched);
+			applyCommentAuthoritative(epicId, "epic", fetched);
 		} catch (error) {
 			console.error("Failed to load epic comments:", error);
 			setComments([]);
@@ -199,7 +205,9 @@ export const EpicModal = ({
 	const handleAddComment = async (content: string) => {
 		if (!epicId) return;
 		const created = await commentsService.addEpicComment(epicId, content);
-		setComments((prev) => [...prev, created]);
+		const next = [...comments, created];
+		setComments(next);
+		applyCommentAuthoritative(epicId, "epic", next);
 	};
 
 	const handleUpdateComment = async (commentId: string, content: string) => {
@@ -209,15 +217,19 @@ export const EpicModal = ({
 			commentId,
 			content,
 		);
-		setComments((prev) =>
-			prev.map((comment) => (comment.id === commentId ? updated : comment)),
+		const next = comments.map((comment) =>
+			comment.id === commentId ? updated : comment,
 		);
+		setComments(next);
+		applyCommentAuthoritative(epicId, "epic", next);
 	};
 
 	const handleDeleteComment = async (commentId: string) => {
 		if (!epicId) return;
 		await commentsService.deleteEpicComment(epicId, commentId);
-		setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+		const next = comments.filter((comment) => comment.id !== commentId);
+		setComments(next);
+		applyCommentAuthoritative(epicId, "epic", next);
 	};
 
 	const submitCurrentValues = () => {

@@ -21,6 +21,18 @@ export interface IFeaturesRepository {
     dto: AddCommentDto,
     userId: string,
   ): Promise<any>;
+  /**
+   * The comment's parent id, author and CURRENT body, read before an edit.
+   *
+   * Exists so an edit can notify people newly @mentioned in it — the diff needs
+   * the previous body — and so the service can run the roadmap authorization
+   * walk that this path never had. Returns null when the comment is gone.
+   */
+  findCommentContext(commentId: string): Promise<{
+    feature_id: string;
+    user_id: string | null;
+    content: string;
+  } | null>;
   updateComment(
     commentId: string,
     dto: UpdateCommentDto,

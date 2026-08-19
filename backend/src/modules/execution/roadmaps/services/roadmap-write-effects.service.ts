@@ -48,7 +48,12 @@ export class RoadmapWriteEffects {
 
   /**
    * Activity only — for writes whose realtime notification is handled
-   * elsewhere, or that do not change the canvas (comments, attachments).
+   * elsewhere, or that genuinely do not change the canvas (attachments,
+   * dependencies).
+   *
+   * Comments used to be listed here. They are not any more: the canvas gained
+   * comment-count badges and hover previews, so a new comment changes what
+   * every collaborator sees and the three addComment paths use `emit`.
    */
   record(
     ctx: RoadmapWriteContext | null | undefined,
