@@ -110,7 +110,7 @@ export type ConsultantEnrollmentStatus =
   | 'suspended'
   | 'revoked';
 
-export type FreelancerEnrollmentStatus = 'active' | 'paused';
+export type TalentEnrollmentStatus = 'active' | 'paused';
 
 export interface Profile {
   id: string;
@@ -129,7 +129,7 @@ export interface Profile {
   zip_code?: string;
   date_of_birth?: string;
   consultant_status?: ConsultantEnrollmentStatus | null;
-  freelancer_status?: FreelancerEnrollmentStatus | null;
+  talent_status?: TalentEnrollmentStatus | null;
   is_email_verified: boolean;
   has_completed_onboarding: boolean;
   settings: Record<string, unknown>;

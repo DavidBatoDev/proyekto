@@ -20,7 +20,7 @@ export function YourRoadmapSection() {
 						</h2>
 						<p className="mt-2 text-sm text-slate-600 sm:text-base">
 							Start your first roadmap to generate milestones, see consultant
-							matches, and unlock execution with freelancers in one flow.
+							matches, and unlock execution with talent in one flow.
 						</p>
 						<div className="mt-5 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
 							<Link

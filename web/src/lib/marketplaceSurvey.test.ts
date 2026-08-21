@@ -86,7 +86,7 @@ describe("heroCtaFor", () => {
 	});
 
 	it("sends talent to go-live", () => {
-		expect(heroCtaFor(["talent"])?.to).toBe("/marketplace/freelancer/go-live");
+		expect(heroCtaFor(["talent"])?.to).toBe("/marketplace/talent/go-live");
 	});
 });
 

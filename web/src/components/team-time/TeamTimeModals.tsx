@@ -695,7 +695,7 @@ export function AddRateModal({
 										type="text"
 										value={newRateCustomId}
 										onChange={(e) => onChangeCustomId(e.target.value)}
-										placeholder="Employee/Freelancer ID"
+										placeholder="Employee/Contractor ID"
 										disabled={savingRate}
 										className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
 									/>

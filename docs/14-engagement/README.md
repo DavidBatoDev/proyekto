@@ -63,7 +63,7 @@ signed contract version
 | --- | --- |
 | When does an engagement exist? | Only after a root contract is fully signed |
 | Who may author a contract? | A verified Consultant |
-| Can a private Talent provider be any account? | Yes; freelancer enrollment controls public discovery, not private contracting |
+| Can a private Talent provider be any account? | Yes; talent enrollment controls public discovery, not private contracting |
 | Must an engagement belong to one project? | No; it may be `project_specific` or `flexible` |
 | Can the same parties have several engagements? | Yes; assignments disambiguate commercial time |
 | What determines price? | The signed contract version; rate changes require a signed amendment |
@@ -71,7 +71,7 @@ signed contract version
 | Does an assignment grant project access? | No; `project_access` remains the only execution authorization source |
 | Can a Client see Talent cost? | No; Talent identity, rates, payouts, and Consultant margin stay private |
 | Are existing engagement/position links backfilled? | No; nullable links preserve the legacy path. Existing contracts only receive deterministic relationship/scope defaults. |
-| How are private counterparties selected? | A verified Consultant resolves an existing Proyekto account by exact email; public freelancer status is not required. |
+| How are private counterparties selected? | A verified Consultant resolves an existing Proyekto account by exact email; public talent status is not required. |
 | Does signing create an assignment? | No. Activation creates the engagement, parties, scope, settings, and rates only; assignments remain an explicit later workflow. |
 
 ## Two independent commercial sides

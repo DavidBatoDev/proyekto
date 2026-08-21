@@ -103,15 +103,15 @@ export class RedisCacheInvalidationService {
     await this.cache.clearIndex(REDIS_CACHE_KEYS.projectsDashboardIndex);
   }
 
-  async invalidateMarketplaceFreelancersCache(): Promise<void> {
+  async invalidateMarketplaceTalentCache(): Promise<void> {
     this.logger.log('cache_invalidate scope=marketplace index_count=1');
-    await this.cache.clearIndex(REDIS_CACHE_KEYS.marketplaceFreelancersIndex);
+    await this.cache.clearIndex(REDIS_CACHE_KEYS.marketplaceTalentIndex);
   }
 
   async invalidateDiscoveryCaches(userId: string): Promise<void> {
     await Promise.all([
       this.invalidateConsultantsCache(userId),
-      this.invalidateMarketplaceFreelancersCache(),
+      this.invalidateMarketplaceTalentCache(),
     ]);
   }
 }

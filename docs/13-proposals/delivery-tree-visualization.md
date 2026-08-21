@@ -95,7 +95,7 @@ The caller must be an `organization_members` row **or** hold `project_access` on
 project in the org — in which case the response is **filtered to those projects**.
 
 > **⚠️ Never return an org-wide shape to a single-project viewer.** Node labels leak client
-> names, project titles, and progress. A freelancer curated onto one project must not learn the
+> names, project titles, and progress. A talent curated onto one project must not learn the
 > org has five others. Filter server-side; do not rely on the client hiding nodes.
 
 ## Semantic zoom

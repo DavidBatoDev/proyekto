@@ -25,7 +25,7 @@ export class MarketplaceQueryDto {
   sort?: 'rating_desc' | 'rate_asc' | 'rate_desc';
 }
 
-export class InviteFreelancerDto {
+export class InviteTalentDto {
   @IsUUID()
   projectId: string;
 

@@ -51,7 +51,7 @@ file is cited so the cost of the change is visible.
 | --- | --- |
 | **Post/bid a project** | Does not exist. `'bidding'` was added to the `project_status` enum (`20260216000000_add_bidding_status.sql`) and never used — no `bids` table, no UI. `web/src/routes/marketplace/marketplace/project-posting.tsx` is a project-creation wizard, not a public listing. |
 | **Sell a roadmap** | Half exists. The template marketplace (`roadmap_public_templates`, versions, ratings, usages — `20260714100000_...`) has publish (consultant-only), browse, and instantiate — but **no price column, no purchase, no revenue share**. Selling is a monetization layer on an existing distribution surface. |
-| **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→freelancer *invites* only (`backend/src/modules/marketplace/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
+| **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→talent *invites* only (`backend/src/modules/marketplace/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
 
 ## The two platforms, four tiers
 
@@ -61,7 +61,7 @@ draft named two tiers (Free For All, Professional); this proposal completes the 
 | Tier | Working name | Who it's for | Billing |
 | --- | --- | --- | --- |
 | 1 | **Free** ("Free For All") | Individuals, guests-turned-users, trials | $0 |
-| 2 | **Professional** | A working consultant or freelancer with one real team | per seat / month |
+| 2 | **Professional** | A working consultant or talent with one real team | per seat / month |
 | 3 | **Business** | An agency running several teams and clients | per seat / month, higher |
 | 4 | **Enterprise** | Orgs needing SSO, audit, custom limits | custom / annual |
 
@@ -106,7 +106,7 @@ Finance and template-publishing are consultant-capability surfaces
 | Buy a roadmap template | ✔ | ✔ | ✔ | ✔ |
 | Find & apply to a project *(new build)* | 5 applications/mo (Talent/Consultant) | Unlimited | Unlimited | Unlimited |
 | Go-live discoverability (existing `is_public`) | ✔ | ✔ + boosted placement | ✔ | ✔ |
-| Consultant→freelancer browse & invite (existing) | ✔ (verified consultants) | ✔ | ✔ | ✔ |
+| Consultant→talent browse & invite (existing) | ✔ (verified consultants) | ✔ | ✔ | ✔ |
 
 Marketplace revenue is **transactional** (take-rate on template sales, possibly on awarded
 bids) layered on top of subscription tiers — the tiers gate *volume and placement*, the
@@ -199,7 +199,7 @@ Rules, in order of importance:
   through `personal_workspaces` never count toward team/project quotas and can never
   hold a subscription — otherwise every consultant signup instantly consumes the Free
   team allowance.
-- **E4 — Multi-team membership.** A freelancer in three paid teams is **three seats paid by
+- **E4 — Multi-team membership.** A talent in three paid teams is **three seats paid by
   three owners** (like Slack workspaces), not one pooled identity. Their *personal*
   capabilities follow their own plan.
 - **E5 — Client on a paid team's project.** Clients ride the team's tier for shared

@@ -76,7 +76,7 @@ export class ProfileService {
   ): Promise<UserSkill[]> {
     const skills = await this.profileRepo.replaceUserSkills(userId, dto.skills);
     // Both directories, because skills are account-level: they render on the
-    // freelancer cards AND on the cached public consultant profile. Purging
+    // talent cards AND on the cached public consultant profile. Purging
     // only one leaves the other showing yesterday's skills for a whole TTL.
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return skills;
@@ -184,7 +184,7 @@ export class ProfileService {
     const settings = await this.profileRepo.upsertRateSettings(userId, dto);
     // One rate card, two surfaces. `user_rate_settings` is deliberately shared
     // between the enrollment paths (20260812100000), so a consultant editing
-    // their rate moves the freelancer directory too — and vice versa.
+    // their rate moves the talent directory too — and vice versa.
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return settings;
   }
@@ -210,7 +210,7 @@ export class ProfileService {
     dto: AddSpecializationDto,
   ): Promise<UserSpecialization> {
     const specialization = await this.profileRepo.addSpecialization(userId, dto);
-    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
     return specialization;
   }
 
@@ -224,13 +224,13 @@ export class ProfileService {
       userId,
       dto,
     );
-    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
     return specialization;
   }
 
   async deleteSpecialization(id: string, userId: string): Promise<void> {
     await this.profileRepo.deleteSpecialization(id, userId);
-    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
   }
 
   async addIdentityDocument(

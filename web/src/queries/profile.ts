@@ -14,7 +14,7 @@ import type { Profile } from "../types";
  * Fetch user profile from Supabase.
  *
  * Selects the enrollment embeds and derives `consultant_status`,
- * `freelancer_status`, `is_consultant_verified`, and `is_public` — those are
+ * `talent_status`, `is_consultant_verified`, and `is_public` — those are
  * not columns, so a plain `select("*")` returns them as `undefined` and every
  * capability gate (`isActiveConsultant`, the Finance nav item, the /finance
  * page) fails closed for users who genuinely hold the capability.

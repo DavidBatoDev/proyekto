@@ -27,7 +27,7 @@ export type ConsultantEnrollmentStatus =
 	| "suspended"
 	| "revoked";
 
-export type FreelancerEnrollmentStatus = "active" | "paused";
+export type TalentEnrollmentStatus = "active" | "paused";
 
 // Profile interface
 export interface Profile {
@@ -37,7 +37,7 @@ export interface Profile {
 	avatar_url: string | null;
 	banner_url: string | null;
 	consultant_status: ConsultantEnrollmentStatus | null;
-	freelancer_status: FreelancerEnrollmentStatus | null;
+	talent_status: TalentEnrollmentStatus | null;
 	/** Computed compatibility field for older mobile bundles. */
 	is_consultant_verified: boolean;
 	/** Computed compatibility field for older mobile bundles. */

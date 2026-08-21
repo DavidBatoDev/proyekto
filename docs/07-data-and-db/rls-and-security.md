@@ -35,7 +35,7 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access and persona from `project_access` |
 | `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
 | `is_active_consultant(uid)` | Verified consultant enrollment: `consultant_profiles.status = 'verified'` |
-| `is_active_freelancer(uid)` | Active public-pool enrollment: `freelancer_profiles.status = 'active'` |
+| `is_active_talent(uid)` | Active public-pool enrollment: `talent_profiles.status = 'active'` |
 
 Both enrollment predicates are `SECURITY DEFINER` with `search_path = public`.
 They deliberately avoid `profiles`: querying `profiles` from its own policy recurses,
@@ -69,7 +69,7 @@ the database write.
 Some tables are written **only** by the backend (service role); their RLS SELECT
 policies are defense-in-depth allows, and there is no client write path:
 
-- `consultant_profiles`, `freelancer_profiles` — owners may read their enrollment
+- `consultant_profiles`, `talent_profiles` — owners may read their enrollment
   and admins may manage all rows, but authenticated callers get no direct INSERT or
   UPDATE policy. Approval and self-service go-live/pause use the service-role API.
 - `marketplace_categories`, `marketplace_subcategories` — the curated taxonomy itself.

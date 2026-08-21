@@ -33,7 +33,7 @@ flag. Marketplace capabilities are stateful enrollment rows:
 | `user_rate_settings` | rate card (hourly rate, currency, availability) | 1:1 |
 | `user_stats` | aggregated career stats (earnings, ratings, jobs) | 1:1 |
 | `consultant_profiles` | consultant capability and lifecycle audit (`pending`, `verified`, `suspended`, `revoked`) | 0..1 per user |
-| `freelancer_profiles` | public-pool enrollment (`active`, `paused`) | 0..1 per user |
+| `talent_profiles` | public-pool enrollment (`active`, `paused`) | 0..1 per user |
 | `skills`, `languages` | reference catalogs (master lists) | shared |
 
 Why join tables instead of JSONB on `profiles`? So the matchmaker can query across
@@ -61,7 +61,7 @@ RLS is enabled on all of these tables. The consistent pattern (see
 | `user_verifications` | Owner + admin | Admin only |
 | `user_identity_documents` | Owner + admin | Owner (upload) + admin (verify) |
 | `user_stats` | Any authenticated user | Service role only (updated on project completion) |
-| `consultant_profiles`, `freelancer_profiles` | Owner + admin | Service role/admin only; owners use lifecycle APIs rather than direct writes |
+| `consultant_profiles`, `talent_profiles` | Owner + admin | Service role/admin only; owners use lifecycle APIs rather than direct writes |
 | `skills`, `languages` | Public | Service role only |
 
 In practice the backend runs as the service role and enforces these rules in the
@@ -81,8 +81,8 @@ service layer; RLS is defense-in-depth.
    row. `ConsultantOnlyGuard` and `is_active_consultant()` accept only `verified`;
    execution authorization never reads enrollment state.
 
-Freelancer enrollment is separate and self-service. `POST /marketplace/go-live`
-enforces identity, rate-card, portfolio, and basic-profile eligibility before it
+Talent enrollment is separate and self-service. `POST /marketplace/go-live`
+enforces rate-card, portfolio, and basic-profile eligibility before it
 upserts an `active` row. `POST /marketplace/pause` changes it to `paused`; resuming
 runs the eligibility check again. Only active rows appear in discovery or pass the
 invite-by-id precondition.

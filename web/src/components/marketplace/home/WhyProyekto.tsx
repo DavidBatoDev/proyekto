@@ -7,7 +7,7 @@ import {
 } from "./CapabilityIcons";
 
 /**
- * What separates Proyekto from a freelancer directory: the delivery machinery
+ * What separates Proyekto from a talent directory: the delivery machinery
  * that starts the moment a contract is signed.
  *
  * Each card names a surface that genuinely exists in the product — not a

@@ -10,9 +10,9 @@
  * open the engagements the way production does.
  *
  * PUBLIC EXPOSURE: none. The seeded client and talent accounts get NO
- * `consultant_profiles` and NO `freelancer_profiles` row, so they never appear
+ * `consultant_profiles` and NO `talent_profiles` row, so they never appear
  * in the public consultant directory or the Find-work board. A private talent
- * contract does not require a public freelancer listing (see
+ * contract does not require a public talent listing (see
  * docs/11-domains/marketplace/README.md), so the scenario is complete without
  * one. The consultant seat is your existing verified account.
  *
@@ -22,7 +22,7 @@
  *   node scripts/seed_finance_demo.mjs            # create
  *   node scripts/seed_finance_demo.mjs --teardown # remove
  *
- * Requires the backend running (default http://localhost:8001) and, in the env,
+ * Requires the backend running (default http://localhost:8000) and, in the env,
  * SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY plus the
  * consultant's own login as SEED_CONSULTANT_EMAIL / SEED_CONSULTANT_PASSWORD
  * (PLAYWRIGHT_EMAIL / PLAYWRIGHT_PASSWORD are accepted as a fallback).
@@ -73,7 +73,7 @@ for (const file of [
 const SUPABASE_URL = must("SUPABASE_URL");
 const SERVICE_KEY = must("SUPABASE_SERVICE_ROLE_KEY");
 const ANON_KEY = must("SUPABASE_ANON_KEY");
-const API = process.env.SEED_API_URL ?? "http://localhost:8001";
+const API = process.env.SEED_API_URL ?? "http://localhost:8000";
 const CONSULTANT_EMAIL =
 	process.env.SEED_CONSULTANT_EMAIL ?? process.env.PLAYWRIGHT_EMAIL;
 const CONSULTANT_PASSWORD =

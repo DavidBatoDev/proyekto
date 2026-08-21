@@ -81,7 +81,7 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 	},
 	{
 		key: "consultant-marketplace",
-		to: "/marketplace/talent",
+		to: "/marketplace/talent/browse",
 		label: "Find work",
 		icon: Compass,
 		match: "prefix",

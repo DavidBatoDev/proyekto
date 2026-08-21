@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   ConsultantEnrollmentStatus,
-  FreelancerEnrollmentStatus,
+  TalentEnrollmentStatus,
 } from '../entities';
 
 interface EnrollmentStatusRow<TStatus extends string> {
@@ -10,7 +10,7 @@ interface EnrollmentStatusRow<TStatus extends string> {
 
 export interface MarketplaceEnrollmentFields {
   consultant_status: ConsultantEnrollmentStatus | null;
-  freelancer_status: FreelancerEnrollmentStatus | null;
+  talent_status: TalentEnrollmentStatus | null;
   /** Computed compatibility field for pre-enrollment mobile bundles. */
   is_consultant_verified: boolean;
   /** Computed compatibility field for pre-enrollment mobile bundles. */
@@ -40,11 +40,11 @@ export function consultantFlagFromEmbed(value: unknown): boolean {
   return consultantStatusFromEmbed(value) === 'verified';
 }
 
-export function freelancerStatusFromEmbed(
+export function talentStatusFromEmbed(
   value: unknown,
-): FreelancerEnrollmentStatus | null {
+): TalentEnrollmentStatus | null {
   const status =
-    relationRow<EnrollmentStatusRow<FreelancerEnrollmentStatus>>(value)?.status;
+    relationRow<EnrollmentStatusRow<TalentEnrollmentStatus>>(value)?.status;
   return status === 'active' || status === 'paused' ? status : null;
 }
 
@@ -53,17 +53,17 @@ export function attachMarketplaceEnrollmentFields<T extends object>(
 ): T & MarketplaceEnrollmentFields {
   const record = profile as Record<string, unknown>;
   const consultantStatus = consultantStatusFromEmbed(record.consultant_profile);
-  const freelancerStatus = freelancerStatusFromEmbed(record.freelancer_profile);
+  const talentStatus = talentStatusFromEmbed(record.talent_profile);
   const profileFields = { ...record };
   delete profileFields.consultant_profile;
-  delete profileFields.freelancer_profile;
+  delete profileFields.talent_profile;
 
   return {
     ...profileFields,
     consultant_status: consultantStatus,
-    freelancer_status: freelancerStatus,
+    talent_status: talentStatus,
     is_consultant_verified: consultantStatus === 'verified',
-    is_public: freelancerStatus === 'active',
+    is_public: talentStatus === 'active',
   } as T & MarketplaceEnrollmentFields;
 }
 

@@ -24,22 +24,21 @@ selection. Nothing about the account marks it as talent — see
 
 ## 2. Build the professional profile
 
-`/marketplace/freelancer/go-live` collects rate settings, specialization, skills, portfolio material,
+`/marketplace/talent/go-live` collects rate settings, specialization, skills, portfolio material,
 and an identity document. The shared profile system also supports experience, education,
 certifications, languages, and licenses.
 
-`FreelancerEligibilityService` reports four checklist groups:
+`TalentEligibilityService` reports three checklist groups:
 
 | Requirement | Satisfied by |
 | --- | --- |
-| `identity` | Verified identity document or verified identity record |
 | `rate_settings` | Hourly rate, currency, and availability |
 | `portfolio` | At least one portfolio row |
 | `profile_basics` | Headline, bio, and country |
 
 The checklist is available through `GET /marketplace/go-live/eligibility`. The
 go-live API enforces it before creating or resuming
-`freelancer_profiles.status='active'`. The profile page can pause an active row and
+`talent_profiles.status='active'`. The profile page can pause an active row and
 resume it through the same eligibility-enforced go-live path.
 
 ## 3. Go live and receive an invite

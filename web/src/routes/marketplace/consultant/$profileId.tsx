@@ -344,7 +344,7 @@ function EngagePanel({
 						Edit profile
 					</Link>
 				) : (
-					<Link to="/marketplace/talent" className={RAIL_BUTTON_CLASS}>
+					<Link to="/marketplace/talent/browse" className={RAIL_BUTTON_CLASS}>
 						Find work
 					</Link>
 				)}

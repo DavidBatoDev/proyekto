@@ -4,7 +4,7 @@
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
-and hires freelancers). The gate between them is consultant verification.
+and hires talent). The gate between them is consultant verification.
 
 ## Applications
 
@@ -31,11 +31,11 @@ Active consultants discover and invite public Talent accounts into their project
 
 | Endpoint | Guard | Purpose |
 | --- | --- | --- |
-| `GET /marketplace/freelancers` | `ConsultantOnlyGuard` | Browse the freelancer pool |
+| `GET /marketplace/talent` | `ConsultantOnlyGuard` | Browse the talent pool |
 | `GET /marketplace/go-live/eligibility` | Supabase | Preflight the server-enforced go-live requirements |
-| `POST /marketplace/go-live` | Supabase | Create or resume an active freelancer enrollment |
+| `POST /marketplace/go-live` | Supabase | Create or resume an active talent enrollment |
 | `POST /marketplace/pause` | Supabase | Pause marketplace discovery without deleting history |
-| `POST /marketplace/invite` | `ConsultantOnlyGuard` | Invite a freelancer to a project |
+| `POST /marketplace/invite` | `ConsultantOnlyGuard` | Invite a talent to a project |
 | `GET/PATCH /marketplace/invites[/me,/:id/respond]` | Supabase | List / respond to invites |
 
 Discovery draws on the profile sub-entities (`user_rate_settings`, `user_stats`,
@@ -43,8 +43,8 @@ Discovery draws on the profile sub-entities (`user_rate_settings`, `user_stats`,
 rate, and availability. Invites reuse `project_invites`.
 
 > **The enrollment gates:** consultant-only routes require
-> `consultant_profiles.status='verified'` through the shared predicate. The freelancer
-> pool and direct invite precondition require `freelancer_profiles.status='active'`.
+> `consultant_profiles.status='verified'` through the shared predicate. The talent
+> pool and direct invite precondition require `talent_profiles.status='active'`.
 > Go-live enforces the same eligibility checklist server-side; pause and resume are
 > status transitions, never row deletion. `user_rate_settings` remains the shared
 > rate card for both marketplace paths.
@@ -88,7 +88,7 @@ Consultants place themselves: `20260818120100` added the owner-write policy and 
 > pagination needs an envelope.
 
 This taxonomy is **distinct from `roadmap_template_categories`** (which classifies
-roadmap subjects) and from `user_specializations` (self-declared free-text freelancer
+roadmap subjects) and from `user_specializations` (self-declared free-text talent
 specialities, used for the facets above). Three different axes; see
 [Routing & access](../../04-web/routing-and-access.md#three-taxonomies-three-axes--do-not-unify-them).
 
@@ -148,7 +148,7 @@ rendered nowhere.
 - **Admin matchmaking** — admins can also match candidates to projects
   (`GET /admin/match-candidates`, `POST /admin/match-assign`). See the
   [Admin vetting playbook](../../12-runbooks/README.md).
-- **Teams** — hired freelancers land in project teams; see
+- **Teams** — hired talent land in project teams; see
   [Teams and Time](../teams-and-time/README.md).
 - **Position deep dives** — see [Talent](../talent/README.md) and
   [Consultants](../consultants/README.md) for the complete account-to-delivery flows.
@@ -156,4 +156,4 @@ rendered nowhere.
 ## Code locations
 
 - **Backend:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/), [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/), [`backend/src/modules/marketplace/taxonomy/`](../../../backend/src/modules/marketplace/taxonomy/), [`backend/src/modules/marketplace/survey/`](../../../backend/src/modules/marketplace/survey/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
-- **Web:** `web/src/routes/marketplace/` (a real `/marketplace` URL segment) — `category/`, `consultant/`, `freelancer/`, `finance/`, `talent`, `project-posting` — plus `web/src/components/marketplace/`. `contract/sign/$token` and `freelancer/invites` sit outside it on purpose; see [Routing & access](../../04-web/routing-and-access.md)
+- **Web:** `web/src/routes/marketplace/` (a real `/marketplace` URL segment) — `category/`, `consultant/`, `talent/`, `finance/`, `talent`, `project-posting` — plus `web/src/components/marketplace/`. `contract/sign/$token` and `talent/invites` sit outside it on purpose; see [Routing & access](../../04-web/routing-and-access.md)

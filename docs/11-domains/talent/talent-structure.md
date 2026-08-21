@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-08-18 · **Status:** current
 
-There is no account-level talent identity. `freelancer_profiles` is a marketplace
+There is no account-level talent identity. `talent_profiles` is a marketplace
 availability enrollment, not a person type —
 `profiles.role` was dropped 2026-08-10 (see
 [Proposals → identity and enrollment](../../13-proposals/identity-and-enrollment.md)).
@@ -15,7 +15,7 @@ live in teams and projects. Nothing about an account, only its positions, says
 ```text
 profiles
   |
-  +-- freelancer_profiles
+  +-- talent_profiles
   +-- user_skills / user_specializations / user_portfolios
   +-- user_rate_settings / user_stats / user_identity_documents
   +-- team_members ------------------------------+
@@ -27,7 +27,7 @@ profiles
 
 | Layer | Stored in | Meaning |
 | --- | --- | --- |
-| Discoverability | `freelancer_profiles.status` | `active` is included; `paused` is retained but hidden |
+| Discoverability | `talent_profiles.status` | `active` is included; `paused` is retained but hidden |
 | Professional identity | `user_*` tables | Skills, experience, rates, portfolio, verification, and statistics |
 | Team membership | `team_members` | Reusable roster and team-level role |
 | Project participation | `project_access` | Project role, origin label, and capability overrides |
@@ -58,7 +58,7 @@ profile record.
 | Table | Talent data used by discovery or delivery |
 | --- | --- |
 | `profiles` | Name, avatar, headline, location, email verification |
-| `freelancer_profiles` | Active/paused marketplace enrollment and lifecycle timestamps |
+| `talent_profiles` | Active/paused marketplace enrollment and lifecycle timestamps |
 | `user_skills` | Searchable skills |
 | `user_specializations` | Primary niche/category |
 | `user_rate_settings` | Availability, hourly rate, currency |
@@ -66,7 +66,7 @@ profile record.
 | `user_portfolios` | Work samples and portfolio evidence |
 | `user_identity_documents`, `user_verifications` | Identity-vetting evidence |
 
-`FreelancerEligibilityService` evaluates verified identity, complete rate settings, at least
+`TalentEligibilityService` evaluates complete rate settings, at least
 one portfolio item, and the profile basics `headline`, `bio`, and `country`. The result is
 available on demand through the eligibility endpoint and is enforced by go-live.
 

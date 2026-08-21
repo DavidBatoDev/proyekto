@@ -28,7 +28,6 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings/appear
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth/authorize'
-import { Route as MarketplaceTalentRouteImport } from './routes/marketplace/talent'
 import { Route as MarketplaceProjectPostingRouteImport } from './routes/marketplace/project-posting'
 import { Route as FreelancerInvitesRouteImport } from './routes/freelancer/invites'
 import { Route as AuthVerifyRouteImport } from './routes/auth/verify'
@@ -49,9 +48,11 @@ import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dash
 import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
+import { Route as MarketplaceTalentIndexRouteImport } from './routes/marketplace/talent/index'
 import { Route as MarketplaceConsultantIndexRouteImport } from './routes/marketplace/consultant/index'
 import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/teams/index'
-import { Route as MarketplaceFreelancerGoLiveRouteImport } from './routes/marketplace/freelancer/go-live'
+import { Route as MarketplaceTalentGoLiveRouteImport } from './routes/marketplace/talent/go-live'
+import { Route as MarketplaceTalentBrowseRouteImport } from './routes/marketplace/talent/browse'
 import { Route as MarketplaceFinancePortfolioRouteImport } from './routes/marketplace/finance/_portfolio'
 import { Route as MarketplaceFinanceContractIdRouteImport } from './routes/marketplace/finance/$contractId'
 import { Route as MarketplaceConsultantTemplatesRouteImport } from './routes/marketplace/consultant/templates'
@@ -217,11 +218,6 @@ const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
   path: '/oauth/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MarketplaceTalentRoute = MarketplaceTalentRouteImport.update({
-  id: '/talent',
-  path: '/talent',
-  getParentRoute: () => MarketplaceRouteRoute,
-} as any)
 const MarketplaceProjectPostingRoute =
   MarketplaceProjectPostingRouteImport.update({
     id: '/project-posting',
@@ -324,6 +320,11 @@ const MarketplaceCategoryRouteRoute =
     path: '/category',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const MarketplaceTalentIndexRoute = MarketplaceTalentIndexRouteImport.update({
+  id: '/talent/',
+  path: '/talent/',
+  getParentRoute: () => MarketplaceRouteRoute,
+} as any)
 const MarketplaceConsultantIndexRoute =
   MarketplaceConsultantIndexRouteImport.update({
     id: '/consultant/',
@@ -335,12 +336,16 @@ const ExecutionTeamsIndexRoute = ExecutionTeamsIndexRouteImport.update({
   path: '/teams/',
   getParentRoute: () => ExecutionRoute,
 } as any)
-const MarketplaceFreelancerGoLiveRoute =
-  MarketplaceFreelancerGoLiveRouteImport.update({
-    id: '/freelancer/go-live',
-    path: '/freelancer/go-live',
-    getParentRoute: () => MarketplaceRouteRoute,
-  } as any)
+const MarketplaceTalentGoLiveRoute = MarketplaceTalentGoLiveRouteImport.update({
+  id: '/talent/go-live',
+  path: '/talent/go-live',
+  getParentRoute: () => MarketplaceRouteRoute,
+} as any)
+const MarketplaceTalentBrowseRoute = MarketplaceTalentBrowseRouteImport.update({
+  id: '/talent/browse',
+  path: '/talent/browse',
+  getParentRoute: () => MarketplaceRouteRoute,
+} as any)
 const MarketplaceFinancePortfolioRoute =
   MarketplaceFinancePortfolioRouteImport.update({
     id: '/_portfolio',
@@ -786,7 +791,6 @@ export interface FileRoutesByFullPath {
   '/auth/verify': typeof AuthVerifyRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/marketplace/project-posting': typeof MarketplaceProjectPostingRoute
-  '/marketplace/talent': typeof MarketplaceTalentRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -807,9 +811,11 @@ export interface FileRoutesByFullPath {
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
   '/marketplace/consultant/templates': typeof MarketplaceConsultantTemplatesRoute
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
-  '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
+  '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
+  '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
+  '/marketplace/talent': typeof MarketplaceTalentIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
@@ -896,7 +902,6 @@ export interface FileRoutesByTo {
   '/auth/verify': typeof AuthVerifyRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/marketplace/project-posting': typeof MarketplaceProjectPostingRoute
-  '/marketplace/talent': typeof MarketplaceTalentRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -916,9 +921,11 @@ export interface FileRoutesByTo {
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
   '/marketplace/consultant/templates': typeof MarketplaceConsultantTemplatesRoute
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
-  '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
+  '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
+  '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
+  '/marketplace/talent': typeof MarketplaceTalentIndexRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
   '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
@@ -1008,7 +1015,6 @@ export interface FileRoutesById {
   '/auth/verify': typeof AuthVerifyRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
   '/marketplace/project-posting': typeof MarketplaceProjectPostingRoute
-  '/marketplace/talent': typeof MarketplaceTalentRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
@@ -1030,9 +1036,11 @@ export interface FileRoutesById {
   '/marketplace/consultant/templates': typeof MarketplaceConsultantTemplatesRoute
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
   '/marketplace/finance/_portfolio': typeof MarketplaceFinancePortfolioRouteWithChildren
-  '/marketplace/freelancer/go-live': typeof MarketplaceFreelancerGoLiveRoute
+  '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
+  '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant/': typeof MarketplaceConsultantIndexRoute
+  '/marketplace/talent/': typeof MarketplaceTalentIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/_execution/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/_execution/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
@@ -1124,7 +1132,6 @@ export interface FileRouteTypes {
     | '/auth/verify'
     | '/freelancer/invites'
     | '/marketplace/project-posting'
-    | '/marketplace/talent'
     | '/oauth/authorize'
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
@@ -1145,9 +1152,11 @@ export interface FileRouteTypes {
     | '/marketplace/consultant/browse'
     | '/marketplace/consultant/templates'
     | '/marketplace/finance/$contractId'
-    | '/marketplace/freelancer/go-live'
+    | '/marketplace/talent/browse'
+    | '/marketplace/talent/go-live'
     | '/teams'
     | '/marketplace/consultant'
+    | '/marketplace/talent'
     | '/teams/$teamId/time'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
@@ -1234,7 +1243,6 @@ export interface FileRouteTypes {
     | '/auth/verify'
     | '/freelancer/invites'
     | '/marketplace/project-posting'
-    | '/marketplace/talent'
     | '/oauth/authorize'
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
@@ -1254,9 +1262,11 @@ export interface FileRouteTypes {
     | '/marketplace/consultant/browse'
     | '/marketplace/consultant/templates'
     | '/marketplace/finance/$contractId'
-    | '/marketplace/freelancer/go-live'
+    | '/marketplace/talent/browse'
+    | '/marketplace/talent/go-live'
     | '/teams'
     | '/marketplace/consultant'
+    | '/marketplace/talent'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
     | '/project/$projectId/deliverables'
@@ -1345,7 +1355,6 @@ export interface FileRouteTypes {
     | '/auth/verify'
     | '/freelancer/invites'
     | '/marketplace/project-posting'
-    | '/marketplace/talent'
     | '/oauth/authorize'
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
@@ -1367,9 +1376,11 @@ export interface FileRouteTypes {
     | '/marketplace/consultant/templates'
     | '/marketplace/finance/$contractId'
     | '/marketplace/finance/_portfolio'
-    | '/marketplace/freelancer/go-live'
+    | '/marketplace/talent/browse'
+    | '/marketplace/talent/go-live'
     | '/_execution/teams/'
     | '/marketplace/consultant/'
+    | '/marketplace/talent/'
     | '/_execution/teams/$teamId/time'
     | '/_execution/project/$projectId/change-requests'
     | '/_execution/project/$projectId/decisions'
@@ -1589,13 +1600,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/marketplace/talent': {
-      id: '/marketplace/talent'
-      path: '/talent'
-      fullPath: '/marketplace/talent'
-      preLoaderRoute: typeof MarketplaceTalentRouteImport
-      parentRoute: typeof MarketplaceRouteRoute
-    }
     '/marketplace/project-posting': {
       id: '/marketplace/project-posting'
       path: '/project-posting'
@@ -1736,6 +1740,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceCategoryRouteRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/marketplace/talent/': {
+      id: '/marketplace/talent/'
+      path: '/talent'
+      fullPath: '/marketplace/talent'
+      preLoaderRoute: typeof MarketplaceTalentIndexRouteImport
+      parentRoute: typeof MarketplaceRouteRoute
+    }
     '/marketplace/consultant/': {
       id: '/marketplace/consultant/'
       path: '/consultant'
@@ -1750,11 +1761,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionTeamsIndexRouteImport
       parentRoute: typeof ExecutionRoute
     }
-    '/marketplace/freelancer/go-live': {
-      id: '/marketplace/freelancer/go-live'
-      path: '/freelancer/go-live'
-      fullPath: '/marketplace/freelancer/go-live'
-      preLoaderRoute: typeof MarketplaceFreelancerGoLiveRouteImport
+    '/marketplace/talent/go-live': {
+      id: '/marketplace/talent/go-live'
+      path: '/talent/go-live'
+      fullPath: '/marketplace/talent/go-live'
+      preLoaderRoute: typeof MarketplaceTalentGoLiveRouteImport
+      parentRoute: typeof MarketplaceRouteRoute
+    }
+    '/marketplace/talent/browse': {
+      id: '/marketplace/talent/browse'
+      path: '/talent/browse'
+      fullPath: '/marketplace/talent/browse'
+      preLoaderRoute: typeof MarketplaceTalentBrowseRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
     '/marketplace/finance/_portfolio': {
@@ -2324,28 +2342,30 @@ interface MarketplaceRouteRouteChildren {
   MarketplaceCategoryRouteRoute: typeof MarketplaceCategoryRouteRouteWithChildren
   MarketplaceFinanceRouteRoute: typeof MarketplaceFinanceRouteRouteWithChildren
   MarketplaceProjectPostingRoute: typeof MarketplaceProjectPostingRoute
-  MarketplaceTalentRoute: typeof MarketplaceTalentRoute
   MarketplaceIndexRoute: typeof MarketplaceIndexRoute
   MarketplaceConsultantProfileIdRoute: typeof MarketplaceConsultantProfileIdRoute
   MarketplaceConsultantApplyRoute: typeof MarketplaceConsultantApplyRoute
   MarketplaceConsultantBrowseRoute: typeof MarketplaceConsultantBrowseRoute
   MarketplaceConsultantTemplatesRoute: typeof MarketplaceConsultantTemplatesRoute
-  MarketplaceFreelancerGoLiveRoute: typeof MarketplaceFreelancerGoLiveRoute
+  MarketplaceTalentBrowseRoute: typeof MarketplaceTalentBrowseRoute
+  MarketplaceTalentGoLiveRoute: typeof MarketplaceTalentGoLiveRoute
   MarketplaceConsultantIndexRoute: typeof MarketplaceConsultantIndexRoute
+  MarketplaceTalentIndexRoute: typeof MarketplaceTalentIndexRoute
 }
 
 const MarketplaceRouteRouteChildren: MarketplaceRouteRouteChildren = {
   MarketplaceCategoryRouteRoute: MarketplaceCategoryRouteRouteWithChildren,
   MarketplaceFinanceRouteRoute: MarketplaceFinanceRouteRouteWithChildren,
   MarketplaceProjectPostingRoute: MarketplaceProjectPostingRoute,
-  MarketplaceTalentRoute: MarketplaceTalentRoute,
   MarketplaceIndexRoute: MarketplaceIndexRoute,
   MarketplaceConsultantProfileIdRoute: MarketplaceConsultantProfileIdRoute,
   MarketplaceConsultantApplyRoute: MarketplaceConsultantApplyRoute,
   MarketplaceConsultantBrowseRoute: MarketplaceConsultantBrowseRoute,
   MarketplaceConsultantTemplatesRoute: MarketplaceConsultantTemplatesRoute,
-  MarketplaceFreelancerGoLiveRoute: MarketplaceFreelancerGoLiveRoute,
+  MarketplaceTalentBrowseRoute: MarketplaceTalentBrowseRoute,
+  MarketplaceTalentGoLiveRoute: MarketplaceTalentGoLiveRoute,
   MarketplaceConsultantIndexRoute: MarketplaceConsultantIndexRoute,
+  MarketplaceTalentIndexRoute: MarketplaceTalentIndexRoute,
 }
 
 const MarketplaceRouteRouteWithChildren =

@@ -40,18 +40,18 @@ function dependencies(
   };
 }
 
-describe('MarketplaceService freelancer enrollment', () => {
+describe('MarketplaceService talent enrollment', () => {
   it('rejects go-live with a structured missing-requirements response', async () => {
     const supabase = { from: jest.fn() };
     const { service } = dependencies(supabase, {
       eligible: false,
-      missing: ['identity', 'portfolio'],
+      missing: ['profile_basics', 'portfolio'],
     });
 
     await expect(service.goLive('user-1')).rejects.toMatchObject({
       response: {
-        message: 'Complete your freelancer profile before going live.',
-        missing: ['identity', 'portfolio'],
+        message: 'Complete your talent profile before going live.',
+        missing: ['profile_basics', 'portfolio'],
       },
     });
     expect(supabase.from).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe('MarketplaceService freelancer enrollment', () => {
     );
   });
 
-  it('blocks invites to paused freelancers', async () => {
+  it('blocks invites to paused talent', async () => {
     const consultantBuilder = {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
@@ -136,7 +136,7 @@ describe('MarketplaceService freelancer enrollment', () => {
         .fn()
         .mockResolvedValue({ data: { id: 'project-1' }, error: null }),
     };
-    const freelancerBuilder = {
+    const talentBuilder = {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
@@ -145,15 +145,15 @@ describe('MarketplaceService freelancer enrollment', () => {
       from: (table: string) => {
         if (table === 'consultant_profiles') return consultantBuilder;
         if (table === 'projects') return projectBuilder;
-        if (table === 'freelancer_profiles') return freelancerBuilder;
+        if (table === 'talent_profiles') return talentBuilder;
         throw new Error(`Unexpected table: ${table}`);
       },
     });
 
     await expect(
-      service.inviteFreelancer('consultant-1', {
+      service.inviteTalent('consultant-1', {
         projectId: 'project-1',
-        inviteeId: 'freelancer-1',
+        inviteeId: 'talent-1',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(authorization.assertRole).toHaveBeenCalledWith(
@@ -161,7 +161,7 @@ describe('MarketplaceService freelancer enrollment', () => {
       'project-1',
       'admin',
     );
-    expect(freelancerBuilder.eq).toHaveBeenCalledWith('status', 'active');
+    expect(talentBuilder.eq).toHaveBeenCalledWith('status', 'active');
   });
 
   it('uses an inner active-enrollment join for the browse pool', async () => {
@@ -182,14 +182,14 @@ describe('MarketplaceService freelancer enrollment', () => {
         table === 'consultant_profiles' ? consultantBuilder : profilesBuilder,
     });
 
-    await expect(service.getFreelancers('consultant-1', {})).resolves.toEqual(
+    await expect(service.getTalent('consultant-1', {})).resolves.toEqual(
       [],
     );
     expect(profilesBuilder.select).toHaveBeenCalledWith(
-      expect.stringContaining('freelancer_profiles!inner'),
+      expect.stringContaining('talent_profiles!inner'),
     );
     expect(profilesBuilder.eq).toHaveBeenCalledWith(
-      'freelancer_profile.status',
+      'talent_profile.status',
       'active',
     );
   });

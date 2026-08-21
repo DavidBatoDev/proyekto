@@ -6,7 +6,7 @@
 import apiClient from "@/api/axios";
 import type {
 	ConsultantEnrollmentStatus,
-	FreelancerEnrollmentStatus,
+	TalentEnrollmentStatus,
 } from "@/types/profile.types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ export interface FullProfile {
 	gender: string | null;
 	date_of_birth: string | null;
 	consultant_status: ConsultantEnrollmentStatus | null;
-	freelancer_status: FreelancerEnrollmentStatus | null;
+	talent_status: TalentEnrollmentStatus | null;
 	is_consultant_verified: boolean;
 	is_public: boolean;
 	created_at: string;
@@ -249,18 +249,17 @@ export interface UpdateProfileData {
 	avatar_url?: string | null;
 }
 
-export type FreelancerRequirement =
-	| "identity"
+export type TalentRequirement =
 	| "rate_settings"
 	| "portfolio"
 	| "profile_basics";
 
-export interface FreelancerEligibility {
+export interface TalentEligibility {
 	eligible: boolean;
-	missing: FreelancerRequirement[];
+	missing: TalentRequirement[];
 }
 
-export interface MarketplaceFreelancerCard {
+export interface MarketplaceTalentCard {
 	id: string;
 	display_name: string | null;
 	avatar_url: string | null;
@@ -274,7 +273,7 @@ export interface MarketplaceFreelancerCard {
 	skills: Array<{ id: string; name: string; slug: string }>;
 }
 
-export interface MarketplaceFreelancersQuery {
+export interface MarketplaceTalentQuery {
 	search?: string;
 	skill?: string;
 	availability?: AvailabilityStatus;
@@ -566,16 +565,16 @@ class ProfileService {
 		return data.data;
 	}
 
-	async getGoLiveEligibility(): Promise<FreelancerEligibility> {
+	async getGoLiveEligibility(): Promise<TalentEligibility> {
 		const { data } = await apiClient.get(
 			`${this.marketplaceBase}/go-live/eligibility`,
 		);
 		return data.data;
 	}
 
-	async getMarketplaceFreelancers(
-		filters: MarketplaceFreelancersQuery = {},
-	): Promise<MarketplaceFreelancerCard[]> {
+	async getMarketplaceTalent(
+		filters: MarketplaceTalentQuery = {},
+	): Promise<MarketplaceTalentCard[]> {
 		const { data } = await apiClient.get(
 			`${this.marketplaceBase}/freelancers`,
 			{
@@ -585,7 +584,7 @@ class ProfileService {
 		return data.data;
 	}
 
-	async inviteFreelancer(payload: {
+	async inviteTalent(payload: {
 		projectId: string;
 		inviteeId: string;
 		message?: string;

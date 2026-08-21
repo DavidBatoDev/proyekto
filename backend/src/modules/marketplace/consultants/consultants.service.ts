@@ -963,7 +963,7 @@ export class ConsultantsService {
   }
 
   /**
-   * Skills are ACCOUNT-level (`user_skills`), shared with the freelancer
+   * Skills are ACCOUNT-level (`user_skills`), shared with the talent
    * profile. Rendering them here is a second view of one set, not a copy.
    */
   private async findSkills(id: string): Promise<ConsultantPublicSkill[]> {

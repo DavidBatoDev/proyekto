@@ -1,4 +1,4 @@
-import { FreelancerEligibilityService } from './freelancer-eligibility.service';
+import { TalentEligibilityService } from './talent-eligibility.service';
 
 /**
  * Helpers — same thenable pattern as ProjectAuthorizationService spec.
@@ -17,9 +17,9 @@ function thenable(response: { data?: any; error?: any; count?: number }) {
 /**
  * Builds a service whose `from()` returns responses by table name. Each
  * table key may be a single response (used once) or an array (used in
- * order). Lets us script the four parallel lookups eligibility makes.
+ * order). Lets us script the parallel lookups eligibility makes.
  */
-function buildService(perTable: Record<string, any | any[]>) {
+function buildService(perTable: Record<string, any>) {
   const queues: Record<string, any[]> = {};
   for (const [table, value] of Object.entries(perTable)) {
     queues[table] = Array.isArray(value) ? [...value] : [value];
@@ -33,11 +33,10 @@ function buildService(perTable: Record<string, any | any[]>) {
       return queue.shift();
     },
   };
-  return new FreelancerEligibilityService(supabase);
+  return new TalentEligibilityService(supabase);
 }
 
 const passingResponses = {
-  user_identity_documents: thenable({ count: 1, error: null }),
   user_rate_settings: thenable({
     data: { hourly_rate: 80, currency: 'USD', availability: 'available' },
     error: null,
@@ -53,37 +52,28 @@ const passingResponses = {
   }),
 };
 
-describe('FreelancerEligibilityService.check', () => {
-  it('returns eligible=true with empty missing[] when all 4 criteria pass', async () => {
+describe('TalentEligibilityService.check', () => {
+  it('returns eligible=true with empty missing[] when all 3 criteria pass', async () => {
     const service = buildService(passingResponses);
     const result = await service.check('u1');
     expect(result.eligible).toBe(true);
     expect(result.missing).toEqual([]);
   });
 
-  it('flags identity when no verified ID document AND no verifications row', async () => {
+  it('stays eligible with NO identity document at all', async () => {
+    // Identity was removed as a go-live gate: `is_verified` is admin-set, so
+    // requiring it meant talent could upload a passport and still be
+    // refused with no visibility into the queue. This asserts the new rule
+    // rather than merely dropping the old test, so re-adding the gate fails
+    // here first.
     const service = buildService({
-      user_identity_documents: thenable({ count: 0, error: null }),
-      user_verifications: thenable({ count: 0, error: null }),
       user_rate_settings: passingResponses.user_rate_settings,
       user_portfolios: passingResponses.user_portfolios,
       profiles: passingResponses.profiles,
     });
     const result = await service.check('u1');
-    expect(result.eligible).toBe(false);
-    expect(result.missing).toContain('identity');
-  });
-
-  it('passes identity when verifications row marks it verified (fallback path)', async () => {
-    const service = buildService({
-      user_identity_documents: thenable({ count: 0, error: null }),
-      user_verifications: thenable({ count: 1, error: null }),
-      user_rate_settings: passingResponses.user_rate_settings,
-      user_portfolios: passingResponses.user_portfolios,
-      profiles: passingResponses.profiles,
-    });
-    const result = await service.check('u1');
-    expect(result.missing).not.toContain('identity');
+    expect(result.eligible).toBe(true);
+    expect(result.missing).toEqual([]);
   });
 
   it('flags rate_settings when row is missing', async () => {
@@ -140,10 +130,8 @@ describe('FreelancerEligibilityService.check', () => {
     expect(result.missing).toContain('profile_basics');
   });
 
-  it('reports all 4 missing when nothing is filled in', async () => {
+  it('reports all 3 missing when nothing is filled in', async () => {
     const service = buildService({
-      user_identity_documents: thenable({ count: 0, error: null }),
-      user_verifications: thenable({ count: 0, error: null }),
       user_rate_settings: thenable({ data: null, error: null }),
       user_portfolios: thenable({ count: 0, error: null }),
       profiles: thenable({ data: null, error: null }),
@@ -151,7 +139,6 @@ describe('FreelancerEligibilityService.check', () => {
     const result = await service.check('u1');
     expect(result.eligible).toBe(false);
     expect(result.missing.sort()).toEqual([
-      'identity',
       'portfolio',
       'profile_basics',
       'rate_settings',

@@ -4,7 +4,7 @@ import { Layers3, ShieldCheck, Sparkles, Users } from "lucide-react";
 const metrics = [
 	{ label: "Roadmaps generated", value: "12,400+" },
 	{ label: "Consultants matched", value: "1,150+" },
-	{ label: "Freelancers activated", value: "4,900+" },
+	{ label: "Talent activated", value: "4,900+" },
 ];
 
 const logos = ["Vertex Labs", "Northline", "Blueorbit", "Metrica", "Loftiq"];
@@ -24,7 +24,7 @@ export function TrustSection() {
 						</h2>
 						<p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
 							Proyekto blends roadmap intelligence, consultant guidance, and
-							freelancer execution in one coordinated system.
+							talent execution in one coordinated system.
 						</p>
 					</div>
 

@@ -128,7 +128,7 @@ export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
 	scope_clarification: "Scope clarification",
 	retainer_sync: "Retainer sync",
 	client_consultant: "Client ↔ Consultant",
-	consultant_freelancer: "Consultant ↔ Freelancer",
+	consultant_freelancer: "Consultant ↔ Talent",
 	consultation: "Consultation",
 };
 

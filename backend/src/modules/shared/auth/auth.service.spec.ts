@@ -11,7 +11,7 @@ function buildProfile(overrides: Partial<AuthProfile> = {}): AuthProfile {
     display_name: 'A',
     avatar_url: null,
     consultant_status: null,
-    freelancer_status: null,
+    talent_status: null,
     is_consultant_verified: false,
     is_public: false,
     bio: null,

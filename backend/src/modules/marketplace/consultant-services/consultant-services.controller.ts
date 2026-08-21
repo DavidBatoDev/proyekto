@@ -27,7 +27,7 @@ import {
  *
  * Consultant-exclusive by design, which is why it is its own controller rather
  * than more routes on `/api/profile`. That one is the ACCOUNT-level surface
- * shared with freelancers — skills, rates, experience — and putting a
+ * shared with talent — skills, rates, experience — and putting a
  * `ConsultantOnlyGuard` route inside it would make half of it
  * consultant-only and invite the next person to add a consultant field to
  * `UpdateProfileBasicDto`.

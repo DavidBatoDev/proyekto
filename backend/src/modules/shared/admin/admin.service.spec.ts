@@ -3,7 +3,7 @@ import { AdminService } from './admin.service';
 describe('AdminService cache consistency', () => {
   const cacheInvalidation = {
     invalidateConsultantsCache: jest.fn().mockResolvedValue(undefined),
-    invalidateMarketplaceFreelancersCache: jest
+    invalidateMarketplaceTalentCache: jest
       .fn()
       .mockResolvedValue(undefined),
     invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
@@ -59,7 +59,7 @@ describe('AdminService cache consistency', () => {
       'user-1',
     );
     expect(
-      cacheInvalidation.invalidateMarketplaceFreelancersCache,
+      cacheInvalidation.invalidateMarketplaceTalentCache,
     ).toHaveBeenCalledTimes(1);
     expect(notifications.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -131,7 +131,7 @@ describe('AdminService cache consistency', () => {
         'consultant-1',
       );
       expect(
-        cacheInvalidation.invalidateMarketplaceFreelancersCache,
+        cacheInvalidation.invalidateMarketplaceTalentCache,
       ).toHaveBeenCalledTimes(1);
       expect(notifications.createNotification).toHaveBeenCalledWith(
         expect.objectContaining({ type_name: notificationType }),

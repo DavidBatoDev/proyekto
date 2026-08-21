@@ -15,7 +15,7 @@ describe("isSurveySurface", () => {
 	});
 
 	it("fires on the browse surfaces", () => {
-		expect(isSurveySurface("/marketplace/talent")).toBe(true);
+		expect(isSurveySurface("/marketplace/talent/browse")).toBe(true);
 		expect(isSurveySurface("/marketplace/consultant/browse")).toBe(true);
 	});
 

@@ -20,7 +20,7 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import {
-  InviteFreelancerDto,
+  InviteTalentDto,
   MarketplaceQueryDto,
   RespondInviteDto,
 } from './dto/marketplace.dto';
@@ -39,19 +39,19 @@ export class MarketplaceController {
   }
 
   /**
-   * Browse the freelancer pool. Gated by the ConsultantOnlyGuard so only
-   * verified consultants see freelancers — clients never browse them
-   * directly. The MarketplaceService.getFreelancers also calls
+   * Browse the talent pool. Gated by the ConsultantOnlyGuard so only
+   * verified consultants see talent — clients never browse them
+   * directly. The MarketplaceService.getTalent also calls
    * ensureConsultant() internally as belt-and-suspenders.
    */
   @Get('freelancers')
   @UseGuards(ConsultantOnlyGuard)
-  getFreelancers(
+  getTalent(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: MarketplaceQueryDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.marketplaceService.getFreelancers(user.id, query, {
+    return this.marketplaceService.getTalent(user.id, query, {
       onCacheStatus: (status) => this.setCacheHeader(response, status),
     });
   }
@@ -73,11 +73,11 @@ export class MarketplaceController {
 
   @Post('invite')
   @UseGuards(ConsultantOnlyGuard)
-  inviteFreelancer(
+  inviteTalent(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: InviteFreelancerDto,
+    @Body() dto: InviteTalentDto,
   ) {
-    return this.marketplaceService.inviteFreelancer(user.id, dto);
+    return this.marketplaceService.inviteTalent(user.id, dto);
   }
 
   @Get('invites/me')

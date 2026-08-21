@@ -46,7 +46,7 @@ export class AdminService {
 
     await Promise.all([
       this.cacheInvalidation.invalidateConsultantsCache(approvedUserId),
-      this.cacheInvalidation.invalidateMarketplaceFreelancersCache(),
+      this.cacheInvalidation.invalidateMarketplaceTalentCache(),
     ]);
     await this.emitNotification({
       user_id: approvedUserId,
@@ -191,7 +191,7 @@ export class AdminService {
   ): Promise<void> {
     await Promise.all([
       this.cacheInvalidation.invalidateConsultantsCache(userId),
-      this.cacheInvalidation.invalidateMarketplaceFreelancersCache(),
+      this.cacheInvalidation.invalidateMarketplaceTalentCache(),
     ]);
     await this.emitNotification({
       user_id: userId,

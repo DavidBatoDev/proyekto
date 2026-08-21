@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	attachMarketplaceEnrollmentFields,
 	consultantStatusFromEmbed,
-	freelancerStatusFromEmbed,
 	PROFILE_WITH_ENROLLMENT_SELECT,
+	talentStatusFromEmbed,
 } from "./marketplace-enrollment";
 
 describe("PROFILE_WITH_ENROLLMENT_SELECT", () => {
@@ -15,7 +15,7 @@ describe("PROFILE_WITH_ENROLLMENT_SELECT", () => {
 			"consultant_profile:consultant_profiles",
 		);
 		expect(PROFILE_WITH_ENROLLMENT_SELECT).toContain(
-			"freelancer_profile:freelancer_profiles(status)",
+			"talent_profile:talent_profiles(status)",
 		);
 	});
 
@@ -53,11 +53,11 @@ describe("consultantStatusFromEmbed", () => {
 	});
 });
 
-describe("freelancerStatusFromEmbed", () => {
+describe("talentStatusFromEmbed", () => {
 	it("accepts active and paused only", () => {
-		expect(freelancerStatusFromEmbed({ status: "active" })).toBe("active");
-		expect(freelancerStatusFromEmbed({ status: "paused" })).toBe("paused");
-		expect(freelancerStatusFromEmbed({ status: "verified" })).toBeNull();
+		expect(talentStatusFromEmbed({ status: "active" })).toBe("active");
+		expect(talentStatusFromEmbed({ status: "paused" })).toBe("paused");
+		expect(talentStatusFromEmbed({ status: "verified" })).toBeNull();
 	});
 });
 
@@ -66,12 +66,12 @@ describe("attachMarketplaceEnrollmentFields", () => {
 		const result = attachMarketplaceEnrollmentFields({
 			id: "user-1",
 			consultant_profile: { status: "verified" },
-			freelancer_profile: null,
+			talent_profile: null,
 		});
 
 		expect(result.consultant_status).toBe("verified");
 		expect(result.is_consultant_verified).toBe(true);
-		expect(result.freelancer_status).toBeNull();
+		expect(result.talent_status).toBeNull();
 		expect(result.is_public).toBe(false);
 	});
 
@@ -87,16 +87,16 @@ describe("attachMarketplaceEnrollmentFields", () => {
 
 	it("marks an active freelancer public", () => {
 		const result = attachMarketplaceEnrollmentFields({
-			freelancer_profile: { status: "active" },
+			talent_profile: { status: "active" },
 		});
 		expect(result.is_public).toBe(true);
 	});
 
 	it("does not treat a paused freelancer as public", () => {
 		const result = attachMarketplaceEnrollmentFields({
-			freelancer_profile: { status: "paused" },
+			talent_profile: { status: "paused" },
 		});
-		expect(result.freelancer_status).toBe("paused");
+		expect(result.talent_status).toBe("paused");
 		expect(result.is_public).toBe(false);
 	});
 
@@ -104,11 +104,11 @@ describe("attachMarketplaceEnrollmentFields", () => {
 		const result = attachMarketplaceEnrollmentFields({
 			id: "user-1",
 			consultant_profile: { status: "verified" },
-			freelancer_profile: { status: "active" },
+			talent_profile: { status: "active" },
 		}) as Record<string, unknown>;
 
 		expect(result.consultant_profile).toBeUndefined();
-		expect(result.freelancer_profile).toBeUndefined();
+		expect(result.talent_profile).toBeUndefined();
 		expect(result.id).toBe("user-1");
 	});
 
@@ -116,7 +116,7 @@ describe("attachMarketplaceEnrollmentFields", () => {
 		const result = attachMarketplaceEnrollmentFields({ id: "user-1" });
 
 		expect(result.consultant_status).toBeNull();
-		expect(result.freelancer_status).toBeNull();
+		expect(result.talent_status).toBeNull();
 		expect(result.is_consultant_verified).toBe(false);
 		expect(result.is_public).toBe(false);
 	});

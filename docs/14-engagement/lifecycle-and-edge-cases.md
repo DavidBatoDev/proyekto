@@ -106,7 +106,7 @@ editing approved evidence invisibly.
 | Duplicate final-sign request | Row lock makes activation idempotent |
 | Same parties and project have multiple contracts | Multiple Talent contracts are allowed. One signed Client-services contract governs project billing until finance supports parallel Client agreements. |
 | Consultant hires a non-public account | Allowed through a private Talent contract |
-| Freelancer pauses marketplace listing | Existing/private engagements continue |
+| Talent pauses marketplace listing | Existing/private engagements continue |
 | Consultant is suspended or revoked | New marketplace/signing actions stop; history and in-flight execution are preserved |
 | Party receives a raise | Signed prospective amendment effective today or later; same engagement if parties are unchanged |
 | Executed engagement needs a signature correction | Do not unsign it: amend or end the engagement so its effective-dated settings and rates remain legally coherent. |

@@ -58,7 +58,7 @@ const topRowTiles = [
 	{ label: "Notifications", icon: Bell },
 	{ label: "Consultant Marketplace", icon: Store },
 	{ label: "Consultant Browse", icon: UserRoundSearch },
-	{ label: "Freelancer Invites", icon: Users },
+	{ label: "Talent Invites", icon: Users },
 	{ label: "Template Roadmaps", icon: FileCheck2 },
 	{ label: "Shared With Me", icon: Share2 },
 ];
@@ -80,7 +80,7 @@ const middleSideLeftTiles = [
 
 const middleSideRightTiles = [
 	{ label: "Consultant Apply", icon: BriefcaseBusiness },
-	{ label: "Freelancer Go Live", icon: UsersRound },
+	{ label: "Talent Go Live", icon: UsersRound },
 	{ label: "Consultant Templates", icon: FileCheck2 },
 	{ label: "Admin Applications", icon: FileText },
 	{ label: "Admin Match", icon: Target },

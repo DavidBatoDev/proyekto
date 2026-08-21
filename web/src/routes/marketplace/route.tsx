@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
 import { MarketplaceSurveyGate } from "@/components/marketplace/survey/MarketplaceSurveyGate";
 
 /**
@@ -26,6 +27,15 @@ import { MarketplaceSurveyGate } from "@/components/marketplace/survey/Marketpla
  */
 export const Route = createFileRoute("/marketplace")({
 	component: MarketplaceLayout,
+	/**
+	 * Without this, an unmatched `/marketplace/*` path renders this layout with
+	 * an empty Outlet -- a blank page -- instead of bubbling to the root's
+	 * handler. That matters because `NotFoundRoute` is what forwards legacy
+	 * paths: `/freelancer/go-live` redirected correctly while
+	 * `/marketplace/freelancer/go-live` sat on a blank screen, purely because
+	 * one of them reached the root handler and the other did not.
+	 */
+	notFoundComponent: NotFoundRoute,
 });
 
 function MarketplaceLayout() {

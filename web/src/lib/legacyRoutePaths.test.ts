@@ -36,7 +36,7 @@ describe("mapLegacyPath", () => {
 
 	it("sends the old consultant talent pool to its renamed home", () => {
 		expect(mapLegacyPath("/consultant/marketplace")).toBe(
-			"/marketplace/talent",
+			"/marketplace/talent/browse",
 		);
 	});
 

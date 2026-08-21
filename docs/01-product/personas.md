@@ -48,7 +48,7 @@ Different data answers different authorization questions:
 - `project_access.role` and its capability overrides determine what a member can do
   inside a project. The default ladder is
   `owner > admin > editor > commenter > viewer`.
-- `freelancer_profiles.status = 'active'` controls whether a talent profile is
+- `talent_profiles.status = 'active'` controls whether a talent profile is
   discoverable; the owner may pause and resume it.
 
 Nothing gates on a declared identity: signup is lane-free, onboarding records only

@@ -4,13 +4,13 @@
 
 > **⚠️ Proposed runtime — not built.** P4b's expand schema is applied, but its runtime is
 > inactive; P4c's client projection remains undesigned. Phases 1–3,
-> consultant/freelancer enrollment, and P4a's contract-seat correctness slice are live.
+> consultant/talent enrollment, and P4a's contract-seat correctness slice are live.
 
 Proyekto has tried to answer "what kind of user is this?" twice — first with a switchable
 `persona_type` (removed in `20260804170019_remove_active_persona.sql`), then with a durable
 `account_role` enum (`20260809130000_account_role_foundation.sql`, one day before this
 proposal). Both failed the same way for opposite reasons, because both asked the wrong
-question: client, freelancer, and consultant are not kinds of *people* — they are positions
+question: client, talent, and consultant are not kinds of *people* — they are positions
 in a *transaction*. This proposal removes account-level roles for good and replaces them with
 three explicit, opt-in, concurrent **enrollment** tables on the marketplace side, while the
 execution side (projects, roadmaps, kanban, chat, teams) becomes role-free and universal.
@@ -22,7 +22,7 @@ Every account-level role model generated the same family of unanswerable questio
 
 | Question forced by `profiles.role` | Why it has no good answer |
 | --- | --- |
-| "Why would a freelancer create a project?" | It's their workspace. They're the *owner*. Whether they are anyone's freelancer is a fact about a contract that may not exist yet |
+| "Why would a talent create a project?" | It's their workspace. They're the *owner*. Whether they are anyone's talent is a fact about a contract that may not exist yet |
 | "A consultant creates a project — who is the client?" | Nobody, and that's fine. A client only comes into existence when a contract attaches. The schema demanded an answer anyway |
 | "Can a consultant hire another consultant?" | Under exclusive roles: second account or dead end. In reality: two contracts, same person on opposite party columns |
 | "The user signed up as a client but now wants to find work" | Under a durable enum: support ticket or misdeclared account. The stored identity diverges from actual behaviour and every gate built on it starts lying |
@@ -51,7 +51,7 @@ the pattern `admin_profiles` already uses for platform administration.
 erDiagram
     profiles ||--o| admin_profiles : "platform admin"
     profiles ||--o| consultant_profiles : "vetted seller"
-    profiles ||--o| freelancer_profiles : "available for work"
+    profiles ||--o| talent_profiles : "available for work"
     profiles ||--o| client_profiles : "billing entity (deferred)"
     consultant_profiles ||--o{ contracts : "consultant seat (FK-enforced)"
     profiles ||--o{ contracts : "client seat"
@@ -63,7 +63,7 @@ erDiagram
         uuid user_id PK-FK
         text status "pending | verified | suspended | revoked"
     }
-    freelancer_profiles {
+    talent_profiles {
         uuid user_id PK-FK
         text status "active | paused"
     }
@@ -82,7 +82,7 @@ erDiagram
 | `profiles` | The human: identity, avatar, settings. Universal — every user, no role column | Signup (`handle_new_user()`) | User |
 | `admin_profiles` | Platform administration capability. **Already exists**; the pattern the others copy | Manual grant | Platform |
 | `consultant_profiles` | Vetted seller capability and lifecycle audit (replaces `is_consultant_verified`; shared storefront/rate data stays in `user_*`) | Admin approval creates or re-verifies the row | **Admin-granted**: `verified → suspended/revoked`, `suspended → verified`, re-approval → `verified` |
-| `freelancer_profiles` | Public availability declaration — gates the *public pool only*; roster membership never requires it | Completing the go-live flow | **Self-service**: `active ⇄ paused` |
+| `talent_profiles` | Public availability declaration — gates the *public pool only*; roster membership never requires it | Completing the go-live flow | **Self-service**: `active ⇄ paused` |
 | `client_profiles` | Billing entity (company, address, tax) | *Deferred* — system-creates on first published posting or funded contract, when an invoice actually needs it | System; lapses |
 
 An **enrollment** is a deliberate act (approval, go live, publish) that creates one of these
@@ -95,7 +95,7 @@ execution code never joins against them.
 Two implementation refinements are intentional:
 
 - `user_rate_settings` remains the shared per-user rate card because consultant
-  matchmaking and freelancer discovery both depend on it.
+  matchmaking and talent discovery both depend on it.
 - A consultant enrollment is created at approval, not application submission. Pending
   workflow state remains solely in `consultant_applications`, avoiding two competing
   state machines.
@@ -113,7 +113,7 @@ Two implementation refinements are intentional:
   client of** this contract?" and "**can** this user sign as a consultant?" are the only
   two valid forms.
 
-The no-bypass rules survive intact because they were never identity checks: the freelancer
+The no-bypass rules survive intact because they were never identity checks: the talent
 pool is visible **only** to verified consultants (the strictest gate in the system), and
 proposals come only from consultants. P4a adds the durable consultant contract seat and
 re-checks active enrollment inside the signing transaction; it does not make enrollment an
@@ -130,8 +130,8 @@ separate ceremony, never at signup.
 | Execution (projects, roadmaps, kanban, chat, teams) | Any user | Any user, per `share_role` |
 | Marketplace landing / consultant storefront directory | Anyone | — |
 | Post a project | Anyone can draft | **Publishing** = client-enrollment moment |
-| Freelancer pool + postings board | **Verified consultants only** | Proposing, roster invites — consultants only |
-| Go live / find work | Anyone sees the pitch | **Completing go-live** creates `freelancer_profiles` |
+| Talent pool + postings board | **Verified consultants only** | Proposing, roster invites — consultants only |
+| Go live / find work | Anyone sees the pitch | **Completing go-live** creates `talent_profiles` |
 | Become a consultant | Anyone | Submission creates application state; **admin approval** creates a verified `consultant_profiles` row |
 
 ## Edge-case policies (decided, not open)
@@ -174,7 +174,7 @@ it.
 | **P1** | Role deletion + simplified signup | Shipped 2026-08-11 |
 | **P2** | Durability fixes | Shipped 2026-08-11: contracts, invoices, and time logs survive severed relationships with snapshots; chat and finance authorization use `project_access`; project deletion blocks active financial records |
 | **P3** | Marketplace/execution reorganization | Shipped 2026-08-11: routes and modules grouped into `execution/*` / `marketplace/*` / shared; consultant-of-record moved to `project_access`; `projects.consultant_id` and unused fee columns dropped; dead payments surface removed |
-| **Enrollment** | Consultant and freelancer lifecycle tables | Shipped 2026-08-12: verified/suspended/revoked consultant capability, eligibility-enforced active/paused freelancer discovery, legacy flags retired |
+| **Enrollment** | Consultant and talent lifecycle tables | Shipped 2026-08-12: verified/suspended/revoked consultant capability, eligibility-enforced active/paused talent discovery, legacy flags retired |
 | **P4a** | Contract positions + correctness | Shipped 2026-08-13: durable consultant seat, immutable terminal parties, enrollment re-check at signing, severed position reads, client-party signing, client-cost leak closures, exact invoice-contract recomposition |
 | **P4b** | Engagement link | Expand schema applied; runtime not built: bilateral engagements, generic contract positions, project links/assignments, contract-authoritative pricing, and separate client-revenue/talent-cost time flows; see [Engagements](../14-engagement/README.md) |
 | **P4c** | Client projection | Proposed: reconcile project-backed client read access and handover with the organizations fan-out design before creating `client_profiles` |
@@ -232,8 +232,8 @@ snapshots never reprice. See
 | --- | --- | --- |
 | 1 | Delete `profiles.role` outright | Renaming it to a `signup_intent` personalization column — considered at length; deferred because simplified signup asks no intent question yet. May return as a nullable, switchable, never-authz column if onboarding personalization needs it |
 | 2 | Three separate enrollment tables | One polymorphic `marketplace_profiles` with `type` — sparse columns, mixed state machines, no clean consultant-seat FK |
-| 3 | Enrollment at approval (consultant) or go-live (freelancer), inline | Enrollment at signup — recreates the lane problem one screen later, at peak drop-off |
-| 4 | Roster membership independent of `freelancer_profiles` | Auto-enrolling roster invitees — silent enrollment, the failure mode the model exists to prevent |
+| 3 | Enrollment at approval (consultant) or go-live (talent), inline | Enrollment at signup — recreates the lane problem one screen later, at peak drop-off |
+| 4 | Roster membership independent of `talent_profiles` | Auto-enrolling roster invitees — silent enrollment, the failure mode the model exists to prevent |
 | 5 | `client_profiles` deferred until billing needs it | Building it now — `contracts.client_user_id` covers every current need |
 | 6 | Contract positions immutable after signing | Editable party columns — a historical record must not be rewritable |
 | 7 | Vetting stays the one account-level capability | Deriving consultant-ness from contract history — vetting is genuinely a fact about the person, and it is the platform's differentiator |

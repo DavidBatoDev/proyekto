@@ -42,7 +42,7 @@ without receiving member-management or project-settings authority.
 ## Messaging boundaries
 
 The baseline allows all project members to message clients and consultants. Direct messaging
-and message sending begin at `commenter`. `chat.message_freelancers` is not granted below
+and message sending begin at `commenter`. `chat.message_talent` is not granted below
 `owner`, but consultant-origin access adds it regardless of project role. The model is a
 managed-delivery default, not a confidentiality boundary; explicit capabilities can override
 individual paths.

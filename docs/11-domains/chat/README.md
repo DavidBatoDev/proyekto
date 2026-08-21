@@ -38,7 +38,7 @@ authorization fallback.
 
 There is **no chat persona**. Access origin used to be mapped to one — `consultant` was the
 consultant; `client`, `personal_workspace` and `legacy` were the client; everything else was
-a freelancer — and that persona then let the "consultant" read every private channel without
+a talent — and that persona then let the "consultant" read every private channel without
 being a participant. Both the mapping and the bypass were removed on 2026-08-17, along with
 the `project_chat_role()` SQL helper. Membership of a private channel is now something a
 person is granted, not something an identity confers. The remaining helpers

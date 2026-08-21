@@ -44,6 +44,7 @@ import {
 	type FullProfile,
 	type ProficiencyLevel,
 	profileService,
+	type TalentRequirement,
 	type UpdateProfileData,
 	type UserCertification,
 	type UserEducation,
@@ -67,12 +68,18 @@ export const Route = createFileRoute("/profile/$profileId")({
 
 const profileKeys = { full: (id: string) => ["full-profile", id] as const };
 
-const FREELANCER_REQUIREMENT_LABELS = {
-	identity: "Verified identity",
+/**
+ * `satisfies` rather than a bare `as const`: this map is indexed by
+ * TalentRequirement, and a plain object is allowed to be a SUPERSET of the
+ * union. It carried a dead `identity` key for exactly that reason after the
+ * requirement was dropped -- nothing failed, it just quietly described a rule
+ * that no longer existed. This way the next divergence is a build error.
+ */
+const TALENT_REQUIREMENT_LABELS = {
 	rate_settings: "Rate and availability",
 	portfolio: "Portfolio item",
 	profile_basics: "Headline, bio, and country",
-} as const;
+} satisfies Record<TalentRequirement, string>;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function fmtDate(iso: string | null | undefined) {
@@ -254,10 +261,10 @@ function ProfilePage() {
 		enabled: isOwner,
 	});
 
-	const { data: freelancerEligibility } = useQuery({
-		queryKey: ["freelancerGoLiveEligibility", profileId],
+	const { data: talentEligibility } = useQuery({
+		queryKey: ["talentGoLiveEligibility", profileId],
 		queryFn: () => profileService.getGoLiveEligibility(),
-		enabled: isOwner && !!profile && profile.freelancer_status !== "active",
+		enabled: isOwner && !!profile && profile.talent_status !== "active",
 	});
 
 	// ── Mutations ─────────────────────────────────────────────────────────────
@@ -271,23 +278,23 @@ function ProfilePage() {
 		},
 	});
 
-	const pauseFreelancer = useMutation({
+	const pauseTalent = useMutation({
 		mutationFn: () => profileService.pause(),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: profileKeys.full(profileId) });
 			void qc.invalidateQueries({
-				queryKey: ["freelancerGoLiveEligibility", profileId],
+				queryKey: ["talentGoLiveEligibility", profileId],
 			});
-			toast.success("Your freelancer profile is paused.");
+			toast.success("Your talent profile is paused.");
 		},
-		onError: () => toast.error("Unable to pause your freelancer profile."),
+		onError: () => toast.error("Unable to pause your talent profile."),
 	});
 
-	const resumeFreelancer = useMutation({
+	const resumeTalent = useMutation({
 		mutationFn: () => profileService.goLive(),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: profileKeys.full(profileId) });
-			toast.success("Your freelancer profile is live again.");
+			toast.success("Your talent profile is live again.");
 		},
 		onError: () =>
 			toast.error("Complete the eligibility checklist before resuming."),
@@ -719,37 +726,37 @@ function ProfilePage() {
 														: "Apply as Consultant"}
 												</Link>
 											)}
-											{profile.freelancer_status === null && (
+											{profile.talent_status === null && (
 												<Link
-													to="/marketplace/freelancer/go-live"
+													to="/marketplace/talent/go-live"
 													className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 transition-colors"
 												>
 													I Want to Work
 												</Link>
 											)}
-											{profile.freelancer_status === "active" && (
+											{profile.talent_status === "active" && (
 												<>
 													<span className="text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-1.5 rounded-full">
 														Live in marketplace
 													</span>
 													<button
 														type="button"
-														onClick={() => pauseFreelancer.mutate()}
-														disabled={pauseFreelancer.isPending}
+														onClick={() => pauseTalent.mutate()}
+														disabled={pauseTalent.isPending}
 														className="text-sm font-semibold border border-gray-300 text-gray-600 px-4 py-1.5 rounded-full hover:bg-gray-50 disabled:opacity-60 transition-colors"
 													>
-														{pauseFreelancer.isPending ? "Pausing..." : "Pause"}
+														{pauseTalent.isPending ? "Pausing..." : "Pause"}
 													</button>
 												</>
 											)}
-											{profile.freelancer_status === "paused" && (
+											{profile.talent_status === "paused" && (
 												<button
 													type="button"
-													onClick={() => resumeFreelancer.mutate()}
-													disabled={resumeFreelancer.isPending}
+													onClick={() => resumeTalent.mutate()}
+													disabled={resumeTalent.isPending}
 													className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 disabled:opacity-60 transition-colors"
 												>
-													{resumeFreelancer.isPending
+													{resumeTalent.isPending
 														? "Resuming..."
 														: "Resume marketplace"}
 												</button>
@@ -771,19 +778,18 @@ function ProfilePage() {
 												<Edit2 className="w-3.5 h-3.5" />
 											</button>
 										</div>
-										{profile.freelancer_status !== "active" &&
-											freelancerEligibility && (
+										{profile.talent_status !== "active" &&
+											talentEligibility && (
 												<div className="max-w-md text-right">
 													<p className="text-xs font-semibold text-gray-600">
-														Freelancer readiness
+														Talent readiness
 													</p>
 													<p className="text-xs text-gray-400">
-														{freelancerEligibility.eligible
+														{talentEligibility.eligible
 															? "Ready to go live."
-															: freelancerEligibility.missing
+															: talentEligibility.missing
 																	.map(
-																		(item) =>
-																			FREELANCER_REQUIREMENT_LABELS[item],
+																		(item) => TALENT_REQUIREMENT_LABELS[item],
 																	)
 																	.join(" · ")}
 													</p>

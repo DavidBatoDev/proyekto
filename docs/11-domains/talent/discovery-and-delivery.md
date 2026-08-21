@@ -9,8 +9,8 @@ authorization or payroll record.
 
 ## Marketplace card assembly
 
-`GET /marketplace/freelancers` is active-consultant-only. It begins with profiles
-that have an active freelancer enrollment, then joins related data in application code.
+`GET /marketplace/talent` is active-consultant-only. It begins with profiles
+that have an active talent enrollment, then joins related data in application code.
 
 | Source | Card fields |
 | --- | --- |
@@ -23,7 +23,7 @@ that have an active freelancer enrollment, then joins related data in applicatio
 Search covers display name and headline. Filters cover availability, specialization, and
 skill. Sorting supports rating descending and rate ascending or descending.
 
-Go-live enforces verified identity, complete rate settings, portfolio evidence, and
+Go-live enforces complete rate settings, portfolio evidence, and
 basic profile fields on the server. The enrollment remains an opt-in availability
 declaration rather than account identity; it can be paused and resumed.
 
@@ -31,7 +31,7 @@ declaration rather than account identity; it can be paused and resumed.
 
 Only active consultants can browse and send marketplace invites. Sending also requires
 admin-or-higher project authority, rejects self-invites, and rejects profiles without
-an active freelancer enrollment. Accepting grants editor access with `origin='invited'`.
+an active talent enrollment. Accepting grants editor access with `origin='invited'`.
 
 ## Rate boundary
 

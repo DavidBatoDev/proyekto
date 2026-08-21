@@ -5,17 +5,17 @@
 Talent are the people who deliver project work — a **market position, not an account
 attribute** (there is no stored account role; `profiles.role` was dropped 2026-08-10).
 Being talent on a project comes from project access and team curation; being
-discoverable comes from `freelancer_profiles.status='active'`.
+discoverable comes from `talent_profiles.status='active'`.
 
 This folder is the source of truth for the Talent journey from signup through discovery,
-delivery, time logging, and payout. Code and older routes still use the word `freelancer`;
+delivery, time logging, and payout. Code and older routes still use the word `talent`;
 user-facing identity and new documentation use **Talent**.
 
 ## The three facts to keep separate
 
 | Fact | Answers |
 | --- | --- |
-| `freelancer_profiles.status` | Is the profile active in, or paused from, the freelancer marketplace? |
+| `talent_profiles.status` | Is the profile active in, or paused from, the talent marketplace? |
 | `team_members.role` | What may the person administer inside a reusable team? |
 | `project_access.role`, `origin`, `capabilities` | What may the person do on one project? |
 
@@ -30,7 +30,7 @@ eligibility before creating or resuming the enrollment.
 Signup (lane-free)
   -> personal workspace
   -> complete profile, rates, portfolio, and identity
-  -> go live (`freelancer_profiles.status='active'`)
+  -> go live (`talent_profiles.status='active'`)
   -> active consultant sends a project invite
   -> Talent accepts and receives project editor access
   -> work is assigned and time is logged
@@ -51,8 +51,8 @@ Signup (lane-free)
 
 | Term | Meaning |
 | --- | --- |
-| **Talent** | The market position of delivering scoped work. Not an account attribute; legacy code often says "freelancer". |
-| **Go live** | Pass the eligibility check and create or resume an active freelancer enrollment. |
+| **Talent** | The market position of delivering scoped work. Not an account attribute; legacy code often says "talent". |
+| **Go live** | Pass the eligibility check and create or resume an active talent enrollment. |
 | **Marketplace invite** | A `project_invites` row sent by an active consultant to a public profile. |
 | **Curation** | Selecting a team member for a project through `project_team_members`; this creates project access. |
 | **Internal rate** | The Talent member's cost rate from `team_member_rates`, snapshotted onto time logs and never shown to clients. |
@@ -69,7 +69,7 @@ Signup (lane-free)
 ## Code locations
 
 - **Onboarding:** [`backend/src/modules/shared/auth/`](../../../backend/src/modules/shared/auth/)
-- **Profile quality:** [`backend/src/modules/marketplace/profile/freelancer-eligibility.service.ts`](../../../backend/src/modules/marketplace/profile/freelancer-eligibility.service.ts)
+- **Profile quality:** [`backend/src/modules/marketplace/profile/talent-eligibility.service.ts`](../../../backend/src/modules/marketplace/profile/talent-eligibility.service.ts)
 - **Discovery and invites:** [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/)
 - **Teams and time:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/), [`backend/src/modules/execution/team-time/`](../../../backend/src/modules/execution/team-time/)
-- **Web:** [`web/src/routes/marketplace/freelancer/`](../../../web/src/routes/marketplace/freelancer/), [`web/src/routes/_execution/teams/`](../../../web/src/routes/_execution/teams/)
+- **Web:** [`web/src/routes/marketplace/talent/`](../../../web/src/routes/marketplace/talent/), [`web/src/routes/_execution/teams/`](../../../web/src/routes/_execution/teams/)

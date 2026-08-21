@@ -24,7 +24,7 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 | `admin_profiles` | Staff authority layer (`admin_access_level`) |
 | `consultant_applications` | Applications to become a verified consultant |
 | `consultant_profiles` | Stateful consultant enrollment (`pending`, `verified`, `suspended`, `revoked`), linked to the approving application when one exists; rows are retained as vetting history |
-| `freelancer_profiles` | Stateful marketplace availability (`active`, `paused`); only active rows appear in the freelancer pool |
+| `talent_profiles` | Stateful marketplace availability (`active`, `paused`); only active rows appear in the talent pool |
 | `user_verifications`, `user_identity_documents` | KYC / trust records |
 | `user_skills`, `user_languages`, `user_educations`, `user_certifications`, `user_licenses`, `user_experiences`, `user_portfolios`, `user_specializations`, `user_rate_settings`, `user_stats` | Profile sub-entities |
 | `skills`, `languages` | Reference catalogs |
@@ -134,7 +134,7 @@ text CHECK constraints, not enums (`invoices.status`: draft/issued/sent/paid/voi
 ```
 auth.users.id ─1:1─► profiles.id
 profiles.id ─1:0..1─► consultant_profiles.user_id
-profiles.id ─1:0..1─► freelancer_profiles.user_id
+profiles.id ─1:0..1─► talent_profiles.user_id
 consultant_profiles.user_id ◄── contracts.consultant_user_id  (durable party seat, RESTRICT)
 profiles.id ◄─ projects.owner_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
@@ -160,7 +160,7 @@ Business logic that must be atomic lives in Postgres functions (SECURITY DEFINER
 | `chat_latest_messages_by_room`, `chat_search_room_messages` | Chat reads |
 | `handle_new_user()` | Trigger — creates a `profiles` row on signup |
 | `get_user_project_role`, `can_view_roadmap`, `can_edit_roadmap` | Authorization helpers (see [rls-and-security.md](./rls-and-security.md)) |
-| `is_active_consultant`, `is_active_freelancer` | RLS-safe marketplace enrollment predicates; both are `SECURITY DEFINER` and never query `profiles` |
+| `is_active_consultant`, `is_active_talent` | RLS-safe marketplace enrollment predicates; both are `SECURITY DEFINER` and never query `profiles` |
 
 ## See also
 

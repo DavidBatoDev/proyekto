@@ -78,7 +78,7 @@ U2 must still have an appropriate `project_access` row. `A1` does not grant it.
 
 ## Scenario 2: the Consultant privately hires Talent for that project
 
-U2 separately contracts U3. U3 does not need an active freelancer marketplace profile;
+U2 separately contracts U3. U3 does not need an active talent marketplace profile;
 private acceptance is enough. U2 remains the only contract author.
 
 ```text

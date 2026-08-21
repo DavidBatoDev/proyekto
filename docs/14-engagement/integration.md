@@ -81,7 +81,7 @@ redaction pass. Two consequences worth knowing before extending this:
 
 `web/src/routes/marketplace/` holds `finance/index.tsx` (portfolio and creation),
 `finance/$contractId.tsx` (editor, terms, signatures, amendments), the two invoice routes,
-plus the `consultant/`, `freelancer/` and `project-posting` surfaces.
+plus the `consultant/`, `talent/` and `project-posting` surfaces.
 
 `contract/sign/$token.tsx` sits **outside** that tree, at the top level, and keeps its
 original `/contract/sign/$token` URL. It is the account-free signing page whose link is

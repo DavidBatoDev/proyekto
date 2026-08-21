@@ -96,10 +96,10 @@ function WelcomePage() {
 		profile.display_name ||
 		"there";
 
-	return <ClientFreelancerWelcomeDeck firstName={firstName} />;
+	return <ClientTalentWelcomeDeck firstName={firstName} />;
 }
 
-// ─── Client/Freelancer deck ─────────────────────────────────────────────────
+// ─── Client/Talent deck ─────────────────────────────────────────────────
 
 // Ordered step keys. The "theme" step is inserted only when the theme system is
 // enabled, so navigation and the stepper total are driven off this array rather
@@ -144,11 +144,7 @@ function navigateAfterWelcome(navigate: ReturnType<typeof useNavigate>) {
 
 // Exported for tests: the route still renders WelcomePage, but the deck is
 // where the step logic lives and mounting it directly skips profile hydration.
-export function ClientFreelancerWelcomeDeck({
-	firstName,
-}: {
-	firstName: string;
-}) {
+export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 	const navigate = useNavigate();
 	const toast = useToast();
 	const user = useAuthStore((s) => s.user);

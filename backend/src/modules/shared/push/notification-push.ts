@@ -27,7 +27,7 @@ const NOTIFICATION_TITLES: Record<string, string> = {
   time_log_marked_rejected: 'Time log rejected',
   time_log_day_rejected: 'Time logs rejected',
   time_log_comment_added: 'New time log comment',
-  freelancer_invite_received: 'Freelancer invitation',
+  freelancer_invite_received: 'Talent invitation',
 };
 
 const DEFAULT_TITLE = 'Proyekto';

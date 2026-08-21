@@ -3,15 +3,15 @@ import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 import { SupabaseProfileRepository } from './repositories/profile.repository.supabase';
 import { PROFILE_REPOSITORY } from './profile.service';
-import { FreelancerEligibilityService } from './freelancer-eligibility.service';
+import { TalentEligibilityService } from './talent-eligibility.service';
 
 @Module({
   controllers: [ProfileController],
   providers: [
     ProfileService,
-    FreelancerEligibilityService,
+    TalentEligibilityService,
     { provide: PROFILE_REPOSITORY, useClass: SupabaseProfileRepository },
   ],
-  exports: [FreelancerEligibilityService],
+  exports: [TalentEligibilityService],
 })
 export class ProfileModule {}

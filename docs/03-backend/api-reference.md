@@ -159,9 +159,9 @@ logs/summary,projects,members}` and per-project rate/tasks). All `Supabase`.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| GET | /api/marketplace/freelancers | +ConsultantOnly | Browse freelancer pool |
+| GET | /api/marketplace/talent | +ConsultantOnly | Browse talent pool |
 | POST | /api/marketplace/go-live | Supabase | Go live in the marketplace |
-| POST | /api/marketplace/invite | +ConsultantOnly | Invite a freelancer |
+| POST | /api/marketplace/invite | +ConsultantOnly | Invite a talent |
 | GET·PATCH | /api/marketplace/invites[/me,/:id/respond] | Supabase | List / respond to invites |
 
 ## guests · `guests`

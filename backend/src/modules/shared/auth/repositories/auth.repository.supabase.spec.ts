@@ -9,7 +9,7 @@ describe('SupabaseAuthRepository enrollment payload', () => {
         data: {
           id: 'user-1',
           consultant_profile: [{ status: 'verified' }],
-          freelancer_profile: [{ status: 'paused' }],
+          talent_profile: [{ status: 'paused' }],
         },
         error: null,
       }),
@@ -18,7 +18,7 @@ describe('SupabaseAuthRepository enrollment payload', () => {
 
     await expect(repo.getProfile('user-1')).resolves.toMatchObject({
       consultant_status: 'verified',
-      freelancer_status: 'paused',
+      talent_status: 'paused',
       is_consultant_verified: true,
       is_public: false,
     });
@@ -28,7 +28,7 @@ describe('SupabaseAuthRepository enrollment payload', () => {
       ),
     );
     expect(builder.select).toHaveBeenCalledWith(
-      expect.stringContaining('freelancer_profiles(status)'),
+      expect.stringContaining('talent_profiles(status)'),
     );
   });
 });

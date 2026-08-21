@@ -50,7 +50,7 @@ export function InviteModal({
 
 	const inviteMutation = useMutation({
 		mutationFn: () =>
-			profileService.inviteFreelancer({
+			profileService.inviteTalent({
 				projectId: selectedProjectId,
 				inviteeId,
 				message: message.trim() || undefined,
@@ -118,7 +118,7 @@ export function InviteModal({
 								rows={4}
 								value={message}
 								onChange={(e) => setMessage(e.target.value)}
-								placeholder="Share context about the role and why you're inviting this freelancer..."
+								placeholder="Share context about the role and why you're inviting this person..."
 								className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
 							/>
 						</div>

@@ -126,7 +126,7 @@ export function heroCtaFor(
 				subhead:
 					"Solutions Leads staff projects from the talent directory. Going live is how you get picked.",
 				label: "Join the talent directory",
-				to: "/marketplace/freelancer/go-live",
+				to: "/marketplace/talent/go-live",
 			};
 		default:
 			return null;

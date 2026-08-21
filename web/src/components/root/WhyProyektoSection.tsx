@@ -79,8 +79,8 @@ export function WhyProyektoSection({
 						The easiest way to get your project across the finish line
 					</h2>
 					<p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
-						Built for consultants, freelancers, and client teams who need
-						clarity, speed, and alignment — all in one place.
+						Built for consultants, talent, and client teams who need clarity,
+						speed, and alignment — all in one place.
 					</p>
 				</motion.div>
 

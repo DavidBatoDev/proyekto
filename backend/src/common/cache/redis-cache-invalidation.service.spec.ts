@@ -49,10 +49,10 @@ describe('RedisCacheInvalidationService', () => {
       cache as any,
       cloudflarePurge as any,
     );
-    await service.invalidateMarketplaceFreelancersCache();
+    await service.invalidateMarketplaceTalentCache();
 
     expect(cache.clearIndex).toHaveBeenCalledWith(
-      REDIS_CACHE_KEYS.marketplaceFreelancersIndex,
+      REDIS_CACHE_KEYS.marketplaceTalentIndex,
     );
   });
 

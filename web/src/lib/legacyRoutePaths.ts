@@ -23,17 +23,29 @@
 
 /** Longest first — `/consultant/apply` must beat `/consultant`. */
 const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
-	["/consultant/marketplace", "/marketplace/talent"],
+	["/consultant/marketplace", "/marketplace/talent/browse"],
 	["/consultant/templates", "/marketplace/consultant/templates"],
 	["/consultant/browse", "/marketplace/consultant/browse"],
 	["/consultant/apply", "/marketplace/consultant/apply"],
-	["/freelancer/go-live", "/marketplace/freelancer/go-live"],
+	["/marketplace/freelancer/go-live", "/marketplace/talent/go-live"],
+	["/marketplace/start-selling", "/marketplace/talent"],
+	["/freelancer/go-live", "/marketplace/talent/go-live"],
 	["/project-posting", "/marketplace/project-posting"],
 	["/finance", "/marketplace/finance"],
 	["/consultant", "/marketplace/consultant"],
 ];
 
 /**
+ * `/marketplace/talent` is deliberately absent even though it moved meaning
+ * (it was the consultant-only directory, it is now the talent landing page).
+ * Mapping it to `/marketplace/talent/browse` would be a PREFIX, so it would
+ * also rewrite `/marketplace/talent/go-live` into
+ * `/marketplace/talent/browse/go-live`. There is no legacy data needing the
+ * map anyway: production holds zero `notifications.link_url` rows with that
+ * path, and the backend now writes `/marketplace/talent/browse`. Anyone
+ * arriving on a stale link lands on the talent hub, which is a reasonable
+ * place to be.
+ *
  * `/freelancer/invites` is deliberately absent: it keeps its own top-level
  * shim to `/invites`, a live database trigger still writes that exact string
  * into `notifications.link_url`, and migrations are immutable. Rewriting it

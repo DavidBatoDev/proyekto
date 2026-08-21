@@ -394,7 +394,7 @@ describe('ProjectsService (permissions)', () => {
     });
 
     await service.inviteByEmail('project-1', 'client-1', {
-      email: 'freelancer@example.com',
+      email: 'talent@example.com',
       position: 'Backend Developer',
     });
 
@@ -418,7 +418,7 @@ describe('ProjectsService (permissions)', () => {
       }),
       unassignTasksForMemberInProject: jest.fn().mockResolvedValue(3),
       removeMember: jest.fn().mockResolvedValue(undefined),
-      getProfileDisplayName: jest.fn().mockResolvedValue('Freelancer One'),
+      getProfileDisplayName: jest.fn().mockResolvedValue('Talent One'),
     };
     const service = buildService(repo, {
       getUserProjectRole: jest.fn().mockResolvedValue('admin'),

@@ -210,7 +210,7 @@ export function CreateContractDialog({
 							</p>
 							<p className="mt-1 text-[11px] text-muted-foreground">
 								{relationshipKind === "talent_services"
-									? "Enter their exact Proyekto email. Private Talent contracts do not require a public freelancer listing."
+									? "Enter their exact Proyekto email. Private Talent contracts do not require a public talent listing."
 									: "Enter the paying client's exact Proyekto email. Who pays is a fact of the contract, not of the project."}
 							</p>
 							<div className="mt-2 flex gap-2">

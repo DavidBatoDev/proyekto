@@ -27,17 +27,17 @@ describe('consultant enrollment embeds', () => {
     const profile = attachMarketplaceEnrollmentFields({
       id: 'user-1',
       consultant_profile: [{ status: 'verified' }],
-      freelancer_profile: { status: 'paused' },
+      talent_profile: { status: 'paused' },
     });
 
     expect(profile).toMatchObject({
       id: 'user-1',
       consultant_status: 'verified',
-      freelancer_status: 'paused',
+      talent_status: 'paused',
       is_consultant_verified: true,
       is_public: false,
     });
     expect(profile).not.toHaveProperty('consultant_profile');
-    expect(profile).not.toHaveProperty('freelancer_profile');
+    expect(profile).not.toHaveProperty('talent_profile');
   });
 });

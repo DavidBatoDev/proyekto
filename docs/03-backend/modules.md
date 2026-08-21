@@ -29,7 +29,7 @@ group-level barrel modules.
 | --- | --- | --- |
 | `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a personal workspace for every user | `profiles` |
 | `users` | Own-account read/update | `profiles` |
-| `profile` | Full consultant/freelancer profile + all sub-entities | `profiles`, `user_*` |
+| `profile` | Full consultant/talent profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
 | `roadmaps` | Roadmap graph engine **+** roadmap AI | `roadmap_*`, `roadmap_ai_*`, comments/attachments |
 | `roadmap-shares` | Public/tokenized share links + shared commenting | `roadmap_shares`, `roadmap_share_access` |
@@ -38,8 +38,8 @@ group-level barrel modules.
 | `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
 | `consultants` | Active-consultant directory, plus the category-filtered public directory | `profiles`, `consultant_profiles`, `consultant_subcategories` |
 | `taxonomy` | Curated marketplace category tree behind the mega-menu and `/marketplace/category/*` | `marketplace_categories`, `marketplace_subcategories` |
-| `applications` | Consultant/freelancer application submission | `consultant_applications` |
-| `marketplace` | Freelancer enrollment, discovery + hiring invites | `freelancer_profiles`, `profiles`, `user_*`, `project_invites` |
+| `applications` | Consultant/talent application submission | `consultant_applications` |
+| `marketplace` | Talent enrollment, discovery + hiring invites | `talent_profiles`, `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
@@ -78,7 +78,7 @@ sub-entity, each in its own `user_*` table: `user_skills`, `user_languages`,
 `user_educations`, `user_certifications`, `user_licenses`, `user_experiences`,
 `user_portfolios`, `user_stats`, `user_specializations`, `user_rate_settings`,
 `user_identity_documents` — plus catalog tables `skills`, `languages`.
-`freelancer-eligibility.service.ts` gates who can go live.
+`talent-eligibility.service.ts` gates who can go live.
 
 **`consultants`** — public read-only directory over profiles with a verified
 `consultant_profiles` enrollment (no repository). `GET /consultants` returns a bare
@@ -93,7 +93,7 @@ sub-categories nested in one round trip. Slug params are validated against the s
 pattern the database CHECK constraints enforce, since those values reach a Redis cache
 key and a PostgREST filter.
 
-**`applications`** — consultant/freelancer application submit + status; writes
+**`applications`** — consultant/talent application submit + status; writes
 `consultant_applications`. Its `ApplicationsService` is co-located in the controller file.
 
 **`admin`** — the admin console: reviews `consultant_applications`, reads full
@@ -145,7 +145,7 @@ Clones a template into a new `roadmaps` graph.
 **`team-time`** — task time logs (`task_time_logs`) + `time_log_comments`, with
 rate resolution for billing.
 
-**`payouts`** — freelancer payout methods (`payout_methods`) and payout requests
+**`payouts`** — talent payout methods (`payout_methods`) and payout requests
 (`payouts`) aggregating billable time; proof documents go to the **private R2
 bucket** via `UploadsModule`.
 
@@ -187,7 +187,7 @@ SDK), not Supabase Storage. Routes `PRIVATE_BUCKETS` (`identity_documents`,
 (e.g. `avatars`) is public over `cdn.proyekto.tech`. `UploadsService` is co-located
 in the controller and exported to `payouts`. See [Storage & Media](../08-storage-media/README.md).
 
-**`marketplace`** — talent discovery (legacy freelancer naming in code) drawing on profile sub-entities
+**`marketplace`** — talent discovery (legacy talent naming in code) drawing on profile sub-entities
 (`user_rate_settings`, `user_stats`, `user_specializations`, `user_skills`) and the
 hiring flow (`project_invites`). Consultant-only routes use `ConsultantOnlyGuard`.
 

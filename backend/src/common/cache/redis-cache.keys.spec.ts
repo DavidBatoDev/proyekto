@@ -1,8 +1,8 @@
-import { buildMarketplaceFreelancersCacheKey } from './redis-cache.keys';
+import { buildMarketplaceTalentCacheKey } from './redis-cache.keys';
 
 describe('redis-cache.keys', () => {
   it('builds identical marketplace cache keys for equivalent query shapes', () => {
-    const keyA = buildMarketplaceFreelancersCacheKey({
+    const keyA = buildMarketplaceTalentCacheKey({
       search: '  React Dev  ',
       availability: 'AVAILABLE',
       sort: 'RATING_DESC',
@@ -10,7 +10,7 @@ describe('redis-cache.keys', () => {
       maxRate: 250,
     });
 
-    const keyB = buildMarketplaceFreelancersCacheKey({
+    const keyB = buildMarketplaceTalentCacheKey({
       maxRate: 250,
       minRate: 100,
       sort: 'rating_desc',
@@ -22,8 +22,8 @@ describe('redis-cache.keys', () => {
   });
 
   it('ignores empty and undefined query fields', () => {
-    const emptyKey = buildMarketplaceFreelancersCacheKey({});
-    const noisyKey = buildMarketplaceFreelancersCacheKey({
+    const emptyKey = buildMarketplaceTalentCacheKey({});
+    const noisyKey = buildMarketplaceTalentCacheKey({
       search: '   ',
       skill: undefined,
       specialization: '',

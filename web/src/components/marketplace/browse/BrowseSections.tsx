@@ -116,7 +116,7 @@ const FAQ_ENTRIES = [
 	{
 		question: "What does a consultant actually do here?",
 		answer:
-			"They lead the delivery. A consultant scopes the work with you, agrees it in a contract, builds the roadmap, assembles the team that executes it, and is accountable for what ships. You deal with one person rather than coordinating a group of freelancers yourself.",
+			"They lead the delivery. A consultant scopes the work with you, agrees it in a contract, builds the roadmap, assembles the team that executes it, and is accountable for what ships. You deal with one person rather than coordinating a group of individual contractors yourself.",
 	},
 	{
 		question: "How are consultants vetted?",

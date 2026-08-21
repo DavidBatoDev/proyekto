@@ -4,7 +4,7 @@
  *
  * `profiles.role` was dropped on 2026-08-10 (20260810160000), and
  * `profiles.settings->'onboarding'->'intent'` — which held the same
- * client/freelancer shape the survey now asks for — went with it. The survey
+ * client/talent shape the survey now asks for — went with it. The survey
  * reintroduces that question deliberately, for personalization only:
  * `marketplace_survey_responses.intents` orders and re-labels storefront
  * sections and decides nothing about access.

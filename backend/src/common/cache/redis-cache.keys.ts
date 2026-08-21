@@ -32,9 +32,9 @@ export const REDIS_CACHE_KEYS = {
   projectsDashboardByUser: (userId: string) =>
     `cache:v1:projects:dashboard:user:${userId}`,
   projectsDashboardIndex: 'cache:v1:index:projects:dashboard',
-  marketplaceFreelancersByHash: (queryHash: string) =>
-    `cache:v1:marketplace:freelancers:${queryHash}`,
-  marketplaceFreelancersIndex: 'cache:v1:index:marketplace:freelancers',
+  marketplaceTalentByHash: (queryHash: string) =>
+    `cache:v1:marketplace:talent:${queryHash}`,
+  marketplaceTalentIndex: 'cache:v1:index:marketplace:talent',
 } as const;
 
 type MarketplaceQueryShape = {
@@ -101,10 +101,10 @@ export function hashNormalizedQuery(
   return createHash('sha1').update(serialized).digest('hex');
 }
 
-export function buildMarketplaceFreelancersCacheKey(
+export function buildMarketplaceTalentCacheKey(
   query: MarketplaceQueryShape | null | undefined,
 ): string {
   const normalizedQuery = normalizeMarketplaceQuery(query);
   const hash = hashNormalizedQuery(normalizedQuery);
-  return REDIS_CACHE_KEYS.marketplaceFreelancersByHash(hash);
+  return REDIS_CACHE_KEYS.marketplaceTalentByHash(hash);
 }

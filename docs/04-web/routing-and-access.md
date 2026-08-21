@@ -14,8 +14,8 @@ gating done in route `beforeLoad` hooks and project components.
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
 | `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
-| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `freelancer/go-live`, `project-posting` |
-| `freelancer/` | `invites` — a shim to `/invites`; see below |
+| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` |
+| `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
 | `project/` | `$projectId` layout + tabs (below) |
@@ -41,13 +41,13 @@ features:
 - **`contract/sign/$token`** — the account-free client signing page. Its URL is the CTA of
   an email sent to someone who may have no login, so it must never move under a namespace
   that could gate it. `mapLegacyPath` deliberately does not rewrite it.
-- **`freelancer/invites`** — a redirect shim to `/invites`. A live SQL trigger
+- **`talent/invites`** — a redirect shim to `/invites`. A live SQL trigger
   (`handle_profile_project_invites_reconciliation`) writes that exact string into
   `notifications.link_url`, and migrations are immutable, so the path must keep resolving.
   It is in `PRESERVED` in [`legacyRoutePaths.ts`](../../web/src/lib/legacyRoutePaths.ts).
 
 **Old URLs are kept alive permanently, not temporarily.** `/finance`, `/consultant/*`,
-`/freelancer/go-live` and `/project-posting` still arrive from `notifications.link_url`
+`/talent/go-live` and `/project-posting` still arrive from `notifications.link_url`
 rows, FCM payloads already in device trays, `signup_redirect` values, and third-party
 links — none of which can be rewritten. There is no edge redirect layer (wrangler serves
 `index.html` with a 200 for any unmatched path), so the root `notFoundComponent`
@@ -82,7 +82,7 @@ Three things about them are load-bearing:
 | --- | --- | --- |
 | `marketplace_categories` / `marketplace_subcategories` | consultant **disciplines** | the mega-menu and `/marketplace/category/*` |
 | `roadmap_template_categories` | roadmap **subjects** | `/roadmap-templates` and the marketplace footer |
-| `user_specializations` | self-declared free-text **freelancer** specialities | the `/marketplace/talent` facets |
+| `user_specializations` | self-declared free-text **talent** specialities | the `/marketplace/talent` facets |
 
 They look redundant and are not. Forcing one table to serve two products would make
 every future taxonomy edit a negotiation between them.

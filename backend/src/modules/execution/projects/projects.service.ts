@@ -371,7 +371,7 @@ export class ProjectsService {
         send_dm: canComment,
         message_clients: true,
         message_consultants: true,
-        message_freelancers: true,
+        message_talent: true,
       },
       resources: { view: true, upload: canEdit, delete: isOwnerOrAdmin },
       logs: { view: true, view_sensitive: isOwnerOrAdmin },

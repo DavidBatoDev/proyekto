@@ -194,7 +194,7 @@ const benefits = [
 		icon: Users,
 		title: "Vetted talent bench",
 		description:
-			"Search and propose freelancers your clients can't see directly. We handle identity, portfolio, and rate verification — you pick.",
+			"Search and propose talent your clients can't see directly. We handle identity, portfolio, and rate verification — you pick.",
 	},
 	{
 		icon: Wallet,
@@ -326,7 +326,7 @@ function PricingSection() {
 						TBD<span className="ml-1 text-3xl">%</span>
 					</p>
 					<p className="mt-2 text-sm text-slate-300">
-						On freelancer payouts you route through Proyekto.
+						On talent payouts you route through Proyekto.
 					</p>
 
 					<ul className="mt-6 space-y-3 text-sm text-slate-200">
@@ -426,7 +426,7 @@ const faqs = [
 	{
 		question: "What happens if I'm not approved?",
 		answer:
-			"You can still use Proyekto as a freelancer or client. We re-review applications every 6 months.",
+			"You can still use Proyekto as talent or a client. We re-review applications every 6 months.",
 	},
 	{
 		question: "Who owns the work product?",

@@ -3,14 +3,14 @@
 > **Last updated:** 2026-08-18 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
-`freelancer` namespace: the go-live wizard and an invite redirect. There is no Talent-only
+`talent` namespace: the go-live wizard and an invite redirect. There is no Talent-only
 dashboard subtree.
 
 ## Talent-specific routes
 
 | Route | Purpose | Gate |
 | --- | --- | --- |
-| `/marketplace/freelancer/go-live` | Complete professional data and activate marketplace enrollment | Authentication plus server eligibility |
+| `/marketplace/talent/go-live` | Complete professional data and activate marketplace enrollment | Authentication plus server eligibility |
 | `/freelancer/invites` | Legacy URL forwarding to `/invites` | Redirect |
 | `/invites` | Review and respond to project invites | Authentication and invite ownership |
 

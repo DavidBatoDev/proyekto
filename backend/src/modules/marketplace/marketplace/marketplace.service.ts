@@ -13,20 +13,20 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import {
-  buildMarketplaceFreelancersCacheKey,
+  buildMarketplaceTalentCacheKey,
   REDIS_CACHE_KEYS,
 } from '../../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import {
-  InviteFreelancerDto,
+  InviteTalentDto,
   MarketplaceQueryDto,
   RespondInviteDto,
 } from './dto/marketplace.dto';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
-import { FreelancerEligibilityService } from '../profile/freelancer-eligibility.service';
+import { TalentEligibilityService } from '../profile/talent-eligibility.service';
 
-export interface MarketplaceFreelancerCard {
+export interface MarketplaceTalentCard {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
@@ -73,7 +73,7 @@ export class MarketplaceService {
     private readonly authorization: ProjectAuthorizationService,
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
-    private readonly freelancerEligibility: FreelancerEligibilityService,
+    private readonly talentEligibility: TalentEligibilityService,
   ) {}
 
   private async emitNotification(
@@ -94,14 +94,14 @@ export class MarketplaceService {
     }
   }
 
-  async getFreelancers(
+  async getTalent(
     userId: string,
     query: MarketplaceQueryDto,
     options?: CacheReadOptions,
-  ): Promise<MarketplaceFreelancerCard[]> {
+  ): Promise<MarketplaceTalentCard[]> {
     await this.ensureConsultant(userId);
 
-    const cacheKey = buildMarketplaceFreelancersCacheKey(query);
+    const cacheKey = buildMarketplaceTalentCacheKey(query);
     return this.cache.rememberJson(
       cacheKey,
       this.cache.getAuthTtlSeconds(),
@@ -109,9 +109,9 @@ export class MarketplaceService {
         let profilesQuery = this.supabase
           .from('profiles')
           .select(
-            'id, display_name, avatar_url, headline, is_email_verified, freelancer_profile:freelancer_profiles!inner(status)',
+            'id, display_name, avatar_url, headline, is_email_verified, talent_profile:talent_profiles!inner(status)',
           )
-          .eq('freelancer_profile.status', 'active');
+          .eq('talent_profile.status', 'active');
 
         if (query.search) {
           const escaped = query.search.replace(/[%_]/g, '');
@@ -180,7 +180,7 @@ export class MarketplaceService {
           skillsByUser.set(row.user_id, existing);
         }
 
-        let cards: MarketplaceFreelancerCard[] = profiles.map((profile) => {
+        let cards: MarketplaceTalentCard[] = profiles.map((profile) => {
           const rate = rateByUser.get(profile.id);
           const stats = statsByUser.get(profile.id);
           const specializations = specsByUser.get(profile.id) || [];
@@ -238,28 +238,28 @@ export class MarketplaceService {
       },
       {
         onStatus: options?.onCacheStatus,
-        indexKey: REDIS_CACHE_KEYS.marketplaceFreelancersIndex,
+        indexKey: REDIS_CACHE_KEYS.marketplaceTalentIndex,
         indexTtlSeconds: this.cache.getMarketplaceIndexTtlSeconds(),
       },
     );
   }
 
   async getGoLiveEligibility(userId: string) {
-    return this.freelancerEligibility.check(userId);
+    return this.talentEligibility.check(userId);
   }
 
   async goLive(userId: string): Promise<{ is_public: true; status: 'active' }> {
-    const eligibility = await this.freelancerEligibility.check(userId);
+    const eligibility = await this.talentEligibility.check(userId);
     if (!eligibility.eligible) {
       throw new BadRequestException({
-        message: 'Complete your freelancer profile before going live.',
+        message: 'Complete your talent profile before going live.',
         missing: eligibility.missing,
       });
     }
 
     const now = new Date().toISOString();
     const { data, error } = await this.supabase
-      .from('freelancer_profiles')
+      .from('talent_profiles')
       .upsert(
         {
           user_id: userId,
@@ -281,7 +281,7 @@ export class MarketplaceService {
       type_name: 'marketplace_profile_live',
       actor_id: userId,
       content: {
-        message: 'Your freelancer profile is now live in the marketplace.',
+        message: 'Your talent profile is now live in the marketplace.',
       },
       link_url: `/profile/${userId}`,
     });
@@ -292,7 +292,7 @@ export class MarketplaceService {
 
   async pause(userId: string): Promise<{ is_public: false; status: 'paused' }> {
     const { data, error } = await this.supabase
-      .from('freelancer_profiles')
+      .from('talent_profiles')
       .update({
         status: 'paused',
         paused_at: new Date().toISOString(),
@@ -303,15 +303,15 @@ export class MarketplaceService {
       .maybeSingle();
 
     if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Freelancer profile is not live.');
+    if (!data) throw new NotFoundException('Talent profile is not live.');
 
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return { is_public: false, status: 'paused' };
   }
 
-  async inviteFreelancer(
+  async inviteTalent(
     userId: string,
-    dto: InviteFreelancerDto,
+    dto: InviteTalentDto,
   ): Promise<{ id: string; status: string }> {
     await this.ensureConsultant(userId);
 
@@ -337,7 +337,7 @@ export class MarketplaceService {
     await this.authorization.assertRole(userId, dto.projectId, 'admin');
 
     const { data: invitee, error: inviteeError } = await this.supabase
-      .from('freelancer_profiles')
+      .from('talent_profiles')
       .select('user_id')
       .eq('user_id', dto.inviteeId)
       .eq('status', 'active')
@@ -500,7 +500,7 @@ export class MarketplaceService {
 
     if (dto.status === 'accepted') {
       // Slice 3b: marketplace accepts grant a project_shares row directly.
-      // Editor is the default for marketplace freelancer invites — they
+      // Editor is the default for marketplace talent invites — they
       // need to edit deliverables but not manage members or billing.
       try {
         await this.authorization.grant({
@@ -528,7 +528,7 @@ export class MarketplaceService {
         invite_id: inviteId,
         status: dto.status,
       },
-      link_url: '/marketplace/talent',
+      link_url: '/marketplace/talent/browse',
     });
 
     await this.cacheInvalidation.invalidateAllDashboardCache();

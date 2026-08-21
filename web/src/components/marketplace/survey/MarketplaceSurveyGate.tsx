@@ -30,7 +30,7 @@ import { MarketplaceSurveyModal } from "./MarketplaceSurveyModal";
  */
 export const SURVEY_PATHS = [
 	"/marketplace",
-	"/marketplace/talent",
+	"/marketplace/talent/browse",
 	"/marketplace/consultant/browse",
 ] as const;
 

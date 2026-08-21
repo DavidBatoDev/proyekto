@@ -45,7 +45,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       this.supabase
         .from('profiles')
         .select(
-          '*, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), freelancer_profile:freelancer_profiles(status)',
+          '*, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status), talent_profile:talent_profiles(status)',
         )
         .eq('id', userId)
         .single(),

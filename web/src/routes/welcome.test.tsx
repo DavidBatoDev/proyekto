@@ -88,7 +88,7 @@ const TEAM = {
 	created_at: "2026-01-01T00:00:00Z",
 };
 
-import { ClientFreelancerWelcomeDeck } from "./welcome";
+import { ClientTalentWelcomeDeck } from "./welcome";
 
 function renderDeck() {
 	const client = new QueryClient({
@@ -96,7 +96,7 @@ function renderDeck() {
 	});
 	return render(
 		<QueryClientProvider client={client}>
-			<ClientFreelancerWelcomeDeck firstName="Ada" />
+			<ClientTalentWelcomeDeck firstName="Ada" />
 		</QueryClientProvider>,
 	);
 }

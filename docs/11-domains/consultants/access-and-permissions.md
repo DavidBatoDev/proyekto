@@ -32,7 +32,7 @@ things read as a role. All four are gone:
 
 | Mechanism | Status |
 | --- | --- |
-| `ORIGIN_DELTAS` — additively granted `chat.message_freelancers`, `members.manage`, `teams.manage`, `time.view_team_logs` on origin, regardless of stored role | Deleted. Permissions resolve from `role` + `capabilities` only. |
+| `ORIGIN_DELTAS` — additively granted `chat.message_talent`, `members.manage`, `teams.manage`, `time.view_team_logs` on origin, regardless of stored role | Deleted. Permissions resolve from `role` + `capabilities` only. |
 | A chat bypass letting the "consultant" read every private channel without being a participant | Deleted; private-channel membership is granted, never conferred by identity. |
 | `origin='consultant'` in the finance project scope | Dropped; the predicate is `role=owner`. |
 | `getProjectConsultantId` — a "who is the consultant of record" lookup, plus `assign-consultant` / `reassign-consultant` endpoints and a guard refusing to remove the consultant | Deleted. **Transfer project** covers the same ground and also logs member activity. |

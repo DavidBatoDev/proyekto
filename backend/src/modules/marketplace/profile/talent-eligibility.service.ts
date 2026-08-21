@@ -2,28 +2,34 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 
-export type FreelancerRequirement =
-  | 'identity'
+export type TalentRequirement =
   | 'rate_settings'
   | 'portfolio'
   | 'profile_basics';
 
-export interface FreelancerEligibility {
+export interface TalentEligibility {
   eligible: boolean;
-  missing: FreelancerRequirement[];
+  missing: TalentRequirement[];
 }
 
 /**
- * Freelancer marketplace quality bar.
+ * Talent marketplace quality bar.
  *
  * Failure surfaces a `missing` array so the dashboard checklist UI can show
  * exactly what's left.
  *
- * Criteria (see specs/platform-foundations/requirements.md):
- *   1. identity         — verified ID document or verifications row
- *   2. rate_settings    — hourly_rate + currency + availability all set
- *   3. portfolio        — at least one user_portfolios row
- *   4. profile_basics   — headline + bio + country all non-null
+ * Criteria:
+ *   1. rate_settings    — hourly_rate + currency + availability all set
+ *   2. portfolio        — at least one user_portfolios row
+ *   3. profile_basics   — headline + bio + country all non-null
+ *
+ * Identity verification is deliberately NOT one of them. It used to be, and it
+ * was the requirement people actually got stuck on: `is_verified` is set by an
+ * admin, so talent could upload a passport, see it sitting there, and
+ * still be refused with no idea how long the wait was. The open marketplaces
+ * this competes with (Upwork, Fiverr) do not gate a first listing on it either.
+ * The documents and the admin review still exist for consultant vetting -- this
+ * only stops them blocking a freelancer from being discoverable.
  *
  * Run is cheap (4 small lookups) and re-evaluated on every profile fetch.
  * A later slice may materialize
@@ -31,23 +37,21 @@ export interface FreelancerEligibility {
  * gets hot enough to need it indexed.
  */
 @Injectable()
-export class FreelancerEligibilityService {
-  private readonly logger = new Logger(FreelancerEligibilityService.name);
+export class TalentEligibilityService {
+  private readonly logger = new Logger(TalentEligibilityService.name);
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
 
-  async check(userId: string): Promise<FreelancerEligibility> {
-    const [identity, rate, portfolio, basics] = await Promise.all([
-      this.hasVerifiedIdentity(userId),
+  async check(userId: string): Promise<TalentEligibility> {
+    const [rate, portfolio, basics] = await Promise.all([
       this.hasRateSettings(userId),
       this.hasPortfolioItem(userId),
       this.hasProfileBasics(userId),
     ]);
 
-    const missing: FreelancerRequirement[] = [];
-    if (!identity) missing.push('identity');
+    const missing: TalentRequirement[] = [];
     if (!rate) missing.push('rate_settings');
     if (!portfolio) missing.push('portfolio');
     if (!basics) missing.push('profile_basics');
@@ -56,33 +60,6 @@ export class FreelancerEligibilityService {
       eligible: missing.length === 0,
       missing,
     };
-  }
-
-  private async hasVerifiedIdentity(userId: string): Promise<boolean> {
-    // Verified ID document.
-    const { count: docCount, error: docErr } = await this.supabase
-      .from('user_identity_documents')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('is_verified', true);
-
-    if (docErr) {
-      this.logger.error(`identity-document lookup failed: ${docErr.message}`);
-    }
-    if ((docCount ?? 0) > 0) return true;
-
-    // Fallback: verifications row of type='identity', status='verified'.
-    const { count: verCount, error: verErr } = await this.supabase
-      .from('user_verifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('type', 'identity')
-      .eq('status', 'verified');
-
-    if (verErr) {
-      this.logger.error(`user_verifications lookup failed: ${verErr.message}`);
-    }
-    return (verCount ?? 0) > 0;
   }
 
   private async hasRateSettings(userId: string): Promise<boolean> {
