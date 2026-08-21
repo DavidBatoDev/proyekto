@@ -241,7 +241,7 @@ export function ProjectHeader() {
 					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
-					<BrandMark variant="mark" className="h-6 text-white" />
+					<BrandMark variant="logomark" className="h-7" />
 				</Link>
 
 				<nav

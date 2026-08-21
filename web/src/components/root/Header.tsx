@@ -11,7 +11,6 @@ const HEADER_THEME = {
 	bg: "bg-background/90 backdrop-blur-xl",
 	border: "border-border",
 	text: "text-muted-foreground",
-	logo: "text-primary",
 };
 
 export const Header = () => {
@@ -39,9 +38,7 @@ export const Header = () => {
 						type="button"
 						aria-label="Proyekto home"
 					>
-						<BrandMark
-							className={`h-11 transition-colors duration-300 sm:h-12 ${HEADER_THEME.logo}`}
-						/>
+						<BrandMark variant="lockup" className="h-9 sm:h-10" />
 					</button>
 				</motion.div>
 

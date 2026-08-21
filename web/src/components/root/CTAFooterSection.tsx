@@ -92,7 +92,7 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 							initial="hidden"
 							animate={animate}
 						>
-							<BrandMark className="mb-4 h-10 text-primary" />
+							<BrandMark variant="lockup" className="mb-4 h-9" />
 							<p className="max-w-sm text-sm text-slate-600">
 								Turn your ideas into action, with Proyekto.
 							</p>

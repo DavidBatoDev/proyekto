@@ -2,8 +2,10 @@ interface BrandMarkProps {
 	/**
 	 * `wordmark` — full "Proyekto" text (default; replaces legacy `logo1.svg`)
 	 * `mark` — square icon-only variant (replaces legacy `logovector.svg`)
+	 * `lockup` — the real primary lockup artwork exported from Figma
+	 * `logomark` — the real icon-only mark artwork exported from Figma
 	 */
-	variant?: "wordmark" | "mark";
+	variant?: "wordmark" | "mark" | "lockup" | "logomark";
 	/**
 	 * Tailwind classes for sizing/positioning. Sizing is height-based to match
 	 * the legacy `<img className="h-N">` usage pattern.
@@ -18,9 +20,11 @@ interface BrandMarkProps {
 /**
  * Proyekto brand mark.
  *
- * Temporary text-based wordmark / icon-mark while proper SVG art is being
- * designed. Both variants inherit color from the parent via `currentColor`,
- * so they work on light AND dark backgrounds without prop juggling.
+ * `lockup` (logomark + "Proyekto") and `logomark` (icon only) render the real
+ * artwork from `public/proyektologos/`. The lockup's wordmark is baked at
+ * #0F172A so it only reads on light surfaces; the logomark is indigo line art
+ * and works on either. `wordmark`/`mark` remain text-based placeholders that
+ * inherit `currentColor`.
  *
  * Sizing: height-based (matches legacy `h-N` Tailwind classes used on the
  * old `<img>` tags). The `mark` variant is square; the `wordmark` flows to
@@ -31,6 +35,26 @@ export function BrandMark({
 	className,
 	ariaLabel = "Proyekto",
 }: BrandMarkProps) {
+	if (variant === "lockup") {
+		return (
+			<img
+				src="/proyektologos/logo-primary.png"
+				alt={ariaLabel}
+				className={`w-auto object-contain ${className ?? ""}`}
+			/>
+		);
+	}
+
+	if (variant === "logomark") {
+		return (
+			<img
+				src="/proyektologos/logomark.png"
+				alt={ariaLabel}
+				className={`w-auto object-contain ${className ?? ""}`}
+			/>
+		);
+	}
+
 	if (variant === "mark") {
 		return (
 			<span

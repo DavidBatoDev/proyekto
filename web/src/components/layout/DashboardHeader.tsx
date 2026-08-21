@@ -15,14 +15,14 @@ const DashboardHeader = () => {
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
 	// The header is global, so this is the one nav that spans both halves of the
-	// product. Marketplace is the top-level counterpart to the execution
-	// sidebar's entry and the marketplace sidebar's "Back to workspace" link —
-	// without it the only way across is from inside a sidebar, which the
+	// product: the marketplace shell and the execution workspace. Each entry is
+	// the top-level counterpart to a sidebar link — the marketplace sidebar's
+	// "Back to workspace" and the execution sidebar's marketplace entry —
+	// without which the only way across is from inside a sidebar, which the
 	// marketplace's own public pages do not render.
 	const navItems = [
-		{ label: "Home", to: "/dashboard" },
-		{ label: "Projects", to: "/dashboard", hash: "my-projects" },
 		{ label: "Marketplace", to: "/marketplace" },
+		{ label: "Execution", to: "/dashboard" },
 	];
 
 	return (
@@ -42,7 +42,7 @@ const DashboardHeader = () => {
 					to="/"
 					className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
 				>
-					<BrandMark variant="mark" className="h-6 text-white" />
+					<BrandMark variant="logomark" className="h-7" />
 				</Link>
 
 				<nav className="hidden items-center gap-2 lg:flex">
@@ -50,7 +50,6 @@ const DashboardHeader = () => {
 						<Link
 							key={item.label}
 							to={item.to}
-							hash={item.hash}
 							className="rounded-md px-2 py-1 text-[14px] font-semibold text-foreground transition-colors hover:bg-muted hover:text-foreground"
 						>
 							{item.label}

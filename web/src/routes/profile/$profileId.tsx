@@ -36,11 +36,23 @@ import { LanguageModal } from "@/components/profile/LanguageModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
 import { PayoutMethodsSection } from "@/components/profile/PayoutMethodsSection";
 import { PortfolioModal } from "@/components/profile/PortfolioModal";
+import {
+	AvailabilityBadge,
+	ProfileCard as Card,
+	EmptyProfileBanner,
+	ProfileEmptyState as EmptyState,
+	ExpandableText,
+	IconButton,
+	InlineField,
+	MetaRow,
+	PillButton,
+	ProficiencyDot,
+	ProfileSectionHeader,
+} from "@/components/profile/ProfileUi";
 import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { useToast } from "@/hooks/useToast";
 import {
-	applicationService,
 	type FullProfile,
 	type ProficiencyLevel,
 	profileService,
@@ -97,143 +109,38 @@ function initials(name: string) {
 		.toUpperCase();
 }
 
-// ─── Tiny shared UI ────────────────────────────────────────────────────────────
-function Card({
-	children,
-	className = "",
-}: {
-	children: React.ReactNode;
-	className?: string;
-}) {
-	return (
-		<div className={`bg-white border border-gray-200 rounded-2xl ${className}`}>
-			{children}
-		</div>
-	);
-}
-
+// ─── Section header ───────────────────────────────────────────────────────────
+/**
+ * A thin wrapper over the shared header so the twelve call sites keep reading
+ * as "title, icon, can I add to it" rather than assembling an action node each.
+ */
 function SectionTitle({
 	title,
 	icon: Icon,
 	isOwner,
 	onAdd,
+	count,
 }: {
 	title: string;
 	icon: React.ElementType;
 	isOwner: boolean;
 	onAdd?: () => void;
+	count?: number;
 }) {
 	return (
-		<div className="flex items-center justify-between mb-4">
-			<div className="flex items-center gap-2">
-				<Icon className="w-5 h-5 text-gray-900" strokeWidth={2.5} />
-				<h2 className="text-lg font-bold text-gray-900">{title}</h2>
-			</div>
-			<div className="flex items-center gap-2">
-				{isOwner && onAdd && (
-					<button
-						onClick={onAdd}
-						className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-						title={`Add ${title}`}
-					>
-						<Plus className="w-4 h-4" strokeWidth={2.5} />
-					</button>
-				)}
-			</div>
-		</div>
-	);
-}
-
-function EmptyState({ message }: { message: string }) {
-	return <p className="text-sm text-gray-400 italic py-2">{message}</p>;
-}
-
-function ProficiencyDot({ level }: { level: string }) {
-	const map: Record<string, { color: string; label: string }> = {
-		beginner: { color: "bg-gray-300", label: "Beginner" },
-		intermediate: { color: "bg-amber-400", label: "Intermediate" },
-		advanced: { color: "bg-orange-500", label: "Advanced" },
-		expert: { color: "bg-green-600", label: "Expert" },
-	};
-	const { color, label } = map[level] ?? { color: "bg-gray-300", label: level };
-	return (
-		<span className="flex items-center gap-1 text-xs text-gray-500">
-			<span className={`w-2 h-2 rounded-full ${color}`} />
-			{label}
-		</span>
-	);
-}
-
-// ─── Inline field (used for editable sections that stay inline) ────────────────
-function InlineField({
-	label,
-	name,
-	value,
-	onChange,
-	multiline = false,
-	readOnly = false,
-}: {
-	label: string;
-	name: string;
-	value: string;
-	onChange?: (
-		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-	) => void;
-	multiline?: boolean;
-	readOnly?: boolean;
-}) {
-	const base = "w-full px-3 py-2 border rounded-lg text-sm focus:outline-none";
-	const editable = `${base} border-gray-300 focus:ring-2 focus:ring-primary/50`;
-	const ro = `${base} border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed`;
-	return (
-		<div>
-			<label className="block text-xs font-medium text-gray-500 mb-1">
-				{label}
-				{readOnly && (
-					<span className="ml-1 font-normal text-gray-400">(read-only)</span>
-				)}
-			</label>
-			{multiline ? (
-				<textarea
-					name={name}
-					value={value}
-					onChange={onChange}
-					rows={4}
-					className={editable}
-					readOnly={readOnly}
-				/>
-			) : (
-				<input
-					type="text"
-					name={name}
-					value={value}
-					onChange={onChange}
-					className={readOnly ? ro : editable}
-					readOnly={readOnly}
-				/>
-			)}
-		</div>
-	);
-}
-
-// ─── Availability badge ───────────────────────────────────────────────────────
-function AvailabilityBadge({ status }: { status: string }) {
-	const map: Record<string, { label: string; cls: string }> = {
-		available: { label: "Available", cls: "bg-green-100 text-green-700" },
-		partially_available: {
-			label: "Partial",
-			cls: "bg-amber-100 text-amber-700",
-		},
-		unavailable: { label: "Unavailable", cls: "bg-red-100 text-red-700" },
-	};
-	const { label, cls } = map[status] ?? {
-		label: status,
-		cls: "bg-gray-100 text-gray-600",
-	};
-	return (
-		<span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cls}`}>
-			{label}
-		</span>
+		<ProfileSectionHeader
+			title={title}
+			icon={Icon}
+			count={count}
+			className="mb-4"
+			action={
+				isOwner && onAdd ? (
+					<IconButton label={`Add ${title}`} onClick={onAdd}>
+						<Plus className="h-4 w-4" />
+					</IconButton>
+				) : undefined
+			}
+		/>
 	);
 }
 
@@ -255,16 +162,10 @@ function ProfilePage() {
 		enabled: !!profileId,
 	});
 
-	const { data: existingApp, isLoading: appLoading } = useQuery({
-		queryKey: ["myApplication"],
-		queryFn: () => applicationService.getMyApplication(),
-		enabled: isOwner,
-	});
-
 	const { data: talentEligibility } = useQuery({
 		queryKey: ["talentGoLiveEligibility", profileId],
 		queryFn: () => profileService.getGoLiveEligibility(),
-		enabled: isOwner && !!profile && profile.talent_status !== "active",
+		enabled: isOwner && !!profile && profile.talent_status === null,
 	});
 
 	// ── Mutations ─────────────────────────────────────────────────────────────
@@ -637,12 +538,12 @@ function ProfilePage() {
 		return (
 			<>
 				<div className="min-h-screen bg-background text-foreground flex items-center justify-center pt-20">
-					<div className="text-center bg-white p-12 rounded-2xl border border-gray-200 max-w-sm">
-						<User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-						<h2 className="text-lg font-bold text-gray-800 mb-1">
+					<div className="text-center bg-card p-12 rounded-2xl border border-border max-w-sm">
+						<User className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+						<h2 className="text-lg font-bold text-foreground mb-1">
 							Profile not found
 						</h2>
-						<p className="text-sm text-gray-500">
+						<p className="text-sm text-muted-foreground">
 							This profile doesn't exist or you don't have permission to view
 							it.
 						</p>
@@ -660,33 +561,39 @@ function ProfilePage() {
 	// ─── RENDER ────────────────────────────────────────────────────────────────
 	return (
 		<>
-			<div className="min-h-screen bg-background text-foreground pt-[72px] pb-16">
-				<div className="max-w-5xl mx-auto px-4 sm:px-6">
+			<div className="min-h-screen bg-background pb-20 pt-app-header text-foreground">
+				<div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
 					{/* ══ HEADER CARD (banner + avatar overlap, LinkedIn-style) ═══════ */}
-					<Card className="mb-3 overflow-visible">
-						{/* Banner */}
-						<div className="relative w-full h-36 sm:h-48 rounded-t-2xl overflow-hidden bg-linear-to-br from-gray-800 via-gray-700 to-gray-900">
-							{profile.banner_url && (
+					<Card className="mb-5 overflow-visible">
+						<div className="relative h-40 w-full overflow-hidden rounded-t-2xl bg-muted sm:h-52">
+							{profile.banner_url ? (
 								<img
 									src={profile.banner_url}
 									alt="Banner"
-									className="w-full h-full object-cover"
+									className="h-full w-full object-cover"
+								/>
+							) : (
+								<EmptyProfileBanner
+									isOwner={isOwner}
+									onAdd={() => setBannerModalOpen(true)}
 								/>
 							)}
-							{isOwner && (
+							{/* The corner control stays for the "replace what is there"
+							    case; the empty state carries its own. */}
+							{isOwner && profile.banner_url && (
 								<button
 									onClick={() => setBannerModalOpen(true)}
 									className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs font-medium bg-black/50 hover:bg-black/70 text-white px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors"
 								>
-									<ImagePlus className="w-3.5 h-3.5" />
-									{profile.banner_url ? "Change banner" : "Add banner"}
+									<ImagePlus className="h-3.5 w-3.5" />
+									Change banner
 								</button>
 							)}
 						</div>
 
 						{/* Avatar (overlaps banner) */}
-						<div className="px-6 sm:px-8 pb-5">
-							<div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-14 sm:-mt-16 mb-3">
+						<div className="px-5 pb-6 sm:px-8">
+							<div className="-mt-14 mb-4 flex flex-col gap-4 sm:-mt-16 sm:flex-row sm:items-end sm:justify-between">
 								{/* Avatar */}
 								<div className="relative shrink-0 self-start">
 									{profile.avatar_url ? (
@@ -704,97 +611,53 @@ function ProfilePage() {
 										<button
 											onClick={() => setAvatarModalOpen(true)}
 											title="Change photo"
-											className="absolute bottom-1 right-1 w-8 h-8 bg-white border border-gray-300 rounded-full flex items-center justify-center shadow hover:bg-gray-50 transition-colors"
+											className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow transition-colors hover:bg-muted"
 										>
-											<Camera className="w-4 h-4 text-gray-600" />
+											<Camera className="h-4 w-4 text-muted-foreground" />
 										</button>
 									)}
 								</div>
 
-								{/* Action buttons (top-right, aligned to bottom of avatar row) */}
+								{/* Owner actions, aligned to the bottom of the avatar row */}
 								{isOwner && (
-									<div className="flex flex-col items-end gap-2 pb-1">
-										<div className="flex items-center gap-2">
-											{/* Apply as Consultant CTA — only shown when not yet verified */}
-											{!profile.is_consultant_verified && !appLoading && (
-												<Link
-													to="/marketplace/consultant/apply"
-													className="text-sm font-semibold bg-teal-50 border border-teal-400 text-teal-600 px-4 py-1.5 rounded-full hover:bg-teal-100 transition-colors flex items-center gap-1.5"
-												>
-													{existingApp && existingApp.status !== "draft"
-														? "View Application Status"
-														: "Apply as Consultant"}
-												</Link>
-											)}
-											{profile.talent_status === null && (
-												<Link
-													to="/marketplace/talent/go-live"
-													className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 transition-colors"
-												>
-													I Want to Work
-												</Link>
-											)}
-											{profile.talent_status === "active" && (
-												<>
-													<span className="text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-1.5 rounded-full">
-														Live in marketplace
-													</span>
-													<button
-														type="button"
-														onClick={() => pauseTalent.mutate()}
-														disabled={pauseTalent.isPending}
-														className="text-sm font-semibold border border-gray-300 text-gray-600 px-4 py-1.5 rounded-full hover:bg-gray-50 disabled:opacity-60 transition-colors"
-													>
-														{pauseTalent.isPending ? "Pausing..." : "Pause"}
-													</button>
-												</>
-											)}
-											{profile.talent_status === "paused" && (
-												<button
-													type="button"
-													onClick={() => resumeTalent.mutate()}
-													disabled={resumeTalent.isPending}
-													className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 disabled:opacity-60 transition-colors"
-												>
-													{resumeTalent.isPending
-														? "Resuming..."
-														: "Resume marketplace"}
-												</button>
-											)}
+									<div className="flex flex-wrap items-center gap-2 pb-1 sm:justify-end">
+										{profile.talent_status === null && (
 											<Link
-												to="/marketplace/consultant/$profileId"
-												params={{ profileId }}
-												className="text-sm font-semibold border border-primary text-primary px-4 py-1.5 rounded-full hover:bg-primary/5 transition-colors"
+												to="/marketplace/talent/go-live"
+												className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
 											>
-												Public view
+												Offer your services
 											</Link>
-											<button
-												onClick={() =>
-													setEditSection(isEditing("header") ? null : "header")
-												}
-												className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors"
-												title="Edit profile"
+										)}
+										{profile.talent_status === "active" && (
+											<PillButton
+												onClick={() => pauseTalent.mutate()}
+												disabled={pauseTalent.isPending}
 											>
-												<Edit2 className="w-3.5 h-3.5" />
-											</button>
-										</div>
-										{profile.talent_status !== "active" &&
-											talentEligibility && (
-												<div className="max-w-md text-right">
-													<p className="text-xs font-semibold text-gray-600">
-														Talent readiness
-													</p>
-													<p className="text-xs text-gray-400">
-														{talentEligibility.eligible
-															? "Ready to go live."
-															: talentEligibility.missing
-																	.map(
-																		(item) => TALENT_REQUIREMENT_LABELS[item],
-																	)
-																	.join(" · ")}
-													</p>
-												</div>
-											)}
+												{pauseTalent.isPending
+													? "Pausing…"
+													: "Pause marketplace listing"}
+											</PillButton>
+										)}
+										{profile.talent_status === "paused" && (
+											<PillButton
+												variant="primary"
+												onClick={() => resumeTalent.mutate()}
+												disabled={resumeTalent.isPending}
+											>
+												{resumeTalent.isPending
+													? "Resuming…"
+													: "Resume listing"}
+											</PillButton>
+										)}
+										<PillButton
+											onClick={() =>
+												setEditSection(isEditing("header") ? null : "header")
+											}
+										>
+											<Edit2 className="h-3.5 w-3.5" />
+											Edit profile
+										</PillButton>
 									</div>
 								)}
 							</div>
@@ -824,7 +687,7 @@ function ProfilePage() {
 											setHeaderForm((p) => ({ ...p, headline: e.target.value }))
 										}
 									/>
-									<p className="text-xs text-gray-400">
+									<p className="text-xs text-muted-foreground">
 										First &amp; last name can only be changed by contacting
 										support.
 									</p>
@@ -843,7 +706,7 @@ function ProfilePage() {
 										</button>
 										<button
 											onClick={cancelEdit}
-											className="px-4 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-full hover:bg-gray-50"
+											className="px-4 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
 										>
 											Cancel
 										</button>
@@ -851,52 +714,121 @@ function ProfilePage() {
 								</div>
 							) : (
 								<div>
-									<div className="flex items-center gap-2 flex-wrap">
-										<h1 className="text-2xl font-bold text-gray-900">
+									<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+										<h1 className="text-[26px] font-bold leading-tight tracking-tight text-foreground">
 											{fullName}
 										</h1>
 										{profile.is_consultant_verified && (
-											<span title="Verified consultant">
-												<BadgeCheck className="w-5 h-5 text-primary shrink-0" />
+											<span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11.5px] font-semibold text-primary">
+												<BadgeCheck className="h-3.5 w-3.5" />
+												Verified consultant
+											</span>
+										)}
+										{profile.talent_status === "active" && (
+											<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+												<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+												Open to work
 											</span>
 										)}
 									</div>
+
 									{profile.headline && (
-										<p className="text-gray-600 text-sm mt-0.5 leading-snug">
+										<p className="mt-1.5 max-w-2xl text-[14.5px] leading-snug text-muted-foreground">
 											{profile.headline}
 										</p>
 									)}
-									{(profile.city || profile.country) && (
-										<div className="flex items-center gap-1 text-xs text-gray-500 mt-1.5">
-											<MapPin className="w-3 h-3" />
-											{[profile.city, profile.country]
-												.filter(Boolean)
-												.join(", ")}
-										</div>
-									)}
+
+									{/*
+									 * One meta line rather than three stacked ones: location,
+									 * rate and how long they have been here are all "who is
+									 * this", and reading them as a row is what makes the header
+									 * scan like a profile instead of a form.
+									 */}
+									<div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-muted-foreground">
+										{(profile.city || profile.country) && (
+											<span className="inline-flex items-center gap-1.5">
+												<MapPin className="h-3.5 w-3.5" />
+												{[profile.city, profile.country]
+													.filter(Boolean)
+													.join(", ")}
+											</span>
+										)}
+										{profile.rate_settings?.hourly_rate != null && (
+											<span className="inline-flex items-center gap-1.5">
+												<DollarSign className="h-3.5 w-3.5" />
+												{profile.rate_settings.hourly_rate}{" "}
+												{profile.rate_settings.currency}/hr
+											</span>
+										)}
+										{profile.languages.length > 0 && (
+											<span className="inline-flex items-center gap-1.5">
+												<Globe className="h-3.5 w-3.5" />
+												{profile.languages
+													.slice(0, 3)
+													.map((language) => language.language.name)
+													.join(", ")}
+											</span>
+										)}
+										<span className="inline-flex items-center gap-1.5">
+											<Clock className="h-3.5 w-3.5" />
+											Joined {fmtDate(profile.created_at)}
+										</span>
+									</div>
 								</div>
 							)}
+
+							{/*
+							 * What is still missing before this profile can be listed.
+							 * Rendered as the requirements themselves rather than a
+							 * percentage: "add a portfolio item" is something somebody can
+							 * act on, where "68% complete" is a number to feel bad about.
+							 */}
+							{isOwner &&
+								profile.talent_status === null &&
+								talentEligibility &&
+								!talentEligibility.eligible && (
+									<div className="mt-5 rounded-xl border border-border bg-muted/40 px-4 py-3">
+										<p className="text-[12.5px] font-semibold text-foreground">
+											Before you can be listed in the marketplace
+										</p>
+										<ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+											{talentEligibility.missing.map((item) => (
+												<li
+													key={item}
+													className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"
+												>
+													<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+													{TALENT_REQUIREMENT_LABELS[item]}
+												</li>
+											))}
+										</ul>
+									</div>
+								)}
 						</div>
 					</Card>
 
 					{/* ══ ACCOUNT TYPE SECTION (owner only) ════════════════════════ */}
 					{/* ══ 2-COLUMN LAYOUT ════════════════════════════════════════════ */}
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-						{/* LEFT SIDEBAR */}
-						<div className="space-y-3">
+					<div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+						{/*
+						 * The rail sticks on desktop: it is reference material (how to
+						 * reach them, what they charge, what they speak) that stays
+						 * relevant while somebody reads eleven roles of history.
+						 */}
+						<div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
 							{/* Contact */}
 							<Card className="p-5">
 								<div className="flex items-center justify-between mb-3">
-									<h3 className="font-semibold text-gray-900 text-sm">
+									<h3 className="text-[13.5px] font-semibold text-foreground">
 										Contact Info
 									</h3>
 									{isOwner && !isEditing("contact") && (
-										<button
+										<IconButton
+											label="Edit contact info"
 											onClick={() => setEditSection("contact")}
-											className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
 										>
-											<Edit2 className="w-3.5 h-3.5" />
-										</button>
+											<Edit2 className="h-3.5 w-3.5" />
+										</IconButton>
 									)}
 								</div>
 								{isEditing("contact") ? (
@@ -963,51 +895,42 @@ function ProfilePage() {
 											</button>
 											<button
 												onClick={cancelEdit}
-												className="flex-1 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-full hover:bg-gray-50"
+												className="flex-1 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
 											>
 												Cancel
 											</button>
 										</div>
 									</div>
 								) : (
-									<div className="space-y-2.5">
+									<div className="space-y-3">
 										{profile.email && (
-											<div className="flex items-start gap-2">
-												<Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-												<span className="text-xs text-gray-600">
-													{profile.email}
-												</span>
-											</div>
+											<MetaRow icon={Mail}>
+												<span className="break-all">{profile.email}</span>
+											</MetaRow>
 										)}
 										{profile.phone_number && (
-											<div className="flex items-start gap-2">
-												<Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-												<div className="flex items-center gap-1.5 flex-wrap">
-													<span className="text-xs text-gray-600">
-														{profile.phone_number}
-													</span>
-													<span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+											<MetaRow icon={Phone}>
+												<span className="flex flex-wrap items-center gap-1.5">
+													{profile.phone_number}
+													<span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-600 dark:text-amber-400">
 														Unverified
 													</span>
-												</div>
-											</div>
+												</span>
+											</MetaRow>
 										)}
 										{[profile.city, profile.country]
 											.filter(Boolean)
 											.join(", ") && (
-											<div className="flex items-start gap-2">
-												<MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-												<span className="text-xs text-gray-600">
-													{[profile.city, profile.country]
-														.filter(Boolean)
-														.join(", ")}
-												</span>
-											</div>
+											<MetaRow icon={MapPin}>
+												{[profile.city, profile.country]
+													.filter(Boolean)
+													.join(", ")}
+											</MetaRow>
 										)}
 										{!profile.email &&
 											!profile.phone_number &&
 											!profile.city && (
-												<p className="text-xs text-gray-400 italic">
+												<p className="text-[12.5px] text-muted-foreground">
 													No contact info added.
 												</p>
 											)}
@@ -1018,16 +941,16 @@ function ProfilePage() {
 							{/* Rate & Availability */}
 							<Card className="p-5">
 								<div className="flex items-center justify-between mb-3">
-									<h3 className="font-semibold text-gray-900 text-sm">
+									<h3 className="text-[13.5px] font-semibold text-foreground">
 										Rate &amp; Availability
 									</h3>
 									{isOwner && !isEditing("rate") && (
-										<button
+										<IconButton
+											label="Edit rate and availability"
 											onClick={() => setEditSection("rate")}
-											className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
 										>
-											<Edit2 className="w-3.5 h-3.5" />
-										</button>
+											<Edit2 className="h-3.5 w-3.5" />
+										</IconButton>
 									)}
 								</div>
 								{isEditing("rate") ? (
@@ -1044,7 +967,7 @@ function ProfilePage() {
 											}
 										/>
 										<div>
-											<label className="block text-xs font-medium text-gray-500 mb-1">
+											<label className="block text-xs font-medium text-muted-foreground mb-1">
 												Currency
 											</label>
 											<select
@@ -1055,7 +978,7 @@ function ProfilePage() {
 														currency: e.target.value,
 													}))
 												}
-												className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+												className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
 											>
 												{["USD", "EUR", "GBP", "PHP", "AUD", "CAD"].map((c) => (
 													<option key={c}>{c}</option>
@@ -1063,7 +986,7 @@ function ProfilePage() {
 											</select>
 										</div>
 										<div>
-											<label className="block text-xs font-medium text-gray-500 mb-1">
+											<label className="block text-xs font-medium text-muted-foreground mb-1">
 												Availability
 											</label>
 											<select
@@ -1074,7 +997,7 @@ function ProfilePage() {
 														availability: e.target.value,
 													}))
 												}
-												className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+												className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
 											>
 												<option value="available">Available</option>
 												<option value="partially_available">
@@ -1092,7 +1015,7 @@ function ProfilePage() {
 											</button>
 											<button
 												onClick={cancelEdit}
-												className="flex-1 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-full hover:bg-gray-50"
+												className="flex-1 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
 											>
 												Cancel
 											</button>
@@ -1102,15 +1025,17 @@ function ProfilePage() {
 									<div className="space-y-2">
 										{profile.rate_settings?.hourly_rate ? (
 											<div className="flex items-center gap-2">
-												<DollarSign className="w-4 h-4 text-gray-400" />
-												<span className="text-sm font-semibold text-gray-800">
+												<DollarSign className="w-4 h-4 text-muted-foreground" />
+												<span className="text-sm font-semibold text-foreground">
 													{profile.rate_settings.hourly_rate}{" "}
 													{profile.rate_settings.currency}
-													<span className="font-normal text-gray-500">/hr</span>
+													<span className="font-normal text-muted-foreground">
+														/hr
+													</span>
 												</span>
 											</div>
 										) : isOwner ? (
-											<p className="text-xs text-gray-400 italic">
+											<p className="text-xs text-muted-foreground italic">
 												Set your rate
 											</p>
 										) : null}
@@ -1126,16 +1051,16 @@ function ProfilePage() {
 							{/* Languages */}
 							<Card className="p-5">
 								<div className="flex items-center justify-between mb-3">
-									<h3 className="font-semibold text-gray-900 text-sm">
+									<h3 className="text-[13.5px] font-semibold text-foreground">
 										Languages
 									</h3>
 									{isOwner && (
-										<button
+										<IconButton
+											label="Add language"
 											onClick={() => setLangModalOpen(true)}
-											className="p-1.5 rounded-full border border-gray-200 text-gray-400 hover:bg-gray-100 transition-colors"
 										>
-											<Plus className="w-3.5 h-3.5" />
-										</button>
+											<Plus className="h-3.5 w-3.5" />
+										</IconButton>
 									)}
 								</div>
 								{profile.languages.length > 0 ? (
@@ -1146,12 +1071,12 @@ function ProfilePage() {
 												className="flex items-center justify-between group"
 											>
 												<div className="flex items-center gap-2">
-													<Globe className="w-4 h-4 text-gray-400 shrink-0" />
+													<Globe className="w-4 h-4 text-muted-foreground shrink-0" />
 													<div className="flex flex-col">
-														<span className="text-sm font-semibold text-gray-900">
+														<span className="text-sm font-semibold text-foreground">
 															{l.language.name}
 														</span>
-														<span className="text-xs text-gray-500 capitalize">
+														<span className="text-xs text-muted-foreground capitalize">
 															{l.fluency_level}
 														</span>
 													</div>
@@ -1163,7 +1088,7 @@ function ProfilePage() {
 																setEditingLang(l);
 																setLangModalOpen(true);
 															}}
-															className="p-1.5 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors"
+															className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
 															title="Edit"
 														>
 															<Edit2 className="w-3.5 h-3.5" />
@@ -1171,7 +1096,7 @@ function ProfilePage() {
 														<button
 															onClick={() => deleteLanguage.mutate(l.id)}
 															disabled={deleteLanguage.isPending}
-															className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+															className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
 															title="Delete"
 														>
 															{deleteLanguage.isPending ? (
@@ -1186,14 +1111,20 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No languages added." />
+									<EmptyState
+										message="No languages added."
+										actionLabel={isOwner ? "Add a language" : undefined}
+										onAction={
+											isOwner ? () => setLangModalOpen(true) : undefined
+										}
+									/>
 								)}
 							</Card>
 
 							{/* Stats */}
 							{profile.stats && (
 								<Card className="p-5">
-									<h3 className="font-semibold text-gray-900 text-sm mb-3">
+									<h3 className="mb-3 text-[13.5px] font-semibold text-foreground">
 										Stats
 									</h3>
 									<div className="grid grid-cols-2 gap-3">
@@ -1225,13 +1156,15 @@ function ProfilePage() {
 										].map(({ icon: Icon, label, val }) => (
 											<div
 												key={label}
-												className="flex flex-col items-center p-2 bg-gray-50 rounded-xl"
+												className="flex flex-col items-center p-2 bg-muted rounded-xl"
 											>
 												<Icon className="w-4 h-4 text-primary mb-1" />
-												<span className="text-sm font-bold text-gray-900">
+												<span className="text-sm font-bold text-foreground">
 													{val}
 												</span>
-												<span className="text-xs text-gray-400">{label}</span>
+												<span className="text-xs text-muted-foreground">
+													{label}
+												</span>
 											</div>
 										))}
 									</div>
@@ -1241,13 +1174,13 @@ function ProfilePage() {
 							{isOwner && (
 								<Card className="p-5 border-[#14b8a6]/20 bg-teal-50/10">
 									<div className="flex items-center justify-between mb-3 border-b border-[#14b8a6]/10 pb-2">
-										<h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+										<h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
 											<ShieldCheck className="w-4 h-4 text-[#14b8a6]" />
 											Verification Documents
 										</h3>
 										<button
 											onClick={() => setIdDocModalOpen(true)}
-											className="p-1.5 rounded-full border border-gray-200 text-gray-400 hover:bg-white transition-colors"
+											className="p-1.5 rounded-full border border-border text-muted-foreground hover:bg-card transition-colors"
 										>
 											<Plus className="w-3.5 h-3.5" />
 										</button>
@@ -1257,23 +1190,23 @@ function ProfilePage() {
 											{profile.identity_documents.map((doc) => (
 												<div
 													key={doc.id}
-													className="flex items-center justify-between group bg-white p-2.5 rounded-xl border border-gray-100 shadow-sm"
+													className="flex items-center justify-between group bg-card p-2.5 rounded-xl border border-border shadow-sm"
 												>
 													<div className="flex items-center gap-3">
 														<div
-															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${doc.is_verified ? "bg-green-100" : "bg-gray-100"}`}
+															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${doc.is_verified ? "bg-green-100" : "bg-muted"}`}
 														>
 															{doc.is_verified ? (
 																<Check className="w-4 h-4 text-green-600" />
 															) : (
-																<Loader2 className="w-4 h-4 text-gray-400" />
+																<Loader2 className="w-4 h-4 text-muted-foreground" />
 															)}
 														</div>
 														<div className="flex flex-col">
-															<span className="text-sm font-semibold text-gray-900 capitalize">
+															<span className="text-sm font-semibold text-foreground capitalize">
 																{doc.type.replace("_", " ")}
 															</span>
-															<span className="text-xs text-gray-500">
+															<span className="text-xs text-muted-foreground">
 																{doc.is_verified
 																	? "Verified"
 																	: "Pending review"}
@@ -1285,7 +1218,7 @@ function ProfilePage() {
 													<button
 														onClick={() => deleteIdentityDoc.mutate(doc.id)}
 														disabled={deleteIdentityDoc.isPending}
-														className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+														className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
 														title="Delete Document"
 													>
 														{deleteIdentityDoc.isPending ? (
@@ -1298,43 +1231,52 @@ function ProfilePage() {
 											))}
 										</div>
 									) : (
-										<EmptyState message="No identity documents provided." />
+										<EmptyState
+											message="No identity documents provided."
+											actionLabel={isOwner ? "Upload a document" : undefined}
+											onAction={
+												isOwner ? () => setIdDocModalOpen(true) : undefined
+											}
+										/>
 									)}
 								</Card>
 							)}
 						</div>
 
 						{/* RIGHT MAIN CONTENT */}
-						<div className="lg:col-span-2 space-y-3">
+						<div className="space-y-5">
 							{/* ── About & Skills (merged card) ─────────────────────────── */}
 							<Card className="p-6">
-								<div className="flex items-center justify-between mb-4">
-									<h2 className="text-lg font-bold text-gray-900">About</h2>
-									{isOwner && (
-										<button
-											onClick={() => setAboutModalOpen(true)}
-											className="p-1.5 rounded-full border border-gray-200 text-gray-400 hover:bg-gray-100 transition-colors"
-											title="Edit about & skills"
-										>
-											<Edit2 className="w-3.5 h-3.5" />
-										</button>
-									)}
-								</div>
+								<ProfileSectionHeader
+									title="About"
+									icon={User}
+									className="mb-4"
+									action={
+										isOwner ? (
+											<IconButton
+												label="Edit about and skills"
+												onClick={() => setAboutModalOpen(true)}
+											>
+												<Edit2 className="h-3.5 w-3.5" />
+											</IconButton>
+										) : undefined
+									}
+								/>
 
 								{/* Bio */}
 								{profile.bio ? (
-									<p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line mb-5">
-										{profile.bio}
-									</p>
+									<div className="mb-5">
+										<ExpandableText text={profile.bio} lines={6} />
+									</div>
 								) : isOwner ? (
 									<button
 										onClick={() => setAboutModalOpen(true)}
-										className="block w-full text-left text-sm text-gray-400 italic mb-5 hover:text-primary transition-colors"
+										className="block w-full text-left text-sm text-muted-foreground italic mb-5 hover:text-primary transition-colors"
 									>
 										+ Add a professional summary…
 									</button>
 								) : (
-									<p className="text-sm text-gray-400 italic mb-5">
+									<p className="text-sm text-muted-foreground italic mb-5">
 										No overview provided.
 									</p>
 								)}
@@ -1343,12 +1285,12 @@ function ProfilePage() {
 								{(profile.bio ||
 									profile.skills.length > 0 ||
 									profile.specializations.length > 0) && (
-									<hr className="border-gray-100 mb-4" />
+									<hr className="mb-5 border-border" />
 								)}
 
 								{/* Specializations */}
-								<div className="flex items-center justify-between mb-3">
-									<h3 className="text-sm font-semibold text-gray-700">
+								<div className="mb-3 flex items-center justify-between">
+									<h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
 										Specializations
 									</h3>
 									{isOwner && (
@@ -1365,25 +1307,25 @@ function ProfilePage() {
 										{profile.specializations.map((s) => (
 											<div
 												key={s.id}
-												className="group relative pr-12 border-l-2 border-primary/30 pl-3"
+												className="group relative rounded-xl border border-border bg-muted/30 p-3 pr-12"
 											>
 												<div className="flex items-center gap-2 mb-1">
-													<span className="font-semibold text-gray-900 text-sm capitalize">
+													<span className="font-semibold text-foreground text-sm capitalize">
 														{s.category.replace("_", " ")}
 													</span>
 													{s.years_of_experience && (
-														<span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+														<span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
 															{s.years_of_experience} yrs
 														</span>
 													)}
 												</div>
 												{s.sub_category && (
-													<p className="text-xs font-medium text-gray-500 mb-1">
+													<p className="text-xs font-medium text-muted-foreground mb-1">
 														{s.sub_category}
 													</p>
 												)}
 												{s.description && (
-													<p className="text-sm text-gray-600 line-clamp-2">
+													<p className="text-sm text-muted-foreground line-clamp-2">
 														{s.description}
 													</p>
 												)}
@@ -1394,14 +1336,14 @@ function ProfilePage() {
 																setEditingSpec(s);
 																setSpecModalOpen(true);
 															}}
-															className="p-1 text-gray-400 hover:text-primary"
+															className="p-1 text-muted-foreground hover:text-primary"
 															title="Edit"
 														>
 															<Edit2 className="w-3.5 h-3.5" />
 														</button>
 														<button
 															onClick={() => deleteSpecialization.mutate(s.id)}
-															className="p-1 text-gray-400 hover:text-red-500"
+															className="p-1 text-muted-foreground hover:text-destructive"
 															title="Delete"
 														>
 															{deleteSpecialization.isPending ? (
@@ -1416,12 +1358,18 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No specializations added." />
+									<EmptyState
+										message="No specializations added."
+										actionLabel={isOwner ? "Add a specialization" : undefined}
+										onAction={
+											isOwner ? () => setSpecModalOpen(true) : undefined
+										}
+									/>
 								)}
 
 								{/* Skills */}
-								<div className="flex items-center justify-between mb-3 mt-4">
-									<h3 className="text-sm font-semibold text-gray-700">
+								<div className="mb-3 mt-6 flex items-center justify-between">
+									<h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
 										Skills
 									</h3>
 									{isOwner && profile.skills.length === 0 && (
@@ -1438,7 +1386,7 @@ function ProfilePage() {
 										{profile.skills.map((s) => (
 											<span
 												key={s.id}
-												className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-sm text-gray-700 transition-colors"
+												className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[13px] text-foreground"
 											>
 												{s.skill.name}
 												<ProficiencyDot level={s.proficiency_level} />
@@ -1446,7 +1394,13 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No skills added yet." />
+									<EmptyState
+										message="No skills added yet."
+										actionLabel={isOwner ? "Add skills" : undefined}
+										onAction={
+											isOwner ? () => setAboutModalOpen(true) : undefined
+										}
+									/>
 								)}
 							</Card>
 
@@ -1461,7 +1415,7 @@ function ProfilePage() {
 								{profile.experiences.length > 0 ? (
 									<div className="relative">
 										{/* Vertical timeline line */}
-										<div className="absolute left-[18px] top-2 bottom-2 w-px bg-gray-200" />
+										<div className="absolute left-[18px] top-2 bottom-2 w-px bg-border" />
 										<div className="space-y-0">
 											{profile.experiences.map((exp) => {
 												const start = fmtDate(exp.start_date);
@@ -1474,23 +1428,20 @@ function ProfilePage() {
 														className="relative flex items-start gap-4 pl-10 pb-7 last:pb-0 group"
 													>
 														{/* Node dot */}
-														<div className="absolute left-0 top-1 w-9 h-9 rounded-full bg-white border-2 border-gray-900 flex items-center justify-center shrink-0 shadow-sm">
-															<Building2
-																className="w-4 h-4 text-gray-900"
-																strokeWidth={2.5}
-															/>
+														<div className="absolute left-0 top-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted">
+															<Building2 className="h-4 w-4 text-muted-foreground" />
 														</div>
 														{/* Content */}
 														<div className="flex-1 min-w-0">
 															<div className="flex items-start justify-between gap-2">
 																<div>
-																	<p className="font-bold text-gray-900 text-sm leading-tight">
+																	<p className="font-bold text-foreground text-sm leading-tight">
 																		{exp.title}
 																	</p>
-																	<p className="text-gray-600 text-sm">
+																	<p className="text-muted-foreground text-sm">
 																		{exp.company}
 																	</p>
-																	<p className="text-gray-400 text-xs mt-0.5">
+																	<p className="text-muted-foreground text-xs mt-0.5">
 																		{start} – {end}
 																		{exp.location &&
 																			!exp.is_remote &&
@@ -1505,7 +1456,7 @@ function ProfilePage() {
 																				setEditingExp(exp);
 																				setExpModalOpen(true);
 																			}}
-																			className="p-1 rounded text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors"
+																			className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
 																			title="Edit"
 																		>
 																			<Edit2 className="w-3.5 h-3.5" />
@@ -1515,7 +1466,7 @@ function ProfilePage() {
 																				deleteExperience.mutate(exp.id)
 																			}
 																			disabled={deleteExperience.isPending}
-																			className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+																			className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
 																		>
 																			{deleteExperience.isPending ? (
 																				<Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1527,9 +1478,12 @@ function ProfilePage() {
 																)}
 															</div>
 															{exp.description && (
-																<p className="text-gray-600 text-sm mt-1.5 leading-relaxed">
-																	{exp.description}
-																</p>
+																<div className="mt-2">
+																	<ExpandableText
+																		text={exp.description}
+																		lines={3}
+																	/>
+																</div>
 															)}
 														</div>
 													</div>
@@ -1538,7 +1492,11 @@ function ProfilePage() {
 										</div>
 									</div>
 								) : (
-									<EmptyState message="No work experience added." />
+									<EmptyState
+										message="No work experience added."
+										actionLabel={isOwner ? "Add a role" : undefined}
+										onAction={isOwner ? () => setExpModalOpen(true) : undefined}
+									/>
 								)}
 							</Card>
 
@@ -1551,37 +1509,37 @@ function ProfilePage() {
 									onAdd={() => setEduModalOpen(true)}
 								/>
 								{profile.educations.length > 0 ? (
-									<div className="divide-y divide-gray-100">
+									<div className="divide-y divide-border">
 										{profile.educations.map((edu) => (
 											<div
 												key={edu.id}
 												className="py-4 flex items-start gap-4 group first:pt-0 last:pb-0"
 											>
 												{/* Bold black icon */}
-												<div className="w-10 h-10 rounded-lg border-2 border-gray-900 flex items-center justify-center shrink-0 bg-white shadow-sm">
+												<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
 													<BookOpen
-														className="w-5 h-5 text-gray-900"
+														className="w-5 h-5 text-foreground"
 														strokeWidth={2.5}
 													/>
 												</div>
 												<div className="flex-1 min-w-0">
-													<p className="font-bold text-gray-900 text-sm">
+													<p className="font-bold text-foreground text-sm">
 														{edu.institution}
 													</p>
-													<p className="text-gray-600 text-sm">
+													<p className="text-muted-foreground text-sm">
 														{[edu.degree, edu.field_of_study]
 															.filter(Boolean)
 															.join(" · ")}
 													</p>
 													{(edu.start_year || edu.end_year) && (
-														<p className="text-gray-400 text-xs mt-0.5">
+														<p className="text-muted-foreground text-xs mt-0.5">
 															{edu.start_year && `${edu.start_year}`}
 															{edu.end_year &&
 																` – ${edu.is_current ? "Present" : edu.end_year}`}
 														</p>
 													)}
 													{edu.description && (
-														<p className="text-gray-500 text-xs mt-1">
+														<p className="text-muted-foreground text-xs mt-1">
 															{edu.description}
 														</p>
 													)}
@@ -1593,7 +1551,7 @@ function ProfilePage() {
 																setEditingEdu(edu);
 																setEduModalOpen(true);
 															}}
-															className="p-1 rounded text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors"
+															className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
 															title="Edit"
 														>
 															<Edit2 className="w-3.5 h-3.5" />
@@ -1601,7 +1559,7 @@ function ProfilePage() {
 														<button
 															onClick={() => deleteEducation.mutate(edu.id)}
 															disabled={deleteEducation.isPending}
-															className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+															className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
 														>
 															{deleteEducation.isPending ? (
 																<Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1615,7 +1573,11 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No education added." />
+									<EmptyState
+										message="No education added."
+										actionLabel={isOwner ? "Add education" : undefined}
+										onAction={isOwner ? () => setEduModalOpen(true) : undefined}
+									/>
 								)}
 							</Card>
 
@@ -1628,36 +1590,38 @@ function ProfilePage() {
 									onAdd={() => setCertModalOpen(true)}
 								/>
 								{profile.certifications.length > 0 ? (
-									<div className="divide-y divide-gray-100">
+									<div className="divide-y divide-border">
 										{profile.certifications.map((cert) => (
 											<div
 												key={cert.id}
 												className="py-4 flex items-start gap-4 group first:pt-0 last:pb-0"
 											>
-												<div className="w-10 h-10 rounded-lg border-2 border-gray-900 flex items-center justify-center shrink-0 bg-white shadow-sm">
+												<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
 													<Award
-														className="w-5 h-5 text-gray-900"
+														className="w-5 h-5 text-foreground"
 														strokeWidth={2.5}
 													/>
 												</div>
 												<div className="flex-1 min-w-0">
 													<div className="flex items-center gap-1.5">
-														<p className="font-bold text-gray-900 text-sm">
+														<p className="font-bold text-foreground text-sm">
 															{cert.name}
 														</p>
 														{cert.is_verified && (
 															<BadgeCheck className="w-3.5 h-3.5 text-green-600" />
 														)}
 													</div>
-													<p className="text-gray-600 text-sm">{cert.issuer}</p>
+													<p className="text-muted-foreground text-sm">
+														{cert.issuer}
+													</p>
 													<div className="flex flex-wrap items-center gap-3 mt-0.5">
 														{cert.issue_date && (
-															<p className="text-gray-400 text-xs">
+															<p className="text-muted-foreground text-xs">
 																Issued {fmtDate(cert.issue_date)}
 															</p>
 														)}
 														{cert.credential_id && (
-															<p className="text-gray-400 text-xs">
+															<p className="text-muted-foreground text-xs">
 																ID: {cert.credential_id}
 															</p>
 														)}
@@ -1667,7 +1631,7 @@ function ProfilePage() {
 															href={cert.credential_url}
 															target="_blank"
 															rel="noopener noreferrer"
-															className="inline-flex items-center gap-1 mt-1.5 text-xs border border-gray-300 text-gray-600 px-3 py-1 rounded-full hover:bg-gray-50 transition-colors"
+															className="inline-flex items-center gap-1 mt-1.5 text-xs border border-border text-muted-foreground px-3 py-1 rounded-full hover:bg-muted transition-colors"
 														>
 															<ExternalLink className="w-3 h-3" /> Show
 															credential
@@ -1681,7 +1645,7 @@ function ProfilePage() {
 																setEditingCert(cert);
 																setCertModalOpen(true);
 															}}
-															className="p-1 rounded text-gray-300 hover:text-primary hover:bg-primary/10 transition-colors"
+															className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
 															title="Edit"
 														>
 															<Edit2 className="w-3.5 h-3.5" />
@@ -1691,7 +1655,7 @@ function ProfilePage() {
 																deleteCertification.mutate(cert.id)
 															}
 															disabled={deleteCertification.isPending}
-															className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+															className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
 														>
 															{deleteCertification.isPending ? (
 																<Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1705,7 +1669,13 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No certifications added." />
+									<EmptyState
+										message="No certifications added."
+										actionLabel={isOwner ? "Add a certification" : undefined}
+										onAction={
+											isOwner ? () => setCertModalOpen(true) : undefined
+										}
+									/>
 								)}
 							</Card>
 
@@ -1725,13 +1695,13 @@ function ProfilePage() {
 													<ShieldCheck className="w-5 h-5 text-indigo-500" />
 												</div>
 												<div className="flex-1">
-													<h4 className="text-sm font-bold text-gray-900">
+													<h4 className="text-sm font-bold text-foreground">
 														{lic.name}
 													</h4>
-													<p className="text-sm text-gray-600 mb-1">
+													<p className="text-sm text-muted-foreground mb-1">
 														{lic.issuing_authority}
 													</p>
-													<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
+													<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
 														{lic.issue_date && (
 															<span>Issued: {fmtDate(lic.issue_date)}</span>
 														)}
@@ -1750,13 +1720,13 @@ function ProfilePage() {
 																setEditingLic(lic);
 																setLicModalOpen(true);
 															}}
-															className="p-1 hover:text-primary text-gray-400 transition-colors"
+															className="p-1 hover:text-primary text-muted-foreground transition-colors"
 														>
 															<Edit2 className="w-3.5 h-3.5" />
 														</button>
 														<button
 															onClick={() => deleteLicense.mutate(lic.id)}
-															className="p-1 hover:text-red-500 text-gray-400 transition-colors"
+															className="p-1 hover:text-destructive text-muted-foreground transition-colors"
 														>
 															{deleteLicense.isPending ? (
 																<Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1770,7 +1740,11 @@ function ProfilePage() {
 										))}
 									</div>
 								) : (
-									<EmptyState message="No licenses added." />
+									<EmptyState
+										message="No licenses added."
+										actionLabel={isOwner ? "Add a license" : undefined}
+										onAction={isOwner ? () => setLicModalOpen(true) : undefined}
+									/>
 								)}
 							</Card>
 
@@ -1788,7 +1762,7 @@ function ProfilePage() {
 											{profile.portfolios.map((item) => (
 												<div
 													key={item.id}
-													className="group relative border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+													className="group relative border border-border rounded-xl overflow-hidden hover:shadow-md transition-shadow"
 												>
 													{item.image_url ? (
 														<img
@@ -1797,16 +1771,16 @@ function ProfilePage() {
 															className="w-full aspect-video object-cover"
 														/>
 													) : (
-														<div className="w-full aspect-video bg-gray-100 flex items-center justify-center">
-															<LayoutGrid className="w-8 h-8 text-gray-300" />
+														<div className="w-full aspect-video bg-muted flex items-center justify-center">
+															<LayoutGrid className="w-8 h-8 text-muted-foreground" />
 														</div>
 													)}
 													<div className="p-3">
-														<p className="font-semibold text-gray-900 text-sm">
+														<p className="font-semibold text-foreground text-sm">
 															{item.title}
 														</p>
 														{item.description && (
-															<p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+															<p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
 																{item.description}
 															</p>
 														)}
@@ -1826,7 +1800,7 @@ function ProfilePage() {
 																{item.tags.map((t) => (
 																	<span
 																		key={t}
-																		className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+																		className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
 																	>
 																		{t}
 																	</span>
@@ -1841,7 +1815,7 @@ function ProfilePage() {
 																	setEditingPort(item);
 																	setPortModalOpen(true);
 																}}
-																className="p-1.5 bg-white/90 border border-gray-200 rounded-lg text-gray-400 hover:text-primary shadow-sm transition-colors"
+																className="p-1.5 bg-card/90 border border-border rounded-lg text-muted-foreground hover:text-primary shadow-sm transition-colors"
 																title="Edit"
 															>
 																<Edit2 className="w-3.5 h-3.5" />
@@ -1849,7 +1823,7 @@ function ProfilePage() {
 															<button
 																onClick={() => deletePortfolio.mutate(item.id)}
 																disabled={deletePortfolio.isPending}
-																className="p-1.5 bg-white/90 border border-gray-200 rounded-lg text-gray-400 hover:text-red-500 shadow-sm transition-colors"
+																className="p-1.5 bg-card/90 border border-border rounded-lg text-muted-foreground hover:text-destructive shadow-sm transition-colors"
 															>
 																{deletePortfolio.isPending ? (
 																	<Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1863,7 +1837,13 @@ function ProfilePage() {
 											))}
 										</div>
 									) : (
-										<EmptyState message="No portfolio items added." />
+										<EmptyState
+											message="No portfolio items added."
+											actionLabel={isOwner ? "Add a portfolio item" : undefined}
+											onAction={
+												isOwner ? () => setPortModalOpen(true) : undefined
+											}
+										/>
 									)}
 								</Card>
 							)}
