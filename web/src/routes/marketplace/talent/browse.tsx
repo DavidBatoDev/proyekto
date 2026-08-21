@@ -3,17 +3,17 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { Filter, Search, SortDesc, Users } from "lucide-react";
 import { useMemo, useState } from "react";
-import { FreelancerCard } from "@/components/marketplace/FreelancerCard";
 import { InviteModal } from "@/components/marketplace/InviteModal";
+import { TalentCard } from "@/components/marketplace/TalentCard";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import {
 	type AvailabilityStatus,
-	type MarketplaceFreelancerCard,
+	type MarketplaceTalentCard,
 	profileService,
 } from "@/services/profile.service";
 import { useAuthStore } from "@/stores/authStore";
 
-export const Route = createFileRoute("/marketplace/talent")({
+export const Route = createFileRoute("/marketplace/talent/browse")({
 	beforeLoad: () => {
 		const { isAuthenticated, profile } = useAuthStore.getState();
 		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
@@ -33,8 +33,8 @@ function ConsultantMarketplacePage() {
 	const [sort, setSort] = useState<"rating_desc" | "rate_asc" | "rate_desc">(
 		"rating_desc",
 	);
-	const [selectedFreelancer, setSelectedFreelancer] =
-		useState<MarketplaceFreelancerCard | null>(null);
+	const [selectedTalent, setSelectedTalent] =
+		useState<MarketplaceTalentCard | null>(null);
 
 	const filters = useMemo(
 		() => ({
@@ -47,9 +47,9 @@ function ConsultantMarketplacePage() {
 		[availability, search, skill, sort, specialization],
 	);
 
-	const freelancersQuery = useQuery({
-		queryKey: ["marketplace", "freelancers", filters],
-		queryFn: () => profileService.getMarketplaceFreelancers(filters),
+	const talentQuery = useQuery({
+		queryKey: ["marketplace", "talent", filters],
+		queryFn: () => profileService.getMarketplaceTalent(filters),
 		enabled: isActiveConsultant(profile),
 	});
 
@@ -64,7 +64,7 @@ function ConsultantMarketplacePage() {
 						Consultant Access Only
 					</h1>
 					<p className="text-sm text-gray-600 mt-2">
-						This private freelancer marketplace is only available to verified
+						This private talent marketplace is only available to verified
 						consultants. Upgrade your account to gain access to top talent.
 					</p>
 				</div>
@@ -217,7 +217,7 @@ function ConsultantMarketplacePage() {
 
 				{/* Results Section */}
 				<div className="min-h-[400px]">
-					{freelancersQuery.isLoading ? (
+					{talentQuery.isLoading ? (
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 							{Array.from({ length: 8 }).map((_, i) => (
 								<div
@@ -247,7 +247,7 @@ function ConsultantMarketplacePage() {
 								</div>
 							))}
 						</div>
-					) : freelancersQuery.data && freelancersQuery.data.length > 0 ? (
+					) : talentQuery.data && talentQuery.data.length > 0 ? (
 						<motion.div
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1 }}
@@ -255,17 +255,17 @@ function ConsultantMarketplacePage() {
 							className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
 						>
 							<AnimatePresence>
-								{freelancersQuery.data.map((freelancer, index) => (
+								{talentQuery.data.map((talent, index) => (
 									<motion.div
-										key={freelancer.id}
+										key={talent.id}
 										initial={{ opacity: 0, y: 20 }}
 										animate={{ opacity: 1, y: 0 }}
 										exit={{ opacity: 0, scale: 0.9 }}
 										transition={{ duration: 0.3, delay: index * 0.05 }}
 									>
-										<FreelancerCard
-											freelancer={freelancer}
-											onInvite={(selected) => setSelectedFreelancer(selected)}
+										<TalentCard
+											talent={talent}
+											onInvite={(selected) => setSelectedTalent(selected)}
 										/>
 									</motion.div>
 								))}
@@ -284,8 +284,8 @@ function ConsultantMarketplacePage() {
 								No talent found
 							</h2>
 							<p className="text-[#61636c] mb-6 max-w-sm mx-auto">
-								We couldn't find any freelancers matching your exact criteria.
-								Try broadening your search terms or clearing some filters.
+								We couldn't find any talent matching your exact criteria. Try
+								broadening your search terms or clearing some filters.
 							</p>
 							<button
 								onClick={() => {
@@ -304,10 +304,10 @@ function ConsultantMarketplacePage() {
 			</div>
 
 			<InviteModal
-				open={!!selectedFreelancer}
-				onClose={() => setSelectedFreelancer(null)}
-				inviteeId={selectedFreelancer?.id || ""}
-				inviteeName={selectedFreelancer?.display_name || "Freelancer"}
+				open={!!selectedTalent}
+				onClose={() => setSelectedTalent(null)}
+				inviteeId={selectedTalent?.id || ""}
+				inviteeName={selectedTalent?.display_name || "Talent"}
 			/>
 		</div>
 	);

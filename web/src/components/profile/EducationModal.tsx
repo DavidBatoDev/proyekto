@@ -66,7 +66,7 @@ export function EducationModal({
 	};
 
 	const cls =
-		"w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50";
+		"w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 	return (
 		<ProfileModal
@@ -76,8 +76,8 @@ export function EducationModal({
 		>
 			<div className="space-y-4">
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
-						Institution <span className="text-red-400">*</span>
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
+						Institution <span className="text-destructive">*</span>
 					</label>
 					<input
 						value={form.institution}
@@ -89,7 +89,7 @@ export function EducationModal({
 
 				<div className="grid grid-cols-2 gap-3">
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							Degree
 						</label>
 						<input
@@ -100,7 +100,7 @@ export function EducationModal({
 						/>
 					</div>
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							Field of Study
 						</label>
 						<input
@@ -114,7 +114,7 @@ export function EducationModal({
 
 				<div className="grid grid-cols-2 gap-3">
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							Start Year
 						</label>
 						<input
@@ -130,7 +130,7 @@ export function EducationModal({
 						/>
 					</div>
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							{form.is_current ? "Expected Graduation" : "End Year"}
 						</label>
 						<input
@@ -149,15 +149,15 @@ export function EducationModal({
 						type="checkbox"
 						checked={form.is_current}
 						onChange={(e) => set("is_current", e.target.checked)}
-						className="w-4 h-4 accent-[#ff9933]"
+						className="w-4 h-4 accent-[var(--primary)]"
 					/>
-					<span className="text-sm text-gray-700">
+					<span className="text-sm text-foreground">
 						I am currently studying here
 					</span>
 				</label>
 
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
 						Description
 					</label>
 					<textarea
@@ -172,14 +172,14 @@ export function EducationModal({
 				<div className="flex justify-end gap-3 pt-2">
 					<button
 						onClick={handleClose}
-						className="px-5 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+						className="px-5 py-2 text-sm border border-input text-muted-foreground rounded-lg hover:bg-muted/40 transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleSave}
 						disabled={isSaving || !form.institution.trim()}
-						className="px-5 py-2 text-sm bg-[#ff9933] text-white rounded-lg hover:bg-[#e68829] disabled:opacity-60 transition-colors flex items-center gap-2"
+						className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
 					>
 						{isSaving ? (
 							<Loader2 className="w-3.5 h-3.5 animate-spin" />

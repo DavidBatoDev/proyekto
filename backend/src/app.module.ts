@@ -14,6 +14,7 @@ import { backendEnvFilePaths } from './config/node-environment';
 import { AuthModule } from './modules/shared/auth/auth.module';
 import { UsersModule } from './modules/shared/users/users.module';
 import { ProfileModule } from './modules/marketplace/profile/profile.module';
+import { ProfileImportModule } from './modules/marketplace/profile-import/profile-import.module';
 import { ProjectsModule } from './modules/execution/projects/projects.module';
 import { PayoutsModule } from './modules/marketplace/payouts/payouts.module';
 import { AdminModule } from './modules/shared/admin/admin.module';
@@ -76,6 +77,7 @@ import { AppController } from './app.controller';
     AuthModule,
     UsersModule,
     ProfileModule,
+    ProfileImportModule,
     ProjectsModule,
     PayoutsModule,
     AdminModule,

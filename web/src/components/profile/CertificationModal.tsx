@@ -64,7 +64,7 @@ export function CertificationModal({
 	};
 
 	const cls =
-		"w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50";
+		"w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 	return (
 		<ProfileModal
@@ -74,8 +74,8 @@ export function CertificationModal({
 		>
 			<div className="space-y-4">
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
-						Certification Name <span className="text-red-400">*</span>
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
+						Certification Name <span className="text-destructive">*</span>
 					</label>
 					<input
 						value={form.name}
@@ -85,8 +85,8 @@ export function CertificationModal({
 					/>
 				</div>
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
-						Issuing Organization <span className="text-red-400">*</span>
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
+						Issuing Organization <span className="text-destructive">*</span>
 					</label>
 					<input
 						value={form.issuer}
@@ -98,7 +98,7 @@ export function CertificationModal({
 
 				<div className="grid grid-cols-2 gap-3">
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							Issue Date
 						</label>
 						<input
@@ -114,9 +114,11 @@ export function CertificationModal({
 						/>
 					</div>
 					<div>
-						<label className="block text-xs font-medium text-gray-600 mb-1">
+						<label className="block text-xs font-medium text-muted-foreground mb-1">
 							Expiry Date{" "}
-							<span className="text-gray-400 font-normal">(optional)</span>
+							<span className="text-muted-foreground font-normal">
+								(optional)
+							</span>
 						</label>
 						<input
 							type="month"
@@ -133,9 +135,11 @@ export function CertificationModal({
 				</div>
 
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
 						Credential ID{" "}
-						<span className="text-gray-400 font-normal">(optional)</span>
+						<span className="text-muted-foreground font-normal">
+							(optional)
+						</span>
 					</label>
 					<input
 						value={form.credential_id ?? ""}
@@ -145,9 +149,9 @@ export function CertificationModal({
 					/>
 				</div>
 				<div>
-					<label className="block text-xs font-medium text-gray-600 mb-1">
+					<label className="block text-xs font-medium text-muted-foreground mb-1">
 						Credential URL{" "}
-						<span className="text-gray-400 font-normal">
+						<span className="text-muted-foreground font-normal">
 							(public verification link)
 						</span>
 					</label>
@@ -163,14 +167,14 @@ export function CertificationModal({
 				<div className="flex justify-end gap-3 pt-2">
 					<button
 						onClick={handleClose}
-						className="px-5 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+						className="px-5 py-2 text-sm border border-input text-muted-foreground rounded-lg hover:bg-muted/40 transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleSave}
 						disabled={isSaving || !form.name.trim() || !form.issuer.trim()}
-						className="px-5 py-2 text-sm bg-[#ff9933] text-white rounded-lg hover:bg-[#e68829] disabled:opacity-60 transition-colors flex items-center gap-2"
+						className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
 					>
 						{isSaving ? (
 							<Loader2 className="w-3.5 h-3.5 animate-spin" />

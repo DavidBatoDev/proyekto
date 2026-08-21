@@ -140,7 +140,7 @@ export function UploadModal({
 		>
 			<div className="space-y-4">
 				{/* Constraints hint */}
-				<div className="flex items-center gap-4 text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+				<div className="flex items-center gap-4 text-xs text-muted-foreground bg-muted/40 rounded-lg p-3">
 					<span className="font-medium">Accepted:</span>
 					<span>{acceptLabel}</span>
 					<span>·</span>
@@ -172,21 +172,21 @@ export function UploadModal({
 						className={`relative border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 py-8 cursor-pointer transition-colors ${
 							dragging
 								? "border-primary bg-primary/5"
-								: "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
+								: "border-border hover:border-primary/50 hover:bg-muted/40"
 						}`}
 					>
 						<div
-							className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-primary/10" : "bg-gray-100"}`}
+							className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-primary/10" : "bg-muted"}`}
 						>
 							<Upload
-								className={`w-5 h-5 transition-colors ${dragging ? "text-primary" : "text-gray-400"}`}
+								className={`w-5 h-5 transition-colors ${dragging ? "text-primary" : "text-muted-foreground"}`}
 							/>
 						</div>
 						<div className="text-center">
-							<p className="text-sm font-medium text-gray-700">
+							<p className="text-sm font-medium text-foreground">
 								{dragging ? "Drop to upload" : "Drag & drop or click to browse"}
 							</p>
-							<p className="text-xs text-gray-400 mt-0.5">
+							<p className="text-xs text-muted-foreground mt-0.5">
 								{acceptLabel} · Max {maxSizeMb} MB
 								{maxFiles > 1 ? ` · Up to ${maxFiles} files` : ""}
 							</p>
@@ -219,8 +219,8 @@ export function UploadModal({
 										className={`w-full object-cover ${maxFiles === 1 ? "max-h-48" : "aspect-square"}`}
 									/>
 								) : (
-									<div className="w-full aspect-square bg-gray-100 flex items-center justify-center">
-										<ImageIcon className="w-8 h-8 text-gray-400" />
+									<div className="w-full aspect-square bg-muted flex items-center justify-center">
+										<ImageIcon className="w-8 h-8 text-muted-foreground" />
 									</div>
 								)}
 
@@ -238,20 +238,20 @@ export function UploadModal({
 								{/* Remove button */}
 								<button
 									onClick={() => removeEntry(idx)}
-									className="absolute top-1.5 right-1.5 w-5 h-5 bg-gray-900/60 rounded-full flex items-center justify-center hover:bg-gray-900/80 transition-colors"
+									className="absolute top-1.5 right-1.5 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
 								>
 									<X className="w-3 h-3 text-white" />
 								</button>
 
 								{/* File info */}
-								<div className="px-2 py-1.5 bg-white">
-									<p className="text-xs font-medium text-gray-700 truncate">
+								<div className="px-2 py-1.5 bg-card">
+									<p className="text-xs font-medium text-foreground truncate">
 										{entry.file.name}
 									</p>
 									{entry.error ? (
-										<p className="text-xs text-red-500">{entry.error}</p>
+										<p className="text-xs text-destructive">{entry.error}</p>
 									) : (
-										<p className="text-xs text-gray-400">
+										<p className="text-xs text-muted-foreground">
 											{formatBytes(entry.file.size)}
 										</p>
 									)}
@@ -265,14 +265,14 @@ export function UploadModal({
 				<div className="flex justify-end gap-3 pt-1">
 					<button
 						onClick={handleClose}
-						className="px-5 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+						className="px-5 py-2 text-sm border border-input text-muted-foreground rounded-lg hover:bg-muted/40 transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleUpload}
 						disabled={!hasValid || hasErrors || isUploading}
-						className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
+						className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
 					>
 						{isUploading ? (
 							<>

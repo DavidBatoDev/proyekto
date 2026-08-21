@@ -30,7 +30,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./test/jest-integration.json --runInBand",
     "qa:seed:production": "ts-node scripts/seed-production-qa-fixture.ts",
-    "qa:production": "ts-node scripts/verify-production-qa.ts"
+    "qa:production": "ts-node scripts/verify-production-qa.ts",
+    "test:import": "node --experimental-vm-modules node_modules/jest/bin/jest.js modules/marketplace/profile-import"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1073.0",
@@ -58,6 +59,7 @@
     "firebase-admin": "^13.0.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "pdfjs-dist": "^5.7.284",
     "pdfkit": "^0.15.2",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",

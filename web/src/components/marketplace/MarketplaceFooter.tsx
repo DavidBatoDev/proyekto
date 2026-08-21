@@ -67,7 +67,7 @@ export function MarketplaceFooter() {
 							</li>
 							<li>
 								<Link
-									to="/marketplace/talent"
+									to="/marketplace/talent/browse"
 									className="transition-colors hover:text-foreground"
 								>
 									Browse talent
@@ -121,9 +121,21 @@ export function MarketplaceFooter() {
 							For talent
 						</h4>
 						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
+							{/* Above "Go live" on purpose: the landing page explains what
+							    going live requires, and the wizard refuses people who
+							    arrive without it. Mirrors "Become a consultant" sitting
+							    above "Apply to lead" in the consultants column. */}
 							<li>
 								<Link
-									to="/marketplace/freelancer/go-live"
+									to="/marketplace/talent"
+									className="transition-colors hover:text-foreground"
+								>
+									Start selling
+								</Link>
+							</li>
+							<li>
+								<Link
+									to="/marketplace/talent/go-live"
 									className="transition-colors hover:text-foreground"
 								>
 									Go live
@@ -131,7 +143,7 @@ export function MarketplaceFooter() {
 							</li>
 							<li>
 								<Link
-									to="/marketplace/talent"
+									to="/marketplace/talent/browse"
 									className="transition-colors hover:text-foreground"
 								>
 									Find work

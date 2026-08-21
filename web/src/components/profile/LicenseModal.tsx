@@ -76,7 +76,7 @@ export function LicenseModal({
 		>
 			<form onSubmit={handleSubmit} className="space-y-5">
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						License name *
 					</label>
 					<input
@@ -86,13 +86,13 @@ export function LicenseModal({
 						placeholder="e.g. Certified Public Accountant"
 						value={form.name}
 						onChange={(e) => setForm({ ...form, name: e.target.value })}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
 					/>
 				</div>
 
 				<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div className="space-y-1.5">
-						<label className="text-sm font-semibold text-gray-900">
+						<label className="text-sm font-semibold text-foreground">
 							Issuing authority *
 						</label>
 						<input
@@ -103,11 +103,11 @@ export function LicenseModal({
 							onChange={(e) =>
 								setForm({ ...form, issuing_authority: e.target.value })
 							}
-							className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none"
+							className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<label className="text-sm font-semibold text-gray-900">
+						<label className="text-sm font-semibold text-foreground">
 							License type
 						</label>
 						<select
@@ -115,7 +115,7 @@ export function LicenseModal({
 							onChange={(e) =>
 								setForm({ ...form, type: e.target.value as LicenseType })
 							}
-							className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none bg-white"
+							className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none bg-card"
 						>
 							{LICENSE_TYPES.map((t) => (
 								<option key={t.value} value={t.value}>
@@ -127,7 +127,7 @@ export function LicenseModal({
 				</div>
 
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						License number
 					</label>
 					<input
@@ -137,24 +137,24 @@ export function LicenseModal({
 						onChange={(e) =>
 							setForm({ ...form, license_number: e.target.value })
 						}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
 					/>
 				</div>
 
 				<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div className="space-y-1.5">
-						<label className="text-sm font-semibold text-gray-900">
+						<label className="text-sm font-semibold text-foreground">
 							Issue date
 						</label>
 						<input
 							type="date"
 							value={form.issue_date || ""}
 							onChange={(e) => setForm({ ...form, issue_date: e.target.value })}
-							className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none text-gray-700"
+							className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-foreground"
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<label className="text-sm font-semibold text-gray-900">
+						<label className="text-sm font-semibold text-foreground">
 							Expiry date
 						</label>
 						<input
@@ -163,24 +163,24 @@ export function LicenseModal({
 							onChange={(e) =>
 								setForm({ ...form, expiry_date: e.target.value })
 							}
-							className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none text-gray-700"
+							className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-foreground"
 						/>
 					</div>
 				</div>
 
-				<div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
+				<div className="pt-4 flex justify-end gap-3 border-t border-border">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={isSaving}
-						className="px-5 py-2 text-sm font-medium text-[#14b8a6] hover:bg-teal-50 rounded-full transition-colors"
+						className="px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground rounded-full transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
 						disabled={isSaving || !form.name || !form.issuing_authority}
-						className="flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-full hover:bg-[#ff9933] hover:text-white disabled:opacity-50 disabled:hover:bg-gray-100 disabled:hover:text-gray-400 transition-colors"
+						className="flex items-center gap-2 px-5 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-full hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-muted disabled:hover:text-muted-foreground transition-colors"
 					>
 						{isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
 						Save

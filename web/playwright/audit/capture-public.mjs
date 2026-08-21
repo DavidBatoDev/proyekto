@@ -27,6 +27,7 @@ const PAGES = [
   { path: "/auth/admin/signin", slug: "auth_admin_signin" },
   { path: "/marketplace/consultant", slug: "consultant" },
   { path: "/marketplace/consultant/browse", slug: "consultant_browse" },
+  { path: "/marketplace/talent", slug: "talent_landing" },
   { path: "/project/roadmap", slug: "project_roadmap" },
 ];
 const VIEWPORTS = DESKTOP_ONLY

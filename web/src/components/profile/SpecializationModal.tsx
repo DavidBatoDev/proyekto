@@ -86,7 +86,7 @@ export function SpecializationModal({
 		>
 			<form onSubmit={handleSubmit} className="space-y-4">
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Industry Category *
 					</label>
 					<select
@@ -98,7 +98,7 @@ export function SpecializationModal({
 								category: e.target.value as SpecializationCategory,
 							})
 						}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none bg-white"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none bg-card"
 					>
 						{CATEGORIES.map((c) => (
 							<option key={c.value} value={c.value}>
@@ -109,7 +109,7 @@ export function SpecializationModal({
 				</div>
 
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Sub-category (Optional)
 					</label>
 					<input
@@ -117,12 +117,12 @@ export function SpecializationModal({
 						placeholder="e.g. Payment Gateways, DeFi, Compliance"
 						value={form.sub_category || ""}
 						onChange={(e) => setForm({ ...form, sub_category: e.target.value })}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
 					/>
 				</div>
 
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Years of Experience
 					</label>
 					<input
@@ -139,12 +139,12 @@ export function SpecializationModal({
 									: undefined,
 							})
 						}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
 					/>
 				</div>
 
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Description (Optional)
 					</label>
 					<textarea
@@ -152,23 +152,23 @@ export function SpecializationModal({
 						value={form.description || ""}
 						onChange={(e) => setForm({ ...form, description: e.target.value })}
 						rows={3}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none resize-none"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
 					/>
 				</div>
 
-				<div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
+				<div className="pt-4 flex justify-end gap-3 border-t border-border">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={isSaving}
-						className="px-5 py-2 text-sm font-medium text-[#14b8a6] hover:bg-teal-50 rounded-full transition-colors"
+						className="px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground rounded-full transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
 						disabled={isSaving || !form.category}
-						className="flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-full hover:bg-[#ff9933] hover:text-white disabled:opacity-50 disabled:hover:bg-gray-100 disabled:hover:text-gray-400 transition-colors"
+						className="flex items-center gap-2 px-5 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-full hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-muted disabled:hover:text-muted-foreground transition-colors"
 					>
 						{isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
 						Save

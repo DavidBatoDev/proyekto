@@ -21,6 +21,7 @@ export const STATIC_ROUTES = [
   { path: "/auth/admin/signin", group: "auth", auth: false },
   { path: "/marketplace/consultant", group: "public", auth: false },
   { path: "/marketplace/consultant/browse", group: "public", auth: false },
+  { path: "/marketplace/talent", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },
@@ -62,11 +63,11 @@ export const STATIC_ROUTES = [
   { path: "/teams", group: "teams", auth: true },
   { path: "/teams/me/invites", group: "teams", auth: true },
 
-  // ── freelancer / consultant authed ──────────────────────────────────────
-  { path: "/marketplace/freelancer/go-live", group: "freelancer", auth: true },
-  { path: "/freelancer/invites", group: "freelancer", auth: true },
+  // ── talent / consultant authed ──────────────────────────────────────
+  { path: "/marketplace/talent/go-live", group: "talent", auth: true },
+  { path: "/freelancer/invites", group: "talent", auth: true },
   { path: "/marketplace/consultant/apply", group: "consultant", auth: true },
-  { path: "/marketplace/talent", group: "consultant", auth: true },
+  { path: "/marketplace/talent/browse", group: "consultant", auth: true },
   { path: "/marketplace/consultant/templates", group: "consultant", auth: true },
 
   // ── admin (likely `redirected` if the account isn't an admin) ───────────

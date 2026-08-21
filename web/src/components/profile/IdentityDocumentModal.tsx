@@ -72,13 +72,13 @@ export function IdentityDocumentModal({
 		>
 			<form onSubmit={handleSubmit} className="space-y-5">
 				<div className="space-y-1.5">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Document Type
 					</label>
 					<select
 						value={type}
 						onChange={(e) => setType(e.target.value as IdentityDocumentType)}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#ff9933] focus:border-transparent outline-none bg-white"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none bg-card"
 					>
 						{DOC_TYPES.map((t) => (
 							<option key={t.value} value={t.value}>
@@ -86,42 +86,42 @@ export function IdentityDocumentModal({
 							</option>
 						))}
 					</select>
-					<p className="text-xs text-gray-500 mt-1">
+					<p className="text-xs text-muted-foreground mt-1">
 						We will use this document to verify your identity. It will only be
 						visible to our administration team.
 					</p>
 				</div>
 
 				<div className="space-y-2">
-					<label className="text-sm font-semibold text-gray-900">
+					<label className="text-sm font-semibold text-foreground">
 						Upload File
 					</label>
 					{!file ? (
 						<div
-							className="border-2 border-dashed border-gray-300 rounded-xl p-8 hover:bg-gray-50 hover:border-[#ff9933] transition-colors cursor-pointer text-center"
+							className="border-2 border-dashed border-input rounded-xl p-8 hover:bg-muted/40 hover:border-primary transition-colors cursor-pointer text-center"
 							onClick={() => fileInputRef.current?.click()}
 							onDragOver={handleDragOver}
 							onDrop={handleDrop}
 						>
-							<UploadCloud className="w-8 h-8 text-[#ff9933] mx-auto mb-3" />
-							<p className="text-sm font-semibold text-gray-900 mb-1">
+							<UploadCloud className="w-8 h-8 text-primary mx-auto mb-3" />
+							<p className="text-sm font-semibold text-foreground mb-1">
 								Click to upload or drag and drop
 							</p>
-							<p className="text-xs text-gray-500">
+							<p className="text-xs text-muted-foreground">
 								PNG, JPG, or PDF (max. 10MB)
 							</p>
 						</div>
 					) : (
-						<div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-gray-50">
+						<div className="flex items-center justify-between p-3 border border-border rounded-lg bg-muted/40">
 							<div className="flex items-center gap-3 overflow-hidden">
-								<div className="w-10 h-10 rounded-lg bg-[#ff9933]/10 flex items-center justify-center shrink-0">
-									<FileText className="w-5 h-5 text-[#ff9933]" />
+								<div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+									<FileText className="w-5 h-5 text-primary" />
 								</div>
 								<div className="flex-1 min-w-0">
-									<p className="text-sm font-semibold text-gray-900 truncate">
+									<p className="text-sm font-semibold text-foreground truncate">
 										{file.name}
 									</p>
-									<p className="text-xs text-gray-500">
+									<p className="text-xs text-muted-foreground">
 										{(file.size / 1024 / 1024).toFixed(2)} MB
 									</p>
 								</div>
@@ -129,7 +129,7 @@ export function IdentityDocumentModal({
 							<button
 								type="button"
 								onClick={() => setFile(null)}
-								className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+								className="p-2 text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-lg transition-colors shrink-0"
 							>
 								<X className="w-4 h-4" />
 							</button>
@@ -153,19 +153,19 @@ export function IdentityDocumentModal({
 					KYC (Know Your Customer) verifications.
 				</div>
 
-				<div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
+				<div className="pt-4 flex justify-end gap-3 border-t border-border">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={isSaving}
-						className="px-5 py-2 text-sm font-medium text-[#14b8a6] hover:bg-teal-50 rounded-full transition-colors"
+						className="px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground rounded-full transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
 						disabled={isSaving || !file}
-						className="flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-full hover:bg-[#ff9933] hover:text-white disabled:opacity-50 disabled:hover:bg-gray-100 disabled:hover:text-gray-400 transition-colors"
+						className="flex items-center gap-2 px-5 py-2 bg-muted text-muted-foreground text-sm font-medium rounded-full hover:bg-primary hover:text-white disabled:opacity-50 disabled:hover:bg-muted disabled:hover:text-muted-foreground transition-colors"
 					>
 						{isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
 						Upload Now

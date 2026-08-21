@@ -45,3 +45,9 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Sample LinkedIn/CV exports used to develop the profile importer.
+# These are real personal data (names, emails, employment history) - never commit them.
+Profile.pdf
+*.linkedin.pdf
+/cv-samples/

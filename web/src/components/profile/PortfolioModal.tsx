@@ -189,9 +189,9 @@ export function PortfolioModal({
 			<div className="space-y-5">
 				{/* Cover image upload zone */}
 				<div>
-					<label className="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+					<label className="block text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
 						Cover Image{" "}
-						<span className="font-normal normal-case text-gray-400">
+						<span className="font-normal normal-case text-muted-foreground">
 							(optional · JPEG, PNG, WebP, GIF · max 20 MB)
 						</span>
 					</label>
@@ -208,24 +208,24 @@ export function PortfolioModal({
 							onClick={() => inputRef.current?.click()}
 							className={`relative flex flex-col items-center justify-center gap-3 w-full aspect-video rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
 								dragging
-									? "border-[#ff9933] bg-[#ff9933]/5"
-									: "border-gray-200 hover:border-[#ff9933]/50 hover:bg-gray-50"
+									? "border-primary bg-primary/5"
+									: "border-border hover:border-primary/50 hover:bg-muted/40"
 							}`}
 						>
 							<div
-								className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-[#ff9933]/10" : "bg-gray-100"}`}
+								className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-primary/10" : "bg-muted"}`}
 							>
 								<Upload
-									className={`w-5 h-5 transition-colors ${dragging ? "text-[#ff9933]" : "text-gray-400"}`}
+									className={`w-5 h-5 transition-colors ${dragging ? "text-primary" : "text-muted-foreground"}`}
 								/>
 							</div>
 							<div className="text-center">
-								<p className="text-sm font-semibold text-gray-700">
+								<p className="text-sm font-semibold text-foreground">
 									{dragging
 										? "Drop to set cover"
 										: "Drag & drop or click to upload"}
 								</p>
-								<p className="text-xs text-gray-400">
+								<p className="text-xs text-muted-foreground">
 									Recommended: 16:9 landscape, at least 1280×720
 								</p>
 							</div>
@@ -239,7 +239,7 @@ export function PortfolioModal({
 						</div>
 					) : (
 						/* Preview */
-						<div className="relative w-full aspect-video rounded-xl overflow-hidden border border-gray-200 bg-gray-50 group">
+						<div className="relative w-full aspect-video rounded-xl overflow-hidden border border-border bg-muted/40 group">
 							<img
 								src={imagePreview}
 								alt="Cover preview"
@@ -252,7 +252,7 @@ export function PortfolioModal({
 										resetImage();
 										inputRef.current?.click();
 									}}
-									className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-white text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow"
+									className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-card text-foreground text-xs font-semibold px-3 py-1.5 rounded-full shadow"
 								>
 									<Upload className="w-3.5 h-3.5" /> Replace
 								</button>
@@ -279,7 +279,7 @@ export function PortfolioModal({
 					)}
 
 					{imageError && (
-						<div className="flex items-center gap-1.5 mt-1.5 text-xs text-red-500">
+						<div className="flex items-center gap-1.5 mt-1.5 text-xs text-destructive">
 							<AlertCircle className="w-3.5 h-3.5 shrink-0" />
 							{imageError}
 						</div>
@@ -288,24 +288,24 @@ export function PortfolioModal({
 
 				{/* Title */}
 				<div>
-					<label className="block text-xs font-semibold text-gray-600 mb-1">
-						Project Title <span className="text-red-400">*</span>
+					<label className="block text-xs font-semibold text-muted-foreground mb-1">
+						Project Title <span className="text-destructive">*</span>
 					</label>
 					<input
 						value={form.title}
 						onChange={(e) => set("title", e.target.value)}
 						maxLength={100}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
 						placeholder="e.g. E-Commerce Platform for Fintech Startup"
 					/>
-					<p className="text-xs text-gray-400 text-right mt-0.5">
+					<p className="text-xs text-muted-foreground text-right mt-0.5">
 						{100 - form.title.length} characters left
 					</p>
 				</div>
 
 				{/* Description */}
 				<div>
-					<label className="block text-xs font-semibold text-gray-600 mb-1">
+					<label className="block text-xs font-semibold text-muted-foreground mb-1">
 						Description
 					</label>
 					<textarea
@@ -313,26 +313,26 @@ export function PortfolioModal({
 						onChange={(e) => set("description", e.target.value || null)}
 						rows={3}
 						maxLength={600}
-						className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50 resize-y"
+						className="w-full px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"
 						placeholder="What problem did it solve? What was your role and impact?"
 					/>
-					<p className="text-xs text-gray-400 text-right mt-0.5">
+					<p className="text-xs text-muted-foreground text-right mt-0.5">
 						{600 - (form.description?.length ?? 0)} characters left
 					</p>
 				</div>
 
 				{/* Live URL */}
 				<div>
-					<label className="block text-xs font-semibold text-gray-600 mb-1">
+					<label className="block text-xs font-semibold text-muted-foreground mb-1">
 						Live Project URL
 					</label>
 					<div className="relative">
-						<LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+						<LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
 						<input
 							type="url"
 							value={form.url ?? ""}
 							onChange={(e) => set("url", e.target.value || null)}
-							className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+							className="w-full pl-8 pr-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
 							placeholder="https://..."
 						/>
 					</div>
@@ -340,7 +340,7 @@ export function PortfolioModal({
 
 				{/* Tags */}
 				<div>
-					<label className="block text-xs font-semibold text-gray-600 mb-1">
+					<label className="block text-xs font-semibold text-muted-foreground mb-1">
 						Tags
 					</label>
 					<div className="flex gap-2">
@@ -353,13 +353,13 @@ export function PortfolioModal({
 									addTag();
 								}
 							}}
-							className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+							className="flex-1 px-3 py-2 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
 							placeholder="e.g. React, Stripe (press Enter)"
 						/>
 						<button
 							type="button"
 							onClick={addTag}
-							className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 text-gray-600"
+							className="px-3 py-2 border border-input rounded-lg text-sm hover:bg-muted/40 text-muted-foreground"
 						>
 							Add
 						</button>
@@ -369,12 +369,12 @@ export function PortfolioModal({
 							{form.tags.map((tag) => (
 								<span
 									key={tag}
-									className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-full text-xs text-gray-700"
+									className="inline-flex items-center gap-1 px-2.5 py-1 bg-muted rounded-full text-xs text-foreground"
 								>
 									{tag}
 									<button
 										onClick={() => removeTag(tag)}
-										className="text-gray-400 hover:text-gray-700 ml-0.5"
+										className="text-muted-foreground hover:text-foreground ml-0.5"
 									>
 										×
 									</button>
@@ -385,18 +385,18 @@ export function PortfolioModal({
 				</div>
 
 				{/* Actions */}
-				<div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
+				<div className="flex justify-end gap-3 pt-1 border-t border-border">
 					<button
 						onClick={handleClose}
 						disabled={isBusy}
-						className="px-5 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60"
+						className="px-5 py-2 text-sm border border-input text-muted-foreground rounded-lg hover:bg-muted/40 transition-colors disabled:opacity-60"
 					>
 						Cancel
 					</button>
 					<button
 						onClick={handleSave}
 						disabled={isBusy || !form.title.trim() || !!imageError}
-						className="px-5 py-2 text-sm bg-[#ff9933] text-white rounded-lg hover:bg-[#e68829] disabled:opacity-60 transition-colors flex items-center gap-2"
+						className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
 					>
 						{isUploading ? (
 							<>
