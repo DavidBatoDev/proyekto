@@ -20,7 +20,7 @@
  *
  * Required env (auto-loaded from .env files):
  * - OPENAI_API_KEY (agent/.env)
- * - Backend running (NEST_API_BASE_URL, default http://localhost:8001/api)
+ * - Backend running (NEST_API_BASE_URL, default http://localhost:8000/api)
  * - Auth: BENCH_AUTH_TOKEN, or Supabase password grant via
  *   BENCH_SUPABASE_EMAIL/BENCH_SUPABASE_PASSWORD (falls back to
  *   PLAYWRIGHT_EMAIL/PLAYWRIGHT_PASSWORD from web/.env) +

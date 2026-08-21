@@ -43,7 +43,7 @@ All settings load from `agent/.env` via `pydantic-settings`
 | `REDIS_SESSION_KEY_PREFIX` | `roadmap:ai:session` | Session key prefix |
 | `AGENT_SUMMARY_MODEL` | `gpt-4o-mini` | Summarizer model |
 | `AGENT_SUMMARY_TRIGGER_MESSAGES` / `_KEEP_MESSAGES` / `_MAX_CHARS` | `40` / `30` / `4000` | Summarizer thresholds |
-| `NEST_API_BASE_URL` | `http://localhost:8001/api` (prod: `https://api.proyekto.tech/api`) | Backend callback base |
+| `NEST_API_BASE_URL` | `http://localhost:8000/api` (prod: `https://api.proyekto.tech/api`) | Backend callback base |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | — | Session store |
 | `AGENT_RESOLVE_CACHE_TTL_SECONDS` | `300` | Node-resolution cache |
 | `REALTIME_WORKER_URL` / `REALTIME_PUBLISH_TOKEN` / `AGENT_REALTIME_TRACE_PUSH_ENABLED` | — / — / `false` | Optional AI-trace push (ship-dark) |

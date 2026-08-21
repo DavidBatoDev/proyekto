@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default='0.0.0.0', alias='APP_HOST')
     app_port: int = Field(default=8010, alias='APP_PORT')
 
-    nest_api_base_url: str = Field(default='http://localhost:8001/api', alias='NEST_API_BASE_URL')
+    nest_api_base_url: str = Field(default='http://localhost:8000/api', alias='NEST_API_BASE_URL')
     nest_timeout_seconds: float = Field(default=20.0, alias='NEST_TIMEOUT_SECONDS')
 
     # Realtime worker push for AI-trace progress events (app/core/realtime_push.py).
