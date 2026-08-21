@@ -92,6 +92,20 @@ class UploadService {
 			body: form,
 		});
 
+		// The Worker verifies the JWT against its OWN deployed SUPABASE_JWT_SECRET,
+		// which is the production project's. A local session signed by the hosted
+		// dev project is therefore rejected with a bare "Unauthorized" no matter
+		// how valid it is — the token is fine, the two services just trust
+		// different issuers.
+		//
+		// The backend validates against whichever project this environment is
+		// configured for, so it is the authority the rest of the app already
+		// agrees with. Falling back there keeps uploads working in dev and
+		// changes nothing in production, where the Worker path succeeds first.
+		if (res.status === 401 || res.status === 403) {
+			return this.uploadViaBackend(bucket, file);
+		}
+
 		if (!res.ok) {
 			let message = `Upload failed (${res.status})`;
 			try {
@@ -121,11 +135,52 @@ class UploadService {
 		form.append("bucket", bucket);
 		form.append("file", file);
 
-		const res = await apiClient.post<{
-			data: { path: string; publicUrl: string };
-		}>(`${this.base}/file`, form);
+		// Native fetch, NOT apiClient. apiClient sets `Content-Type:
+		// application/json` as a hard default (api/axios.ts), and an explicit
+		// default is not replaced for FormData -- so the body goes up with no
+		// multipart boundary, multer parses no file, and the request fails with a
+		// bare 400. uploadPrivateFile documents the same trap; this path was
+		// still using apiClient and had the bug.
+		const token = await getAccessToken();
+		const guestSessionId =
+			localStorage.getItem("proyekto_guest_session_id") ??
+			localStorage.getItem("prdigy_guest_session_id");
 
-		return res.data.data.publicUrl;
+		const headers: Record<string, string> = {};
+		if (token) headers.Authorization = `Bearer ${token}`;
+		// Guests authenticate by session id rather than a JWT; apiClient normally
+		// attaches this, and bypassing it means attaching it here.
+		else if (guestSessionId) headers["X-Guest-User-Id"] = guestSessionId;
+
+		const res = await fetch(`${API_BASE_URL}${this.base}/file`, {
+			method: "POST",
+			headers,
+			body: form,
+		});
+
+		if (!res.ok) {
+			let message = `Upload failed (${res.status})`;
+			try {
+				const body = await res.json();
+				message = body?.error?.message ?? body?.message ?? message;
+			} catch {
+				// non-JSON error body -- keep the status-based message
+			}
+			throw new Error(message);
+		}
+
+		const body = (await res.json()) as {
+			data?: { publicUrl?: string; path?: string };
+			publicUrl?: string;
+			path?: string;
+		};
+		const url =
+			body?.data?.publicUrl ??
+			body?.publicUrl ??
+			body?.data?.path ??
+			body?.path;
+		if (!url) throw new Error("Upload succeeded but no URL was returned.");
+		return url;
 	}
 
 	/**
