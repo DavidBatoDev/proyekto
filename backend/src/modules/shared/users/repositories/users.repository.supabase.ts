@@ -52,6 +52,23 @@ export class SupabaseUsersRepository implements UsersRepository {
     return profile;
   }
 
+  async findAppearancePreferences(
+    id: string,
+  ): Promise<AppearancePreferences | null> {
+    // Selects only the one JSON key rather than the whole profile row: this is
+    // read on cache misses and the rest of the row is not wanted.
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('settings')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const settings = (data?.settings ?? null) as {
+      appearance?: AppearancePreferences;
+    } | null;
+    return settings?.appearance ?? null;
+  }
+
   async updateAppearancePreferences(
     id: string,
     appearance: AppearancePreferences,

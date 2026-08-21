@@ -32,6 +32,12 @@ export class UsersController {
     return this.usersService.updateMe(user.id, dto);
   }
 
+  @Get('me/preferences/appearance')
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PRIVATE_BROWSER_SHORT)
+  getAppearancePreferences(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.getAppearancePreferences(user.id);
+  }
+
   @Put('me/preferences/appearance')
   updateAppearancePreferences(
     @CurrentUser() user: AuthenticatedUser,

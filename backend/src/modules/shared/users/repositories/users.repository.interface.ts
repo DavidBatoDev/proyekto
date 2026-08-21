@@ -6,6 +6,7 @@ export interface UsersRepository {
   findById(id: string): Promise<Profile | null>;
   findPublicById(id: string): Promise<Partial<Profile> | null>;
   update(id: string, dto: UpdateUserDto): Promise<Profile>;
+  findAppearancePreferences(id: string): Promise<AppearancePreferences | null>;
   updateAppearancePreferences(
     id: string,
     appearance: AppearancePreferences,

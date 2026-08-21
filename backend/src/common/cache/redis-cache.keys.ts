@@ -32,6 +32,9 @@ export const REDIS_CACHE_KEYS = {
   projectsDashboardByUser: (userId: string) =>
     `cache:v1:projects:dashboard:user:${userId}`,
   projectsDashboardIndex: 'cache:v1:index:projects:dashboard',
+  profileAppearanceByUser: (userId: string) =>
+    `cache:v1:profiles:appearance:user:${userId}`,
+  profileAppearanceIndex: 'cache:v1:index:profiles:appearance',
   marketplaceTalentByHash: (queryHash: string) =>
     `cache:v1:marketplace:talent:${queryHash}`,
   marketplaceTalentIndex: 'cache:v1:index:marketplace:talent',
