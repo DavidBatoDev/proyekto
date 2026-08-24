@@ -92,10 +92,15 @@ export function useRoadmapFullQuery(roadmapId: string) {
 	});
 }
 
-export function useAllRoadmapsFullQuery() {
+export function useAllRoadmapsFullQuery(options?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: projectKeys.allRoadmapsFull,
 		queryFn: fetchAllRoadmapsFull,
+		// Callers that mount everywhere (the global search bar) pass
+		// enabled: false while idle — this payload is every accessible roadmap
+		// fully nested, and refetchOnWindowFocus would re-pull it on every
+		// window focus for as long as the query stays enabled.
+		enabled: options?.enabled ?? true,
 		staleTime: STALE_30S,
 		refetchOnWindowFocus: true,
 		retry: 1,

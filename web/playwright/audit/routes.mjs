@@ -28,10 +28,11 @@ export const STATIC_ROUTES = [
   { path: "/onboarding", group: "global", auth: true },
   { path: "/dashboard", group: "global", auth: true },
   { path: "/meetings", group: "global", auth: true },
+  { path: "/engagements", group: "global", auth: true },
   { path: "/notifications", group: "global", auth: true },
   { path: "/inbox", group: "global", auth: true },
   { path: "/work-items", group: "global", auth: true },
-  { path: "/marketplace/project-posting", group: "global", auth: true },
+  { path: "/project/new", group: "global", auth: true },
   { path: "/marketplace", group: "public", auth: false },
   // Public, indexable category pages. Both are seeded taxonomy slugs, so they
   // resolve without a fixture; they render the empty state until consultants
@@ -48,11 +49,6 @@ export const STATIC_ROUTES = [
   },
   { path: "/marketplace/finance", group: "consultant", auth: true },
   { path: "/marketplace/finance/contracts", group: "consultant", auth: true },
-  {
-    path: "/marketplace/finance/engagements",
-    group: "consultant",
-    auth: true,
-  },
   { path: "/marketplace/finance/invoices", group: "consultant", auth: true },
   { path: "/marketplace/finance/invoices/new", group: "consultant", auth: true },
   { path: "/roadmap/shared-with-me", group: "roadmap", auth: true },

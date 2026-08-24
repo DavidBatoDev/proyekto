@@ -1,6 +1,6 @@
 # Consultant Surfaces
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Consultant routes fall into three groups: public marketing/discovery, authenticated
 application and shared work, and active-consultant operator tools. A `/consultant/*` path is
@@ -22,7 +22,7 @@ not automatically protected; each surface has its own gate.
 | `/dashboard` | Shared project and workspace dashboard | Authentication |
 | `/teams/*` | Personal/reusable teams, invites, rates, and time | Team membership and operation-specific checks |
 | `/project/$projectId/*` | Delivery workspace | Resolved project access and backend permission checks |
-| `/marketplace/project-posting` | Client- or consultant-mode project creation UI | Active status required only for consultant mode |
+| `/project/new` | Client- or consultant-mode project creation UI | Active status required only for consultant mode |
 
 ## Active-consultant routes
 

@@ -168,12 +168,11 @@ export class MarketplaceService {
           Array<{ id: string; name: string; slug: string }>
         >();
         for (const row of skillsRes.data || []) {
-          const relation = (row.skill || []) as Array<{
-            id: string;
-            name: string;
-            slug: string;
-          }>;
-          const skill = relation[0];
+          // PostgREST returns a many-to-one join as a single object, while
+          // supabase-js types it as an array — handle both shapes.
+          const skill = (
+            Array.isArray(row.skill) ? row.skill[0] : row.skill
+          ) as { id: string; name: string; slug: string } | undefined | null;
           if (!skill) continue;
           const existing = skillsByUser.get(row.user_id) || [];
           existing.push(skill);

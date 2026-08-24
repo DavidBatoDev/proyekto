@@ -11,6 +11,7 @@ import {
 	Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
@@ -19,19 +20,17 @@ import {
 	describeRate,
 	describeRelationship,
 	describeTimePolicy,
-} from "@/components/finance/portfolio/engagementCopy";
+} from "@/components/engagements/engagementCopy";
 import { FinanceStatusBadge } from "@/components/finance/portfolio/FinancePrimitives";
-import { MarketplaceShell } from "@/components/layout/MarketplaceShell";
+import { isActiveConsultant } from "@/lib/auth-utils";
 import type {
 	Engagement,
 	EngagementProjectLink,
 } from "@/services/engagement.service";
 import { engagementService } from "@/services/engagement.service";
-import { useAuthStore } from "@/stores/authStore";
+import { useAuthStore, useProfile } from "@/stores/authStore";
 
-export const Route = createFileRoute(
-	"/marketplace/finance/engagements/$engagementId",
-)({
+export const Route = createFileRoute("/_execution/engagements/$engagementId")({
 	beforeLoad: () => {
 		if (!useAuthStore.getState().isAuthenticated) {
 			throw redirect({ to: "/auth/login" });
@@ -43,16 +42,21 @@ export const Route = createFileRoute(
 /**
  * The engagement detail page.
  *
- * `GET /api/engagements/:id` shipped with the read APIs and had no caller: the
- * list linked to the activating *contract* instead, so the signed rates, the
- * time policy and the project links an engagement carries were unreachable from
- * the UI. Authorization is party membership, and a non-party gets a 404 rather
- * than a 403 so ids cannot be probed — which is why the not-found copy below
- * does not distinguish "missing" from "not yours".
+ * Lives beside the list at `/engagements`, outside the finance area, because
+ * every seat on an engagement may read it — authorization is party membership,
+ * not consultant capability. A non-party gets a 404 rather than a 403 so ids
+ * cannot be probed — which is why the not-found copy below does not
+ * distinguish "missing" from "not yours".
  */
 function EngagementDetailPage() {
 	const { engagementId } = Route.useParams();
 	const navigate = useNavigate();
+	const profile = useProfile();
+	// The contract document still renders inside the consultant-gated finance
+	// area, so for a client or talent seat the button would lead to a wall.
+	// They see the signing date instead, until a seat-neutral contract view
+	// exists.
+	const canOpenContract = isActiveConsultant(profile);
 	const query = useQuery({
 		queryKey: ["engagement", engagementId],
 		queryFn: () => engagementService.byId(engagementId),
@@ -62,37 +66,37 @@ function EngagementDetailPage() {
 		retry: false,
 	});
 
-	const back = () =>
-		void navigate({
-			to: "/marketplace/finance",
-			search: { tab: "engagements" },
-		});
+	const back = () => void navigate({ to: "/engagements" });
 
 	if (query.isPending) {
 		return (
-			<MarketplaceShell>
-				<div className="flex justify-center py-24">
-					<Loader2 className="h-6 w-6 animate-spin text-primary" />
+			<ProtectedRoute loadingFallback={null}>
+				<div className="app-shell-bg min-h-screen bg-background pt-app-header text-foreground">
+					<div className="flex justify-center py-24">
+						<Loader2 className="h-6 w-6 animate-spin text-primary" />
+					</div>
 				</div>
-			</MarketplaceShell>
+			</ProtectedRoute>
 		);
 	}
 
 	if (query.isError || !query.data) {
 		return (
-			<MarketplaceShell>
-				<div className="mx-auto max-w-3xl px-5 py-10">
-					<BackLink onClick={back} />
-					<AppEmptyState
-						icon={Handshake}
-						title="Engagement not available"
-						description={
-							query.error?.message ??
-							"This engagement does not exist, or you do not hold a seat on it."
-						}
-					/>
+			<ProtectedRoute loadingFallback={null}>
+				<div className="app-shell-bg min-h-screen bg-background pt-app-header text-foreground">
+					<div className="mx-auto max-w-3xl px-5 py-10">
+						<BackLink onClick={back} />
+						<AppEmptyState
+							icon={Handshake}
+							title="Engagement not available"
+							description={
+								query.error?.message ??
+								"This engagement does not exist, or you do not hold a seat on it."
+							}
+						/>
+					</div>
 				</div>
-			</MarketplaceShell>
+			</ProtectedRoute>
 		);
 	}
 
@@ -100,15 +104,15 @@ function EngagementDetailPage() {
 	const isClientSide = engagement.kind === "client_services";
 
 	return (
-		<MarketplaceShell>
-			<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
-				<div className="mx-auto w-full max-w-5xl space-y-5 pb-10">
+		<ProtectedRoute loadingFallback={null}>
+			<div className="app-shell-bg min-h-screen bg-background px-5 pt-app-header text-foreground md:px-8">
+				<div className="mx-auto w-full max-w-5xl space-y-5 pb-10 pt-4 md:pt-5">
 					<BackLink onClick={back} />
 
 					<header className="flex flex-wrap items-start justify-between gap-4">
 						<div className="flex min-w-0 items-center gap-3">
 							<span
-								className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isClientSide ? "bg-primary/10 text-primary" : "bg-info/10 text-info-foreground"}`}
+								className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isClientSide ? `bg-primary/10 text-primary` : `bg-info/10 text-info-foreground`}`}
 							>
 								<Handshake className="h-5 w-5" />
 							</span>
@@ -126,7 +130,7 @@ function EngagementDetailPage() {
 						</div>
 						<div className="flex shrink-0 items-center gap-2">
 							<FinanceStatusBadge status={engagement.status} />
-							{engagement.activated_by_contract_id && (
+							{engagement.activated_by_contract_id && canOpenContract && (
 								<button
 									type="button"
 									onClick={() =>
@@ -233,7 +237,7 @@ function EngagementDetailPage() {
 												{rate.rate_kind === "billing"
 													? "Billing rate"
 													: "Cost rate"}
-												{rate.work_type ? ` · ${rate.work_type}` : ""}
+												{rate.work_type ? ` · ${rate.work_type}` : ``}
 											</span>
 											<span className="font-semibold text-foreground tabular-nums">
 												{describeRate(rate)}
@@ -259,10 +263,22 @@ function EngagementDetailPage() {
 						</Panel>
 					</div>
 
+					<AppSurfaceCard className="p-5">
+						<h2 className="mb-1.5 text-sm font-semibold text-foreground">
+							What happens next
+						</h2>
+						<p className="text-sm leading-6 text-muted-foreground">
+							Assignments — which worker performs which piece of project work —
+							and time submission and approval will appear on this page as those
+							workflows ship. Until then, this engagement records the parties,
+							the projects it covers, and the signed terms in effect.
+						</p>
+					</AppSurfaceCard>
+
 					<ExecutionNotice engagement={engagement} />
 				</div>
 			</div>
-		</MarketplaceShell>
+		</ProtectedRoute>
 	);
 }
 
@@ -359,7 +375,7 @@ function ProjectLinkRow({ link }: { link: EngagementProjectLink }) {
 	return (
 		<li className="flex items-center justify-between gap-3 text-sm">
 			<span
-				className={`min-w-0 truncate ${ended ? "text-muted-foreground line-through" : "text-foreground"}`}
+				className={`min-w-0 truncate ${ended ? `text-muted-foreground line-through` : `text-foreground`}`}
 			>
 				{link.project_title_snapshot}
 			</span>

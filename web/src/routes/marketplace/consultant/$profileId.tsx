@@ -408,7 +408,7 @@ function EngagePanel({
 							signed contract before any work starts.
 						</p>
 						<Link
-							to="/marketplace/project-posting"
+							to="/project/new"
 							search={{ roadmapId: undefined }}
 							className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg bg-foreground text-[14px] font-semibold text-background transition-opacity hover:opacity-90"
 						>

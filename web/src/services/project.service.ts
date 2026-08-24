@@ -40,8 +40,21 @@ export interface Project {
 		email?: string;
 	};
 	members?: ProjectMember[];
+	/** Dashboard-only aggregate of the project's linked roadmap. */
+	roadmap_summary?: ProjectRoadmapSummary | null;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface ProjectRoadmapSummary {
+	roadmap_id: string;
+	name: string;
+	epic_count: number;
+	feature_count: number;
+	task_count: number;
+	done_task_count: number;
+	/** 0-100, cascade-averaged the same way the roadmap canvas reports it. */
+	progress: number;
 }
 
 export type PermissionDependencyMissing = {

@@ -23,7 +23,6 @@ describe("marketplace finance sub-navigation", () => {
 		expect(children.map((entry) => entry.to)).toEqual([
 			"/marketplace/finance",
 			"/marketplace/finance/contracts",
-			"/marketplace/finance/engagements",
 			"/marketplace/finance/invoices",
 		]);
 	});
@@ -69,5 +68,18 @@ describe("marketplace finance sub-navigation", () => {
 				isMarketplaceNavChildActive(entry, finance, contractPath),
 			),
 		).toEqual([]);
+	});
+});
+
+describe("engagements entry", () => {
+	// The one item deliberately pointing outside /marketplace: the page is the
+	// bridge between the marketplace and execution, shared with the execution
+	// sidebar, and readable by every seat -- so it must never grow a gate.
+	it("points at the top-level page and stays ungated", () => {
+		const engagements = MARKETPLACE_NAV_ITEMS.find(
+			(item) => item.key === "engagements",
+		);
+		expect(engagements?.to).toBe("/engagements");
+		expect(engagements?.requires).toBeUndefined();
 	});
 });

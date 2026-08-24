@@ -165,12 +165,15 @@ function SeeAllLink({
 			</Link>
 		);
 	}
+	if (active === "engagements") {
+		return (
+			<Link to="/engagements" className={className}>
+				See all
+			</Link>
+		);
+	}
 	if (!consultant) return null;
-	return active === "engagements" ? (
-		<Link to="/marketplace/finance/engagements" className={className}>
-			See all in Finance
-		</Link>
-	) : (
+	return (
 		<Link to="/marketplace/finance/contracts" className={className}>
 			See all in Finance
 		</Link>
@@ -237,7 +240,7 @@ function ProjectRows({
 				body="Describe what you need and a vetted consultant will scope it — roadmap, deliverables and terms before any work begins."
 				cta={
 					<Link
-						to="/marketplace/project-posting"
+						to="/project/new"
 						search={{ roadmapId: undefined }}
 						className={CTA_CLASS}
 					>
@@ -312,7 +315,7 @@ function EngagementRows({
 						subtitle={`${kind} engagement · ${engagement.status}`}
 					>
 						{(content) => (
-							<Link to="/marketplace/finance/engagements" className={ROW_CLASS}>
+							<Link to="/engagements" className={ROW_CLASS}>
 								{content}
 							</Link>
 						)}

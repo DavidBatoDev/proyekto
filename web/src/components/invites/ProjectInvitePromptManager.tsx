@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useToast } from "@/hooks/useToast";
 import {
 	type NotificationItem,
@@ -109,9 +110,7 @@ export function ProjectInvitePromptManager() {
 			void queryClient.invalidateQueries({
 				queryKey: ["notifications", "project-invites"],
 			});
-			void queryClient.invalidateQueries({
-				queryKey: ["dashboard", "projects", profile?.id],
-			});
+			void invalidateDashboardProjects(queryClient);
 		},
 	});
 

@@ -24,9 +24,14 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
+    const roadmapsBuilder = {
+      select: jest.fn().mockReturnThis(),
+      in: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
     const from = jest.fn((table: string) => {
       if (table === 'projects') return projectsBuilder;
       if (table === 'project_access') return projectAccessBuilder;
+      if (table === 'roadmaps') return roadmapsBuilder;
       throw new Error(`Unexpected table: ${table}`);
     });
     const repo = new SupabaseProjectsRepository({ from } as never);
@@ -49,6 +54,73 @@ describe('SupabaseProjectsRepository findDashboardByUser', () => {
     // p2 has the newer created_at but the older updated_at - if the sort
     // were still keying off created_at this would come back ['p2', 'p1'].
     expect(result.map((p) => p.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('attaches a roadmap summary with cascade progress per project', async () => {
+    const projectsBuilder = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({
+        data: [
+          { id: 'p1', updated_at: '2026-01-05T00:00:00Z' },
+          { id: 'p2', updated_at: '2026-01-04T00:00:00Z' },
+        ],
+        error: null,
+      }),
+    };
+    const projectAccessBuilder = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const roadmapsBuilder = {
+      select: jest.fn().mockReturnThis(),
+      in: jest.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'r1',
+            name: 'Launch plan',
+            project_id: 'p1',
+            updated_at: '2026-01-05T00:00:00Z',
+            epics: [
+              {
+                id: 'e1',
+                features: [
+                  // avg(100, 0) = 50
+                  { id: 'f1', tasks: [{ status: 'done' }, { status: 'todo' }] },
+                  // no tasks -> 0, so the epic averages to 25
+                  { id: 'f2', tasks: [] },
+                ],
+              },
+              // no features -> 0, so roadmap progress = avg(25, 0) = 13
+              { id: 'e2', features: [] },
+            ],
+          },
+        ],
+        error: null,
+      }),
+    };
+    const from = jest.fn((table: string) => {
+      if (table === 'projects') return projectsBuilder;
+      if (table === 'project_access') return projectAccessBuilder;
+      if (table === 'roadmaps') return roadmapsBuilder;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    const repo = new SupabaseProjectsRepository({ from } as never);
+
+    const result = await repo.findDashboardByUser('user-1');
+
+    expect(roadmapsBuilder.in).toHaveBeenCalledWith('project_id', ['p1', 'p2']);
+    expect(result.find((p) => p.id === 'p1')?.roadmap_summary).toEqual({
+      roadmap_id: 'r1',
+      name: 'Launch plan',
+      epic_count: 2,
+      feature_count: 2,
+      task_count: 2,
+      done_task_count: 1,
+      progress: 13,
+    });
+    // A project with no linked roadmap carries an explicit null so the web
+    // client can distinguish "no roadmap" from "field not loaded".
+    expect(result.find((p) => p.id === 'p2')?.roadmap_summary).toBeNull();
   });
 });
 

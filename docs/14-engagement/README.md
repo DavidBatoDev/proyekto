@@ -1,6 +1,6 @@
 # Engagements
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 > **⚠️ Activation is live; the consuming runtime is not.** All three migrations are
 > applied in production —
@@ -15,11 +15,12 @@
 > could be created at all. It was caught by the first real-DB test of the
 > activation path and is covered by `backend/test/integration/engagement-activation.integration-spec.ts`.
 >
-> Engagement rows are therefore created by contract signing, but they are currently
-> **write-only**: no backend route and no web surface reads any engagement table yet.
-> Assignments, attributed time logs, submission and approval, and position-redacted
-> projections remain unbuilt. Read [Integration surface](./integration.md) before
-> building against this model.
+> Engagement rows are created by contract signing, and since 2026-08-18 a
+> party-scoped read path exists: `GET /api/engagements` behind `EngagementsService`,
+> surfaced on the top-level `/engagements` page (moved out of the consultant-gated
+> finance area 2026-08-24). Assignments, attributed time logs, submission and
+> approval, and position-redacted projections remain unbuilt. Read
+> [Integration surface](./integration.md) before building against this model.
 
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making

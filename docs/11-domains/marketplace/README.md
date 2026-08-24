@@ -1,6 +1,6 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-08-19 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
@@ -156,4 +156,4 @@ rendered nowhere.
 ## Code locations
 
 - **Backend:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/), [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/), [`backend/src/modules/marketplace/taxonomy/`](../../../backend/src/modules/marketplace/taxonomy/), [`backend/src/modules/marketplace/survey/`](../../../backend/src/modules/marketplace/survey/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
-- **Web:** `web/src/routes/marketplace/` (a real `/marketplace` URL segment) — `category/`, `consultant/`, `talent/`, `finance/`, `talent`, `project-posting` — plus `web/src/components/marketplace/`. `contract/sign/$token` and `talent/invites` sit outside it on purpose; see [Routing & access](../../04-web/routing-and-access.md)
+- **Web:** `web/src/routes/marketplace/` (a real `/marketplace` URL segment) — `category/`, `consultant/`, `talent/`, `finance/`, `talent` — plus `web/src/components/marketplace/`. `contract/sign/$token` and `talent/invites` sit outside it on purpose; see [Routing & access](../../04-web/routing-and-access.md)

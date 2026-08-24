@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -97,12 +97,17 @@ its engagement gains project links only through `operational_assignment`, which 
 writes yet. A project filter therefore cannot match a flexible agreement — the empty states
 say so and offer a "Show all" escape rather than reporting it as "no match".
 
-## Engagements in the finance surface
+## Engagements left the finance surface
 
-`/marketplace/finance?tab=engagements` lists the caller's engagements, and
-`/marketplace/finance/engagements/$engagementId` shows one: both seats, the projects it
-covers, the rates in effect today, and the signed time policy in plain English. Authorization
-is party membership and a miss returns 404 rather than 403, so ids cannot be probed.
+Engagements were a finance tab until 2026-08-24; they now live at the top-level
+`/engagements` page (list) and `/engagements/$engagementId` (detail), outside the finance
+area's consultant wall — the API authorizes by party membership, so a Client or Talent seat
+may read its own agreements, and the finance framing was wrong for both. The detail shows
+both seats, the projects covered, the rates in effect today, and the signed time policy in
+plain English; a miss returns 404 rather than 403, so ids cannot be probed. The old
+`/marketplace/finance/engagements` URL is gone without a redirect — it lived six days,
+consultant-only, and nothing durable ever carried the path. `?tab=engagements` now lands on
+the finance overview.
 
 An engagement opens only when a contract carrying two `contract_positions` rows is fully
 signed. Contracts created before party seats existed stay valid but activate nothing, which

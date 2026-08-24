@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Calendar, Copy, Layers3, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import {
 	recordRoadmapTemplateView,
 } from "@/api";
 import { TemplateRoadmapFlow } from "@/components/roadmap/templates/TemplateRoadmapFlow";
+import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { projectService } from "@/services/project.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -25,6 +26,7 @@ function today() {
 function RoadmapTemplateDetailPage() {
 	const { slug } = Route.useParams();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 	const [projectId, setProjectId] = useState("");
 	const [startDate, setStartDate] = useState(today());
@@ -74,6 +76,8 @@ function RoadmapTemplateDetailPage() {
 		onSuccess: (result) => {
 			idempotencyKeyRef.current = crypto.randomUUID();
 			localStorage.removeItem("proyekto_template_intent");
+			// Instantiated roadmaps appear in the dashboard ROADMAPS preview.
+			void invalidateDashboardRoadmaps(queryClient);
 			void navigate({
 				to: "/project/$projectId/roadmap/$roadmapId",
 				params: {

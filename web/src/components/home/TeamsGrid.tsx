@@ -94,15 +94,15 @@ export function TeamsGrid() {
 				</Link>
 			</div>
 
-			<div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+			<div className="flex flex-col gap-2">
 				{isLoading ? (
 					<>
-						<TeamCardSkeleton />
-						<TeamCardSkeleton />
-						<TeamCardSkeleton />
+						<TeamRowSkeleton />
+						<TeamRowSkeleton />
+						<TeamRowSkeleton />
 					</>
 				) : cards.length === 0 ? (
-					<TeamsEmptyState className="col-span-full" />
+					<TeamsEmptyState />
 				) : (
 					cards.map((card) =>
 						card.kind === "invite" ? (
@@ -129,30 +129,26 @@ function TeamCard({ team }: { team: Team }) {
 		<Link
 			to="/teams/$teamId"
 			params={{ teamId: team.id }}
-			className="group flex h-40 flex-col rounded-2xl border border-border bg-(--app-surface-strong) p-4 text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-lg"
+			className="group flex items-center gap-3 rounded-xl border border-border bg-(--app-surface-strong) px-4 py-3 text-card-foreground shadow-sm transition-all duration-200 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
 		>
-			<div className="flex items-start gap-2.5">
-				<TeamAvatar team={team} />
-				<div className="min-w-0 flex-1">
-					<h3 className="truncate text-[13px] font-semibold leading-tight text-card-foreground sm:text-[14px]">
-						{team.name || "Untitled team"}
-					</h3>
-					<TeamCardSubLine team={team} />
-				</div>
+			<TeamAvatar team={team} />
+			<div className="min-w-0 flex-1">
+				<h3 className="truncate text-[13px] font-semibold leading-tight text-card-foreground sm:text-[14px]">
+					{team.name || "Untitled team"}
+				</h3>
+				<TeamCardSubLine team={team} />
 			</div>
 
-			<div className="mt-auto flex items-center justify-between gap-2 pt-3">
-				<p className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
+			<div className="flex shrink-0 items-center gap-3">
+				<p className="hidden whitespace-nowrap text-[10px] text-muted-foreground sm:block sm:text-[11px]">
 					{totalMembers === 1 ? "1 member" : `${totalMembers} members`}
 				</p>
-				<div className="flex min-w-0 items-center justify-end">
-					<AvatarStack members={visible} overflow={overflow} />
-					{/* Decorative chevron — hidden on phones to keep the row from
-					    overflowing the half-width card (the whole card is a link). */}
-					<span className="ml-1.5 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground shadow-sm transition-transform duration-200 group-hover:translate-x-0.5 sm:inline-flex">
-						<ArrowRight className="h-3 w-3" />
-					</span>
-				</div>
+				<AvatarStack members={visible} overflow={overflow} />
+				{/* Decorative chevron — hidden on phones to keep the row compact
+				    (the whole row is a link). */}
+				<span className="hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground shadow-sm transition-transform duration-200 group-hover:translate-x-0.5 sm:inline-flex">
+					<ArrowRight className="h-3 w-3" />
+				</span>
 			</div>
 		</Link>
 	);
@@ -195,8 +191,8 @@ function AvatarStack({
 			<span className="text-[11px] text-muted-foreground">No members</span>
 		);
 	}
-	// Phones (2-up cards) are too narrow for the full stack, so cap the
-	// visible avatars there and roll the rest into the "+N" chip; sm+ shows all.
+	// Phone rows are too narrow for the full stack, so cap the visible
+	// avatars there and roll the rest into the "+N" chip; sm+ shows all.
 	const MOBILE_SHOWN = 3;
 	const mobileOverflow = Math.max(members.length - MOBILE_SHOWN, 0) + overflow;
 	const chipClass =
@@ -269,39 +265,35 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 	return (
 		<Link
 			to="/teams/me/invites"
-			className="group flex h-40 flex-col rounded-2xl border border-slate-900 bg-slate-900 p-4 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
+			className="group flex items-center gap-3 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md"
 		>
-			<div className="flex items-start gap-3">
-				<div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
-					<span
-						aria-hidden="true"
-						className="invite-glow-halo pointer-events-none absolute inset-0 rounded-xl bg-white/40 blur-md"
-					/>
-					<Mail className="invite-glow-icon relative h-5 w-5" />
-				</div>
-				<div className="min-w-0 flex-1">
-					<div className="mb-1 flex items-center gap-2">
-						<span className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-							Pending invite
-						</span>
-					</div>
-					<h3 className="truncate text-[15px] font-semibold text-white">
+			<div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+				<span
+					aria-hidden="true"
+					className="invite-glow-halo pointer-events-none absolute inset-0 rounded-xl bg-white/40 blur-md"
+				/>
+				<Mail className="invite-glow-icon relative h-5 w-5" />
+			</div>
+			<div className="min-w-0 flex-1">
+				<div className="flex min-w-0 items-center gap-2">
+					<h3 className="truncate text-[14px] font-semibold text-white sm:text-[15px]">
 						{teamName}
 					</h3>
-					<p className="mt-0.5 truncate text-[12px] text-slate-300">
-						{inviterName} invited you ·{" "}
-						{invite.position
-							? `${invite.position} (${invite.role})`
-							: invite.role}
-					</p>
+					<span className="hidden shrink-0 items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white sm:inline-flex">
+						Pending invite
+					</span>
 				</div>
+				<p className="mt-0.5 truncate text-[12px] text-slate-300">
+					{inviterName} invited you ·{" "}
+					{invite.position
+						? `${invite.position} (${invite.role})`
+						: invite.role}
+				</p>
 			</div>
 
-			<div className="mt-auto flex items-center justify-end pt-3">
-				<span className="text-[13px] font-semibold uppercase text-white/80 transition-colors group-hover:text-white">
-					Open invite -&gt;
-				</span>
-			</div>
+			<span className="shrink-0 whitespace-nowrap text-[12px] font-semibold uppercase text-white/80 transition-colors group-hover:text-white sm:text-[13px]">
+				Open invite -&gt;
+			</span>
 		</Link>
 	);
 }
@@ -332,17 +324,15 @@ function TeamsEmptyState({ className }: { className?: string }) {
 	);
 }
 
-function TeamCardSkeleton() {
+function TeamRowSkeleton() {
 	return (
-		<div className="h-40 rounded-2xl border border-border bg-(--app-surface-strong) p-4 shadow-sm">
-			<div className="flex items-start gap-3">
-				<div className="h-10 w-10 animate-pulse rounded-xl bg-slate-200" />
-				<div className="flex-1 space-y-2">
-					<div className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
-					<div className="h-3 w-full animate-pulse rounded bg-slate-100" />
-					<div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
-				</div>
+		<div className="flex items-center gap-3 rounded-xl border border-border bg-(--app-surface-strong) px-4 py-3 shadow-sm">
+			<div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-slate-200" />
+			<div className="flex-1 space-y-2">
+				<div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
+				<div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
 			</div>
+			<div className="h-3 w-16 shrink-0 animate-pulse rounded bg-slate-100" />
 		</div>
 	);
 }

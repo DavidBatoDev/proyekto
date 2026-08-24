@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Check, Plus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { listMyTeams, type Team } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
@@ -10,6 +10,11 @@ import { useUser } from "@/stores/authStore";
  * Defaults to the consultant's personal team if present; offers an
  * explicit "No team — attach later" opt-out so the consultant can
  * create a project without forcing an attachment.
+ *
+ * Presentation is a plain divided list, not a stack of bordered tiles: it is
+ * one control inside a form whose other controls are inputs and chips, and
+ * boxing it made the choice look like a separate page. Selection reads from
+ * the radio mark and the weight of the row.
  */
 export function ProjectTeamPicker({
 	value,
@@ -51,39 +56,28 @@ export function ProjectTeamPicker({
 
 	return (
 		<div>
-			<p className="mb-2 block text-sm font-semibold text-foreground">
-				Primary team
-			</p>
-			<p className="mb-3 text-xs text-muted-foreground">
-				The team whose members can be curated onto this project. Rates and
-				billing settings come from the team. You can change this later from
-				project settings.
-			</p>
-
-			<div className="space-y-2">
-				{teamsQuery.isPending ? (
-					<div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-						Loading your teams…
-					</div>
-				) : (
-					<>
-						{teams.map((team) => (
-							<TeamOption
-								key={team.id}
-								team={team}
-								selected={value === team.id}
-								onSelect={() => onChange(team.id)}
-							/>
-						))}
-						<NoTeamOption
-							selected={value === null}
-							onSelect={() => onChange(null)}
+			{teamsQuery.isPending ? (
+				<p className="py-3 text-sm text-muted-foreground">
+					Loading your teams…
+				</p>
+			) : (
+				<div className="divide-y divide-border">
+					{teams.map((team) => (
+						<TeamOption
+							key={team.id}
+							team={team}
+							selected={value === team.id}
+							onSelect={() => onChange(team.id)}
 						/>
-					</>
-				)}
-			</div>
+					))}
+					<NoTeamOption
+						selected={value === null}
+						onSelect={() => onChange(null)}
+					/>
+				</div>
+			)}
 
-			<div className="mt-3 text-right">
+			<div className="pt-3">
 				<Link
 					to="/teams"
 					className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80"
@@ -93,6 +87,21 @@ export function ProjectTeamPicker({
 				</Link>
 			</div>
 		</div>
+	);
+}
+
+/** The selected/unselected mark every row shares. */
+function RadioMark({ selected }: { selected: boolean }) {
+	return (
+		<span
+			className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+				selected ? "border-primary bg-primary" : "border-input"
+			}`}
+		>
+			{selected && (
+				<span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+			)}
+		</span>
 	);
 }
 
@@ -108,13 +117,12 @@ function TeamOption({
 	return (
 		<button
 			type="button"
+			role="radio"
+			aria-checked={selected}
 			onClick={onSelect}
-			className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
-				selected
-					? "border-primary bg-primary/10 shadow-sm"
-					: "border-border bg-card hover:border-primary/50 hover:bg-muted/60"
-			}`}
+			className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-muted/40"
 		>
+			<RadioMark selected={selected} />
 			<TeamAvatar team={team} />
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
@@ -133,7 +141,6 @@ function TeamOption({
 					</p>
 				)}
 			</div>
-			{selected && <Check className="h-5 w-5 shrink-0 text-primary" />}
 		</button>
 	);
 }
@@ -148,13 +155,12 @@ function NoTeamOption({
 	return (
 		<button
 			type="button"
+			role="radio"
+			aria-checked={selected}
 			onClick={onSelect}
-			className={`flex w-full items-center gap-3 rounded-lg border border-dashed px-4 py-3 text-left transition ${
-				selected
-					? "border-primary bg-primary/10 shadow-sm"
-					: "border-border bg-card hover:border-primary/50 hover:bg-muted/60"
-			}`}
+			className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-muted/40"
 		>
+			<RadioMark selected={selected} />
 			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
 				<Users className="h-4 w-4" />
 			</div>
@@ -167,7 +173,6 @@ function NoTeamOption({
 					you're ready.
 				</p>
 			</div>
-			{selected && <Check className="h-5 w-5 shrink-0 text-primary" />}
 		</button>
 	);
 }

@@ -49,11 +49,11 @@ import {
 } from "@/hooks/useChatQueries";
 import { useDmRealtime, useProjectsRealtime } from "@/hooks/useChatRealtime";
 import { useChatTyping } from "@/hooks/useChatTyping";
+import { dashboardProjectsQueryOptions } from "@/hooks/useDashboardProjectsQuery";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatAttachment, ChatRoom } from "@/services/chat.service";
-import type { ProjectMember } from "@/services/project.service";
-import { type Project, projectService } from "@/services/project.service";
+import type { Project, ProjectMember } from "@/services/project.service";
 import { uploadService } from "@/services/upload.service";
 import { useAuthStore, useProfile, useUser } from "@/stores/authStore";
 
@@ -171,14 +171,7 @@ function InboxPage() {
 	const queryClient = useQueryClient();
 
 	const projectsQuery = useQueries({
-		queries: [
-			{
-				queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
-				queryFn: () => projectService.listDashboardProjects(),
-				enabled: Boolean(user?.id),
-				staleTime: 30 * 1000,
-			},
-		],
+		queries: [dashboardProjectsQueryOptions(user?.id)],
 	})[0];
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
 

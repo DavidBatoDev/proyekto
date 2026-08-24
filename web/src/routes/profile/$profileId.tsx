@@ -31,6 +31,7 @@ import { AboutModal } from "@/components/profile/AboutModal";
 import { CertificationModal } from "@/components/profile/CertificationModal";
 import { EducationModal } from "@/components/profile/EducationModal";
 import { ExperienceModal } from "@/components/profile/ExperienceModal";
+import { HeaderModal } from "@/components/profile/HeaderModal";
 import { IdentityDocumentModal } from "@/components/profile/IdentityDocumentModal";
 import { LanguageModal } from "@/components/profile/LanguageModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
@@ -176,6 +177,7 @@ function ProfilePage() {
 				old ? { ...old, ...updated } : old,
 			);
 			setEditSection(null);
+			setHeaderModalOpen(false);
 		},
 	});
 
@@ -389,9 +391,8 @@ function ProfilePage() {
 	});
 
 	// ── ALL state (must be before early returns) ──────────────────────────────
-	type EditSection = "header" | "bio" | "contact" | "rate";
+	type EditSection = "bio" | "contact" | "rate";
 	const [editSection, setEditSection] = useState<EditSection | null>(null);
-	const [headerForm, setHeaderForm] = useState({ headline: "" });
 	const [contactForm, setContactForm] = useState({
 		phone_number: "",
 		country: "",
@@ -413,6 +414,7 @@ function ProfilePage() {
 	const [specModalOpen, setSpecModalOpen] = useState(false);
 	const [licModalOpen, setLicModalOpen] = useState(false);
 	const [idDocModalOpen, setIdDocModalOpen] = useState(false);
+	const [headerModalOpen, setHeaderModalOpen] = useState(false);
 
 	// Which existing item is being edited (null = add mode)
 	const [editingExp, setEditingExp] = useState<UserExperience | null>(null);
@@ -435,7 +437,6 @@ function ProfilePage() {
 
 	useEffect(() => {
 		if (!profile) return;
-		setHeaderForm({ headline: profile.headline ?? "" });
 		setContactForm({
 			phone_number: profile.phone_number ?? "",
 			country: profile.country ?? "",
@@ -482,8 +483,6 @@ function ProfilePage() {
 	// ── Helpers ───────────────────────────────────────────────────────────────
 	const isEditing = (s: EditSection) => editSection === s;
 	const cancelEdit = () => setEditSection(null);
-	const saveHeader = () =>
-		updateMutation.mutate({ headline: headerForm.headline });
 	const saveContact = () => updateMutation.mutate(contactForm);
 	const saveRate = async () => {
 		await profileService.updateRateSettings({
@@ -650,11 +649,7 @@ function ProfilePage() {
 													: "Resume listing"}
 											</PillButton>
 										)}
-										<PillButton
-											onClick={() =>
-												setEditSection(isEditing("header") ? null : "header")
-											}
-										>
+										<PillButton onClick={() => setHeaderModalOpen(true)}>
 											<Edit2 className="h-3.5 w-3.5" />
 											Edit profile
 										</PillButton>
@@ -663,119 +658,68 @@ function ProfilePage() {
 							</div>
 
 							{/* Name & headline */}
-							{isEditing("header") ? (
-								<div className="max-w-lg space-y-3 mt-1">
-									<div className="grid grid-cols-2 gap-3">
-										<InlineField
-											label="First Name"
-											name="first_name"
-											value={profile.first_name ?? ""}
-											readOnly
-										/>
-										<InlineField
-											label="Last Name"
-											name="last_name"
-											value={profile.last_name ?? ""}
-											readOnly
-										/>
-									</div>
-									<InlineField
-										label="Headline"
-										name="headline"
-										value={headerForm.headline}
-										onChange={(e) =>
-											setHeaderForm((p) => ({ ...p, headline: e.target.value }))
-										}
-									/>
-									<p className="text-xs text-muted-foreground">
-										First &amp; last name can only be changed by contacting
-										support.
-									</p>
-									<div className="flex gap-2">
-										<button
-											onClick={saveHeader}
-											disabled={updateMutation.isPending}
-											className="flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground text-sm font-semibold rounded-full hover:bg-primary/90 disabled:opacity-60 transition-colors"
-										>
-											{updateMutation.isPending ? (
-												<Loader2 className="w-3.5 h-3.5 animate-spin" />
-											) : (
-												<Check className="w-3.5 h-3.5" />
-											)}
-											Save
-										</button>
-										<button
-											onClick={cancelEdit}
-											className="px-4 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
-										>
-											Cancel
-										</button>
-									</div>
-								</div>
-							) : (
-								<div>
-									<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-										<h1 className="text-[26px] font-bold leading-tight tracking-tight text-foreground">
-											{fullName}
-										</h1>
-										{profile.is_consultant_verified && (
-											<span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11.5px] font-semibold text-primary">
-												<BadgeCheck className="h-3.5 w-3.5" />
-												Verified consultant
-											</span>
-										)}
-										{profile.talent_status === "active" && (
-											<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
-												<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-												Open to work
-											</span>
-										)}
-									</div>
-
-									{profile.headline && (
-										<p className="mt-1.5 max-w-2xl text-[14.5px] leading-snug text-muted-foreground">
-											{profile.headline}
-										</p>
-									)}
-
-									{/*
-									 * One meta line rather than three stacked ones: location,
-									 * rate and how long they have been here are all "who is
-									 * this", and reading them as a row is what makes the header
-									 * scan like a profile instead of a form.
-									 */}
-									<div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-muted-foreground">
-										{(profile.city || profile.country) && (
-											<span className="inline-flex items-center gap-1.5">
-												<MapPin className="h-3.5 w-3.5" />
-												{[profile.city, profile.country]
-													.filter(Boolean)
-													.join(", ")}
-											</span>
-										)}
-										{profile.rate_settings?.hourly_rate != null && (
-											<span className="inline-flex items-center gap-1.5">
-												<DollarSign className="h-3.5 w-3.5" />
-												{profile.rate_settings.hourly_rate}{" "}
-												{profile.rate_settings.currency}/hr
-											</span>
-										)}
-										{profile.languages.length > 0 && (
-											<span className="inline-flex items-center gap-1.5">
-												<Globe className="h-3.5 w-3.5" />
-												{profile.languages
-													.slice(0, 3)
-													.map((language) => language.language.name)
-													.join(", ")}
-											</span>
-										)}
-										<span className="inline-flex items-center gap-1.5">
-											<Clock className="h-3.5 w-3.5" />
-											Joined {fmtDate(profile.created_at)}
+							<div>
+								<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+									<h1 className="text-[26px] font-bold leading-tight tracking-tight text-foreground">
+										{fullName}
+									</h1>
+									{profile.is_consultant_verified && (
+										<span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11.5px] font-semibold text-primary">
+											<BadgeCheck className="h-3.5 w-3.5" />
+											Verified consultant
 										</span>
-									</div>
+									)}
+									{profile.talent_status === "active" && (
+										<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+											<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+											Open to work
+										</span>
+									)}
 								</div>
-							)}
+
+								{profile.headline && (
+									<p className="mt-1.5 max-w-2xl text-[14.5px] leading-snug text-muted-foreground">
+										{profile.headline}
+									</p>
+								)}
+
+								{/*
+								 * One meta line rather than three stacked ones: location,
+								 * rate and how long they have been here are all "who is
+								 * this", and reading them as a row is what makes the header
+								 * scan like a profile instead of a form.
+								 */}
+								<div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-muted-foreground">
+									{(profile.city || profile.country) && (
+										<span className="inline-flex items-center gap-1.5">
+											<MapPin className="h-3.5 w-3.5" />
+											{[profile.city, profile.country]
+												.filter(Boolean)
+												.join(", ")}
+										</span>
+									)}
+									{profile.rate_settings?.hourly_rate != null && (
+										<span className="inline-flex items-center gap-1.5">
+											<DollarSign className="h-3.5 w-3.5" />
+											{profile.rate_settings.hourly_rate}{" "}
+											{profile.rate_settings.currency}/hr
+										</span>
+									)}
+									{profile.languages.length > 0 && (
+										<span className="inline-flex items-center gap-1.5">
+											<Globe className="h-3.5 w-3.5" />
+											{profile.languages
+												.slice(0, 3)
+												.map((language) => language.language.name)
+												.join(", ")}
+										</span>
+									)}
+									<span className="inline-flex items-center gap-1.5">
+										<Clock className="h-3.5 w-3.5" />
+										Joined {fmtDate(profile.created_at)}
+									</span>
+								</div>
+							</div>
 
 							{/*
 							 * What is still missing before this profile can be listed.
@@ -1856,6 +1800,15 @@ function ProfilePage() {
 			</div>
 
 			{/* ══ MODALS ══════════════════════════════════════════════════════════ */}
+			<HeaderModal
+				isOpen={headerModalOpen}
+				onClose={() => setHeaderModalOpen(false)}
+				onSave={(payload) => updateMutation.mutate(payload)}
+				isSaving={updateMutation.isPending}
+				firstName={profile.first_name ?? ""}
+				lastName={profile.last_name ?? ""}
+				headline={profile.headline ?? ""}
+			/>
 			<AboutModal
 				isOpen={aboutModalOpen}
 				onClose={() => setAboutModalOpen(false)}

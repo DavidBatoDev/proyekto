@@ -24,6 +24,7 @@ const Header = () => {
 		"/settings",
 		"/unsubscribe",
 		"/invites",
+		"/engagements",
 		// `/contract/sign/$token` is deliberately absent: the account-free
 		// signing page carries no app chrome, exactly as before the move.
 		"/freelancer",
@@ -38,15 +39,15 @@ const Header = () => {
 		currentPath === "/marketplace/consultant" ||
 		currentPath === "/marketplace/consultant/" ||
 		currentPath.startsWith("/marketplace/consultant/apply") ||
-		currentPath.startsWith("/marketplace/project-posting")
+		currentPath === "/project/new"
 	) {
 		return null;
 	}
 
 	let content = <DashboardHeader />;
 
-	// Only the project subtree. `/project-posting` used to fall in here by
-	// accident; under /marketplace it no longer can.
+	// Only the project subtree. `/project/new` is inside it but never reaches
+	// here — it carries its own header and returned null above.
 	if (currentPath.startsWith("/project/")) {
 		content = <ProjectHeader />;
 	} else if (currentPath.startsWith("/dashboard")) {

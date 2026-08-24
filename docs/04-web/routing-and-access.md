@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -14,11 +14,11 @@ gating done in route `beforeLoad` hooks and project components.
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
 | `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
-| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` |
+| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
-| `project/` | `$projectId` layout + tabs (below) |
+| `project/` | `new` (create a project) + `$projectId` layout and tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
 | `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps), `notifications` |
@@ -41,6 +41,10 @@ features:
 - **`contract/sign/$token`** — the account-free client signing page. Its URL is the CTA of
   an email sent to someone who may have no login, so it must never move under a namespace
   that could gate it. `mapLegacyPath` deliberately does not rewrite it.
+- **`project/new`** — creating a project. It moved out of `marketplace/project-posting`
+  on 2026-08-24: creating a project is how execution starts, and only one of its two modes
+  (client, consultant) is a posting taken to market. The old path stays as a
+  `beforeLoad` redirect shim for the persisted-URL reasons below.
 - **`talent/invites`** — a redirect shim to `/invites`. A live SQL trigger
   (`handle_profile_project_invites_reconciliation`) writes that exact string into
   `notifications.link_url`, and migrations are immutable, so the path must keep resolving.
@@ -53,6 +57,13 @@ links — none of which can be rewritten. There is no edge redirect layer (wrang
 `index.html` with a 200 for any unmatched path), so the root `notFoundComponent`
 ([`NotFoundRoute.tsx`](../../web/src/components/layout/NotFoundRoute.tsx)) consults
 `mapLegacyPath` and forwards before rendering anything. Do not delete it.
+
+The one recorded exception: `/marketplace/finance/engagements` 404s since 2026-08-24,
+when the section became the top-level `/engagements` page. It was safe to drop because
+the finance tab lived six days, rendered only for verified consultants, and — verified by
+grep and against production — no notification row, email, FCM payload, or trigger ever
+carried the path; every reference was an in-app typed `Link`. Any future move that fails
+even one of those tests keeps a redirect.
 
 ## Marketplace category pages
 

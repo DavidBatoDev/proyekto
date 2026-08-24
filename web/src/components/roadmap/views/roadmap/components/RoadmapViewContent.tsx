@@ -7,6 +7,7 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
@@ -37,6 +38,7 @@ import {
 } from "@/components/roadmap";
 import { ConfirmAssigneeOverwriteDialog } from "@/components/roadmap/widgets/ConfirmAssigneeOverwriteDialog";
 import { useToast } from "@/contexts/ToastContext";
+import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
 import {
@@ -209,6 +211,7 @@ export function RoadmapViewContent({
 	onNodeClosed,
 }: RoadmapViewContentProps) {
 	const toast = useToast();
+	const queryClient = useQueryClient();
 	// Roadmap data and actions from store
 	const {
 		roadmap,
@@ -824,6 +827,8 @@ export function RoadmapViewContent({
 				...(formData.preview_url ? { preview_url: formData.preview_url } : {}),
 			});
 
+			// Name/description/cover feed the dashboard ROADMAPS preview.
+			void invalidateDashboardRoadmaps(queryClient);
 			setIsBriefOpen(false);
 		} catch (error) {
 			console.error("Failed to update roadmap:", error);

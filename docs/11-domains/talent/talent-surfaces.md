@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `talent` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -23,7 +23,7 @@ dashboard subtree.
 | `/teams`, `/teams/$teamId/*` | Yes according to team membership and team role |
 | `/work-items` (labelled **Board**), `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
 | `/settings/*` | Yes; account settings |
-| `/marketplace/project-posting` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
+| `/project/new` | Yes; any account can create in client mode — client is a per-project position, not an account gate |
 | `/marketplace/consultant/apply` | Yes; authenticated application flow |
 | `/marketplace/consultant/browse`, `/marketplace/consultant/$profileId` | Public consultant discovery |
 

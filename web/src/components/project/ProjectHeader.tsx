@@ -14,17 +14,18 @@ import {
 	FolderKanban,
 	Link2,
 	MessageCircle,
-	Search,
 	UserPlus,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { GlobalSearchBar } from "@/components/layout/search/GlobalSearchBar";
 import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectModal";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
-import { type Project, projectService } from "@/services/project.service";
+import type { Project } from "@/services/project.service";
 import {
 	getTeam,
 	listCuratedMembers,
@@ -119,6 +120,10 @@ export function ProjectHeader() {
 	};
 
 	const [isLinkProjectModalOpen, setIsLinkProjectModalOpen] = useState(false);
+	// While the search is focused it stretches across the breadcrumb area, so
+	// the breadcrumbs collapse out of the way (and animate back on close) —
+	// same behavior as DashboardHeader's nav links.
+	const [searchExpanded, setSearchExpanded] = useState(false);
 
 	// Fetch teams attached to this project
 	const projectTeamsQuery = useQuery({
@@ -181,11 +186,8 @@ export function ProjectHeader() {
 	}, [teamsDropdownOpen]);
 
 	// All projects for the project-switcher dropdown
-	const allProjectsQuery = useQuery({
-		queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
-		queryFn: () => projectService.listDashboardProjects(),
-		enabled: Boolean(user?.id) && !isRoadmapOnly,
-		staleTime: 30_000,
+	const allProjectsQuery = useDashboardProjectsQuery({
+		enabled: !isRoadmapOnly,
 	});
 	const allProjects = (allProjectsQuery.data as Project[] | undefined) ?? [];
 
@@ -246,7 +248,11 @@ export function ProjectHeader() {
 
 				<nav
 					aria-label="Breadcrumb"
-					className="flex min-w-0 flex-1 items-center gap-1 text-sm font-medium text-slate-900"
+					className={`flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-sm font-medium text-slate-900 transition-all duration-200 ${
+						searchExpanded
+							? "pointer-events-none max-w-0 overflow-hidden opacity-0"
+							: "max-w-full opacity-100"
+					}`}
 				>
 					{/* Dashboard */}
 					<Link
@@ -422,6 +428,13 @@ export function ProjectHeader() {
 							: resolveCurrentPageLabel(location.pathname, projectId)}
 					</span>
 				</nav>
+
+				<GlobalSearchBar
+					className={`hidden min-w-0 flex-1 transition-all duration-200 md:block ${
+						searchExpanded ? "max-w-full" : "max-w-[220px] lg:max-w-[300px]"
+					}`}
+					onExpandedChange={setSearchExpanded}
+				/>
 			</div>
 
 			<div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -474,15 +487,6 @@ export function ProjectHeader() {
 						{totalProjectMembers} members
 					</span>
 				)}
-
-				<div className="hidden min-w-[220px] items-center rounded-2xl border border-slate-200 bg-slate-100/80 px-3 py-1.5 transition-all duration-200 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-200 md:flex lg:min-w-[300px]">
-					<Search size={17} className="mr-2 shrink-0 text-slate-500" />
-					<input
-						type="text"
-						placeholder="Search..."
-						className="min-w-0 flex-1 border-none bg-transparent text-[0.85rem] text-slate-800 placeholder-slate-400 focus:outline-none"
-					/>
-				</div>
 
 				<button
 					type="button"

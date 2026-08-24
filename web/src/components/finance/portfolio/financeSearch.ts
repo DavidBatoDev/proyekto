@@ -60,12 +60,7 @@ export interface ContractEditorSearch {
 	section?: StepKey;
 }
 
-export const FINANCE_SECTIONS = [
-	"overview",
-	"contracts",
-	"engagements",
-	"invoices",
-] as const;
+export const FINANCE_SECTIONS = ["overview", "contracts", "invoices"] as const;
 
 export type FinanceSection = (typeof FINANCE_SECTIONS)[number];
 
@@ -122,14 +117,14 @@ export function legacyTabRoute(
 	tab: unknown,
 ):
 	| "/marketplace/finance/contracts"
-	| "/marketplace/finance/engagements"
 	| "/marketplace/finance/invoices"
 	| undefined {
 	switch (tab) {
 		case "contracts":
 			return "/marketplace/finance/contracts";
-		case "engagements":
-			return "/marketplace/finance/engagements";
+		// `engagements` was a finance tab until the section moved to the
+		// top-level `/engagements` page; the value falls through to the
+		// overview, the closest thing finance still has.
 		case "invoices":
 			return "/marketplace/finance/invoices";
 		default:
@@ -210,11 +205,9 @@ export function formatDateRange(from?: string, to?: string): string {
 /**
  * Which filter controls actually reach the query behind each section.
  *
- * The bar used to render the same four facets everywhere while three of them
- * were dropped on the floor by the engagements query, so picking a currency
- * there silently did nothing. Rendering from this map keeps the controls
- * honest: `/api/engagements` scopes by party membership and takes only
- * `project_id`, so that is the only facet it can offer.
+ * The bar used to render the same four facets everywhere while some were
+ * dropped on the floor by the section's query, so picking a currency could
+ * silently do nothing. Rendering from this map keeps the controls honest.
  */
 export const SECTION_FILTERS: Record<
 	FinanceSection,
@@ -244,15 +237,6 @@ export const SECTION_FILTERS: Record<
 		currency: true,
 		date: true,
 		contractStatus: true,
-		invoiceStatus: false,
-	},
-	engagements: {
-		search: false,
-		project: true,
-		projectStatus: false,
-		currency: false,
-		date: false,
-		contractStatus: false,
 		invoiceStatus: false,
 	},
 	invoices: {
@@ -285,9 +269,6 @@ export function activeFilterCount(
 
 export function financeSectionFromPathname(pathname: string): FinanceSection {
 	if (pathname.startsWith("/marketplace/finance/contracts")) return "contracts";
-	if (pathname.startsWith("/marketplace/finance/engagements")) {
-		return "engagements";
-	}
 	if (pathname.startsWith("/marketplace/finance/invoices")) return "invoices";
 	return "overview";
 }

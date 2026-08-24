@@ -67,7 +67,7 @@ function MarketplaceCategoryPage() {
 						"A consultant scopes the work, leads delivery, and is accountable for it."}
 				</p>
 				<Link
-					to="/marketplace/project-posting"
+					to="/project/new"
 					search={{ roadmapId: undefined }}
 					className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-background px-6 text-[14px] font-semibold text-foreground transition-opacity hover:opacity-90"
 				>

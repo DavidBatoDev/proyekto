@@ -4,7 +4,6 @@ import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
-import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
 import {
 	deriveTimelineItems,
 	OverviewBanner,
@@ -20,6 +19,7 @@ import {
 	areProjectBriefFieldsEqual,
 	getOverviewBriefState,
 } from "@/components/project/overview/stateSync";
+import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import {
 	useDeliverablesQuery,
 	useRisksQuery,
@@ -33,10 +33,7 @@ import {
 	useProjectMyPermissionsQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
-import {
-	hasProjectAdminAccess,
-	isPersonalWorkspace,
-} from "@/lib/projectAccess";
+import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import { projectService } from "@/services/project.service";
 import { uploadService } from "@/services/upload.service";
@@ -80,6 +77,7 @@ function StatusBadgeSelector({
 			void queryClient.invalidateQueries({
 				queryKey: ["project", "detail", projectId],
 			});
+			void invalidateDashboardProjects(queryClient);
 			setOpen(false);
 		},
 	});
@@ -341,10 +339,6 @@ function OverviewPage() {
 				<div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
 					<div className="flex flex-col">
 						<ProjectHealthStrip health={health} projectId={projectId} />
-						<BringInAConsultantCard
-							isPersonalWorkspace={isPersonalWorkspace(project)}
-							memberCount={members.length}
-						/>
 						<div className="app-slide-up">
 							<OverviewBanner
 								bannerUrl={projectBannerUrl}

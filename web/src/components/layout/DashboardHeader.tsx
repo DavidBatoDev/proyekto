@@ -1,11 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { Menu, MessageCircle, Search } from "lucide-react";
+import { Menu, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
+import { HEADER_NAV_ITEMS } from "./headerNavigation";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 import { NotificationBell } from "./NotificationBell";
+import { GlobalSearchBar } from "./search/GlobalSearchBar";
 import UserMenu from "./UserMenu";
 
 const DashboardHeader = () => {
@@ -13,40 +15,38 @@ const DashboardHeader = () => {
 	const isAuthLoading = useIsLoading();
 	const isLoading = isAuthLoading || (isAuthenticated && !profile);
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-	// The header is global, so this is the one nav that spans both halves of the
-	// product: the marketplace shell and the execution workspace. Each entry is
-	// the top-level counterpart to a sidebar link — the marketplace sidebar's
-	// "Back to workspace" and the execution sidebar's marketplace entry —
-	// without which the only way across is from inside a sidebar, which the
-	// marketplace's own public pages do not render.
-	const navItems = [
-		{ label: "Marketplace", to: "/marketplace" },
-		{ label: "Execution", to: "/dashboard" },
-	];
+	// While the search is focused it stretches across the nav area, so the nav
+	// links collapse out of the way (and animate back when it closes).
+	const [searchExpanded, setSearchExpanded] = useState(false);
 
 	return (
-		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
-			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
-				{isAuthenticated && (
-					<button
-						type="button"
-						onClick={() => setMobileNavOpen(true)}
-						aria-label="Open menu"
-						className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted lg:hidden"
-					>
-						<Menu size={22} />
-					</button>
-				)}
-				<Link
-					to="/"
-					className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
+		<div className="z-10 flex h-full w-full items-center gap-3 px-4 sm:gap-4 sm:px-6">
+			{isAuthenticated && (
+				<button
+					type="button"
+					onClick={() => setMobileNavOpen(true)}
+					aria-label="Open menu"
+					className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted lg:hidden"
 				>
-					<BrandMark variant="logomark" className="h-7" />
-				</Link>
+					<Menu size={22} />
+				</button>
+			)}
+			<Link
+				to="/"
+				className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
+			>
+				<BrandMark variant="logomark" className="h-7" />
+			</Link>
 
-				<nav className="hidden items-center gap-2 lg:flex">
-					{navItems.map((item) => (
+			<div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+				<nav
+					className={`hidden items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-200 lg:flex ${
+						searchExpanded
+							? "pointer-events-none max-w-0 opacity-0"
+							: "max-w-[480px] opacity-100"
+					}`}
+				>
+					{HEADER_NAV_ITEMS.map((item) => (
 						<Link
 							key={item.label}
 							to={item.to}
@@ -56,30 +56,30 @@ const DashboardHeader = () => {
 						</Link>
 					))}
 				</nav>
+
+				{isLoading ? (
+					<div className="hidden h-9 w-52 animate-pulse rounded-md bg-muted md:block" />
+				) : isAuthenticated ? (
+					<GlobalSearchBar
+						className={`hidden min-w-0 flex-1 transition-all duration-200 md:block ${
+							searchExpanded ? "max-w-full" : "max-w-[220px] lg:max-w-[300px]"
+						}`}
+						onExpandedChange={setSearchExpanded}
+					/>
+				) : (
+					<span />
+				)}
 			</div>
 
 			<div className="flex shrink-0 items-center gap-2 sm:gap-3">
 				{isLoading ? (
 					<div className="flex items-center gap-2 sm:gap-3">
-						<div className="hidden h-9 w-52 animate-pulse rounded-2xl bg-muted md:block" />
 						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
 						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
 						<div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
 					</div>
 				) : isAuthenticated ? (
 					<>
-						<div className="hidden min-w-[220px] items-center rounded-2xl border border-border bg-muted/80 px-3 py-1.5 transition-all duration-200 hover:bg-muted focus-within:bg-card focus-within:ring-2 focus-within:ring-border md:flex lg:min-w-[300px]">
-							<Search
-								size={17}
-								className="mr-2 shrink-0 text-muted-foreground"
-							/>
-							<input
-								type="text"
-								placeholder="Search..."
-								className="min-w-0 flex-1 border-none bg-transparent text-[0.85rem] text-foreground placeholder:text-muted-foreground focus:outline-none"
-							/>
-						</div>
-
 						<button
 							type="button"
 							className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted"
