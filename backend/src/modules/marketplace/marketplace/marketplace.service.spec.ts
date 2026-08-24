@@ -182,9 +182,7 @@ describe('MarketplaceService talent enrollment', () => {
         table === 'consultant_profiles' ? consultantBuilder : profilesBuilder,
     });
 
-    await expect(service.getTalent('consultant-1', {})).resolves.toEqual(
-      [],
-    );
+    await expect(service.getTalent('consultant-1', {})).resolves.toEqual([]);
     expect(profilesBuilder.select).toHaveBeenCalledWith(
       expect.stringContaining('talent_profiles!inner'),
     );
@@ -192,5 +190,66 @@ describe('MarketplaceService talent enrollment', () => {
       'talent_profile.status',
       'active',
     );
+  });
+
+  it('maps the many-to-one skill join object onto the talent cards', async () => {
+    const consultantBuilder = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ count: 1, error: null }).then(resolve),
+    };
+    const profilesBuilder = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({
+          data: [
+            {
+              id: 'talent-1',
+              display_name: 'David',
+              avatar_url: null,
+              headline: null,
+              is_email_verified: true,
+            },
+          ],
+          error: null,
+        }).then(resolve),
+    };
+    const emptyInBuilder = () => ({
+      select: jest.fn().mockReturnThis(),
+      in: jest.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    const skillsBuilder = {
+      select: jest.fn().mockReturnThis(),
+      // PostgREST returns the FK join as an object, not an array.
+      in: jest.fn().mockResolvedValue({
+        data: [
+          {
+            user_id: 'talent-1',
+            skill: {
+              id: 'skill-1',
+              name: 'Cloud Development',
+              slug: 'cloud-development',
+            },
+          },
+        ],
+        error: null,
+      }),
+    };
+    const { service } = dependencies({
+      from: (table: string) => {
+        if (table === 'consultant_profiles') return consultantBuilder;
+        if (table === 'profiles') return profilesBuilder;
+        if (table === 'user_skills') return skillsBuilder;
+        return emptyInBuilder();
+      },
+    });
+
+    const cards = await service.getTalent('consultant-1', {});
+    expect(cards).toHaveLength(1);
+    expect(cards[0].skills).toEqual([
+      { id: 'skill-1', name: 'Cloud Development', slug: 'cloud-development' },
+    ]);
   });
 });
