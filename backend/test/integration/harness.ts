@@ -29,6 +29,12 @@ import { CachePolicyInterceptor } from '../../src/common/interceptors/cache-poli
 import { RequestLoggingInterceptor } from '../../src/common/interceptors/request-logging.interceptor';
 import { RequestTimeoutInterceptor } from '../../src/common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from '../../src/common/interceptors/response.interceptor';
+import { ActivityFlushInterceptor } from '../../src/common/interceptors/activity-flush.interceptor';
+import {
+  activityStorage,
+  createActivityBuffer,
+} from '../../src/common/activity/activity-context';
+import { AuditService } from '../../src/modules/shared/audit/audit.service';
 import { RealtimePublisher } from '../../src/modules/shared/realtime/realtime-publisher.service';
 import { KnowledgeOutboxService } from '../../src/modules/shared/knowledge/knowledge-outbox.service';
 
@@ -103,6 +109,16 @@ export class Harness {
         { path: 'oauth/*splat', method: RequestMethod.ALL },
       ],
     });
+    // Opens the per-request activity buffer. MUST be middleware, exactly as in
+    // main.ts: next.handle() is a cold Observable Nest subscribes to after
+    // intercept() returns, so wrapping it in activityStorage.run() would leave
+    // the route handler outside the context. Without this the buffered audit
+    // path is never exercised here — every row falls back to a detached insert,
+    // and anything that reads the request context (e.g. the MCP origin marker)
+    // silently no-ops.
+    app.use((_req: unknown, _res: unknown, next: () => void) =>
+      activityStorage.run(createActivityBuffer(), next),
+    );
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -118,6 +134,8 @@ export class Harness {
       new RequestLoggingInterceptor(1500),
       new CachePolicyInterceptor(reflector),
       new ResponseInterceptor(reflector),
+      // Registered LAST so it sits innermost, matching main.ts.
+      new ActivityFlushInterceptor(app.get(AuditService)),
     );
     await app.init();
     this.app = app;
