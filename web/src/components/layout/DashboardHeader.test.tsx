@@ -30,6 +30,12 @@ vi.mock("@/ui/button", () => ({
 	Button: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }));
 
+// The search bar pulls in the router's useNavigate and TanStack Query hooks,
+// neither of which this suite provides — its behavior has its own suite.
+vi.mock("./search/GlobalSearchBar", () => ({
+	GlobalSearchBar: () => <div data-testid="global-search-bar" />,
+}));
+
 vi.mock("./MobileNavDrawer", () => ({
 	MobileNavDrawer: () => <div />,
 }));

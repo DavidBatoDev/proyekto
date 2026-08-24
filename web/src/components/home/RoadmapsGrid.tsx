@@ -15,6 +15,7 @@ import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import {
 	useTourDemo,
 	useTourDemoActive,
@@ -74,9 +75,7 @@ export function RoadmapsGrid() {
 	const deleteRoadmapMutation = useMutation({
 		mutationFn: (roadmapId: string) => deleteRoadmap(roadmapId),
 		onSuccess: () => {
-			void queryClient.invalidateQueries({
-				queryKey: ["dashboard", "roadmaps-preview"],
-			});
+			void invalidateDashboardRoadmaps(queryClient);
 		},
 	});
 

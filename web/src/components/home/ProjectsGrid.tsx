@@ -4,13 +4,14 @@ import {
 	ArrowRight,
 	Calendar,
 	ChevronDown,
-	Clock,
 	Inbox,
+	Layers3,
 	Plus,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
+import { dashboardProjectsQueryOptions } from "@/hooks/useDashboardProjectsQuery";
 import { supabase } from "@/lib/supabase";
 import {
 	useTourDemo,
@@ -19,6 +20,7 @@ import {
 import {
 	type Project,
 	type ProjectInvite,
+	type ProjectRoadmapSummary,
 	projectService,
 } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
@@ -84,14 +86,11 @@ export function ProjectsGrid() {
 	const user = useUser();
 	const queryClient = useQueryClient();
 	const projectsQueryKey = useMemo(
-		() => ["dashboard", "projects", user?.id ?? "anonymous"] as const,
+		() => dashboardProjectsQueryOptions(user?.id).queryKey,
 		[user?.id],
 	);
 	const projectsQuery = useQuery({
-		queryKey: projectsQueryKey,
-		queryFn: () => projectService.listDashboardProjects(),
-		enabled: Boolean(user?.id),
-		staleTime: 30 * 1000,
+		...dashboardProjectsQueryOptions(user?.id),
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
 		retry: 1,
@@ -292,13 +291,15 @@ function ProjectsSection({
 								status={statusConfig.label}
 								title={card.project.title}
 								owner={card.project.owner?.display_name || "Assigned"}
-								progress={card.project.status === "completed" ? 100 : null}
-								progressColor={statusConfig.color}
-								nextUp={
-									card.project.brief
-										? "Review project brief"
-										: "Add project brief"
+								progress={
+									card.project.roadmap_summary
+										? card.project.roadmap_summary.progress
+										: card.project.status === "completed"
+											? 100
+											: null
 								}
+								progressColor={statusConfig.color}
+								roadmapSummary={card.project.roadmap_summary ?? null}
 								dueDate={null}
 								className={revealClassName}
 								style={revealStyle}
@@ -416,7 +417,7 @@ function ProjectsEmptyState({
 				{description}
 			</p>
 			<Link
-				to="/marketplace/project-posting"
+				to="/project/new"
 				search={{ roadmapId: undefined }}
 				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
 			>
@@ -434,7 +435,7 @@ export function ProjectCard({
 	owner,
 	progress,
 	progressColor,
-	nextUp,
+	roadmapSummary,
 	dueDate,
 	className,
 	style,
@@ -445,7 +446,7 @@ export function ProjectCard({
 	owner: string;
 	progress: number | null;
 	progressColor: string;
-	nextUp: string;
+	roadmapSummary: ProjectRoadmapSummary | null;
 	dueDate: string | null;
 	className?: string;
 	style?: CSSProperties;
@@ -463,7 +464,10 @@ export function ProjectCard({
 						<ProjectStatusBadge status={status} />
 					</div>
 
-					<h3 className="mb-1 text-[14px] font-semibold tracking-tight text-slate-900 sm:text-[16px]">
+					{/* Fixed two-line slot (leading-snug = 1.375 -> 2.75em) so the
+					    Progress and ROADMAP sections line up across cards no matter
+					    how long the project name is. */}
+					<h3 className="mb-1 line-clamp-2 min-h-[2.75em] text-[14px] font-semibold leading-snug tracking-tight text-slate-900 sm:text-[16px]">
 						{title}
 					</h3>
 					<p className="text-[13px] sm:text-[14px]">
@@ -491,15 +495,35 @@ export function ProjectCard({
 				</div>
 
 				<div className="flex gap-2">
-					<Clock className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-500" />
-					<div className="space-y-2">
+					<Layers3 className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-500" />
+					<div className="min-w-0 space-y-2">
 						<div>
 							<p className="text-[12px] font-semibold text-slate-600 sm:text-[14px]">
-								NEXT UP
+								ROADMAP
 							</p>
-							<p className="text-[12px] text-slate-900 sm:text-[14px]">
-								• {nextUp}
-							</p>
+							{roadmapSummary ? (
+								<>
+									<p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[14px]">
+										{roadmapSummary.name}
+									</p>
+									<p className="text-[12px] text-slate-600 sm:text-[13px]">
+										{roadmapSummary.epic_count}{" "}
+										{roadmapSummary.epic_count === 1 ? "epic" : "epics"} ·{" "}
+										{roadmapSummary.feature_count}{" "}
+										{roadmapSummary.feature_count === 1
+											? "feature"
+											: "features"}
+									</p>
+									<p className="text-[12px] text-slate-600 sm:text-[13px]">
+										{roadmapSummary.done_task_count}/{roadmapSummary.task_count}{" "}
+										tasks done
+									</p>
+								</>
+							) : (
+								<p className="text-[12px] text-slate-600 sm:text-[14px]">
+									No roadmap yet
+								</p>
+							)}
 						</div>
 						{dueDate && (
 							<div className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">

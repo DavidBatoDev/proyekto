@@ -3,11 +3,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronRight, FolderKanban } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { hasNavGate } from "@/lib/projectPermissions";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import type { ChatRoom } from "@/services/chat.service";
-import { type Project, projectService } from "@/services/project.service";
+import type { Project } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 import {
 	buildProjectNavSections,
@@ -43,12 +44,7 @@ export function ProjectSidebar({
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [projectsOpen, setProjectsOpen] = useState(false);
 
-	const projectsQuery = useQuery({
-		queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
-		queryFn: () => projectService.listDashboardProjects(),
-		enabled: Boolean(user?.id),
-		staleTime: 30 * 1000,
-	});
+	const projectsQuery = useDashboardProjectsQuery();
 	const allProjects = (projectsQuery.data as Project[] | undefined) ?? [];
 
 	// If we're on a project route (like /project/.../overview), we should show tabs.

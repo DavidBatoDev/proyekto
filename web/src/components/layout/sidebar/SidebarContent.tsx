@@ -2,7 +2,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Plus, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Project, projectService } from "@/services/project.service";
+import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
+import type { Project } from "@/services/project.service";
 import {
 	listMyTeams,
 	type Team,
@@ -60,12 +61,7 @@ export function SidebarContent() {
 	const routerState = useRouterState();
 	const currentPath = routerState.location.pathname;
 
-	const projectsQuery = useQuery({
-		queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
-		queryFn: () => projectService.listDashboardProjects(),
-		enabled: Boolean(user?.id),
-		staleTime: 30 * 1000,
-	});
+	const projectsQuery = useDashboardProjectsQuery();
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
 
 	const teamsQuery = useQuery({
@@ -238,20 +234,16 @@ export function SidebarContent() {
 					<div className="mb-1 flex items-center justify-between pr-1">
 						<SidebarSectionHeader>Projects</SidebarSectionHeader>
 						<Link
-							to="/marketplace/project-posting"
+							to="/project/new"
 							search={{ roadmapId: undefined }}
 							className={
-								currentPath === "/marketplace/project-posting"
+								currentPath === "/project/new"
 									? "rounded bg-sidebar-primary p-1 text-sidebar-primary-foreground"
 									: "rounded p-1 text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 							}
 							title="New project"
 							aria-label="New project"
-							aria-current={
-								currentPath === "/marketplace/project-posting"
-									? "page"
-									: undefined
-							}
+							aria-current={currentPath === "/project/new" ? "page" : undefined}
 						>
 							<Plus className="h-3.5 w-3.5" />
 						</Link>
@@ -264,7 +256,7 @@ export function SidebarContent() {
 							icon={<StackedPapersIcon />}
 							label="No projects yet"
 							ctaLabel="Add your first project"
-							ctaTo="/marketplace/project-posting"
+							ctaTo="/project/new"
 						/>
 					) : (
 						<div className="space-y-0.5">
