@@ -66,12 +66,6 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 				icon: FileSignature,
 			},
 			{
-				key: "finance-engagements",
-				to: "/marketplace/finance/engagements",
-				label: "Engagements",
-				icon: Handshake,
-			},
-			{
 				key: "finance-invoices",
 				to: "/marketplace/finance/invoices",
 				label: "Invoices",
@@ -87,6 +81,17 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 		match: "prefix",
 		requires: "consultant",
 	},
+	// Deliberately points outside `/marketplace`: engagements are the bridge
+	// between the marketplace and execution, and the page is the same one the
+	// execution sidebar lists — one home, reachable from both sides. Ungated:
+	// any seat on an engagement may read it.
+	{
+		key: "engagements",
+		to: "/engagements",
+		label: "Engagements",
+		icon: Handshake,
+		match: "prefix",
+	},
 	{
 		key: "browse-consultants",
 		to: "/marketplace/consultant/browse",
@@ -96,7 +101,7 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 	},
 	{
 		key: "project-posting",
-		to: "/marketplace/project-posting",
+		to: "/project/new",
 		label: "Post a project",
 		icon: FileSignature,
 		match: "exact",

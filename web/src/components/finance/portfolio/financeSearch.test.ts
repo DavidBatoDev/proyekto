@@ -9,9 +9,6 @@ import {
 describe("legacyTabRoute", () => {
 	it("forwards every tab that became its own route", () => {
 		expect(legacyTabRoute("contracts")).toBe("/marketplace/finance/contracts");
-		expect(legacyTabRoute("engagements")).toBe(
-			"/marketplace/finance/engagements",
-		);
 		expect(legacyTabRoute("invoices")).toBe("/marketplace/finance/invoices");
 	});
 
@@ -19,6 +16,10 @@ describe("legacyTabRoute", () => {
 		// The overview IS the route doing the forwarding, so redirecting would
 		// loop; anything unrecognised belongs there too rather than 404ing.
 		expect(legacyTabRoute("overview")).toBeUndefined();
+		// `engagements` stopped being a finance tab when the section moved to
+		// the top-level `/engagements` page; the legacy value lands on the
+		// overview rather than a section that no longer exists.
+		expect(legacyTabRoute("engagements")).toBeUndefined();
 		expect(legacyTabRoute(undefined)).toBeUndefined();
 		expect(legacyTabRoute("../evil")).toBeUndefined();
 		expect(legacyTabRoute(7)).toBeUndefined();
@@ -30,9 +31,6 @@ describe("financeSectionFromPathname", () => {
 		expect(financeSectionFromPathname("/marketplace/finance")).toBe("overview");
 		expect(financeSectionFromPathname("/marketplace/finance/contracts")).toBe(
 			"contracts",
-		);
-		expect(financeSectionFromPathname("/marketplace/finance/engagements")).toBe(
-			"engagements",
 		);
 		expect(financeSectionFromPathname("/marketplace/finance/invoices")).toBe(
 			"invoices",

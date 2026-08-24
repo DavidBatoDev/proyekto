@@ -11,7 +11,6 @@ import {
 	BarChart3,
 	CircleDollarSign,
 	FileSignature,
-	Handshake,
 	ReceiptText,
 } from "lucide-react";
 import { AppEmptyState } from "@/components/common/AppPrimitives";
@@ -31,10 +30,10 @@ import { isActiveConsultant } from "@/lib/auth-utils";
 import { useProfile } from "@/stores/authStore";
 
 /**
- * The shared workspace chrome for the four finance sections.
+ * The shared workspace chrome for the three finance sections.
  *
  * Pathless on purpose. The sections need one persistent header, tab bar and
- * filter toolbar across `/marketplace/finance`, `/contracts`, `/engagements`
+ * filter toolbar across `/marketplace/finance`, `/contracts`
  * and `/invoices`, but the contract editor at `/marketplace/finance/$contractId`
  * and the invoice builders under `/invoices/new` and `/invoices/$invoiceId/edit`
  * are full-page documents that must NOT inherit a tab bar. A pathless layout
@@ -56,7 +55,6 @@ const FINANCE_TABS: Array<{
 }> = [
 	{ id: "overview", label: "Overview", icon: BarChart3 },
 	{ id: "contracts", label: "Contracts", icon: FileSignature },
-	{ id: "engagements", label: "Engagements", icon: Handshake },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
 ];
 
@@ -86,13 +84,6 @@ function FinancePortfolioLayout() {
 			case "contracts":
 				void navigate({
 					to: "/marketplace/finance/contracts",
-					search: next,
-					replace: true,
-				});
-				return;
-			case "engagements":
-				void navigate({
-					to: "/marketplace/finance/engagements",
 					search: next,
 					replace: true,
 				});
@@ -235,14 +226,6 @@ function FinancePortfolioLayout() {
 									<Link
 										key={tab.id}
 										to="/marketplace/finance/contracts"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								) : tab.id === "engagements" ? (
-									<Link
-										key={tab.id}
-										to="/marketplace/finance/engagements"
 										{...linkProps}
 									>
 										{label}

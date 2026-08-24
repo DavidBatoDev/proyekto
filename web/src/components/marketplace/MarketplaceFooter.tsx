@@ -50,7 +50,7 @@ export function MarketplaceFooter() {
 						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
 							<li>
 								<Link
-									to="/marketplace/project-posting"
+									to="/project/new"
 									search={{ roadmapId: undefined }}
 									className="transition-colors hover:text-foreground"
 								>

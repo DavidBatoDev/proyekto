@@ -4,9 +4,8 @@ import { mapLegacyPath } from "./legacyRoutePaths";
 describe("mapLegacyPath", () => {
 	it("rewrites a bare moved path", () => {
 		expect(mapLegacyPath("/finance")).toBe("/marketplace/finance");
-		expect(mapLegacyPath("/project-posting")).toBe(
-			"/marketplace/project-posting",
-		);
+		expect(mapLegacyPath("/project-posting")).toBe("/project/new");
+		expect(mapLegacyPath("/marketplace/project-posting")).toBe("/project/new");
 	});
 
 	// notifications.link_url in production holds exactly this shape.

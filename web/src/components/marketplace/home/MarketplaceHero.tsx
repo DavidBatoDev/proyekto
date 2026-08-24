@@ -13,7 +13,7 @@ type HeroPath = "post" | "hire";
  *
  * Both paths lead to surfaces that already exist — the project posting flow and
  * the consultant directory. The text box carries nothing into them yet, because
- * `/marketplace/project-posting` takes only `roadmapId`; wiring a description
+ * `/project/new` takes only `roadmapId`; wiring a description
  * through is a follow-up, not something to fake here.
  *
  * When the viewer has taken the intake survey and said they are here to WORK
@@ -43,7 +43,7 @@ export function MarketplaceHero() {
 	const submit = () => {
 		if (path === "post") {
 			void navigate({
-				to: "/marketplace/project-posting",
+				to: "/project/new",
 				search: { roadmapId: undefined },
 			});
 			return;

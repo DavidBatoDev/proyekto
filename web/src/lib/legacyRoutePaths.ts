@@ -30,7 +30,8 @@ const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
 	["/marketplace/freelancer/go-live", "/marketplace/talent/go-live"],
 	["/marketplace/start-selling", "/marketplace/talent"],
 	["/freelancer/go-live", "/marketplace/talent/go-live"],
-	["/project-posting", "/marketplace/project-posting"],
+	["/marketplace/project-posting", "/project/new"],
+	["/project-posting", "/project/new"],
 	["/finance", "/marketplace/finance"],
 	["/consultant", "/marketplace/consultant"],
 ];

@@ -3,18 +3,16 @@ import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import {
+	FinanceLoading,
+	FinanceStatusBadge,
+} from "@/components/finance/portfolio/FinancePrimitives";
 import type { Engagement } from "@/services/engagement.service";
 import {
 	describeRate,
 	describeRelationship,
 	describeScope,
 } from "./engagementCopy";
-import {
-	countLabel,
-	FinanceLoading,
-	FinanceSectionHeading,
-	FinanceStatusBadge,
-} from "./FinancePrimitives";
 
 export function EngagementPortfolio({
 	loading,
@@ -78,14 +76,10 @@ export function EngagementPortfolio({
 		);
 	}
 
+	// The page owns its heading and count — this component is just the list,
+	// so it can sit under whatever chrome the page builds around it.
 	return (
 		<div className="space-y-4 pb-8">
-			<FinanceSectionHeading
-				eyebrow="Commercial relationships"
-				title="Engagements"
-				description="Who hired whom, the projects each relationship covers, and the signed terms in effect today."
-				count={countLabel(items.length, "engagement")}
-			/>
 			<AppSurfaceCard className="divide-y divide-border overflow-hidden">
 				{items.map((engagement) => (
 					<EngagementRow

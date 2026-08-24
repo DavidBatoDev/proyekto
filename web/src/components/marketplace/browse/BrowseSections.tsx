@@ -201,7 +201,7 @@ export function WaysToStartBand() {
 			title: "Post a project",
 			body: "Describe the outcome you want. Consultants come to you with scope and pricing.",
 			cta: "Post a project",
-			to: "/marketplace/project-posting" as const,
+			to: "/project/new" as const,
 			search: { roadmapId: undefined },
 		},
 		{

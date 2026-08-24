@@ -9,6 +9,7 @@ import {
 	type ContractEditorSearch,
 	validateContractStep,
 } from "@/components/finance/portfolio/financeSearch";
+import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
 
 /**
  * The contract document editor.
@@ -24,6 +25,9 @@ import {
  * Static section names win over the dynamic segment in the router's ranking, so
  * `/marketplace/finance/contracts` still resolves to the list.
  */
+const UUID_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/marketplace/finance/$contractId")({
 	validateSearch: (search: Record<string, unknown>): ContractEditorSearch => ({
 		section: validateContractStep(search.section),
@@ -35,6 +39,13 @@ function ContractEditorPage() {
 	const { contractId } = Route.useParams();
 	const { section } = Route.useSearch();
 	const navigate = useNavigate();
+
+	// The dynamic segment is the router's last resort under /marketplace/finance,
+	// so any junk path lands here — including the removed engagements section's
+	// old URL, which used to hold a spinner forever while the contract query
+	// retried an id that could never exist. A param that is not shaped like an
+	// id is a 404, not a contract.
+	if (!UUID_RE.test(contractId)) return <NotFoundRoute />;
 
 	return (
 		<div className="app-shell-bg min-h-full">

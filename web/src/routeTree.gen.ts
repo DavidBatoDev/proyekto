@@ -51,6 +51,7 @@ import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketpla
 import { Route as MarketplaceTalentIndexRouteImport } from './routes/marketplace/talent/index'
 import { Route as MarketplaceConsultantIndexRouteImport } from './routes/marketplace/consultant/index'
 import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/teams/index'
+import { Route as ExecutionEngagementsIndexRouteImport } from './routes/_execution/engagements/index'
 import { Route as MarketplaceTalentGoLiveRouteImport } from './routes/marketplace/talent/go-live'
 import { Route as MarketplaceTalentBrowseRouteImport } from './routes/marketplace/talent/browse'
 import { Route as MarketplaceFinancePortfolioRouteImport } from './routes/marketplace/finance/_portfolio'
@@ -64,15 +65,15 @@ import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
 import { Route as ExecutionTeamsTeamIdRouteImport } from './routes/_execution/teams/$teamId'
 import { Route as ExecutionRoadmapSharedWithMeRouteImport } from './routes/_execution/roadmap/shared-with-me'
+import { Route as ExecutionProjectNewRouteImport } from './routes/_execution/project/new'
 import { Route as ExecutionProjectProjectIdRouteImport } from './routes/_execution/project/$projectId'
+import { Route as ExecutionEngagementsEngagementIdRouteImport } from './routes/_execution/engagements/$engagementId'
 import { Route as MarketplaceFinancePortfolioIndexRouteImport } from './routes/marketplace/finance/_portfolio/index'
 import { Route as MarketplaceCategoryCategorySlugIndexRouteImport } from './routes/marketplace/category/$categorySlug/index'
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/marketplace/finance/invoices/new'
-import { Route as MarketplaceFinanceEngagementsEngagementIdRouteImport } from './routes/marketplace/finance/engagements/$engagementId'
 import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
-import { Route as MarketplaceFinancePortfolioEngagementsRouteImport } from './routes/marketplace/finance/_portfolio/engagements'
 import { Route as MarketplaceFinancePortfolioContractsRouteImport } from './routes/marketplace/finance/_portfolio/contracts'
 import { Route as ExecutionTeamsMeInvitesRouteImport } from './routes/_execution/teams/me/invites'
 import { Route as ExecutionRoadmapSharedTokenRouteImport } from './routes/_execution/roadmap/shared/$token'
@@ -336,6 +337,12 @@ const ExecutionTeamsIndexRoute = ExecutionTeamsIndexRouteImport.update({
   path: '/teams/',
   getParentRoute: () => ExecutionRoute,
 } as any)
+const ExecutionEngagementsIndexRoute =
+  ExecutionEngagementsIndexRouteImport.update({
+    id: '/engagements/',
+    path: '/engagements/',
+    getParentRoute: () => ExecutionRoute,
+  } as any)
 const MarketplaceTalentGoLiveRoute = MarketplaceTalentGoLiveRouteImport.update({
   id: '/talent/go-live',
   path: '/talent/go-live',
@@ -407,10 +414,21 @@ const ExecutionRoadmapSharedWithMeRoute =
     path: '/roadmap/shared-with-me',
     getParentRoute: () => ExecutionRoute,
   } as any)
+const ExecutionProjectNewRoute = ExecutionProjectNewRouteImport.update({
+  id: '/project/new',
+  path: '/project/new',
+  getParentRoute: () => ExecutionRoute,
+} as any)
 const ExecutionProjectProjectIdRoute =
   ExecutionProjectProjectIdRouteImport.update({
     id: '/project/$projectId',
     path: '/project/$projectId',
+    getParentRoute: () => ExecutionRoute,
+  } as any)
+const ExecutionEngagementsEngagementIdRoute =
+  ExecutionEngagementsEngagementIdRouteImport.update({
+    id: '/engagements/$engagementId',
+    path: '/engagements/$engagementId',
     getParentRoute: () => ExecutionRoute,
   } as any)
 const MarketplaceFinancePortfolioIndexRoute =
@@ -443,22 +461,10 @@ const MarketplaceFinanceInvoicesNewRoute =
     path: '/invoices/new',
     getParentRoute: () => MarketplaceFinanceRouteRoute,
   } as any)
-const MarketplaceFinanceEngagementsEngagementIdRoute =
-  MarketplaceFinanceEngagementsEngagementIdRouteImport.update({
-    id: '/engagements/$engagementId',
-    path: '/engagements/$engagementId',
-    getParentRoute: () => MarketplaceFinanceRouteRoute,
-  } as any)
 const MarketplaceFinancePortfolioInvoicesRoute =
   MarketplaceFinancePortfolioInvoicesRouteImport.update({
     id: '/invoices',
     path: '/invoices',
-    getParentRoute: () => MarketplaceFinancePortfolioRoute,
-  } as any)
-const MarketplaceFinancePortfolioEngagementsRoute =
-  MarketplaceFinancePortfolioEngagementsRouteImport.update({
-    id: '/engagements',
-    path: '/engagements',
     getParentRoute: () => MarketplaceFinancePortfolioRoute,
   } as any)
 const MarketplaceFinancePortfolioContractsRoute =
@@ -800,7 +806,9 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
+  '/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
   '/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
+  '/project/new': typeof ExecutionProjectNewRoute
   '/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
@@ -813,6 +821,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
+  '/engagements': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/talent': typeof MarketplaceTalentIndexRoute
@@ -831,9 +840,7 @@ export interface FileRoutesByFullPath {
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
-  '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
-  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -911,7 +918,9 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/marketplace': typeof MarketplaceIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
+  '/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
   '/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
+  '/project/new': typeof ExecutionProjectNewRoute
   '/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
@@ -923,6 +932,7 @@ export interface FileRoutesByTo {
   '/marketplace/finance/$contractId': typeof MarketplaceFinanceContractIdRoute
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
+  '/engagements': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/talent': typeof MarketplaceTalentIndexRoute
@@ -940,9 +950,7 @@ export interface FileRoutesByTo {
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
-  '/marketplace/finance/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
-  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1024,7 +1032,9 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
+  '/_execution/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
   '/_execution/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
+  '/_execution/project/new': typeof ExecutionProjectNewRoute
   '/_execution/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
   '/_execution/teams/$teamId': typeof ExecutionTeamsTeamIdRouteWithChildren
   '/auth/admin/login': typeof AuthAdminLoginRoute
@@ -1038,6 +1048,7 @@ export interface FileRoutesById {
   '/marketplace/finance/_portfolio': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
+  '/_execution/engagements/': typeof ExecutionEngagementsIndexRoute
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/marketplace/consultant/': typeof MarketplaceConsultantIndexRoute
   '/marketplace/talent/': typeof MarketplaceTalentIndexRoute
@@ -1056,9 +1067,7 @@ export interface FileRoutesById {
   '/_execution/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/_execution/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
   '/marketplace/finance/_portfolio/contracts': typeof MarketplaceFinancePortfolioContractsRoute
-  '/marketplace/finance/_portfolio/engagements': typeof MarketplaceFinancePortfolioEngagementsRoute
   '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
-  '/marketplace/finance/engagements/$engagementId': typeof MarketplaceFinanceEngagementsEngagementIdRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1141,7 +1150,9 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/marketplace/'
     | '/roadmap-templates/'
+    | '/engagements/$engagementId'
     | '/project/$projectId'
+    | '/project/new'
     | '/roadmap/shared-with-me'
     | '/teams/$teamId'
     | '/auth/admin/login'
@@ -1154,6 +1165,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/$contractId'
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
+    | '/engagements'
     | '/teams'
     | '/marketplace/consultant'
     | '/marketplace/talent'
@@ -1172,9 +1184,7 @@ export interface FileRouteTypes {
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
     | '/marketplace/finance/contracts'
-    | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
-    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId/'
@@ -1252,7 +1262,9 @@ export interface FileRouteTypes {
     | '/admin'
     | '/marketplace'
     | '/roadmap-templates'
+    | '/engagements/$engagementId'
     | '/project/$projectId'
+    | '/project/new'
     | '/roadmap/shared-with-me'
     | '/auth/admin/login'
     | '/auth/admin/signin'
@@ -1264,6 +1276,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/$contractId'
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
+    | '/engagements'
     | '/teams'
     | '/marketplace/consultant'
     | '/marketplace/talent'
@@ -1281,9 +1294,7 @@ export interface FileRouteTypes {
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
     | '/marketplace/finance/contracts'
-    | '/marketplace/finance/engagements'
     | '/marketplace/finance/invoices'
-    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/project/roadmap'
     | '/teams/$teamId'
@@ -1364,7 +1375,9 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/marketplace/'
     | '/roadmap-templates/'
+    | '/_execution/engagements/$engagementId'
     | '/_execution/project/$projectId'
+    | '/_execution/project/new'
     | '/_execution/roadmap/shared-with-me'
     | '/_execution/teams/$teamId'
     | '/auth/admin/login'
@@ -1378,6 +1391,7 @@ export interface FileRouteTypes {
     | '/marketplace/finance/_portfolio'
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
+    | '/_execution/engagements/'
     | '/_execution/teams/'
     | '/marketplace/consultant/'
     | '/marketplace/talent/'
@@ -1396,9 +1410,7 @@ export interface FileRouteTypes {
     | '/_execution/roadmap/shared/$token'
     | '/_execution/teams/me/invites'
     | '/marketplace/finance/_portfolio/contracts'
-    | '/marketplace/finance/_portfolio/engagements'
     | '/marketplace/finance/_portfolio/invoices'
-    | '/marketplace/finance/engagements/$engagementId'
     | '/marketplace/finance/invoices/new'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
@@ -1761,6 +1773,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionTeamsIndexRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/_execution/engagements/': {
+      id: '/_execution/engagements/'
+      path: '/engagements'
+      fullPath: '/engagements'
+      preLoaderRoute: typeof ExecutionEngagementsIndexRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
     '/marketplace/talent/go-live': {
       id: '/marketplace/talent/go-live'
       path: '/talent/go-live'
@@ -1852,11 +1871,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionRoadmapSharedWithMeRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/_execution/project/new': {
+      id: '/_execution/project/new'
+      path: '/project/new'
+      fullPath: '/project/new'
+      preLoaderRoute: typeof ExecutionProjectNewRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
     '/_execution/project/$projectId': {
       id: '/_execution/project/$projectId'
       path: '/project/$projectId'
       fullPath: '/project/$projectId'
       preLoaderRoute: typeof ExecutionProjectProjectIdRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
+    '/_execution/engagements/$engagementId': {
+      id: '/_execution/engagements/$engagementId'
+      path: '/engagements/$engagementId'
+      fullPath: '/engagements/$engagementId'
+      preLoaderRoute: typeof ExecutionEngagementsEngagementIdRouteImport
       parentRoute: typeof ExecutionRoute
     }
     '/marketplace/finance/_portfolio/': {
@@ -1894,25 +1927,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceFinanceInvoicesNewRouteImport
       parentRoute: typeof MarketplaceFinanceRouteRoute
     }
-    '/marketplace/finance/engagements/$engagementId': {
-      id: '/marketplace/finance/engagements/$engagementId'
-      path: '/engagements/$engagementId'
-      fullPath: '/marketplace/finance/engagements/$engagementId'
-      preLoaderRoute: typeof MarketplaceFinanceEngagementsEngagementIdRouteImport
-      parentRoute: typeof MarketplaceFinanceRouteRoute
-    }
     '/marketplace/finance/_portfolio/invoices': {
       id: '/marketplace/finance/_portfolio/invoices'
       path: '/invoices'
       fullPath: '/marketplace/finance/invoices'
       preLoaderRoute: typeof MarketplaceFinancePortfolioInvoicesRouteImport
-      parentRoute: typeof MarketplaceFinancePortfolioRoute
-    }
-    '/marketplace/finance/_portfolio/engagements': {
-      id: '/marketplace/finance/_portfolio/engagements'
-      path: '/engagements'
-      fullPath: '/marketplace/finance/engagements'
-      preLoaderRoute: typeof MarketplaceFinancePortfolioEngagementsRouteImport
       parentRoute: typeof MarketplaceFinancePortfolioRoute
     }
     '/marketplace/finance/_portfolio/contracts': {
@@ -2291,7 +2310,6 @@ const MarketplaceCategoryRouteRouteWithChildren =
 
 interface MarketplaceFinancePortfolioRouteChildren {
   MarketplaceFinancePortfolioContractsRoute: typeof MarketplaceFinancePortfolioContractsRoute
-  MarketplaceFinancePortfolioEngagementsRoute: typeof MarketplaceFinancePortfolioEngagementsRoute
   MarketplaceFinancePortfolioInvoicesRoute: typeof MarketplaceFinancePortfolioInvoicesRoute
   MarketplaceFinancePortfolioIndexRoute: typeof MarketplaceFinancePortfolioIndexRoute
 }
@@ -2300,8 +2318,6 @@ const MarketplaceFinancePortfolioRouteChildren: MarketplaceFinancePortfolioRoute
   {
     MarketplaceFinancePortfolioContractsRoute:
       MarketplaceFinancePortfolioContractsRoute,
-    MarketplaceFinancePortfolioEngagementsRoute:
-      MarketplaceFinancePortfolioEngagementsRoute,
     MarketplaceFinancePortfolioInvoicesRoute:
       MarketplaceFinancePortfolioInvoicesRoute,
     MarketplaceFinancePortfolioIndexRoute:
@@ -2316,7 +2332,6 @@ const MarketplaceFinancePortfolioRouteWithChildren =
 interface MarketplaceFinanceRouteRouteChildren {
   MarketplaceFinanceContractIdRoute: typeof MarketplaceFinanceContractIdRoute
   MarketplaceFinancePortfolioRoute: typeof MarketplaceFinancePortfolioRouteWithChildren
-  MarketplaceFinanceEngagementsEngagementIdRoute: typeof MarketplaceFinanceEngagementsEngagementIdRoute
   MarketplaceFinanceInvoicesNewRoute: typeof MarketplaceFinanceInvoicesNewRoute
   MarketplaceFinanceInvoicesInvoiceIdEditRoute: typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
 }
@@ -2326,8 +2341,6 @@ const MarketplaceFinanceRouteRouteChildren: MarketplaceFinanceRouteRouteChildren
     MarketplaceFinanceContractIdRoute: MarketplaceFinanceContractIdRoute,
     MarketplaceFinancePortfolioRoute:
       MarketplaceFinancePortfolioRouteWithChildren,
-    MarketplaceFinanceEngagementsEngagementIdRoute:
-      MarketplaceFinanceEngagementsEngagementIdRoute,
     MarketplaceFinanceInvoicesNewRoute: MarketplaceFinanceInvoicesNewRoute,
     MarketplaceFinanceInvoicesInvoiceIdEditRoute:
       MarketplaceFinanceInvoicesInvoiceIdEditRoute,
@@ -2637,9 +2650,12 @@ interface ExecutionRouteChildren {
   ExecutionInvitesRoute: typeof ExecutionInvitesRoute
   ExecutionMeetingsRoute: typeof ExecutionMeetingsRoute
   ExecutionWorkItemsRoute: typeof ExecutionWorkItemsRoute
+  ExecutionEngagementsEngagementIdRoute: typeof ExecutionEngagementsEngagementIdRoute
   ExecutionProjectProjectIdRoute: typeof ExecutionProjectProjectIdRouteWithChildren
+  ExecutionProjectNewRoute: typeof ExecutionProjectNewRoute
   ExecutionRoadmapSharedWithMeRoute: typeof ExecutionRoadmapSharedWithMeRoute
   ExecutionTeamsTeamIdRoute: typeof ExecutionTeamsTeamIdRouteWithChildren
+  ExecutionEngagementsIndexRoute: typeof ExecutionEngagementsIndexRoute
   ExecutionTeamsIndexRoute: typeof ExecutionTeamsIndexRoute
   ExecutionRoadmapSharedTokenRoute: typeof ExecutionRoadmapSharedTokenRoute
   ExecutionTeamsMeInvitesRoute: typeof ExecutionTeamsMeInvitesRoute
@@ -2654,9 +2670,12 @@ const ExecutionRouteChildren: ExecutionRouteChildren = {
   ExecutionInvitesRoute: ExecutionInvitesRoute,
   ExecutionMeetingsRoute: ExecutionMeetingsRoute,
   ExecutionWorkItemsRoute: ExecutionWorkItemsRoute,
+  ExecutionEngagementsEngagementIdRoute: ExecutionEngagementsEngagementIdRoute,
   ExecutionProjectProjectIdRoute: ExecutionProjectProjectIdRouteWithChildren,
+  ExecutionProjectNewRoute: ExecutionProjectNewRoute,
   ExecutionRoadmapSharedWithMeRoute: ExecutionRoadmapSharedWithMeRoute,
   ExecutionTeamsTeamIdRoute: ExecutionTeamsTeamIdRouteWithChildren,
+  ExecutionEngagementsIndexRoute: ExecutionEngagementsIndexRoute,
   ExecutionTeamsIndexRoute: ExecutionTeamsIndexRoute,
   ExecutionRoadmapSharedTokenRoute: ExecutionRoadmapSharedTokenRoute,
   ExecutionTeamsMeInvitesRoute: ExecutionTeamsMeInvitesRoute,
