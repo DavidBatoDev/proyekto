@@ -272,7 +272,6 @@ function ProjectsSection({
 								<InviteCard
 									key={card.invite.id}
 									invite={card.invite}
-									number={index + 1}
 									className={revealClassName}
 									style={revealStyle}
 								/>
@@ -289,7 +288,6 @@ function ProjectsSection({
 						return (
 							<ProjectCard
 								key={card.project.id}
-								number={index + 1}
 								projectId={card.project.id}
 								status={statusConfig.label}
 								title={card.project.title}
@@ -338,12 +336,10 @@ function ProjectsSection({
 
 function InviteCard({
 	invite,
-	number,
 	className,
 	style,
 }: {
 	invite: ProjectInvite;
-	number: number;
 	className?: string;
 	style?: CSSProperties;
 }) {
@@ -359,10 +355,6 @@ function InviteCard({
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="mb-2 flex items-center gap-2">
-						<span className="text-[16px] font-semibold text-slate-400">
-							#{number}
-						</span>
-						<div className="h-[25px] w-px bg-white/20" />
 						<span className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white">
 							Pending Invite
 						</span>
@@ -436,7 +428,6 @@ function ProjectsEmptyState({
 }
 
 export function ProjectCard({
-	number,
 	projectId,
 	status,
 	title,
@@ -448,7 +439,6 @@ export function ProjectCard({
 	className,
 	style,
 }: {
-	number: number;
 	projectId: string;
 	status: string;
 	title: string;
@@ -469,11 +459,7 @@ export function ProjectCard({
 		>
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
-					<div className="flex items-center gap-2 mb-2">
-						<span className="text-[14px] font-semibold text-slate-500 sm:text-[16px]">
-							#{number}
-						</span>
-						<div className="h-[25px] w-px bg-slate-300" />
+					<div className="mb-2 flex items-center gap-2">
 						<ProjectStatusBadge status={status} />
 					</div>
 
@@ -546,8 +532,6 @@ function ProjectCardSkeleton() {
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2 w-full">
-						<div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
-						<div className="w-px h-[25px] bg-[#92969f]/30" />
 						<div className="flex items-center gap-1">
 							<div className="w-3 h-3 rounded-full bg-gray-200 animate-pulse" />
 							<div className="w-20 h-4 bg-gray-200 rounded animate-pulse" />
