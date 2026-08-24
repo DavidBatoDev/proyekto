@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-18 · **Status:** draft
+> **Last updated:** 2026-08-24 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;
@@ -36,6 +36,7 @@ deliberately leaves that future party expansion additive.
 | [organizations-and-services.md](./organizations-and-services.md) | Feature 2a — an Organization tier above projects, a real `services` table, and the resolution of `1 Roadmap = 1 Service` vs. `roadmaps.project_id UNIQUE` |
 | [delivery-tree-visualization.md](./delivery-tree-visualization.md) | Feature 2b — a zoomable Org → Project → Service → Roadmap tree |
 | [identity-and-enrollment.md](./identity-and-enrollment.md) | Feature 3 — deleting `profiles.role`, role-free execution, and three opt-in marketplace enrollment tables; the identity foundation of the marketplace/execution split |
+| [deliverable-reviewer-membership-check.md](./deliverable-reviewer-membership-check.md) | Bug — `POST /deliverables` accepts `reviewer_ids` for non-members because only `addReviewer` checks `project_access`; the one-method fix and why it is a 400-shaped behaviour change |
 | [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) | Monetization — 4-tier per-seat pricing for the Execution and Marketplace platforms, Shopify-style add-ons (Time/Finance), entitlement architecture, edge cases E1–E14 |
 
 ## Why these five
