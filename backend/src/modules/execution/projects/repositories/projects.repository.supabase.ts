@@ -30,8 +30,10 @@ import {
 } from '../dto/project.dto';
 import type { ProjectPermissions } from '../permissions/project-permissions';
 import type {
+  DashboardProject,
   ProjectResourceFolderWithLinks,
   ProjectResourcesPayload,
+  ProjectRoadmapSummary,
 } from './projects.repository.interface';
 import { isActiveConsultantEnrollment } from '../../../../common/auth/consultant-capability';
 import {
@@ -41,6 +43,66 @@ import {
 
 const PROJECT_MEMBER_SELECT =
   'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
+
+// Mirrors get_task_progress in the roadmap canvas schema so the dashboard
+// progress bar agrees with the canvas cascade.
+const TASK_STATUS_PROGRESS: Record<string, number> = {
+  todo: 0,
+  in_progress: 25,
+  in_review: 75,
+  done: 100,
+  blocked: 0,
+};
+
+type RoadmapSummaryRow = {
+  id: string;
+  name: string;
+  project_id: string | null;
+  updated_at: string;
+  epics?: Array<{
+    id: string;
+    features?: Array<{
+      id: string;
+      tasks?: Array<{ status: string }>;
+    }>;
+  }>;
+};
+
+const average = (values: number[]): number =>
+  values.length === 0
+    ? 0
+    : values.reduce((sum, value) => sum + value, 0) / values.length;
+
+function buildRoadmapSummary(row: RoadmapSummaryRow): ProjectRoadmapSummary {
+  const epics = row.epics ?? [];
+  let featureCount = 0;
+  let taskCount = 0;
+  let doneTaskCount = 0;
+
+  const epicProgress = epics.map((epic) => {
+    const features = epic.features ?? [];
+    featureCount += features.length;
+    const featureProgress = features.map((feature) => {
+      const tasks = feature.tasks ?? [];
+      taskCount += tasks.length;
+      doneTaskCount += tasks.filter((task) => task.status === 'done').length;
+      return average(
+        tasks.map((task) => TASK_STATUS_PROGRESS[task.status] ?? 0),
+      );
+    });
+    return average(featureProgress);
+  });
+
+  return {
+    roadmap_id: row.id,
+    name: row.name,
+    epic_count: epics.length,
+    feature_count: featureCount,
+    task_count: taskCount,
+    done_task_count: doneTaskCount,
+    progress: Math.round(average(epicProgress)),
+  };
+}
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -93,7 +155,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .filter(Boolean) as Project[];
   }
 
-  async findDashboardByUser(userId: string): Promise<Project[]> {
+  async findDashboardByUser(userId: string): Promise<DashboardProject[]> {
     const [ownedResult, memberResult] = await Promise.all([
       this.supabase
         .from('projects')
@@ -124,15 +186,57 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     const ownedProjects = (ownedResult.data || []) as unknown as Project[];
 
-    const deduped = new Map<string, Project>();
+    const deduped = new Map<string, DashboardProject>();
     for (const project of [...ownedProjects, ...memberProjects]) {
       deduped.set(project.id, project);
+    }
+
+    const summaries = await this.fetchRoadmapSummaries(
+      Array.from(deduped.keys()),
+    );
+    for (const project of deduped.values()) {
+      project.roadmap_summary = summaries.get(project.id) ?? null;
     }
 
     return Array.from(deduped.values()).sort(
       (a, b) =>
         new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     );
+  }
+
+  /**
+   * One aggregate query for the dashboard: every linked roadmap with just the
+   * ids/statuses needed to derive counts and cascade progress. When a project
+   * has several roadmaps, the most recently updated one represents it.
+   */
+  private async fetchRoadmapSummaries(
+    projectIds: string[],
+  ): Promise<Map<string, ProjectRoadmapSummary>> {
+    const summaries = new Map<string, ProjectRoadmapSummary>();
+    if (projectIds.length === 0) return summaries;
+
+    const { data, error } = await this.supabase
+      .from('roadmaps')
+      .select(
+        'id, name, project_id, updated_at, epics:roadmap_epics(id, features:roadmap_features(id, tasks:roadmap_tasks(status)))',
+      )
+      .in('project_id', projectIds);
+
+    if (error || !data) return summaries;
+
+    const latestByProject = new Map<string, RoadmapSummaryRow>();
+    for (const row of data as unknown as RoadmapSummaryRow[]) {
+      if (!row.project_id) continue;
+      const current = latestByProject.get(row.project_id);
+      if (!current || row.updated_at > current.updated_at) {
+        latestByProject.set(row.project_id, row);
+      }
+    }
+
+    for (const [projectId, row] of latestByProject) {
+      summaries.set(projectId, buildRoadmapSummary(row));
+    }
+    return summaries;
   }
 
   async findById(id: string): Promise<

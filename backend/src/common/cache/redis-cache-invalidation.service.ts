@@ -95,12 +95,16 @@ export class RedisCacheInvalidationService {
     this.logger.log(
       `cache_invalidate scope=dashboard_user user_id=${userId} key_count=1`,
     );
-    await this.cache.del(REDIS_CACHE_KEYS.projectsDashboardByUser(userId));
+    await this.runBestEffort('redis_del_dashboard_user', () =>
+      this.cache.del(REDIS_CACHE_KEYS.projectsDashboardByUser(userId)),
+    );
   }
 
   async invalidateAllDashboardCache(): Promise<void> {
     this.logger.log('cache_invalidate scope=dashboard_all index_count=1');
-    await this.cache.clearIndex(REDIS_CACHE_KEYS.projectsDashboardIndex);
+    await this.runBestEffort('redis_clear_dashboard_index', () =>
+      this.cache.clearIndex(REDIS_CACHE_KEYS.projectsDashboardIndex),
+    );
   }
 
   async invalidateMarketplaceTalentCache(): Promise<void> {

@@ -65,10 +65,17 @@ describe('roadmap write services reuse the resolved authz scope', () => {
       { log: jest.fn() } as never,
       { get: () => 'false' } as never, // ROADMAP_ACTIVITY_LOG_ENABLED off
     );
+    const cacheInvalidation = {
+      invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
+    };
     return {
       rt,
       activity,
-      effects: new RoadmapWriteEffects(rt as never, activity),
+      effects: new RoadmapWriteEffects(
+        rt as never,
+        activity,
+        cacheInvalidation as never,
+      ),
     };
   }
 

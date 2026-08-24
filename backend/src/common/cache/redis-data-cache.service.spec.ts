@@ -185,4 +185,26 @@ describe('RedisDataCacheService', () => {
 
     randomSpy.mockRestore();
   });
+
+  it('clearIndex deletes every indexed key and then the index itself', async () => {
+    const redis = createRedisMock();
+    redis.smembers.mockResolvedValueOnce(['cache:a', 'cache:b']);
+    redis.del.mockResolvedValue(1);
+    const service = createService({ REDIS_DATA_CACHE_ENABLED: 'true' }, redis);
+
+    await service.clearIndex('cache:index');
+
+    expect(redis.smembers).toHaveBeenCalledWith('cache:index');
+    expect(redis.del).toHaveBeenNthCalledWith(1, 'cache:a', 'cache:b');
+    expect(redis.del).toHaveBeenNthCalledWith(2, 'cache:index');
+  });
+
+  it('clearIndex swallows redis errors instead of throwing', async () => {
+    const redis = createRedisMock();
+    redis.smembers.mockRejectedValueOnce(new Error('redis down'));
+    const service = createService({ REDIS_DATA_CACHE_ENABLED: 'true' }, redis);
+
+    await expect(service.clearIndex('cache:index')).resolves.toBeUndefined();
+    expect(redis.del).not.toHaveBeenCalled();
+  });
 });

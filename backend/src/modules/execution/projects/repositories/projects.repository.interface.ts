@@ -30,12 +30,32 @@ export type ProjectResourcesPayload = {
   uncategorized_links: ProjectResourceLink[];
 };
 
+/**
+ * Aggregate of a project's linked roadmap for the dashboard cards. Progress
+ * mirrors the SQL cascade (task status weight -> feature avg -> epic avg ->
+ * roadmap avg) so the bar matches what the roadmap canvas reports.
+ */
+export interface ProjectRoadmapSummary {
+  roadmap_id: string;
+  name: string;
+  epic_count: number;
+  feature_count: number;
+  task_count: number;
+  done_task_count: number;
+  /** 0-100, rounded to the nearest integer. */
+  progress: number;
+}
+
+export type DashboardProject = Project & {
+  roadmap_summary?: ProjectRoadmapSummary | null;
+};
+
 export interface ProjectsRepository {
   getCreatorProfileForProjectCreation(
     userId: string,
   ): Promise<{ id: string } | null>;
   findByUser(userId: string): Promise<Project[]>;
-  findDashboardByUser(userId: string): Promise<Project[]>;
+  findDashboardByUser(userId: string): Promise<DashboardProject[]>;
   findById(id: string): Promise<
     | (Project & {
         client?: unknown;
