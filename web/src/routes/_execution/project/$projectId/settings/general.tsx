@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	AlertTriangle,
@@ -17,6 +18,7 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
+import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
 import { CURRENCIES } from "@/lib/currency";
@@ -148,6 +150,7 @@ function SettingsPageSkeleton({ projectId }: { projectId: string }) {
 function SettingsGeneralPage() {
 	const { projectId } = Route.useParams();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const toast = useToast();
 	const user = useUser();
 
@@ -278,6 +281,7 @@ function SettingsGeneralPage() {
 			setProject(updated);
 			setTitleDraft(updated.title || "");
 			setIsEditingTitle(false);
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Project title updated.");
 		} catch (error) {
 			toast.error(
@@ -304,6 +308,7 @@ function SettingsGeneralPage() {
 					| "archived",
 			});
 			setProject(updated);
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Project status updated.");
 		} catch (error) {
 			toast.error(
@@ -320,6 +325,7 @@ function SettingsGeneralPage() {
 		try {
 			const updated = await projectService.update(project.id, { currency });
 			setProject(updated);
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Project currency updated.");
 		} catch (error) {
 			toast.error(
@@ -378,6 +384,7 @@ function SettingsGeneralPage() {
 			setSelectedOwnerId("");
 			setIsTransferConfirmOpen(false);
 			setIsTransferSelectOpen(false);
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Project ownership transferred.");
 			await loadData();
 		} catch (error) {
@@ -394,6 +401,7 @@ function SettingsGeneralPage() {
 		setIsDeleteSaving(true);
 		try {
 			await projectService.deleteProject(project.id);
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Project deleted.");
 			navigate({ to: "/dashboard" });
 		} catch (error) {
@@ -422,6 +430,7 @@ function SettingsGeneralPage() {
 					? `You left the project. ${unassignedCount} assigned task${unassignedCount === 1 ? "" : "s"} were unassigned.`
 					: "You left the project.",
 			);
+			void invalidateDashboardProjects(queryClient);
 			navigate({ to: "/dashboard" });
 		} catch (error) {
 			toast.error(

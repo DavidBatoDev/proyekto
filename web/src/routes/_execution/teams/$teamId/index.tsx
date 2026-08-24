@@ -37,6 +37,8 @@ import {
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { invalidateMyTeams } from "@/hooks/dashboardInvalidation";
+import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import {
@@ -122,6 +124,7 @@ function CardActionMenu({
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "projects", teamId],
 			});
+			void invalidateDashboardProjects(queryClient);
 			toast.success("Status updated");
 			setOpen(false);
 			setStatusOpen(false);
@@ -679,6 +682,8 @@ function MemberRow({
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "members", teamId],
 			});
+			// The dashboard TEAMS card shows member count + avatar previews.
+			void invalidateMyTeams(queryClient);
 			setConfirmOpen(false);
 			toast.success("Member removed");
 		},
