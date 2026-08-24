@@ -172,6 +172,24 @@ export class RisksService {
     };
   }
 
+  /**
+   * One row, or a 404.
+   *
+   * The sibling services all expose `get`; this one did not, because the web
+   * register renders from `list` alone. The MCP surface needs it: a single-row
+   * read has to go through `assertVisible` so an `internal` row stays a 404 for
+   * anyone without `risks.view_internal`, rather than being reconstructed by
+   * filtering a list client-side.
+   */
+  async get(projectId: string, id: string, userId: string) {
+    await this.authorization.assertPermission(
+      userId,
+      projectId,
+      'access.delivery',
+    );
+    return this.assertVisible(projectId, id, userId);
+  }
+
   async create(projectId: string, userId: string, dto: CreateRiskDto) {
     await this.authorization.assertPermission(userId, projectId, 'risks.edit');
 

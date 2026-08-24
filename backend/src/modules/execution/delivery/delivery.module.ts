@@ -48,5 +48,15 @@ import { RisksService } from './risks.service';
     DecisionsService,
     DecisionCategoriesService,
   ],
+  // Exported for the MCP server, which reuses these services in-process so every
+  // tool re-checks live authorization (McpModule imports this module rather than
+  // re-providing them — a second set of instances would be a second set of caches).
+  exports: [
+    DeliverablesService,
+    ChangeRequestsService,
+    RisksService,
+    DecisionsService,
+    DecisionCategoriesService,
+  ],
 })
 export class DeliveryModule {}

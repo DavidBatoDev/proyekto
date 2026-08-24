@@ -90,6 +90,12 @@ function build(
     assertPermission: jest
       .fn()
       .mockResolvedValue(permissions(options.viewInternal ?? true)),
+    // Every mutation path resolves permissions again through assertVisible, so
+    // an `internal` decision stays a 404 for anyone without
+    // decisions.view_internal — matching what `get` and RisksService do.
+    resolvePermissions: jest
+      .fn()
+      .mockResolvedValue(permissions(options.viewInternal ?? true)),
   };
   const audit = { log: jest.fn() };
 
@@ -434,6 +440,73 @@ describe('DecisionsService', () => {
           task_id: 't1',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('internal visibility on the mutation paths', () => {
+    // `get` gated on this from the start; update/finalize/remove and the
+    // link/option paths did not, so an editor holding decisions.edit but not
+    // decisions.view_internal could patch an internal decision by id and read
+    // it straight back out of the response. RisksService already gated the
+    // identical case. These lock the parity.
+    const internal = () =>
+      thenable({ data: decisionFixture({ visibility: 'internal' }) });
+
+    it('404s update for an editor without decisions.view_internal', async () => {
+      const { service } = build({ queued: [internal()], viewInternal: false });
+
+      await expect(
+        service.update('p1', 'dec-1', 'user-2', { title: 'Renamed' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s finalize for an editor without decisions.view_internal', async () => {
+      const { service } = build({ queued: [internal()], viewInternal: false });
+
+      await expect(service.finalize('p1', 'dec-1', 'user-2')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('404s remove for an editor without decisions.view_internal', async () => {
+      const { service } = build({ queued: [internal()], viewInternal: false });
+
+      await expect(service.remove('p1', 'dec-1', 'user-2')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('404s addOption for an editor without decisions.view_internal', async () => {
+      const { service } = build({ queued: [internal()], viewInternal: false });
+
+      await expect(
+        service.addOption('p1', 'dec-1', 'user-2', { title: 'Option B' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('refuses to supersede an internal decision the caller cannot see', async () => {
+      // Superseding retires the named decision, so an id the caller cannot see
+      // must not be retirable by guess.
+      const { service } = build({ queued: [internal()], viewInternal: false });
+
+      await expect(
+        service.create('p1', 'user-2', {
+          title: 'Replacement',
+          decision: 'Use MySQL after all.',
+          supersedes_decision_id: 'dec-1',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('still lets a privileged editor mutate an internal decision', async () => {
+      const { service } = build({
+        queued: [internal(), thenable({ data: null }), internal()],
+        viewInternal: true,
+      });
+
+      await expect(
+        service.update('p1', 'dec-1', 'user-1', { title: 'Renamed' }),
+      ).resolves.toBeDefined();
     });
   });
 });

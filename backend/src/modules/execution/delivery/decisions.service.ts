@@ -146,9 +146,12 @@ export class DecisionsService {
 
     let version = 1;
     if (dto.supersedes_decision_id) {
-      const previous = await this.loadOrThrow(
+      // assertVisible, not loadOrThrow: superseding retires the named decision,
+      // and an id the caller cannot see must not be retirable by guess.
+      const previous = await this.assertVisible(
         projectId,
         dto.supersedes_decision_id,
+        userId,
       );
       if (previous.status === 'superseded') {
         throw new BadRequestException(
@@ -279,7 +282,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    const existing = await this.assertEditable(projectId, id);
+    const existing = await this.assertEditable(projectId, id, userId);
 
     const patch = this.pick(dto, [
       'title',
@@ -327,7 +330,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    const existing = await this.loadOrThrow(projectId, id);
+    const existing = await this.assertVisible(projectId, id, userId);
 
     if (existing.status === 'superseded') {
       throw new BadRequestException(
@@ -372,7 +375,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    const existing = await this.loadOrThrow(projectId, id);
+    const existing = await this.assertVisible(projectId, id, userId);
 
     const { error } = await this.db
       .from(TABLE)
@@ -411,7 +414,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    await this.assertEditable(projectId, id);
+    await this.assertEditable(projectId, id, userId);
 
     const [normalized] = normalizeLinkTargets([target], LINK_COLUMNS);
     const position = await this.nextLinkPosition(id);
@@ -446,7 +449,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    await this.assertEditable(projectId, id);
+    await this.assertEditable(projectId, id, userId);
 
     // Scoped by decision_id as well as id, so a link id belonging to another
     // decision cannot be deleted through this route.
@@ -477,7 +480,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    await this.assertEditable(projectId, id);
+    await this.assertEditable(projectId, id, userId);
 
     if (dto.is_selected) await this.clearSelected(id);
     const position = await this.nextOptionPosition(id);
@@ -510,7 +513,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    await this.assertEditable(projectId, id);
+    await this.assertEditable(projectId, id, userId);
 
     // Order matters: the partial unique index rejects a second selected row, so
     // the sibling has to be cleared before this one is set.
@@ -544,7 +547,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
-    await this.assertEditable(projectId, id);
+    await this.assertEditable(projectId, id, userId);
 
     const { error } = await this.db
       .from(OPTIONS_TABLE)
@@ -641,8 +644,33 @@ export class DecisionsService {
     return options;
   }
 
-  private async assertEditable(projectId: string, id: string) {
+  /**
+   * Load a row, 404ing when the caller is not allowed to see it.
+   *
+   * Deliberately a 404 and not a 403, and deliberately the same shape as
+   * RisksService.assertVisible: telling someone without `decisions.view_internal`
+   * that an internal decision exists is itself the leak. `get` applied this from
+   * the start; the mutation paths did not, so an editor could patch an internal
+   * decision by id and read it back out of the response. Every write goes
+   * through here now.
+   */
+  private async assertVisible(projectId: string, id: string, userId: string) {
+    const permissions = await this.authorization.resolvePermissions(
+      userId,
+      projectId,
+    );
     const existing = await this.loadOrThrow(projectId, id);
+    if (
+      existing.visibility === 'internal' &&
+      (!permissions || !this.canSeeInternal(permissions))
+    ) {
+      throw new NotFoundException('Decision not found');
+    }
+    return existing;
+  }
+
+  private async assertEditable(projectId: string, id: string, userId: string) {
+    const existing = await this.assertVisible(projectId, id, userId);
     if (existing.status === 'superseded') {
       throw new BadRequestException(
         'A superseded decision is history and cannot be edited.',
