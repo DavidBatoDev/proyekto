@@ -116,18 +116,17 @@ const DESTRUCTIVE = [
 ];
 
 describe('MCP delivery write tools', () => {
-  it('registers exactly the intended tool set — encodes every omission', () => {
+  it('registers exactly the lifecycle tool set', () => {
     const { server, handlers } = captureServer();
     registerDeliveryWriteTools(server, depsWith(['delivery:write']));
     expect(Object.keys(handlers).sort()).toEqual(
       WRITE_TOOLS.map(([name]) => name).sort(),
     );
-    // No deletes, no link/attachment/criterion/reviewer/option CRUD, no
-    // category writes. If one of these appears, it was added on purpose —
-    // update the plan and this list together.
+    // Sub-resource CRUD and the deletes live in delivery-manage.tools.ts
+    // (registered separately); this file stays the lifecycle surface only.
     for (const name of Object.keys(handlers)) {
       expect(name).not.toMatch(
-        /_remove$|_delete$|_link|_attachment|_reviewer|_criterion|_option|category_(create|update)/,
+        /_remove$|_delete$|_link_|_attachment|_reviewer|_criterion|_option|category_/,
       );
     }
   });

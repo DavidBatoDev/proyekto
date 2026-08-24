@@ -172,10 +172,10 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Fifty-three tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
-twenty-six read, twenty-seven write. Three of the twenty-seven (the chat writes)
+Seventy-five tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
+twenty-six read, forty-nine write. Three of the forty-nine (the chat writes)
 register only while `MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag
-unset advertises **fifty**. Each tool reuses an existing domain service that carries its own
+unset advertises **seventy-two**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
@@ -321,21 +321,35 @@ Three inputs are deliberately **not** forwarded, each closing a real hole:
 | --- | --- |
 | `change_request_create.submit` | The DTO's `submit: true` fires the whole decider notification fan-out in the same call, and `change_requests.create` is **commenter**-tier — the lowest write bar on this server. Creating is always a draft; notifying is its own confirmed call. |
 | `decision_create.decided_by` (and `source_chat_message_id`) | The service writes a caller-supplied `decided_by` verbatim on a `final` decision. In the web UI that records who decided in a meeting; from a connector it is putting words in a named person's mouth in the system of record. The decider is always the caller. |
-| `deliverable_create.reviewer_ids` | Naming a reviewer **is** the grant to decide, and the create path's `insertReviewers` skips the `project_access` membership check that `addReviewer` enforces. (That gap still exists on the REST route — worth a follow-up.) |
+| `deliverable_create.reviewer_ids` | The create path's `insertReviewers` skips the `project_access` membership check. Reviewers are named through `deliverable_reviewer_add` instead, which goes through `addReviewer` and enforces it. (The create-path gap still exists on the REST route — see `docs/13-proposals/deliverable-reviewer-membership-check.md`.) |
 
 `decision_create.status` is **required with no default**. The service defaults to
 `'final'`, which would have an agent minting decisions already stamped with a
 decider; a silent tool-layer default of `'proposed'` would just trade one
 surprise for another. Making the model state its intent is the honest fix.
 
-Also deliberately absent: **every delete** (governance records are the paper
-trail, and each has a lifecycle correction — withdraw, close, supersede),
-post-hoc link add/remove (all four `create` calls take `links[]`, and the three
-junctions allow *different* targets), attachment writes (`url` is agent-suppliable
-free text pointing into the evidence pane humans use to accept work), reviewer
-add/remove (`removeReviewer` re-derives status, so dropping the last pending
-reviewer can silently flip a deliverable to `approved`), criterion and option
-CRUD, and decision-category writes.
+#### Delivery sub-resource management
+
+[`delivery-manage.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-manage.tools.ts)
+completes the surface — the in-page actions of the three detail views, exposed
+by an explicit product decision to let the **caller's live role** gate access
+rather than withholding tools. Twenty-two tools, all on `delivery:write`:
+
+| Group | Tools | Notes |
+| --- | --- | --- |
+| Criteria | `deliverable_criterion_add` / `_update` / `_remove` | `_update` sets `is_met`, which drives `progress.percent`; `_remove` is `destructiveHint` |
+| Reviewers | `deliverable_reviewer_add` / `_remove` | Both `destructiveHint`: naming a reviewer **is** the grant to decide, and removing the last pending reviewer re-derives status — it can complete a review by itself. `_add` goes through `addReviewer`, which enforces project membership |
+| Evidence | `deliverable_attachment_add` / `_remove` | Both `destructiveHint`. `kind` is pinned to `link` and the storage fields are never forwarded — a connector has no upload path. The description instructs the host never to attach an unverified URL |
+| Links | `deliverable_link_add` / `_remove`, `change_request_link_add` / `_remove`, `decision_link_add` / `_remove` | Three **distinct** target schemas — deliverables take feature/task/milestone, change requests take epic/feature/task/deliverable, decisions take all five |
+| Options | `decision_option_add` / `_update` / `_remove` | The service clears the selected sibling in the same write, so `is_selected` is retry-safe |
+| Categories | `decision_category_create` / `_update` / `_remove` | Duplicate names → `CONFLICT`; `_remove` reports the `orphaned` count. NOTE: `DecisionCategoriesService` writes no audit rows at all — the one delivery family with no trail |
+| Deletes | `deliverable_remove`, `change_request_remove`, `decision_remove` | All `destructiveHint`. Permanent — the descriptions steer the host to the lifecycle correction (withdraw / supersede) and demand explicit confirmation. `change_request_remove` needs `change_requests.decide` |
+
+Deletes remove governance records permanently; the server instructions tell the
+host to prefer withdraw/close/supersede and to delete only on an explicit user
+request. Risks keep only their lifecycle tools — `RisksService` has no link or
+delete-adjacent sub-resource methods beyond `remove`, which stays unexposed
+because a risk's correction is `closed`/`accepted` status, not deletion.
 
 > **⚠️ Approving a change request does not touch the roadmap.** `decide` only
 > flips status; `markApplied` requires an `applied_change_id` that already exists
@@ -849,7 +863,7 @@ flip with no Secret Manager work.
   never surface in `project_knowledge_search`.
 
 - **Delivery governance (current, 2026-08)** — the `delivery:read` /
-  `delivery:write` scopes and twenty-five tools over deliverables, change
+  `delivery:write` scopes and forty-seven tools over deliverables, change
   requests, the risk & issue register and the decision log, reusing the
   `execution/delivery/` services. **No flag** — live wherever `MCP_ENABLED` is.
   Shipped alongside two service fixes it depends on: `DecisionsService` gained

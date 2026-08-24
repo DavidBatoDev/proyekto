@@ -113,7 +113,10 @@ membership.
 ## Why MCP does not wait for this
 
 The `deliverable_create` MCP tool omits `reviewer_ids` from its input schema entirely
-([`delivery-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-write.tools.ts)),
-for an independent reason: naming a reviewer is an act of authority, and an agent handing
-out sign-off rights is not something a connector should do unattended. Closing this gap
-does not change that decision — reviewers stay a human action in the app.
+([`delivery-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-write.tools.ts)).
+MCP reviewer management exists — `deliverable_reviewer_add` in
+[`delivery-manage.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-manage.tools.ts)
+— but it deliberately routes through `addReviewer`, the one method that enforces the
+membership check, and carries `destructiveHint` because naming a reviewer is a grant of
+sign-off authority. So the unchecked create path is unreachable from a connector either
+way; the gap that remains is REST-only.
