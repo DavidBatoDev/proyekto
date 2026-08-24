@@ -406,3 +406,72 @@ export class AddCuratedMemberDto {
   @IsBoolean()
   move_direct_grant?: boolean;
 }
+
+// ─── "Invite a team" (project_team_invites) ─────────────────────────────
+//
+// Asks someone to bring one of THEIR teams onto a project. Distinct from
+// AttachTeamDto above, which attaches a team the caller is already on and
+// needs no consent from anyone.
+
+export class InviteTeamToProjectDto {
+  @IsEmail()
+  email!: string;
+
+  /**
+   * Which team the inviter meant, as free text. Never resolved to a team id
+   * server-side — the inviter cannot see teams they are not on, so this is a
+   * label for the recipient to read, nothing more.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  team_name_hint?: string;
+
+  /**
+   * Role the curated members land on. The inviter owns the project, so this
+   * is theirs to set; the accepter never picks project roles.
+   */
+  @IsOptional()
+  @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
+  member_role?: ProjectTeamDefaultRole;
+
+  @IsOptional()
+  @IsBoolean()
+  make_primary?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+}
+
+export const PROJECT_TEAM_INVITE_RESPONSE_STATUSES = [
+  'accepted',
+  'declined',
+] as const;
+export type ProjectTeamInviteResponseStatus =
+  (typeof PROJECT_TEAM_INVITE_RESPONSE_STATUSES)[number];
+
+export class RespondProjectTeamInviteDto {
+  @IsIn(PROJECT_TEAM_INVITE_RESPONSE_STATUSES)
+  status!: ProjectTeamInviteResponseStatus;
+
+  /**
+   * The team being brought in. Required when accepting (the service rejects
+   * an accept without it); ignored when declining. The caller must own or
+   * administer it — checked server-side, not trusted from here.
+   */
+  @ValidateIf((o: RespondProjectTeamInviteDto) => o.status === 'accepted')
+  @IsUUID()
+  team_id?: string;
+
+  /**
+   * Which of that team's members join the project. Empty or omitted still
+   * brings the accepter themselves in — a team on a project with nobody on
+   * it is not a state worth creating.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  member_user_ids?: string[];
+}

@@ -33,6 +33,7 @@ import {
 	type StatusTab,
 	TeamLogsStatusTabs,
 } from "@/components/team-time/TeamLogsStatusTabs";
+import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import { useToast } from "@/hooks/useToast";
 import {
@@ -94,6 +95,9 @@ function TeamLogsRoute() {
 				...(restored ?? buildTeamLogPeriodSearch(period)),
 				member: search.member,
 				status: search.status,
+				// A deep link to a log detail arrives with `log` and no period;
+				// restoring the period must not close the dialog.
+				log: search.log,
 			},
 			replace: true,
 		});
@@ -336,6 +340,17 @@ function TeamLogsRoute() {
 		});
 	};
 
+	// Detail target lives in the URL and renders as a dialog over this list.
+	const detailLogId = search.log ?? null;
+	const closeDetail = () => {
+		void navigate({
+			to: "/teams/$teamId/time/team-logs",
+			params: { teamId },
+			search: { ...search, log: undefined },
+			replace: true,
+		});
+	};
+
 	const handleOpenInRoadmap = (log: TaskTimeLog) => {
 		if (!log.task_id) return;
 		void navigate({
@@ -455,6 +470,12 @@ function TeamLogsRoute() {
 					/>
 				</>
 			)}
+
+			<TimeLogDetailModal
+				teamId={teamId}
+				logId={detailLogId}
+				onClose={closeDetail}
+			/>
 
 			{payTarget && (
 				<PayMemberModal

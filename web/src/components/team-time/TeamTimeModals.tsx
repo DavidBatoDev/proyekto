@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppDialog } from "@/components/common/AppDialog";
 import { CurrencySelect } from "@/components/common/CurrencySelect";
+import { DateTimeField } from "@/components/common/DateTimeField";
 import { Dropdown } from "@/components/common/Dropdown";
 import type {
 	ProjectTaskOption,
@@ -224,32 +225,30 @@ export function ManualLogModal({
 				</div>
 
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<label className="space-y-1.5">
-						<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							Start <span className="text-destructive">*</span>
-						</span>
-						<input
-							type="datetime-local"
-							value={startedAt}
-							min={minDateTime}
-							onChange={(e) => onChangeStartedAt(e.target.value)}
-							disabled={saving}
-							className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-						/>
-					</label>
-					<label className="space-y-1.5">
-						<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							End <span className="text-destructive">*</span>
-						</span>
-						<input
-							type="datetime-local"
-							value={endedAt}
-							min={startedAt || minDateTime}
-							onChange={(e) => onChangeEndedAt(e.target.value)}
-							disabled={saving}
-							className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-						/>
-					</label>
+					<DateTimeField
+						label={
+							<>
+								Start <span className="text-destructive">*</span>
+							</>
+						}
+						ariaLabel="Start"
+						value={startedAt}
+						min={minDateTime}
+						onChange={onChangeStartedAt}
+						disabled={saving}
+					/>
+					<DateTimeField
+						label={
+							<>
+								End <span className="text-destructive">*</span>
+							</>
+						}
+						ariaLabel="End"
+						value={endedAt}
+						min={startedAt || minDateTime}
+						onChange={onChangeEndedAt}
+						disabled={saving}
+					/>
 				</div>
 
 				<label className="space-y-1.5">
@@ -331,8 +330,6 @@ export function EditLogModal({
 	onChangeEndedAt,
 	onChangeBreakMinutes,
 }: EditLogModalProps) {
-	if (!isOpen) return null;
-
 	const isStartValid = Boolean(
 		startedAt && !Number.isNaN(new Date(startedAt).getTime()),
 	);
@@ -342,102 +339,114 @@ export function EditLogModal({
 		!endedAt ||
 		new Date(endedAt).getTime() >= new Date(startedAt).getTime();
 
-	const canSave = !saving && isStartValid && isEndValid && isTimeOrderValid;
+	const startMs = startedAt ? new Date(startedAt).getTime() : Number.NaN;
+	const endMs = endedAt ? new Date(endedAt).getTime() : Number.NaN;
+	const hasRange =
+		Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+	const grossMinutes = hasRange ? (endMs - startMs) / 60_000 : 0;
+	const breakTooLong = hasRange && breakMinutes >= grossMinutes;
+	const netMinutes = Math.max(0, grossMinutes - breakMinutes);
+
+	const canSave =
+		!saving && isStartValid && isEndValid && isTimeOrderValid && !breakTooLong;
 
 	return (
-		<div
-			className="fixed inset-0 z-165lex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
-			onClick={onClose}
-		>
-			<div
-				className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-					<div>
-						<h3 className="text-base font-semibold text-gray-900">Edit Log</h3>
-						<p className="text-xs text-gray-500 mt-1">
-							Update time-in, time-out, and break minutes.
-						</p>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100"
-					>
-						<X className="w-4 h-4" />
-					</button>
-				</div>
-
-				<div className="p-5 space-y-3">
-					{!isTimeOrderValid && (
-						<div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-semibold text-rose-700">
-							Time-out cannot be earlier than Time-in.
-						</div>
-					)}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-						<div className="space-y-1.5">
-							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-								Time-in
-							</label>
-							<input
-								type="datetime-local"
-								value={startedAt}
-								onChange={(e) => onChangeStartedAt(e.target.value)}
-								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-								Time-Out
-							</label>
-							<input
-								type="datetime-local"
-								value={endedAt}
-								onChange={(e) => onChangeEndedAt(e.target.value)}
-								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-							/>
-						</div>
-						<div className="space-y-1.5 md:col-span-2">
-							<label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-								Break Time (minutes)
-							</label>
-							<input
-								type="number"
-								min={0}
-								step={1}
-								value={breakMinutes}
-								onChange={(e) =>
-									onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
-								}
-								placeholder="0"
-								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-							/>
-						</div>
-					</div>
-				</div>
-
-				<div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-4 bg-gray-50">
+		<AppDialog
+			open={isOpen}
+			onClose={onClose}
+			busy={saving}
+			size="md"
+			title="Edit log"
+			description="Update time-in, time-out, and break minutes."
+			footer={
+				<>
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={saving}
-						className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3.5 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
 					>
+						<XCircle className="h-3.5 w-3.5" />
 						Cancel
 					</button>
 					<button
 						type="button"
 						onClick={onSave}
 						disabled={!canSave}
-						className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
 					>
-						{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-						Save Changes
+						{saving ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Save className="h-3.5 w-3.5" />
+						)}
+						Save changes
 					</button>
+				</>
+			}
+		>
+			<div className="space-y-4">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<DateTimeField
+						label="Time-in"
+						ariaLabel="Time-in"
+						value={startedAt}
+						onChange={onChangeStartedAt}
+						disabled={saving}
+					/>
+					<DateTimeField
+						label="Time-out"
+						ariaLabel="Time-out"
+						value={endedAt}
+						min={startedAt || undefined}
+						onChange={onChangeEndedAt}
+						disabled={saving}
+					/>
 				</div>
+
+				<label className="space-y-1.5">
+					<span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						Break time (minutes)
+					</span>
+					<input
+						type="number"
+						min={0}
+						step={1}
+						value={breakMinutes}
+						onChange={(e) =>
+							onChangeBreakMinutes?.(Math.max(0, Number(e.target.value)))
+						}
+						disabled={saving}
+						placeholder="0"
+						className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+					/>
+				</label>
+
+				{/* The arithmetic the server will apply, before you commit to it. */}
+				{hasRange && !breakTooLong && (
+					<div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+						{formatDuration(grossMinutes)}
+						{breakMinutes > 0 && <> minus {breakMinutes}m break</>} ={" "}
+						<span className="font-semibold text-foreground">
+							{formatDuration(netMinutes)}
+						</span>{" "}
+						logged
+					</div>
+				)}
+
+				{!isTimeOrderValid && (
+					<p className="text-xs text-destructive">
+						Time-out cannot be earlier than Time-in.
+					</p>
+				)}
+				{breakTooLong && (
+					<p className="text-xs text-destructive">
+						The break is as long as the whole block — there would be no time
+						left to log.
+					</p>
+				)}
 			</div>
-		</div>
+		</AppDialog>
 	);
 }
 

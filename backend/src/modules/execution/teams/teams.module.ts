@@ -9,6 +9,11 @@ import { ProjectTeamsService } from './project-teams.service';
 import { ProjectTeamsController } from './project-teams.controller';
 import { TeamMemberRatesService } from './team-member-rates.service';
 import { TeamMemberRatesController } from './team-member-rates.controller';
+import { ProjectTeamInvitesService } from './project-team-invites.service';
+import {
+  MyProjectTeamInvitesController,
+  ProjectTeamInvitesController,
+} from './project-team-invites.controller';
 
 @Module({
   imports: [
@@ -21,8 +26,20 @@ import { TeamMemberRatesController } from './team-member-rates.controller';
     TeamsController,
     ProjectTeamsController,
     TeamMemberRatesController,
+    ProjectTeamInvitesController,
+    MyProjectTeamInvitesController,
   ],
-  providers: [TeamsService, ProjectTeamsService, TeamMemberRatesService],
-  exports: [TeamsService, ProjectTeamsService, TeamMemberRatesService],
+  providers: [
+    TeamsService,
+    ProjectTeamsService,
+    TeamMemberRatesService,
+    ProjectTeamInvitesService,
+  ],
+  exports: [
+    TeamsService,
+    ProjectTeamsService,
+    TeamMemberRatesService,
+    ProjectTeamInvitesService,
+  ],
 })
 export class TeamsModule {}

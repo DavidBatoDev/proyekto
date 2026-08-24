@@ -70,4 +70,16 @@ export const featureFlags = {
 	 */
 	canvasCommentIndicators:
 		import.meta.env.VITE_CANVAS_COMMENT_INDICATORS === "true",
+
+	/**
+	 * "Invite a team" — ask someone outside the project to bring one of their
+	 * own teams onto it. Gates only the SEND side (the button and the pending
+	 * list on the project's Teams page).
+	 *
+	 * The recipient's side is deliberately NOT gated: it renders whenever an
+	 * invitation actually exists, so nothing already sent can become
+	 * unanswerable if this is flipped back off. Set
+	 * VITE_TEAM_PROJECT_INVITES=true to enable sending.
+	 */
+	teamProjectInvites: import.meta.env.VITE_TEAM_PROJECT_INVITES === "true",
 } as const;

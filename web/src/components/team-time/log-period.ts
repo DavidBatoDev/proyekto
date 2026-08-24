@@ -20,6 +20,12 @@ export interface TeamLogPeriodSearch {
 	member?: string;
 	/** Preselected status tab (e.g. arriving from Payouts → Review pending). */
 	status?: string;
+	/**
+	 * Id of a log whose detail dialog should be open. Deep links to the old
+	 * /time/log/$logId page redirect here so the detail opens over the list
+	 * instead of on a page of its own.
+	 */
+	log?: string;
 }
 
 export interface TeamLogResolvedPeriod {
@@ -262,6 +268,10 @@ export function parseTeamLogPeriodSearch(
 		["pending", "approved", "paid", "rejected", "all"].includes(search.status)
 			? search.status
 			: undefined;
+	const log =
+		typeof search.log === "string" && search.log.trim()
+			? search.log.trim()
+			: undefined;
 	return {
 		preset,
 		from,
@@ -270,6 +280,7 @@ export function parseTeamLogPeriodSearch(
 		cutoff_period: cutoffPeriod,
 		member,
 		status,
+		log,
 	};
 }
 
@@ -425,9 +436,12 @@ export function storePeriodSearch(
 	search: TeamLogPeriodSearch,
 ): void {
 	try {
+		// `log` is a transient dialog target, not part of the period — persisting
+		// it would reopen someone's log detail days later.
+		const { log: _log, ...persisted } = search;
 		localStorage.setItem(
 			`${PERIOD_STORAGE_PREFIX}${scopeKey}`,
-			JSON.stringify(search),
+			JSON.stringify(persisted),
 		);
 	} catch {
 		// ignore quota / unavailable storage

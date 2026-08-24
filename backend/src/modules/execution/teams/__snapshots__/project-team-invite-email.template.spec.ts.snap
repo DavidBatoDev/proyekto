@@ -1,0 +1,217 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`buildProjectTeamInviteEmail escapes markup in every caller-supplied field: html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your team is invited to a project</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">&lt;script&gt;alert(1)&lt;/script&gt; invited your team to work on &lt;img src=x onerror=alert(2)&gt; on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">Your team is invited to a project</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>&lt;script&gt;alert(1)&lt;/script&gt;</strong> invited your team to work on <strong>&lt;img src=x onerror=alert(2)&gt;</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Project</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&lt;img src=x onerror=alert(2)&gt;</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Team</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&quot;&gt;&lt;b&gt;Engines&lt;/b&gt;</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Your members join as</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">&quot;&gt;&lt;b&gt;admin&lt;/b&gt;</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">&lt;iframe src=&quot;evil&quot;&gt;&lt;/iframe&gt;</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Accepting lets you choose which of your teams to bring and which of its members join. Nobody on your team gets access until you do.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited one of your teams to a project on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildProjectTeamInviteEmail renders a full invitation: html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your team is invited to a project</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Ada Lovelace invited your team to work on Difference Engine v2 on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">Your team is invited to a project</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>Ada Lovelace</strong> invited your team to work on <strong>Difference Engine v2</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Project</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Difference Engine v2</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Team</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Analytical Engines Ltd</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Your members join as</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">editor</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid #e2e8f0;color:#334155;font-size:15px;line-height:1.6;white-space:pre-wrap;">Would love your crew on the punch-card pipeline.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Accepting lets you choose which of your teams to bring and which of its members join. Nobody on your team gets access until you do.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">You are being asked to make this the project’s primary team, which means its billing identity fills in contracts and its pay periods drive invoicing.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited one of your teams to a project on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildProjectTeamInviteEmail renders a full invitation: subject 1`] = `"Ada Lovelace invited your team to Difference Engine v2"`;
+
+exports[`buildProjectTeamInviteEmail renders a full invitation: text 1`] = `
+"Ada Lovelace invited your team to work on Difference Engine v2 on Proyekto.
+
+Project: Difference Engine v2
+Team: Analytical Engines Ltd
+Your members join as: editor
+
+"Would love your crew on the punch-card pipeline."
+
+Accepting lets you choose which of your teams to bring and which of its members join. Nobody on your team gets access until you do.
+
+You are being asked to make this the project’s primary team, which means its billing identity fills in contracts and its pay periods drive invoicing.
+
+If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
+
+View your invitation: https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
+
+You received this email because someone invited one of your teams to a project on Proyekto."
+`;
+
+exports[`buildProjectTeamInviteEmail renders a minimal invitation (no team hint, role or message): html 1`] = `
+"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your team is invited to a project</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Ada Lovelace invited your team to work on Difference Engine v2 on Proyekto.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#ffffff;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="width:560px;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <span style="color:#2563eb;font-size:22px;font-weight:700;letter-spacing:.01em;">Proyekto</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.3;font-weight:700;">Your team is invited to a project</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 0 28px;">
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;"><strong>Ada Lovelace</strong> invited your team to work on <strong>Difference Engine v2</strong> on Proyekto.</p>
+            <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 16px;">
+              <tr>
+                <td style="padding:4px 16px 4px 0;color:#64748b;font-size:15px;line-height:1.6;">Project</td>
+                <td style="padding:4px 0;color:#0f172a;font-size:15px;line-height:1.6;font-weight:600;">Difference Engine v2</td>
+              </tr>
+            </table>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">Accepting lets you choose which of your teams to bring and which of its members join. Nobody on your team gets access until you do.</p>
+            <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.</p>
+            <div style="margin:28px 0 0;">
+              <a href="https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" style="display:inline-block;padding:12px 20px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:3px;">View invitation</a>
+            </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited one of your teams to a project on Proyekto.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;
+
+exports[`buildProjectTeamInviteEmail renders a minimal invitation (no team hint, role or message): subject 1`] = `"Ada Lovelace invited your team to Difference Engine v2"`;
+
+exports[`buildProjectTeamInviteEmail renders a minimal invitation (no team hint, role or message): text 1`] = `
+"Ada Lovelace invited your team to work on Difference Engine v2 on Proyekto.
+
+Project: Difference Engine v2
+
+Accepting lets you choose which of your teams to bring and which of its members join. Nobody on your team gets access until you do.
+
+If you do not have an account yet, sign up with this email address and your invitation will be waiting for you.
+
+View your invitation: https://app.proyekto.test/teams/me/invites?inviteId=6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d
+
+You received this email because someone invited one of your teams to a project on Proyekto."
+`;

@@ -40,6 +40,7 @@ import {
 	TeamLogsStatusTabs,
 } from "@/components/team-time/TeamLogsStatusTabs";
 import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
+import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
@@ -139,6 +140,9 @@ function ProjectTimePage() {
 		const teams = teamsQuery.data ?? [];
 		return (teams.find((t) => t.is_primary) ?? teams[0])?.team_id ?? "";
 	}, [teamsQuery.data]);
+
+	// The log whose detail dialog is open (work & break timeline, review thread).
+	const [detailLog, setDetailLog] = useState<TaskTimeLog | null>(null);
 
 	const teamQuery = useQuery({
 		queryKey: ["teams", "detail", primaryTeamId],
@@ -760,6 +764,7 @@ function ProjectTimePage() {
 										onEditLog={handleEdit}
 										onOpenTaskInRoadmap={handleOpenInRoadmap}
 										canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+										onViewTimeline={setDetailLog}
 										// "Start a timer" now actually starts a timer. It used to
 										// open the manual-log form, and this page had no start
 										// path at all.
@@ -895,6 +900,12 @@ function ProjectTimePage() {
 				}}
 				onChangeProjectId={() => {}}
 				onChangeTaskId={setTaskModalTaskId}
+			/>
+
+			<TimeLogDetailModal
+				teamId={detailLog?.team_id ?? primaryTeamId}
+				logId={detailLog?.id ?? null}
+				onClose={() => setDetailLog(null)}
 			/>
 
 			{payTarget && primaryTeamId && (

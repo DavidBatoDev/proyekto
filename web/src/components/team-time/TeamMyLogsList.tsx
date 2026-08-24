@@ -1,4 +1,3 @@
-import { useNavigate } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	ChevronDown,
@@ -72,6 +71,12 @@ interface TeamMyLogsListProps {
 	onEditLog: (log: TaskTimeLog) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	/**
+	 * Opens the log's detail (work & break timeline, review thread). The list
+	 * used to navigate to a detail *page* for this, which rendered a second
+	 * DashboardShell inside the Time layout's — hence the duplicated sidebar.
+	 */
+	onViewTimeline?: (log: TaskTimeLog) => void;
 	/** Opens the timer picker — this is the "Start a timer" action. */
 	onOpenAddLog: () => void;
 	/**
@@ -96,6 +101,7 @@ export function TeamMyLogsList({
 	onEditLog,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
+	onViewTimeline,
 	onOpenAddLog,
 	onOpenManualLog,
 }: TeamMyLogsListProps) {
@@ -172,6 +178,7 @@ export function TeamMyLogsList({
 			onDeleteLog={onDeleteLog}
 			onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 			canOpenInRoadmap={canOpenTaskInRoadmap(log.task_id)}
+			onViewTimeline={onViewTimeline}
 		/>
 	);
 
@@ -311,6 +318,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	onDeleteLog,
 	onOpenTaskInRoadmap,
 	canOpenInRoadmap,
+	onViewTimeline,
 }: {
 	log: TaskTimeLog;
 	taskTitleById: Map<string, string>;
@@ -327,11 +335,11 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	onDeleteLog: (id: string) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenInRoadmap: boolean;
+	onViewTimeline?: (log: TaskTimeLog) => void;
 }) {
 	const isRunning = !log.ended_at;
 	const nowMs = useLiveNowMs(isRunning);
 	const isReadOnly = isMemberReadOnlyStatus(log.status);
-	const navigate = useNavigate();
 
 	const seconds = liveDurationSecondsFromLog(log, nowMs);
 	const hours = seconds / 3600;
@@ -367,16 +375,12 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 				disabled: isRowPending,
 			});
 		}
-		if (log.team_id) {
+		if (onViewTimeline) {
 			items.push({
 				id: "view-timeline",
 				label: "View work & break timeline",
 				icon: <Eye className="h-3.5 w-3.5" />,
-				onSelect: () =>
-					void navigate({
-						to: "/teams/$teamId/time/log/$logId",
-						params: { teamId: log.team_id as string, logId: log.id },
-					}),
+				onSelect: () => onViewTimeline(log),
 			});
 		}
 		items.push(
@@ -419,7 +423,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 		hasActiveLog,
 		canOpenInRoadmap,
 		log,
-		navigate,
+		onViewTimeline,
 		onStopLog,
 		onOpenTaskModal,
 		onEditLog,

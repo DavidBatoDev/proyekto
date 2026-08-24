@@ -12,6 +12,9 @@ import { useAuthStore } from "@/stores/authStore";
 function notificationTitle(typeName?: string) {
 	if (typeName === "project_invite_received") return "New project invite";
 	if (typeName === "project_invite_responded") return "Invite response";
+	if (typeName === "project_team_invite_received")
+		return "Your team is invited";
+	if (typeName === "project_team_invite_responded") return "Invite response";
 	if (typeName === "marketplace_profile_live") return "Profile is live";
 	if (typeName === "task_assigned") return "Task assigned";
 	if (typeName === "time_log_approval_requested")

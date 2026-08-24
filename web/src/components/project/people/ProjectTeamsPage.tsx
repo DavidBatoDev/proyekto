@@ -1,12 +1,15 @@
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Mail, Users } from "lucide-react";
 import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSectionHeader,
 } from "@/components/common/AppPrimitives";
+import { featureFlags } from "@/config/featureFlags";
 import { useUser } from "@/stores/authStore";
 import { AddTeamMemberDialog } from "./AddTeamMemberDialog";
 import { AttachTeamDialog } from "./AttachTeamDialog";
+import { InviteTeamDialog } from "./InviteTeamDialog";
+import { ProjectTeamInvitesPanel } from "./ProjectTeamInvitesPanel";
 import { TeamGroupCard } from "./TeamGroupCard";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
 
@@ -25,6 +28,9 @@ export function ProjectTeamsPage({
 	const user = useUser();
 	const people = useProjectPeople(projectId, user?.id ?? null);
 	const [attachOpen, setAttachOpen] = useState(false);
+	const [inviteOpen, setInviteOpen] = useState(false);
+	const canInviteTeams =
+		featureFlags.teamProjectInvites && people.canManageTeams;
 	const [teamForNewMember, setTeamForNewMember] = useState<{
 		id: string;
 		name: string;
@@ -56,25 +62,19 @@ export function ProjectTeamsPage({
 				subtitle="Teams bring their members onto this project as a group."
 				rightSlot={
 					people.canManageTeams && (
-						<button
-							type="button"
-							onClick={() => setAttachOpen(true)}
-							className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
-						>
-							<Users className="h-3.5 w-3.5" />
-							Attach team
-						</button>
-					)
-				}
-			/>
-
-			{people.groups.length === 0 ? (
-				<AppEmptyState
-					icon={Users}
-					title="No teams attached"
-					description="Attach a team to bring its members onto this project."
-					action={
-						people.canManageTeams && (
+						<div className="flex items-center gap-2">
+							{/* Secondary next to Attach: bringing in an outside team is a
+							    request, not an action you complete here. */}
+							{canInviteTeams && (
+								<button
+									type="button"
+									onClick={() => setInviteOpen(true)}
+									className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+								>
+									<Mail className="h-3.5 w-3.5" />
+									Invite a team
+								</button>
+							)}
 							<button
 								type="button"
 								onClick={() => setAttachOpen(true)}
@@ -83,6 +83,45 @@ export function ProjectTeamsPage({
 								<Users className="h-3.5 w-3.5" />
 								Attach team
 							</button>
+						</div>
+					)
+				}
+			/>
+
+			{featureFlags.teamProjectInvites && (
+				<ProjectTeamInvitesPanel
+					projectId={projectId}
+					canManageTeams={people.canManageTeams}
+				/>
+			)}
+
+			{people.groups.length === 0 ? (
+				<AppEmptyState
+					icon={Users}
+					title="No teams attached"
+					description="Attach a team to bring its members onto this project."
+					action={
+						people.canManageTeams && (
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={() => setAttachOpen(true)}
+									className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+								>
+									<Users className="h-3.5 w-3.5" />
+									Attach team
+								</button>
+								{canInviteTeams && (
+									<button
+										type="button"
+										onClick={() => setInviteOpen(true)}
+										className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+									>
+										<Mail className="h-3.5 w-3.5" />
+										Invite a team
+									</button>
+								)}
+							</div>
 						)
 					}
 				/>
@@ -115,6 +154,13 @@ export function ProjectTeamsPage({
 					projectId={projectId}
 					currentUserId={user?.id ?? null}
 					onClose={() => setAttachOpen(false)}
+				/>
+			)}
+
+			{inviteOpen && (
+				<InviteTeamDialog
+					projectId={projectId}
+					onClose={() => setInviteOpen(false)}
 				/>
 			)}
 

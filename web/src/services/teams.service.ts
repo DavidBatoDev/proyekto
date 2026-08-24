@@ -815,3 +815,152 @@ export async function respondTeamInvite(
 		);
 	}
 }
+
+// ─── "Invite a team" (project ↔ outside team) ────────────────────────────
+//
+// Distinct from the team-member invites above. These ask a person to bring
+// one of THEIR teams onto a project you administer — the team is named by the
+// recipient when they accept, because you cannot see teams you are not on.
+
+export interface ProjectTeamInvite {
+	id: string;
+	project_id: string;
+	invited_by: string | null;
+	invitee_id: string | null;
+	invitee_email: string | null;
+	/** Null until accepted — the invitee picks the team then. */
+	team_id: string | null;
+	/** Free text the inviter typed. Never a resolved team. */
+	team_name_hint: string | null;
+	/** Role the members brought in will hold on the project. */
+	member_role: ProjectTeamDefaultRole;
+	make_primary: boolean;
+	status: TeamInviteStatus;
+	message: string | null;
+	responded_at: string | null;
+	created_at: string;
+	updated_at: string;
+	project?: {
+		id: string;
+		title: string | null;
+		banner_url: string | null;
+	} | null;
+	team?: { id: string; name: string; avatar_url: string | null } | null;
+	invited_by_profile?: ProfileSummary | null;
+	invitee?: ProfileSummary | null;
+	/**
+	 * Only on the create response. `sent: false` is not an error — the
+	 * invitation exists either way — so the caller must surface it rather than
+	 * throw, or the inviter assumes the email arrived.
+	 */
+	email_delivery?: { sent: boolean; reason?: string };
+}
+
+export interface InviteTeamToProjectInput {
+	email: string;
+	team_name_hint?: string;
+	member_role?: ProjectTeamDefaultRole;
+	make_primary?: boolean;
+	message?: string;
+}
+
+export async function inviteTeamToProject(
+	projectId: string,
+	input: InviteTeamToProjectInput,
+): Promise<ProjectTeamInvite> {
+	try {
+		const { data } = await apiClient.post<{ data: ProjectTeamInvite }>(
+			`/api/projects/${projectId}/team-invites`,
+			input,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to send team invitation",
+			),
+		);
+	}
+}
+
+export async function listProjectTeamInvites(
+	projectId: string,
+): Promise<ProjectTeamInvite[]> {
+	try {
+		const { data } = await apiClient.get<{ data: ProjectTeamInvite[] }>(
+			`/api/projects/${projectId}/team-invites`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load team invitations",
+			),
+		);
+	}
+}
+
+export async function cancelProjectTeamInvite(
+	projectId: string,
+	inviteId: string,
+): Promise<ProjectTeamInvite> {
+	try {
+		const { data } = await apiClient.delete<{ data: ProjectTeamInvite }>(
+			`/api/projects/${projectId}/team-invites/${inviteId}`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to cancel invitation",
+			),
+		);
+	}
+}
+
+export async function listMyProjectTeamInvites(): Promise<ProjectTeamInvite[]> {
+	try {
+		const { data } = await apiClient.get<{ data: ProjectTeamInvite[] }>(
+			"/api/team-project-invites/me",
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load your project invitations",
+			),
+		);
+	}
+}
+
+export interface RespondProjectTeamInviteInput {
+	status: "accepted" | "declined";
+	/** Required when accepting: which of your teams you are bringing. */
+	team_id?: string;
+	/** Which of that team's members join. You are always included. */
+	member_user_ids?: string[];
+}
+
+export async function respondProjectTeamInvite(
+	inviteId: string,
+	input: RespondProjectTeamInviteInput,
+): Promise<ProjectTeamInvite> {
+	try {
+		const { data } = await apiClient.post<{ data: ProjectTeamInvite }>(
+			`/api/team-project-invites/me/${inviteId}/respond`,
+			input,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to respond to invitation",
+			),
+		);
+	}
+}

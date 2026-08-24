@@ -35,6 +35,7 @@ import {
 	EditLogModal,
 	ManualLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	fromLocalDateTimeInput,
@@ -104,7 +105,12 @@ function MyLogsTab() {
 		void navigate({
 			to: "/teams/$teamId/time/my-logs",
 			params: { teamId },
-			search: restored ?? buildTeamLogPeriodSearch(period),
+			// Keep any open detail target — a deep link arrives with `log` but no
+			// period, and restoring the period must not close the dialog.
+			search: {
+				...(restored ?? buildTeamLogPeriodSearch(period)),
+				log: search.log,
+			},
 			replace: true,
 		});
 	}, [navigate, period, search, teamId]);
@@ -450,6 +456,20 @@ function MyLogsTab() {
 		},
 		[allLogs, projectsQuery.data],
 	);
+	// The detail lives in the URL so it survives a refresh and can be linked to,
+	// but it renders as a dialog over this list — not as its own page.
+	const detailLogId = search.log ?? null;
+	const setDetailLogId = useCallback(
+		(logId: string | null) => {
+			void navigate({
+				to: "/teams/$teamId/time/my-logs",
+				params: { teamId },
+				search: { ...search, log: logId ?? undefined },
+				replace: true,
+			});
+		},
+		[navigate, search, teamId],
+	);
 	const handleOpenInRoadmap = useCallback(
 		(log: TaskTimeLog) => {
 			if (!log.task_id) return;
@@ -625,6 +645,7 @@ function MyLogsTab() {
 						onEditLog={handleEdit}
 						onOpenTaskInRoadmap={handleOpenInRoadmap}
 						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+						onViewTimeline={(log) => setDetailLogId(log.id)}
 						onOpenAddLog={() => setAddOpen(true)}
 						// Manual entry used to be reachable only through the calendar.
 						onOpenManualLog={() => handleAddLogForDay(new Date())}
@@ -810,6 +831,13 @@ function MyLogsTab() {
 				onChangeStartedAt={setManualStart}
 				onChangeEndedAt={setManualEnd}
 				onChangeBreakMinutes={setManualBreakMinutes}
+			/>
+
+			{/* Log detail (work & break timeline, review thread) */}
+			<TimeLogDetailModal
+				teamId={teamId}
+				logId={detailLogId}
+				onClose={() => setDetailLogId(null)}
 			/>
 
 			<ScrollNavButtons />

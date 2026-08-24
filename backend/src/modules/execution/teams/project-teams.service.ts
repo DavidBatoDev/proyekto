@@ -215,6 +215,60 @@ export class ProjectTeamsService {
       projectId,
       'teams.manage',
     );
+    // Direct attach: the caller both authorizes the attachment and performs
+    // the curation, so they are recorded on both sides.
+    return this.performAttach(projectId, dto, {
+      attachedBy: callerId,
+      curatedBy: callerId,
+    });
+  }
+
+  /**
+   * Attach a team on the authority of an accepted invitation rather than the
+   * caller's own project permissions.
+   *
+   * This is the one path that skips `teams.manage`, and it does so because the
+   * project side already gave consent when the invitation was sent — the
+   * accepter is the team's owner/admin, who by definition has no role on a
+   * project they were invited to. `ProjectTeamInvitesService` is the only
+   * caller and is responsible for having verified both halves first.
+   *
+   * The two actors differ here, unlike in `attach`: the *inviter* is recorded
+   * as `attached_by`, because from the project's side they are who authorized
+   * this team's presence, while the *accepter* is recorded on each curated
+   * member row as the person who actually chose them.
+   */
+  async attachFromInvite(params: {
+    projectId: string;
+    teamId: string;
+    /** The inviter — a project admin/owner. */
+    attachedBy: string;
+    /** The accepter — the team's owner or admin. */
+    curatedBy: string;
+    isPrimary: boolean;
+    /** Role for members with no prior grant, fixed by the invitation. */
+    memberRole: ProjectTeamDefaultRole;
+    memberUserIds: string[];
+  }): Promise<ProjectTeamRow> {
+    return this.performAttach(
+      params.projectId,
+      {
+        team_id: params.teamId,
+        is_primary: params.isPrimary,
+        members: params.memberUserIds.map((user_id) => ({
+          user_id,
+          role: params.memberRole,
+        })),
+      },
+      { attachedBy: params.attachedBy, curatedBy: params.curatedBy },
+    );
+  }
+
+  private async performAttach(
+    projectId: string,
+    dto: AttachTeamDto,
+    actors: { attachedBy: string; curatedBy: string },
+  ): Promise<ProjectTeamRow> {
     const isPrimary = dto.is_primary ?? false;
 
     if (isPrimary) {
@@ -231,11 +285,28 @@ export class ProjectTeamsService {
         project_id: projectId,
         team_id: dto.team_id,
         is_primary: isPrimary,
-        attached_by: callerId,
+        attached_by: actors.attachedBy,
       })
       .select('*')
       .single();
-    if (error || !data) {
+
+    // Already attached (23505 on the composite PK). Reachable from the invite
+    // path — someone can be invited to bring a team that reached the project
+    // by another route in the meantime — and treating that as an error would
+    // strand the invitation. Adopt the existing attachment and still curate.
+    let attachment = data as ProjectTeamRow | null;
+    if (error?.code === '23505') {
+      const existing = await this.supabase
+        .from('project_teams')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('team_id', dto.team_id)
+        .single();
+      if (existing.error || !existing.data) {
+        throw new Error(existing.error?.message ?? 'Failed to attach team');
+      }
+      attachment = existing.data as ProjectTeamRow;
+    } else if (error || !attachment) {
       throw new Error(error?.message ?? 'Failed to attach team');
     }
 
@@ -244,10 +315,16 @@ export class ProjectTeamsService {
     // their existing role (the structural marker is still added).
     const members = dto.members ?? [];
     for (const m of members) {
-      await this.curateOne(projectId, dto.team_id, callerId, m.user_id, m.role);
+      await this.curateOne(
+        projectId,
+        dto.team_id,
+        actors.curatedBy,
+        m.user_id,
+        m.role,
+      );
     }
 
-    return data as ProjectTeamRow;
+    return attachment;
   }
 
   async detach(

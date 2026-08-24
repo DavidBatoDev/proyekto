@@ -3,6 +3,7 @@ import type { PayPeriodConfig } from "@/services/teams.service";
 import {
 	currentPayPeriod,
 	DEFAULT_PAY_PERIOD_CONFIG,
+	parseTeamLogPeriodSearch,
 	resolvePayPeriods,
 	resolveTeamLogPeriod,
 } from "./log-period";
@@ -115,5 +116,17 @@ describe("resolvePayPeriods with a custom config", () => {
 		expect(periods[0].to.getDate()).toBe(28); // 2026 Feb is non-leap
 		expect(periods[0].dayRangeLabel).toBe("1–EOM");
 		expect(periods[0].payDate.getMonth()).toBe(2); // March
+	});
+});
+
+describe("parseTeamLogPeriodSearch log target", () => {
+	it("keeps a log id so a detail deep link opens the dialog", () => {
+		expect(parseTeamLogPeriodSearch({ log: " abc-123 " }).log).toBe("abc-123");
+	});
+
+	it("drops a blank or non-string log id", () => {
+		expect(parseTeamLogPeriodSearch({ log: "   " }).log).toBeUndefined();
+		expect(parseTeamLogPeriodSearch({ log: 42 }).log).toBeUndefined();
+		expect(parseTeamLogPeriodSearch({}).log).toBeUndefined();
 	});
 });
