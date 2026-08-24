@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { setActivityOrigin } from '../../../common/activity/activity-context';
 import { RawResponse } from '../../../common/decorators/raw-response.decorator';
 import { McpAuthGuard, McpAuthenticatedRequest } from './mcp-auth.guard';
 import { McpServerFactory } from './mcp-server.factory';
@@ -23,6 +24,14 @@ export class McpController {
     @Req() req: McpAuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
+    // Tag this request's audit rows as connector-driven before any tool runs.
+    // The domain services keep writing their own activity rows (no `mcp.*`
+    // duplicate); this is what tells an audit reader a connector, not a person,
+    // was at the keyboard. The buffer is opened by middleware in main.ts, and
+    // the flush interceptor runs after handleRequest resolves, so everything a
+    // tool buffers is tagged.
+    setActivityOrigin({ via: 'mcp', scopes: req.mcpScopes ?? [] });
+
     const server = this.factory.create({
       userId: req.user.id,
       scopes: req.mcpScopes ?? [],

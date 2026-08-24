@@ -8,6 +8,7 @@ import {
   type ActivityBuffer,
   type BufferedActivityEntry,
   bufferActivity,
+  getActivityOrigin,
 } from '../../../common/activity/activity-context';
 import { isIndexableAction, isSensitiveAction } from './activity-actions';
 
@@ -67,7 +68,22 @@ export class AuditService {
     // still hand the knowledge outbox real row ids without a RETURNING read.
     // occurredAt is stamped here so a late-landing insert cannot reorder the
     // timeline — see BufferedActivityEntry.
-    return { ...entry, id: randomUUID(), occurredAt: new Date().toISOString() };
+    //
+    // The request's origin (set by McpController for connector traffic) is
+    // merged UNDER the caller's own metadata, so a service that already records
+    // something named `origin` keeps its value. This is why an MCP-driven
+    // delivery write needs no second `mcp.*` row: the service's own row carries
+    // the provenance. Origin holds no row data — see ActivityOrigin.
+    const origin = getActivityOrigin();
+    const metadata = origin
+      ? { origin, ...(entry.metadata ?? {}) }
+      : entry.metadata;
+    return {
+      ...entry,
+      metadata,
+      id: randomUUID(),
+      occurredAt: new Date().toISOString(),
+    };
   }
 
   /**

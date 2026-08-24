@@ -2,6 +2,7 @@ import { AuditService } from './audit.service';
 import {
   activityStorage,
   createActivityBuffer,
+  setActivityOrigin,
 } from '../../../common/activity/activity-context';
 
 /** Captures what was handed to .insert(), and whether .select() was chained. */
@@ -38,6 +39,59 @@ describe('AuditService', () => {
     entityType: 'task',
     entityId: '11111111-1111-1111-1111-111111111111',
   };
+
+  describe('request origin', () => {
+    // Connector-driven writes are marked at the request level rather than by
+    // emitting a second `mcp.*` row beside the service's own — see
+    // ActivityOrigin. These assertions are what keep that contract honest.
+    function logOne(entry: Record<string, unknown>, origin?: boolean) {
+      const { supabase, inserts } = buildSupabase();
+      const service = new AuditService(supabase as never);
+      const buffer = createActivityBuffer();
+      activityStorage.run(buffer, () => {
+        if (origin) {
+          setActivityOrigin({ via: 'mcp', scopes: ['delivery:write'] });
+        }
+        service.log({ ...base, action: 'risk.created', ...entry });
+      });
+      return { buffer, service, inserts };
+    }
+
+    it('merges the origin into metadata when one is set', () => {
+      const { buffer } = logOne({ metadata: { kind: 'risk' } }, true);
+      expect(buffer.entries[0].metadata).toEqual({
+        origin: { via: 'mcp', scopes: ['delivery:write'] },
+        kind: 'risk',
+      });
+    });
+
+    it('leaves metadata untouched when no origin is set', () => {
+      const { buffer } = logOne({ metadata: { kind: 'risk' } });
+      expect(buffer.entries[0].metadata).toEqual({ kind: 'risk' });
+    });
+
+    it('lets a caller-set key win over the origin', () => {
+      // Spread order matters: the service knows its own domain better than the
+      // transport does.
+      const { buffer } = logOne({ metadata: { origin: 'import' } }, true);
+      expect(buffer.entries[0].metadata).toEqual({ origin: 'import' });
+    });
+
+    it('adds an origin even when the entry carried no metadata at all', () => {
+      const { buffer } = logOne({}, true);
+      expect(buffer.entries[0].metadata).toEqual({
+        origin: { via: 'mcp', scopes: ['delivery:write'] },
+      });
+    });
+
+    it('carries no row data — only who was driving', () => {
+      // An internal risk's title here would re-leak exactly what
+      // risks.view_internal protects, because is_sensitive is per-action.
+      const { buffer } = logOne({ metadata: { kind: 'risk' } }, true);
+      const origin = (buffer.entries[0].metadata as { origin: object }).origin;
+      expect(Object.keys(origin).sort()).toEqual(['scopes', 'via']);
+    });
+  });
 
   describe('flush', () => {
     it('writes the whole buffer as ONE insert, with no RETURNING read', async () => {

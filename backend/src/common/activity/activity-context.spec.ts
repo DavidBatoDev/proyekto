@@ -3,7 +3,9 @@ import {
   activityStorage,
   bufferActivity,
   createActivityBuffer,
+  getActivityOrigin,
   runWithActivityBuffer,
+  setActivityOrigin,
 } from './activity-context';
 import { ActivityFlushInterceptor } from '../interceptors/activity-flush.interceptor';
 
@@ -150,5 +152,35 @@ describe('ActivityFlushInterceptor', () => {
     ).rejects.toBe(boom);
 
     expect(audit.flush).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('request origin', () => {
+  const ORIGIN = { via: 'mcp' as const, scopes: ['delivery:write'] };
+
+  it('sets and reads back the current request’s origin', () => {
+    const buffer = createActivityBuffer();
+    activityStorage.run(buffer, () => {
+      expect(getActivityOrigin()).toBeUndefined();
+      expect(setActivityOrigin(ORIGIN)).toBe(true);
+      expect(getActivityOrigin()).toEqual(ORIGIN);
+    });
+    expect(buffer.origin).toEqual(ORIGIN);
+  });
+
+  it('is a no-op outside a request, mirroring bufferActivity', () => {
+    // Cron routes, module boot, unit tests: nothing is being buffered, so
+    // there is nothing to tag.
+    expect(setActivityOrigin(ORIGIN)).toBe(false);
+    expect(getActivityOrigin()).toBeUndefined();
+  });
+
+  it('does not leak between requests', () => {
+    activityStorage.run(createActivityBuffer(), () => {
+      setActivityOrigin(ORIGIN);
+    });
+    activityStorage.run(createActivityBuffer(), () => {
+      expect(getActivityOrigin()).toBeUndefined();
+    });
   });
 });

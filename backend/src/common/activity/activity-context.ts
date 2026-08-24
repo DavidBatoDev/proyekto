@@ -34,11 +34,34 @@ export interface BufferedActivityEntry extends AuditEntry {
   occurredAt: string;
 }
 
+/**
+ * Where a request's writes came from, when that is not simply "a person in the
+ * web app".
+ *
+ * Set once per request by the caller that knows (today: McpController). Audit
+ * rows merge it into their metadata, so a connector-driven write is
+ * distinguishable in the activity feed WITHOUT every domain service having to
+ * grow an actor-context parameter, and without emitting a second `mcp.*` row
+ * beside the service's own.
+ *
+ * Carries no row data — only who was driving. Anything row-derived added here
+ * would leak past the per-row visibility gates (an `internal` risk's title in
+ * the feed re-leaks exactly what `risks.view_internal` protects, because the
+ * audit sensitivity flag is per-action, not per-row).
+ */
+export interface ActivityOrigin {
+  via: 'mcp';
+  /** The scopes the credential carried, for the audit reader. */
+  scopes: string[];
+}
+
 export interface ActivityBuffer {
   entries: BufferedActivityEntry[];
   /** Events dropped after hitting `max` — surfaced in the flush log, never silent. */
   dropped: number;
   max: number;
+  /** Set by the request's entry point when the writes are not user-driven. */
+  origin?: ActivityOrigin;
 }
 
 export const activityStorage = new AsyncLocalStorage<ActivityBuffer>();
@@ -49,6 +72,25 @@ export function createActivityBuffer(
   max: number = DEFAULT_MAX_EVENTS_PER_REQUEST,
 ): ActivityBuffer {
   return { entries: [], dropped: 0, max };
+}
+
+/**
+ * Tag the current request's writes with their origin.
+ *
+ * Returns false when there is no request context, mirroring `bufferActivity` —
+ * the caller can then decide whether that matters (for MCP it does not: no
+ * store means nothing is being buffered to tag).
+ */
+export function setActivityOrigin(origin: ActivityOrigin): boolean {
+  const store = activityStorage.getStore();
+  if (!store) return false;
+  store.origin = origin;
+  return true;
+}
+
+/** The current request's origin, if one was set. */
+export function getActivityOrigin(): ActivityOrigin | undefined {
+  return activityStorage.getStore()?.origin;
 }
 
 /**
