@@ -77,6 +77,18 @@ export function GoLiveInput({
 	return <input {...props} className={`${FIELD_SURFACE} ${className ?? ""}`} />;
 }
 
+export function GoLiveTextarea({
+	className,
+	...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+	return (
+		<textarea
+			{...props}
+			className={`${FIELD_SURFACE} resize-y leading-relaxed ${className ?? ""}`}
+		/>
+	);
+}
+
 /**
  * One selectable tile. `as` picks radio or checkbox semantics — the skills step
  * is multi-select, every other choice step is single-select — but the visual

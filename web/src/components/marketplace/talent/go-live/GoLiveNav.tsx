@@ -18,12 +18,17 @@ export function GoLiveNav({
 	isSaving,
 	onBack,
 	onNext,
+	finalLabel = "Go live",
+	savingLabel = "Publishing…",
 }: {
 	currentStep: number;
 	totalSteps: number;
 	isSaving: boolean;
 	onBack: () => void;
 	onNext: () => void;
+	/** Final-step action label — other wizards reuse this bar with their own verb. */
+	finalLabel?: string;
+	savingLabel?: string;
 }) {
 	const isFinalStep = currentStep === totalSteps;
 	const progress = Math.round((currentStep / totalSteps) * 100);
@@ -70,7 +75,7 @@ export function GoLiveNav({
 					{isFinalStep ? (
 						<>
 							{!isSaving && <CheckCircle2 className="h-4 w-4" />}
-							{isSaving ? "Publishing…" : "Go live"}
+							{isSaving ? savingLabel : finalLabel}
 						</>
 					) : (
 						"Continue"

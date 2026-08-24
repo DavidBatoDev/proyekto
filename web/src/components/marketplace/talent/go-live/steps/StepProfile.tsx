@@ -6,7 +6,7 @@ import {
 	MapPin,
 	Sparkles,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { CertificationModal } from "@/components/profile/CertificationModal";
 import { EducationModal } from "@/components/profile/EducationModal";
 import { ExperienceModal } from "@/components/profile/ExperienceModal";
@@ -68,6 +68,24 @@ export function StepProfile({
 }) {
 	const [editing, setEditing] = useState<EditTarget | null>(null);
 	const avatarInput = useRef<HTMLInputElement>(null);
+	const bioRef = useRef<HTMLTextAreaElement>(null);
+
+	/**
+	 * Grows the bio box to fit its text, on typing and on programmatic fills
+	 * alike -- a LinkedIn import drops a long summary in here without the user
+	 * ever touching the field, so keying this on the value rather than on an
+	 * input event is what makes the imported case work.
+	 *
+	 * `field-sizing: content` would do this in CSS, but it is still
+	 * Chromium-only, and this field is the one place where a wrong height is
+	 * immediately obvious.
+	 */
+	useLayoutEffect(() => {
+		const el = bioRef.current;
+		if (!el) return;
+		el.style.height = "auto";
+		el.style.height = `${el.scrollHeight}px`;
+	}, [draft.bio]);
 	const set = (patch: Partial<ProfileDraft>) =>
 		dispatch({ type: "set", patch });
 	const isOtherIndustry = draft.specCategory === "other";
@@ -187,12 +205,13 @@ export function StepProfile({
 				</h3>
 				<textarea
 					id="gl-bio"
-					rows={7}
+					ref={bioRef}
+					rows={5}
 					value={draft.bio}
 					maxLength={2000}
 					onChange={(e) => set({ bio: e.target.value })}
 					aria-label="About me"
-					className="w-full resize-y border-0 border-b border-input bg-transparent px-0 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-0"
+					className="w-full resize-none overflow-hidden border-0 border-b border-input bg-transparent px-0 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-0"
 					placeholder="What you do, who you do it for, and what you are known for."
 				/>
 				<p className="mt-1 text-right text-xs text-muted-foreground">
