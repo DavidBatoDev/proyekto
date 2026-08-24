@@ -10,6 +10,7 @@ export const MCP_READ_SCOPES = [
 	"knowledge:read",
 	"chat:read",
 	"ai-sessions:read",
+	"delivery:read",
 ] as const;
 
 export const MCP_WRITE_SCOPES = [
@@ -17,6 +18,7 @@ export const MCP_WRITE_SCOPES = [
 	"tasks:write",
 	"tasks:assign",
 	"chat:write",
+	"delivery:write",
 ] as const;
 
 export type McpReadScope = (typeof MCP_READ_SCOPES)[number];
@@ -33,6 +35,8 @@ export const MCP_SCOPE_LABELS: Record<McpScope, string> = {
 	"tasks:write": "Create & edit tasks",
 	"tasks:assign": "Assign tasks",
 	"chat:write": "Post & delete chat messages",
+	"delivery:read": "View deliverables, change requests, risks & decisions",
+	"delivery:write": "Create & update delivery records, decide approvals",
 };
 
 /** Non-secret token metadata returned by the list endpoint. */

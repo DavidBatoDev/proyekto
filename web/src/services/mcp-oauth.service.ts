@@ -31,6 +31,10 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 	"tasks:assign": "Change who a task is assigned to — this notifies them",
 	"chat:write":
 		"Post, edit and delete messages in channels — people will see them",
+	"delivery:read":
+		"Deliverables, change requests, risks & issues, and the decision log",
+	"delivery:write":
+		"Log and update delivery records — including deciding change requests, reviewing deliverables and finalizing decisions",
 	[OFFLINE_ACCESS]: "Keep working without asking you to approve again",
 };
 

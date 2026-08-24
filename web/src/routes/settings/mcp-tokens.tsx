@@ -4,6 +4,7 @@ import {
 	AlertTriangle,
 	BookOpen,
 	Check,
+	ClipboardCheck,
 	Copy,
 	FolderKanban,
 	KeyRound,
@@ -16,6 +17,7 @@ import {
 	PlugZap,
 	Plus,
 	Send,
+	ShieldAlert,
 	ShieldCheck,
 	Sparkles,
 	Terminal,
@@ -100,6 +102,16 @@ const SCOPE_META: Record<
 		label: "Post to chat",
 		hint: "Send, edit & delete channel messages",
 		Icon: Send,
+	},
+	"delivery:read": {
+		label: "Delivery governance",
+		hint: "Deliverables, change requests, risks, decisions",
+		Icon: ClipboardCheck,
+	},
+	"delivery:write": {
+		label: "Edit delivery records",
+		hint: "Log & update them, and decide approvals",
+		Icon: ShieldAlert,
 	},
 };
 

@@ -16,6 +16,12 @@ export const MCP_READ_SCOPES = [
   // Phase 4. Owner-only by construction: every AI-session read filters on
   // user_id = caller, so this can never surface a teammate's threads.
   'ai-sessions:read',
+  // Delivery governance: deliverables, change requests, the risk & issue
+  // register, the decision log. ONE scope for all four because they share a
+  // single `access.delivery` gate in the app — the same reason they are one
+  // backend module and not four. Rows marked `internal` are still withheld by
+  // the services from anyone without risks/decisions.view_internal.
+  'delivery:read',
 ] as const;
 
 // Write scopes. Opt-in per token: a read-only PAT carries none of these, so it
@@ -28,6 +34,17 @@ export const MCP_WRITE_SCOPES = [
   // Phase 4. Channel messages only — DMs are deliberately not exposed (see
   // chat-write.tools.ts for why) and channel administration is not either.
   'chat:write',
+  // Delivery governance writes, including the approval verbs (decide a change
+  // request, review a deliverable, finalize a decision).
+  //
+  // Deliberately NOT behind a capability flag, unlike chat:write. The gate here
+  // is the combination that already exists: the scope is opt-in at token
+  // issuance and unchecked by default on the OAuth consent screen, every tool
+  // re-checks the live project permission (change_requests.decide and friends),
+  // and the approval verbs carry destructiveHint so the host confirms first.
+  // Nothing here posts new text to people who did not ask for it the way a chat
+  // message does. If you are adding a flag, do it because that changed.
+  'delivery:write',
 ] as const;
 
 export const MCP_ALL_SCOPES = [
