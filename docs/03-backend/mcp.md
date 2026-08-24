@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -13,7 +13,8 @@ current.** Three independent flags gate it: `MCP_ENABLED` covers the whole
 surface (while unset `/mcp` returns **503** and the PAT routes deny),
 `MCP_OAUTH_ENABLED` is a **second** gate over the Phase-3 OAuth 2.1
 authorization server, and `MCP_CHAT_WRITE_ENABLED` is a **third**, narrower gate
-over the Phase-4 `chat:write` scope and its three chat write tools.
+over the Phase-4 `chat:write` scope and its three chat write tools. The delivery
+governance scopes added in 2026-08 deliberately introduce **no fourth flag**.
 
 > **⚠️ Writes are opt-in per credential.** A token only mutates if it carries the
 > relevant `*:write` scope **and** the caller holds the live Proyekto permission.
@@ -101,8 +102,8 @@ exactly as in Phases 1–2.
 ## Scopes
 
 Coarse OAuth-style grants
-([`mcp-scopes.ts`](../../backend/src/modules/shared/mcp/mcp-scopes.ts)) — nine of them,
-five read and four write, carried either on a PAT or in an OAuth access token.
+([`mcp-scopes.ts`](../../backend/src/modules/shared/mcp/mcp-scopes.ts)) — eleven of
+them, six read and five write, carried either on a PAT or in an OAuth access token.
 PAT issuance rejects any unknown scope string and the OAuth server drops any it
 doesn't recognize, so a credential can't carry a grant no tool honors. Every tool
 requires **both** its scope **and** the live Proyekto project/roadmap permission.
@@ -114,10 +115,12 @@ requires **both** its scope **and** the live Proyekto project/roadmap permission
 | `knowledge:read` | read | RAG search over project knowledge |
 | `chat:read` | read | chat rooms + messages |
 | `ai-sessions:read` | read | the caller's **own** roadmap AI planning threads (Phase 4) |
+| `delivery:read` | read | deliverables, change requests, the risk & issue register, the decision log |
 | `roadmaps:write` | write | structural roadmap operations (preview / commit / revert) |
 | `tasks:write` | write | create/update tasks, add task/epic/feature comments |
 | `tasks:assign` | write | set a task's assignee set (notifies newly-assigned) |
 | `chat:write` | write | send / edit / unsend **channel** messages (Phase 4) — dark unless `MCP_CHAT_WRITE_ENABLED` |
+| `delivery:write` | write | create/update delivery records, **and** the approval verbs (decide a change request, review a deliverable, finalize a decision) |
 
 The OAuth server advertises the currently **enabled** scopes **plus
 `offline_access`** (`supportedScopes()` in
@@ -129,6 +132,11 @@ refresh token and then filtered out of the access token's MCP scope set, so it
 grants no tool access.
 
 ### Dark scopes
+
+Not every scope needs one. `delivery:read` / `delivery:write` ship **flagless**
+on purpose — see [Delivery governance](#delivery-governance) — so this section is
+about `chat:write` specifically, and about the bar a future scope has to clear to
+need the same treatment: it posts text that real people read.
 
 `chat:write` **is** in the scope enum, but it is not necessarily live. Phases 1–3
 needed no per-feature flag because `MCP_ENABLED` was still off in prod while they
@@ -164,10 +172,10 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Twenty-eight tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
-sixteen read, twelve write. Three of the twelve (the chat writes) register only
-while `MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag unset advertises
-**twenty-five**. Each tool reuses an existing domain service that carries its own
+Fifty-three tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
+twenty-six read, twenty-seven write. Three of the twenty-seven (the chat writes)
+register only while `MCP_CHAT_WRITE_ENABLED` is on, so a server with the flag
+unset advertises **fifty**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
@@ -193,6 +201,16 @@ service DTO).
 | `chat_messages_search` | `chat:read` | `room_id`, `query`, `limit?` | Keyword search within a room |
 | `roadmap_ai_sessions_list` | `ai-sessions:read` | `roadmap_id`, `archived?`, `limit?` | **Your own** AI planning threads for a roadmap |
 | `roadmap_ai_session_messages` | `ai-sessions:read` | `roadmap_id`, `session_id`, `before_seq?`, `after_seq?`, `limit?` | One thread's messages oldest-first, plus a `next_before_seq` cursor |
+| `deliverables_list` | `delivery:read` | `project_id`, `status?`, `limit?` | Deliverables in board order with criteria, reviewers (projected), links and computed `progress` |
+| `deliverable_get` | `delivery:read` | `project_id`, `deliverable_id` | One deliverable in full |
+| `change_requests_list` | `delivery:read` | `project_id`, `status?`, `view?`, `requested_by?`, `limit?` | Change requests newest-first. `view` is the app's chip grouping (`open`/`awaiting_decision`/`decided`/`closed`/`all`); an exact `status` wins over it |
+| `change_request_get` | `delivery:read` | `project_id`, `change_request_id` | One change request incl. decision stamps and `applied_change` |
+| `risks_list` | `delivery:read` | `project_id`, `kind?`, `status?`, `limit?` | The register, most severe first, **plus `can_view_internal`** so the model knows the list may be partial |
+| `risk_get` | `delivery:read` | `project_id`, `risk_id` | One register row; `NOT_FOUND` for an internal row you cannot see |
+| `risk_candidates_list` | `delivery:read` | `project_id` | Blocked tasks and at-risk/missed milestones not yet in the register |
+| `decisions_list` | `delivery:read` | `project_id`, `status?`, `category_id?`, `limit?` | The decision log with options and links |
+| `decision_get` | `delivery:read` | `project_id`, `decision_id` | One decision in full; `NOT_FOUND` for an internal one you cannot see |
+| `decision_categories_list` | `delivery:read` | `project_id` | The per-project decision taxonomy (nothing is seeded by default) |
 
 #### AI-session reads
 
@@ -240,6 +258,21 @@ notify, or post are flagged `destructiveHint` so the host asks the user first.
 | `chat_send_message` | `chat:write` | `project_id`, `room_id`, `content`, `reply_to_id?` | Posts to a channel. `destructiveHint`. |
 | `chat_message_edit` | `chat:write` | `message_id`, `content` | Edits a message **you** sent; shows an "(edited)" marker. `destructiveHint`. |
 | `chat_message_unsend` | `chat:write` | `message_id` | Deletes a message **you** sent. `destructiveHint`. |
+| `deliverable_create` | `delivery:write` | `project_id`, `title`, …, `links?`, `criteria?` | Creates a deliverable. **No `reviewer_ids`** — see below. Perm `deliverables.edit`. |
+| `deliverable_update` | `delivery:write` | `project_id`, `deliverable_id`, fields | `status` only moves between `not_started` / `in_progress`. Perm `deliverables.edit`. |
+| `deliverable_submit` | `delivery:write` | `project_id`, `deliverable_id` | Hands it to reviewers — **resets every prior sign-off to pending**. `destructiveHint`. |
+| `deliverable_review` | `delivery:write` | `project_id`, `deliverable_id`, `decision`, `review_note?` | Accept or send back. Named reviewer **or** `deliverables.approve`. `destructiveHint`. |
+| `change_request_create` | `delivery:write` | `project_id`, `title`, …, `links?` | Always creates a **draft** — `submit` is not forwarded. Perm `change_requests.create`. |
+| `change_request_update` | `delivery:write` | `project_id`, `change_request_id`, fields | Open statuses only. Perm `change_requests.create`. |
+| `change_request_submit` | `delivery:write` | `project_id`, `change_request_id` | Sends it for decision — **notifies every decider**. `destructiveHint`. |
+| `change_request_withdraw` | `delivery:write` | `project_id`, `change_request_id` | Irreversible; a withdrawn request cannot be resubmitted. `destructiveHint`. |
+| `change_request_decide` | `delivery:write` | `project_id`, `change_request_id`, `decision`, `decision_note?` | Approve / reject / send back; notifies. Perm `change_requests.decide`. `destructiveHint`. |
+| `change_request_mark_applied` | `delivery:write` | `project_id`, `change_request_id`, `applied_change_id` | Records the roadmap commit that carried it. A commit from another project is rejected. `destructiveHint`. |
+| `risk_create` | `delivery:write` | `project_id`, `kind`, `title`, …, `links?` | A `risk` requires a likelihood, an `issue` must not carry one. `visibility` defaults to **internal**. Perm `risks.edit`. |
+| `risk_update` | `delivery:write` | `project_id`, `risk_id`, fields | Moving to `resolved` stamps who and when. Perm `risks.edit`. |
+| `decision_create` | `delivery:write` | `project_id`, `title`, `decision`, **`status`**, …, `links?`, `options?` | `status` is **required** — no default. **No `decided_by` / `source_chat_message_id`.** Perm `decisions.edit`. |
+| `decision_update` | `delivery:write` | `project_id`, `decision_id`, fields | `status` is absent — finalizing is its own tool. Perm `decisions.edit`. |
+| `decision_finalize` | `delivery:write` | `project_id`, `decision_id` | proposed → final, stamping the caller as decider. `destructiveHint`. |
 
 The `operations[]` payload is the existing shared contract
 ([`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json)):
@@ -253,6 +286,89 @@ operation shapes.
 > can mutate, and a stale token forces a re-preview. `roadmap_revert_change` maps
 > internally to the service's `discard` (undo); the inverse `rollback` (redo) is
 > intentionally **not** exposed.
+
+
+#### Delivery governance
+
+[`delivery.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery.tools.ts)
+and
+[`delivery-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-write.tools.ts)
+cover the four surfaces of the `execution/delivery/` module. **One scope per
+direction** rather than one per entity, because the app already gates all four
+reads behind a single `access.delivery` key — the same reason they are one
+backend module and not four. Writes still land on the five per-surface keys
+(`deliverables.edit`, `change_requests.create` / `.decide`, `risks.edit`,
+`decisions.edit`), so the scope is necessary and never sufficient.
+
+**No feature flag**, unlike `chat:write`. The gate is the combination that
+already exists: the scope is opt-in at token issuance, unchecked by default on
+the consent screen, re-checked against the live project permission on every
+call, and the approval verbs carry `destructiveHint`. Nothing here posts new
+text to people who did not ask for it the way a chat message does.
+
+Four things are load-bearing:
+
+| Concern | How it is handled |
+| --- | --- |
+| **Internal rows** | Risks default to `internal`, decisions to `shared`. The services filter `visibility` **in SQL** for callers without `risks.view_internal` / `decisions.view_internal`, and single-row reads answer **404, not 403**. The tools never touch `deps.s.db`, so there is no service-role path around that filter. `risks_list` returns `can_view_internal` so the model can say the register may be partial. |
+| **Reviewer PII** | `REVIEWER_PROFILE_COLS` selects `email, first_name, last_name`, but `DeliverableReviewerRow` declares only three fields — **the PII is invisible to the type system**. Every deliverable leaving the server goes through `projectDeliverable()`, a build-the-object whitelist (never a delete-keys blacklist), on writes as well as reads. Pinned on JSON output in the spec, because the type cannot pin it. |
+| **Paging** | No delivery service takes a limit; these registers are rendered whole by the web UI. The tools slice in-process via `page()` and report the **true** `total`. This caps the model's context, not the database work — do not read it as pagination. |
+| **Non-members** | The services raise 403, which would confirm a project exists. Every delivery tool calls `assertProjectViewer` first, so an outsider gets `NOT_FOUND`; a member merely lacking a capability still gets the service's honest `FORBIDDEN`. |
+
+Three inputs are deliberately **not** forwarded, each closing a real hole:
+
+| Not forwarded | Why |
+| --- | --- |
+| `change_request_create.submit` | The DTO's `submit: true` fires the whole decider notification fan-out in the same call, and `change_requests.create` is **commenter**-tier — the lowest write bar on this server. Creating is always a draft; notifying is its own confirmed call. |
+| `decision_create.decided_by` (and `source_chat_message_id`) | The service writes a caller-supplied `decided_by` verbatim on a `final` decision. In the web UI that records who decided in a meeting; from a connector it is putting words in a named person's mouth in the system of record. The decider is always the caller. |
+| `deliverable_create.reviewer_ids` | Naming a reviewer **is** the grant to decide, and the create path's `insertReviewers` skips the `project_access` membership check that `addReviewer` enforces. (That gap still exists on the REST route — worth a follow-up.) |
+
+`decision_create.status` is **required with no default**. The service defaults to
+`'final'`, which would have an agent minting decisions already stamped with a
+decider; a silent tool-layer default of `'proposed'` would just trade one
+surprise for another. Making the model state its intent is the honest fix.
+
+Also deliberately absent: **every delete** (governance records are the paper
+trail, and each has a lifecycle correction — withdraw, close, supersede),
+post-hoc link add/remove (all four `create` calls take `links[]`, and the three
+junctions allow *different* targets), attachment writes (`url` is agent-suppliable
+free text pointing into the evidence pane humans use to accept work), reviewer
+add/remove (`removeReviewer` re-derives status, so dropping the last pending
+reviewer can silently flip a deliverable to `approved`), criterion and option
+CRUD, and decision-category writes.
+
+> **⚠️ Approving a change request does not touch the roadmap.** `decide` only
+> flips status; `markApplied` requires an `applied_change_id` that already exists
+> in `roadmap_change_history` **for the same project**. The sequence spans two
+> scopes, which is why a `delivery:write`-only token can approve but never apply:
+>
+> ```
+>   change_request_decide(approved)      delivery:write
+>     -> roadmap_preview_operations      roadmaps:write   (revision_token)
+>     -> roadmap_commit_operations       roadmaps:write   (change_id)
+>     -> change_request_mark_applied     delivery:write
+> ```
+
+**Audit: no `mcp.*` rows here.** All four delivery services already call
+`AuditService.log` with entity-correct metadata, so a tool-layer write would
+double-log and duplicate into the RAG index (`change_request.created/approved/applied`
+and `decision.created/superseded` are all `INDEXABLE_ACTIONS`). Provenance comes
+from a **request-level origin marker** instead:
+[`activity-context.ts`](../../backend/src/common/activity/activity-context.ts)
+gained an `ActivityOrigin` on the per-request buffer, `McpController` sets
+`{ via: 'mcp', scopes }` before any tool runs, and `AuditService.toBufferedEntry`
+merges it *under* the caller's own metadata so a service key always wins. That
+adds **no new action literals** — `npm run check:activity-actions` must report
+the same counts before and after — and it retroactively marks the existing
+`mcp.task_*` / `mcp.chat_*` rows too.
+
+The ordering holds: with `enableJsonResponse: true` the SDK's `handlePostRequest`
+resolves only once the JSON response has been produced, so `McpController.handle`
+returns strictly after the tool body buffered its rows, and
+`ActivityFlushInterceptor` runs after that. The origin carries **no row data** —
+an internal risk's title in metadata would re-leak precisely what
+`risks.view_internal` protects, because the audit sensitivity flag is per-action,
+not per-row.
 
 #### Chat writes
 
@@ -731,6 +847,17 @@ flip with no Secret Manager work.
   new scope). No flag — live wherever `MCP_ENABLED` is. Caveat: epic/feature
   comments are **not** knowledge-outbox indexed, so unlike task comments they
   never surface in `project_knowledge_search`.
+
+- **Delivery governance (current, 2026-08)** — the `delivery:read` /
+  `delivery:write` scopes and twenty-five tools over deliverables, change
+  requests, the risk & issue register and the decision log, reusing the
+  `execution/delivery/` services. **No flag** — live wherever `MCP_ENABLED` is.
+  Shipped alongside two service fixes it depends on: `DecisionsService` gained
+  the internal-visibility gate its mutation paths were missing (`update`,
+  `finalize`, `remove`, the link/option paths, and the supersede target on
+  `create` all 404 an internal decision for an editor without
+  `decisions.view_internal`, matching what `RisksService` already did), and
+  `RisksService` gained the public `get` the other three services already had.
 
 Explicitly **not** exposed yet, and blocked on real work rather than scheduling:
 direct messages, which would need their own scope **and** a service-layer

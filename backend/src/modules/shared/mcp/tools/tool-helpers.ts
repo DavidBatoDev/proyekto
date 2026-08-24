@@ -15,6 +15,11 @@ import type { EpicsService } from '../../../execution/roadmaps/services/epics.se
 import type { FeaturesService } from '../../../execution/roadmaps/services/features.service';
 import type { RoadmapAiSessionsService } from '../../../execution/roadmaps/services/roadmap-ai-sessions.service';
 import type { ChatService } from '../../../execution/chat/chat.service';
+import type { DeliverablesService } from '../../../execution/delivery/deliverables.service';
+import type { ChangeRequestsService } from '../../../execution/delivery/change-requests.service';
+import type { RisksService } from '../../../execution/delivery/risks.service';
+import type { DecisionsService } from '../../../execution/delivery/decisions.service';
+import type { DecisionCategoriesService } from '../../../execution/delivery/decision-categories.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { McpScope } from '../mcp-scopes';
 import type { RoadmapVisual } from '../roadmap-visual';
@@ -41,6 +46,14 @@ export interface McpServices {
   features: FeaturesService;
   aiSessions: RoadmapAiSessionsService;
   chat: ChatService;
+  // Delivery governance. All five take (projectId, [id], userId, dto) and carry
+  // their own authz — including the per-row internal/shared visibility gates,
+  // which is why the delivery tools must call these and never `db` directly.
+  deliverables: DeliverablesService;
+  changeRequests: ChangeRequestsService;
+  risks: RisksService;
+  decisions: DecisionsService;
+  decisionCategories: DecisionCategoriesService;
   audit: AuditService;
   db: SupabaseClient;
   maxPageSize: number;
