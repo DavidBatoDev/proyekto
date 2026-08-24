@@ -1,6 +1,6 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
 [`supabase/migrations/`](../../supabase/migrations/) — **255 migrations** spanning
@@ -77,6 +77,25 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
 | `finance_project_settings` | Company % vs team % revenue split and allocation mode per project (CHECK sums to 100) |
 | `finance_member_allocations` | Each member's slice of a project's team pool — **internal, never reaches a client** |
+
+### Engagements
+
+Who hired whom: the commercial layer created by two-position contract signing
+(`sign_contract_position_and_activate`). Every table has RLS enabled with **zero
+policies** — deny-all; only the backend's `service_role` path reaches them, via
+`EngagementsService`. No engagement table participates in authorization. Full
+detail in [../14-engagement/data-model.md](../14-engagement/data-model.md).
+
+| Table | Purpose |
+| --- | --- |
+| `contract_positions` | The two party seats on a contract (`hirer`/`provider`), identity snapshots, and per-seat signatures |
+| `engagements` | The relationship record: `kind` (`client_services`/`talent_services`), `scope_mode`, `status` (`active`/`ended`/`cancelled`), activating contract |
+| `engagement_parties` | Two rows per engagement — position, user, capacity, name/email snapshots |
+| `engagement_project_links` | Which projects the relationship covers (`contract_scope` or `operational_assignment`); commercial attribution, never access |
+| `engagement_time_settings` | Effective-dated time policy (tracking mode, approval mode, rounding, weekly cap) |
+| `engagement_time_rates` | Effective-dated signed terms; `rate_kind` is `billing` on client engagements, `cost` on talent engagements — the two must never merge |
+| `engagement_assignments` | Which worker performs which project work — **no writer yet** |
+| `engagement_time_approvals`, `engagement_time_approval_items` | Talent submits, Consultant decides — **no writer yet** |
 
 > **⚠️ Dead tables:** `payment_checkpoints` (initial schema) and `transactions`
 > (escrow migration) were **dropped** on 2026-01-11 (`20260111000000_drop_old_project_tables.sql`)

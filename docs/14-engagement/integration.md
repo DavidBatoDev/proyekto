@@ -1,6 +1,6 @@
 # Engagement Integration Surface
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 This page is the contract for building against P4b. It states what the engagement model
 actually exposes today, what it does not, and the rules any new marketplace surface must
@@ -10,7 +10,9 @@ available but cannot be reached from the web client at all.
 ## The one-sentence summary
 
 Contract signing creates engagements, and a **party-scoped read path now exists** —
-`GET /api/engagements` plus an Engagements tab on `/marketplace/finance`. What is still missing is
+`GET /api/engagements` plus the top-level `/engagements` page (list and
+`/engagements/$engagementId` detail, auth-only, moved out of the consultant-gated finance
+area 2026-08-24 so Clients and Talent can reach their own agreements). What is still missing is
 everything downstream: assignments, attributed time, submission, and approval have no
 writer and no route.
 
@@ -81,7 +83,7 @@ redaction pass. Two consequences worth knowing before extending this:
 
 `web/src/routes/marketplace/` holds `finance/index.tsx` (portfolio and creation),
 `finance/$contractId.tsx` (editor, terms, signatures, amendments), the two invoice routes,
-plus the `consultant/`, `talent/` and `project-posting` surfaces.
+plus the `consultant/` and `talent/` surfaces.
 
 `contract/sign/$token.tsx` sits **outside** that tree, at the top level, and keeps its
 original `/contract/sign/$token` URL. It is the account-free signing page whose link is
@@ -177,8 +179,10 @@ only place they can be enforced:
 ## Build order for the next slice
 
 1. ~~**Read APIs first**, with redaction — a position-redacted engagement list and detail.~~
-   Shipped 2026-08-18: `EngagementsService`, the two `/api/engagements` routes, and the
-   Engagements tab on `/marketplace/finance`.
+   Shipped 2026-08-18: `EngagementsService` and the two `/api/engagements` routes. The web
+   home was an Engagements tab on the consultant-gated `/marketplace/finance` until
+   2026-08-24, when it moved to the persona-neutral top-level `/engagements` page —
+   matching the API, whose guard is authentication plus party scoping, not capability.
 2. Engagement assignment APIs and UI, including flexible-engagement project placement.
 3. Attributed timers and manual time logs writing `task_time_logs.engagement_assignment_id`.
 4. Talent submission, then Consultant approval/rejection.
