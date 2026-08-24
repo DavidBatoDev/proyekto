@@ -114,8 +114,16 @@ interface RoadmapViewProps {
 	focusNodeOffsetX?: number;
 	focusTaskId?: string | null;
 	onFocusComplete?: () => void;
+	/** Overrides for the focus pan: settle at a fixed zoom instead of keeping
+	 * the current one, and/or force an animation duration (wins over the
+	 * performanceMode reduced-motion default). */
+	focusTransition?: { zoom?: number; durationMs?: number };
 	performanceMode?: RoadmapPerformanceMode;
 }
+
+/** Standard focus pan for structure-panel navigation: animated glide that
+ * settles at 50% zoom, regardless of the canvas performance mode. */
+export const PANEL_FOCUS_TRANSITION = { zoom: 0.5, durationMs: 600 };
 
 /** The canvas renderer. One engine, imported directly. */
 const Renderer: CanvasRenderer = DomSvgRenderer;
@@ -155,6 +163,7 @@ const RoadmapCanvasShell = ({
 	focusTaskId,
 	onFocusComplete,
 	focusNodeOffsetX = 0,
+	focusTransition,
 	performanceMode = "normal",
 }: RoadmapViewProps) => {
 	const user = useUser();
@@ -399,6 +408,11 @@ const RoadmapCanvasShell = ({
 		onUpdateTask,
 	});
 
+	// Destructured to primitives so an inline focusTransition object literal
+	// can't retrigger the focus effect on unrelated renders.
+	const focusZoom = focusTransition?.zoom;
+	const focusDurationMs = focusTransition?.durationMs;
+
 	useEffect(() => {
 		if (!focusNodeId || !viewportReady) {
 			return;
@@ -415,10 +429,10 @@ const RoadmapCanvasShell = ({
 		const centerX = targetNode.position.x + nodeWidth / 2 + focusNodeOffsetX;
 		const centerY = targetNode.position.y + nodeHeight / 2;
 
-		const nextZoom = viewport.getViewport().zoom ?? zoom;
+		const nextZoom = focusZoom ?? viewport.getViewport().zoom ?? zoom;
 		viewport.setCenter(centerX, centerY, {
 			zoom: nextZoom,
-			duration: isReducedMotion ? 0 : 600,
+			duration: focusDurationMs ?? (isReducedMotion ? 0 : 600),
 		});
 
 		setPulseNodeFocus((previous) => ({
@@ -447,6 +461,8 @@ const RoadmapCanvasShell = ({
 		focusNodeId,
 		focusNodeOffsetX,
 		focusTaskId,
+		focusZoom,
+		focusDurationMs,
 		isReducedMotion,
 		onFocusComplete,
 		viewport,

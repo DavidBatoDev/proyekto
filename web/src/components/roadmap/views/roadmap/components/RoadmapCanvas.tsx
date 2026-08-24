@@ -11,7 +11,7 @@ import { RoadmapLeftSidePanel } from "../../../panels/RoadmapLeftSidePanel";
 import { TimelineView } from "../../timeline/TimelineView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
 import type { RoadmapCanvasProps } from "../models/types";
-import { RoadmapView } from "../RoadmapView";
+import { PANEL_FOCUS_TRANSITION, RoadmapView } from "../RoadmapView";
 import { EpicTab } from "./EpicTab";
 import { RoadmapCanvasOverlays } from "./RoadmapCanvasOverlays";
 
@@ -444,6 +444,7 @@ const RoadmapCanvas = ({
 								focusNodeId={focusNodeId}
 								focusNodeOffsetX={focusNodeOffsetX}
 								focusTaskId={focusTaskId}
+								focusTransition={PANEL_FOCUS_TRANSITION}
 								onFocusComplete={onFocusComplete}
 								onPanStart={() => setIsPanningCanvas(true)}
 								onPanEnd={() => setIsPanningCanvas(false)}
