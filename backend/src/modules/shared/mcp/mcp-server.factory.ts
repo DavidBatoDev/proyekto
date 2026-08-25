@@ -129,14 +129,12 @@ export class McpServerFactory {
     registerCommentWriteTools(server, deps);
     registerAiSessionTools(server, deps);
     registerDeliveryTools(server, deps);
+    registerDeliveryWriteTools(server, deps);
     // Dark by default. Not registered rather than registered-and-denying:
     // advertising a tool in tools/list that can only ever fail would invite the
     // model to keep retrying it.
     if (this.capabilities.chatWriteEnabled) {
       registerChatWriteTools(server, deps);
-    }
-    if (this.capabilities.deliveryWriteEnabled) {
-      registerDeliveryWriteTools(server, deps);
     }
     registerResources(server, deps);
     registerRoadmapApp(server);

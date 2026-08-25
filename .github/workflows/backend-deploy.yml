@@ -43,7 +43,6 @@ jobs:
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
       MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
       MCP_CHAT_WRITE_ENABLED: ${{ vars.MCP_CHAT_WRITE_ENABLED }}
-      MCP_DELIVERY_WRITE_ENABLED: ${{ vars.MCP_DELIVERY_WRITE_ENABLED }}
 
     steps:
       - name: Checkout
@@ -259,19 +258,6 @@ jobs:
             echo "MCP chat write tools enabled for this deploy."
           else
             echo "MCP chat writes disabled (set the MCP_CHAT_WRITE_ENABLED repo var to enable)."
-          fi
-
-          # MCP delivery-register writes (Phase 5) — lets a connected agent
-          # write the Deliverables / Change Requests / Risks & Issues /
-          # Decisions registers. Same shape as the chat-write gate: while
-          # unset, delivery:write cannot be granted, is absent from discovery
-          # and the consent screen, and the tools are never registered.
-          # No secret — the flag is the whole switch.
-          if [[ -n "${MCP_DELIVERY_WRITE_ENABLED:-}" ]]; then
-            ENV_VARS="${ENV_VARS},MCP_DELIVERY_WRITE_ENABLED=true"
-            echo "MCP delivery write tools enabled for this deploy."
-          else
-            echo "MCP delivery writes disabled (set the MCP_DELIVERY_WRITE_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

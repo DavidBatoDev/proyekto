@@ -34,36 +34,23 @@ describe('McpCapabilitiesService', () => {
     ).toBe(true);
   });
 
-  it('keeps delivery:write dark by default', () => {
-    const caps = capabilities();
-    expect(caps.deliveryWriteEnabled).toBe(false);
-    expect(caps.isScopeEnabled('delivery:write')).toBe(false);
-    expect(caps.enabledScopes()).not.toContain('delivery:write');
-  });
-
-  it('leaves every ungated scope enabled', () => {
-    const GATED = ['chat:write', 'delivery:write'];
+  it('leaves every ungated scope enabled — including the Phase-5 delivery pair', () => {
     const enabled = capabilities().enabledScopes();
     for (const scope of MCP_READ_SCOPES) {
       expect(enabled).toContain(scope);
     }
-    for (const scope of MCP_WRITE_SCOPES.filter((s) => !GATED.includes(s))) {
+    for (const scope of MCP_WRITE_SCOPES.filter((s) => s !== 'chat:write')) {
       expect(enabled).toContain(scope);
     }
+    // Flagless by owner decision (2026-08-25): delivery:write is live on
+    // deploy like the other write scopes.
+    expect(enabled).toContain('delivery:write');
   });
 
   it('exposes chat:write once the flag is set', () => {
     expect(
       capabilities({ MCP_CHAT_WRITE_ENABLED: 'true' }).enabledScopes(),
     ).toContain('chat:write');
-  });
-
-  it('exposes delivery:write once its flag is set — independently of chat', () => {
-    const enabled = capabilities({
-      MCP_DELIVERY_WRITE_ENABLED: 'true',
-    }).enabledScopes();
-    expect(enabled).toContain('delivery:write');
-    expect(enabled).not.toContain('chat:write');
   });
 });
 

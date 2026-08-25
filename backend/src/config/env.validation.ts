@@ -436,14 +436,6 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   MCP_CHAT_WRITE_ENABLED?: string;
-
-  // Same shape as MCP_CHAT_WRITE_ENABLED, for the Phase-5 delivery-register
-  // write tools: unless 'true', the `delivery:write` scope cannot be granted,
-  // is absent from discovery and the consent screen, and the tools are never
-  // registered. Flip it as its own step.
-  @IsOptional()
-  @IsString()
-  MCP_DELIVERY_WRITE_ENABLED?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

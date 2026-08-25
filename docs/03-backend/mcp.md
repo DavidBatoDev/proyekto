@@ -9,13 +9,13 @@ in the `mcp` backend module ([`backend/src/modules/shared/mcp/`](../../backend/s
 and reuses the existing project / roadmap / chat / knowledge / task domain
 services **in-process**, so every tool re-checks live authorization on each call
 — a scope on the token is necessary but never sufficient. **Phases 1–5 are
-current.** Four independent flags gate it: `MCP_ENABLED` covers the whole
+current.** Three independent flags gate it: `MCP_ENABLED` covers the whole
 surface (while unset `/mcp` returns **503** and the PAT routes deny),
 `MCP_OAUTH_ENABLED` is a **second** gate over the Phase-3 OAuth 2.1
-authorization server, `MCP_CHAT_WRITE_ENABLED` is a **third**, narrower gate
-over the Phase-4 `chat:write` scope and its three chat write tools, and
-`MCP_DELIVERY_WRITE_ENABLED` is a **fourth** with the same shape over the
-Phase-5 `delivery:write` scope and its fifteen register write tools.
+authorization server, and `MCP_CHAT_WRITE_ENABLED` is a **third**, narrower
+gate over the Phase-4 `chat:write` scope and its three chat write tools. The
+Phase-5 delivery scopes are deliberately **flagless** (owner decision,
+2026-08-25): live wherever `MCP_ENABLED` is, gated per credential.
 
 > **⚠️ Writes are opt-in per credential.** A token only mutates if it carries the
 > relevant `*:write` scope **and** the caller holds the live Proyekto permission.
@@ -121,7 +121,7 @@ requires **both** its scope **and** the live Proyekto project/roadmap permission
 | `tasks:write` | write | create/update tasks, add task/epic/feature comments |
 | `tasks:assign` | write | set a task's assignee set (notifies newly-assigned) |
 | `chat:write` | write | send / edit / unsend **channel** messages (Phase 4) — dark unless `MCP_CHAT_WRITE_ENABLED` |
-| `delivery:write` | write | register writes + lifecycle verbs (Phase 5) — dark unless `MCP_DELIVERY_WRITE_ENABLED` |
+| `delivery:write` | write | register writes + lifecycle verbs (Phase 5) — flagless, live on deploy |
 
 The OAuth server advertises the currently **enabled** scopes **plus
 `offline_access`** (`supportedScopes()` in
@@ -134,15 +134,16 @@ grants no tool access.
 
 ### Dark scopes
 
-`chat:write` and `delivery:write` **are** in the scope enum, but they are not
-necessarily live. Phases 1–3 needed no per-feature flag because `MCP_ENABLED`
-was still off in prod while they landed; both `MCP_ENABLED` and
-`MCP_OAUTH_ENABLED` are on now, so the moment a scope enters the enum it would
-reach discovery, the 401 challenge, and the consent screen **on deploy, with no
-activation step**. For writes that post text real people read — or stamp names
-onto shared governance records — that breaks the staged-rollout rule.
+`chat:write` **is** in the scope enum, but it is not necessarily live. Phases
+1–3 needed no per-feature flag because `MCP_ENABLED` was still off in prod
+while they landed; both `MCP_ENABLED` and `MCP_OAUTH_ENABLED` are on now, so
+the moment a scope enters the enum it reaches discovery, the 401 challenge,
+and the consent screen **on deploy, with no activation step**. For writes that
+post text real people read, that breaks the staged-rollout rule. (Phase 5's
+`delivery:write` deliberately took the flagless path instead — an explicit
+owner decision at activation time, 2026-08-25.)
 
-So each flag is resolved in exactly one place —
+So the flag is resolved in exactly one place —
 [`mcp-capabilities.service.ts`](../../backend/src/modules/shared/mcp/mcp-capabilities.service.ts)
 — and read at four points; the first three are the enforcement, the fourth only
 keeps the UI honest:
@@ -171,9 +172,8 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 Fifty-one tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
 twenty-four read, twenty-seven write. The three chat writes register only while
-`MCP_CHAT_WRITE_ENABLED` is on, and the fifteen delivery writes only while
-`MCP_DELIVERY_WRITE_ENABLED` is on, so a server with both flags unset advertises
-**thirty-three**. Each tool reuses an existing domain service that carries its own
+`MCP_CHAT_WRITE_ENABLED` is on, so a server with that flag unset advertises
+**forty-eight**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
@@ -315,7 +315,8 @@ ever notifying them.
 #### Delivery-register writes
 
 [`delivery-write.tools.ts`](../../backend/src/modules/shared/mcp/tools/delivery-write.tools.ts)
-covers the four governance registers, dark behind `MCP_DELIVERY_WRITE_ENABLED`.
+covers the four governance registers — flagless and live on deploy (owner
+decision, 2026-08-25); the per-credential `delivery:write` opt-in is the gate.
 Every call re-asserts the live permission inside the
 [`DeliveryModule`](../../backend/src/modules/execution/delivery/delivery.module.ts)
 services (`access.delivery` plus `deliverables.edit` / `deliverables.approve` /
@@ -729,7 +730,6 @@ absent or mis-sized.
 | `MCP_OAUTH_RESOURCE` | Protected-resource id; must **byte-match** the URL users type into their host (defaults to `<issuer>/mcp`) |
 | `MCP_OAUTH_ACCESS_TTL_SECONDS` | Access-token lifetime (default 3600) |
 | `MCP_CHAT_WRITE_ENABLED` | Third gate — anything but `'true'` keeps the Phase-4 chat write tools unregistered, `chat:write` unmintable, and the scope out of discovery / the challenge / consent |
-| `MCP_DELIVERY_WRITE_ENABLED` | Fourth gate, same shape — anything but `'true'` keeps the Phase-5 delivery write tools unregistered, `delivery:write` unmintable, and the scope out of discovery / the challenge / consent |
 
 All are registered in
 [`env.validation.ts`](../../backend/src/config/env.validation.ts) and all are
@@ -744,11 +744,11 @@ has its own gated block. `MCP_ENABLED` needs no secret (PATs reuse the existing
 on: create the `MCP_OAUTH_JWT_SECRET` secret (grant the runtime SA
 `secretAccessor`), then set the `MCP_OAUTH_ENABLED` repo var.
 
-`MCP_CHAT_WRITE_ENABLED` and `MCP_DELIVERY_WRITE_ENABLED` each have their own
-block, and they are the simplest of the gates: **env var only, no secret** —
-when the repo var is set the block appends the `=true` assignment to
-`ENV_VARS`, otherwise it logs that the writes stay off. The flag *is* the whole
-switch, so activation is a one-step repo-var flip with no Secret Manager work.
+`MCP_CHAT_WRITE_ENABLED` has its own block, and it is the simplest of the three:
+**env var only, no secret** — when the repo var is set the block appends
+`MCP_CHAT_WRITE_ENABLED=true` to `ENV_VARS`, otherwise it logs that chat writes
+stay off. The flag *is* the whole switch, so activation is a one-step repo-var
+flip with no Secret Manager work.
 
 > **⚠️ Cloud Run deploys full-replace the secret list**, so a new secret must be
 > added unconditionally to the workflow's `SECRETS` assembly — see
@@ -791,12 +791,16 @@ switch, so activation is a one-step repo-var flip with no Secret Manager work.
   never surface in `project_knowledge_search`.
 
 - **Phase 5 (current, 2026-08)** — the delivery governance registers. The
-  `delivery:read` / `delivery:write` scopes, eight read tools live on deploy
-  wherever `MCP_ENABLED` is, and fifteen write tools dark behind
-  `MCP_DELIVERY_WRITE_ENABLED` (repo-var flip, no secret — the Phase-4b chat
-  playbook). Existing credentials do **not** grow scopes: hosted-Claude users
-  reconnect the connector and PAT users re-issue to pick up `delivery:*`, and
-  the consent screen leaves `delivery:write` unchecked like every write scope.
+  `delivery:read` / `delivery:write` scopes and all twenty-three tools, live
+  on deploy wherever `MCP_ENABLED` is. **Flagless by owner decision at
+  activation (2026-08-25)** — the write half briefly shipped behind
+  `MCP_DELIVERY_WRITE_ENABLED`, which was removed the same day; the
+  per-credential scope opt-in plus the delivery services' own permission gates
+  (`deliverables.edit/approve`, `change_requests.create/decide`, `risks.edit`,
+  `decisions.edit`) are the control surface. Existing credentials do **not**
+  grow scopes: hosted-Claude users reconnect the connector and PAT users
+  re-issue to pick up `delivery:*`, and the consent screen leaves
+  `delivery:write` unchecked like every write scope.
 
 Explicitly **not** exposed yet, and blocked on real work rather than scheduling:
 direct messages, which would need their own scope **and** a service-layer

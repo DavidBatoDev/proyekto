@@ -15,8 +15,10 @@ import {
 } from './tool-helpers';
 
 /**
- * Phase 5 writes over the delivery governance registers, dark behind
- * MCP_DELIVERY_WRITE_ENABLED. Every call re-asserts the live permission inside
+ * Phase 5 writes over the delivery governance registers. Live on deploy by
+ * owner decision (2026-08-25) — no per-feature flag; the per-credential
+ * `delivery:write` scope opt-in is the gate. Every call additionally
+ * re-asserts the live permission inside
  * the service (`deliverables.edit` / `deliverables.approve` /
  * `change_requests.create` / `change_requests.decide` / `risks.edit` /
  * `decisions.edit`), and the services self-audit through the global

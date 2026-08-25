@@ -39,15 +39,9 @@ export class McpCapabilitiesService {
     return this.config.get<string>('MCP_CHAT_WRITE_ENABLED') === 'true';
   }
 
-  /** Delivery-register write tools are live. Dark unless explicitly switched on. */
-  get deliveryWriteEnabled(): boolean {
-    return this.config.get<string>('MCP_DELIVERY_WRITE_ENABLED') === 'true';
-  }
-
   /** True when this scope may currently be granted and used. */
   isScopeEnabled(scope: McpScope): boolean {
     if (scope === 'chat:write') return this.chatWriteEnabled;
-    if (scope === 'delivery:write') return this.deliveryWriteEnabled;
     return true;
   }
 

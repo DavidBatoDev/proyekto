@@ -33,7 +33,9 @@ export const MCP_WRITE_SCOPES = [
   // chat-write.tools.ts for why) and channel administration is not either.
   'chat:write',
   // Phase 5. Register writes + lifecycle verbs (submit/decide/review/finalize).
-  // Dark unless MCP_DELIVERY_WRITE_ENABLED — see McpCapabilitiesService.
+  // Live on deploy by owner decision (2026-08-25) — no per-feature flag; the
+  // per-credential scope opt-in and the services' own permission gates are the
+  // control surface.
   'delivery:write',
 ] as const;
 
