@@ -1,6 +1,6 @@
 # Engagements
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-25 · **Status:** current
 
 > **⚠️ Activation is live; the consuming runtime is not.** All three migrations are
 > applied in production —
@@ -22,6 +22,11 @@
 > approval, and position-redacted projections remain unbuilt. Read
 > [Integration surface](./integration.md) before building against this model.
 
+> **Naming note (2026-08-25):** the user-facing term "engagement" may be renamed to
+> **"deals" / "deals center"**. Not decided. Until it is, code, routes, tables, and these
+> docs keep saying "engagement"; a rename would be a full-stack sweep like the
+> freelancer → talent rename (`0c27508f`), not a label change.
+
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making
 commercial relationships a source of project authorization. Contracts remain the legal
@@ -31,6 +36,7 @@ authority; engagements organize their operational and financial effects.
 
 | Page | What it answers |
 | --- | --- |
+| [End-to-end flow](./end-to-end-flow.md) | How each position travels marketplace → contract → engagement → execution, which steps are live, and the seam edge cases (draft) |
 | [Integration surface](./integration.md) | What P4b actually exposes today, what it does not, and the rules a new marketplace surface must hold |
 | [Data model](./data-model.md) | What every engagement table stores and which invariants the database enforces |
 | [Scenarios](./scenarios.md) | What rows exist when a client hires a consultant, a consultant hires Talent, work spans projects, rates change, or a project is deleted |

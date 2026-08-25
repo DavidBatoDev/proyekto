@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-25 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -207,6 +207,44 @@ All three endpoints return only projects where the caller has active consultant 
 and a `project_access` row with `role=owner`. Filters cover search,
 project, project status, currency, date range, and the relevant contract or
 invoice status. Totals are never converted across currencies.
+
+## contracts · `contracts` / `projects/:projectId/economics`
+
+Three controllers share the module: contract lifecycle, the tokenized signing link, and
+project economics. Signing errors surface as 22 typed tokens translated by
+`SIGNING_ERRORS` — see [Engagements → integration surface](../14-engagement/integration.md#error-codes).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/contracts/project/:projectId | Supabase | Contracts for a project |
+| POST | /api/contracts/counterparties/resolve | Supabase | Resolve an existing account as counterparty by exact email |
+| POST | /api/contracts | Supabase | Create a draft (two `contract_positions`) |
+| GET | /api/contracts/:id | Supabase | Contract detail and rendered payload |
+| PATCH | /api/contracts/:id | Supabase | Edit a `draft` or `sent` contract |
+| DELETE | /api/contracts/:id | Supabase | Delete a draft |
+| POST | /api/contracts/:id/sign | Supabase | Stamp a signature; the final one activates the engagement |
+| POST | /api/contracts/:id/initials | Supabase | Save per-page initials |
+| POST | /api/contracts/:id/unsign | Supabase | Withdraw a signature |
+| PATCH | /api/contracts/:id/signature-placement | Supabase | Cosmetic signature reposition |
+| POST | /api/contracts/:id/amend | Supabase | Create the next contract version |
+| POST | /api/contracts/:id/provider | Supabase | Reseed the provider identity |
+| GET/POST/DELETE | /api/contracts/:id/signature-link | Supabase | Manage the single-use client signing link |
+| GET | /api/contracts/sign/:token | Public +Throttler | Read a contract by signing token (account-free) |
+| POST | /api/contracts/sign/:token | Public +Throttler | Sign by token; runs the same checks as in-app signing |
+| GET | /api/projects/:projectId/economics | Supabase | Project budget economics (finance settings + member allocations) |
+| PUT | /api/projects/:projectId/economics | Supabase | Update project budget economics |
+
+## engagements · `engagements`
+
+The party-scoped read path over the activation-written commercial tables. Deliberately
+**no** `ConsultantOnly` guard — access is decided by seat membership in the service, so
+Clients and Talent can read their own agreements. A non-party fetch returns 404, not 403,
+so engagement ids cannot be probed. See [Engagements](../14-engagement/README.md).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/engagements | Supabase | Engagements the caller holds a seat on (`kind`, `status`, `project_id` filters) |
+| GET | /api/engagements/:id | Supabase | One engagement — seats, counterparty, project links, effective settings and rates |
 
 ## meetings · `meetings`
 

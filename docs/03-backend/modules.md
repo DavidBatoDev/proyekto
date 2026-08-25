@@ -1,8 +1,8 @@
 # Modules
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-25 · **Status:** current
 
-The backend is **35 feature modules** under
+The backend is **37 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
@@ -16,7 +16,7 @@ Modules are grouped by platform responsibility:
 ```text
 modules/
 |-- execution/    projects, roadmaps, chat, meetings, teams, time, activity
-|-- marketplace/  contracts, invoices, finance, payouts, discovery, profiles
+|-- marketplace/  contracts, engagements, invoices, finance, payouts, discovery, profiles
 `-- shared/       auth, users, admin, notifications, infrastructure adapters
 ```
 
@@ -45,6 +45,7 @@ group-level barrel modules.
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
 | `contracts` | Service agreements, signing (in-app + tokenized link), amendments, and project economics | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
+| `engagements` | Party-scoped reads over the activation-written commercial tables — the only module allowed to touch them (RLS is deny-all; see [Engagements](../14-engagement/integration.md)) | `engagements`, `engagement_parties`, `engagement_project_links`, `engagement_time_settings`, `engagement_time_rates` |
 | `finance` | Consultant-only cross-project money portfolio | *(reads `contracts`, `invoices`)* |
 | `financials` | Per-project profitability API consumed by Finance | *(reads `finance_project_settings`, `task_time_logs`)* |
 | `activity` | Project activity feed read API | `project_activity_log` |
@@ -217,7 +218,7 @@ screen, and rotating refresh tokens on durable per-connection grants
 ## Structural notes
 
 - **Co-located services** (no separate `*.service.ts`): `uploads`, `applications`, `guests`.
-- **No repository** (service queries Supabase directly): `consultants`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`. `taxonomy` is repository-backed.
+- **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`. `taxonomy` is repository-backed.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
 - **Global modules**: `SupabaseModule`, `RedisModule`, `R2Module`,

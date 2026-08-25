@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-25 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -26,9 +26,12 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Origin** | Provenance of an access grant — *how* someone joined, never what they can do: `direct`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. It takes no part in permission resolution. The former `client` and `consultant` values were folded into `direct` on 2026-08-18. |
 | **Client** | The market position of people commissioning work — not an account attribute. Project participation and the legal payer come from `project_access` and contract snapshots. See [Finance → contract parties](../11-domains/finance/README.md#contract-parties). |
 | **Project owner** | The profile referenced by `projects.owner_id`. Any account may own a project; ownership implies nothing else about the account. |
-| **External client** | A contract counterparty with no account, existing only as `contracts.client_*` strings, who signs via a tokenized link. |
+| **External client** | A contract counterparty with no account, existing only as `contracts.client_*` strings, who signs via a tokenized link. Valid for legacy contracts, but can never activate an engagement — positions require a resolved account. |
 | **Contract** | The service agreement for a project (`contracts`) — parties, commercial terms, term dates, clause set, and a jsonb services catalog. |
 | **Activation** | The gated `draft → active` flip, guarded by a seven-item derived checklist so billing never starts without a price and a rate. |
+| **Contract position** | One of the two seats on a contract (`contract_positions`) — hirer or provider, each resolved to an existing account by exact email. Two signed positions are what activate an engagement; contracts predating positions stay valid but activate nothing. |
+| **Engagement** | The durable record of who hired whom (`engagements` + `engagement_parties`), created only by the final signature on a two-position contract. It organizes commercial effects (project links, time policy, rates) and is never a source of project authorization. Read at `/engagements`. The term may be renamed "deals" / "deals center" — see the naming note in [Engagements](../14-engagement/README.md). |
+| **Engagement activation** | The `SECURITY DEFINER` RPC (`sign_contract_position_and_activate`) run by the final signature, writing the engagement, its parties, project links, time settings, and rates in one idempotent transaction. Distinct from **Activation** above, which is the project checklist flip. |
 | **Personal workspace** | A project linked one-to-one to its user through `personal_workspaces`; the owner's `project_access` row has `origin='personal_workspace'`. |
 | **Time log** | A billable record of work against a task (`task_time_logs`), rolled into invoices/payouts. |
 | **Payout / Invoice** | The live money paths — manual payouts of approved time, and generated project invoices. |
