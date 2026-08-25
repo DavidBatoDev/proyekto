@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-18 · **Status:** draft
+> **Last updated:** 2026-08-25 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;

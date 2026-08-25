@@ -48,5 +48,14 @@ import { RisksService } from './risks.service';
     DecisionsService,
     DecisionCategoriesService,
   ],
+  // The MCP module reuses these in-process so its tools inherit the same
+  // assertPermission gates the REST controllers get.
+  exports: [
+    DeliverablesService,
+    ChangeRequestsService,
+    RisksService,
+    DecisionsService,
+    DecisionCategoriesService,
+  ],
 })
 export class DeliveryModule {}

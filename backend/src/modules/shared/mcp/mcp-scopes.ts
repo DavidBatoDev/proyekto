@@ -16,6 +16,10 @@ export const MCP_READ_SCOPES = [
   // Phase 4. Owner-only by construction: every AI-session read filters on
   // user_id = caller, so this can never surface a teammate's threads.
   'ai-sessions:read',
+  // Phase 5. The delivery governance registers (deliverables, change requests,
+  // risks & issues, decisions). Reads defer to the services' own gates,
+  // including the risks.view_internal visibility filter.
+  'delivery:read',
 ] as const;
 
 // Write scopes. Opt-in per token: a read-only PAT carries none of these, so it
@@ -28,6 +32,9 @@ export const MCP_WRITE_SCOPES = [
   // Phase 4. Channel messages only — DMs are deliberately not exposed (see
   // chat-write.tools.ts for why) and channel administration is not either.
   'chat:write',
+  // Phase 5. Register writes + lifecycle verbs (submit/decide/review/finalize).
+  // Dark unless MCP_DELIVERY_WRITE_ENABLED — see McpCapabilitiesService.
+  'delivery:write',
 ] as const;
 
 export const MCP_ALL_SCOPES = [

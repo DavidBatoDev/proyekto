@@ -34,12 +34,20 @@ describe('McpCapabilitiesService', () => {
     ).toBe(true);
   });
 
+  it('keeps delivery:write dark by default', () => {
+    const caps = capabilities();
+    expect(caps.deliveryWriteEnabled).toBe(false);
+    expect(caps.isScopeEnabled('delivery:write')).toBe(false);
+    expect(caps.enabledScopes()).not.toContain('delivery:write');
+  });
+
   it('leaves every ungated scope enabled', () => {
+    const GATED = ['chat:write', 'delivery:write'];
     const enabled = capabilities().enabledScopes();
     for (const scope of MCP_READ_SCOPES) {
       expect(enabled).toContain(scope);
     }
-    for (const scope of MCP_WRITE_SCOPES.filter((s) => s !== 'chat:write')) {
+    for (const scope of MCP_WRITE_SCOPES.filter((s) => !GATED.includes(s))) {
       expect(enabled).toContain(scope);
     }
   });
@@ -48,6 +56,14 @@ describe('McpCapabilitiesService', () => {
     expect(
       capabilities({ MCP_CHAT_WRITE_ENABLED: 'true' }).enabledScopes(),
     ).toContain('chat:write');
+  });
+
+  it('exposes delivery:write once its flag is set — independently of chat', () => {
+    const enabled = capabilities({
+      MCP_DELIVERY_WRITE_ENABLED: 'true',
+    }).enabledScopes();
+    expect(enabled).toContain('delivery:write');
+    expect(enabled).not.toContain('chat:write');
   });
 });
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../../execution/projects/projects.module';
 import { RoadmapsModule } from '../../execution/roadmaps/roadmaps.module';
 import { ChatModule } from '../../execution/chat/chat.module';
+import { DeliveryModule } from '../../execution/delivery/delivery.module';
 import { McpController } from './mcp.controller';
 import { McpTokensController } from './mcp-tokens.controller';
 import { McpAuthGuard } from './mcp-auth.guard';
@@ -31,7 +32,7 @@ import { WellKnownController } from './oauth/well-known.controller';
  *    flag the new scope would go live on deploy with no activation step.
  */
 @Module({
-  imports: [ProjectsModule, RoadmapsModule, ChatModule],
+  imports: [ProjectsModule, RoadmapsModule, ChatModule, DeliveryModule],
   controllers: [
     McpController,
     McpTokensController,

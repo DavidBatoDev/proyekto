@@ -4,6 +4,8 @@ import {
 	AlertTriangle,
 	BookOpen,
 	Check,
+	ClipboardCheck,
+	ClipboardList,
 	Copy,
 	FolderKanban,
 	KeyRound,
@@ -81,6 +83,11 @@ const SCOPE_META: Record<
 		hint: "Your own planning threads only",
 		Icon: Sparkles,
 	},
+	"delivery:read": {
+		label: "Delivery registers",
+		hint: "Deliverables, change requests, risks, decisions",
+		Icon: ClipboardList,
+	},
 	"roadmaps:write": {
 		label: "Edit roadmaps",
 		hint: "Preview & commit structural changes",
@@ -100,6 +107,11 @@ const SCOPE_META: Record<
 		label: "Post to chat",
 		hint: "Send, edit & delete channel messages",
 		Icon: Send,
+	},
+	"delivery:write": {
+		label: "Edit delivery registers",
+		hint: "Create & update entries, run their lifecycles",
+		Icon: ClipboardCheck,
 	},
 };
 
