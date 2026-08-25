@@ -1,4 +1,6 @@
-Welcome to your new TanStack app! 
+# Proyekto Web
+
+React 19 + Vite SPA. Unit conventions and commands live in [CLAUDE.md](./CLAUDE.md); authoritative product/architecture docs live in [../docs/](../docs/).
 
 # Getting Started
 
