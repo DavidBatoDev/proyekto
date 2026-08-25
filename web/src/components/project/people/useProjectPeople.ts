@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
 	useProjectInvitesQuery,
@@ -17,11 +17,10 @@ import {
 } from "@/lib/projectPeople";
 import type { ProjectMember } from "@/services/project.service";
 import {
-	getTeam,
 	listProjectTeams,
 	type ProfileSummary,
 	type ProjectTeam,
-	type Team,
+	type TeamSummary,
 } from "@/services/teams.service";
 
 /**
@@ -61,7 +60,7 @@ export interface PersonAccess {
 
 export interface PeopleTeamGroup {
 	attachment: ProjectTeam;
-	team: Team | null;
+	team: TeamSummary | null;
 	people: PersonAccess[];
 }
 
@@ -71,8 +70,8 @@ export interface ProjectPeople {
 	/** People with no team-derived grant — the client, direct invites. */
 	direct: PersonAccess[];
 	teamNameById: Record<string, string>;
-	/** Full team records — rows need the logo, not just the name. */
-	teamById: Record<string, Team>;
+	/** Team identity per attached team — rows need the logo, not just the name. */
+	teamById: Record<string, TeamSummary>;
 	summary: PeopleSummary;
 	canManageMembers: boolean;
 	canManageTeams: boolean;
@@ -124,26 +123,24 @@ export function useProjectPeople(
 
 	const attachments = useMemo(() => teamsQuery.data ?? [], [teamsQuery.data]);
 
-	const teamDetailQueries = useQueries({
-		queries: attachments.map((a) => ({
-			queryKey: ["teams", "detail", a.team_id],
-			queryFn: () => getTeam(a.team_id),
-			staleTime: 5 * 60_000,
-		})),
-	});
-
+	// Identity comes from the attachment itself, not from GET /api/teams/:id.
+	// That endpoint gates on team membership, so for a team brought in through
+	// "Invite a team" — one this viewer is deliberately not on — it 403s and the
+	// card silently rendered the literal string "Team" with no logo. The list
+	// endpoint joins the summary, which the viewer is already entitled to.
 	const teamById = useMemo(() => {
-		const map: Record<string, Team> = {};
-		teamDetailQueries.forEach((q, i) => {
-			const id = attachments[i]?.team_id;
-			if (id && q.data) map[id] = q.data;
-		});
+		const map: Record<string, TeamSummary> = {};
+		for (const a of attachments) {
+			if (a.team) map[a.team_id] = a.team;
+		}
 		return map;
-	}, [teamDetailQueries, attachments]);
+	}, [attachments]);
 
 	const teamNameById = useMemo(() => {
 		const map: Record<string, string> = {};
-		for (const [id, team] of Object.entries(teamById)) map[id] = team.name;
+		for (const [id, team] of Object.entries(teamById)) {
+			if (team.name) map[id] = team.name;
+		}
 		return map;
 	}, [teamById]);
 

@@ -125,12 +125,25 @@ export interface WorkspaceDefaults {
 	last_team_id: string | null;
 }
 
+/** Just enough of a team to render its name and logo. */
+export interface TeamSummary {
+	id: string;
+	name: string | null;
+	avatar_url: string | null;
+}
+
 export interface ProjectTeam {
 	project_id: string;
 	team_id: string;
 	is_primary: boolean;
 	attached_by: string | null;
 	attached_at: string;
+	/**
+	 * Joined by the list endpoint. Use this rather than `getTeam`, which is
+	 * gated on team membership — since "Invite a team" a project can hold a
+	 * team you are not on, and that call 403s for it.
+	 */
+	team?: TeamSummary | null;
 }
 
 export interface ProjectTeamMember {

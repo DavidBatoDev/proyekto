@@ -12,7 +12,7 @@ import {
 	PositionBadge,
 	SemanticBadge,
 } from "@/components/common/SemanticBadge";
-import type { Team } from "@/services/teams.service";
+import type { TeamSummary } from "@/services/teams.service";
 import type { PersonAccess } from "./useProjectPeople";
 
 /**
@@ -40,7 +40,7 @@ export function PersonRow({
 }: {
 	person: PersonAccess;
 	/** Team whose logo marks this person as internal, if any. */
-	badgeTeam?: Team | null;
+	badgeTeam?: TeamSummary | null;
 	/** Where this person's access comes from — shown as a trailing badge. */
 	origin?: PersonOrigin;
 	onOpen: (person: PersonAccess) => void;
@@ -128,8 +128,8 @@ export function PersonRow({
  */
 export function primaryTeamFor(
 	person: { teamIds: string[] },
-	teamById: Record<string, Team>,
-): Team | null {
+	teamById: Record<string, TeamSummary>,
+): TeamSummary | null {
 	if (person.teamIds.length === 0) return null;
 	return teamById[person.teamIds[0]] ?? null;
 }
@@ -141,7 +141,7 @@ export function primaryTeamFor(
  */
 export function teamOriginFor(
 	person: { teamIds: string[] },
-	teamById: Record<string, Team>,
+	teamById: Record<string, TeamSummary>,
 ): PersonOrigin | undefined {
 	if (person.teamIds.length === 0) return undefined;
 	const first = primaryTeamFor(person, teamById);

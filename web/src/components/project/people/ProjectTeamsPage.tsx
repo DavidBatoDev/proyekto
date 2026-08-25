@@ -1,4 +1,4 @@
-import { Loader2, Mail, Users } from "lucide-react";
+import { HelpCircle, Loader2, Mail, Users } from "lucide-react";
 import { useState } from "react";
 import {
 	AppEmptyState,
@@ -9,6 +9,7 @@ import { useUser } from "@/stores/authStore";
 import { AddTeamMemberDialog } from "./AddTeamMemberDialog";
 import { AttachTeamDialog } from "./AttachTeamDialog";
 import { InviteTeamDialog } from "./InviteTeamDialog";
+import { PersonRow } from "./PersonRow";
 import { ProjectTeamInvitesPanel } from "./ProjectTeamInvitesPanel";
 import { TeamGroupCard } from "./TeamGroupCard";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
@@ -29,8 +30,10 @@ export function ProjectTeamsPage({
 	const people = useProjectPeople(projectId, user?.id ?? null);
 	const [attachOpen, setAttachOpen] = useState(false);
 	const [inviteOpen, setInviteOpen] = useState(false);
+	const [helpOpen, setHelpOpen] = useState(false);
 	const canInviteTeams =
 		featureFlags.teamProjectInvites && people.canManageTeams;
+	const hasTeams = people.groups.length > 0;
 	const [teamForNewMember, setTeamForNewMember] = useState<{
 		id: string;
 		name: string;
@@ -63,30 +66,54 @@ export function ProjectTeamsPage({
 				rightSlot={
 					people.canManageTeams && (
 						<div className="flex items-center gap-2">
-							{/* Secondary next to Attach: bringing in an outside team is a
-							    request, not an action you complete here. */}
+							{/* Actions live in EITHER the header or the empty state, never
+							    both — the empty state is the natural call to action when
+							    there is nothing to act on, and the header takes over once
+							    there is. The help toggle shows in both, because the two
+							    actions are easiest to confuse before you've used either. */}
+							{hasTeams && (
+								<>
+									{canInviteTeams && (
+										<button
+											type="button"
+											onClick={() => setInviteOpen(true)}
+											className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+										>
+											<Mail className="h-3.5 w-3.5" />
+											Invite a team
+										</button>
+									)}
+									<button
+										type="button"
+										onClick={() => setAttachOpen(true)}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+									>
+										<Users className="h-3.5 w-3.5" />
+										Attach team
+									</button>
+								</>
+							)}
 							{canInviteTeams && (
 								<button
 									type="button"
-									onClick={() => setInviteOpen(true)}
-									className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted"
+									onClick={() => setHelpOpen((v) => !v)}
+									aria-expanded={helpOpen}
+									aria-label="What's the difference between attaching and inviting a team?"
+									className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+										helpOpen
+											? "border-primary bg-primary/5 text-primary"
+											: "border-input text-muted-foreground hover:bg-muted"
+									}`}
 								>
-									<Mail className="h-3.5 w-3.5" />
-									Invite a team
+									<HelpCircle className="h-4 w-4" />
 								</button>
 							)}
-							<button
-								type="button"
-								onClick={() => setAttachOpen(true)}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
-							>
-								<Users className="h-3.5 w-3.5" />
-								Attach team
-							</button>
 						</div>
 					)
 				}
 			/>
+
+			{helpOpen && canInviteTeams && <AttachVsInviteHelp />}
 
 			{featureFlags.teamProjectInvites && (
 				<ProjectTeamInvitesPanel
@@ -149,6 +176,36 @@ export function ProjectTeamsPage({
 				</div>
 			)}
 
+			{/* Everyone who reaches this project without a team — the owner, direct
+			    invites, and (since "Invite a team") the admin who invited a team they
+			    are not themselves on. `useProjectPeople` has always computed this list
+			    for exactly this purpose, and nothing rendered it: a team-grouped page
+			    silently dropped them, so a project owner who had brought in someone
+			    else's team could not find themselves anywhere on the page they were
+			    standing on. */}
+			{people.direct.length > 0 && (
+				<section className="space-y-2">
+					<div>
+						<h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Not on a team
+						</h3>
+						<p className="mt-0.5 text-[11px] text-muted-foreground">
+							They reach this project directly, not through any team attached
+							here.
+						</p>
+					</div>
+					<div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+						{people.direct.map((person) => (
+							<PersonRow
+								key={person.key}
+								person={person}
+								onOpen={onOpenPerson}
+							/>
+						))}
+					</div>
+				</section>
+			)}
+
 			{attachOpen && (
 				<AttachTeamDialog
 					projectId={projectId}
@@ -173,6 +230,46 @@ export function ProjectTeamsPage({
 					onClose={() => setTeamForNewMember(null)}
 				/>
 			)}
+		</div>
+	);
+}
+
+/**
+ * What the two actions actually differ on.
+ *
+ * They sit side by side and both end with a team on the project, so the useful
+ * distinction is not what they do but *whose decision it is* — and whether
+ * anything happens right now or only once someone else agrees. Written as that
+ * contrast rather than as two feature descriptions.
+ */
+function AttachVsInviteHelp() {
+	return (
+		<div className="rounded-xl border border-border bg-muted/30 p-4">
+			<dl className="grid gap-4 sm:grid-cols-2">
+				<div>
+					<dt className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+						<Users className="h-3.5 w-3.5 text-muted-foreground" />
+						Attach team
+					</dt>
+					<dd className="mt-1 text-xs leading-relaxed text-muted-foreground">
+						For a team <span className="font-medium">you're already on</span>.
+						You pick who joins and their access, and it takes effect immediately
+						— nobody has to approve it.
+					</dd>
+				</div>
+				<div>
+					<dt className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+						<Mail className="h-3.5 w-3.5 text-muted-foreground" />
+						Invite a team
+					</dt>
+					<dd className="mt-1 text-xs leading-relaxed text-muted-foreground">
+						For a team <span className="font-medium">you're not on</span> — you
+						can't see it, so you invite the person who runs it. They choose
+						which team and who comes along; you still set the access those
+						people get. Nothing changes until they accept.
+					</dd>
+				</div>
+			</dl>
 		</div>
 	);
 }

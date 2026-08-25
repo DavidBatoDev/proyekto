@@ -20,6 +20,17 @@ export interface ProjectTeamRow {
   is_primary: boolean;
   attached_by: string | null;
   attached_at: string;
+  /**
+   * Identity of the attached team, joined on `list`.
+   *
+   * Carried here because `GET /api/teams/:id` gates on team membership
+   * (`assertCanRead`), and since "Invite a team" a project can hold a team the
+   * viewer is not on — the page was falling back to the literal string "Team"
+   * with no logo. Anyone with `teams.view` on the project can already see the
+   * attachment and its roster, so the name and avatar are strictly less than
+   * what they hold already.
+   */
+  team?: { id: string; name: string; avatar_url: string | null } | null;
 }
 
 export interface ProjectTeamMemberRow {
@@ -130,10 +141,12 @@ export class ProjectTeamsService {
     await this.projectAuth.assertPermission(callerId, projectId, 'teams.view');
     const { data, error } = await this.supabase
       .from('project_teams')
-      .select('*')
+      .select(
+        '*, team:teams!project_teams_team_id_fkey(id, name, avatar_url)',
+      )
       .eq('project_id', projectId);
     if (error) throw new Error(error.message);
-    return (data ?? []) as ProjectTeamRow[];
+    return (data ?? []) as unknown as ProjectTeamRow[];
   }
 
   async listCuratedMembers(

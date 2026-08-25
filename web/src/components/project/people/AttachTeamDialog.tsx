@@ -120,8 +120,20 @@ export function AttachTeamDialog({
 	const attachMutation = useMutation({
 		mutationFn: () => {
 			if (!selectedTeamId) throw new Error("Pick a team first");
+			// Locked rows (you, and anyone already on the project) render with a
+			// ticked, disabled checkbox — so they must go in the payload too.
+			// Filtering on `picked` alone silently dropped them: `toggle` never
+			// fires for a disabled input, so they were shown as included and then
+			// never sent, leaving no project_team_members row. The visible effect
+			// was the project owner attaching their own team and still showing as
+			// "Not on a team".
 			const members = teamMembers
-				.filter((m) => picked.has(m.user.id))
+				.filter(
+					(m) =>
+						picked.has(m.user.id) ||
+						m.user.id === currentUserId ||
+						existingRoleByUserId.has(m.user.id),
+				)
 				.map((m) =>
 					existingRoleByUserId.has(m.user.id)
 						? { user_id: m.user.id }
