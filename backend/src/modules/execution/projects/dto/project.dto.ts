@@ -251,6 +251,46 @@ class ResourceReorderItemDto {
   position: number;
 }
 
+/**
+ * Folder decoration tokens. Kept in code rather than the DB so adding an icon
+ * is a deploy, not a migration; the column only guards shape and length.
+ */
+export const PROJECT_RESOURCE_FOLDER_ICONS = [
+  'folder',
+  'code',
+  'terminal',
+  'bot',
+  'package',
+  'database',
+  'globe',
+  'server',
+  'cpu',
+  'layers',
+  'braces',
+  'rocket',
+  'wrench',
+  'briefcase',
+  'building',
+  'palette',
+  'gauge',
+  'sparkles',
+  'file-text',
+  'box',
+] as const;
+
+export const PROJECT_RESOURCE_FOLDER_COLORS = [
+  'white',
+  'slate',
+  'red',
+  'orange',
+  'amber',
+  'green',
+  'teal',
+  'blue',
+  'violet',
+  'pink',
+] as const;
+
 export class CreateProjectResourceFolderDto {
   @IsString()
   @MaxLength(120)
@@ -258,6 +298,14 @@ export class CreateProjectResourceFolderDto {
     message: 'Folder name must contain at least one non-whitespace character',
   })
   name: string;
+
+  @IsOptional()
+  @IsIn(PROJECT_RESOURCE_FOLDER_ICONS as unknown as string[])
+  icon?: string;
+
+  @IsOptional()
+  @IsIn(PROJECT_RESOURCE_FOLDER_COLORS as unknown as string[])
+  color?: string;
 }
 
 export class UpdateProjectResourceFolderDto {
@@ -268,6 +316,14 @@ export class UpdateProjectResourceFolderDto {
     message: 'Folder name must contain at least one non-whitespace character',
   })
   name?: string;
+
+  @IsOptional()
+  @IsIn(PROJECT_RESOURCE_FOLDER_ICONS as unknown as string[])
+  icon?: string;
+
+  @IsOptional()
+  @IsIn(PROJECT_RESOURCE_FOLDER_COLORS as unknown as string[])
+  color?: string;
 }
 
 export class ReorderProjectResourceFoldersDto {

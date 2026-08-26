@@ -195,6 +195,10 @@ export interface ProjectResourceFolder {
   id: string;
   project_id: string;
   name: string;
+  /** Lucide icon token; see the web folder icon map. */
+  icon: string;
+  /** Accent colour token (Tailwind palette name) for the card's top border. */
+  color: string;
   position: number;
   created_at: string;
   updated_at: string;

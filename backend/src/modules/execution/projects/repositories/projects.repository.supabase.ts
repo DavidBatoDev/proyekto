@@ -1263,6 +1263,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         project_id: projectId,
         name,
         position,
+        ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
       })
       .select('*')
       .single();
@@ -1285,6 +1287,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (dto.name !== undefined) {
       patch.name = this.normalizeRequiredText(dto.name, 'Folder name');
     }
+    if (dto.icon !== undefined) patch.icon = dto.icon;
+    if (dto.color !== undefined) patch.color = dto.color;
 
     if (Object.keys(patch).length === 0) {
       const { data, error } = await this.supabase

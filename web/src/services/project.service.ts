@@ -219,6 +219,10 @@ export interface ProjectResourceFolder {
 	id: string;
 	project_id: string;
 	name: string;
+	/** Lucide icon token — see RESOURCE_FOLDER_ICONS on the resources page. */
+	icon?: string;
+	/** Accent colour token — drives the folder card's top border. */
+	color?: string;
 	position: number;
 	created_at: string;
 	updated_at: string;
@@ -1105,7 +1109,7 @@ class ProjectService {
 
 	async createResourceFolder(
 		projectId: string,
-		data: { name: string },
+		data: { name: string; icon?: string; color?: string },
 	): Promise<ProjectResourceFolder> {
 		const {
 			data: { session },
@@ -1136,7 +1140,7 @@ class ProjectService {
 	async updateResourceFolder(
 		projectId: string,
 		folderId: string,
-		data: { name?: string },
+		data: { name?: string; icon?: string; color?: string },
 	): Promise<ProjectResourceFolder> {
 		const {
 			data: { session },
