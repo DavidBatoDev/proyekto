@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowLeft,
 	CalendarClock,
@@ -11,7 +11,6 @@ import {
 	Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
@@ -28,14 +27,9 @@ import type {
 	EngagementProjectLink,
 } from "@/services/engagement.service";
 import { engagementService } from "@/services/engagement.service";
-import { useAuthStore, useProfile } from "@/stores/authStore";
+import { useProfile } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/engagements/$engagementId")({
-	beforeLoad: () => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-	},
 	component: EngagementDetailPage,
 });
 
@@ -70,33 +64,25 @@ function EngagementDetailPage() {
 
 	if (query.isPending) {
 		return (
-			<ProtectedRoute loadingFallback={null}>
-				<div className="app-shell-bg min-h-screen bg-background pt-app-header text-foreground">
-					<div className="flex justify-center py-24">
-						<Loader2 className="h-6 w-6 animate-spin text-primary" />
-					</div>
-				</div>
-			</ProtectedRoute>
+			<div className="flex min-h-full justify-center py-24">
+				<Loader2 className="h-6 w-6 animate-spin text-primary" />
+			</div>
 		);
 	}
 
 	if (query.isError || !query.data) {
 		return (
-			<ProtectedRoute loadingFallback={null}>
-				<div className="app-shell-bg min-h-screen bg-background pt-app-header text-foreground">
-					<div className="mx-auto max-w-3xl px-5 py-10">
-						<BackLink onClick={back} />
-						<AppEmptyState
-							icon={Handshake}
-							title="Engagement not available"
-							description={
-								query.error?.message ??
-								"This engagement does not exist, or you do not hold a seat on it."
-							}
-						/>
-					</div>
-				</div>
-			</ProtectedRoute>
+			<div className="mx-auto min-h-full max-w-3xl px-5 py-10">
+				<BackLink onClick={back} />
+				<AppEmptyState
+					icon={Handshake}
+					title="Engagement not available"
+					description={
+						query.error?.message ??
+						"This engagement does not exist, or you do not hold a seat on it."
+					}
+				/>
+			</div>
 		);
 	}
 
@@ -104,181 +90,176 @@ function EngagementDetailPage() {
 	const isClientSide = engagement.kind === "client_services";
 
 	return (
-		<ProtectedRoute loadingFallback={null}>
-			<div className="app-shell-bg min-h-screen bg-background px-5 pt-app-header text-foreground md:px-8">
-				<div className="mx-auto w-full max-w-5xl space-y-5 pb-10 pt-4 md:pt-5">
-					<BackLink onClick={back} />
+		<div className="min-h-full px-5 md:px-8">
+			<div className="mx-auto w-full max-w-5xl space-y-5 pb-10 pt-4 md:pt-5">
+				<BackLink onClick={back} />
 
-					<header className="flex flex-wrap items-start justify-between gap-4">
-						<div className="flex min-w-0 items-center gap-3">
-							<span
-								className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isClientSide ? `bg-primary/10 text-primary` : `bg-info/10 text-info-foreground`}`}
-							>
-								<Handshake className="h-5 w-5" />
-							</span>
-							<div className="min-w-0">
-								<h1 className="truncate text-xl font-bold tracking-tight text-foreground">
-									{describeRelationship(engagement)}
-								</h1>
-								<p className="mt-0.5 text-sm text-muted-foreground">
-									{isClientSide ? "Client engagement" : "Talent engagement"} ·{" "}
-									{engagement.scope_mode === "flexible"
-										? "Flexible scope"
-										: "Project-specific"}
-								</p>
-							</div>
+				<header className="flex flex-wrap items-start justify-between gap-4">
+					<div className="flex min-w-0 items-center gap-3">
+						<span
+							className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isClientSide ? `bg-primary/10 text-primary` : `bg-info/10 text-info-foreground`}`}
+						>
+							<Handshake className="h-5 w-5" />
+						</span>
+						<div className="min-w-0">
+							<h1 className="truncate text-xl font-bold tracking-tight text-foreground">
+								{describeRelationship(engagement)}
+							</h1>
+							<p className="mt-0.5 text-sm text-muted-foreground">
+								{isClientSide ? "Client engagement" : "Talent engagement"} ·{" "}
+								{engagement.scope_mode === "flexible"
+									? "Flexible scope"
+									: "Project-specific"}
+							</p>
 						</div>
-						<div className="flex shrink-0 items-center gap-2">
-							<FinanceStatusBadge status={engagement.status} />
-							{engagement.activated_by_contract_id && canOpenContract && (
-								<button
-									type="button"
-									onClick={() =>
-										void navigate({
-											to: "/engagements/finance/$contractId",
-											params: {
-												contractId:
-													engagement.activated_by_contract_id as string,
-											},
-											search: { section: undefined },
-										})
-									}
-									className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-								>
-									<FileSignature className="h-3.5 w-3.5" /> Signed contract
-								</button>
-							)}
-						</div>
-					</header>
-
-					{engagement.status_reason && (
-						<p className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-							{engagement.status_reason}
-						</p>
-					)}
-
-					<div className="grid gap-4 lg:grid-cols-2">
-						<Panel icon={Users} title="Parties">
-							<PartyRow
-								label={
-									engagement.viewer_position === "hirer" ? "Hirer" : "Provider"
-								}
-								name="You"
-								capacity={engagement.viewer_capacity}
-							/>
-							<PartyRow
-								label={
-									engagement.viewer_position === "hirer" ? "Provider" : "Hirer"
-								}
-								name={
-									engagement.counterparty?.display_name_snapshot ??
-									engagement.counterparty?.email_snapshot ??
-									"Counterparty removed"
-								}
-								capacity={engagement.counterparty?.capacity ?? "—"}
-								email={engagement.counterparty?.email_snapshot ?? undefined}
-							/>
-						</Panel>
-
-						<Panel icon={CalendarClock} title="Timeline">
-							<DetailRow
-								label="Started"
-								value={formatDate(engagement.started_at)}
-							/>
-							{engagement.ended_at && (
-								<DetailRow
-									label="Ended"
-									value={formatDate(engagement.ended_at)}
-								/>
-							)}
-							{engagement.cancelled_at && (
-								<DetailRow
-									label="Cancelled"
-									value={formatDate(engagement.cancelled_at)}
-								/>
-							)}
-							<DetailRow
-								label="Origin"
-								value={
-									engagement.origin === "legacy"
-										? "Migrated from a pre-engagement agreement"
-										: "Opened by a signed contract"
-								}
-							/>
-						</Panel>
-
-						<Panel icon={FolderKanban} title="Projects covered">
-							{engagement.project_links.length === 0 ? (
-								<p className="text-sm text-muted-foreground">
-									Flexible engagement — no project placed against it yet.
-								</p>
-							) : (
-								<ul className="space-y-2">
-									{engagement.project_links.map((link) => (
-										<ProjectLinkRow key={link.id} link={link} />
-									))}
-								</ul>
-							)}
-						</Panel>
-
-						<Panel icon={Timer} title="Signed terms">
-							{engagement.current_rates.length === 0 ? (
-								<p className="text-sm text-muted-foreground">
-									No rate is in effect today.
-								</p>
-							) : (
-								<ul className="mb-3 space-y-1.5">
-									{engagement.current_rates.map((rate) => (
-										<li
-											key={rate.id}
-											className="flex items-baseline justify-between gap-3 text-sm"
-										>
-											<span className="text-muted-foreground">
-												{rate.rate_kind === "billing"
-													? "Billing rate"
-													: "Cost rate"}
-												{rate.work_type ? ` · ${rate.work_type}` : ``}
-											</span>
-											<span className="font-semibold text-foreground tabular-nums">
-												{describeRate(rate)}
-											</span>
-										</li>
-									))}
-								</ul>
-							)}
-							{engagement.current_settings && (
-								<div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
-									{describeTimePolicy(engagement.current_settings).map(
-										(line) => (
-											<span
-												key={line}
-												className="rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-											>
-												{line}
-											</span>
-										),
-									)}
-								</div>
-							)}
-						</Panel>
 					</div>
+					<div className="flex shrink-0 items-center gap-2">
+						<FinanceStatusBadge status={engagement.status} />
+						{engagement.activated_by_contract_id && canOpenContract && (
+							<button
+								type="button"
+								onClick={() =>
+									void navigate({
+										to: "/engagements/finance/$contractId",
+										params: {
+											contractId: engagement.activated_by_contract_id as string,
+										},
+										search: { section: undefined },
+									})
+								}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+							>
+								<FileSignature className="h-3.5 w-3.5" /> Signed contract
+							</button>
+						)}
+					</div>
+				</header>
 
-					<AppSurfaceCard className="p-5">
-						<h2 className="mb-1.5 text-sm font-semibold text-foreground">
-							What happens next
-						</h2>
-						<p className="text-sm leading-6 text-muted-foreground">
-							Assignments — which worker performs which piece of project work —
-							and time submission and approval will appear on this page as those
-							workflows ship. Until then, this engagement records the parties,
-							the projects it covers, and the signed terms in effect.
-						</p>
-					</AppSurfaceCard>
+				{engagement.status_reason && (
+					<p className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+						{engagement.status_reason}
+					</p>
+				)}
 
-					<ExecutionNotice engagement={engagement} />
+				<div className="grid gap-4 lg:grid-cols-2">
+					<Panel icon={Users} title="Parties">
+						<PartyRow
+							label={
+								engagement.viewer_position === "hirer" ? "Hirer" : "Provider"
+							}
+							name="You"
+							capacity={engagement.viewer_capacity}
+						/>
+						<PartyRow
+							label={
+								engagement.viewer_position === "hirer" ? "Provider" : "Hirer"
+							}
+							name={
+								engagement.counterparty?.display_name_snapshot ??
+								engagement.counterparty?.email_snapshot ??
+								"Counterparty removed"
+							}
+							capacity={engagement.counterparty?.capacity ?? "—"}
+							email={engagement.counterparty?.email_snapshot ?? undefined}
+						/>
+					</Panel>
+
+					<Panel icon={CalendarClock} title="Timeline">
+						<DetailRow
+							label="Started"
+							value={formatDate(engagement.started_at)}
+						/>
+						{engagement.ended_at && (
+							<DetailRow
+								label="Ended"
+								value={formatDate(engagement.ended_at)}
+							/>
+						)}
+						{engagement.cancelled_at && (
+							<DetailRow
+								label="Cancelled"
+								value={formatDate(engagement.cancelled_at)}
+							/>
+						)}
+						<DetailRow
+							label="Origin"
+							value={
+								engagement.origin === "legacy"
+									? "Migrated from a pre-engagement agreement"
+									: "Opened by a signed contract"
+							}
+						/>
+					</Panel>
+
+					<Panel icon={FolderKanban} title="Projects covered">
+						{engagement.project_links.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								Flexible engagement — no project placed against it yet.
+							</p>
+						) : (
+							<ul className="space-y-2">
+								{engagement.project_links.map((link) => (
+									<ProjectLinkRow key={link.id} link={link} />
+								))}
+							</ul>
+						)}
+					</Panel>
+
+					<Panel icon={Timer} title="Signed terms">
+						{engagement.current_rates.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								No rate is in effect today.
+							</p>
+						) : (
+							<ul className="mb-3 space-y-1.5">
+								{engagement.current_rates.map((rate) => (
+									<li
+										key={rate.id}
+										className="flex items-baseline justify-between gap-3 text-sm"
+									>
+										<span className="text-muted-foreground">
+											{rate.rate_kind === "billing"
+												? "Billing rate"
+												: "Cost rate"}
+											{rate.work_type ? ` · ${rate.work_type}` : ``}
+										</span>
+										<span className="font-semibold text-foreground tabular-nums">
+											{describeRate(rate)}
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+						{engagement.current_settings && (
+							<div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
+								{describeTimePolicy(engagement.current_settings).map((line) => (
+									<span
+										key={line}
+										className="rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+									>
+										{line}
+									</span>
+								))}
+							</div>
+						)}
+					</Panel>
 				</div>
+
+				<AppSurfaceCard className="p-5">
+					<h2 className="mb-1.5 text-sm font-semibold text-foreground">
+						What happens next
+					</h2>
+					<p className="text-sm leading-6 text-muted-foreground">
+						Assignments — which worker performs which piece of project work —
+						and time submission and approval will appear on this page as those
+						workflows ship. Until then, this engagement records the parties, the
+						projects it covers, and the signed terms in effect.
+					</p>
+				</AppSurfaceCard>
+
+				<ExecutionNotice engagement={engagement} />
 			</div>
-		</ProtectedRoute>
+		</div>
 	);
 }
 

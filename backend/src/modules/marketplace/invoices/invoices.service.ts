@@ -55,7 +55,8 @@ export interface InvoiceRow {
   due_date: string | null;
   period_start: string | null;
   period_end: string | null;
-  origin: 'manual' | 'scheduled';
+  /** How the invoice came to exist; 'imported' was read from a document. */
+  origin: 'manual' | 'scheduled' | 'imported';
   hours_detail_level: HoursDetailLevel;
   bill_to: InvoiceParty;
   issued_by: InvoiceParty;
@@ -73,6 +74,8 @@ export interface InvoiceRow {
   replaces_invoice_id: string | null;
   replaced_by_invoice_id: string | null;
   pdf_path: string | null;
+  /** The `finance_documents` row an imported invoice was read from. */
+  source_document_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -614,6 +617,7 @@ export class InvoicesService {
       projectId,
       'Invoice issuing',
     );
+    this.assertNotImported(invoice, 'issued');
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -833,6 +837,7 @@ export class InvoicesService {
       this.requireInvoiceProjectId(invoice),
       'Invoice email delivery',
     );
+    this.assertNotImported(invoice, 'emailed');
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Only issued invoices can be sent to the client.',
@@ -867,6 +872,7 @@ export class InvoicesService {
         'Payment cannot exceed the remaining invoice balance.',
       );
     }
+    const settlement = this.resolveSettlement(invoice.currency, amount, dto);
     const { error } = await this.supabase.from('invoice_payments').insert({
       invoice_id: invoiceId,
       amount,
@@ -875,6 +881,10 @@ export class InvoicesService {
       reference: dto.reference?.trim() || null,
       note: dto.note?.trim() || null,
       recorded_by: callerId,
+      settled_currency: settlement?.currency ?? null,
+      settled_amount: settlement?.amount ?? null,
+      fx_rate: settlement?.rate ?? null,
+      proof_document_id: dto.proof_document_id ?? null,
     });
     if (error) throw new BadRequestException(error.message);
     await this.refreshPaymentState(invoiceId);
@@ -882,6 +892,9 @@ export class InvoicesService {
       amount,
       payment_date: dto.payment_date,
       reference: dto.reference?.trim() || null,
+      settled_currency: settlement?.currency ?? null,
+      settled_amount: settlement?.amount ?? null,
+      fx_rate: settlement?.rate ?? null,
     });
     return this.getInvoiceInternal(invoiceId);
   }
@@ -1080,6 +1093,7 @@ export class InvoicesService {
       this.requireInvoiceProjectId(invoice),
       'manage',
     );
+    this.assertNotImported(invoice, 'rendered as a PDF');
     if (invoice.status !== 'draft' && invoice.pdf_path) {
       throw new BadRequestException(
         'Issued invoices use their finalized PDF and cannot be regenerated.',
@@ -1333,7 +1347,70 @@ export class InvoicesService {
     return parsed;
   }
 
-  private async refreshPaymentState(invoiceId: string): Promise<void> {
+  /**
+   * What actually landed, and at what rate.
+   *
+   * A settlement in the invoice's own currency is not a foreign settlement and
+   * is stored as none at all — otherwise every ordinary payment would carry a
+   * meaningless rate of 1. An omitted rate is derived from the two amounts,
+   * which is the only rate that reconciles them.
+   */
+  private resolveSettlement(
+    invoiceCurrency: string,
+    amount: number,
+    dto: {
+      settled_currency?: string;
+      settled_amount?: number;
+      fx_rate?: number;
+    },
+  ): { currency: string; amount: number; rate: number } | null {
+    const currency = dto.settled_currency?.trim().toUpperCase();
+    if (!currency && dto.settled_amount === undefined) return null;
+    if (!currency || dto.settled_amount === undefined) {
+      throw new BadRequestException(
+        'A settlement needs both the currency it arrived in and the amount that arrived.',
+      );
+    }
+    if (currency === invoiceCurrency.trim().toUpperCase()) return null;
+
+    const settledAmount = roundMoney(dto.settled_amount);
+    const rate = dto.fx_rate ?? settledAmount / amount;
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new BadRequestException('The settlement rate must be positive.');
+    }
+    return {
+      currency,
+      amount: settledAmount,
+      rate: Math.round(rate * 1_000_000) / 1_000_000,
+    };
+  }
+
+  /**
+   * Refuse the transitions that would produce a second document of record.
+   *
+   * An imported invoice already exists on paper: it was rendered elsewhere,
+   * numbered elsewhere, and sent to the client elsewhere. Issuing, re-rendering
+   * or emailing it from here would either overwrite the evidence it was booked
+   * from or send the client a second, differently-formatted copy of an invoice
+   * they were already paid on.
+   */
+  private assertNotImported(invoice: InvoiceRow, action: string): void {
+    if (invoice.origin === 'imported') {
+      throw new BadRequestException(
+        `This invoice was imported from a document, so it cannot be ${action}. Its original document stays the record.`,
+      );
+    }
+  }
+
+  /**
+   * Recompute status and `paid_at` from the payment ledger.
+   *
+   * Public because the historical import path (FinanceImportsService) inserts
+   * a settled invoice's payments in one pass and then asks for the resulting
+   * state, rather than restating the paid/partially-paid rule itself. There is
+   * one rule and it lives here.
+   */
+  async refreshPaymentState(invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const status: InvoiceStatus =
       invoice.balance_due <= 0

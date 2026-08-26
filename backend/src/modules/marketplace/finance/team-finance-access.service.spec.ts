@@ -203,5 +203,41 @@ describe('TeamFinanceAccessService', () => {
         service.listTeamProjects('admin-1', TEAM_ID),
       ).resolves.toEqual([]);
     });
+
+    it('honours a contracts-only deny when scoped by finance.view_contracts', async () => {
+      // `finance.view_contracts` implies `finance.view` but can be denied on
+      // its own. The contract listing asks for the narrower capability, so a
+      // project the member may still see money for drops out of it — the team
+      // route must not be the way around a deny the single-project route
+      // already honours.
+      const supabase = fakeSupabase({
+        adminCount: 1,
+        projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        accessRows: [
+          {
+            project_id: PROJECT_ID,
+            role: 'admin',
+            capabilities: { 'finance.view_contracts': false },
+          },
+        ],
+      });
+      const service = new TeamFinanceAccessService(
+        supabase,
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+      );
+
+      await expect(
+        service.listTeamProjects('admin-1', TEAM_ID, {}, 'finance.view'),
+      ).resolves.toEqual([projectRow]);
+      await expect(
+        service.listTeamProjects(
+          'admin-1',
+          TEAM_ID,
+          {},
+          'finance.view_contracts',
+        ),
+      ).resolves.toEqual([]);
+    });
   });
 });

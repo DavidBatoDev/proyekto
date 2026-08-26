@@ -64,6 +64,19 @@ const BUCKET_CONFIG: Record<
     maxSize: 10 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
   },
+  // Invoices and bank records that were produced outside Proyekto and are
+  // being recorded historically. Larger than payout proofs because a scanned
+  // multi-page invoice is not a phone screenshot.
+  finance_documents: {
+    maxSize: 25 * 1024 * 1024,
+    allowedTypes: [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+    ],
+  },
   roadmap_previews: {
     maxSize: 10 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
@@ -110,6 +123,7 @@ const BUCKET_CONFIG: Record<
 const PRIVATE_BUCKETS = new Set<string>([
   'identity_documents',
   'payout_proofs',
+  'finance_documents',
 ]);
 
 /**

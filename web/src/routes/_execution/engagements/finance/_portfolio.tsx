@@ -11,9 +11,11 @@ import {
 	BarChart3,
 	CircleDollarSign,
 	FileSignature,
+	FileUp,
 	ReceiptText,
 } from "lucide-react";
 import { AppEmptyState } from "@/components/common/AppPrimitives";
+import { AppTabs } from "@/components/common/AppTabs";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -58,6 +60,7 @@ const FINANCE_TABS: Array<{
 	{ id: "overview", label: "Overview", icon: BarChart3 },
 	{ id: "contracts", label: "Contracts", icon: FileSignature },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
+	{ id: "imports", label: "Imports", icon: FileUp },
 ];
 
 function FinancePortfolioLayout() {
@@ -93,6 +96,13 @@ function FinancePortfolioLayout() {
 			case "invoices":
 				void navigate({
 					to: "/engagements/finance/invoices",
+					search: next,
+					replace: true,
+				});
+				return;
+			case "imports":
+				void navigate({
+					to: "/engagements/finance/imports",
 					search: next,
 					replace: true,
 				});
@@ -196,54 +206,43 @@ function FinancePortfolioLayout() {
 						</span>
 					</div>
 
-					<div className="mt-3 border-b border-border">
-						<nav
-							aria-label="Finance sections"
-							className="-mb-px flex min-w-max gap-6 overflow-x-auto"
-						>
-							{FINANCE_TABS.map((tab) => {
-								const Icon = tab.icon;
-								const active = tab.id === section;
-								const className = `inline-flex h-10 items-center gap-2 border-b-2 px-1 text-xs font-semibold transition-colors ${
-									active
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-								}`;
-								const label = (
-									<>
-										<Icon className="h-4 w-4" />
-										{tab.label}
-									</>
-								);
-								const linkProps = {
-									className,
-									"aria-current": active ? ("page" as const) : undefined,
-									search: sharedSearch,
-								};
-								return tab.id === "overview" ? (
-									<Link key={tab.id} to="/engagements/finance" {...linkProps}>
-										{label}
-									</Link>
-								) : tab.id === "contracts" ? (
-									<Link
-										key={tab.id}
-										to="/engagements/finance/contracts"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								) : (
-									<Link
-										key={tab.id}
-										to="/engagements/finance/invoices"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								);
-							})}
-						</nav>
-					</div>
+					{/*
+					 * The same strip the engagement list carries — one component, so
+					 * the two tab bars in this section cannot drift apart.
+					 */}
+					<AppTabs
+						variant="underline"
+						size="sm"
+						className="mt-3"
+						items={FINANCE_TABS.map((tab) => ({
+							key: tab.id,
+							label: (
+								<>
+									<tab.icon className="h-4 w-4" />
+									{tab.label}
+								</>
+							),
+						}))}
+						active={section}
+						linkFor={(id) =>
+							id === "contracts"
+								? {
+										to: "/engagements/finance/contracts",
+										search: sharedSearch,
+									}
+								: id === "invoices"
+									? {
+											to: "/engagements/finance/invoices",
+											search: sharedSearch,
+										}
+									: id === "imports"
+										? {
+												to: "/engagements/finance/imports",
+												search: sharedSearch,
+											}
+										: { to: "/engagements/finance", search: sharedSearch }
+						}
+					/>
 				</header>
 
 				<FinanceFiltersBar

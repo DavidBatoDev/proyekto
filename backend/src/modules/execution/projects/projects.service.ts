@@ -582,13 +582,22 @@ export class ProjectsService {
     };
   }> {
     const feeVisibleProjectIds = new Set<string>();
-    // Invoice totals follow `finance.view` (owner|admin by baseline) so this
-    // card agrees with what the Finance surface will actually show — it used
-    // to count invoices on ANY accessible project, which read as money the
-    // caller could never find again.
-    const financeVisibleProjectIds = new Set<string>();
+    // Invoice totals cover the projects the caller OWNS — their own book, the
+    // set the personal finance surfaces list (see ConsultantFinanceAccessService).
+    //
+    // It followed `finance.view` before, which is the owner|admin baseline, so
+    // an admin on someone else's project saw that project's invoices totalled
+    // on their own dashboard while `/engagements/finance` — owner-scoped —
+    // showed them nothing: a card reading "120,000 · 11 invoices" above a
+    // portfolio with no invoices in it. Someone else's billing is theirs to
+    // total, not the admin's; the admin still reads it inside that project.
+    const ownedProjectIds = new Set<string>();
     if (query.project_id) {
-      await this.authorization.assertRole(userId, query.project_id, 'viewer');
+      const role = await this.authorization.assertRole(
+        userId,
+        query.project_id,
+        'viewer',
+      );
       const permissions = await this.authorization.resolvePermissions(
         userId,
         query.project_id,
@@ -596,8 +605,8 @@ export class ProjectsService {
       if (permissions?.time.view_team_logs) {
         feeVisibleProjectIds.add(query.project_id);
       }
-      if (permissions?.finance.view) {
-        financeVisibleProjectIds.add(query.project_id);
+      if (role === 'owner') {
+        ownedProjectIds.add(query.project_id);
       }
     }
     if (query.team_id) {
@@ -643,8 +652,8 @@ export class ProjectsService {
         if (permissions.time.view_team_logs) {
           feeVisibleProjectIds.add(row.project_id);
         }
-        if (permissions.finance.view) {
-          financeVisibleProjectIds.add(row.project_id);
+        if (row.role === 'owner') {
+          ownedProjectIds.add(row.project_id);
         }
       }
       projectIds = Array.from(
@@ -844,7 +853,7 @@ export class ProjectsService {
     }
 
     const invoiceSummary = await this.commerce.getInvoiceSummary(
-      [...financeVisibleProjectIds],
+      [...ownedProjectIds],
       {
         from: query.from,
         to: query.to,

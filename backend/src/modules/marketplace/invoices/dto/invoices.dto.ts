@@ -211,6 +211,7 @@ export class InvoiceListQueryDto {
 }
 
 export class RecordInvoicePaymentDto {
+  /** In the invoice's currency: what this payment settles of the invoice. */
   @Type(() => Number)
   @IsNumber()
   @Min(0.01)
@@ -233,6 +234,35 @@ export class RecordInvoicePaymentDto {
   @IsString()
   @MaxLength(2000)
   note?: string;
+
+  /**
+   * What actually landed, when the client pays in another currency. Recorded
+   * on the payment rather than the invoice because the rate belongs to the
+   * transfer: two PESONet credits against the same AUD book cleared three
+   * weeks apart at 42.1650 and 41.3724.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  settled_currency?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  settled_amount?: number;
+
+  /** Omit to derive `settled_amount / amount`. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  fx_rate?: number;
+
+  /** A `finance_documents` row: the bank record proving the transfer. */
+  @IsOptional()
+  @IsUUID()
+  proof_document_id?: string;
 }
 
 export class ReverseInvoicePaymentDto {

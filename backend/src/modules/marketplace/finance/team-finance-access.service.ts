@@ -13,6 +13,16 @@ import {
   ConsultantFinanceProject,
 } from './consultant-finance-access.service';
 
+/**
+ * The finance capabilities a team surface can be scoped by. Narrower than
+ * `PermissionPath` so a caller cannot scope a money listing by, say, a
+ * delivery permission.
+ */
+export type FinanceProjectPermission = Extract<
+  PermissionPath,
+  'finance.view' | 'finance.view_contracts' | 'finance.manage_invoices'
+>;
+
 export interface AdministeredTeam {
   id: string;
   name: string;
@@ -92,6 +102,7 @@ export class TeamFinanceAccessService {
       project_status?: string;
       currency?: string;
     } = {},
+    permission: FinanceProjectPermission = 'finance.view',
   ): Promise<ConsultantFinanceProject[]> {
     await this.assertTeamAdministrator(callerId, teamId);
 
@@ -105,7 +116,11 @@ export class TeamFinanceAccessService {
     );
     if (attachedIds.length === 0) return [];
 
-    const visible = await this.financeVisibleProjectIds(callerId, attachedIds);
+    const visible = await this.financeVisibleProjectIds(
+      callerId,
+      attachedIds,
+      permission,
+    );
     if (visible.size === 0) return [];
 
     let query = this.supabase
@@ -221,12 +236,20 @@ export class TeamFinanceAccessService {
 
   /**
    * Of `projectIds`, the ones whose caller-side `project_access` row resolves
-   * `finance.view`. One query and the pure resolver — never a per-project
-   * assert loop.
+   * `permission`. One query and the pure resolver — never a per-project assert
+   * loop.
+   *
+   * Parameterised rather than fixed on `finance.view` because the contract
+   * surface has its own capability: `finance.view_contracts` implies
+   * `finance.view` but can be denied on its own, and a team-wide listing that
+   * only asked for `finance.view` handed contract fees and counterparty names
+   * to a member that deny was meant to stop — while the single-project route
+   * (`ContractsService.listByProject`) refused them.
    */
   private async financeVisibleProjectIds(
     callerId: string,
     projectIds: string[],
+    permission: FinanceProjectPermission = 'finance.view',
   ): Promise<Set<string>> {
     const unique = [...new Set(projectIds)].filter(Boolean);
     if (unique.length === 0) return new Set();
@@ -245,7 +268,7 @@ export class TeamFinanceAccessService {
       capabilities: Record<string, unknown> | null;
     }>) {
       const permissions = resolvePermissions(row.role, row.capabilities);
-      if (getPermission(permissions, 'finance.view')) {
+      if (getPermission(permissions, permission)) {
         visible.add(row.project_id);
       }
     }

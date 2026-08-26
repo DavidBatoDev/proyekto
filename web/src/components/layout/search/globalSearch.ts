@@ -1,7 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import { HEADER_NAV_ITEMS } from "@/components/layout/headerNavigation";
+import {
+	ENGAGEMENTS_NAV_ITEMS,
+	FINANCE_TAB_PAGES,
+} from "@/components/layout/sidebar/engagementsNavigation";
 import { EXECUTION_PRIMARY_NAV_ITEMS } from "@/components/layout/sidebar/executionNavigation";
-import { FINANCE_NAV_ITEMS } from "@/components/layout/sidebar/financeNavigation";
 import { MARKETPLACE_NAV_ITEMS } from "@/components/layout/sidebar/marketplaceNavigation";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
@@ -75,18 +78,25 @@ export function buildSearchablePages(consultant: boolean): SearchablePage[] {
 		}
 	}
 
-	// The finance shell's nav ("Finance · Invoices" style), since finance left
-	// the marketplace sidebar. Its own "engagements" back-link dedupes against
-	// the entries above.
-	for (const item of FINANCE_NAV_ITEMS) {
+	// The engagements shell's nav, since finance left the marketplace sidebar.
+	// Its engagements entry dedupes against the entries above.
+	for (const item of ENGAGEMENTS_NAV_ITEMS) {
 		if (item.requires === "consultant" && !consultant) continue;
-		add({
-			key: item.key,
-			label:
-				item.key === "engagements" ? item.label : `Finance · ${item.label}`,
-			to: item.to,
-			icon: item.icon,
-		});
+		add({ key: item.key, label: item.label, to: item.to, icon: item.icon });
+	}
+
+	// Finance's sections are tabs rather than sidebar entries, but a user who
+	// searches "invoices" still means to land on one ("Finance · Invoices").
+	// The whole area is consultant-gated, so they follow that gate.
+	if (consultant) {
+		for (const tab of FINANCE_TAB_PAGES) {
+			add({
+				key: tab.key,
+				label: `Finance · ${tab.label}`,
+				to: tab.to,
+				icon: tab.icon,
+			});
+		}
 	}
 
 	for (const item of HEADER_NAV_ITEMS) {

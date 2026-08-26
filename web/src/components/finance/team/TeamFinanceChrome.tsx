@@ -8,6 +8,7 @@ import {
 	Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { AppTabs } from "@/components/common/AppTabs";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -139,59 +140,45 @@ export function TeamFinanceChrome({
 						</Link>
 					</div>
 
-					<div className="mt-3 border-b border-border">
-						<nav
-							aria-label="Team finance sections"
-							className="-mb-px flex min-w-max gap-6 overflow-x-auto"
-						>
-							{TEAM_FINANCE_TABS.map((tab) => {
-								const Icon = tab.icon;
-								const active = tab.id === section;
-								const className = `inline-flex h-10 items-center gap-2 border-b-2 px-1 text-xs font-semibold transition-colors ${
-									active
-										? "border-primary text-primary"
-										: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-								}`;
-								const label = (
-									<>
-										<Icon className="h-4 w-4" />
-										{tab.label}
-									</>
-								);
-								const linkProps = {
-									className,
-									"aria-current": active ? ("page" as const) : undefined,
-									params: { teamId },
-									search: sharedSearch,
-								};
-								return tab.id === "overview" ? (
-									<Link
-										key={tab.id}
-										to="/engagements/finance/team/$teamId"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								) : tab.id === "contracts" ? (
-									<Link
-										key={tab.id}
-										to="/engagements/finance/team/$teamId/contracts"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								) : (
-									<Link
-										key={tab.id}
-										to="/engagements/finance/team/$teamId/invoices"
-										{...linkProps}
-									>
-										{label}
-									</Link>
-								);
-							})}
-						</nav>
-					</div>
+					{/*
+					 * The same strip the portfolio and the engagement list carry —
+					 * one component, so the three tab bars in this section cannot
+					 * drift apart.
+					 */}
+					<AppTabs
+						variant="underline"
+						size="sm"
+						className="mt-3"
+						items={TEAM_FINANCE_TABS.map((tab) => ({
+							key: tab.id,
+							label: (
+								<>
+									<tab.icon className="h-4 w-4" />
+									{tab.label}
+								</>
+							),
+						}))}
+						active={section}
+						linkFor={(id) =>
+							id === "contracts"
+								? {
+										to: "/engagements/finance/team/$teamId/contracts",
+										params: { teamId },
+										search: sharedSearch,
+									}
+								: id === "invoices"
+									? {
+											to: "/engagements/finance/team/$teamId/invoices",
+											params: { teamId },
+											search: sharedSearch,
+										}
+									: {
+											to: "/engagements/finance/team/$teamId",
+											params: { teamId },
+											search: sharedSearch,
+										}
+						}
+					/>
 				</header>
 
 				<FinanceFiltersBar

@@ -244,10 +244,15 @@ export class TeamFinanceService {
     teamId: string,
     query: FinanceContractsQueryDto,
   ) {
+    // Scoped by `finance.view_contracts`, not `finance.view`: the capability
+    // implies the other but can be denied on its own, and the single-project
+    // route (ContractsService.listByProject) has always honoured that deny.
+    // Listing by team must not be the way around it.
     const projects = await this.access.listTeamProjects(
       callerId,
       teamId,
       query,
+      'finance.view_contracts',
     );
     const projectById = new Map(
       projects.map((project) => [project.id, project]),

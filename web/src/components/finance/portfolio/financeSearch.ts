@@ -60,7 +60,12 @@ export interface ContractEditorSearch {
 	section?: StepKey;
 }
 
-export const FINANCE_SECTIONS = ["overview", "contracts", "invoices"] as const;
+export const FINANCE_SECTIONS = [
+	"overview",
+	"contracts",
+	"invoices",
+	"imports",
+] as const;
 
 export type FinanceSection = (typeof FINANCE_SECTIONS)[number];
 
@@ -248,6 +253,18 @@ export const SECTION_FILTERS: Record<
 		contractStatus: false,
 		invoiceStatus: true,
 	},
+	// Imports are filed under one project at a time — the workspace is scoped to
+	// the project whose past billing is being recorded — so the project picker is
+	// the only facet that changes what is on screen.
+	imports: {
+		search: false,
+		project: true,
+		projectStatus: false,
+		currency: false,
+		date: false,
+		contractStatus: false,
+		invoiceStatus: false,
+	},
 };
 
 /** Count of filters that are both set AND meaningful in the current section. */
@@ -270,5 +287,6 @@ export function activeFilterCount(
 export function financeSectionFromPathname(pathname: string): FinanceSection {
 	if (pathname.startsWith("/engagements/finance/contracts")) return "contracts";
 	if (pathname.startsWith("/engagements/finance/invoices")) return "invoices";
+	if (pathname.startsWith("/engagements/finance/imports")) return "imports";
 	return "overview";
 }
