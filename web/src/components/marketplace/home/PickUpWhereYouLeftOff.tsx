@@ -174,7 +174,7 @@ function SeeAllLink({
 	}
 	if (!consultant) return null;
 	return (
-		<Link to="/marketplace/finance/contracts" className={className}>
+		<Link to="/engagements/finance/contracts" className={className}>
 			See all in Finance
 		</Link>
 	);
@@ -343,7 +343,7 @@ function ContractRows({
 				title="No contracts yet"
 				body="Draft an agreement for a project, set its terms, and send it for signature. Signing it is what activates the engagement."
 				cta={
-					<Link to="/marketplace/finance/contracts" className={CTA_CLASS}>
+					<Link to="/engagements/finance/contracts" className={CTA_CLASS}>
 						Go to contracts
 					</Link>
 				}
@@ -362,7 +362,7 @@ function ContractRows({
 				>
 					{(content) => (
 						<Link
-							to="/marketplace/finance/$contractId"
+							to="/engagements/finance/$contractId"
 							params={{ contractId: contract.id }}
 							search={{ section: undefined }}
 							className={ROW_CLASS}

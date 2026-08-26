@@ -3,7 +3,7 @@ import { mapLegacyPath } from "./legacyRoutePaths";
 
 describe("mapLegacyPath", () => {
 	it("rewrites a bare moved path", () => {
-		expect(mapLegacyPath("/finance")).toBe("/marketplace/finance");
+		expect(mapLegacyPath("/finance")).toBe("/engagements/finance");
 		expect(mapLegacyPath("/project-posting")).toBe("/project/new");
 		expect(mapLegacyPath("/marketplace/project-posting")).toBe("/project/new");
 	});
@@ -11,10 +11,22 @@ describe("mapLegacyPath", () => {
 	// notifications.link_url in production holds exactly this shape.
 	it("keeps path params and the query string", () => {
 		expect(mapLegacyPath("/finance/abc-123?section=signatures")).toBe(
-			"/marketplace/finance/abc-123?section=signatures",
+			"/engagements/finance/abc-123?section=signatures",
 		);
 		expect(mapLegacyPath("/finance?tab=invoices&projectId=p1")).toBe(
-			"/marketplace/finance?tab=invoices&projectId=p1",
+			"/engagements/finance?tab=invoices&projectId=p1",
+		);
+	});
+
+	// Finance moved twice; both generations of persisted URL land on the
+	// current home in one hop.
+	it("rewrites the marketplace-era finance paths", () => {
+		expect(mapLegacyPath("/marketplace/finance")).toBe("/engagements/finance");
+		expect(mapLegacyPath("/marketplace/finance/abc-123?section=signatures")).toBe(
+			"/engagements/finance/abc-123?section=signatures",
+		);
+		expect(mapLegacyPath("/marketplace/finance?tab=invoices&projectId=p1")).toBe(
+			"/engagements/finance?tab=invoices&projectId=p1",
 		);
 	});
 
@@ -70,7 +82,7 @@ describe("mapLegacyPath", () => {
 
 	it("passes through unrelated and already-migrated paths", () => {
 		expect(mapLegacyPath("/dashboard")).toBe("/dashboard");
-		expect(mapLegacyPath("/marketplace/finance")).toBe("/marketplace/finance");
+		expect(mapLegacyPath("/engagements/finance")).toBe("/engagements/finance");
 		expect(mapLegacyPath("/invites")).toBe("/invites");
 	});
 

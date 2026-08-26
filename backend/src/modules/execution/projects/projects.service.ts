@@ -582,6 +582,11 @@ export class ProjectsService {
     };
   }> {
     const feeVisibleProjectIds = new Set<string>();
+    // Invoice totals follow `finance.view` (owner|admin by baseline) so this
+    // card agrees with what the Finance surface will actually show — it used
+    // to count invoices on ANY accessible project, which read as money the
+    // caller could never find again.
+    const financeVisibleProjectIds = new Set<string>();
     if (query.project_id) {
       await this.authorization.assertRole(userId, query.project_id, 'viewer');
       const permissions = await this.authorization.resolvePermissions(
@@ -590,6 +595,9 @@ export class ProjectsService {
       );
       if (permissions?.time.view_team_logs) {
         feeVisibleProjectIds.add(query.project_id);
+      }
+      if (permissions?.finance.view) {
+        financeVisibleProjectIds.add(query.project_id);
       }
     }
     if (query.team_id) {
@@ -634,6 +642,9 @@ export class ProjectsService {
         const permissions = resolvePermissions(row.role, row.capabilities);
         if (permissions.time.view_team_logs) {
           feeVisibleProjectIds.add(row.project_id);
+        }
+        if (permissions.finance.view) {
+          financeVisibleProjectIds.add(row.project_id);
         }
       }
       projectIds = Array.from(
@@ -832,10 +843,13 @@ export class ProjectsService {
       }
     }
 
-    const invoiceSummary = await this.commerce.getInvoiceSummary(projectIds, {
-      from: query.from,
-      to: query.to,
-    });
+    const invoiceSummary = await this.commerce.getInvoiceSummary(
+      [...financeVisibleProjectIds],
+      {
+        from: query.from,
+        to: query.to,
+      },
+    );
 
     return {
       filters: {

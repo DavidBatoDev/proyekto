@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { HEADER_NAV_ITEMS } from "@/components/layout/headerNavigation";
 import { EXECUTION_PRIMARY_NAV_ITEMS } from "@/components/layout/sidebar/executionNavigation";
+import { FINANCE_NAV_ITEMS } from "@/components/layout/sidebar/financeNavigation";
 import { MARKETPLACE_NAV_ITEMS } from "@/components/layout/sidebar/marketplaceNavigation";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
@@ -72,6 +73,20 @@ export function buildSearchablePages(consultant: boolean): SearchablePage[] {
 				icon: child.icon,
 			});
 		}
+	}
+
+	// The finance shell's nav ("Finance · Invoices" style), since finance left
+	// the marketplace sidebar. Its own "engagements" back-link dedupes against
+	// the entries above.
+	for (const item of FINANCE_NAV_ITEMS) {
+		if (item.requires === "consultant" && !consultant) continue;
+		add({
+			key: item.key,
+			label:
+				item.key === "engagements" ? item.label : `Finance · ${item.label}`,
+			to: item.to,
+			icon: item.icon,
+		});
 	}
 
 	for (const item of HEADER_NAV_ITEMS) {

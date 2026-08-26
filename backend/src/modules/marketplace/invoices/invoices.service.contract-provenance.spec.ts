@@ -91,7 +91,9 @@ function harness(invoice = invoiceFixture()) {
   const supabase = {
     from: jest.fn(() => query),
   } as unknown as SupabaseClient;
-  const financeAccess = { assertProject: jest.fn().mockResolvedValue({}) };
+  const financeAccess = {
+    assertProjectFinanceActor: jest.fn().mockResolvedValue({}),
+  };
   const contracts = {
     getContractById: jest.fn(),
     getSignedContract: jest.fn(),
@@ -213,7 +215,7 @@ describe('InvoicesService contract provenance', () => {
     await expect(service.getInvoice('consultant-1', 'invoice-1')).resolves.toBe(
       invoice,
     );
-    expect(financeAccess.assertProject).not.toHaveBeenCalled();
+    expect(financeAccess.assertProjectFinanceActor).not.toHaveBeenCalled();
   });
 
   it('hides a severed invoice from strangers', async () => {

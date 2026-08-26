@@ -135,7 +135,7 @@ function EngagementDetailPage() {
 									type="button"
 									onClick={() =>
 										void navigate({
-											to: "/marketplace/finance/$contractId",
+											to: "/engagements/finance/$contractId",
 											params: {
 												contractId:
 													engagement.activated_by_contract_id as string,

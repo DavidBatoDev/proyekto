@@ -108,25 +108,25 @@ export function validateContractStep(value: unknown): StepKey | undefined {
  *
  * `/marketplace/finance?tab=invoices&projectId=…` is still written by the
  * invoice scheduler's older notification rows and by anything a user has
- * bookmarked, and notification rows cannot be rewritten, so the overview route
- * forwards them rather than quietly rendering the wrong section. Returns
- * `undefined` for `overview` and for anything unrecognised — both belong on the
- * overview route, which is where the caller already is.
+ * bookmarked, and notification rows cannot be rewritten, so the redirect stub
+ * at the old overview URL forwards them rather than quietly rendering the
+ * wrong section. Returns `undefined` for `overview` and for anything
+ * unrecognised — both belong on the overview route.
  */
 export function legacyTabRoute(
 	tab: unknown,
 ):
-	| "/marketplace/finance/contracts"
-	| "/marketplace/finance/invoices"
+	| "/engagements/finance/contracts"
+	| "/engagements/finance/invoices"
 	| undefined {
 	switch (tab) {
 		case "contracts":
-			return "/marketplace/finance/contracts";
+			return "/engagements/finance/contracts";
 		// `engagements` was a finance tab until the section moved to the
 		// top-level `/engagements` page; the value falls through to the
 		// overview, the closest thing finance still has.
 		case "invoices":
-			return "/marketplace/finance/invoices";
+			return "/engagements/finance/invoices";
 		default:
 			return undefined;
 	}
@@ -268,7 +268,7 @@ export function activeFilterCount(
 }
 
 export function financeSectionFromPathname(pathname: string): FinanceSection {
-	if (pathname.startsWith("/marketplace/finance/contracts")) return "contracts";
-	if (pathname.startsWith("/marketplace/finance/invoices")) return "invoices";
+	if (pathname.startsWith("/engagements/finance/contracts")) return "contracts";
+	if (pathname.startsWith("/engagements/finance/invoices")) return "invoices";
 	return "overview";
 }

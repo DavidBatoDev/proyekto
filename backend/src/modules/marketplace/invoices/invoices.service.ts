@@ -8,7 +8,7 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { MailerService } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
+import { TeamFinanceAccessService } from '../finance/team-finance-access.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
@@ -184,7 +184,10 @@ interface ComposeLinesInput {
 export class InvoicesService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    private readonly financeAccess: ConsultantFinanceAccessService,
+    // The either/or facade (consultant+owner OR project finance capability),
+    // so a project admin can run the invoice lifecycle. See the class note on
+    // TeamFinanceAccessService.
+    private readonly financeAccess: TeamFinanceAccessService,
     private readonly notifications: NotificationsService,
     private readonly contracts: ContractsService,
     private readonly composition: InvoiceCompositionService,
@@ -199,7 +202,11 @@ export class InvoicesService {
     projectId: string,
     query: InvoiceListQueryDto,
   ): Promise<{ items: InvoiceWithLines[]; total: number }> {
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.financeAccess.assertProjectFinanceActor(
+      callerId,
+      projectId,
+      'read',
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
     const offset = (page - 1) * limit;
@@ -232,9 +239,10 @@ export class InvoicesService {
     callerId: string,
     dto: CreateInvoiceDto,
   ): Promise<InvoiceWithLines> {
-    const project = await this.financeAccess.assertProject(
+    const project = await this.financeAccess.assertProjectFinanceActor(
       callerId,
       dto.project_id,
+      'manage',
     );
 
     // An explicitly selected contract is exact invoice provenance. Without
@@ -415,7 +423,11 @@ export class InvoicesService {
     invoice: InvoiceRow,
   ): Promise<void> {
     if (invoice.project_id) {
-      await this.financeAccess.assertProject(callerId, invoice.project_id);
+      await this.financeAccess.assertProjectFinanceActor(
+        callerId,
+        invoice.project_id,
+        'read',
+      );
       return;
     }
     if (invoice.issuer_user_id === callerId) return;
@@ -444,9 +456,10 @@ export class InvoicesService {
     dto: UpdateInvoiceDto,
   ): Promise<InvoiceWithLines> {
     const existing = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(existing),
+      'manage',
     );
     if (existing.status !== 'draft') {
       throw new BadRequestException(
@@ -566,9 +579,10 @@ export class InvoicesService {
    */
   async deleteInvoice(callerId: string, invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'manage',
     );
 
     if (invoice.status !== 'draft') {
@@ -591,7 +605,11 @@ export class InvoicesService {
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.financeAccess.assertProjectFinanceActor(
+      callerId,
+      projectId,
+      'manage',
+    );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       projectId,
       'Invoice issuing',
@@ -789,9 +807,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceRecipient> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'read',
     );
     return this.resolveRecipient(invoice);
   }
@@ -805,9 +824,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceEmailDelivery> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
@@ -827,9 +847,10 @@ export class InvoicesService {
     dto: RecordInvoicePaymentDto,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
@@ -872,9 +893,10 @@ export class InvoicesService {
     reason: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
@@ -930,7 +952,11 @@ export class InvoicesService {
   ): Promise<{ voided: InvoiceWithLines; replacement: InvoiceWithLines }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
-    await this.financeAccess.assertProject(callerId, projectId);
+    await this.financeAccess.assertProjectFinanceActor(
+      callerId,
+      projectId,
+      'manage',
+    );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       projectId,
       'Invoice void and replacement',
@@ -1049,9 +1075,10 @@ export class InvoicesService {
     generated_at: string;
   }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'manage',
     );
     if (invoice.status !== 'draft' && invoice.pdf_path) {
       throw new BadRequestException(
@@ -1187,9 +1214,10 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<{ url: string; expires_in: number }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProject(
+    await this.financeAccess.assertProjectFinanceActor(
       callerId,
       this.requireInvoiceProjectId(invoice),
+      'read',
     );
     if (!invoice.pdf_path) {
       throw new NotFoundException(

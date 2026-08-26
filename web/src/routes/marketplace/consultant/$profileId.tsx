@@ -395,7 +395,7 @@ function EngagePanel({
 							browse the marketplace.
 						</p>
 						<Link
-							to="/marketplace/finance/contracts"
+							to="/engagements/finance/contracts"
 							className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg bg-foreground text-[14px] font-semibold text-background transition-opacity hover:opacity-90"
 						>
 							Your contracts

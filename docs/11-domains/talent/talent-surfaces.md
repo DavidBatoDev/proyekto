@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-26 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `talent` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -49,7 +49,7 @@ Unvetted users are blocked from these by the shared predicate
 | --- | --- |
 | `/marketplace/talent` | Web active-consultant check plus guarded API |
 | `/marketplace/consultant/templates` authoring actions | Web check and `ConsultantOnlyGuard` |
-| `/marketplace/finance/*` data | Entire backend finance controller uses `ConsultantOnlyGuard` |
+| `/engagements/finance/*` data | Entire backend finance controller uses `ConsultantOnlyGuard` |
 | Consultant-mode project creation | Backend verifies the active predicate |
 
 ## Navigation behavior

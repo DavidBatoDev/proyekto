@@ -142,6 +142,18 @@ export type ProjectPermissions = {
     /** See every member's time on the project, not just your own. */
     view_team_logs: boolean;
   };
+  finance: {
+    /** See the project's invoices and revenue-side numbers. */
+    view: boolean;
+    /** Create, issue, resend, and record payments on the project's invoices. */
+    manage_invoices: boolean;
+    /**
+     * Read the project's contracts. Editing/signing is NOT a permission path:
+     * it stays with the contract's consultant-control check, which is seat- and
+     * consultant-bound rather than project-role-bound.
+     */
+    view_contracts: boolean;
+  };
   /**
    * Feature availability, NOT a per-member capability — and deliberately absent
    * from `PermissionPath`/`PERMISSION_PATHS`.
@@ -212,7 +224,10 @@ export type PermissionPath =
   | 'resources.delete'
   | 'logs.view'
   | 'logs.view_sensitive'
-  | 'time.view_team_logs';
+  | 'time.view_team_logs'
+  | 'finance.view'
+  | 'finance.manage_invoices'
+  | 'finance.view_contracts';
 
 // Runtime list — handy for iteration in dep validation and the UI.
 export const PERMISSION_PATHS: readonly PermissionPath[] = [
@@ -268,6 +283,9 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'logs.view',
   'logs.view_sensitive',
   'time.view_team_logs',
+  'finance.view',
+  'finance.manage_invoices',
+  'finance.view_contracts',
 ] as const;
 
 // ─── Path helpers ──────────────────────────────────────────────────────────
@@ -383,6 +401,7 @@ function allFalse(): ProjectPermissions {
     resources: { view: false, upload: false, delete: false },
     logs: { view: false, view_sensitive: false },
     time: { view_team_logs: false },
+    finance: { view: false, manage_invoices: false, view_contracts: false },
     // Not reachable via setPermission, so allTrue() leaves it false. Resolved
     // only in ProjectsService.getMyPermissions.
     mentions: { invite_by_email: false },
@@ -433,8 +452,8 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     // Deliverables / Change Requests / Risks / Decisions are readable by anyone
     // who can see the project; the verbs below are what actually differ.
     'access.delivery': true,
-    // The money surfaces are off at this rung by default; the billing three
-    // (contract/invoices/financials) are granted further up the ladder.
+    // The money surfaces are off at this rung by default; the `finance.*`
+    // paths (invoices, contract reads, revenue numbers) arrive at admin.
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
@@ -501,6 +520,14 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'change_requests.decide': true,
     'risks.view_internal': true,
     'decisions.view_internal': true,
+    // The team-finance ("HR") tier: an admin sees the project's invoices and
+    // revenue side, runs the invoice lifecycle, and reads contracts. Matches
+    // the finance RLS predicates (owner|admin) in
+    // 20260811092000_finance_rls_project_access_only.sql. Contract EDITING is
+    // deliberately not here — it stays with consultant contract control.
+    'finance.view': true,
+    'finance.manage_invoices': true,
+    'finance.view_contracts': true,
   });
 
   return p;
@@ -576,6 +603,9 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'logs.view_sensitive': ['logs.view'],
 
   'time.view_team_logs': ['access.time'],
+
+  'finance.manage_invoices': ['finance.view'],
+  'finance.view_contracts': ['finance.view'],
 
   'deliverables.edit': ['access.delivery'],
   'deliverables.approve': ['access.delivery'],

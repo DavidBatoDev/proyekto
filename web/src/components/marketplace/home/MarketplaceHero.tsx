@@ -65,7 +65,7 @@ export function MarketplaceHero() {
 				</h1>
 				{user && isActiveConsultant(profile) && (
 					<Link
-						to="/marketplace/finance"
+						to="/engagements/finance"
 						className="text-[13px] font-medium text-primary hover:underline"
 					>
 						Your finance

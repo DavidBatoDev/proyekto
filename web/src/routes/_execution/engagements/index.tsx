@@ -155,7 +155,7 @@ function EngagementsPage() {
 
 	const openContract = (contractId: string) =>
 		void navigate({
-			to: "/marketplace/finance/$contractId",
+			to: "/engagements/finance/$contractId",
 			params: { contractId },
 			search: { section: undefined },
 		});
@@ -175,7 +175,7 @@ function EngagementsPage() {
 			void qc.invalidateQueries({ queryKey: ["finance", "contracts"] });
 			toast.success("Draft contract created");
 			void navigate({
-				to: "/marketplace/finance/$contractId",
+				to: "/engagements/finance/$contractId",
 				params: { contractId: created.id },
 				search: { section: "parties" },
 			});
