@@ -51,3 +51,7 @@ node_modules/
 Profile.pdf
 *.linkedin.pdf
 /cv-samples/
+
+# Env swap backups (cp .env.development.local{,.devbak} style) — same secrets, same rules.
+*.devbak
+*.prodbak
