@@ -100,7 +100,7 @@ describe('EngagementEligibilityService', () => {
       stubSupabase({
         contract_positions: [{ data: [] }],
         task_time_logs: [{ count: 0 }],
-        project_access: [{ data: { created_at: '2026-01-01T00:00:00Z' } }],
+        project_access: [{ data: { granted_at: '2026-01-01T00:00:00Z' } }],
         consultant_profiles: [{ count: 1 }],
       }),
     );
@@ -112,7 +112,7 @@ describe('EngagementEligibilityService', () => {
       stubSupabase({
         contract_positions: [{ data: [] }],
         task_time_logs: [{ count: 0 }],
-        project_access: [{ data: { created_at: '2026-01-01T00:00:00Z' } }],
+        project_access: [{ data: { granted_at: '2026-01-01T00:00:00Z' } }],
         consultant_profiles: [{ count: 0 }],
       }),
     );

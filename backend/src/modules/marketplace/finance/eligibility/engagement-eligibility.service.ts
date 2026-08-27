@@ -146,11 +146,11 @@ export class EngagementEligibilityService {
 
     const { data: accessRow, error: accessError } = await this.supabase
       .from('project_access')
-      .select('created_at')
+      .select('granted_at')
       .eq('user_id', userId)
       .eq('project_id', projectId)
-      .lt('created_at', ENFORCEMENT_CUTOFF)
-      .maybeSingle<{ created_at: string }>();
+      .lt('granted_at', ENFORCEMENT_CUTOFF)
+      .maybeSingle<{ granted_at: string }>();
     if (accessError) throw new Error(accessError.message);
     if (!accessRow) return false;
 
