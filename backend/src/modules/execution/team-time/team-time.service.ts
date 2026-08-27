@@ -21,13 +21,14 @@ import {
   UpdateTimeLogDto,
 } from './dto/team-time.dto';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { EngagementEligibilityService } from '../../marketplace/finance/eligibility/engagement-eligibility.service';
 
 const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,
   duration_seconds, break_minutes, break_seconds, paused_at,
   status, reviewed_by, reviewed_at, review_note, source,
   rate_snapshot, rate_type_snapshot, currency_snapshot, work_type_snapshot,
-  member_display_name_snapshot,
+  member_display_name_snapshot, flagged_reason,
   created_at, updated_at,
   task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type, status),
   member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email),
@@ -95,11 +96,15 @@ export interface TimeLogRow {
   currency_snapshot: string;
   work_type_snapshot: TaskWorkType;
   member_display_name_snapshot: string | null;
+  /** Enforcement-pass marker (e.g. contract_lapsed); informational, never blocking. */
+  flagged_reason: string | null;
   created_at: string;
   updated_at: string;
   limit_context?: TimeLogLimitContext;
   day_review_summary?: TimeLogDaySummary;
   review_comments?: TimeLogCommentRow[];
+  /** Present when the team is in 'warn' contract enforcement and the member has no live contract. */
+  contract_warning?: string;
 }
 
 export interface TimeLogSegmentRow {
@@ -215,7 +220,67 @@ export class TeamTimeService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
+    private readonly eligibility: EngagementEligibilityService,
   ) {}
+
+  // ─── contract enforcement ─────────────────────────────────────────────
+
+  /**
+   * The "no contract -> no timer" gate, per team rollout mode:
+   * 'off' (grandfathered default) does nothing; 'warn' lets the log through
+   * and returns a warning string; 'enforce' refuses with NO_ACTIVE_CONTRACT.
+   * Eligibility ('engaged' or 'grandfathered') always passes.
+   */
+  private async applyContractGate(
+    callerId: string,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<string | undefined> {
+    if (!teamId) return undefined;
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('contract_enforcement')
+      .eq('id', teamId)
+      .maybeSingle<{ contract_enforcement: 'off' | 'warn' | 'enforce' }>();
+    if (error) throw new Error(error.message);
+    const mode = data?.contract_enforcement ?? 'off';
+    if (mode === 'off') return undefined;
+
+    const status = await this.eligibility.getEngagementStatus(
+      callerId,
+      projectId,
+    );
+    if (status !== 'ineligible') return undefined;
+    if (mode === 'enforce') {
+      throw new ForbiddenException({
+        code: 'NO_ACTIVE_CONTRACT',
+        message:
+          'Time tracking on this project requires a signed contract. Ask the team owner about your contract before logging time.',
+      });
+    }
+    return 'You have no signed contract on this project. This team will soon require one for time tracking.';
+  }
+
+  /** Stamp a just-stopped log whose member lost contract eligibility mid-run. */
+  private async flagIfContractLapsed(row: TimeLogRow): Promise<void> {
+    if (!row.team_id || row.flagged_reason) return;
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('contract_enforcement')
+      .eq('id', row.team_id)
+      .maybeSingle<{ contract_enforcement: 'off' | 'warn' | 'enforce' }>();
+    if (error || !data || data.contract_enforcement === 'off') return;
+    const status = await this.eligibility.getEngagementStatus(
+      row.member_user_id,
+      row.project_id,
+    );
+    if (status !== 'ineligible') return;
+    row.flagged_reason = 'contract_lapsed';
+    await this.supabase
+      .from('task_time_logs')
+      .update({ flagged_reason: 'contract_lapsed' })
+      .eq('id', row.id);
+  }
 
   // ─── maintenance ──────────────────────────────────────────────────────
 
@@ -324,6 +389,11 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     assertResolvedTeamTimeTrackingEnabled(rate);
+    const contractWarning = await this.applyContractGate(
+      callerId,
+      dto.project_id,
+      rate.team_id,
+    );
     const resolvedRate = this.pickRateForWorkType(rate, workType);
     const startedAt = new Date().toISOString();
     const memberDisplayNameSnapshot =
@@ -352,7 +422,9 @@ export class TeamTimeService {
     }
     const row = data as unknown as TimeLogRow;
     await this.openSegment(row.id, 'work', startedAt);
-    return this.attachLimitContext(row);
+    const withContext = await this.attachLimitContext(row);
+    if (contractWarning) withContext.contract_warning = contractWarning;
+    return withContext;
   }
 
   /**
@@ -494,6 +566,14 @@ export class TeamTimeService {
       throw new Error('Failed to stop timer');
     }
     await this.closeOpenSegment(logId, endedAt);
+    // A contract that lapsed while the timer ran never kills the log — it is
+    // stamped for the reviewer instead. Best-effort: a failure here must not
+    // block the stop.
+    try {
+      await this.flagIfContractLapsed(row);
+    } catch {
+      // Non-fatal by design.
+    }
     try {
       await this.notifyApprovalRequested(row, callerId);
     } catch (notifyError) {
@@ -758,11 +838,18 @@ export class TeamTimeService {
       netSeconds,
       rate,
     );
+    const contractWarning = await this.applyContractGate(
+      callerId,
+      dto.project_id,
+      rate.team_id,
+    );
     const resolvedRate = this.pickRateForWorkType(rate, workType);
     const memberDisplayNameSnapshot =
       await this.resolveMemberDisplayNameSnapshot(callerId);
 
     const insertPayload: Record<string, unknown> = {
+      // 'warn' mode lets the log through but marks it for the reviewer.
+      flagged_reason: contractWarning ? 'no_active_contract' : null,
       project_id: dto.project_id,
       task_id: taskId,
       member_user_id: callerId,

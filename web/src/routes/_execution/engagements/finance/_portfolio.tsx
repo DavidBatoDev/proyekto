@@ -116,13 +116,23 @@ function FinancePortfolioLayout() {
 		}
 	};
 
+	// The portfolio tabs are the consultant's book of business; everyone else
+	// is routed to their personal finance book (F1) instead of a dead end.
 	if (profile && !isConsultant) {
 		return (
 			<div className="mx-auto max-w-4xl px-5 py-10">
 				<AppEmptyState
 					icon={CircleDollarSign}
-					title="Finance is for active consultants"
-					description="Once your consultant profile is verified, contracts, client invoices, and portfolio financials will appear here."
+					title="Your finance lives in your personal book"
+					description="Hours worked, payouts, and rates across your engaged projects — private to you. The portfolio tabs here are the verified-consultant book of business."
+					action={
+						<Link
+							to="/engagements/finance/me"
+							className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
+						>
+							Open my finance
+						</Link>
+					}
 				/>
 			</div>
 		);

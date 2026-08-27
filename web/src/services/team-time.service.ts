@@ -54,6 +54,10 @@ export interface TaskTimeLog {
 	project?: { id: string; title: string | null } | null;
 	day_review_summary?: TimeLogDaySummary;
 	review_comments?: TimeLogComment[];
+	/** Enforcement-pass marker (e.g. contract_lapsed); informational only. */
+	flagged_reason?: string | null;
+	/** Present when the team is in warn-mode contract enforcement and the member has no live contract. */
+	contract_warning?: string;
 }
 
 export interface TimeLogComment {

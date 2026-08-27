@@ -22,11 +22,12 @@ import {
  * places to be selected from. The engagement list's seat tabs and status
  * filter are absent for the same reason.
  *
- * Finance stays a consultant capability, while the engagements entry and the
- * teams nested under finance (appended at render time from the caller's
- * administered teams) are deliberately NOT gated: every seat on an engagement
- * may read its own agreements, and a project admin runs team finance without
- * ever being a marketplace consultant.
+ * Nothing here is consultant-gated anymore: finance is a book-based surface
+ * every execution user can create (F1 personal; F2/F3 for team owners and
+ * their invited finance actors). Non-consultants land on the personal-finance
+ * path; the consultant portfolio remains what a verified consultant sees
+ * inside the same section. Teams nested under finance are appended at render
+ * time from the caller's administered teams.
  */
 export interface EngagementsNavItem {
 	key: string;
@@ -58,7 +59,6 @@ export const ENGAGEMENTS_NAV_ITEMS: EngagementsNavItem[] = [
 		label: "Finance",
 		icon: CircleDollarSign,
 		match: "prefix",
-		requires: "consultant",
 		// A team's finance book is its own destination, listed under this one.
 		excludes: ["/engagements/finance/team"],
 	},

@@ -77,6 +77,7 @@ export interface TeamRow {
   tax_id: string | null;
   billing_email: string | null;
   time_tracking_enabled: boolean;
+  contract_enforcement: 'off' | 'warn' | 'enforce';
   retroactive_log_days: number | null;
   default_currency: string;
   pay_period_config: PayPeriodConfigInput | null;
@@ -414,6 +415,11 @@ export class TeamsService {
       }
       patch.time_tracking_enabled = dto.time_tracking_enabled;
     }
+    if (dto.contract_enforcement !== undefined) {
+      // The "no contract -> no timer" rollout dial (off | warn | enforce);
+      // owner-only like the rest of this patch, enforced in team-time.
+      patch.contract_enforcement = dto.contract_enforcement;
+    }
     if (dto.retroactive_log_days !== undefined) {
       patch.retroactive_log_days = dto.retroactive_log_days;
     }
@@ -490,8 +496,7 @@ export class TeamsService {
       if (!intInRange(p.start_day, 1, 31)) {
         throw new BadRequestException(`Period "${id}" start_day must be 1–31`);
       }
-      const endDay: number | 'EOM' =
-        p.end_day === 'EOM' ? 'EOM' : (p.end_day as number);
+      const endDay: number | 'EOM' = p.end_day === 'EOM' ? 'EOM' : p.end_day;
       if (endDay !== 'EOM' && !intInRange(endDay, 1, 31)) {
         throw new BadRequestException(
           `Period "${id}" end_day must be 1–31 or "EOM"`,

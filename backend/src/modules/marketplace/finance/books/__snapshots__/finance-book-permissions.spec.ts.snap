@@ -1,0 +1,56 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`resolveBookPermissions matches the role-default matrix 1`] = `
+{
+  "accountant": {
+    "export": true,
+    "manage_book": false,
+    "manage_members": false,
+    "manage_money": false,
+    "view": true,
+    "view_contracts": false,
+    "view_costs": false,
+    "view_time": true,
+  },
+  "manager": {
+    "export": true,
+    "manage_book": false,
+    "manage_members": false,
+    "manage_money": true,
+    "view": true,
+    "view_contracts": true,
+    "view_costs": true,
+    "view_time": true,
+  },
+  "owner": {
+    "export": true,
+    "manage_book": true,
+    "manage_members": true,
+    "manage_money": true,
+    "view": true,
+    "view_contracts": true,
+    "view_costs": true,
+    "view_time": true,
+  },
+  "viewer": {
+    "export": false,
+    "manage_book": false,
+    "manage_members": false,
+    "manage_money": false,
+    "view": true,
+    "view_contracts": false,
+    "view_costs": false,
+    "view_time": true,
+  },
+  "viewer_client": {
+    "export": false,
+    "manage_book": false,
+    "manage_members": false,
+    "manage_money": false,
+    "view": true,
+    "view_contracts": true,
+    "view_costs": false,
+    "view_time": false,
+  },
+}
+`;

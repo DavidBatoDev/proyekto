@@ -56,6 +56,7 @@ export interface Team {
 	tax_id?: string | null;
 	billing_email?: string | null;
 	time_tracking_enabled: boolean;
+	contract_enforcement?: "off" | "warn" | "enforce";
 	retroactive_log_days?: number | null;
 	default_currency?: string | null;
 	pay_period_config?: PayPeriodConfig | null;
@@ -258,6 +259,7 @@ export interface UpdateTeamPatch {
 	tax_id?: string;
 	billing_email?: string;
 	time_tracking_enabled?: boolean;
+	contract_enforcement?: "off" | "warn" | "enforce";
 	retroactive_log_days?: number;
 	default_currency?: "USD" | "CAD" | "PHP";
 	pay_period_config?: PayPeriodConfig | null;

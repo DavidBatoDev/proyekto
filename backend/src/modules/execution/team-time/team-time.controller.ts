@@ -12,6 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
+import {
+  EntitlementGuard,
+  RequiresEntitlement,
+} from '../entitlements/entitlement.guard';
 import { CronSecretGuard } from '../../../common/guards/cron-secret.guard';
 import { Public } from '../../../common/decorators/public.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -28,7 +32,13 @@ import {
   UpdateTimeLogDto,
 } from './dto/team-time.dto';
 
-@UseGuards(SupabaseAuthGuard)
+/**
+ * The whole surface is the Time add-on. EntitlementGuard fires on routes
+ * carrying a `:teamId` param (the billing subject); log-scoped routes are
+ * still covered by the service's own team-flag assert.
+ */
+@UseGuards(SupabaseAuthGuard, EntitlementGuard)
+@RequiresEntitlement('time_tracking')
 @Controller('team-time')
 export class TeamTimeController {
   constructor(private readonly service: TeamTimeService) {}
