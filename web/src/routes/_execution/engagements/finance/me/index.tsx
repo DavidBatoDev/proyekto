@@ -3,9 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	CircleDollarSign,
 	Clock,
-	FileSignature,
+	FolderKanban,
 	HandCoins,
 	Hourglass,
+	Users,
 	Wallet,
 } from "lucide-react";
 import {
@@ -19,12 +20,18 @@ import {
 	FinanceBreadcrumbs,
 	FinanceCurrentCrumb,
 } from "@/components/finance/portfolio/FinanceBreadcrumbs";
-import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
-import { financeBooksService } from "@/services/financeBooks.service";
+import {
+	FinanceLoading,
+	FinanceStatusBadge,
+} from "@/components/finance/portfolio/FinancePrimitives";
+import {
+	type FinanceHubTeam,
+	financeBooksService,
+} from "@/services/financeBooks.service";
 
 /**
  * The personal finance (F1) dashboard: hours worked, payouts received, and
- * the projects the user is contract-engaged on. Available to every execution
+ * the caller's teams with their finance books. Available to every execution
  * user once they create their book; a zero-contract book renders empty
  * states — contracts unlock data, never creation.
  */
@@ -76,7 +83,28 @@ function PersonalFinancePage() {
 					]}
 				/>
 
-				{!personalBook ? (
+				{/*
+				 * A failed listMine must read as an outage, not as "you have no
+				 * book" — showing the create CTA on error walked users into a 409.
+				 */}
+				{booksQuery.isError ? (
+					<div className="mt-8">
+						<AppEmptyState
+							icon={CircleDollarSign}
+							title="Could not load your finance"
+							description={booksQuery.error.message}
+							action={
+								<button
+									type="button"
+									onClick={() => void booksQuery.refetch()}
+									className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
+								>
+									Try again
+								</button>
+							}
+						/>
+					</div>
+				) : !personalBook ? (
 					<div className="mt-8">
 						<AppEmptyState
 							icon={CircleDollarSign}
@@ -124,6 +152,12 @@ function PersonalDashboardBody({
 }) {
 	const { hours, payouts_in, engaged_projects } = dashboard;
 	const hasContracts = engaged_projects.length > 0;
+
+	const hubQuery = useQuery({
+		queryKey: ["finance-books", "hub"],
+		queryFn: financeBooksService.hub,
+	});
+	const teams = hubQuery.data?.teams ?? [];
 
 	return (
 		<>
@@ -181,42 +215,127 @@ function PersonalDashboardBody({
 			)}
 
 			<AppSectionHeader
-				title="Engaged projects"
-				subtitle="Projects where you hold a signed seat on a live contract — these unlock the timer and payouts."
+				title="My teams"
+				subtitle="Your teams and the finance books behind them — signed contracts unlock the timer and payouts per project."
 				className="mt-8"
 			/>
-			{!hasContracts ? (
+			{hubQuery.isPending ? (
+				<p className="mt-3 text-sm text-slate-500">Loading your teams…</p>
+			) : teams.length === 0 ? (
 				<AppEmptyState
-					icon={FileSignature}
-					title="No engaged projects yet"
-					description="You are not on a signed contract yet. When a team signs one with you, the project appears here and the execution timer unlocks for it."
+					icon={Users}
+					title="No teams yet"
+					description="When you join or create a team, its projects and finance books appear here. Signed contracts unlock the execution timer and payouts."
 					className="mt-3"
 				/>
 			) : (
 				<div className="mt-3 space-y-3">
-					{engaged_projects.map((project) => (
-						<AppSurfaceCard
-							key={project.contract_id}
-							className="flex items-center justify-between gap-4 px-5 py-4"
-						>
-							<div className="min-w-0">
-								<p className="truncate text-sm font-semibold text-slate-900">
-									{project.project_title}
-								</p>
-								<p className="text-xs text-slate-500">
-									{project.relationship_kind === "talent_services"
-										? "Talent contract"
-										: "Client contract"}{" "}
-									· {project.currency}
-								</p>
-							</div>
-							<span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 capitalize">
-								{project.contract_status}
-							</span>
-						</AppSurfaceCard>
+					{teams.map((team) => (
+						<MyTeamBlock
+							key={team.team_id}
+							team={team}
+							engagedProjects={engaged_projects}
+						/>
 					))}
 				</div>
 			)}
 		</>
+	);
+}
+
+function MyTeamBlock({
+	team,
+	engagedProjects,
+}: {
+	team: FinanceHubTeam;
+	engagedProjects: NonNullable<
+		Awaited<ReturnType<typeof financeBooksService.personalDashboard>>
+	>["engaged_projects"];
+}) {
+	const isOwner = team.my_team_role === "owner";
+
+	return (
+		<AppSurfaceCard className="p-5">
+			<div className="flex items-center justify-between gap-4">
+				<div className="flex min-w-0 items-center gap-3">
+					{team.avatar_url ? (
+						<img
+							src={team.avatar_url}
+							alt=""
+							className="h-9 w-9 shrink-0 rounded-lg object-cover"
+						/>
+					) : (
+						<span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+							<Users className="h-4 w-4" />
+						</span>
+					)}
+					<div className="min-w-0">
+						<p className="truncate text-sm font-semibold text-slate-900">
+							{team.team_name}
+						</p>
+						<p className="text-xs text-slate-500 capitalize">
+							{team.my_team_role.replace(/_/g, " ")}
+						</p>
+					</div>
+				</div>
+				{isOwner ? (
+					<div className="flex shrink-0 items-center gap-2">
+						{team.book ? (
+							<Link
+								to="/engagements/finance/book/$bookId"
+								params={{ bookId: team.book.id }}
+								className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-900 hover:text-slate-900"
+							>
+								Team finance
+							</Link>
+						) : null}
+						<Link
+							to="/engagements/finance/team/$teamId/addons"
+							params={{ teamId: team.team_id }}
+							className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-900 hover:text-slate-900"
+						>
+							Add-ons
+						</Link>
+					</div>
+				) : null}
+			</div>
+
+			{team.project_books.length > 0 ? (
+				<div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+					{team.project_books.map((entry) => (
+						<Link
+							key={entry.book.id}
+							to="/engagements/finance/book/$bookId"
+							params={{ bookId: entry.book.id }}
+							className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-slate-50"
+						>
+							<span className="flex min-w-0 items-center gap-2">
+								<FolderKanban className="h-4 w-4 shrink-0 text-slate-400" />
+								<span className="truncate text-sm font-medium text-slate-800">
+									{entry.project_title}
+								</span>
+							</span>
+							<FinanceStatusBadge status={entry.contract_status} />
+						</Link>
+					))}
+				</div>
+			) : engagedProjects.length > 0 ? (
+				// No project books yet — fall back to the caller's engaged
+				// contracts so the block still shows where their time can go.
+				<div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+					{engagedProjects.map((project) => (
+						<div
+							key={project.contract_id}
+							className="flex items-center justify-between gap-3 px-2 py-2"
+						>
+							<span className="truncate text-sm font-medium text-slate-800">
+								{project.project_title}
+							</span>
+							<FinanceStatusBadge status={project.contract_status} />
+						</div>
+					))}
+				</div>
+			) : null}
+		</AppSurfaceCard>
 	);
 }

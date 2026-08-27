@@ -14,7 +14,6 @@ import {
 	FileUp,
 	ReceiptText,
 } from "lucide-react";
-import { AppEmptyState } from "@/components/common/AppPrimitives";
 import { AppTabs } from "@/components/common/AppTabs";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
@@ -116,28 +115,6 @@ function FinancePortfolioLayout() {
 		}
 	};
 
-	// The portfolio tabs are the consultant's book of business; everyone else
-	// is routed to their personal finance book (F1) instead of a dead end.
-	if (profile && !isConsultant) {
-		return (
-			<div className="mx-auto max-w-4xl px-5 py-10">
-				<AppEmptyState
-					icon={CircleDollarSign}
-					title="Your finance lives in your personal book"
-					description="Hours worked, payouts, and rates across your engaged projects — private to you. The portfolio tabs here are the verified-consultant book of business."
-					action={
-						<Link
-							to="/engagements/finance/me"
-							className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
-						>
-							Open my finance
-						</Link>
-					}
-				/>
-			</div>
-		);
-	}
-
 	// Section tabs carry the shared filters forward but drop the params that
 	// only one section understands, so a contract-status filter cannot ride
 	// along into Invoices and sit there unapplied.
@@ -209,60 +186,69 @@ function FinancePortfolioLayout() {
 								</p>
 							</div>
 						</div>
-						<span className="hidden shrink-0 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground sm:inline-flex">
-							{projectOptionsQuery.isPending
-								? "Loading projects…"
-								: `${projectOptionsQuery.data?.projects.length ?? 0} projects`}
-						</span>
+						{isConsultant ? (
+							<span className="hidden shrink-0 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground sm:inline-flex">
+								{projectOptionsQuery.isPending
+									? "Loading projects…"
+									: `${projectOptionsQuery.data?.projects.length ?? 0} projects`}
+							</span>
+						) : null}
 					</div>
 
 					{/*
 					 * The same strip the engagement list carries — one component, so
-					 * the two tab bars in this section cannot drift apart.
+					 * the two tab bars in this section cannot drift apart. The
+					 * Contracts/Invoices/Imports sections are the verified-consultant
+					 * book of business, so the strip (and the filters below) only
+					 * render for consultants; everyone still gets the Overview hub.
 					 */}
-					<AppTabs
-						variant="underline"
-						size="sm"
-						className="mt-3"
-						items={FINANCE_TABS.map((tab) => ({
-							key: tab.id,
-							label: (
-								<>
-									<tab.icon className="h-4 w-4" />
-									{tab.label}
-								</>
-							),
-						}))}
-						active={section}
-						linkFor={(id) =>
-							id === "contracts"
-								? {
-										to: "/engagements/finance/contracts",
-										search: sharedSearch,
-									}
-								: id === "invoices"
+					{isConsultant ? (
+						<AppTabs
+							variant="underline"
+							size="sm"
+							className="mt-3"
+							items={FINANCE_TABS.map((tab) => ({
+								key: tab.id,
+								label: (
+									<>
+										<tab.icon className="h-4 w-4" />
+										{tab.label}
+									</>
+								),
+							}))}
+							active={section}
+							linkFor={(id) =>
+								id === "contracts"
 									? {
-											to: "/engagements/finance/invoices",
+											to: "/engagements/finance/contracts",
 											search: sharedSearch,
 										}
-									: id === "imports"
+									: id === "invoices"
 										? {
-												to: "/engagements/finance/imports",
+												to: "/engagements/finance/invoices",
 												search: sharedSearch,
 											}
-										: { to: "/engagements/finance", search: sharedSearch }
-						}
-					/>
+										: id === "imports"
+											? {
+													to: "/engagements/finance/imports",
+													search: sharedSearch,
+												}
+											: { to: "/engagements/finance", search: sharedSearch }
+							}
+						/>
+					) : null}
 				</header>
 
-				<FinanceFiltersBar
-					search={search}
-					section={section}
-					projects={projectOptionsQuery.data?.projects ?? []}
-					onChange={updateSearch}
-				/>
+				{isConsultant ? (
+					<FinanceFiltersBar
+						search={search}
+						section={section}
+						projects={projectOptionsQuery.data?.projects ?? []}
+						onChange={updateSearch}
+					/>
+				) : null}
 
-				{search.projectId && (
+				{isConsultant && search.projectId && (
 					<div className="mb-1 flex min-w-0 items-center gap-2 text-sm">
 						<button
 							type="button"

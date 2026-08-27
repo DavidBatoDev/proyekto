@@ -3,15 +3,22 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	Archive,
 	BookOpen,
+	CheckCircle2,
+	Clock,
 	Download,
+	FileSignature,
 	FolderKanban,
+	HandCoins,
+	Hourglass,
 	MailPlus,
+	ReceiptText,
 	Users,
 } from "lucide-react";
 import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSectionHeader,
+	AppStatCard,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import {
@@ -19,9 +26,14 @@ import {
 	FinanceBreadcrumbs,
 	FinanceCurrentCrumb,
 } from "@/components/finance/portfolio/FinanceBreadcrumbs";
-import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
+import {
+	FinanceLoading,
+	FinanceStatusBadge,
+	formatFinanceDate,
+} from "@/components/finance/portfolio/FinancePrimitives";
 import {
 	type FinanceBookMember,
+	type FinanceBookOverview,
 	type FinanceExportFormat,
 	type FinanceExportKind,
 	financeBooksService,
@@ -81,12 +93,25 @@ const ROLE_LABELS: Record<string, string> = {
 function FinanceBookPage() {
 	const { bookId } = Route.useParams();
 
-	const bookQuery = useQuery({
-		queryKey: ["finance-books", bookId],
-		queryFn: () => financeBooksService.get(bookId),
+	// The overview endpoint supersedes the bare `get`: same access envelope,
+	// plus the names (team/project/parent) the breadcrumbs and heading need
+	// and the dashboard slices (time/payouts/contracts/invoices) the caller's
+	// role is allowed to see.
+	const overviewQuery = useQuery({
+		queryKey: ["finance-books", bookId, "overview"],
+		queryFn: () => financeBooksService.overview(bookId),
 	});
 
-	if (bookQuery.isPending) return <FinanceLoading />;
+	if (overviewQuery.isPending) return <FinanceLoading />;
+
+	const overview = overviewQuery.data;
+	const crumbLabel = overview
+		? overview.book.kind === "project"
+			? (overview.project_title ?? "Project")
+			: overview.book.kind === "team"
+				? (overview.team_name ?? "Team")
+				: "My finance"
+		: "Book";
 
 	return (
 		<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
@@ -107,20 +132,35 @@ function FinanceBookPage() {
 						>
 							Finance
 						</Link>,
-						<FinanceCurrentCrumb key="book">Book</FinanceCurrentCrumb>,
+						// An F3 crumb trail routes through its parent F2 book.
+						...(overview?.book.kind === "project" && overview.parent_book_id
+							? [
+									<Link
+										key="team"
+										to="/engagements/finance/book/$bookId"
+										params={{ bookId: overview.parent_book_id }}
+										className={FINANCE_CRUMB_LINK_CLASS}
+									>
+										{overview.team_name ?? "Team"}
+									</Link>,
+								]
+							: []),
+						<FinanceCurrentCrumb key="book">{crumbLabel}</FinanceCurrentCrumb>,
 					]}
 				/>
 
-				{bookQuery.isError ? (
+				{overviewQuery.isError || !overview ? (
 					<div className="mt-8">
 						<AppEmptyState
 							icon={BookOpen}
 							title="Finance book not found"
-							description={bookQuery.error.message}
+							description={
+								overviewQuery.error?.message ?? "This book could not be loaded."
+							}
 						/>
 					</div>
 				) : (
-					<BookBody bookId={bookId} access={bookQuery.data} />
+					<BookBody bookId={bookId} overview={overview} />
 				)}
 			</div>
 		</div>
@@ -129,24 +169,31 @@ function FinanceBookPage() {
 
 function BookBody({
 	bookId,
-	access,
+	overview,
 }: {
 	bookId: string;
-	access: NonNullable<Awaited<ReturnType<typeof financeBooksService.get>>>;
+	overview: FinanceBookOverview;
 }) {
-	const { book, role, permissions } = access;
+	const { book, role, permissions } = overview;
 	const kindLabel =
 		book.kind === "personal"
 			? "Personal finance"
 			: book.kind === "team"
 				? "Team finance"
 				: "Project finance";
+	const title =
+		book.kind === "project"
+			? (overview.project_title ?? kindLabel)
+			: book.kind === "team"
+				? (overview.team_name ?? kindLabel)
+				: kindLabel;
 
 	return (
 		<>
 			<AppSectionHeader
-				title={kindLabel}
-				subtitle={`Display currency ${book.currency} · your role: ${ROLE_LABELS[role] ?? role}${access.inherited ? " (inherited from the team book)" : ""}.`}
+				title={title}
+				kicker={title === kindLabel ? undefined : kindLabel}
+				subtitle={`Display currency ${book.currency} · your role: ${ROLE_LABELS[role] ?? role}${overview.inherited ? " (inherited from the team book)" : ""}.`}
 				className="mt-4"
 			/>
 
@@ -159,6 +206,8 @@ function BookBody({
 					</p>
 				</div>
 			) : null}
+
+			<BookDashboard overview={overview} />
 
 			{permissions.export ? (
 				<ExportSection bookId={bookId} canViewTime={permissions.view_time} />
@@ -174,6 +223,167 @@ function BookBody({
 					teamId={book.owner_team_id}
 					canManageBook={permissions.manage_book}
 				/>
+			) : null}
+		</>
+	);
+}
+
+// ─── dashboard (role-sliced: keys absent from the payload never render) ───
+
+function formatBookHours(seconds: number): string {
+	return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+function BookDashboard({ overview }: { overview: FinanceBookOverview }) {
+	const { time, payouts, contracts, invoices } = overview;
+
+	return (
+		<>
+			{time ? (
+				<>
+					<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+						<AppStatCard
+							label="Total hours"
+							value={formatBookHours(time.total_seconds)}
+							icon={Clock}
+						/>
+						<AppStatCard
+							label="Pending"
+							value={formatBookHours(time.pending_seconds)}
+							icon={Hourglass}
+						/>
+						<AppStatCard
+							label="Approved"
+							value={formatBookHours(time.approved_seconds)}
+							icon={CheckCircle2}
+						/>
+					</div>
+
+					{payouts && payouts.length > 0 ? (
+						<div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+							{payouts.map((entry) => (
+								<AppStatCard
+									key={entry.currency}
+									label={`Payouts · ${entry.currency} · ${entry.count}`}
+									value={`${entry.total.toLocaleString()} ${entry.currency}`}
+									icon={HandCoins}
+								/>
+							))}
+						</div>
+					) : null}
+
+					{time.by_member.length > 0 ? (
+						<>
+							<AppSectionHeader
+								title="By member"
+								subtitle="Logged time per member in this book."
+								className="mt-8"
+							/>
+							<AppSurfaceCard className="mt-3 divide-y divide-slate-100">
+								{time.by_member.map((member) => (
+									<div
+										key={member.user_id}
+										className="flex items-center justify-between gap-4 px-5 py-3"
+									>
+										<p className="truncate text-sm font-medium text-slate-900">
+											{member.display_name}
+										</p>
+										<p className="shrink-0 text-sm text-slate-600 tabular-nums">
+											{formatBookHours(member.seconds)}
+											{/* Amounts come pre-computed from the server for roles
+											    allowed to see costs — never derived client-side. */}
+											{member.amount != null && member.currency
+												? ` · ${member.amount.toLocaleString()} ${member.currency}`
+												: ""}
+										</p>
+									</div>
+								))}
+							</AppSurfaceCard>
+						</>
+					) : null}
+				</>
+			) : null}
+
+			{contracts ? (
+				<>
+					<AppSectionHeader
+						title="Contracts"
+						subtitle="Client contracts attached to this book."
+						className="mt-8"
+					/>
+					{contracts.length === 0 ? (
+						<AppEmptyState
+							icon={FileSignature}
+							title="No contracts yet"
+							description="Signed client contracts on this book will appear here."
+							className="mt-3"
+						/>
+					) : (
+						<div className="mt-3 space-y-2">
+							{contracts.map((contract) => (
+								<AppSurfaceCard
+									key={contract.id}
+									className="flex items-center justify-between gap-4 px-5 py-3.5"
+								>
+									<div className="min-w-0">
+										<p className="truncate text-sm font-semibold text-slate-900">
+											{contract.contract_number}
+										</p>
+										<p className="text-xs text-slate-500 capitalize">
+											{contract.billing_mode.replace(/_/g, " ")}
+											{contract.client_hourly_rate != null
+												? ` · ${contract.client_hourly_rate.toLocaleString()} ${contract.currency}/h`
+												: ""}
+											{contract.signed_at
+												? ` · signed ${formatFinanceDate(contract.signed_at.slice(0, 10))}`
+												: ""}
+										</p>
+									</div>
+									<FinanceStatusBadge status={contract.status} />
+								</AppSurfaceCard>
+							))}
+						</div>
+					)}
+				</>
+			) : null}
+
+			{invoices ? (
+				<>
+					<AppSectionHeader
+						title="Invoices"
+						subtitle="Invoices issued against this book."
+						className="mt-8"
+					/>
+					{invoices.length === 0 ? (
+						<AppEmptyState
+							icon={ReceiptText}
+							title="No invoices yet"
+							description="Invoices issued against this book will appear here."
+							className="mt-3"
+						/>
+					) : (
+						<div className="mt-3 space-y-2">
+							{invoices.map((invoice) => (
+								<AppSurfaceCard
+									key={invoice.id}
+									className="flex items-center justify-between gap-4 px-5 py-3.5"
+								>
+									<div className="min-w-0">
+										<p className="truncate text-sm font-semibold text-slate-900">
+											{invoice.total.toLocaleString()} {invoice.currency}
+										</p>
+										<p className="text-xs text-slate-500">
+											{invoice.issued_at
+												? `Issued ${formatFinanceDate(invoice.issued_at.slice(0, 10))}`
+												: "Not issued yet"}
+										</p>
+									</div>
+									<FinanceStatusBadge status={invoice.status} />
+								</AppSurfaceCard>
+							))}
+						</div>
+					)}
+				</>
 			) : null}
 		</>
 	);

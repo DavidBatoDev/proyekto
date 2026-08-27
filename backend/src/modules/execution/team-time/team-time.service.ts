@@ -261,6 +261,38 @@ export class TeamTimeService {
     return 'You have no signed contract on this project. This team will soon require one for time tracking.';
   }
 
+  /**
+   * The caller's contract standing on one project, for the web timer UI:
+   * the resolved team's enforcement mode plus the caller's engagement
+   * status. When no team can be resolved there is nothing to enforce, so
+   * enforcement reports 'off' (eligibility is still computed and returned).
+   */
+  async getProjectContractStatus(
+    callerId: string,
+    projectId: string,
+  ): Promise<{
+    enforcement: 'off' | 'warn' | 'enforce';
+    engagement_status: 'engaged' | 'grandfathered' | 'ineligible';
+  }> {
+    await this.projectAuth.assertRole(callerId, projectId, 'viewer');
+    const rate = await this.resolveTeamRate(projectId, callerId);
+    let enforcement: 'off' | 'warn' | 'enforce' = 'off';
+    if (rate?.team_id) {
+      const { data, error } = await this.supabase
+        .from('teams')
+        .select('contract_enforcement')
+        .eq('id', rate.team_id)
+        .maybeSingle<{ contract_enforcement: 'off' | 'warn' | 'enforce' }>();
+      if (error) throw new Error(error.message);
+      enforcement = data?.contract_enforcement ?? 'off';
+    }
+    const engagementStatus = await this.eligibility.getEngagementStatus(
+      callerId,
+      projectId,
+    );
+    return { enforcement, engagement_status: engagementStatus };
+  }
+
   /** Stamp a just-stopped log whose member lost contract eligibility mid-run. */
   private async flagIfContractLapsed(row: TimeLogRow): Promise<void> {
     if (!row.team_id || row.flagged_reason) return;

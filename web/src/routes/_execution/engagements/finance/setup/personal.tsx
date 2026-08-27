@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CircleDollarSign, FileSignature } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	AppEmptyState,
 	AppSectionHeader,
@@ -38,11 +38,37 @@ function PersonalFinanceSetupPage() {
 		queryFn: financeBooksService.engagedProjects,
 	});
 
+	// Someone who already has an F1 (a client who followed an old link, a
+	// double-clicked CTA) belongs on their dashboard, not on a wizard whose
+	// create call can only 409.
+	const booksQuery = useQuery({
+		queryKey: ["finance-books", "mine"],
+		queryFn: financeBooksService.listMine,
+	});
+	const hasPersonal = Boolean(
+		booksQuery.data?.some((book) => book.kind === "personal"),
+	);
+	useEffect(() => {
+		if (hasPersonal) {
+			void navigate({ to: "/engagements/finance/me", replace: true });
+		}
+	}, [hasPersonal, navigate]);
+
 	const createMutation = useMutation({
 		mutationFn: () => financeBooksService.createPersonal(currency),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
 			void navigate({ to: "/engagements/finance/me" });
+		},
+		onError: async () => {
+			// The request helper flattens the response to a message, so a 409
+			// ("book already exists") is confirmed by re-reading the list — and
+			// resolved the same way either path: the dashboard, not an error.
+			const books = await financeBooksService.listMine().catch(() => null);
+			if (books?.some((book) => book.kind === "personal")) {
+				await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
+				void navigate({ to: "/engagements/finance/me", replace: true });
+			}
 		},
 	});
 

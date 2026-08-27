@@ -28,6 +28,7 @@ import {
 	contractService,
 } from "@/services/contract.service";
 import type {
+	EngagementAgreement,
 	EngagementPosition,
 	EngagementStatus,
 } from "@/services/engagement.service";
@@ -159,6 +160,13 @@ function EngagementsPage() {
 	);
 
 	const projectOptionsQuery = useFinanceProjectOptions({}, isConsultant);
+
+	// Every seat can read its own agreements — the paper behind the
+	// engagements above, one row per contract the viewer is a party to.
+	const agreementsQuery = useQuery({
+		queryKey: ["engagements", "agreements"],
+		queryFn: () => engagementService.agreements(),
+	});
 
 	const openContract = (contractId: string) =>
 		void navigate({
@@ -310,6 +318,37 @@ function EngagementsPage() {
 								})
 							}
 						/>
+
+						<section className="mt-10">
+							<h2 className="text-base font-semibold text-foreground">
+								Agreements
+							</h2>
+							<p className="mb-4 mt-1 text-sm text-muted-foreground">
+								Every contract you are a party to — the paper behind the
+								engagements above.
+							</p>
+							{agreementsQuery.isPending ? (
+								<p className="text-sm text-muted-foreground">Loading…</p>
+							) : agreementsQuery.isError ? (
+								<p className="text-sm text-muted-foreground">
+									Could not load your agreements.
+								</p>
+							) : (agreementsQuery.data?.length ?? 0) === 0 ? (
+								<div className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-8 text-center text-sm text-muted-foreground">
+									No agreements yet. When you sign a contract — as a client,
+									consultant, or talent — it appears here.
+								</div>
+							) : (
+								<AppSurfaceCard className="divide-y divide-border overflow-hidden">
+									{(agreementsQuery.data ?? []).map((agreement) => (
+										<AgreementRow
+											key={agreement.contract_id}
+											agreement={agreement}
+										/>
+									))}
+								</AppSurfaceCard>
+							)}
+						</section>
 					</div>
 				</div>
 			</div>
@@ -323,6 +362,44 @@ function EngagementsPage() {
 				onCreate={(input) => createContractMutation.mutate(input)}
 			/>
 		</>
+	);
+}
+
+/** One contract seat of the viewer's, shaped like the rows above it. */
+function AgreementRow({ agreement }: { agreement: EngagementAgreement }) {
+	const signed = agreement.signed_at
+		? new Date(agreement.signed_at).toLocaleDateString(undefined, {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: null;
+	return (
+		<div className="flex items-center justify-between gap-4 p-4 md:px-5 md:py-4">
+			<span className="flex min-w-0 items-center gap-3">
+				<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+					<FileSignature className="h-5 w-5" />
+				</span>
+				<span className="min-w-0">
+					<span className="block truncate font-semibold text-foreground">
+						{agreement.counterparty_name
+							? `${agreement.contract_number} · with ${agreement.counterparty_name}`
+							: agreement.contract_number}
+					</span>
+					<span className="mt-1 block truncate text-xs text-muted-foreground">
+						{agreement.relationship_kind === "client_services"
+							? "Client contract"
+							: "Talent contract"}
+						{agreement.project_title ? ` · ${agreement.project_title}` : ""}
+						{signed ? ` · signed ${signed}` : ""}
+						{agreement.client_hourly_rate != null
+							? ` · ${agreement.client_hourly_rate.toLocaleString()} ${agreement.currency}/h`
+							: ""}
+					</span>
+				</span>
+			</span>
+			<FinanceStatusBadge status={agreement.status} className="shrink-0" />
+		</div>
 	);
 }
 

@@ -32,6 +32,16 @@ export class EngagementsController {
     return this.engagements.list(user.id, query);
   }
 
+  /**
+   * The caller's contract seats — including contracts with no engagement row
+   * (legacy/seeded). Must be declared before `:id` so 'agreements' never hits
+   * the UUID pipe.
+   */
+  @Get('agreements')
+  listAgreements(@CurrentUser() user: AuthenticatedUser) {
+    return this.engagements.listAgreements(user.id);
+  }
+
   @Get(':id')
   getById(
     @CurrentUser() user: AuthenticatedUser,

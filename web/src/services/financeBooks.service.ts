@@ -133,6 +133,75 @@ async function request<T>(
 	}
 }
 
+/** One team's slice of the hub: its book (if any) and the child F3 books. */
+export interface FinanceHubTeam {
+	team_id: string;
+	team_name: string;
+	avatar_url: string | null;
+	my_team_role: string;
+	book: FinanceBook | null;
+	can_create: boolean;
+	book_role: string | null;
+	project_books: Array<{
+		book: FinanceBook;
+		project_title: string;
+		contract_status: string;
+	}>;
+}
+
+/** A book someone else granted the caller access to (accountant, client…). */
+export interface FinanceHubSharedBook {
+	book: FinanceBook;
+	role: string;
+	team_name: string | null;
+	project_title: string | null;
+}
+
+export interface FinanceHub {
+	personal: FinanceBook | null;
+	teams: FinanceHubTeam[];
+	shared: FinanceHubSharedBook[];
+}
+
+export interface FinanceBookOverview {
+	book: FinanceBook;
+	role: FinanceBookRole;
+	permissions: Record<string, boolean>;
+	inherited: boolean;
+	team_name: string | null;
+	project_title: string | null;
+	parent_book_id: string | null;
+	time?: {
+		total_seconds: number;
+		pending_seconds: number;
+		approved_seconds: number;
+		by_member: Array<{
+			user_id: string;
+			display_name: string;
+			seconds: number;
+			amount?: number;
+			currency?: string;
+		}>;
+	};
+	payouts?: Array<{ currency: string; total: number; count: number }>;
+	contracts?: Array<{
+		id: string;
+		contract_number: string;
+		status: string;
+		billing_mode: string;
+		currency: string;
+		client_hourly_rate: number | null;
+		signed_at: string | null;
+	}>;
+	invoices?: Array<{
+		id: string;
+		status: string;
+		total: number;
+		currency: string;
+		issued_at: string | null;
+	}>;
+}
+
 export type FinanceExportKind = "time_logs" | "payouts";
 export type FinanceExportFormat = "csv" | "xlsx" | "pdf";
 
@@ -189,6 +258,12 @@ async function downloadExport(
 export const financeBooksService = {
 	downloadExport,
 	listMine: () => request<MyFinanceBook[]>("get", "/api/finance-books"),
+	hub: () => request<FinanceHub>("get", "/api/finance-books/hub"),
+	overview: (bookId: string) =>
+		request<FinanceBookOverview>(
+			"get",
+			`/api/finance-books/${bookId}/overview`,
+		),
 	engagedProjects: () =>
 		request<EngagedProject[]>("get", "/api/finance-books/engaged-projects"),
 	personalDashboard: () =>

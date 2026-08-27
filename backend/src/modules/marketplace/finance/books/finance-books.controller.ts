@@ -35,6 +35,11 @@ export class FinanceBooksController {
     return this.books.listMyBooks(user.id);
   }
 
+  @Get('hub')
+  hub(@CurrentUser() user: AuthenticatedUser) {
+    return this.books.getHub(user.id);
+  }
+
   @Get('engaged-projects')
   listEngagedProjects(@CurrentUser() user: AuthenticatedUser) {
     return this.books.listEngagedProjects(user.id);
@@ -73,6 +78,14 @@ export class FinanceBooksController {
     @Body() body: AddProjectBookDto,
   ) {
     return this.books.addProjectBook(user.id, bookId, body.project_id);
+  }
+
+  @Get(':bookId/overview')
+  getBookOverview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+  ) {
+    return this.books.getBookOverview(user.id, bookId);
   }
 
   @Get(':bookId')

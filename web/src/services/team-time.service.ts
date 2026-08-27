@@ -673,4 +673,26 @@ export const teamTimeService = {
 			throw extractError(e, "Failed to fetch team members");
 		}
 	},
+
+	/**
+	 * Whether the caller can track time on this project without a signed
+	 * contract — feeds the warn/enforce banner on the project Time page.
+	 */
+	async getProjectContractStatus(
+		projectId: string,
+	): Promise<ProjectContractStatus> {
+		try {
+			const res = await apiClient.get<ApiResponse<ProjectContractStatus>>(
+				`/api/team-time/projects/${projectId}/contract-status`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to check contract status");
+		}
+	},
 };
+
+export interface ProjectContractStatus {
+	enforcement: "off" | "warn" | "enforce";
+	engagement_status: "engaged" | "grandfathered" | "ineligible";
+}

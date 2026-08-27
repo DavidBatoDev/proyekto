@@ -116,6 +116,26 @@ function isEffective(
 }
 
 /**
+ * One contract seat of the caller's, redacted for their capacity. Talent
+ * never sees `client_hourly_rate` (the client price is not their commercial
+ * business), and no internal cost rate exists on the contract row at all.
+ */
+export interface AgreementView {
+  contract_id: string;
+  contract_number: string | null;
+  status: string;
+  relationship_kind: string;
+  my_position: string;
+  my_capacity: string;
+  counterparty_name: string | null;
+  project_id: string | null;
+  project_title: string | null;
+  currency: string | null;
+  signed_at: string | null;
+  client_hourly_rate?: number | null;
+}
+
+/**
  * Read access to engagements.
  *
  * Authorization is party membership and nothing else: a caller sees an
@@ -185,6 +205,89 @@ export class EngagementsService {
     );
     if (!view) throw new NotFoundException('Engagement not found');
     return view;
+  }
+
+  /**
+   * Every contract seat the caller occupies, INCLUDING contracts that have no
+   * engagement row (legacy/seeded). All statuses are returned — draft/sent
+   * simply render as pending states. Redaction mirrors the engagement views:
+   * the counterparty contributes only its display-name snapshot, and
+   * `client_hourly_rate` (the CLIENT price — no internal cost rate is ever
+   * selected) is included only for client/consultant capacities.
+   */
+  async listAgreements(callerId: string): Promise<AgreementView[]> {
+    interface SeatRow {
+      contract_id: string;
+      position: string;
+      capacity: string;
+      signed_at: string | null;
+      contract: {
+        id: string;
+        contract_number: string | null;
+        status: string;
+        relationship_kind: string;
+        currency: string | null;
+        client_hourly_rate: number | null;
+        project_id: string | null;
+        project: { id: string; title: string | null } | null;
+      } | null;
+    }
+    const { data, error } = await this.supabase
+      .from('contract_positions')
+      .select(
+        `contract_id, position, capacity, signed_at,
+         contract:contracts(id, contract_number, status, relationship_kind,
+           currency, client_hourly_rate, project_id,
+           project:projects(id, title))`,
+      )
+      .eq('user_id', callerId);
+    if (error) throw new Error(error.message);
+    const seats = ((data ?? []) as unknown as SeatRow[]).filter(
+      (seat) => seat.contract !== null,
+    );
+    if (seats.length === 0) return [];
+
+    // The OTHER position's display-name snapshot, per contract.
+    const contractIds = [...new Set(seats.map((seat) => seat.contract_id))];
+    const { data: siblingData, error: siblingError } = await this.supabase
+      .from('contract_positions')
+      .select('contract_id, position, user_id, display_name_snapshot')
+      .in('contract_id', contractIds);
+    if (siblingError) throw new Error(siblingError.message);
+    const siblings = (siblingData ?? []) as Array<{
+      contract_id: string;
+      position: string;
+      user_id: string | null;
+      display_name_snapshot: string | null;
+    }>;
+
+    return seats.map((seat) => {
+      const contract = seat.contract as NonNullable<SeatRow['contract']>;
+      const counterparty = siblings.find(
+        (row) =>
+          row.contract_id === seat.contract_id &&
+          row.position !== seat.position,
+      );
+      const view: AgreementView = {
+        contract_id: contract.id,
+        contract_number: contract.contract_number,
+        status: contract.status,
+        relationship_kind: contract.relationship_kind,
+        my_position: seat.position,
+        my_capacity: seat.capacity,
+        counterparty_name: counterparty?.display_name_snapshot ?? null,
+        project_id: contract.project_id,
+        project_title: contract.project?.title ?? null,
+        currency: contract.currency,
+        signed_at: seat.signed_at,
+      };
+      // Talent never receives the client price; and internal cost rates were
+      // never selected in the first place.
+      if (seat.capacity === 'client' || seat.capacity === 'consultant') {
+        view.client_hourly_rate = contract.client_hourly_rate;
+      }
+      return view;
+    });
   }
 
   /** The caller's own seat on each engagement they are a party to. */

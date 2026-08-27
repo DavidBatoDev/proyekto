@@ -240,6 +240,15 @@ export class TeamTimeController {
 
   // ─── project-scoped lists ────────────────────────────────────────────
 
+  /** Contract enforcement + engagement standing for the caller on one project. */
+  @Get('projects/:projectId/contract-status')
+  getProjectContractStatus(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.getProjectContractStatus(user.id, projectId);
+  }
+
   @Get('projects/:projectId/my')
   listMyProjectLogs(
     @Param('projectId') projectId: string,

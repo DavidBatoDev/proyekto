@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { ExternalLink, ListChecks, Loader2, Users } from "lucide-react";
+import {
+	AlertTriangle,
+	ExternalLink,
+	ListChecks,
+	Loader2,
+	Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
 	AppSectionHeader,
@@ -40,13 +46,13 @@ import {
 	TeamLogsStatusTabs,
 } from "@/components/team-time/TeamLogsStatusTabs";
 import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
-import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
 	ManualLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	fromLocalDateTimeInput,
@@ -128,6 +134,19 @@ function ProjectTimePage() {
 		queryFn: () => projectService.get(projectId),
 	});
 	const projectCurrency = projectQuery.data?.currency ?? "USD";
+
+	// Contract enforcement: when the team enforces (or warns about) contract
+	// coverage and the caller has no live contract on this project, say so up
+	// front instead of letting the timer fail at start.
+	const contractStatusQuery = useQuery({
+		queryKey: ["team-time", "project", projectId, "contract-status"],
+		queryFn: () => teamTimeService.getProjectContractStatus(projectId),
+	});
+	const contractStatus = contractStatusQuery.data;
+	const showContractBanner =
+		contractStatus !== undefined &&
+		contractStatus.enforcement !== "off" &&
+		contractStatus.engagement_status === "ineligible";
 
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],
@@ -587,6 +606,12 @@ function ProjectTimePage() {
 	return (
 		<div className="w-full">
 			<div className="mx-auto w-full max-w-[1200px] px-5 py-6 md:px-8 md:py-8">
+				{showContractBanner &&
+				contractStatus &&
+				contractStatus.enforcement !== "off" ? (
+					<ContractStatusBanner enforcement={contractStatus.enforcement} />
+				) : null}
+
 				<AppSurfaceCard strong className="mb-6 p-6">
 					<AppSectionHeader
 						kicker="Time"
@@ -924,6 +949,34 @@ function ProjectTimePage() {
 					}}
 				/>
 			)}
+		</div>
+	);
+}
+
+/**
+ * Shown when the team's contract enforcement is on and the viewer has no
+ * live contract on this project — enforce blocks the timer, warn only flags.
+ */
+function ContractStatusBanner({
+	enforcement,
+}: {
+	enforcement: "warn" | "enforce";
+}) {
+	const enforce = enforcement === "enforce";
+	return (
+		<div
+			className={`mb-6 flex items-start gap-3 rounded-2xl border px-5 py-3.5 ${
+				enforce ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
+			}`}
+		>
+			<AlertTriangle
+				className={`mt-0.5 h-4 w-4 shrink-0 ${enforce ? "text-red-600" : "text-amber-600"}`}
+			/>
+			<p className={`text-sm ${enforce ? "text-red-800" : "text-amber-800"}`}>
+				{enforce
+					? "Time tracking on this project requires a signed contract. Ask the team to send you one — until it is signed, new time logs are blocked."
+					: "This team asks for a signed contract before tracking time here. You can still log time for now, but your logs may be flagged until a contract is signed."}
+			</p>
 		</div>
 	);
 }
