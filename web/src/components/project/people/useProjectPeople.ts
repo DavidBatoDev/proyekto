@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
 	useProjectInvitesQuery,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/projectPeople";
 import type { ProjectMember } from "@/services/project.service";
 import {
+	listCuratedMembers,
 	listProjectTeams,
 	type ProfileSummary,
 	type ProjectTeam,
@@ -123,6 +124,32 @@ export function useProjectPeople(
 
 	const attachments = useMemo(() => teamsQuery.data ?? [], [teamsQuery.data]);
 
+	// `project_access.origin` is only rewritten to `team:<id>` when a person is
+	// curated fresh onto a team. Someone who already had a project_access row
+	// (the project owner, granted at creation; anyone added directly before
+	// being curated onto a team) keeps their old origin forever, even though
+	// project_team_members — the actual curation record — lists them
+	// correctly. Querying it directly here is the only way to see them.
+	const curatedQueries = useQueries({
+		queries: attachments.map((a) => ({
+			queryKey: ["project", projectId, "teams", a.team_id, "curated-members"],
+			queryFn: () => listCuratedMembers(projectId, a.team_id),
+		})),
+	});
+
+	const curatedTeamIdsByUserId = useMemo(() => {
+		const map = new Map<string, Set<string>>();
+		attachments.forEach((a, i) => {
+			const rows = curatedQueries[i]?.data ?? [];
+			for (const row of rows) {
+				const set = map.get(row.user_id) ?? new Set<string>();
+				set.add(a.team_id);
+				map.set(row.user_id, set);
+			}
+		});
+		return map;
+	}, [attachments, curatedQueries]);
+
 	// Identity comes from the attachment itself, not from GET /api/teams/:id.
 	// That endpoint gates on team membership, so for a team brought in through
 	// "Invite a team" — one this viewer is deliberately not on — it 403s and the
@@ -175,9 +202,16 @@ export function useProjectPeople(
 				(a, b) => roleRank(a.role) - roleRank(b.role),
 			);
 			const primary = ranked[0];
-			const teamIds = rows
-				.map((r) => teamIdFromOrigin(r.origin))
-				.filter((id): id is string => Boolean(id));
+			const teamIds = new Set(
+				rows
+					.map((r) => teamIdFromOrigin(r.origin))
+					.filter((id): id is string => Boolean(id)),
+			);
+			if (primary.user_id) {
+				for (const id of curatedTeamIdsByUserId.get(primary.user_id) ?? []) {
+					teamIds.add(id);
+				}
+			}
 
 			const isSelf = Boolean(callerUserId && primary.user_id === callerUserId);
 			const outrankedForPerms = isOutranked(
@@ -210,7 +244,7 @@ export function useProjectPeople(
 				canEditPosition: isSelf || canEditPositionGrant,
 				canRemove: canManageMembers && !isSelf && !outrankedForManage,
 				sources: accessSources(rows, teamNameById),
-				teamIds,
+				teamIds: Array.from(teamIds),
 			});
 		}
 
@@ -230,6 +264,7 @@ export function useProjectPeople(
 		canEditPositionGrant,
 		canManageMembers,
 		teamNameById,
+		curatedTeamIdsByUserId,
 	]);
 
 	const groups = useMemo<PeopleTeamGroup[]>(
@@ -261,6 +296,9 @@ export function useProjectPeople(
 		canManageMembers,
 		canManageTeams,
 		isPending:
-			membersQuery.isPending || teamsQuery.isPending || invitesQuery.isPending,
+			membersQuery.isPending ||
+			teamsQuery.isPending ||
+			invitesQuery.isPending ||
+			curatedQueries.some((q) => q.isPending),
 	};
 }
