@@ -1,9 +1,9 @@
 # Backend (NestJS API)
 
-> **Last updated:** 2026-08-10 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 The NestJS 11 API — the system's single writer to Postgres and the hub every other
-service talks to. It's organized as one root module importing 31 self-contained
+service talks to. It's organized as one root module importing 40 self-contained
 feature modules, each a **controller → service → repository** stack, running as the
 Supabase service role with authorization enforced in the service layer.
 
@@ -17,6 +17,7 @@ Supabase service role with authorization enforced in the service layer.
 | [architecture.md](./architecture.md) | Layers, request lifecycle, response envelope, DI, cross-cutting concerns |
 | [project-structure.md](./project-structure.md) | Folder layout, `config/` + `common/`, module anatomy, naming |
 | [configuration.md](./configuration.md) | Env-var reference, the Supabase/Redis/R2 clients, throttler |
+| [authorization-axes.md](./authorization-axes.md) | The six independent authorization axes, which question each answers, and the anti-patterns |
 | [auth-and-guards.md](./auth-and-guards.md) | `SupabaseAuthGuard`, lane-free onboarding, active-consultant checks, and decorators |
 | [patterns.md](./patterns.md) | Repository pattern, Symbol DI tokens, `import type`, DTOs, status codes |
 | [modules.md](./modules.md) | The 31 feature modules — purpose, tables, dependencies |

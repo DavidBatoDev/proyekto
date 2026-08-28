@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-08-25 · **Status:** draft
+> **Last updated:** 2026-08-28 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;
@@ -36,9 +36,10 @@ deliberately leaves that future party expansion additive.
 | [organizations-and-services.md](./organizations-and-services.md) | Feature 2a — an Organization tier above projects, a real `services` table, and the resolution of `1 Roadmap = 1 Service` vs. `roadmaps.project_id UNIQUE` |
 | [delivery-tree-visualization.md](./delivery-tree-visualization.md) | Feature 2b — a zoomable Org → Project → Service → Roadmap tree |
 | [identity-and-enrollment.md](./identity-and-enrollment.md) | Feature 3 — deleting `profiles.role`, role-free execution, and three opt-in marketplace enrollment tables; the identity foundation of the marketplace/execution split |
+| [off-platform-engagement-adoption.md](./off-platform-engagement-adoption.md) | Recording an agreement signed outside Proyekto as a real engagement — attested, never inferred; the exit path for `grandfathered` |
 | [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) | Monetization — 4-tier per-seat pricing for the Execution and Marketplace platforms, Shopify-style add-ons (Time/Finance), entitlement architecture, edge cases E1–E14 |
 
-## Why these five
+## Why these pages
 
 They come from one observation: Proyekto models *delivery* well and *the client relationship*
 barely at all. There is no client parent, no record of what a client has handed over, and no
@@ -70,7 +71,13 @@ P4b's locked design now has its own scenario-driven reference in
 [Engagements](../14-engagement/README.md). Its runtime remains inactive and is clearly
 marked as draft there.
 
-The fifth, [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md), is the
+[off-platform-engagement-adoption.md](./off-platform-engagement-adoption.md) answers a
+question the others do not: how a project that has been running **outside** Proyekto, under
+an agreement signed on paper, enters the engagement model at all. It is deliberately not
+backfill — the system never infers a relationship; both parties attest to one — and it
+reuses the existing signing RPC so there stays exactly one writer of engagements.
+
+[pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) is the
 monetization layer over both platforms. It was drafted against the pre-deletion
 `profiles.role` state and needs a reconciliation pass against identity-and-enrollment
 (its hooks table and edge case E14 still cite `profiles.role`).

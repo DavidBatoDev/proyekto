@@ -1,6 +1,6 @@
 # Roles and Capabilities
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 Proyekto has **no stored account role**. "Client", "Talent", and "Consultant" are
 words for **market positions** — who pays, who leads, who executes on a given
@@ -72,3 +72,4 @@ work migrates to a real account on signup. See
 - [roadmap-and-milestones.md](./roadmap-and-milestones.md) — the planning model they share.
 - [Finance → contract parties](../11-domains/finance/README.md#contract-parties) — where the paying counterparty is actually recorded.
 - [Proposals → identity and enrollment](../13-proposals/identity-and-enrollment.md) — why account roles were removed and where enrollment goes next.
+- [Backend → authorization axes](../03-backend/authorization-axes.md) — all six authorization axes in one table, and the rule that keeps them apart.

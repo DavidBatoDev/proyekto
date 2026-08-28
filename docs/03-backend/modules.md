@@ -1,8 +1,8 @@
 # Modules
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
-The backend is **37 feature modules** under
+The backend is **40 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
@@ -46,7 +46,9 @@ group-level barrel modules.
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
 | `contracts` | Service agreements, signing (in-app + tokenized link), amendments, and project economics | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
 | `engagements` | Party-scoped reads over the activation-written commercial tables — the only module allowed to touch them (RLS is deny-all; see [Engagements](../14-engagement/integration.md)) | `engagements`, `engagement_parties`, `engagement_project_links`, `engagement_time_settings`, `engagement_time_rates` |
-| `finance` | Consultant-only cross-project money portfolio | *(reads `contracts`, `invoices`)* |
+| `finance` | Cross-project money surface. The original consultant-only portfolio, plus `books/` (finance books, members, invites), `exports/`, `eligibility/` (the shared `engaged`/`grandfathered`/`ineligible` predicate) and team finance for project admins | `finance_books`, `finance_book_members`, `finance_invites`; reads `contracts`, `invoices` |
+| `finance-imports` | Recording invoices/payments created outside Proyekto, with page-region evidence. **Migration unapplied in production** | `finance_documents`, `finance_document_snips` |
+| `entitlements` | The per-team add-on gate (`EntitlementGuard`, `@RequiresEntitlement`) — a sibling of `ConsultantOnlyGuard`, never a layer inside `resolvePermissions` | *(reads `teams`)* |
 | `financials` | Per-project profitability API consumed by Finance | *(reads `finance_project_settings`, `task_time_logs`)* |
 | `activity` | Project activity feed read API | `project_activity_log` |
 | `meetings` | Meetings + recurring series + reminders | `meetings`, `meeting_series`, `meeting_participants` |

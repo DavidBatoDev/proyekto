@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -193,6 +193,16 @@ invoice operations require verified consultant capability and a `project_access`
 `role=owner`. Delivery to the recipient is by attached PDF; the in-app notification returns
 them to the project overview.
 
+**The payer's side** (2026-08-28): `GET /invoices/received` lists every non-draft invoice
+whose `recipient_user_id` is the caller, with ledger-derived `amount_paid` / `balance_due` /
+`is_overdue` (a `paid` invoice with no ledger rows counts as collected in full, the same
+rule the portfolio holds); `GET /invoices/received/:id` returns the payer-shaped detail —
+header, priced lines, payment history with notes and recorder redacted — and misses return
+404, never 403. Both are declared before `:id` so the literal segment is not captured as an
+id. `GET /invoices/:id/pdf-url` now also serves the recipient of a non-draft invoice;
+every other caller still passes the project finance gate. Surfaced as "Invoices to pay" on
+`/engagements/finance/me`.
+
 ## finance · `finance`
 
 The consultant-only portfolio behind `/finance`:
@@ -207,6 +217,50 @@ All three endpoints return only projects where the caller has active consultant 
 and a `project_access` row with `role=owner`. Filters cover search,
 project, project status, currency, date range, and the relevant contract or
 invoice status. Totals are never converted across currencies.
+
+## finance books · `finance-books` / `finance-invites` / `team-finance`
+
+Books are the post-2026-08-27 finance surface: any execution user may create one, and a
+contract unlocks **data**, not creation. Access is resolved by `FinanceBookAccessService`
+over `finance_book_members`; a miss throws **NotFound, never Forbidden**. See
+[Finance books](../11-domains/finance/finance-books.md).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/finance-books | Supabase | Books the caller can reach |
+| GET | /api/finance-books/hub | Supabase | The unified hub payload |
+| GET | /api/finance-books/engaged-projects | Supabase | Projects where the caller is contract-engaged |
+| GET | /api/finance-books/personal/dashboard | Supabase | Personal (F1) dashboard |
+| POST | /api/finance-books/personal | Supabase | Create the caller's personal book |
+| POST | /api/finance-books/team | Supabase | Create a team book (team owner) |
+| POST | /api/finance-books/:bookId/projects | Supabase | Create a project book under a team book |
+| GET | /api/finance-books/:bookId | Supabase | Book detail |
+| GET | /api/finance-books/:bookId/overview | Supabase | Book dashboard figures |
+| GET/POST | /api/finance-books/:bookId/members | Supabase | List / add members |
+| PATCH/DELETE | /api/finance-books/:bookId/members/:memberId | Supabase | Change role or remove |
+| POST/GET | /api/finance-books/:bookId/invites | Supabase | Issue / list invites |
+| DELETE | /api/finance-books/:bookId/invites/:inviteId | Supabase | Cancel an invite |
+| GET | /api/finance-invites/:token | Supabase | Read an invite by token |
+| POST | /api/finance-invites/:token/accept · /decline | Supabase | Respond |
+| GET | /api/finance-books/:bookId/export | Supabase | `.csv` / `.xlsx` / `.pdf`; cost columns dropped without `view_costs` |
+| GET | /api/team-finance/teams | Supabase | Teams the caller administers |
+| GET | /api/team-finance/teams/:teamId/portfolio · /contracts · /invoices | Supabase | Team-scoped finance, revenue side only |
+
+## finance imports · `finance-imports`
+
+> **⚠️ Dark in production** — `20260826090000_finance_document_imports.sql` is not applied,
+> so every route below fails on missing tables. See
+> [Document imports](../11-domains/finance/document-imports.md).
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| POST/GET | /api/finance-imports/documents | Supabase | Upload / list source documents |
+| GET | /api/finance-imports/documents/:id | Supabase | Document detail |
+| GET | /api/finance-imports/documents/:id/file | Supabase | Presigned fetch of the original |
+| POST | /api/finance-imports/documents/:id/read | Supabase | Run text extraction |
+| DELETE | /api/finance-imports/documents/:id | Supabase | Remove a document |
+| POST | /api/finance-imports/invoices | Supabase | Commit an imported invoice (`origin='imported'`) |
+| GET | /api/finance-imports/invoices/:invoiceId/snips | Supabase | Evidence regions behind one invoice |
 
 ## contracts · `contracts` / `projects/:projectId/economics`
 
@@ -244,6 +298,7 @@ so engagement ids cannot be probed. See [Engagements](../14-engagement/README.md
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | GET | /api/engagements | Supabase | Engagements the caller holds a seat on (`kind`, `status`, `project_id` filters) |
+| GET | /api/engagements/agreements | Supabase | Every contract the caller is a party to — declared before `:id` so it is not captured by the UUID pipe |
 | GET | /api/engagements/:id | Supabase | One engagement — seats, counterparty, project links, effective settings and rates |
 
 ## meetings · `meetings`

@@ -1,10 +1,11 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **255 migrations** spanning
-2025-12-11 → 2026-08-13. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **308 migration files** spanning
+2025-12-11 → 2026-08-27 (recounted 2026-08-28; not every file is applied — see the note under
+Money). This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -77,6 +78,23 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
 | `finance_project_settings` | Company % vs team % revenue split and allocation mode per project (CHECK sums to 100) |
 | `finance_member_allocations` | Each member's slice of a project's team pool — **internal, never reaches a client** |
+| `finance_books` | Personal / team / project finance books; one `finance_books_shape_check` enforces the whole per-kind shape (`20260827100000_finance_books.sql`) |
+| `finance_book_members` | Book membership: `finance_role` (`owner`/`manager`/`accountant`/`viewer_client`/`viewer`) plus a `capabilities` jsonb override; grants **no** execution access |
+| `finance_invites` | Token invites into a book; `finance_role` excludes `owner` because ownership is implicit |
+| `finance_documents`, `finance_document_snips` | Externally-created invoices/payments and the page regions evidencing each figure — **migration not applied to production** |
+
+`teams.contract_enforcement` (`off`/`warn`/`enforce`, `20260827110000_timer_contract_enforcement.sql`)
+gates timers on contract eligibility; `teams.time_tracking_enabled` is the add-on entitlement.
+
+> **⚠️ Not everything in `supabase/migrations/` is applied.**
+> `20260826090000_finance_document_imports.sql` appears in no applied version (verified
+> 2026-08-28; newest applied are `20260827103415 finance_books` and
+> `20260827104156 timer_contract_enforcement`), so `finance_documents`,
+> `finance_document_snips`, `invoices.source_document_id`, `origin='imported'`, and the
+> `invoice_payments` settlement columns **do not exist in production**. Separately,
+> `20260724100000_create_contracts.sql` still declares `'active'` in `contracts_status_check`
+> and in two partial indexes, which production no longer has — the checked-in file no longer
+> reproduces the live contracts table.
 
 ### Engagements
 

@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -61,6 +61,29 @@ Billable work is logged against tasks, reviewed, then rolled into payouts/invoic
   before project deletion, and the member display-name snapshot preserves attribution.
 - Approved logs feed the money domain — see
   [Finance](../finance/README.md).
+
+### Contract-gated timers (2026-08-27)
+
+Starting a timer is no longer purely a project-permission question. `teams.contract_enforcement`
+(`off` | `warn` | `enforce`, default `off`) decides what happens when the member is not
+contract-engaged on the project, where "engaged" is the shared
+[eligibility predicate](../../03-backend/authorization-axes.md#5-engagement-eligibility--is-this-work-contract-backed).
+
+| Dial | Effect |
+| --- | --- |
+| `off` | No eligibility check at all — every pre-existing team is grandfathered here |
+| `warn` | The log lands, with a returned `contract_warning`; manual logs are stamped `flagged_reason='no_active_contract'` |
+| `enforce` | `startLog` is refused with the typed `NO_ACTIVE_CONTRACT` |
+
+A contract lapsing **mid-timer never kills a running timer**; `stopLog` stamps
+`flagged_reason='contract_lapsed'` best-effort instead. Separately, the whole Time module is
+gated per team by `EntitlementGuard` (`@RequiresEntitlement('time_tracking')`), which refuses
+with `ADDON_NOT_ENABLED` — a different axis from both permissions and eligibility. Details:
+[Finance books](../finance/finance-books.md).
+
+`task_time_logs.engagement_assignment_id` exists but is **never written**. A NULL there is the
+explicit marker for the legacy path, not a gap to fill by inference — see
+[Engagements](../../14-engagement/README.md).
 
 ## The delivery loop
 

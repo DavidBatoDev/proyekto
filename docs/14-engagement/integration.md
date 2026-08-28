@@ -1,6 +1,6 @@
 # Engagement Integration Surface
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 This page is the contract for building against P4b. It states what the engagement model
 actually exposes today, what it does not, and the rules any new marketplace surface must
@@ -58,6 +58,7 @@ Every route is under the global `/api` prefix. Two controllers share the `contra
 | `GET`/`POST`/`DELETE /api/contracts/:id/signature-link` | Manage a signing link |
 | `GET`/`POST /api/contracts/sign/:token` | Public token signing |
 | `GET /api/engagements` | Engagements the caller is a party to (`kind`, `status`, `project_id` filters) |
+| `GET /api/engagements/agreements` | Every contract the caller holds a seat on. Declared **before** `:id` so it is not swallowed by the UUID pipe. `client_hourly_rate` is returned only to `client` and `consultant` capacity — Talent never sees the client price |
 | `GET /api/engagements/:id` | One engagement, 404 if the caller holds no seat |
 
 Contract routes still expose only the opaque `engagement_id`. Everything engagement-shaped
@@ -81,9 +82,15 @@ redaction pass. Two consequences worth knowing before extending this:
 
 ### Web routes
 
-`web/src/routes/marketplace/` holds `finance/index.tsx` (portfolio and creation),
-`finance/$contractId.tsx` (editor, terms, signatures, amendments), the two invoice routes,
-plus the `consultant/` and `talent/` surfaces.
+`web/src/routes/_execution/engagements/` is the home of the whole surface: `index.tsx` (the
+engagement list, the "In signing" contract pipeline, and the agreements section),
+`$engagementId.tsx` (detail), and the nested `finance/` tree — `_portfolio/` tabs (overview,
+contracts, invoices, imports), `$contractId.tsx` (editor, terms, signatures, amendments),
+the invoice builders, `book/$bookId/`, `me/`, `setup/`, `team/$teamId/`, `invite/$token`,
+and `imports/$documentId`. Finance moved here from `/marketplace/finance` on 2026-08-26;
+`web/src/routes/marketplace/finance/` now holds **permanent redirect shims** only, because
+`notifications.link_url` rows still carry the old paths. The `consultant/` and `talent/`
+surfaces stay under `web/src/routes/marketplace/`.
 
 `contract/sign/$token.tsx` sits **outside** that tree, at the top level, and keeps its
 original `/contract/sign/$token` URL. It is the account-free signing page whose link is
@@ -184,6 +191,7 @@ only place they can be enforced:
    2026-08-24, when it moved to the persona-neutral top-level `/engagements` page —
    matching the API, whose guard is authentication plus party scoping, not capability.
 2. Engagement assignment APIs and UI, including flexible-engagement project placement.
+   Specified as an implementable contract in [Action surface](./action-surface.md#the-handoff-into-execution).
 3. Attributed timers and manual time logs writing `task_time_logs.engagement_assignment_id`.
 4. Talent submission, then Consultant approval/rejection.
 5. Approval-driven payout consumption.
@@ -210,4 +218,6 @@ grep -nE "@(Get|Post|Patch|Delete)\(" backend/src/modules/marketplace/contracts/
 - [Data model](./data-model.md)
 - [Lifecycle and edge cases](./lifecycle-and-edge-cases.md)
 - [Scenarios](./scenarios.md)
+- [Action surface](./action-surface.md) — what each seat may *do*, and the rail that fills the dead end
+- [Test matrix](./test-matrix.md)
 - [Finance](../11-domains/finance/README.md)
