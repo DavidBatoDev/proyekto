@@ -19,7 +19,6 @@ import {
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { useToast } from "@/contexts/ToastContext";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { commentsService } from "@/services/roadmap.service";
 import { useUser } from "@/stores/authStore";
@@ -139,11 +138,6 @@ export const EpicTab = ({
 	);
 	const { mentionUsers, canInviteByEmail } = useMentionUsers(mentionProjectId);
 	const features = epic.features || [];
-	const toast = useToast();
-	const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
-	const moveTaskBetweenFeatures = useRoadmapStore(
-		(s) => s.moveTaskBetweenFeatures,
-	);
 
 	// Live per-feature task order while a drag is in flight — mirrors the
 	// Kanban board's `columns` state. Synced from `features` whenever nothing
@@ -237,44 +231,13 @@ export const EpicTab = ({
 			});
 		},
 		onDragEnd(event) {
-			const { active } = event;
-			if (active.data.current?.type !== "task") return;
+			// Only reset this row's local drag-preview state here — the actual
+			// reorder/move persists once, centrally, in RoadmapViewContent's
+			// shared DndContext handler (it reacts to every `type: "task"` drop,
+			// from this list view and the canvas widget alike; duplicating the
+			// store call here would fire the move twice).
+			if (event.active.data.current?.type !== "task") return;
 			setDraggingTaskId(null);
-			const taskId = String(active.id);
-
-			const finalFeatureId = findFeatureIdForTask(taskLists, taskId);
-			if (!finalFeatureId) return;
-			const orderedIds = (taskLists[finalFeatureId] ?? []).map((t) => t.id);
-
-			const originalFeatureId = findFeatureIdForTask(
-				buildTaskLists(features),
-				taskId,
-			);
-			if (!originalFeatureId) return;
-
-			const handleError = (error: unknown) => {
-				toast.error(
-					error instanceof Error ? error.message : "Failed to move task",
-				);
-			};
-
-			if (originalFeatureId === finalFeatureId) {
-				const originalOrder = (
-					features.find((f) => f.id === finalFeatureId)?.tasks ?? []
-				).map((t) => t.id);
-				const orderChanged =
-					originalOrder.length !== orderedIds.length ||
-					originalOrder.some((id, index) => id !== orderedIds[index]);
-				if (!orderChanged) return;
-				void reorderTasksInFeature(finalFeatureId, orderedIds).catch(
-					handleError,
-				);
-				return;
-			}
-
-			void moveTaskBetweenFeatures(taskId, finalFeatureId, orderedIds).catch(
-				handleError,
-			);
 		},
 		onDragCancel() {
 			setDraggingTaskId(null);

@@ -232,6 +232,8 @@ export function RoadmapViewContent({
 		canvasViewMode,
 		setCanvasViewMode,
 		updateTask,
+		reorderTasksInFeature,
+		moveTaskBetweenFeatures,
 		presentationMode,
 		setPresentationMode,
 	} = useRoadmapStore(
@@ -251,6 +253,8 @@ export function RoadmapViewContent({
 			canvasViewMode: state.canvasViewMode,
 			setCanvasViewMode: state.setCanvasViewMode,
 			updateTask: state.updateTask,
+			reorderTasksInFeature: state.reorderTasksInFeature,
+			moveTaskBetweenFeatures: state.moveTaskBetweenFeatures,
 			presentationMode: state.presentationMode,
 			setPresentationMode: state.setPresentationMode,
 		})),
@@ -848,6 +852,11 @@ export function RoadmapViewContent({
 	const [activeDragAvatar, setActiveDragAvatar] = useState<DockAvatar | null>(
 		null,
 	);
+	// The task currently being dragged — from the canvas's per-feature "TASKS"
+	// widget (FeatureWidget) or EpicTab's list view — tracked here purely to
+	// drive the DragOverlay preview; the reorder/move itself is handled below.
+	const [activeDraggedTask, setActiveDraggedTask] =
+		useState<RoadmapTask | null>(null);
 
 	const dndSensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -907,6 +916,12 @@ export function RoadmapViewContent({
 
 	const handleDockDragStart = useCallback((event: DragStartEvent) => {
 		const data = event.active.data.current;
+		if (data?.type === "task") {
+			const taskId = String(event.active.id);
+			const task = findTaskById(useRoadmapStore.getState().epics, taskId);
+			setActiveDraggedTask(task ?? null);
+			return;
+		}
 		if (data?.type !== "assignee") return;
 		setActiveDragAvatar({
 			userId: (data.userId as string) ?? "",
@@ -918,12 +933,77 @@ export function RoadmapViewContent({
 
 	const handleDockDragCancel = useCallback(() => {
 		setActiveDragAvatar(null);
+		setActiveDraggedTask(null);
 	}, []);
+
+	const handleTaskDragEnd = useCallback(
+		(event: DragEndEvent) => {
+			const { active, over } = event;
+			const activeData = active.data.current;
+			const taskId = String(active.id);
+			const sourceFeatureId = activeData?.featureId as string | undefined;
+			if (!over || !sourceFeatureId) return;
+
+			const overData = over.data.current;
+			const targetFeatureId = overData?.featureId as string | undefined;
+			if (!targetFeatureId) return;
+
+			const epics = useRoadmapStore.getState().epics;
+			const targetFeature = epics
+				.flatMap((e) => e.features ?? [])
+				.find((f) => f.id === targetFeatureId);
+			const siblingIds = (targetFeature?.tasks ?? [])
+				.map((t) => t.id)
+				.filter((id) => id !== taskId);
+
+			// Dropped onto a specific task row: land right at its position.
+			// Dropped on the container itself (or nothing more specific): append.
+			let insertAt = siblingIds.length;
+			if (overData?.type === "task") {
+				const overTaskId = overData.taskId as string;
+				const idx = siblingIds.indexOf(overTaskId);
+				if (idx !== -1) insertAt = idx;
+			}
+			const orderedIds = [
+				...siblingIds.slice(0, insertAt),
+				taskId,
+				...siblingIds.slice(insertAt),
+			];
+
+			const handleError = (error: unknown) => {
+				toast.error(
+					error instanceof Error ? error.message : "Failed to move task",
+				);
+			};
+
+			if (sourceFeatureId === targetFeatureId) {
+				const currentOrder = (targetFeature?.tasks ?? []).map((t) => t.id);
+				const orderChanged =
+					currentOrder.length !== orderedIds.length ||
+					currentOrder.some((id, index) => id !== orderedIds[index]);
+				if (!orderChanged) return;
+				void reorderTasksInFeature(targetFeatureId, orderedIds).catch(
+					handleError,
+				);
+				return;
+			}
+
+			void moveTaskBetweenFeatures(taskId, targetFeatureId, orderedIds).catch(
+				handleError,
+			);
+		},
+		[reorderTasksInFeature, moveTaskBetweenFeatures, toast],
+	);
 
 	const handleDockDragEnd = useCallback(
 		(event: DragEndEvent) => {
 			setActiveDragAvatar(null);
+			setActiveDraggedTask(null);
 			const { active, over } = event;
+			if (active.data.current?.type === "task") {
+				handleTaskDragEnd(event);
+				return;
+			}
 			if (!over) return;
 
 			const activeData = active.data.current;
@@ -964,7 +1044,7 @@ export function RoadmapViewContent({
 				currentAssigneeName: currentAssigneeName ?? "the current assignee",
 			});
 		},
-		[applyAssignment],
+		[applyAssignment, handleTaskDragEnd],
 	);
 
 	const handleConfirmAssignment = useCallback(async () => {
@@ -1479,6 +1559,10 @@ export function RoadmapViewContent({
 								.toUpperCase() || "?"}
 						</div>
 					)
+				) : activeDraggedTask ? (
+					<div className="pointer-events-none flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-900 shadow-xl ring-1 ring-gray-200">
+						{activeDraggedTask.title}
+					</div>
 				) : null}
 			</DragOverlay>
 		</DndContext>
