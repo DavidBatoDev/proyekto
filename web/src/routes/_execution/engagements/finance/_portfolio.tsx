@@ -21,6 +21,7 @@ import {
 	FinanceCurrentCrumb,
 } from "@/components/finance/portfolio/FinanceBreadcrumbs";
 import { FinanceFiltersBar } from "@/components/finance/portfolio/FinanceFiltersBar";
+import { countLabel } from "@/components/finance/portfolio/FinancePrimitives";
 import {
 	type FinanceSearchState,
 	type FinanceSection,
@@ -56,7 +57,7 @@ const FINANCE_TABS: Array<{
 	label: string;
 	icon: typeof BarChart3;
 }> = [
-	{ id: "overview", label: "Overview", icon: BarChart3 },
+	{ id: "overview", label: "Portfolio", icon: BarChart3 },
 	{ id: "contracts", label: "Contracts", icon: FileSignature },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
 	{ id: "imports", label: "Imports", icon: FileUp },
@@ -108,7 +109,7 @@ function FinancePortfolioLayout() {
 				return;
 			default:
 				void navigate({
-					to: "/engagements/finance",
+					to: "/engagements/finance/portfolio",
 					search: next,
 					replace: true,
 				});
@@ -142,25 +143,16 @@ function FinancePortfolioLayout() {
 							>
 								Engagements
 							</Link>,
-							section === "overview" ? (
-								<FinanceCurrentCrumb key="finance">Finance</FinanceCurrentCrumb>
-							) : (
-								<Link
-									key="finance"
-									to="/engagements/finance"
-									search={sharedSearch}
-									className={FINANCE_CRUMB_LINK_CLASS}
-								>
-									Finance
-								</Link>
-							),
-							...(section === "overview"
-								? []
-								: [
-										<FinanceCurrentCrumb key="section">
-											{currentTab?.label ?? "Finance"}
-										</FinanceCurrentCrumb>,
-									]),
+							<Link
+								key="finance"
+								to="/engagements/finance"
+								className={FINANCE_CRUMB_LINK_CLASS}
+							>
+								Finance
+							</Link>,
+							<FinanceCurrentCrumb key="section">
+								{currentTab?.label ?? "Finance"}
+							</FinanceCurrentCrumb>,
 							...(selectedProject
 								? [
 										<FinanceCurrentCrumb key="project">
@@ -190,7 +182,10 @@ function FinancePortfolioLayout() {
 							<span className="hidden shrink-0 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground sm:inline-flex">
 								{projectOptionsQuery.isPending
 									? "Loading projects…"
-									: `${projectOptionsQuery.data?.projects.length ?? 0} projects`}
+									: countLabel(
+											projectOptionsQuery.data?.projects.length ?? 0,
+											"project",
+										)}
 							</span>
 						) : null}
 					</div>
@@ -233,7 +228,10 @@ function FinancePortfolioLayout() {
 													to: "/engagements/finance/imports",
 													search: sharedSearch,
 												}
-											: { to: "/engagements/finance", search: sharedSearch }
+											: {
+													to: "/engagements/finance/portfolio",
+													search: sharedSearch,
+												}
 							}
 						/>
 					) : null}

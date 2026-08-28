@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, Users } from "lucide-react";
-import { isActiveConsultant } from "@/lib/auth-utils";
-import { teamFinanceService } from "@/services/teamFinance.service";
-import { useProfile } from "@/stores/authStore";
+import { ArrowLeft, FolderKanban, Share2, Users } from "lucide-react";
+import { financeBooksService } from "@/services/financeBooks.service";
 import {
 	ENGAGEMENTS_NAV_ITEMS,
+	FINANCE_NAV_ITEMS,
 	isEngagementsNavItemActive,
 } from "./engagementsNavigation";
 import {
@@ -15,49 +14,33 @@ import {
 } from "./SidebarPrimitives";
 
 /**
- * The engagements shell's navigation.
+ * The engagements shell's navigation — places, Google-Drive style.
  *
- * Sections only: Finance is one entry whose three surfaces are tabs on the
- * page, and the engagement list's seat tabs and status filter live on that
- * page too. What remains here is the small set of places to go.
+ * All engagements, then FINANCE: Home (the launcher), Personal (your own
+ * book), one entry per team with its project books nested under it, and a
+ * Shared-with-me entry when anyone has granted the caller a book.
  *
- * The teams are nested under Finance because a team's book is a finance
- * destination — the same three surfaces scoped to that team — rather than a
- * section of its own beside it.
- *
- * Finance stays behind the consultant capability, but the teams under it do
- * NOT: a project admin runs team finance without ever being a marketplace
- * consultant — the reason finance left the marketplace shell. For that caller
- * the group keeps its heading and loses only the personal book above it.
+ * The tree comes from the finance hub payload, which exists for every
+ * authenticated user — there is deliberately no consultant gate here. What a
+ * caller cannot reach simply is not in their hub.
  */
 export function EngagementsSidebarContent() {
-	const profile = useProfile();
-	const consultant = isActiveConsultant(profile);
 	const currentPath = useRouterState({
 		select: (state) => state.location.pathname,
 	});
 
-	const teamsQuery = useQuery({
-		queryKey: ["team-finance", "teams"],
-		queryFn: () => teamFinanceService.teams(),
+	const hubQuery = useQuery({
+		queryKey: ["finance-books", "hub"],
+		queryFn: financeBooksService.hub,
 		staleTime: 60_000,
 	});
-	// A team with zero finance-visible projects would open onto an empty page;
-	// listing it would advertise a place with nothing in it.
-	const teams = (teamsQuery.data ?? []).filter(
-		(team) => team.project_count > 0,
-	);
-
-	const items = ENGAGEMENTS_NAV_ITEMS.filter(
-		(item) => item.requires !== "consultant" || consultant,
-	);
-	const financeItem = items.find((item) => item.key === "finance");
-	const sectionItems = items.filter((item) => item.key !== "finance");
+	const teams = hubQuery.data?.teams ?? [];
+	const sharedCount = hubQuery.data?.shared.length ?? 0;
 
 	return (
 		<div className="flex h-full flex-col gap-6 overflow-y-auto px-3 py-4">
 			<nav className="space-y-1">
-				{sectionItems.map((item) => (
+				{ENGAGEMENTS_NAV_ITEMS.map((item) => (
 					<SidebarNavLink
 						key={item.key}
 						to={item.to}
@@ -68,43 +51,57 @@ export function EngagementsSidebarContent() {
 				))}
 			</nav>
 
-			{(financeItem || teams.length > 0) && (
-				<nav className="space-y-1">
-					{financeItem ? (
-						<SidebarNavLink
-							to={financeItem.to}
-							icon={financeItem.icon}
-							label={financeItem.label}
-							active={isEngagementsNavItemActive(financeItem, currentPath)}
-						/>
-					) : (
-						<SidebarSectionHeader>Finance</SidebarSectionHeader>
-					)}
+			<nav className="space-y-1">
+				<SidebarSectionHeader>Finance</SidebarSectionHeader>
+				{FINANCE_NAV_ITEMS.map((item) => (
+					<SidebarNavLink
+						key={item.key}
+						to={item.to}
+						icon={item.icon}
+						label={item.label}
+						active={isEngagementsNavItemActive(item, currentPath)}
+					/>
+				))}
 
-					{teams.length > 0 && (
-						<div
-							className={`space-y-0.5 ${
-								financeItem
-									? "ml-6 border-l border-sidebar-border pl-2"
-									: undefined
-							}`}
-						>
-							{teams.map((team) => (
-								<SidebarSubLink
-									key={team.id}
-									to="/engagements/finance/team/$teamId"
-									params={{ teamId: team.id }}
-									icon={Users}
-									label={team.name}
-									active={currentPath.startsWith(
-										`/engagements/finance/team/${team.id}`,
-									)}
-								/>
-							))}
-						</div>
-					)}
-				</nav>
-			)}
+				{teams.map((team) => (
+					<div key={team.team_id} className="space-y-0.5">
+						<SidebarSubLink
+							to="/engagements/finance/team/$teamId"
+							params={{ teamId: team.team_id }}
+							icon={Users}
+							label={team.team_name}
+							active={currentPath.startsWith(
+								`/engagements/finance/team/${team.team_id}`,
+							)}
+						/>
+						{team.project_books.length > 0 && (
+							<div className="ml-6 space-y-0.5 border-l border-sidebar-border pl-2">
+								{team.project_books.map((entry) => (
+									<SidebarSubLink
+										key={entry.book.id}
+										to="/engagements/finance/book/$bookId"
+										params={{ bookId: entry.book.id }}
+										icon={FolderKanban}
+										label={entry.project_title}
+										active={currentPath.startsWith(
+											`/engagements/finance/book/${entry.book.id}`,
+										)}
+									/>
+								))}
+							</div>
+						)}
+					</div>
+				))}
+
+				{sharedCount > 0 && (
+					<SidebarSubLink
+						to="/engagements/finance"
+						icon={Share2}
+						label={`Shared with me (${sharedCount})`}
+						active={false}
+					/>
+				)}
+			</nav>
 
 			<div className="mt-auto border-t border-sidebar-border pt-3">
 				<Link

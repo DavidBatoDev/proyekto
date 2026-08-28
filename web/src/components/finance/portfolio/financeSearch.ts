@@ -288,5 +288,7 @@ export function financeSectionFromPathname(pathname: string): FinanceSection {
 	if (pathname.startsWith("/engagements/finance/contracts")) return "contracts";
 	if (pathname.startsWith("/engagements/finance/invoices")) return "invoices";
 	if (pathname.startsWith("/engagements/finance/imports")) return "imports";
+	// The rollup moved from the finance index to /portfolio when the index
+	// became the launcher; "overview" stays the section id.
 	return "overview";
 }

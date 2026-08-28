@@ -21,13 +21,11 @@ import {
 	describeTimePolicy,
 } from "@/components/engagements/engagementCopy";
 import { FinanceStatusBadge } from "@/components/finance/portfolio/FinancePrimitives";
-import { isActiveConsultant } from "@/lib/auth-utils";
 import type {
 	Engagement,
 	EngagementProjectLink,
 } from "@/services/engagement.service";
 import { engagementService } from "@/services/engagement.service";
-import { useProfile } from "@/stores/authStore";
 
 export const Route = createFileRoute("/_execution/engagements/$engagementId")({
 	component: EngagementDetailPage,
@@ -45,12 +43,6 @@ export const Route = createFileRoute("/_execution/engagements/$engagementId")({
 function EngagementDetailPage() {
 	const { engagementId } = Route.useParams();
 	const navigate = useNavigate();
-	const profile = useProfile();
-	// The contract document still renders inside the consultant-gated finance
-	// area, so for a client or talent seat the button would lead to a wall.
-	// They see the signing date instead, until a seat-neutral contract view
-	// exists.
-	const canOpenContract = isActiveConsultant(profile);
 	const query = useQuery({
 		queryKey: ["engagement", engagementId],
 		queryFn: () => engagementService.byId(engagementId),
@@ -115,7 +107,14 @@ function EngagementDetailPage() {
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
 						<FinanceStatusBadge status={engagement.status} />
-						{engagement.activated_by_contract_id && canOpenContract && (
+						{/*
+						 * Every seat may open the paper it signed: contract reads are
+						 * position-based on the server, and the editor resolves the
+						 * viewer's own seat for signing, so no capability gate belongs
+						 * here. The gate that used to sit on this button predated the
+						 * finance area losing its consultant wall.
+						 */}
+						{engagement.activated_by_contract_id && (
 							<button
 								type="button"
 								onClick={() =>

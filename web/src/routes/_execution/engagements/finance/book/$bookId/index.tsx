@@ -7,12 +7,13 @@ import {
 	Clock,
 	Download,
 	FileSignature,
+	FileUp,
 	FolderKanban,
 	HandCoins,
 	Hourglass,
-	MailPlus,
 	ReceiptText,
-	Users,
+	Settings2,
+	Share2,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -21,6 +22,8 @@ import {
 	AppStatCard,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { AppTabs } from "@/components/common/AppTabs";
+import { FinanceShareDialog } from "@/components/finance/FinanceShareDialog";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -32,12 +35,10 @@ import {
 	formatFinanceDate,
 } from "@/components/finance/portfolio/FinancePrimitives";
 import {
-	type FinanceBookMember,
 	type FinanceBookOverview,
 	type FinanceExportFormat,
 	type FinanceExportKind,
 	financeBooksService,
-	type GrantableFinanceRole,
 } from "@/services/financeBooks.service";
 import { listTeamProjects } from "@/services/teams.service";
 
@@ -52,35 +53,6 @@ export const Route = createFileRoute(
 )({
 	component: FinanceBookPage,
 });
-
-const ROLE_OPTIONS: Array<{
-	value: GrantableFinanceRole;
-	label: string;
-	description: string;
-}> = [
-	{
-		value: "manager",
-		label: "Manager",
-		description:
-			"The HR tier — sees costs, manages rates and payouts, inherits onto project books.",
-	},
-	{
-		value: "accountant",
-		label: "Accountant",
-		description: "Views and exports time logs and payouts. Never edits.",
-	},
-	{
-		value: "viewer_client",
-		label: "Client viewer",
-		description:
-			"The client seat — their contracts and invoices only. Never sees internal costs.",
-	},
-	{
-		value: "viewer",
-		label: "Viewer",
-		description: "Read-only view of time logs. No exports.",
-	},
-];
 
 const ROLE_LABELS: Record<string, string> = {
 	owner: "Owner",
@@ -188,43 +160,296 @@ function BookBody({
 				? (overview.team_name ?? kindLabel)
 				: kindLabel;
 
+	const [shareOpen, setShareOpen] = useState(false);
+
 	return (
 		<>
-			<AppSectionHeader
-				title={title}
-				kicker={title === kindLabel ? undefined : kindLabel}
-				subtitle={`Display currency ${book.currency} · your role: ${ROLE_LABELS[role] ?? role}${overview.inherited ? " (inherited from the team book)" : ""}.`}
-				className="mt-4"
-			/>
+			<div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+				<AppSectionHeader
+					title={title}
+					kicker={title === kindLabel ? undefined : kindLabel}
+					subtitle={`Display currency ${book.currency} · your role: ${ROLE_LABELS[role] ?? role}${overview.inherited ? " (inherited from the team book)" : ""}.`}
+				/>
+				{book.kind !== "personal" ? (
+					<button
+						type="button"
+						onClick={() => setShareOpen(true)}
+						className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+					>
+						<Share2 className="h-4 w-4" />
+						Share
+					</button>
+				) : null}
+			</div>
 
 			{book.status === "archived" ? (
-				<div className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5">
-					<Archive className="h-4 w-4 shrink-0 text-amber-600" />
-					<p className="text-sm text-amber-800">
+				<div className="mt-4 flex items-center gap-3 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-3.5">
+					<Archive className="h-4 w-4 shrink-0 text-warning-foreground" />
+					<p className="text-sm text-warning-foreground">
 						This book is archived — its client contract ended. History stays
 						readable and exportable, but nothing new is recorded.
 					</p>
 				</div>
 			) : null}
 
-			<BookDashboard overview={overview} />
+			{book.kind === "project" ? (
+				<ProjectBookTabs bookId={bookId} overview={overview} />
+			) : (
+				<>
+					<BookDashboard overview={overview} />
 
-			{permissions.export ? (
-				<ExportSection bookId={bookId} canViewTime={permissions.view_time} />
-			) : null}
+					{permissions.export ? (
+						<ExportSection
+							bookId={bookId}
+							canViewTime={permissions.view_time}
+						/>
+					) : null}
 
-			<MembersSection bookId={bookId} canManage={permissions.manage_members} />
+					{book.kind === "team" ? (
+						<ProjectBooksSection
+							bookId={bookId}
+							teamId={book.owner_team_id}
+							canManageBook={permissions.manage_book}
+						/>
+					) : null}
+				</>
+			)}
 
-			{permissions.manage_members ? <InvitesSection bookId={bookId} /> : null}
-
-			{book.kind === "team" ? (
-				<ProjectBooksSection
+			{book.kind !== "personal" ? (
+				<FinanceShareDialog
 					bookId={bookId}
-					teamId={book.owner_team_id}
-					canManageBook={permissions.manage_book}
+					bookTitle={title}
+					canManage={permissions.manage_members}
+					open={shareOpen}
+					onClose={() => setShareOpen(false)}
 				/>
 			) : null}
 		</>
+	);
+}
+
+// ─── project workspace tabs ───────────────────────────────────────────────
+
+type ProjectBookTab =
+	| "overview"
+	| "contract"
+	| "invoices"
+	| "imports"
+	| "settings";
+
+const PROJECT_BOOK_TABS: Array<{
+	id: ProjectBookTab;
+	label: string;
+	icon: typeof Clock;
+}> = [
+	{ id: "overview", label: "Overview", icon: Clock },
+	{ id: "contract", label: "Contract", icon: FileSignature },
+	{ id: "invoices", label: "Invoices", icon: ReceiptText },
+	{ id: "imports", label: "Imports", icon: FileUp },
+	{ id: "settings", label: "Settings", icon: Settings2 },
+];
+
+/**
+ * The per-project financial workspace: everything one contracted project
+ * carries, as tabs. Each tab renders the role-sliced payload the overview
+ * endpoint already returned — a slice the caller's role may not see is
+ * simply absent, so a client viewer never meets a cost figure whichever tab
+ * they open.
+ */
+function ProjectBookTabs({
+	bookId,
+	overview,
+}: {
+	bookId: string;
+	overview: FinanceBookOverview;
+}) {
+	const [tab, setTab] = useState<ProjectBookTab>("overview");
+	const { book, permissions } = overview;
+
+	return (
+		<>
+			<AppTabs
+				variant="underline"
+				size="sm"
+				className="mt-5"
+				items={PROJECT_BOOK_TABS.map((entry) => ({
+					key: entry.id,
+					label: (
+						<>
+							<entry.icon className="h-4 w-4" />
+							{entry.label}
+						</>
+					),
+				}))}
+				active={tab}
+				onChange={(key) => setTab(key)}
+			/>
+
+			{tab === "overview" ? (
+				<>
+					<BookTimeSection overview={overview} />
+					{permissions.export ? (
+						<ExportSection
+							bookId={bookId}
+							canViewTime={permissions.view_time}
+						/>
+					) : null}
+				</>
+			) : null}
+
+			{tab === "contract" ? <BookContractsSection overview={overview} /> : null}
+
+			{tab === "invoices" ? <BookInvoicesSection overview={overview} /> : null}
+
+			{tab === "imports" ? (
+				<AppSurfaceCard className="mt-6 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+					<div className="min-w-0">
+						<p className="text-sm font-semibold text-foreground">
+							Imported documents
+						</p>
+						<p className="mt-1 text-xs text-muted-foreground">
+							Record invoices and payments issued outside Proyekto against this
+							project&apos;s ledger, with the source document as evidence.
+						</p>
+					</div>
+					{book.project_id ? (
+						<Link
+							to="/engagements/finance/imports"
+							search={{ projectId: book.project_id }}
+							className="app-cta inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+						>
+							<FileUp className="h-4 w-4" />
+							Open imports
+						</Link>
+					) : null}
+				</AppSurfaceCard>
+			) : null}
+
+			{tab === "settings" ? <BookSettingsSection overview={overview} /> : null}
+		</>
+	);
+}
+
+function BookContractsSection({ overview }: { overview: FinanceBookOverview }) {
+	const contracts = overview.contracts ?? [];
+	if (contracts.length === 0) {
+		return (
+			<AppEmptyState
+				icon={FileSignature}
+				title="No contracts on this project"
+				description="Signed client contracts on this project appear here."
+				className="mt-6"
+			/>
+		);
+	}
+	return (
+		<div className="mt-6 space-y-2">
+			{contracts.map((contract) => (
+				<AppSurfaceCard
+					key={contract.id}
+					className="flex items-center justify-between gap-4 px-5 py-3.5"
+				>
+					<div className="min-w-0">
+						<p className="truncate text-sm font-semibold text-foreground">
+							{contract.contract_number ?? "Contract"}
+						</p>
+						<p className="text-xs text-muted-foreground capitalize">
+							{contract.billing_mode.replace(/_/g, " ")}
+							{contract.client_hourly_rate != null
+								? ` · ${contract.client_hourly_rate.toLocaleString()} ${contract.currency}/h`
+								: ""}
+							{contract.signed_at
+								? ` · signed ${formatFinanceDate(contract.signed_at.slice(0, 10))}`
+								: ""}
+						</p>
+					</div>
+					<div className="flex shrink-0 items-center gap-2">
+						<FinanceStatusBadge status={contract.status} />
+						<Link
+							to="/engagements/finance/$contractId"
+							params={{ contractId: contract.id }}
+							search={{ section: undefined }}
+							className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+						>
+							Open
+						</Link>
+					</div>
+				</AppSurfaceCard>
+			))}
+		</div>
+	);
+}
+
+function BookInvoicesSection({ overview }: { overview: FinanceBookOverview }) {
+	const invoices = overview.invoices ?? [];
+	if (invoices.length === 0) {
+		return (
+			<AppEmptyState
+				icon={ReceiptText}
+				title="No invoices yet"
+				description="Invoices issued against this project appear here."
+				className="mt-6"
+			/>
+		);
+	}
+	return (
+		<div className="mt-6 space-y-2">
+			{invoices.map((invoice) => (
+				<AppSurfaceCard
+					key={invoice.id}
+					className="flex items-center justify-between gap-4 px-5 py-3.5"
+				>
+					<div className="min-w-0">
+						<p className="truncate text-sm font-semibold text-foreground">
+							{invoice.total.toLocaleString()} {invoice.currency}
+						</p>
+						<p className="text-xs text-muted-foreground">
+							{invoice.issued_at
+								? `Issued ${formatFinanceDate(invoice.issued_at.slice(0, 10))}`
+								: "Not issued yet"}
+						</p>
+					</div>
+					<FinanceStatusBadge status={invoice.status} />
+				</AppSurfaceCard>
+			))}
+		</div>
+	);
+}
+
+function BookSettingsSection({ overview }: { overview: FinanceBookOverview }) {
+	const { book } = overview;
+	const rows: Array<{ label: string; value: string }> = [
+		{ label: "Display currency", value: book.currency },
+		{
+			label: "Status",
+			value:
+				book.status === "archived"
+					? "Archived — client contract ended"
+					: "Active",
+		},
+		{ label: "Team", value: overview.team_name ?? "—" },
+		{ label: "Project", value: overview.project_title ?? "—" },
+	];
+	return (
+		<AppSurfaceCard className="mt-6 divide-y divide-border/60">
+			{rows.map((row) => (
+				<div
+					key={row.label}
+					className="flex items-center justify-between gap-4 px-5 py-3.5"
+				>
+					<p className="text-sm text-muted-foreground">{row.label}</p>
+					<p className="text-sm font-semibold text-foreground">{row.value}</p>
+				</div>
+			))}
+			<div className="px-5 py-3.5">
+				<p className="text-xs text-muted-foreground">
+					A project book opens when its client contract is signed and archives
+					when that contract ends. Members and roles are managed from the Share
+					dialog; revenue split and cost settings live in the consultant&apos;s
+					project financials.
+				</p>
+			</div>
+		</AppSurfaceCard>
 	);
 }
 
@@ -235,7 +460,16 @@ function formatBookHours(seconds: number): string {
 }
 
 function BookDashboard({ overview }: { overview: FinanceBookOverview }) {
-	const { time, payouts, contracts, invoices } = overview;
+	return (
+		<>
+			<BookTimeSection overview={overview} />
+			<BookLedgerSections overview={overview} />
+		</>
+	);
+}
+
+function BookTimeSection({ overview }: { overview: FinanceBookOverview }) {
+	const { time, payouts } = overview;
 
 	return (
 		<>
@@ -303,7 +537,14 @@ function BookDashboard({ overview }: { overview: FinanceBookOverview }) {
 					) : null}
 				</>
 			) : null}
+		</>
+	);
+}
 
+function BookLedgerSections({ overview }: { overview: FinanceBookOverview }) {
+	const { contracts, invoices } = overview;
+	return (
+		<>
 			{contracts ? (
 				<>
 					<AppSectionHeader
@@ -464,305 +705,6 @@ function ExportSection({
 			</AppSurfaceCard>
 			{error ? (
 				<p className="mt-2 text-sm font-medium text-red-600">{error}</p>
-			) : null}
-		</>
-	);
-}
-
-// ─── members ──────────────────────────────────────────────────────────────
-
-function MembersSection({
-	bookId,
-	canManage,
-}: {
-	bookId: string;
-	canManage: boolean;
-}) {
-	const queryClient = useQueryClient();
-	const membersQuery = useQuery({
-		queryKey: ["finance-books", bookId, "members"],
-		queryFn: () => financeBooksService.listMembers(bookId),
-	});
-
-	const invalidate = () =>
-		queryClient.invalidateQueries({
-			queryKey: ["finance-books", bookId, "members"],
-		});
-
-	const updateMutation = useMutation({
-		mutationFn: ({
-			memberId,
-			finance_role,
-		}: {
-			memberId: string;
-			finance_role: GrantableFinanceRole;
-		}) => financeBooksService.updateMember(bookId, memberId, { finance_role }),
-		onSuccess: invalidate,
-	});
-
-	const removeMutation = useMutation({
-		mutationFn: (memberId: string) =>
-			financeBooksService.removeMember(bookId, memberId),
-		onSuccess: invalidate,
-	});
-
-	return (
-		<>
-			<AppSectionHeader
-				title="Members"
-				subtitle="Finance access only — a member here never gains access to the project work itself."
-				className="mt-8"
-			/>
-			{membersQuery.isPending ? (
-				<p className="mt-3 text-sm text-slate-500">Loading members…</p>
-			) : (membersQuery.data?.length ?? 0) === 0 ? (
-				<AppEmptyState
-					icon={Users}
-					title="No members yet"
-					description="Invite an HR manager, accountant, or client viewer below."
-					className="mt-3"
-				/>
-			) : (
-				<div className="mt-3 space-y-2">
-					{(membersQuery.data ?? []).map((member) => (
-						<MemberRow
-							key={member.id ?? `implicit-${member.user_id}`}
-							member={member}
-							canManage={canManage}
-							onRoleChange={(finance_role) =>
-								member.id
-									? updateMutation.mutate({
-											memberId: member.id,
-											finance_role,
-										})
-									: undefined
-							}
-							onRemove={() =>
-								member.id ? removeMutation.mutate(member.id) : undefined
-							}
-						/>
-					))}
-				</div>
-			)}
-			{updateMutation.isError ? (
-				<p className="mt-2 text-sm font-medium text-red-600">
-					{updateMutation.error.message}
-				</p>
-			) : null}
-			{removeMutation.isError ? (
-				<p className="mt-2 text-sm font-medium text-red-600">
-					{removeMutation.error.message}
-				</p>
-			) : null}
-		</>
-	);
-}
-
-function MemberRow({
-	member,
-	canManage,
-	onRoleChange,
-	onRemove,
-}: {
-	member: FinanceBookMember;
-	canManage: boolean;
-	onRoleChange: (role: GrantableFinanceRole) => void;
-	onRemove: () => void;
-}) {
-	const name =
-		member.user?.display_name ||
-		member.user?.email ||
-		member.invited_email ||
-		"Unknown member";
-	// Implicit owners and inherited F2 grants have no row on this book to
-	// edit — role changes for inherited managers happen on the team book.
-	const editable = canManage && !member.inherited && member.id !== null;
-
-	return (
-		<AppSurfaceCard className="flex items-center justify-between gap-4 px-5 py-3.5">
-			<div className="flex min-w-0 items-center gap-3">
-				{member.user?.avatar_url ? (
-					<img
-						src={member.user.avatar_url}
-						alt=""
-						className="h-8 w-8 shrink-0 rounded-full object-cover"
-					/>
-				) : (
-					<span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-						{name.slice(0, 1).toUpperCase()}
-					</span>
-				)}
-				<div className="min-w-0">
-					<p className="truncate text-sm font-semibold text-slate-900">
-						{name}
-					</p>
-					<p className="text-xs text-slate-500">
-						{ROLE_LABELS[member.finance_role] ?? member.finance_role}
-						{member.source === "team_owner"
-							? " · team owner"
-							: member.inherited
-								? " · inherited from the team book"
-								: ""}
-					</p>
-				</div>
-			</div>
-			{editable ? (
-				<div className="flex shrink-0 items-center gap-2">
-					<select
-						value={member.finance_role}
-						onChange={(event) =>
-							onRoleChange(event.target.value as GrantableFinanceRole)
-						}
-						className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900"
-					>
-						{ROLE_OPTIONS.map((option) => (
-							<option key={option.value} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</select>
-					<button
-						type="button"
-						onClick={onRemove}
-						className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-red-300 hover:text-red-600"
-					>
-						Remove
-					</button>
-				</div>
-			) : null}
-		</AppSurfaceCard>
-	);
-}
-
-// ─── invites ──────────────────────────────────────────────────────────────
-
-function InvitesSection({ bookId }: { bookId: string }) {
-	const queryClient = useQueryClient();
-	const [email, setEmail] = useState("");
-	const [role, setRole] = useState<GrantableFinanceRole>("accountant");
-	const [notice, setNotice] = useState<string | null>(null);
-
-	const invitesQuery = useQuery({
-		queryKey: ["finance-books", bookId, "invites"],
-		queryFn: () => financeBooksService.listInvites(bookId),
-	});
-
-	const invalidate = () =>
-		queryClient.invalidateQueries({
-			queryKey: ["finance-books", bookId, "invites"],
-		});
-
-	const inviteMutation = useMutation({
-		mutationFn: () =>
-			financeBooksService.createInvite(bookId, { email, finance_role: role }),
-		onSuccess: async (created) => {
-			setEmail("");
-			setNotice(
-				created.email_delivery.sent
-					? `Invitation emailed to ${created.email}.`
-					: `Invitation created — the email could not be sent (${created.email_delivery.reason ?? "unknown reason"}). Share the link directly: ${created.accept_url}`,
-			);
-			await invalidate();
-		},
-	});
-
-	const cancelMutation = useMutation({
-		mutationFn: (inviteId: string) =>
-			financeBooksService.cancelInvite(bookId, inviteId),
-		onSuccess: invalidate,
-	});
-
-	const selectedRole = ROLE_OPTIONS.find((option) => option.value === role);
-	const pending = (invitesQuery.data ?? []).filter(
-		(invite) => invite.status === "pending",
-	);
-
-	return (
-		<>
-			<AppSectionHeader
-				title="Invite someone"
-				subtitle="Send finance-only access by email. Ownership is never invitable — it follows the book."
-				className="mt-8"
-			/>
-			<AppSurfaceCard className="mt-3 p-5">
-				<div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-					<input
-						type="email"
-						value={email}
-						onChange={(event) => setEmail(event.target.value)}
-						placeholder="name@company.com"
-						className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 sm:max-w-xs"
-					/>
-					<select
-						value={role}
-						onChange={(event) =>
-							setRole(event.target.value as GrantableFinanceRole)
-						}
-						className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 sm:w-44"
-					>
-						{ROLE_OPTIONS.map((option) => (
-							<option key={option.value} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</select>
-					<button
-						type="button"
-						disabled={!email.trim() || inviteMutation.isPending}
-						onClick={() => {
-							setNotice(null);
-							inviteMutation.mutate();
-						}}
-						className="inline-flex shrink-0 items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:opacity-60"
-					>
-						<MailPlus className="h-4 w-4" />
-						{inviteMutation.isPending ? "Sending…" : "Send invite"}
-					</button>
-				</div>
-				{selectedRole ? (
-					<p className="mt-2 text-xs text-slate-500">
-						{selectedRole.description}
-					</p>
-				) : null}
-				{inviteMutation.isError ? (
-					<p className="mt-2 text-sm font-medium text-red-600">
-						{inviteMutation.error.message}
-					</p>
-				) : null}
-				{notice ? (
-					<p className="mt-2 break-all text-sm font-medium text-emerald-700">
-						{notice}
-					</p>
-				) : null}
-			</AppSurfaceCard>
-
-			{pending.length > 0 ? (
-				<div className="mt-3 space-y-2">
-					{pending.map((invite) => (
-						<AppSurfaceCard
-							key={invite.id}
-							className="flex items-center justify-between gap-4 px-5 py-3"
-						>
-							<div className="min-w-0">
-								<p className="truncate text-sm font-semibold text-slate-900">
-									{invite.email}
-								</p>
-								<p className="text-xs text-slate-500">
-									{ROLE_LABELS[invite.finance_role] ?? invite.finance_role} ·
-									expires {new Date(invite.expires_at).toLocaleDateString()}
-								</p>
-							</div>
-							<button
-								type="button"
-								disabled={cancelMutation.isPending}
-								onClick={() => cancelMutation.mutate(invite.id)}
-								className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-60"
-							>
-								Cancel
-							</button>
-						</AppSurfaceCard>
-					))}
-				</div>
 			) : null}
 		</>
 	);

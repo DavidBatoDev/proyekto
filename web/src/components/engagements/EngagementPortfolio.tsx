@@ -1,4 +1,4 @@
-import { ChevronRight, Handshake } from "lucide-react";
+import { ChevronRight, FileSignature, Handshake } from "lucide-react";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
@@ -7,7 +7,10 @@ import {
 	FinanceLoading,
 	FinanceStatusBadge,
 } from "@/components/finance/portfolio/FinancePrimitives";
-import type { Engagement } from "@/services/engagement.service";
+import type {
+	Engagement,
+	EngagementAgreement,
+} from "@/services/engagement.service";
 import {
 	describeRate,
 	describeRelationship,
@@ -21,6 +24,7 @@ export function EngagementPortfolio({
 	filtered,
 	onClearProject,
 	onOpen,
+	agreementsByContractId,
 }: {
 	loading: boolean;
 	error: Error | null;
@@ -29,6 +33,12 @@ export function EngagementPortfolio({
 	filtered: boolean;
 	onClearProject: () => void;
 	onOpen: (engagementId: string) => void;
+	/**
+	 * The viewer's contract seats keyed by contract id, so each row can show
+	 * the paper behind it inline instead of the page keeping a separate
+	 * agreements list. Optional — rows render without it.
+	 */
+	agreementsByContractId?: Map<string, EngagementAgreement>;
 }) {
 	if (loading) return <FinanceLoading />;
 	if (error) {
@@ -86,6 +96,13 @@ export function EngagementPortfolio({
 						key={engagement.id}
 						engagement={engagement}
 						onOpen={onOpen}
+						agreement={
+							engagement.activated_by_contract_id
+								? agreementsByContractId?.get(
+										engagement.activated_by_contract_id,
+									)
+								: undefined
+						}
 					/>
 				))}
 			</AppSurfaceCard>
@@ -96,11 +113,20 @@ export function EngagementPortfolio({
 function EngagementRow({
 	engagement,
 	onOpen,
+	agreement,
 }: {
 	engagement: Engagement;
 	onOpen: (engagementId: string) => void;
+	agreement?: EngagementAgreement;
 }) {
 	const isClientSide = engagement.kind === "client_services";
+	const signed = agreement?.signed_at
+		? new Date(agreement.signed_at).toLocaleDateString(undefined, {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: null;
 	return (
 		<button
 			type="button"
@@ -121,6 +147,13 @@ function EngagementRow({
 						{isClientSide ? "Client engagement" : "Talent engagement"} ·{" "}
 						{describeScope(engagement)}
 					</span>
+					{agreement && (
+						<span className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+							<FileSignature className="h-3 w-3 shrink-0" />
+							{agreement.contract_number ?? "Contract"}
+							{signed ? ` · signed ${signed}` : ""}
+						</span>
+					)}
 				</span>
 			</span>
 			<span className="flex shrink-0 items-center gap-3">

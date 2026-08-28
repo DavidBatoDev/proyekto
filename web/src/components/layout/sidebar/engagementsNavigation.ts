@@ -2,32 +2,25 @@ import {
 	BarChart3,
 	CircleDollarSign,
 	FileSignature,
+	FileUp,
 	Handshake,
 	type LucideIcon,
 	ReceiptText,
+	UserRound,
 } from "lucide-react";
 
 /**
  * Navigation for the engagements shell at `/engagements`.
  *
- * Mirrors `marketplaceNavigation.ts` (icon on the item, one-file change to add
- * an entry). It started as finance-only, when finance had its own shell nested
- * under engagements and the list page rendered bare; the shell now wraps the
- * whole `/engagements` subtree, so the engagement list is a first-class
- * destination here rather than a back-link out.
+ * The sidebar lists PLACES, Google-Drive style: All engagements, then the
+ * three finance levels — Home (the launcher), Personal (your own book), and
+ * one entry per team, each with its project books nested under it. Teams and
+ * project books are appended at render time from the finance hub payload, so
+ * this module only names the static places.
  *
- * Sections, not pages within them. Finance is one entry even though it holds
- * three surfaces, because Overview / Contracts / Invoices are tabs on the
- * finance page itself — listing them here too would give every one of them two
- * places to be selected from. The engagement list's seat tabs and status
- * filter are absent for the same reason.
- *
- * Nothing here is consultant-gated anymore: finance is a book-based surface
- * every execution user can create (F1 personal; F2/F3 for team owners and
- * their invited finance actors). Non-consultants land on the personal-finance
- * path; the consultant portfolio remains what a verified consultant sees
- * inside the same section. Teams nested under finance are appended at render
- * time from the caller's administered teams.
+ * Filters are not places: the engagement list's seat tabs and status filter,
+ * and the portfolio's section tabs, live on their pages. Folding them in here
+ * would mix filters into a sitemap.
  */
 export interface EngagementsNavItem {
 	key: string;
@@ -35,7 +28,6 @@ export interface EngagementsNavItem {
 	label: string;
 	icon: LucideIcon;
 	match: "exact" | "prefix";
-	requires?: "consultant";
 	/**
 	 * Path prefixes this item must NOT light on, so a parent path can use
 	 * `prefix` matching without claiming a nested section as its own.
@@ -53,14 +45,35 @@ export const ENGAGEMENTS_NAV_ITEMS: EngagementsNavItem[] = [
 		// The detail page belongs to this item; finance is its own section.
 		excludes: ["/engagements/finance"],
 	},
+];
+
+/**
+ * The static finance places. Home matches only the launcher itself — every
+ * deeper finance surface belongs to Personal, a team, or the portfolio.
+ */
+export const FINANCE_NAV_ITEMS: EngagementsNavItem[] = [
 	{
-		key: "finance",
+		key: "finance-home",
 		to: "/engagements/finance",
-		label: "Finance",
+		label: "Home",
 		icon: CircleDollarSign,
 		match: "prefix",
-		// A team's finance book is its own destination, listed under this one.
-		excludes: ["/engagements/finance/team"],
+		excludes: [
+			"/engagements/finance/me",
+			"/engagements/finance/team",
+			"/engagements/finance/book",
+			"/engagements/finance/portfolio",
+			"/engagements/finance/contracts",
+			"/engagements/finance/invoices",
+			"/engagements/finance/imports",
+		],
+	},
+	{
+		key: "finance-personal",
+		to: "/engagements/finance/me",
+		label: "Personal",
+		icon: UserRound,
+		match: "prefix",
 	},
 ];
 
@@ -77,12 +90,11 @@ export function isEngagementsNavItemActive(
 }
 
 /**
- * The finance page's own tabs, as destinations.
+ * The consultant portfolio's own tabs, as destinations.
  *
- * Not rendered in the sidebar — that is the point of the single Finance entry
- * above. They are listed here so the global search can still offer "Finance ·
- * Invoices": a tab is a place a user can mean to go, even when the sidebar
- * declines to name it.
+ * Not rendered in the sidebar — the portfolio is one place. They are listed
+ * here so the global search can still offer "Finance · Invoices": a tab is a
+ * place a user can mean to go, even when the sidebar declines to name it.
  */
 export const FINANCE_TAB_PAGES: {
 	key: string;
@@ -91,9 +103,9 @@ export const FINANCE_TAB_PAGES: {
 	icon: LucideIcon;
 }[] = [
 	{
-		key: "finance-overview",
-		to: "/engagements/finance",
-		label: "Overview",
+		key: "finance-portfolio",
+		to: "/engagements/finance/portfolio",
+		label: "Portfolio",
 		icon: BarChart3,
 	},
 	{
@@ -107,5 +119,11 @@ export const FINANCE_TAB_PAGES: {
 		to: "/engagements/finance/invoices",
 		label: "Invoices",
 		icon: ReceiptText,
+	},
+	{
+		key: "finance-imports",
+		to: "/engagements/finance/imports",
+		label: "Imports",
+		icon: FileUp,
 	},
 ];

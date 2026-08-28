@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
-	ArrowUpRight,
 	BarChart3,
+	Clock,
 	FileSignature,
+	HandCoins,
 	ReceiptText,
 	Users,
+	Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppTabs } from "@/components/common/AppTabs";
@@ -21,14 +23,25 @@ import type {
 } from "@/components/finance/portfolio/financeSearch";
 import { teamFinanceService } from "@/services/teamFinance.service";
 
+type TeamFinanceTab = FinanceSection | "rates" | "time-logs" | "payouts";
+
+/**
+ * The three in-section tabs plus three link-outs into Teams -> Time, so the
+ * team's whole money surface reads as one place even while rates, time logs,
+ * and payouts still live in the execution shell. A link-out tab is never
+ * "active" here; its pages render their own chrome.
+ */
 const TEAM_FINANCE_TABS: Array<{
-	id: FinanceSection;
+	id: TeamFinanceTab;
 	label: string;
 	icon: typeof BarChart3;
 }> = [
 	{ id: "overview", label: "Overview", icon: BarChart3 },
 	{ id: "contracts", label: "Contracts", icon: FileSignature },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
+	{ id: "rates", label: "Rates", icon: HandCoins },
+	{ id: "time-logs", label: "Time logs", icon: Clock },
+	{ id: "payouts", label: "Payouts", icon: Wallet },
 ];
 
 /**
@@ -130,14 +143,6 @@ export function TeamFinanceChrome({
 								</p>
 							</div>
 						</div>
-						<Link
-							to="/teams/$teamId/time"
-							params={{ teamId }}
-							className="hidden shrink-0 items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
-						>
-							Time logs &amp; rates
-							<ArrowUpRight className="h-3.5 w-3.5" />
-						</Link>
 					</div>
 
 					{/*
@@ -159,25 +164,43 @@ export function TeamFinanceChrome({
 							),
 						}))}
 						active={section}
-						linkFor={(id) =>
-							id === "contracts"
-								? {
+						linkFor={(id) => {
+							switch (id) {
+								case "contracts":
+									return {
 										to: "/engagements/finance/team/$teamId/contracts",
 										params: { teamId },
 										search: sharedSearch,
-									}
-								: id === "invoices"
-									? {
-											to: "/engagements/finance/team/$teamId/invoices",
-											params: { teamId },
-											search: sharedSearch,
-										}
-									: {
-											to: "/engagements/finance/team/$teamId",
-											params: { teamId },
-											search: sharedSearch,
-										}
-						}
+									};
+								case "invoices":
+									return {
+										to: "/engagements/finance/team/$teamId/invoices",
+										params: { teamId },
+										search: sharedSearch,
+									};
+								case "rates":
+									return {
+										to: "/teams/$teamId/time/manage-rates",
+										params: { teamId },
+									};
+								case "time-logs":
+									return {
+										to: "/teams/$teamId/time/team-logs",
+										params: { teamId },
+									};
+								case "payouts":
+									return {
+										to: "/teams/$teamId/time/payouts",
+										params: { teamId },
+									};
+								default:
+									return {
+										to: "/engagements/finance/team/$teamId",
+										params: { teamId },
+										search: sharedSearch,
+									};
+							}
+						}}
 					/>
 				</header>
 
