@@ -43,7 +43,7 @@ const CAPABILITIES = [
 
 export function WhyProyekto() {
 	return (
-		<section className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8">
+		<section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
 			<h2 className="text-[17px] font-semibold text-foreground">
 				Everything you need to deliver, not just to hire
 			</h2>

@@ -40,11 +40,7 @@ export function ContractPortfolio({
 	limit: number;
 	onPageChange: (page: number) => void;
 	onOpen: (id: string) => void;
-	/**
-	 * Absent on the team-finance surface: authoring a contract is consultant
-	 * control, so an admin's list carries no create CTA.
-	 */
-	onAddContract?: () => void;
+	onAddContract: () => void;
 	projectId?: string;
 	/** True when a filter is narrowing the list, so "empty" means "no match". */
 	filtered: boolean;
@@ -88,20 +84,16 @@ export function ContractPortfolio({
 				description={
 					filtered
 						? "Clear a filter, or create a draft agreement for another project."
-						: onAddContract
-							? "Create a draft agreement for a project or a flexible engagement, then complete its terms in the document editor."
-							: "Agreements on this team's projects will appear here once they exist."
+						: "Create a draft agreement for a project or a flexible engagement, then complete its terms in the document editor."
 				}
 				action={
-					onAddContract ? (
-						<button
-							type="button"
-							onClick={onAddContract}
-							className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-						>
-							<Plus className="h-4 w-4" /> Add contract
-						</button>
-					) : undefined
+					<button
+						type="button"
+						onClick={onAddContract}
+						className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+					>
+						<Plus className="h-4 w-4" /> Add contract
+					</button>
 				}
 			/>
 		);
@@ -119,15 +111,13 @@ export function ContractPortfolio({
 					// and "+ New version" side by side, which read as two ways to do
 					// the same thing — and a new version is an amendment, raised from
 					// inside the contract, not from a list.
-					onAddContract ? (
-						<button
-							type="button"
-							onClick={onAddContract}
-							className="app-cta inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white"
-						>
-							<Plus className="h-3.5 w-3.5" /> Add contract
-						</button>
-					) : undefined
+					<button
+						type="button"
+						onClick={onAddContract}
+						className="app-cta inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white"
+					>
+						<Plus className="h-3.5 w-3.5" /> Add contract
+					</button>
 				}
 			/>
 			<AppSurfaceCard className="divide-y divide-border overflow-hidden">

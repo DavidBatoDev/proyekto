@@ -1,17 +1,22 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { InvoiceBuilder } from "@/components/invoices/InvoiceBuilder";
 
-/** Redirect stub: old invoice editor URL → `/engagements/finance/invoices/<id>/edit`. */
+/**
+ * An existing invoice. Auth and the marketplace shell come from
+ * `finance/route.tsx`; see `invoices/new.tsx` for why this sits outside the
+ * `_portfolio` chrome.
+ */
 export const Route = createFileRoute(
 	"/marketplace/finance/invoices/$invoiceId/edit",
 )({
 	validateSearch: (search: Record<string, unknown>) => ({
 		projectId: typeof search.projectId === "string" ? search.projectId : "",
 	}),
-	beforeLoad: ({ params, search }) => {
-		throw redirect({
-			to: "/engagements/finance/invoices/$invoiceId/edit",
-			params: { invoiceId: params.invoiceId },
-			search,
-		});
-	},
+	component: EditInvoicePage,
 });
+
+function EditInvoicePage() {
+	const { invoiceId } = Route.useParams();
+	const { projectId } = Route.useSearch();
+	return <InvoiceBuilder projectId={projectId} invoiceId={invoiceId} />;
+}

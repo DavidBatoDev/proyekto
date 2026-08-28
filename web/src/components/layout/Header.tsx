@@ -19,12 +19,14 @@ const Header = () => {
 		"/marketplace",
 		"/teams",
 		"/project",
+		"/brief",
 		"/profile",
 		"/notifications",
 		"/settings",
 		"/unsubscribe",
 		"/invites",
 		"/engagements",
+		"/start-selling",
 		// `/contract/sign/$token` is deliberately absent: the account-free
 		// signing page carries no app chrome, exactly as before the move.
 		"/freelancer",
@@ -35,12 +37,7 @@ const Header = () => {
 	}
 
 	// These paths have their own marketing/focused headers — no layout header needed.
-	if (
-		currentPath === "/marketplace/consultant" ||
-		currentPath === "/marketplace/consultant/" ||
-		currentPath.startsWith("/marketplace/consultant/apply") ||
-		currentPath === "/project/new"
-	) {
+	if (currentPath === "/project/new" || currentPath.startsWith("/brief/")) {
 		return null;
 	}
 

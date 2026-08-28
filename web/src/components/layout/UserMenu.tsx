@@ -3,7 +3,6 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
 	ChevronDown,
 	Compass,
-	KeyRound,
 	LogOut,
 	Settings,
 	ShieldCheck,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { replayProductTour } from "@/components/tour/tourEvents";
-import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { resolveTourForPath } from "@/lib/tours/registry";
@@ -150,24 +148,15 @@ export default function UserMenu() {
 							Profile
 						</Link>
 
-						{featureFlags.themeSystem && (
-							<Link
-								to="/settings/appearance"
-								onClick={() => setIsOpen(false)}
-								className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-							>
-								<Settings size={16} />
-								Appearance
-							</Link>
-						)}
-
+						{/* One door for account settings - appearance, notifications and
+						    MCP access are sections of /settings, not menu rows. */}
 						<Link
-							to="/settings/mcp-tokens"
+							to="/settings"
 							onClick={() => setIsOpen(false)}
 							className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
 						>
-							<KeyRound size={16} />
-							MCP Tokens
+							<Settings size={16} />
+							Settings
 						</Link>
 
 						{tourForSurface && (

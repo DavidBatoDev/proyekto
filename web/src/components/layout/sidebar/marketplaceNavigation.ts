@@ -1,8 +1,11 @@
 import {
+	BarChart3,
+	CircleDollarSign,
 	Compass,
 	FileSignature,
 	Handshake,
 	type LucideIcon,
+	ReceiptText,
 	Search,
 } from "lucide-react";
 
@@ -39,11 +42,37 @@ export interface MarketplaceNavChild {
 	icon: LucideIcon;
 }
 
-// Finance is deliberately absent: it moved to `/engagements/finance` (its own
-// shell under Engagements) so team finance could be reachable by project
-// admins who are not marketplace consultants. The Engagements item below is
-// the way there from this sidebar.
 export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
+	{
+		key: "finance",
+		to: "/marketplace/finance",
+		label: "Finance",
+		icon: CircleDollarSign,
+		match: "prefix",
+		requires: "consultant",
+		// These became real URLs when the finance sections stopped being `?tab=`
+		// values, which is what lets the sidebar link straight into one.
+		children: [
+			{
+				key: "finance-overview",
+				to: "/marketplace/finance",
+				label: "Overview",
+				icon: BarChart3,
+			},
+			{
+				key: "finance-contracts",
+				to: "/marketplace/finance/contracts",
+				label: "Contracts",
+				icon: FileSignature,
+			},
+			{
+				key: "finance-invoices",
+				to: "/marketplace/finance/invoices",
+				label: "Invoices",
+				icon: ReceiptText,
+			},
+		],
+	},
 	{
 		key: "consultant-marketplace",
 		to: "/marketplace/talent/browse",
@@ -71,9 +100,9 @@ export const MARKETPLACE_NAV_ITEMS: MarketplaceNavItem[] = [
 		match: "prefix",
 	},
 	{
-		key: "project-posting",
-		to: "/project/new",
-		label: "Post a project",
+		key: "project-brief",
+		to: "/brief/new",
+		label: "Post a brief",
 		icon: FileSignature,
 		match: "exact",
 	},

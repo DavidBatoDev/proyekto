@@ -69,20 +69,6 @@ function renderOverview(portfolio: Partial<FinancePortfolio> = {}) {
 }
 
 describe("PortfolioOverview", () => {
-	it("keeps the overview scaffold when the portfolio is empty", () => {
-		renderOverview({ projects: [], totals_by_currency: [] });
-		// The section heading and projects table must survive an empty
-		// portfolio; only the currency cards give way to a placeholder.
-		expect(screen.getByText("Project performance")).toBeTruthy();
-		expect(screen.getByText("Projects")).toBeTruthy();
-		expect(screen.getByText("No billing activity yet")).toBeTruthy();
-		expect(
-			screen.getByText(
-				"Projects appear here once they have a contract or an invoice.",
-			),
-		).toBeTruthy();
-	});
-
 	it("stays quiet when nothing is past due", () => {
 		renderOverview();
 		expect(screen.queryByText(/invoices? past due$/)).toBeNull();

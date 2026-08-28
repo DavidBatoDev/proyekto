@@ -11,10 +11,15 @@ type HeroPath = "post" | "hire";
 /**
  * The marketplace's opening move: state a need, or go looking for someone.
  *
- * Both paths lead to surfaces that already exist — the project posting flow and
- * the consultant directory. The text box carries nothing into them yet, because
- * `/project/new` takes only `roadmapId`; wiring a description
- * through is a follow-up, not something to fake here.
+ * Both paths lead to surfaces that already exist — the project brief flow and
+ * the consultant directory. The call to action says "Post a brief" rather than
+ * "Post a project" because that is literally what it creates: the promise right
+ * under it is that a vetted consultant scopes the work, and that is what a brief
+ * buys. `/project/new` is the other thing entirely — running your own project —
+ * and it is reached from the dashboard.
+ *
+ * The typed line is carried into `/brief/new` as `need` and seeds the
+ * describe-your-project box there, so nobody types the same sentence twice.
  *
  * When the viewer has taken the intake survey and said they are here to WORK
  * rather than to hire, a band above the card offers the step that actually
@@ -43,8 +48,8 @@ export function MarketplaceHero() {
 	const submit = () => {
 		if (path === "post") {
 			void navigate({
-				to: "/project/new",
-				search: { roadmapId: undefined },
+				to: "/brief/new",
+				search: { need: need.trim() || undefined },
 			});
 			return;
 		}
@@ -65,7 +70,7 @@ export function MarketplaceHero() {
 				</h1>
 				{user && isActiveConsultant(profile) && (
 					<Link
-						to="/engagements/finance"
+						to="/marketplace/finance"
 						className="text-[13px] font-medium text-primary hover:underline"
 					>
 						Your finance
@@ -105,7 +110,7 @@ export function MarketplaceHero() {
 									: "text-primary-foreground/80 hover:text-primary-foreground"
 							}`}
 						>
-							Post a project
+							Post a brief
 						</button>
 						<button
 							type="button"
@@ -154,7 +159,7 @@ export function MarketplaceHero() {
 							onClick={submit}
 							className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
 						>
-							{path === "post" ? "Post a project" : "Browse"}
+							{path === "post" ? "Post a brief" : "Browse"}
 							<ArrowRight className="h-3.5 w-3.5" />
 						</button>
 					</div>

@@ -24,7 +24,9 @@ export type UploadBucket =
 	| "portfolio_projects"
 	| "roadmap_previews"
 	| "task_attachments"
-	| "chat_attachments";
+	| "chat_attachments"
+	| "brief_attachments"
+	| "identity_documents";
 
 /** Full metadata for a chat attachment, persisted on the message. */
 export interface ChatAttachmentMeta {
@@ -258,6 +260,23 @@ class UploadService {
 	async uploadChatAttachment(file: File): Promise<ChatAttachmentMeta> {
 		const size = await readImageSize(file);
 		const url = await this.upload("chat_attachments", file);
+		return {
+			url,
+			name: file.name,
+			content_type: file.type || "application/octet-stream",
+			size: file.size,
+			...(size ? { width: size.width, height: size.height } : {}),
+		};
+	}
+
+	/**
+	 * Upload a supporting file for a project brief. Returns the same metadata
+	 * shape as a chat attachment because `project_posting_attachments` is
+	 * columned to match it — no translation step on either side.
+	 */
+	async uploadBriefAttachment(file: File): Promise<ChatAttachmentMeta> {
+		const size = await readImageSize(file);
+		const url = await this.upload("brief_attachments", file);
 		return {
 			url,
 			name: file.name,

@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { AccountSettingsLayout } from "@/components/settings/AccountSettingsLayout";
 import { useAuthStore } from "@/stores/authStore";
 
 /**
@@ -13,6 +14,10 @@ import { useAuthStore } from "@/stores/authStore";
  * Owning the layout here is also what lets each page render bare content: the
  * three settings routes used to import DashboardShell individually, which is
  * how a page ends up with the sidebar but no auth guard, or the reverse.
+ *
+ * It also owns the settings nav (AccountSettingsLayout), so every section -
+ * including one reached by a deep link from email - lands with the rail around
+ * it rather than as a bare page with no way back to the rest of settings.
  */
 export const Route = createFileRoute("/settings")({
 	beforeLoad: () => {
@@ -26,7 +31,9 @@ export const Route = createFileRoute("/settings")({
 function SettingsLayout() {
 	return (
 		<DashboardShell>
-			<Outlet />
+			<AccountSettingsLayout>
+				<Outlet />
+			</AccountSettingsLayout>
 		</DashboardShell>
 	);
 }

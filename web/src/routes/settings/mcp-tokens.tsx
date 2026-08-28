@@ -25,8 +25,10 @@ import {
 	UserPlus,
 	X,
 } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { API_BASE_URL } from "@/api/axios";
+import { ExplainerVideo } from "@/components/common/ExplainerVideo";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
 import {
 	listMcpConnections,
@@ -53,6 +55,22 @@ const mcpTokenKeys = { all: ["mcp-tokens"] as const };
 const mcpConnectionKeys = { all: ["mcp-connections"] as const };
 const mcpScopeKeys = { all: ["mcp-available-scopes"] as const };
 const MCP_ENDPOINT = `${API_BASE_URL.replace(/\/$/, "")}/mcp`;
+
+/**
+ * The explainer that opens this page, authored in `remotion/` as `McpStory`.
+ * `steps` is the video's text alternative and must not drift from the captions
+ * baked into the clip; bump the `?v=` whenever the MP4 is re-rendered.
+ */
+const MCP_CLIP = {
+	src: "/mcp-access.mp4?v=1",
+	poster: "/mcp-access-poster.webp?v=1",
+	steps: [
+		"Point your MCP host at Proyekto",
+		"Grant only the access you approve",
+		"It works with your real project data",
+		"Checked every call — revoke anytime",
+	],
+} as const;
 
 const SCOPE_META: Record<
 	McpScope,
@@ -295,11 +313,62 @@ function ConnectedApps() {
 	);
 }
 
+/**
+ * The one-time token reveal. Shared by the dialog (right after creation) and
+ * the page banner (once the dialog is dismissed) so the secret is rendered by
+ * one piece of markup rather than two that can drift apart.
+ */
+function IssuedTokenBody({
+	token,
+	copied,
+	onCopy,
+}: {
+	token: string;
+	copied: boolean;
+	onCopy: () => void;
+}) {
+	return (
+		<div className="min-w-0 flex-1">
+			<h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+				<ShieldCheck className="h-5 w-5 text-primary" />
+				Copy your new token now
+			</h2>
+			<p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
+				<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+				This is the only time the full token is shown. Store it somewhere safe —
+				you won’t be able to see it again.
+			</p>
+			<div className="mt-4 flex items-center gap-2">
+				<code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background px-3 py-2.5 font-mono text-sm text-foreground">
+					{token}
+				</code>
+				<button
+					type="button"
+					onClick={onCopy}
+					className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+				>
+					{copied ? (
+						<>
+							<Check className="h-4 w-4" /> Copied
+						</>
+					) : (
+						<>
+							<Copy className="h-4 w-4" /> Copy
+						</>
+					)}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function McpTokensPage() {
 	const toast = useToast();
 	const qc = useQueryClient();
 	const nameId = useId();
+	const createTitleId = useId();
 
+	const [createOpen, setCreateOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [scopes, setScopes] = useState<McpScope[]>([...MCP_READ_SCOPES]);
 	const [issued, setIssued] = useState<McpTokenIssued | null>(null);
@@ -349,6 +418,27 @@ function McpTokensPage() {
 		onError: (err: Error) => toast.error(err.message),
 	});
 
+	// Escape closes the dialog in both states. Safe even right after a token is
+	// issued: dismissing the dialog leaves the one-time reveal on the page, so
+	// the only copy of the secret is never one stray keypress away from gone.
+	useEffect(() => {
+		if (!createOpen) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setCreateOpen(false);
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [createOpen]);
+
+	/** Opens the dialog on a clean form - and clears any previous reveal. */
+	const openCreate = () => {
+		setIssued(null);
+		setName("");
+		setScopes([...MCP_READ_SCOPES]);
+		setCopiedToken(false);
+		setCreateOpen(true);
+	};
+
 	const toggleScope = (scope: McpScope) => {
 		setScopes((prev) =>
 			prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
@@ -386,17 +476,14 @@ function McpTokensPage() {
 
 	return (
 		<>
-			<div className="app-fade-in mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+			<div className="app-fade-in">
 				{/* Header */}
 				<div className="mb-8 flex items-start gap-4">
 					<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
 						<KeyRound className="h-6 w-6" />
 					</div>
 					<div>
-						<p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-							Account settings
-						</p>
-						<h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
+						<h1 className="text-3xl font-semibold tracking-tight text-foreground">
 							MCP Access
 						</h1>
 						<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -408,6 +495,13 @@ function McpTokensPage() {
 						</p>
 					</div>
 				</div>
+
+				<ExplainerVideo
+					src={MCP_CLIP.src}
+					poster={MCP_CLIP.poster}
+					steps={MCP_CLIP.steps}
+					className="mb-8"
+				/>
 
 				{/* Connect helper */}
 				<section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
@@ -446,47 +540,21 @@ function McpTokensPage() {
 					</div>
 				</section>
 
-				{/* One-time reveal */}
-				{issued && (
+				{/* One-time reveal - the dialog owns this while it is open */}
+				{issued && !createOpen && (
 					<section className="app-slide-up mb-6 overflow-hidden rounded-2xl border border-primary/40 bg-primary/5 shadow-(--app-shadow-md)">
 						<div className="flex items-start justify-between gap-4 px-5 py-5 sm:px-7">
-							<div className="min-w-0 flex-1">
-								<h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-									<ShieldCheck className="h-5 w-5 text-primary" />
-									Copy your new token now
-								</h2>
-								<p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
-									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-									This is the only time the full token is shown. Store it
-									somewhere safe — you won’t be able to see it again.
-								</p>
-								<div className="mt-4 flex items-center gap-2">
-									<code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background px-3 py-2.5 font-mono text-sm text-foreground">
-										{issued.token}
-									</code>
-									<button
-										type="button"
-										onClick={() =>
-											copy(
-												issued.token,
-												setCopiedToken,
-												"Token copied to clipboard",
-											)
-										}
-										className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-									>
-										{copiedToken ? (
-											<>
-												<Check className="h-4 w-4" /> Copied
-											</>
-										) : (
-											<>
-												<Copy className="h-4 w-4" /> Copy
-											</>
-										)}
-									</button>
-								</div>
-							</div>
+							<IssuedTokenBody
+								token={issued.token}
+								copied={copiedToken}
+								onCopy={() =>
+									copy(
+										issued.token,
+										setCopiedToken,
+										"Token copied to clipboard",
+									)
+								}
+							/>
 							<button
 								type="button"
 								onClick={() => setIssued(null)}
@@ -498,97 +566,6 @@ function McpTokensPage() {
 						</div>
 					</section>
 				)}
-
-				{/* Create form */}
-				<section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
-					<form onSubmit={handleCreate}>
-						<div className="border-b border-border px-5 py-5 sm:px-7">
-							<h2 className="text-base font-semibold">Generate a new token</h2>
-							<p className="mt-1 text-sm text-muted-foreground">
-								Name it after where you’ll use it, and grant only the scopes
-								that host needs.
-							</p>
-						</div>
-
-						<div className="flex flex-col gap-6 px-5 py-6 sm:px-7">
-							<div className="flex flex-col gap-2">
-								<label
-									htmlFor={nameId}
-									className="text-sm font-medium text-foreground"
-								>
-									Token name
-								</label>
-								<input
-									id={nameId}
-									type="text"
-									value={name}
-									maxLength={120}
-									onChange={(e) => setName(e.target.value)}
-									placeholder="e.g. My laptop — Claude Code"
-									className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/50"
-								/>
-							</div>
-
-							<fieldset>
-								<legend className="text-sm font-medium text-foreground">
-									Scopes
-								</legend>
-
-								<p className="mt-2 mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-									Read
-								</p>
-								<div className="grid gap-2.5 sm:grid-cols-2">
-									{readScopes.map((scope) => (
-										<ScopeCard
-											key={scope}
-											scope={scope}
-											checked={scopes.includes(scope)}
-											onToggle={toggleScope}
-										/>
-									))}
-								</div>
-
-								<div className="mt-4 mb-2 flex items-center gap-1.5">
-									<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-										Write
-									</p>
-									<span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-										<AlertTriangle className="h-3 w-3" />
-										lets a host modify your data
-									</span>
-								</div>
-								<div className="grid gap-2.5 sm:grid-cols-2">
-									{writeScopes.map((scope) => (
-										<ScopeCard
-											key={scope}
-											scope={scope}
-											checked={scopes.includes(scope)}
-											onToggle={toggleScope}
-										/>
-									))}
-								</div>
-							</fieldset>
-
-							<div className="flex items-center gap-3">
-								<button
-									type="submit"
-									disabled={createMutation.isPending}
-									className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-(--app-shadow-sm) transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-								>
-									{createMutation.isPending ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<Plus className="h-4 w-4" />
-									)}
-									Generate token
-								</button>
-								<span className="text-xs text-muted-foreground">
-									{scopes.length} scope{scopes.length === 1 ? "" : "s"} selected
-								</span>
-							</div>
-						</div>
-					</form>
-				</section>
 
 				{/* Apps connected over OAuth (Claude and friends) */}
 				<ConnectedApps />
@@ -602,11 +579,21 @@ function McpTokensPage() {
 								Revoke any you no longer use.
 							</p>
 						</div>
-						{tokens.length > 0 && (
-							<span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-								{activeCount} active
-							</span>
-						)}
+						<div className="flex shrink-0 items-center gap-3">
+							{tokens.length > 0 && (
+								<span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+									{activeCount} active
+								</span>
+							)}
+							<button
+								type="button"
+								onClick={openCreate}
+								className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-(--app-shadow-sm) transition-colors hover:bg-primary/90"
+							>
+								<Plus className="h-4 w-4" />
+								Generate token
+							</button>
+						</div>
 					</div>
 
 					{tokensQuery.isLoading ? (
@@ -627,9 +614,16 @@ function McpTokensPage() {
 								No tokens yet
 							</p>
 							<p className="max-w-xs text-xs text-muted-foreground">
-								Generate your first token above to connect an MCP host to
-								Proyekto.
+								Generate a token to connect a command-line MCP host to Proyekto.
 							</p>
+							<button
+								type="button"
+								onClick={openCreate}
+								className="mt-1 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-(--app-shadow-sm) transition-colors hover:bg-primary/90"
+							>
+								<Plus className="h-4 w-4" />
+								Generate your first token
+							</button>
 						</div>
 					) : (
 						<ul className="divide-y divide-border">
@@ -711,6 +705,161 @@ function McpTokensPage() {
 					)}
 				</section>
 			</div>
+
+			{createOpen && (
+				<ModalPortal>
+					<div
+						className="fixed inset-0 z-[10010] flex items-start justify-center overflow-y-auto bg-(--app-overlay) p-4 sm:items-center"
+						role="presentation"
+						onClick={() => setCreateOpen(false)}
+					>
+						<div
+							role="dialog"
+							aria-modal="true"
+							aria-labelledby={createTitleId}
+							onClick={(event) => event.stopPropagation()}
+							className="my-auto w-full max-w-2xl rounded-2xl border border-border bg-popover text-popover-foreground shadow-(--app-shadow-lg)"
+						>
+							<div className="flex items-start justify-between gap-3 border-b border-border px-5 py-5 sm:px-7">
+								<div>
+									<h2 id={createTitleId} className="text-base font-semibold">
+										{issued ? "Token created" : "Generate a new token"}
+									</h2>
+									<p className="mt-1 text-sm text-muted-foreground">
+										{issued
+											? "Copy it now, then close this dialog."
+											: "Name it after where you’ll use it, and grant only the scopes that host needs."}
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={() => setCreateOpen(false)}
+									aria-label="Close"
+									className="shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+								>
+									<X className="h-5 w-5" />
+								</button>
+							</div>
+
+							{issued ? (
+								<div className="px-5 py-6 sm:px-7">
+									<IssuedTokenBody
+										token={issued.token}
+										copied={copiedToken}
+										onCopy={() =>
+											copy(
+												issued.token,
+												setCopiedToken,
+												"Token copied to clipboard",
+											)
+										}
+									/>
+									<div className="mt-6 flex justify-end">
+										<button
+											type="button"
+											onClick={() => setCreateOpen(false)}
+											className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+										>
+											Done
+										</button>
+									</div>
+								</div>
+							) : (
+								<form onSubmit={handleCreate}>
+									<div className="flex max-h-[65vh] flex-col gap-6 overflow-y-auto px-5 py-6 sm:px-7">
+										<div className="flex flex-col gap-2">
+											<label
+												htmlFor={nameId}
+												className="text-sm font-medium text-foreground"
+											>
+												Token name
+											</label>
+											<input
+												id={nameId}
+												type="text"
+												value={name}
+												maxLength={120}
+												autoFocus
+												onChange={(e) => setName(e.target.value)}
+												placeholder="e.g. My laptop — Claude Code"
+												className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/50"
+											/>
+										</div>
+
+										<fieldset>
+											<legend className="text-sm font-medium text-foreground">
+												Scopes
+											</legend>
+
+											<p className="mt-2 mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+												Read
+											</p>
+											<div className="grid gap-2.5 sm:grid-cols-2">
+												{readScopes.map((scope) => (
+													<ScopeCard
+														key={scope}
+														scope={scope}
+														checked={scopes.includes(scope)}
+														onToggle={toggleScope}
+													/>
+												))}
+											</div>
+
+											<div className="mt-4 mb-2 flex items-center gap-1.5">
+												<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+													Write
+												</p>
+												<span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+													<AlertTriangle className="h-3 w-3" />
+													lets a host modify your data
+												</span>
+											</div>
+											<div className="grid gap-2.5 sm:grid-cols-2">
+												{writeScopes.map((scope) => (
+													<ScopeCard
+														key={scope}
+														scope={scope}
+														checked={scopes.includes(scope)}
+														onToggle={toggleScope}
+													/>
+												))}
+											</div>
+										</fieldset>
+									</div>
+
+									<div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-7">
+										<span className="text-xs text-muted-foreground">
+											{scopes.length} scope{scopes.length === 1 ? "" : "s"}{" "}
+											selected
+										</span>
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => setCreateOpen(false)}
+												className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+											>
+												Cancel
+											</button>
+											<button
+												type="submit"
+												disabled={createMutation.isPending}
+												className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-(--app-shadow-sm) transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+											>
+												{createMutation.isPending ? (
+													<Loader2 className="h-4 w-4 animate-spin" />
+												) : (
+													<Plus className="h-4 w-4" />
+												)}
+												Generate token
+											</button>
+										</div>
+									</div>
+								</form>
+							)}
+						</div>
+					</div>
+				</ModalPortal>
+			)}
 		</>
 	);
 }

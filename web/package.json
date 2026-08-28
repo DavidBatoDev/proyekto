@@ -72,7 +72,6 @@
     "lucide-react": "^0.544.0",
     "monaco-editor": "^0.55.1",
     "mui-tel-input": "^9.0.1",
-    "pdfjs-dist": "^5.7.284",
     "react": "^19.2.0",
     "react-data-grid": "^7.0.0-beta.47",
     "react-dom": "^19.2.0",

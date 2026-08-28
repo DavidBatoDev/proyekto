@@ -7,14 +7,14 @@
 // Engagements sits between them because it is the bridge: who hired whom,
 // connecting a marketplace agreement to the execution work it covers. Like
 // Execution, it is shown to signed-out visitors too and simply asks them to
-// log in.
+// log in. The order moves from the execution workspace back toward discovery.
 export interface HeaderNavItem {
 	label: string;
 	to: string;
 }
 
 export const HEADER_NAV_ITEMS: HeaderNavItem[] = [
-	{ label: "Marketplace", to: "/marketplace" },
-	{ label: "Engagements", to: "/engagements" },
 	{ label: "Execution", to: "/dashboard" },
+	{ label: "Engagements", to: "/engagements" },
+	{ label: "Marketplace", to: "/marketplace" },
 ];

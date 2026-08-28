@@ -50,11 +50,11 @@ export function MarketplaceFooter() {
 						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
 							<li>
 								<Link
-									to="/project/new"
-									search={{ roadmapId: undefined }}
+									to="/brief/new"
+									search={{ need: undefined }}
 									className="transition-colors hover:text-foreground"
 								>
-									Post a project
+									Post a brief
 								</Link>
 							</li>
 							<li>
@@ -91,7 +91,8 @@ export function MarketplaceFooter() {
 						<ul className="space-y-2 text-[12.5px] text-muted-foreground">
 							<li>
 								<Link
-									to="/marketplace/consultant"
+									to="/start-selling"
+									hash="lead-engagements"
 									className="transition-colors hover:text-foreground"
 								>
 									Become a consultant
@@ -127,7 +128,7 @@ export function MarketplaceFooter() {
 							    above "Apply to lead" in the consultants column. */}
 							<li>
 								<Link
-									to="/marketplace/talent"
+									to="/start-selling"
 									className="transition-colors hover:text-foreground"
 								>
 									Start selling
@@ -184,7 +185,7 @@ export function MarketplaceFooter() {
 							</li>
 							<li>
 								<Link
-									to="/settings/appearance"
+									to="/settings"
 									className="transition-colors hover:text-foreground"
 								>
 									Settings

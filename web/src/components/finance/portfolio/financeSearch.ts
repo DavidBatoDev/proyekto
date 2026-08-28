@@ -60,12 +60,7 @@ export interface ContractEditorSearch {
 	section?: StepKey;
 }
 
-export const FINANCE_SECTIONS = [
-	"overview",
-	"contracts",
-	"invoices",
-	"imports",
-] as const;
+export const FINANCE_SECTIONS = ["overview", "contracts", "invoices"] as const;
 
 export type FinanceSection = (typeof FINANCE_SECTIONS)[number];
 
@@ -113,25 +108,25 @@ export function validateContractStep(value: unknown): StepKey | undefined {
  *
  * `/marketplace/finance?tab=invoices&projectId=…` is still written by the
  * invoice scheduler's older notification rows and by anything a user has
- * bookmarked, and notification rows cannot be rewritten, so the redirect stub
- * at the old overview URL forwards them rather than quietly rendering the
- * wrong section. Returns `undefined` for `overview` and for anything
- * unrecognised — both belong on the overview route.
+ * bookmarked, and notification rows cannot be rewritten, so the overview route
+ * forwards them rather than quietly rendering the wrong section. Returns
+ * `undefined` for `overview` and for anything unrecognised — both belong on the
+ * overview route, which is where the caller already is.
  */
 export function legacyTabRoute(
 	tab: unknown,
 ):
-	| "/engagements/finance/contracts"
-	| "/engagements/finance/invoices"
+	| "/marketplace/finance/contracts"
+	| "/marketplace/finance/invoices"
 	| undefined {
 	switch (tab) {
 		case "contracts":
-			return "/engagements/finance/contracts";
+			return "/marketplace/finance/contracts";
 		// `engagements` was a finance tab until the section moved to the
 		// top-level `/engagements` page; the value falls through to the
 		// overview, the closest thing finance still has.
 		case "invoices":
-			return "/engagements/finance/invoices";
+			return "/marketplace/finance/invoices";
 		default:
 			return undefined;
 	}
@@ -253,18 +248,6 @@ export const SECTION_FILTERS: Record<
 		contractStatus: false,
 		invoiceStatus: true,
 	},
-	// Imports are filed under one project at a time — the workspace is scoped to
-	// the project whose past billing is being recorded — so the project picker is
-	// the only facet that changes what is on screen.
-	imports: {
-		search: false,
-		project: true,
-		projectStatus: false,
-		currency: false,
-		date: false,
-		contractStatus: false,
-		invoiceStatus: false,
-	},
 };
 
 /** Count of filters that are both set AND meaningful in the current section. */
@@ -285,8 +268,7 @@ export function activeFilterCount(
 }
 
 export function financeSectionFromPathname(pathname: string): FinanceSection {
-	if (pathname.startsWith("/engagements/finance/contracts")) return "contracts";
-	if (pathname.startsWith("/engagements/finance/invoices")) return "invoices";
-	if (pathname.startsWith("/engagements/finance/imports")) return "imports";
+	if (pathname.startsWith("/marketplace/finance/contracts")) return "contracts";
+	if (pathname.startsWith("/marketplace/finance/invoices")) return "invoices";
 	return "overview";
 }

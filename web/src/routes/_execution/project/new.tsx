@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ExternalLink, Loader2, MapIcon } from "lucide-react";
+import { ExternalLink, Loader2, MapIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { BackLink } from "@/components/common/BackLink";
 import {
 	GoLiveCallout,
 	GoLiveChoiceCard,
@@ -10,8 +11,8 @@ import {
 	GoLiveInput,
 	GoLivePanel,
 	GoLiveTextarea,
-} from "@/components/marketplace/talent/go-live/GoLiveForm";
-import { GoLiveNav } from "@/components/marketplace/talent/go-live/GoLiveNav";
+} from "@/components/marketplace/wizard/GoLiveForm";
+import { GoLiveNav } from "@/components/marketplace/wizard/GoLiveNav";
 import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
@@ -214,13 +215,7 @@ function NewProjectPage() {
 		<div className="min-h-screen bg-background text-foreground">
 			<header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
 				<div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-					<Link
-						to="/dashboard"
-						className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-					>
-						<ArrowLeft className="h-4 w-4" />
-						Back to dashboard
-					</Link>
+					<BackLink fallback={{ to: "/dashboard" }} />
 					<p className="text-sm font-semibold text-foreground">New project</p>
 				</div>
 			</header>

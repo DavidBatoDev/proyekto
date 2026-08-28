@@ -3,7 +3,6 @@ import { FeaturedSolutions } from "@/components/marketplace/home/FeaturedSolutio
 import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
 import { MarketplaceHero } from "@/components/marketplace/home/MarketplaceHero";
 import { PickUpWhereYouLeftOff } from "@/components/marketplace/home/PickUpWhereYouLeftOff";
-import { VettedConsultants } from "@/components/marketplace/home/VettedConsultants";
 import { WhyProyekto } from "@/components/marketplace/home/WhyProyekto";
 import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
 
@@ -31,7 +30,6 @@ function MarketplaceHome() {
 			<MarketplaceHero />
 			<PickUpWhereYouLeftOff />
 			<FeaturedSolutions />
-			<VettedConsultants />
 			<WhyProyekto />
 			<MarketplaceFooter />
 		</div>

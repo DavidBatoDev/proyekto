@@ -20,6 +20,10 @@ const GO_LIVE = "/marketplace/talent/go-live";
  * talent sees the same button and re-enters the wizard. Saying "Manage your
  * listing" would need a status read this page does not otherwise make, and
  * guessing would be worse than being plain.
+ *
+ * Both branches carry the same label — they differ by auth state, not by
+ * application status, so there is no real state for the label to report. Only
+ * the destination changes.
  */
 export function StartSellingCtaButton({
 	tone = "default",
@@ -42,7 +46,7 @@ export function StartSellingCtaButton({
 	if (isAuthenticated) {
 		return (
 			<Link to={GO_LIVE} className={classes}>
-				Start selling
+				Apply talents
 				<ArrowRight className="h-4 w-4" />
 			</Link>
 		);
@@ -50,7 +54,7 @@ export function StartSellingCtaButton({
 
 	return (
 		<Link to="/auth/signup" search={{ redirect: GO_LIVE }} className={classes}>
-			Create your profile
+			Apply talents
 			<ArrowRight className="h-4 w-4" />
 		</Link>
 	);

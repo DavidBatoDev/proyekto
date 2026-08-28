@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import {
 	BriefcaseBusiness,
 	ChevronRight,
@@ -10,9 +10,8 @@ import {
 	UserRound,
 } from "lucide-react";
 import { useState } from "react";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
-import { AppTabs } from "@/components/common/AppTabs";
-import { Dropdown, type DropdownOption } from "@/components/common/Dropdown";
 import { EngagementPortfolio } from "@/components/engagements/EngagementPortfolio";
 import { CreateContractDialog } from "@/components/finance/portfolio/CreateContractDialog";
 import {
@@ -36,7 +35,7 @@ import {
 	type FinanceContractSummary,
 	financeService,
 } from "@/services/finance.service";
-import { useProfile } from "@/stores/authStore";
+import { useAuthStore, useProfile } from "@/stores/authStore";
 
 /**
  * Engagements the signed-in user is a party to.
@@ -46,19 +45,16 @@ import { useProfile } from "@/stores/authStore";
  * three seats: `GET /api/engagements` scopes by party membership on purpose —
  * a Client or Talent can read their own agreements — but the only UI that
  * called it refused to render for them. Nothing about the page is
- * consultant-specific, so, like `/invites`, the only guard is authentication —
- * applied once by the `/engagements` layout, which also supplies this page's
- * shell chrome, so the body below renders bare.
+ * consultant-specific, so, like `/invites`, the only guard is authentication.
  *
  * The old finance URL is gone rather than redirected: it shipped days earlier,
  * consultant-only, and nothing durable (notification rows, emails, triggers)
  * ever carried the path — the one situation where the "old URLs live forever"
  * rule has nothing to protect.
  *
- * Layout: a page title, a left rail of views, and the list. The rail stays on
- * the page even though the shell now supplies a sidebar beside it — it filters
- * one collection rather than naming destinations, and folding those slices
- * into the sidebar would mix filters into a sitemap.
+ * Layout: a page title, a left rail of views, and the list — the rail is
+ * navigation between slices of one collection, not a sitemap, which is why it
+ * lives on the page rather than in an app sidebar.
  *
  * Contract operations live here too, because a contract is how an engagement
  * comes to exist: a verified consultant can draft one from the header button,
@@ -73,45 +69,34 @@ const SIDES = ["hirer", "provider"] as const;
 const STATUSES = ["active", "ended", "cancelled"] as const;
 
 type EngagementsSearch = {
-	/** The viewer's seat, not the engagement kind — see SIDE_TABS. */
+	/** The viewer's seat, not the engagement kind — see SIDE_VIEWS. */
 	side?: EngagementPosition;
 	status?: EngagementStatus;
 	projectId?: string;
 };
 
 /**
- * The tabs across the list.
- *
  * Sliced by the viewer's own seat rather than by `kind`: a `client_services`
  * engagement means "you were hired" to its consultant and "you hired" to its
  * client, so kind-based labels would lie to one of them. The API filters by
  * kind only, so this slice is applied client-side.
- *
- * `all` is the key for "no seat filter" because a tab strip needs a value for
- * every tab; it maps back to `side: undefined` in the URL.
  */
-const SIDE_TABS: {
-	key: string;
-	side?: EngagementPosition;
+const SIDE_VIEWS: {
+	side: EngagementPosition | undefined;
 	label: string;
 	icon: LucideIcon;
 }[] = [
-	{ key: "all", side: undefined, label: "All engagements", icon: Handshake },
-	{ key: "hirer", side: "hirer", label: "People you hired", icon: UserRound },
-	{
-		key: "provider",
-		side: "provider",
-		label: "You were hired",
-		icon: BriefcaseBusiness,
-	},
+	{ side: undefined, label: "All engagements", icon: Handshake },
+	{ side: "hirer", label: "People you hired", icon: UserRound },
+	{ side: "provider", label: "You were hired", icon: BriefcaseBusiness },
 ];
 
-/** Status narrows whichever tab is open, so it is a filter rather than a tab. */
-const STATUS_OPTIONS: DropdownOption[] = [
-	{ value: "", label: "Any status" },
-	{ value: "active", label: "Active" },
-	{ value: "ended", label: "Ended" },
-];
+const STATUS_VIEWS: { status: EngagementStatus | undefined; label: string }[] =
+	[
+		{ status: undefined, label: "Any status" },
+		{ status: "active", label: "Active" },
+		{ status: "ended", label: "Ended" },
+	];
 
 export const Route = createFileRoute("/_execution/engagements/")({
 	validateSearch: (search: Record<string, unknown>): EngagementsSearch => ({
@@ -126,6 +111,14 @@ export const Route = createFileRoute("/_execution/engagements/")({
 				? search.projectId
 				: undefined,
 	}),
+	beforeLoad: () => {
+		if (!useAuthStore.getState().isAuthenticated) {
+			throw redirect({
+				to: "/auth/login",
+				search: { redirect: "/engagements" },
+			});
+		}
+	},
 	component: EngagementsPage,
 });
 
@@ -162,7 +155,7 @@ function EngagementsPage() {
 
 	const openContract = (contractId: string) =>
 		void navigate({
-			to: "/engagements/finance/$contractId",
+			to: "/marketplace/finance/$contractId",
 			params: { contractId },
 			search: { section: undefined },
 		});
@@ -182,7 +175,7 @@ function EngagementsPage() {
 			void qc.invalidateQueries({ queryKey: ["finance", "contracts"] });
 			toast.success("Draft contract created");
 			void navigate({
-				to: "/engagements/finance/$contractId",
+				to: "/marketplace/finance/$contractId",
 				params: { contractId: created.id },
 				search: { section: "parties" },
 			});
@@ -197,15 +190,15 @@ function EngagementsPage() {
 			replace: true,
 		});
 
-	const currentTab =
-		SIDE_TABS.find((tab) => tab.side === search.side) ?? SIDE_TABS[0];
+	const currentView =
+		SIDE_VIEWS.find((view) => view.side === search.side) ?? SIDE_VIEWS[0];
 	const items = (engagementsQuery.data ?? []).filter(
 		(engagement) => !search.side || engagement.viewer_position === search.side,
 	);
 
 	return (
-		<>
-			<div className="min-h-full px-5 pb-10 md:px-8">
+		<ProtectedRoute loadingFallback={null}>
+			<div className="app-shell-bg min-h-screen bg-background px-5 pb-10 pt-app-header text-foreground md:px-8">
 				<div className="mx-auto w-full max-w-7xl pt-6 md:pt-8">
 					<div className="flex flex-wrap items-center justify-between gap-3">
 						<h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -222,94 +215,107 @@ function EngagementsPage() {
 						)}
 					</div>
 
-					<p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-						An engagement opens when both parties sign a contract, and records
-						who hired whom and on what terms.
-					</p>
+					<div className="mt-6 flex flex-col gap-8 md:flex-row md:gap-12">
+						<aside className="w-full shrink-0 md:w-56">
+							<p className="mb-2 text-sm text-muted-foreground">
+								Based on your role
+							</p>
+							<nav className="flex flex-row flex-wrap gap-1 md:flex-col">
+								{SIDE_VIEWS.map((view) => {
+									const active = view.side === search.side;
+									const Icon = view.icon;
+									return (
+										<button
+											key={view.label}
+											type="button"
+											onClick={() => setSearch({ side: view.side })}
+											aria-current={active ? "true" : undefined}
+											className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+												active
+													? "bg-muted font-semibold text-foreground"
+													: "text-foreground hover:bg-muted/60"
+											}`}
+										>
+											<Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+											{view.label}
+										</button>
+									);
+								})}
+							</nav>
 
-					{/*
-					 * The rule belongs to this row rather than to AppTabs, so it runs
-					 * past the tabs and under the status filter as one line; the tab
-					 * strip's own border is dropped so the active tab's rule lands on
-					 * that line instead of a second one above it.
-					 */}
-					<div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-b border-border">
-						<AppTabs
-							variant="underline"
-							size="sm"
-							className="border-b-0"
-							items={SIDE_TABS.map((tab) => ({
-								key: tab.key,
-								label: (
-									<>
-										<tab.icon className="h-4 w-4" />
-										{tab.label}
-									</>
-								),
-							}))}
-							active={currentTab.key}
-							linkFor={(key) => ({
-								to: "/engagements",
-								search: {
-									...search,
-									side: SIDE_TABS.find((tab) => tab.key === key)?.side,
-								},
-							})}
-						/>
-						<Dropdown
-							value={search.status ?? ""}
-							onChange={(value) =>
-								setSearch({
-									status: (value || undefined) as EngagementStatus | undefined,
-								})
-							}
-							options={STATUS_OPTIONS}
-							ariaLabel="Filter engagements by status"
-							className="mb-2 w-40"
-						/>
-					</div>
+							<p className="mb-2 mt-7 text-sm text-muted-foreground">Status</p>
+							<nav className="flex flex-row flex-wrap gap-1 md:flex-col">
+								{STATUS_VIEWS.map((view) => {
+									const active = view.status === search.status;
+									return (
+										<button
+											key={view.label}
+											type="button"
+											onClick={() => setSearch({ status: view.status })}
+											aria-current={active ? "true" : undefined}
+											className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+												active
+													? "bg-muted font-semibold text-foreground"
+													: "text-foreground hover:bg-muted/60"
+											}`}
+										>
+											{view.label}
+										</button>
+									);
+								})}
+							</nav>
 
-					<div className="mt-6">
-						{pipeline.length > 0 && (
-							<section className="mb-8">
-								<h2 className="text-base font-semibold text-foreground">
-									In signing
-								</h2>
-								<p className="mb-4 mt-1 text-sm text-muted-foreground">
-									{countLabel(pipeline.length, "contract")} not yet signed by
-									both parties — each becomes an engagement once it is.
-								</p>
-								<AppSurfaceCard className="divide-y divide-border overflow-hidden">
-									{pipeline.map((contract) => (
-										<PipelineRow
-											key={contract.id}
-											contract={contract}
-											onOpen={openContract}
-										/>
-									))}
-								</AppSurfaceCard>
-							</section>
-						)}
+							<p className="mt-7 hidden text-sm leading-6 text-muted-foreground md:block">
+								An engagement opens when both parties sign a contract, and
+								records who hired whom and on what terms.
+							</p>
+						</aside>
 
-						<p className="mb-5 text-sm text-muted-foreground">
-							{engagementsQuery.isPending
-								? "Loading…"
-								: countLabel(items.length, "engagement")}
-						</p>
+						<main className="min-w-0 flex-1">
+							{pipeline.length > 0 && (
+								<section className="mb-8">
+									<h2 className="text-base font-semibold text-foreground">
+										In signing
+									</h2>
+									<p className="mb-4 mt-1 text-sm text-muted-foreground">
+										{countLabel(pipeline.length, "contract")} not yet signed by
+										both parties — each becomes an engagement once it is.
+									</p>
+									<AppSurfaceCard className="divide-y divide-border overflow-hidden">
+										{pipeline.map((contract) => (
+											<PipelineRow
+												key={contract.id}
+												contract={contract}
+												onOpen={openContract}
+											/>
+										))}
+									</AppSurfaceCard>
+								</section>
+							)}
 
-						<EngagementPortfolio
-							loading={engagementsQuery.isPending}
-							error={engagementsQuery.error as Error | null}
-							items={items}
-							filtered={Boolean(search.projectId)}
-							onClearProject={() => setSearch({ projectId: undefined })}
-							onOpen={(engagementId) =>
-								void navigate({
-									to: "/engagements/$engagementId",
-									params: { engagementId },
-								})
-							}
-						/>
+							<h2 className="text-base font-semibold text-foreground">
+								{currentView.label}
+							</h2>
+							<p className="mb-5 mt-1 text-sm text-muted-foreground">
+								{engagementsQuery.isPending
+									? "Loading…"
+									: countLabel(items.length, "engagement")}
+							</p>
+
+							<EngagementPortfolio
+								loading={engagementsQuery.isPending}
+								error={engagementsQuery.error as Error | null}
+								items={items}
+								filtered={Boolean(search.projectId)}
+								onClearProject={() => setSearch({ projectId: undefined })}
+								onOpen={(engagementId) =>
+									void navigate({
+										to: "/engagements/$engagementId",
+										params: { engagementId },
+									})
+								}
+							/>
+						</main>
 					</div>
 				</div>
 			</div>
@@ -322,7 +328,7 @@ function EngagementsPage() {
 				onClose={() => setCreateContractOpen(false)}
 				onCreate={(input) => createContractMutation.mutate(input)}
 			/>
-		</>
+		</ProtectedRoute>
 	);
 }
 

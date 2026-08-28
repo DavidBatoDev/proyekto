@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import {
+	GoLiveCallout,
+	GoLivePanel,
+} from "@/components/marketplace/wizard/GoLiveForm";
+import type { ProfileDraft } from "@/components/marketplace/wizard/profileDraft";
+import {
 	profileService,
 	type TalentRequirement,
 } from "@/services/profile.service";
-import { GoLiveCallout, GoLivePanel } from "../GoLiveForm";
-import type { ProfileDraft } from "../profileDraft";
 
 /**
  * What each server-side requirement means in plain words.

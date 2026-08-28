@@ -20,9 +20,8 @@ export interface FinanceProject {
 	revenue: number;
 	collected: number;
 	outstanding: number;
-	/** Null on team-finance payloads: cost is the owner's economics. */
-	cost: number | null;
-	margin: number | null;
+	cost: number;
+	margin: number;
 	margin_percent: number | null;
 	invoice_count: number;
 	overdue_amount: number;
@@ -43,9 +42,8 @@ export interface FinanceCurrencyTotals {
 	revenue: number;
 	collected: number;
 	outstanding: number;
-	/** Null on team-finance payloads: cost is the owner's economics. */
-	cost: number | null;
-	margin: number | null;
+	cost: number;
+	margin: number;
 	margin_percent: number | null;
 	invoice_count: number;
 	project_count: number;

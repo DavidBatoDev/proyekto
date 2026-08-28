@@ -257,7 +257,6 @@ function CompactProjectCard({
 	isLocked = false,
 	canSetStatus = false,
 	members = [],
-	viewerRole = null,
 }: {
 	projectId: string;
 	teamId: string;
@@ -268,8 +267,6 @@ function CompactProjectCard({
 	isLocked?: boolean;
 	canSetStatus?: boolean;
 	members?: ProjectTeamMember[];
-	/** The caller's own access role on this project (null when none). */
-	viewerRole?: string | null;
 }) {
 	const displayedMembers = members.slice(0, 9);
 	const extraCount = Math.max(0, members.length - 9);
@@ -406,18 +403,7 @@ function CompactProjectCard({
 						{owner}
 					</p>
 				</div>
-				{avatarStrip || viewerRole ? (
-					<div className="mt-auto flex items-end justify-between gap-2 pt-1">
-						{viewerRole ? (
-							<span title="Your role on this project">
-								<RoleBadge>{viewerRole}</RoleBadge>
-							</span>
-						) : (
-							<span />
-						)}
-						{avatarStrip}
-					</div>
-				) : null}
+				{avatarStrip ? <div className="mt-auto pt-1">{avatarStrip}</div> : null}
 			</div>
 		</Link>
 	);
@@ -481,12 +467,6 @@ function TeamDetailPage() {
 
 	const team = teamQuery.data;
 	const members = membersQuery.data ?? [];
-	// The viewer's own roster row — their team role and free-form position.
-	// Position lives on the team roster, so it is one value across all of
-	// this team's projects; only the access role varies per project card.
-	const myMembership = user
-		? members.find((m) => m.user_id === user.id)
-		: undefined;
 	const isOwner = team && user && team.owner_id === user.id;
 	const [inviteOpen, setInviteOpen] = useState(false);
 
@@ -534,19 +514,10 @@ function TeamDetailPage() {
 				</div>
 
 				<div className="mt-8">
-					<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+					<div className="mb-3 flex items-center justify-between">
 						<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
 							Projects ({attachedProjects.length})
 						</h3>
-						{myMembership && (
-							<div className="flex min-w-0 items-center gap-1.5">
-								<span className="text-xs text-muted-foreground">You:</span>
-								{myMembership.position && (
-									<PositionChip>{myMembership.position}</PositionChip>
-								)}
-								<RoleChip role={myMembership.role} />
-							</div>
-						)}
 					</div>
 					{projectsQuery.isLoading ? (
 						<AppSurfaceCard className="flex items-center justify-center py-10 text-slate-500">
@@ -587,7 +558,6 @@ function TeamDetailPage() {
 												))
 										}
 										members={projectMembersMap.get(row.project.id)}
-										viewerRole={row.viewer_role}
 									/>
 								);
 							})}

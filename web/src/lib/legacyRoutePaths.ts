@@ -32,11 +32,7 @@ const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
 	["/freelancer/go-live", "/marketplace/talent/go-live"],
 	["/marketplace/project-posting", "/project/new"],
 	["/project-posting", "/project/new"],
-	// Finance moved twice: top-level → marketplace (2026-07) → engagements
-	// (2026-08). Both old prefixes map straight to the current home so a
-	// historical link never double-hops.
-	["/marketplace/finance", "/engagements/finance"],
-	["/finance", "/engagements/finance"],
+	["/finance", "/marketplace/finance"],
 	["/consultant", "/marketplace/consultant"],
 ];
 

@@ -198,11 +198,11 @@ export function WaysToStartBand() {
 	const ways = [
 		{
 			icon: FileText,
-			title: "Post a project",
+			title: "Post a brief",
 			body: "Describe the outcome you want. Consultants come to you with scope and pricing.",
-			cta: "Post a project",
-			to: "/project/new" as const,
-			search: { roadmapId: undefined },
+			cta: "Post a brief",
+			to: "/brief/new" as const,
+			search: { need: undefined },
 		},
 		{
 			icon: LayoutTemplate,

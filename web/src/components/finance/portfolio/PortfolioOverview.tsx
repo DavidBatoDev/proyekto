@@ -34,18 +34,12 @@ export function PortfolioOverview({
 	onOpen: (projectId: string) => void;
 }) {
 	if (loading) return <FinanceLoading />;
-	if (!portfolio) return <NoFinanceData />;
+	if (!portfolio?.projects.length) return <NoFinanceData />;
 
 	const overdueTotals = portfolio.totals_by_currency.filter(
 		(total) => total.overdue_amount > 0,
 	);
 
-	/*
-	 * An empty portfolio keeps the overview scaffold. Collapsing the whole
-	 * section to a bare empty state made the page look broken next to the
-	 * Contracts and Invoices tabs, which keep their headings; only the slots
-	 * that cannot render without data get a placeholder.
-	 */
 	return (
 		<div className="space-y-5 pb-8">
 			<FinanceSectionHeading
@@ -56,18 +50,11 @@ export function PortfolioOverview({
 
 			{overdueTotals.length > 0 && <OverdueBanner totals={overdueTotals} />}
 
-			{portfolio.totals_by_currency.length > 0 ? (
-				<div className="grid gap-4 lg:grid-cols-2">
-					{portfolio.totals_by_currency.map((total) => (
-						<CurrencyCard key={total.currency} total={total} />
-					))}
-				</div>
-			) : (
-				<NoFinanceData
-					title="No billing activity yet"
-					description="Margin, receivables ageing, and currency totals appear here once a contract or invoice exists. If you expected records, try clearing the filters."
-				/>
-			)}
+			<div className="grid gap-4 lg:grid-cols-2">
+				{portfolio.totals_by_currency.map((total) => (
+					<CurrencyCard key={total.currency} total={total} />
+				))}
+			</div>
 
 			<ReceivablesCard
 				totals={portfolio.totals_by_currency}
@@ -97,17 +84,8 @@ function OverdueBanner({ totals }: { totals: FinanceCurrencyTotals[] }) {
 }
 
 function CurrencyCard({ total }: { total: FinanceCurrencyTotals }) {
-	// Team-finance payloads carry margin/cost as null — the owner's economics
-	// are withheld — so the card leads with billed revenue instead.
-	const hasMargin = total.margin !== null;
 	const marginTone =
-		total.margin === null
-			? "neutral"
-			: total.margin > 0
-				? "success"
-				: total.margin < 0
-					? "danger"
-					: "neutral";
+		total.margin > 0 ? "success" : total.margin < 0 ? "danger" : "neutral";
 	const collectionRate =
 		total.revenue > 0 ? Math.round((total.collected / total.revenue) * 100) : 0;
 
@@ -116,17 +94,14 @@ function CurrencyCard({ total }: { total: FinanceCurrencyTotals }) {
 			<div className="flex items-start justify-between gap-4">
 				<div className="min-w-0">
 					<p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-						{total.currency} {hasMargin ? "portfolio margin" : "billed revenue"}
+						{total.currency} portfolio margin
 					</p>
 					<p
 						className={`mt-2 text-2xl font-bold tracking-tight tabular-nums ${financeToneTextClass(marginTone)}`}
 					>
-						{formatCurrency(
-							hasMargin ? (total.margin ?? 0) : total.revenue,
-							total.currency,
-						)}
+						{formatCurrency(total.margin, total.currency)}
 					</p>
-					{hasMargin && total.margin_percent !== null && (
+					{total.margin_percent !== null && (
 						<p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
 							{total.margin_percent}% of billed revenue
 						</p>
@@ -154,13 +129,11 @@ function CurrencyCard({ total }: { total: FinanceCurrencyTotals }) {
 					currency={total.currency}
 					tone={total.overdue_amount > 0 ? "danger" : "neutral"}
 				/>
-				{total.cost !== null && (
-					<Metric
-						label="Delivery cost"
-						value={total.cost}
-						currency={total.currency}
-					/>
-				)}
+				<Metric
+					label="Delivery cost"
+					value={total.cost}
+					currency={total.currency}
+				/>
 			</div>
 
 			{/* Collection rate reads faster as a bar than as a fifth number. */}
@@ -357,16 +330,6 @@ function ProjectTable({
 						</tr>
 					</thead>
 					<tbody>
-						{projects.length === 0 && (
-							<tr>
-								<td
-									colSpan={6}
-									className="px-4 py-8 text-center text-sm text-muted-foreground"
-								>
-									Projects appear here once they have a contract or an invoice.
-								</td>
-							</tr>
-						)}
 						{projects.map((project) => (
 							<tr
 								key={project.id}
@@ -396,20 +359,12 @@ function ProjectTable({
 									{formatCurrency(project.revenue, project.currency)}
 								</td>
 								<td className="px-4 py-3 text-right tabular-nums">
-									{project.cost === null ? (
-										<span className="text-muted-foreground">—</span>
-									) : (
-										formatCurrency(project.cost, project.currency)
-									)}
+									{formatCurrency(project.cost, project.currency)}
 								</td>
 								<td
-									className={`px-4 py-3 text-right font-semibold tabular-nums ${(project.margin ?? 0) < 0 ? "text-destructive" : "text-foreground"}`}
+									className={`px-4 py-3 text-right font-semibold tabular-nums ${project.margin < 0 ? "text-destructive" : "text-foreground"}`}
 								>
-									{project.margin === null ? (
-										<span className="font-normal text-muted-foreground">—</span>
-									) : (
-										formatCurrency(project.margin, project.currency)
-									)}
+									{formatCurrency(project.margin, project.currency)}
 								</td>
 								<td className="px-4 py-3 text-right tabular-nums">
 									<span

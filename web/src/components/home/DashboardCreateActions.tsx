@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Info, Plus } from "lucide-react";
+import { FileText, Info, Plus } from "lucide-react";
 import { useId } from "react";
 
 export function DashboardCreateActions() {
@@ -50,6 +50,21 @@ export function DashboardCreateActions() {
 					</span>
 				</span>
 			</div>
+
+			{/*
+			 * The other way to start: describe the work and let vetted consultants
+			 * come to you. Sits under project creation rather than beside it —
+			 * most people are here to run their own work, and posting a brief is
+			 * the deliberate alternative, not the default.
+			 */}
+			<Link
+				to="/brief/new"
+				search={{ need: undefined }}
+				className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground sm:text-[13px]"
+			>
+				<FileText className="h-3.5 w-3.5" />
+				Post a project brief
+			</Link>
 		</div>
 	);
 }

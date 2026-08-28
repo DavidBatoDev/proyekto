@@ -623,20 +623,42 @@ export type ApplicationStatus =
 	| "approved"
 	| "rejected";
 
+export interface ApplicationPlacement {
+	subcategory_id: string;
+	/** Bucket floor in years (0, 1, 3, 5, 10); null while the draft is mid-edit. */
+	years_experience?: number | null;
+	is_primary: boolean;
+	position: number;
+}
+
 export interface ConsultantApplication {
 	id: string;
 	user_id: string;
 	status: ApplicationStatus;
-	cover_letter?: string | null;
-	years_of_experience?: number | null;
-	primary_niche?: string | null;
 	linkedin_url?: string | null;
-	website_url?: string | null;
-	why_join?: string | null;
 	rejection_reason?: string | null;
 	submitted_at?: string | null;
 	created_at: string;
 	updated_at: string;
+	placements?: ApplicationPlacement[];
+}
+
+export type ConsultantRequirement =
+	| "profile_basics"
+	| "expertise_placement"
+	| "work_links"
+	| "rate_settings"
+	| "identity_document";
+
+export interface ConsultantApplicationEligibility {
+	eligible: boolean;
+	missing: ConsultantRequirement[];
+}
+
+export interface SaveApplicationDraftPayload {
+	linkedin_url?: string;
+	placements?: Array<{ subcategory_id: string; years_experience?: number }>;
+	primary_subcategory_id?: string;
 }
 
 class ApplicationService {
@@ -647,13 +669,13 @@ class ApplicationService {
 		return data.data;
 	}
 
+	async getEligibility(): Promise<ConsultantApplicationEligibility> {
+		const { data } = await apiClient.get(`${this.base}/eligibility`);
+		return data.data;
+	}
+
 	async saveDraft(
-		payload: Partial<
-			Omit<
-				ConsultantApplication,
-				"id" | "user_id" | "status" | "created_at" | "updated_at"
-			>
-		>,
+		payload: SaveApplicationDraftPayload,
 	): Promise<ConsultantApplication> {
 		const { data } = await apiClient.post(this.base, payload);
 		return data.data;

@@ -174,7 +174,7 @@ function SeeAllLink({
 	}
 	if (!consultant) return null;
 	return (
-		<Link to="/engagements/finance/contracts" className={className}>
+		<Link to="/marketplace/finance/contracts" className={className}>
 			See all in Finance
 		</Link>
 	);
@@ -240,11 +240,11 @@ function ProjectRows({
 				body="Describe what you need and a vetted consultant will scope it — roadmap, deliverables and terms before any work begins."
 				cta={
 					<Link
-						to="/project/new"
-						search={{ roadmapId: undefined }}
+						to="/brief/new"
+						search={{ need: undefined }}
 						className={CTA_CLASS}
 					>
-						Post a project
+						Post a brief
 					</Link>
 				}
 			/>
@@ -343,7 +343,7 @@ function ContractRows({
 				title="No contracts yet"
 				body="Draft an agreement for a project, set its terms, and send it for signature. Signing it is what activates the engagement."
 				cta={
-					<Link to="/engagements/finance/contracts" className={CTA_CLASS}>
+					<Link to="/marketplace/finance/contracts" className={CTA_CLASS}>
 						Go to contracts
 					</Link>
 				}
@@ -362,7 +362,7 @@ function ContractRows({
 				>
 					{(content) => (
 						<Link
-							to="/engagements/finance/$contractId"
+							to="/marketplace/finance/$contractId"
 							params={{ contractId: contract.id }}
 							search={{ section: undefined }}
 							className={ROW_CLASS}

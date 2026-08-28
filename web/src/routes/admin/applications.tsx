@@ -23,6 +23,7 @@ import {
 	XCircle,
 } from "lucide-react";
 import { useState } from "react";
+import { experienceLabel } from "@/lib/experienceBuckets";
 import {
 	type ApplicationStatus,
 	adminService,
@@ -34,10 +35,11 @@ export const Route = createFileRoute("/admin/applications")({
 });
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// `under_review` is deliberately absent: the enum value exists but nothing
+// has ever written it, so a tab for it only ever showed an empty list.
 const STATUS_TABS: { label: string; value: ApplicationStatus | "all" }[] = [
 	{ label: "All", value: "all" },
 	{ label: "Submitted", value: "submitted" },
-	{ label: "Under Review", value: "under_review" },
 	{ label: "Approved", value: "approved" },
 	{ label: "Rejected", value: "rejected" },
 ];
@@ -77,6 +79,13 @@ function fmtDate(iso?: string | null) {
 		month: "short",
 		year: "numeric",
 	});
+}
+
+function primaryPlacement(app: ConsultantApplication) {
+	return (
+		app.placements?.find((placement) => placement.is_primary) ??
+		app.placements?.[0]
+	);
 }
 
 function applicantName(app: ConsultantApplication) {
@@ -187,6 +196,62 @@ function VettingChip({
 	);
 }
 
+/**
+ * One uploaded ID with a working "View" — the review panel used to show a
+ * chip with no way to open the file, which made the identity check
+ * unperformable. The signed URL is fetched on click (5-minute expiry), never
+ * embedded in the page.
+ */
+function IdentityDocumentRow({
+	applicationId,
+	doc,
+}: {
+	applicationId: string;
+	doc: { id: string; type?: string | null; is_verified?: boolean };
+}) {
+	const [opening, setOpening] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const open = async () => {
+		setOpening(true);
+		setError(null);
+		try {
+			const url = await adminService.getIdentityDocumentUrl(
+				applicationId,
+				doc.id,
+			);
+			window.open(url, "_blank", "noopener");
+		} catch {
+			setError("Could not open the document.");
+		} finally {
+			setOpening(false);
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0">
+			<VettingChip
+				label={doc.type?.replace(/_/g, " ") ?? "document"}
+				verified={doc.is_verified}
+			/>
+			<button
+				type="button"
+				onClick={() => void open()}
+				disabled={opening}
+				className="ml-auto flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+			>
+				{opening ? (
+					<Loader2 className="w-3 h-3 animate-spin" />
+				) : (
+					<ExternalLink className="w-3 h-3" />
+				)}
+				View
+			</button>
+			{error && <span className="text-xs text-red-500">{error}</span>}
+		</div>
+	);
+}
+
 // ─── Application Row ──────────────────────────────────────────────────────────
 function ApplicationRow({
 	app,
@@ -223,15 +288,13 @@ function ApplicationRow({
 				</div>
 			</td>
 			<td className="px-5 py-3.5">
-				<p className="text-sm text-gray-600 capitalize">
-					{app.primary_niche?.replace(/_/g, " ") || "—"}
+				<p className="text-sm text-gray-600">
+					{primaryPlacement(app)?.subcategory?.name ?? "—"}
 				</p>
 			</td>
 			<td className="px-5 py-3.5">
 				<p className="text-sm text-gray-600">
-					{app.years_of_experience != null
-						? `${app.years_of_experience}+ yrs`
-						: "—"}
+					{experienceLabel(primaryPlacement(app)?.years_experience)}
 				</p>
 			</td>
 			<td className="px-5 py-3.5">
@@ -287,7 +350,7 @@ function ApplicationTable({
 		<table className="w-full">
 			<thead>
 				<tr className="border-b border-gray-200">
-					{["Applicant", "Niche", "Experience", "Status", "Date", ""].map(
+					{["Applicant", "Speciality", "Experience", "Status", "Date", ""].map(
 						(h) => (
 							<th
 								key={h}
@@ -353,10 +416,10 @@ function ApplicationDetailPanel({
 	const name = detail ? applicantName(detail) : "";
 	const app = detail;
 	const v = detail?.vetting;
-	const isActionable =
-		app?.status === "draft" ||
-		app?.status === "submitted" ||
-		app?.status === "under_review";
+	// Approve/reject both require 'submitted' server-side now (the atomic
+	// approval RPC and the reject precondition), so offering the buttons on a
+	// draft would only produce a 409.
+	const isActionable = app?.status === "submitted";
 
 	return (
 		<motion.div
@@ -418,15 +481,18 @@ function ApplicationDetailPanel({
 						<div className="grid grid-cols-2 gap-3">
 							{[
 								{
-									label: "Niche",
-									value: app.primary_niche?.replace(/_/g, " ") || "—",
+									label: "Primary speciality",
+									value:
+										v?.placements.find((p) => p.is_primary)?.subcategory
+											?.name ??
+										v?.placements[0]?.subcategory?.name ??
+										"—",
 								},
 								{
-									label: "Experience",
-									value:
-										app.years_of_experience != null
-											? `${app.years_of_experience}+ years`
-											: "—",
+									label: "Rate",
+									value: v?.rate_settings?.hourly_rate
+										? `${v.rate_settings.currency} ${v.rate_settings.hourly_rate}/hr`
+										: "—",
 								},
 								{ label: "Submitted", value: fmtDate(app.submitted_at) },
 								{ label: "Reviewed", value: fmtDate(app.reviewed_at) },
@@ -469,43 +535,62 @@ function ApplicationDetailPanel({
 							</div>
 						)}
 
-						{/* Cover Letter */}
-						{app.cover_letter && (
-							<section>
-								<h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-									<FileText className="w-3.5 h-3.5" /> Cover Letter
-								</h3>
-								<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-									{app.cover_letter}
-								</div>
-							</section>
-						)}
-
-						{/* Why join */}
-						{app.why_join && (
-							<section>
-								<h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-									<Info className="w-3.5 h-3.5" /> Why Join
-								</h3>
-								<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-700 leading-relaxed">
-									{app.why_join}
-								</div>
-							</section>
-						)}
-
 						{/* Vetting */}
 						{v && (
 							<>
+								<VettingSection
+									title="Marketplace placement"
+									icon={Info}
+									count={v.placements.length}
+								>
+									<div className="flex flex-wrap gap-1.5 py-1">
+										{v.placements.map((placement) => (
+											<span
+												key={placement.subcategory_id}
+												className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+													placement.is_primary
+														? "border-amber-300 bg-amber-50 text-amber-800 font-semibold"
+														: "border-gray-200 bg-gray-50 text-gray-700"
+												}`}
+											>
+												{placement.is_primary && "★ "}
+												{placement.subcategory?.name ?? "Removed speciality"}
+												{placement.years_experience != null &&
+													` · ${experienceLabel(placement.years_experience)}`}
+											</span>
+										))}
+									</div>
+								</VettingSection>
+
+								<VettingSection
+									title="Portfolio & work links"
+									icon={ExternalLink}
+									count={v.portfolios.length}
+								>
+									{v.portfolios.map((item) => (
+										<a
+											key={item.id}
+											href={item.url ?? undefined}
+											target="_blank"
+											rel="noreferrer"
+											className="flex items-center gap-1.5 py-1.5 text-xs text-blue-600 hover:underline border-b border-gray-100 last:border-0"
+										>
+											<ExternalLink className="w-3 h-3 shrink-0" />
+											<span className="truncate">{item.title || item.url}</span>
+										</a>
+									))}
+								</VettingSection>
+
 								<VettingSection
 									title="Identity Documents"
 									icon={ShieldCheck}
 									count={v.identity_documents.length}
 								>
 									{v.identity_documents.map((doc) => (
-										<VettingChip
+										<IdentityDocumentRow
 											key={doc.id}
-											label={doc.type?.replace(/_/g, " ")}
-											verified={doc.is_verified}
+											applicationId={app.id}
+											doc={doc}
 										/>
 									))}
 								</VettingSection>
@@ -723,7 +808,9 @@ function ApplicationsPage() {
 		return (
 			applicantName(app).toLowerCase().includes(q) ||
 			app.applicant?.email?.toLowerCase().includes(q) ||
-			app.primary_niche?.includes(q)
+			app.placements?.some((placement) =>
+				placement.subcategory?.name.toLowerCase().includes(q),
+			)
 		);
 	});
 

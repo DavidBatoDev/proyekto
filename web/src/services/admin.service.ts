@@ -60,6 +60,17 @@ export interface ConsultantApplication {
 		consultant_status: ConsultantEnrollmentStatus | null;
 		is_consultant_verified: boolean;
 	};
+	/** Staged taxonomy picks, embedded on both the list and detail reads. */
+	placements?: ApplicationPlacementDetail[];
+}
+
+export interface ApplicationPlacementDetail {
+	subcategory_id: string;
+	/** Bucket floor in years (0, 1, 3, 5, 10). */
+	years_experience?: number | null;
+	is_primary: boolean;
+	position: number;
+	subcategory: { name: string; slug: string } | null;
 }
 
 export interface ApplicationDetail extends ConsultantApplication {
@@ -74,6 +85,7 @@ export interface ApplicationDetail extends ConsultantApplication {
 		identity_documents: UserIdentityDocument[];
 		rate_settings: UserRateSettings | null;
 		portfolios: UserPortfolio[];
+		placements: ApplicationPlacementDetail[];
 	};
 }
 
@@ -185,6 +197,17 @@ class AdminService {
 	async getApplication(id: string): Promise<ApplicationDetail> {
 		const { data } = await apiClient.get(`${this.base}/applications/${id}`);
 		return data.data;
+	}
+
+	/** Time-limited signed URL to open an applicant's identity document. */
+	async getIdentityDocumentUrl(
+		applicationId: string,
+		documentId: string,
+	): Promise<string> {
+		const { data } = await apiClient.get(
+			`${this.base}/applications/${applicationId}/documents/${documentId}/url`,
+		);
+		return data.data.url;
 	}
 
 	async approveApplication(id: string): Promise<void> {

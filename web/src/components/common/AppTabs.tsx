@@ -26,10 +26,6 @@ interface AppTabsProps<K extends string> {
 	onChange?: (key: K) => void;
 	/** Router mode — return the `<Link>` props for a tab. */
 	linkFor?: (key: K) => Pick<LinkProps, "to" | "params" | "search">;
-	/**
-	 * `sm` is the compact treatment the finance sections use: shorter labels,
-	 * icon-sized text, and tabs spaced by the strip rather than padded.
-	 */
 	size?: "sm" | "md";
 	/**
 	 * `segmented` is the boxed pill strip (the default, as extracted).
@@ -50,24 +46,15 @@ export function AppTabs<K extends string>({
 	className,
 }: AppTabsProps<K>) {
 	const underline = variant === "underline";
-	const compact = size === "sm";
-	const pad = compact ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
-	const underlinePad = compact
-		? "h-10 px-1 text-xs font-semibold"
-		: "px-3 py-2 text-sm";
+	const pad = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
 
 	const classFor = (key: K, disabled?: boolean) =>
 		underline
 			? // -mb-px pulls each tab onto the strip's own border so the active
 				// rule replaces it rather than stacking two lines.
-				`-mb-px inline-flex items-center gap-2 border-b-2 ${underlinePad} transition ${
+				`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition ${
 					active === key
-						? // The compact strip is the finance treatment, where the
-							// selected section is named in the accent colour its rule
-							// is drawn in; the roomier one carries its weight instead.
-							compact
-							? "border-primary text-primary"
-							: "border-primary font-semibold text-foreground"
+						? "border-primary font-semibold text-foreground"
 						: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
 				} ${disabled ? "pointer-events-none opacity-50" : ""}`
 			: `rounded-md font-medium transition ${pad} ${
@@ -95,13 +82,7 @@ export function AppTabs<K extends string>({
 			role="tablist"
 			className={`${
 				underline
-					? `flex flex-wrap items-center border-b border-border ${
-							// Compact tabs carry almost no padding, so the strip
-							// provides the spacing. They wrap rather than scroll: a
-							// scroll container drew a scrollbar through the rule and
-							// pushed the selected tab's underline off it.
-							compact ? "gap-6" : "gap-1"
-						}`
+					? "flex flex-wrap items-center gap-1 border-b border-border"
 					: "inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5"
 			} ${className ?? ""}`}
 		>

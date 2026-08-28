@@ -51,7 +51,7 @@ vi.mock("./UserMenu", () => ({
 afterEach(cleanup);
 
 describe("DashboardHeader navigation", () => {
-	it("links to both halves of the product, marketplace first", () => {
+	it("links to both halves of the product, execution first", () => {
 		// The header is the only nav that spans both halves of the product. The
 		// marketplace's public pages render no sidebar at all, so losing this
 		// entry would leave them reachable only by typing the URL.
@@ -63,11 +63,11 @@ describe("DashboardHeader navigation", () => {
 		expect(href("Marketplace")).toBe("/marketplace");
 		expect(href("Execution")).toBe("/dashboard");
 
-		// Order matters: the marketplace reads first in the header.
+		// Order matters: execution reads first in the header.
 		const labels = screen
 			.getAllByRole("link")
 			.map((link) => link.textContent)
 			.filter((label) => label === "Marketplace" || label === "Execution");
-		expect(labels).toEqual(["Marketplace", "Execution"]);
+		expect(labels).toEqual(["Execution", "Marketplace"]);
 	});
 });

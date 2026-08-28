@@ -1,8 +1,15 @@
 import { ExternalLink, Plus, X } from "lucide-react";
 import { useState } from "react";
+import {
+	GoLiveChoiceCard,
+	GoLiveField,
+	GoLiveInput,
+} from "@/components/marketplace/wizard/GoLiveForm";
+import type {
+	DraftAction,
+	ProfileDraft,
+} from "@/components/marketplace/wizard/profileDraft";
 import type { AvailabilityStatus } from "@/services/profile.service";
-import { GoLiveChoiceCard, GoLiveField, GoLiveInput } from "../GoLiveForm";
-import type { DraftAction, ProfileDraft } from "../profileDraft";
 
 /**
  * Step 3: what you have made, and what you charge.

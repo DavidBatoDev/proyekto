@@ -395,7 +395,7 @@ function EngagePanel({
 							browse the marketplace.
 						</p>
 						<Link
-							to="/engagements/finance/contracts"
+							to="/marketplace/finance/contracts"
 							className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg bg-foreground text-[14px] font-semibold text-background transition-opacity hover:opacity-90"
 						>
 							Your contracts
@@ -408,11 +408,11 @@ function EngagePanel({
 							signed contract before any work starts.
 						</p>
 						<Link
-							to="/project/new"
-							search={{ roadmapId: undefined }}
+							to="/brief/new"
+							search={{ need: undefined }}
 							className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg bg-foreground text-[14px] font-semibold text-background transition-opacity hover:opacity-90"
 						>
-							Post a project
+							Post a brief
 						</Link>
 					</>
 				)}
