@@ -117,6 +117,54 @@ export interface InvoiceWithLines extends InvoiceRow {
   email_delivery?: InvoiceEmailDelivery;
 }
 
+/**
+ * One invoice billed TO the caller — the payer's row. A deliberately narrow
+ * projection: no events, no document paths, no origin machinery, and no line
+ * metadata (which can carry internal time-log references).
+ */
+export interface ReceivedInvoiceSummary {
+  id: string;
+  number: string;
+  status: InvoiceStatus;
+  currency: string;
+  total: number;
+  issue_date: string | null;
+  due_date: string | null;
+  project_title: string | null;
+  issued_by_name: string | null;
+  amount_paid: number;
+  balance_due: number;
+  is_overdue: boolean;
+  days_overdue: number;
+  has_pdf: boolean;
+}
+
+export interface ReceivedInvoiceDetail extends ReceivedInvoiceSummary {
+  period_start: string | null;
+  period_end: string | null;
+  bill_to: InvoiceParty;
+  issued_by: InvoiceParty;
+  payment_method: string | null;
+  notes: string | null;
+  subtotal: number;
+  line_items: Array<{
+    id: string;
+    description: string;
+    quantity: number;
+    unit_rate: number;
+    amount: number;
+    is_hours: boolean;
+  }>;
+  payments: Array<{
+    id: string;
+    amount: number;
+    payment_date: string | null;
+    payment_method: string | null;
+    reference: string | null;
+    is_reversal: boolean;
+  }>;
+}
+
 export interface InvoicePaymentRow {
   id: string;
   invoice_id: string;
@@ -1223,16 +1271,191 @@ export class InvoicesService {
    * here, before the presigned URL is minted — the URL itself is a bearer
    * capability. Mirrors `GET /api/payouts/:id/proof-url`.
    */
+  /**
+   * Every non-draft invoice billed to the caller — the payer's own ledger.
+   *
+   * Authorization is the recipient seat itself (`recipient_user_id`), the
+   * same shape as engagement reads: what you are named on, you may see.
+   * Drafts are excluded absolutely — a payer must never see an invoice the
+   * issuer has not committed to.
+   */
+  async listReceived(callerId: string): Promise<ReceivedInvoiceSummary[]> {
+    const { data, error } = await this.supabase
+      .from('invoices')
+      .select(
+        'id, number, status, currency, total, issue_date, due_date, project_title_snapshot, issued_by, pdf_path',
+      )
+      .eq('recipient_user_id', callerId)
+      .neq('status', 'draft')
+      .order('issue_date', { ascending: false, nullsFirst: false });
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<
+      Pick<
+        InvoiceRow,
+        | 'id'
+        | 'number'
+        | 'status'
+        | 'currency'
+        | 'total'
+        | 'issue_date'
+        | 'due_date'
+        | 'project_title_snapshot'
+        | 'issued_by'
+        | 'pdf_path'
+      >
+    >;
+    if (rows.length === 0) return [];
+
+    // One ledger query for all rows; a reversal is a row that subtracts.
+    const paidByInvoice = new Map<string, number>();
+    const ledgeredIds = new Set<string>();
+    const { data: payments, error: paymentsErr } = await this.supabase
+      .from('invoice_payments')
+      .select('invoice_id, amount, reverses_payment_id')
+      .in(
+        'invoice_id',
+        rows.map((row) => row.id),
+      );
+    if (paymentsErr && !isMissingReceivablesSchema(paymentsErr)) {
+      throw new Error(paymentsErr.message);
+    }
+    for (const payment of (payments ?? []) as Array<{
+      invoice_id: string;
+      amount: number;
+      reverses_payment_id: string | null;
+    }>) {
+      ledgeredIds.add(payment.invoice_id);
+      paidByInvoice.set(
+        payment.invoice_id,
+        (paidByInvoice.get(payment.invoice_id) ?? 0) +
+          (payment.reverses_payment_id
+            ? -Number(payment.amount)
+            : Number(payment.amount)),
+      );
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    return rows.map((row) => {
+      const total = Number(row.total ?? 0);
+      // A `paid` invoice with no ledger rows at all is the pre-receivables
+      // path: its status is the only evidence, and it counts as collected in
+      // full — the same rule the consultant portfolio holds.
+      const amountPaid =
+        row.status === 'paid' && !ledgeredIds.has(row.id)
+          ? total
+          : (paidByInvoice.get(row.id) ?? 0);
+      const balanceDue = Math.max(0, total - amountPaid);
+      const isOverdue =
+        balanceDue > 0 &&
+        row.status !== 'void' &&
+        Boolean(row.due_date && row.due_date < today);
+      const daysOverdue =
+        isOverdue && row.due_date
+          ? Math.floor(
+              (Date.parse(today) - Date.parse(row.due_date)) / 86_400_000,
+            )
+          : 0;
+      return {
+        id: row.id,
+        number: row.number,
+        status: row.status,
+        currency: row.currency,
+        total,
+        issue_date: row.issue_date,
+        due_date: row.due_date,
+        project_title: row.project_title_snapshot,
+        issued_by_name: row.issued_by?.name ?? null,
+        amount_paid: amountPaid,
+        balance_due: balanceDue,
+        is_overdue: isOverdue,
+        days_overdue: daysOverdue,
+        has_pdf: Boolean(row.pdf_path),
+      };
+    });
+  }
+
+  /**
+   * One received invoice, as its payer sees it: header, priced lines, and
+   * payment history. Misses return 404, never 403, so ids cannot be probed —
+   * and a draft is a miss too.
+   */
+  async getReceived(
+    callerId: string,
+    invoiceId: string,
+  ): Promise<ReceivedInvoiceDetail> {
+    const invoice = await this.getInvoiceInternal(invoiceId);
+    if (invoice.recipient_user_id !== callerId || invoice.status === 'draft') {
+      throw new NotFoundException('Invoice not found');
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const isOverdue =
+      invoice.balance_due > 0 &&
+      invoice.status !== 'void' &&
+      Boolean(invoice.due_date && invoice.due_date < today);
+    return {
+      id: invoice.id,
+      number: invoice.number,
+      status: invoice.status,
+      currency: invoice.currency,
+      total: Number(invoice.total ?? 0),
+      issue_date: invoice.issue_date,
+      due_date: invoice.due_date,
+      project_title: invoice.project_title_snapshot,
+      issued_by_name: invoice.issued_by?.name ?? null,
+      amount_paid: invoice.amount_paid,
+      balance_due: invoice.balance_due,
+      is_overdue: isOverdue,
+      days_overdue:
+        isOverdue && invoice.due_date
+          ? Math.floor(
+              (Date.parse(today) - Date.parse(invoice.due_date)) / 86_400_000,
+            )
+          : 0,
+      has_pdf: Boolean(invoice.pdf_path),
+      period_start: invoice.period_start,
+      period_end: invoice.period_end,
+      bill_to: invoice.bill_to,
+      issued_by: invoice.issued_by,
+      payment_method: invoice.payment_method,
+      notes: invoice.notes,
+      subtotal: Number(invoice.subtotal ?? 0),
+      line_items: invoice.line_items.map((item) => ({
+        id: item.id,
+        description: item.description,
+        quantity: Number(item.quantity ?? 0),
+        unit_rate: Number(item.unit_rate ?? 0),
+        amount: Number(item.amount ?? 0),
+        is_hours: item.source_type === 'time_log',
+      })),
+      // Amount, date, method, reference only — a payment's internal note and
+      // who recorded it stay on the issuer's side.
+      payments: invoice.payments.map((payment) => ({
+        id: payment.id,
+        amount: Number(payment.amount),
+        payment_date: payment.payment_date,
+        payment_method: payment.payment_method,
+        reference: payment.reference,
+        is_reversal: Boolean(payment.reverses_payment_id),
+      })),
+    };
+  }
+
   async getPdfUrl(
     callerId: string,
     invoiceId: string,
   ): Promise<{ url: string; expires_in: number }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
-      callerId,
-      this.requireInvoiceProjectId(invoice),
-      'read',
-    );
+    // The payer may fetch the document of an invoice billed to them; every
+    // other caller goes through the project finance gate as before.
+    const isRecipient =
+      invoice.recipient_user_id === callerId && invoice.status !== 'draft';
+    if (!isRecipient) {
+      await this.financeAccess.assertProjectFinanceActor(
+        callerId,
+        this.requireInvoiceProjectId(invoice),
+        'read',
+      );
+    }
     if (!invoice.pdf_path) {
       throw new NotFoundException(
         'This invoice has no generated PDF yet. Generate it first.',
