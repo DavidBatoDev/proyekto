@@ -1,9 +1,12 @@
 import {
+	type CollisionDetection,
+	closestCorners,
 	DndContext,
 	type DragEndEvent,
 	DragOverlay,
 	type DragStartEvent,
 	PointerSensor,
+	rectIntersection,
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
@@ -850,6 +853,26 @@ export function RoadmapViewContent({
 		useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
 	);
 
+	// This single top-level DndContext also carries the EpicTab list view's
+	// cross-feature task drag (see EpicTab's useDndMonitor). Its dragged rows
+	// tag `data.type: "task"` — route those through closestCorners scoped to
+	// task/feature-container droppables so a task row's own `task-drop-<id>`
+	// assignee target (rectIntersection-friendly for the avatar dock drag)
+	// never gets picked as `over` instead of the task or feature it's meant to
+	// land in.
+	const dndCollisionDetection: CollisionDetection = useCallback((args) => {
+		if (args.active.data.current?.type === "task") {
+			return closestCorners({
+				...args,
+				droppableContainers: args.droppableContainers.filter((c) => {
+					const type = c.data.current?.type;
+					return type === "task" || type === "task-list-container";
+				}),
+			});
+		}
+		return rectIntersection(args);
+	}, []);
+
 	const applyAssignment = useCallback(
 		async (taskId: string, avatar: DockAvatar) => {
 			const latestEpics = useRoadmapStore.getState().epics;
@@ -997,6 +1020,7 @@ export function RoadmapViewContent({
 	return (
 		<DndContext
 			sensors={dndSensors}
+			collisionDetection={dndCollisionDetection}
 			onDragStart={handleDockDragStart}
 			onDragEnd={handleDockDragEnd}
 			onDragCancel={handleDockDragCancel}

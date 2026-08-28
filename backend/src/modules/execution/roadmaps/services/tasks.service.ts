@@ -142,10 +142,25 @@ export class TasksService {
     if (dto.assignee_ids !== undefined || dto.assignee_id !== undefined) {
       this.assertAssignCapability(ctx);
     }
+    const movingFeature =
+      dto.feature_id !== undefined && dto.feature_id !== existing.feature_id;
+    if (movingFeature) {
+      const targetCtx = await this.roadmapAuthz.assertFeaturePermission(
+        dto.feature_id as string,
+        userId,
+        'roadmap.create_tasks',
+      );
+      if (targetCtx.roadmapId !== ctx.roadmapId) {
+        throw new NotFoundException('Feature not found');
+      }
+    }
     const task = await this.repo.update(id, dto, userId);
-    // UpdateTaskDto has no feature_id — a task never moves features here —
-    // so only the one feature can be affected.
+    // A cross-feature move affects the derived status of both the feature the
+    // task left and the one it landed in.
     await this.featureStatusSync.syncAfterTaskChange(task.feature_id);
+    if (movingFeature) {
+      await this.featureStatusSync.syncAfterTaskChange(existing.feature_id);
+    }
     // Notify only assignees that are newly added by this update.
     const previousAssignees = new Set(this.assigneeIdsOf(existing));
     const currentAssignees = this.assigneeIdsOf(task);

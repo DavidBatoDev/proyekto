@@ -1,3 +1,11 @@
+import { useDndMonitor, useDroppable } from "@dnd-kit/core";
+import {
+	arrayMove,
+	SortableContext,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
 	Check,
 	ChevronDown,
@@ -11,6 +19,7 @@ import {
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { useToast } from "@/contexts/ToastContext";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { commentsService } from "@/services/roadmap.service";
 import { useUser } from "@/stores/authStore";
@@ -24,6 +33,80 @@ import type {
 import { FeatureModal } from "../../../modals/FeatureModal";
 import { CommentsSection } from "../../../shared/CommentsSection";
 import { TaskListItem } from "../../../widgets/TaskListItem";
+
+/** Droppable target for a feature's task list — lets a task drag land on an
+ * otherwise-empty feature, which has no task rows of its own to be `over`. */
+function FeatureTaskDropZone({
+	featureId,
+	showPlaceholder,
+	children,
+}: {
+	featureId: string;
+	showPlaceholder: boolean;
+	children: React.ReactNode;
+}) {
+	const { setNodeRef, isOver } = useDroppable({
+		id: featureId,
+		data: { type: "task-list-container", featureId },
+	});
+	return (
+		<div
+			ref={setNodeRef}
+			className={`px-4 py-2 rounded-lg transition-colors ${isOver ? "bg-blue-50" : ""}`}
+		>
+			{children}
+			{showPlaceholder && (
+				<div className="text-center py-4 text-xs text-gray-400 border border-dashed border-gray-300 rounded">
+					Drop tasks here
+				</div>
+			)}
+		</div>
+	);
+}
+
+interface EpicTaskRowSharedProps {
+	onDelete?: (taskId: string) => void;
+	onClick?: (task: RoadmapTask) => void;
+	onToggleComplete?: (taskId: string) => void;
+	onUpdateStatus?: (taskId: string, status: RoadmapTask["status"]) => void;
+}
+
+/** A task row draggable both for same-feature reorder and cross-feature move. */
+function SortableEpicTaskRow({
+	task,
+	featureId,
+	...sharedProps
+}: EpicTaskRowSharedProps & { task: RoadmapTask; featureId: string }) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		setActivatorNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({
+		id: task.id,
+		data: { type: "task", taskId: task.id, featureId },
+	});
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={{
+				transform: CSS.Transform.toString(transform),
+				transition,
+				opacity: isDragging ? 0 : 1,
+			}}
+		>
+			<TaskListItem
+				task={task}
+				dragHandleProps={{ attributes, listeners, setActivatorNodeRef }}
+				{...sharedProps}
+			/>
+		</div>
+	);
+}
 
 interface EpicTabProps {
 	epic: RoadmapEpic;
@@ -56,6 +139,149 @@ export const EpicTab = ({
 	);
 	const { mentionUsers, canInviteByEmail } = useMentionUsers(mentionProjectId);
 	const features = epic.features || [];
+	const toast = useToast();
+	const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
+	const moveTaskBetweenFeatures = useRoadmapStore(
+		(s) => s.moveTaskBetweenFeatures,
+	);
+
+	// Live per-feature task order while a drag is in flight — mirrors the
+	// Kanban board's `columns` state. Synced from `features` whenever nothing
+	// is being dragged; frozen mid-drag so the list doesn't jump under the
+	// cursor while the optimistic store update is still in flight.
+	const buildTaskLists = (
+		feats: RoadmapFeature[],
+	): Record<string, RoadmapTask[]> => {
+		const map: Record<string, RoadmapTask[]> = {};
+		for (const feature of feats) map[feature.id] = feature.tasks ?? [];
+		return map;
+	};
+	const [taskLists, setTaskLists] = useState<Record<string, RoadmapTask[]>>(
+		() => buildTaskLists(features),
+	);
+	const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!draggingTaskId) setTaskLists(buildTaskLists(features));
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [features, draggingTaskId]);
+
+	const findFeatureIdForTask = (
+		lists: Record<string, RoadmapTask[]>,
+		taskId: string,
+	): string | null => {
+		for (const [featureId, tasks] of Object.entries(lists)) {
+			if (tasks.some((t) => t.id === taskId)) return featureId;
+		}
+		return null;
+	};
+
+	const resolveDropFeatureId = (
+		lists: Record<string, RoadmapTask[]>,
+		overId: string,
+	): string | null => {
+		if (overId in lists) return overId;
+		return findFeatureIdForTask(lists, overId);
+	};
+
+	useDndMonitor({
+		onDragStart(event) {
+			if (event.active.data.current?.type !== "task") return;
+			setDraggingTaskId(String(event.active.id));
+		},
+		onDragOver(event) {
+			const { active, over } = event;
+			if (active.data.current?.type !== "task" || !over) return;
+			const activeTaskId = String(active.id);
+			const overId = String(over.id);
+			if (activeTaskId === overId) return;
+
+			setTaskLists((prev) => {
+				const fromFeatureId = findFeatureIdForTask(prev, activeTaskId);
+				const toFeatureId = resolveDropFeatureId(prev, overId);
+				if (!fromFeatureId || !toFeatureId) return prev;
+
+				if (fromFeatureId === toFeatureId) {
+					const list = prev[fromFeatureId] ?? [];
+					const activeIndex = list.findIndex((t) => t.id === activeTaskId);
+					const overIndex = list.findIndex((t) => t.id === overId);
+					if (
+						activeIndex === -1 ||
+						overIndex === -1 ||
+						activeIndex === overIndex
+					) {
+						return prev;
+					}
+					return {
+						...prev,
+						[fromFeatureId]: arrayMove(list, activeIndex, overIndex),
+					};
+				}
+
+				const sourceList = prev[fromFeatureId] ?? [];
+				const destList = prev[toFeatureId] ?? [];
+				const movingIndex = sourceList.findIndex((t) => t.id === activeTaskId);
+				if (movingIndex === -1) return prev;
+				const moving = sourceList[movingIndex];
+				const overIndex = destList.findIndex((t) => t.id === overId);
+				const insertAt = overIndex === -1 ? destList.length : overIndex;
+				return {
+					...prev,
+					[fromFeatureId]: sourceList.filter((_, i) => i !== movingIndex),
+					[toFeatureId]: [
+						...destList.slice(0, insertAt),
+						moving,
+						...destList.slice(insertAt),
+					],
+				};
+			});
+		},
+		onDragEnd(event) {
+			const { active } = event;
+			if (active.data.current?.type !== "task") return;
+			setDraggingTaskId(null);
+			const taskId = String(active.id);
+
+			const finalFeatureId = findFeatureIdForTask(taskLists, taskId);
+			if (!finalFeatureId) return;
+			const orderedIds = (taskLists[finalFeatureId] ?? []).map((t) => t.id);
+
+			const originalFeatureId = findFeatureIdForTask(
+				buildTaskLists(features),
+				taskId,
+			);
+			if (!originalFeatureId) return;
+
+			const handleError = (error: unknown) => {
+				toast.error(
+					error instanceof Error ? error.message : "Failed to move task",
+				);
+			};
+
+			if (originalFeatureId === finalFeatureId) {
+				const originalOrder = (
+					features.find((f) => f.id === finalFeatureId)?.tasks ?? []
+				).map((t) => t.id);
+				const orderChanged =
+					originalOrder.length !== orderedIds.length ||
+					originalOrder.some((id, index) => id !== orderedIds[index]);
+				if (!orderChanged) return;
+				void reorderTasksInFeature(finalFeatureId, orderedIds).catch(
+					handleError,
+				);
+				return;
+			}
+
+			void moveTaskBetweenFeatures(taskId, finalFeatureId, orderedIds).catch(
+				handleError,
+			);
+		},
+		onDragCancel() {
+			setDraggingTaskId(null);
+			setTaskLists(buildTaskLists(features));
+		},
+	});
+
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [titleDraft, setTitleDraft] = useState(epic.title);
@@ -752,59 +978,78 @@ export const EpicTab = ({
 
 								{/* Tasks List */}
 								<div className="border-t border-gray-200">
-									{feature.tasks && feature.tasks.length > 0 && (
-										<>
-											<div className="px-6 py-3 bg-gray-50">
-												<h3 className="text-sm font-semibold text-gray-900">
-													Tasks (
-													{
-														feature.tasks.filter((t) => t.status === "done")
-															.length
+									{(() => {
+										const featureTasks =
+											taskLists[feature.id] ?? feature.tasks ?? [];
+										return (
+											<>
+												{featureTasks.length > 0 && (
+													<div className="px-6 py-3 bg-gray-50">
+														<h3 className="text-sm font-semibold text-gray-900">
+															Tasks (
+															{
+																featureTasks.filter((t) => t.status === "done")
+																	.length
+															}
+															/{featureTasks.length})
+														</h3>
+													</div>
+												)}
+												<FeatureTaskDropZone
+													featureId={feature.id}
+													showPlaceholder={
+														Boolean(draggingTaskId) && featureTasks.length === 0
 													}
-													/{feature.tasks.length})
-												</h3>
-											</div>
-											<div className="divide-y divide-gray-100 px-4 py-2">
-												{feature.tasks.map((task) => (
-													<TaskListItem
-														key={task.id}
-														task={task}
-														onDelete={onDeleteTask}
-														onClick={onSelectTask}
-														onToggleComplete={(taskId) => {
-															const taskToUpdate = feature.tasks?.find(
-																(t) => t.id === taskId,
-															);
-															if (taskToUpdate) {
-																void Promise.resolve(
-																	onUpdateTask({
-																		...taskToUpdate,
-																		status:
-																			taskToUpdate.status === "done"
-																				? "todo"
-																				: "done",
-																	}),
-																).catch(() => undefined);
-															}
-														}}
-														onUpdateStatus={(taskId, status) => {
-															const taskToUpdate = feature.tasks?.find(
-																(t) => t.id === taskId,
-															);
-															if (taskToUpdate) {
-																void Promise.resolve(
-																	onUpdateTask({
-																		...taskToUpdate,
-																		status,
-																	}),
-																).catch(() => undefined);
-															}
-														}}
-													/>
-												))}
-											</div>
-										</>
-									)}
+												>
+													<SortableContext
+														items={featureTasks.map((t) => t.id)}
+														strategy={verticalListSortingStrategy}
+													>
+														<div className="divide-y divide-gray-100">
+															{featureTasks.map((task) => (
+																<SortableEpicTaskRow
+																	key={task.id}
+																	task={task}
+																	featureId={feature.id}
+																	onDelete={onDeleteTask}
+																	onClick={onSelectTask}
+																	onToggleComplete={(taskId) => {
+																		const taskToUpdate = feature.tasks?.find(
+																			(t) => t.id === taskId,
+																		);
+																		if (taskToUpdate) {
+																			void Promise.resolve(
+																				onUpdateTask({
+																					...taskToUpdate,
+																					status:
+																						taskToUpdate.status === "done"
+																							? "todo"
+																							: "done",
+																				}),
+																			).catch(() => undefined);
+																		}
+																	}}
+																	onUpdateStatus={(taskId, status) => {
+																		const taskToUpdate = feature.tasks?.find(
+																			(t) => t.id === taskId,
+																		);
+																		if (taskToUpdate) {
+																			void Promise.resolve(
+																				onUpdateTask({
+																					...taskToUpdate,
+																					status,
+																				}),
+																			).catch(() => undefined);
+																		}
+																	}}
+																/>
+															))}
+														</div>
+													</SortableContext>
+												</FeatureTaskDropZone>
+											</>
+										);
+									})()}
 									{onAddTask && (
 										<div className="px-4 py-3">
 											<button

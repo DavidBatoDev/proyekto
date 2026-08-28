@@ -372,6 +372,7 @@ export interface QuickCreateTaskFromTimerDto {
 }
 
 export interface UpdateTaskDto {
+	feature_id?: string;
 	title?: string;
 	description?: string | null;
 	status?: TaskStatus;

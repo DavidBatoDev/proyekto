@@ -164,6 +164,11 @@ interface RoadmapActions {
 		targetStatus: RoadmapTask["status"],
 		orderedTargetTaskIds: string[],
 	) => Promise<void>;
+	moveTaskBetweenFeatures: (
+		taskId: string,
+		targetFeatureId: string,
+		orderedTargetTaskIds: string[],
+	) => Promise<void>;
 
 	// Kanban board
 	setBoardFilters: (
@@ -321,6 +326,48 @@ const findTaskById = (
 		.flatMap((epic) => epic.features || [])
 		.flatMap((feature) => feature.tasks || [])
 		.find((task) => task.id === taskId);
+
+const moveTaskAcrossFeatures = (
+	epics: RoadmapEpic[],
+	taskId: string,
+	targetFeatureId: string,
+	orderedTargetTaskIds: string[],
+): RoadmapEpic[] => {
+	let movedTask: RoadmapTask | undefined;
+	const withoutTask = epics.map((epic) => ({
+		...epic,
+		features: (epic.features || []).map((feature) => ({
+			...feature,
+			tasks: (feature.tasks || []).filter((t) => {
+				if (t.id === taskId) {
+					movedTask = t;
+					return false;
+				}
+				return true;
+			}),
+		})),
+	}));
+	if (!movedTask) return epics;
+	const updatedTask: RoadmapTask = {
+		...movedTask,
+		feature_id: targetFeatureId,
+	};
+	return withoutTask.map((epic) => ({
+		...epic,
+		features: (epic.features || []).map((feature) => {
+			if (feature.id !== targetFeatureId) return feature;
+			const existingTasks = (feature.tasks || []).filter(
+				(t) => t.id !== taskId,
+			);
+			const reordered = orderedTargetTaskIds
+				.map((id) =>
+					id === taskId ? updatedTask : existingTasks.find((t) => t.id === id),
+				)
+				.filter((t): t is RoadmapTask => t !== undefined);
+			return { ...feature, tasks: reordered };
+		}),
+	}));
+};
 
 const clearTaskRollbackKey = (
 	record: Partial<Record<string, RoadmapTask>>,
@@ -2476,6 +2523,51 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			await taskService.reorderByStatus(roadmapId, targetStatus, reorderItems);
 		} catch (error) {
 			console.error("Failed to move task between columns:", error);
+			set({ epics: rollbackEpics });
+			throw error;
+		}
+	},
+
+	moveTaskBetweenFeatures: async (
+		taskId: string,
+		targetFeatureId: string,
+		orderedTargetTaskIds: string[],
+	) => {
+		const { epics } = get();
+		const sourceFeature = epics
+			.flatMap((e) => e.features ?? [])
+			.find((f) => f.tasks?.some((t) => t.id === taskId));
+		if (!sourceFeature || sourceFeature.id === targetFeatureId) return;
+
+		const rollbackEpics = epics;
+
+		set((state) => ({
+			epics: moveTaskAcrossFeatures(
+				state.epics,
+				taskId,
+				targetFeatureId,
+				orderedTargetTaskIds,
+			),
+		}));
+
+		try {
+			// Step 1: move the task to the target feature with a safe temp
+			// position that won't collide with any existing task there.
+			const safePosition = orderedTargetTaskIds.length * 1000 + 5000;
+			await taskService.update(taskId, {
+				feature_id: targetFeatureId,
+				position: safePosition,
+			});
+
+			// Step 2: reorder all tasks in the target feature so every
+			// position is correct.
+			const reorderItems = orderedTargetTaskIds.map((tid, index) => ({
+				task_id: tid,
+				new_order_index: index,
+			}));
+			await taskService.reorder(targetFeatureId, reorderItems);
+		} catch (error) {
+			console.error("Failed to move task between features:", error);
 			set({ epics: rollbackEpics });
 			throw error;
 		}

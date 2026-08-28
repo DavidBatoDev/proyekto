@@ -307,6 +307,7 @@ export class QuickCreateTaskFromTimerDto {
 }
 
 export class UpdateTaskDto {
+  @IsUUID() @IsOptional() feature_id?: string;
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() description?: string | null;
   @IsEnum(['urgent', 'high', 'medium', 'low']) @IsOptional() priority?: string;
