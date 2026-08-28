@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	cleanup,
 	fireEvent,
@@ -64,7 +65,11 @@ afterEach(() => {
 });
 
 function renderBuilder() {
-	return render(<RoadmapBuilder projectId="n" draftId="draft-1" embedded />);
+	return render(
+		<QueryClientProvider client={new QueryClient()}>
+			<RoadmapBuilder projectId="n" draftId="draft-1" embedded />
+		</QueryClientProvider>,
+	);
 }
 
 describe("RoadmapBuilder objective intake", () => {

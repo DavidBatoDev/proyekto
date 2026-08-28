@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	cleanup,
 	fireEvent,
@@ -80,7 +81,11 @@ afterEach(cleanup);
 
 /** Walks the mocked intake to the final "thumbnail" step. */
 async function reachThumbnailStep() {
-	render(<RoadmapBuilder projectId="n" draftId="draft-1" embedded />);
+	render(
+		<QueryClientProvider client={new QueryClient()}>
+			<RoadmapBuilder projectId="n" draftId="draft-1" embedded />
+		</QueryClientProvider>,
+	);
 
 	await waitFor(() =>
 		expect(screen.getByText("SaaS Launch System")).toBeTruthy(),
