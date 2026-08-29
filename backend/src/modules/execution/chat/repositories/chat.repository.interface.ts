@@ -153,6 +153,14 @@ export interface ChatRepository {
   ): Promise<ChatMemberCandidate[]>;
   listProjectParticipantUserIds(projectId: string): Promise<string[]>;
   usersShareAnyProject(userA: string, userB: string): Promise<boolean>;
+
+  /**
+   * Whether the recipient is an active marketplace seller (verified
+   * consultant OR live talent). Sellers publish public service pages with a
+   * contact CTA, so strangers may open a DM *to* them — the reverse stays
+   * gated on a shared project.
+   */
+  recipientIsActiveSeller(recipientId: string): Promise<boolean>;
   findRoomById(roomId: string): Promise<ChatRoom | null>;
   /**
    * Single-query lookup that returns the room only if `userId` is a

@@ -56,6 +56,7 @@ describe('ChatService', () => {
       listProjectMemberCandidates: jest.fn().mockResolvedValue([]),
       listProjectParticipantUserIds: jest.fn().mockResolvedValue([]),
       usersShareAnyProject: jest.fn().mockResolvedValue(true),
+      recipientIsActiveSeller: jest.fn().mockResolvedValue(false),
       findRoomById: jest.fn().mockResolvedValue(null),
       findRoomForParticipant: jest.fn().mockResolvedValue(null),
       findChannelBySlug: jest.fn().mockResolvedValue(null),
@@ -640,6 +641,44 @@ describe('ChatService', () => {
         recipient_id: 'stranger-1',
         content: 'hi',
       }),
+    ).rejects.toThrow();
+  });
+
+  it('allows DM to a marketplace seller without a shared project', async () => {
+    // Sellers publish public service pages with a contact CTA — buyers may
+    // open the conversation; the reverse direction stays project-gated.
+    const repo = buildRepo({
+      usersShareAnyProject: jest.fn().mockResolvedValue(false),
+      recipientIsActiveSeller: jest.fn().mockResolvedValue(true),
+    });
+    const service = makeService(repo);
+
+    await expect(
+      service.sendDmMessage('actor-1', {
+        recipient_id: 'seller-1',
+        content: 'hi — interested in your service',
+      }),
+    ).resolves.toBeDefined();
+    expect(repo.recipientIsActiveSeller).toHaveBeenCalledWith('seller-1');
+  });
+
+  it('resolveDmRoom applies the same widened seller gate', async () => {
+    const repo = buildRepo({
+      usersShareAnyProject: jest.fn().mockResolvedValue(false),
+      recipientIsActiveSeller: jest.fn().mockResolvedValue(true),
+    });
+    const service = makeService(repo);
+
+    await expect(
+      service.resolveDmRoom('actor-1', 'seller-1'),
+    ).resolves.toBeDefined();
+
+    const blockedRepo = buildRepo({
+      usersShareAnyProject: jest.fn().mockResolvedValue(false),
+      recipientIsActiveSeller: jest.fn().mockResolvedValue(false),
+    });
+    await expect(
+      makeService(blockedRepo).resolveDmRoom('actor-1', 'stranger-1'),
     ).rejects.toThrow();
   });
 

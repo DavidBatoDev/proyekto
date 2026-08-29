@@ -852,10 +852,14 @@ export class ChatService {
         throw new BadRequestException('Cannot DM yourself.');
       }
 
-      const canDm = await this.chatRepo.usersShareAnyProject(
-        senderId,
-        dto.recipient_id,
-      );
+      // A shared project, or the recipient is a marketplace seller — sellers
+      // publish public service pages with a contact CTA, so buyers may open
+      // a conversation with them without prior project history.
+      const canDm =
+        (await this.chatRepo.usersShareAnyProject(
+          senderId,
+          dto.recipient_id,
+        )) || (await this.chatRepo.recipientIsActiveSeller(dto.recipient_id));
       if (!canDm) {
         throw new MissingPermissionException({
           path: 'chat.send_dm',
@@ -922,10 +926,12 @@ export class ChatService {
       throw new BadRequestException('A valid recipient_id is required.');
     }
 
-    const canDm = await this.chatRepo.usersShareAnyProject(
-      senderId,
-      recipientId,
-    );
+    // Same widened gate as sendMessage's DM path: shared project OR the
+    // recipient sells on the marketplace (their service page carries a
+    // public contact CTA).
+    const canDm =
+      (await this.chatRepo.usersShareAnyProject(senderId, recipientId)) ||
+      (await this.chatRepo.recipientIsActiveSeller(recipientId));
     if (!canDm) {
       throw new MissingPermissionException({
         path: 'chat.send_dm',

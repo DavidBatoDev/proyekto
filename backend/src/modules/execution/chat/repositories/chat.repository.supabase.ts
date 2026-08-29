@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { isActiveSellerEnrollment } from '../../../../common/auth/consultant-capability';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import type {
   ChatAttachment,
@@ -242,6 +243,10 @@ export class SupabaseChatRepository implements ChatRepository {
     return Array.from(
       new Set(candidates.map((candidate) => candidate.user_id)),
     );
+  }
+
+  async recipientIsActiveSeller(recipientId: string): Promise<boolean> {
+    return isActiveSellerEnrollment(this.supabase, recipientId);
   }
 
   async usersShareAnyProject(userA: string, userB: string): Promise<boolean> {
