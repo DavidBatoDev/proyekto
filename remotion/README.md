@@ -14,9 +14,18 @@ the MCP Access settings page:
 | --- | --- | --- |
 | `TalentStory` | profile → terms → staffing → paid | `web/public/talent-story.mp4` |
 | `ConsultantStory` | scope → roadmap → team → terms | `web/public/consultant-story.mp4` |
-| `McpStory` | connect → scopes → in use → control | `web/public/mcp-access.mp4` |
+| `McpStory` | connect → scopes → in use → control, as a chat thread | `web/public/mcp-access.mp4` |
 
-All are 1920×1080, 30fps, 330 frames (11s), and built to loop seamlessly.
+All are 30fps, 330 frames (11s), and built to loop seamlessly. The first three
+are 1920×1080. The three `Hero*` clips are 1200×900: they are the slides of the
+marketplace hero carousel, filling the 30% column of a 70/30 band where a 16:9
+strip would be a letterbox slot. They are light, caption-free, and use bars
+rather than prose — at the ~340px they render into, a real sentence is a smear.
+
+The two `/start-selling` clips are navy; `McpStory` is **light**. `Stage` takes a
+`palette` and provides it through context, so every primitive follows whichever
+one a composition picks — see `brand/palette.ts` for both, and for why a light
+clip leans on the embed's border instead of luminance to draw its edge.
 
 ## Commands
 
@@ -58,10 +67,11 @@ Every flag is load-bearing:
 ```bash
 npx remotion still TalentStory     out/tp.png --image-format=png --frame=300
 npx remotion still ConsultantStory out/cp.png --image-format=png --frame=302
-npx remotion still McpStory        out/mp.png --image-format=png --frame=224
+npx remotion still McpStory        out/mp.png --image-format=png --frame=270
 ffmpeg -y -i out/tp.png -c:v libwebp -quality 86 -compression_level 6 out/talent-story-poster.webp
 ffmpeg -y -i out/cp.png -c:v libwebp -quality 86 -compression_level 6 out/consultant-story-poster.webp
 ffmpeg -y -i out/mp.png -c:v libwebp -quality 86 -compression_level 6 out/mcp-access-poster.webp
+ffmpeg -y -i out/hp.png -c:v libwebp -quality 86 -compression_level 6 out/hero-brief-poster.webp
 ```
 
 The frames come from `POSTER_FRAME` in `src/brand/timing.ts`. `--image-format=webp`
@@ -84,7 +94,7 @@ browser cache, so the version param is what forces a refetch. If you change what
 a clip shows, update that entry's `steps` too — it is the video's text
 alternative and must not drift from the captions on screen.
 
-Budget: keep each MP4 under ~500KB. Current output is 240KB / 268KB / 215KB.
+Budget: keep each MP4 under ~500KB. Current output is 240KB / 268KB / 208KB.
 
 ## Structure
 
@@ -93,11 +103,11 @@ src/
   Root.tsx              registers both compositions
   anim.ts               lerp / springIn / envelope / bezier
   brand/
-    palette.ts          all colour, as raw hex
+    palette.ts          DARK_PALETTE + LIGHT_PALETTE, as raw hex, and the context
     timing.ts           FPS, DURATION, BEATS, seam + poster frames
     fonts.ts            Sora + Manrope, loaded at module scope
   primitives/
-    Stage.tsx           panel ground, dot grid, grain, baked rim
+    Stage.tsx           panel ground, dot grid, grain, baked rim, palette provider
     shapes.tsx          Card / Bar / Chip / Avatar / Badge / CheckMark / Connector
     Caption.tsx         the beat captions, the only <Sequence> users
   stories/
@@ -121,8 +131,8 @@ src/
   `ffmpeg -i a.png -i b.png -lavfi psnr -f null -` should report >60 dB. Frame
   327 still carries ~8% of the closing caption, so a long fourth line costs a
   few dB on that comparison without being a real seam defect — `McpStory` reads
-  59.6 dB there, and 51.9 dB between the *encoded* first and last frames, where
-  the two shipped clips score 49.4 and 50.2.
+  57.2 dB there, and 53.6 dB between the *encoded* first and last frames, where
+  the two navy clips score 49.4 and 50.2.
 - **Tailwind tokens from `web/` do not exist here.** `src/index.css` is one
   `@import "tailwindcss"` line; `bg-primary` or `border-border` render nothing.
   All colour comes from `brand/palette.ts` as inline styles, which is required

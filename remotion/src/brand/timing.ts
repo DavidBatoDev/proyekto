@@ -15,6 +15,13 @@ export const DURATION = 330;
 
 export const STAGE = { w: 1920, h: 1080 } as const;
 
+/**
+ * The marketplace hero clip is not 16:9. It fills the 30% column of a 70/30
+ * band, where a 16:9 strip would be a letterbox slot two hundred pixels tall.
+ * 4:3 keeps the tile close to the height of the copy beside it.
+ */
+export const HERO_STAGE = { w: 1200, h: 900 } as const;
+
 /** The frames held identical at both ends of the loop. */
 export const SEAM_HOLD = 6;
 
@@ -41,4 +48,9 @@ export const GRID_CELL = 48;
  * composition — inside a one-frame Still, `<Freeze>` is clamped to that frame
  * and the story renders at frame 0.
  */
-export const POSTER_FRAME = { talent: 300, consultant: 302, mcp: 224 } as const;
+export const POSTER_FRAME = {
+	talent: 300,
+	consultant: 302,
+	mcp: 270,
+	hero: 268,
+} as const;

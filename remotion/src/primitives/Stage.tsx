@@ -1,6 +1,11 @@
 import type React from "react";
 import { AbsoluteFill, random, useCurrentFrame } from "remotion";
-import { PALETTE } from "../brand/palette";
+import {
+	DARK_PALETTE,
+	type Palette,
+	PaletteProvider,
+	usePalette,
+} from "../brand/palette";
 import { GRID_CELL, GRID_PERIOD } from "../brand/timing";
 
 /**
@@ -19,6 +24,7 @@ import { GRID_CELL, GRID_PERIOD } from "../brand/timing";
  */
 export const PanelGround: React.FC = () => {
 	const frame = useCurrentFrame();
+	const PALETTE = usePalette();
 	// Drifts exactly one cell per GRID_PERIOD frames, which divides DURATION,
 	// so the grid is in the same place at frame 0 and at the loop point.
 	const drift = ((frame % GRID_PERIOD) / GRID_PERIOD) * GRID_CELL;
@@ -37,7 +43,7 @@ export const PanelGround: React.FC = () => {
 
 			<AbsoluteFill
 				style={{
-					backgroundImage: `radial-gradient(circle at 1px 1px, rgba(148,163,184,0.13) 1px, transparent 0)`,
+					backgroundImage: `radial-gradient(circle at 1px 1px, rgba(${PALETTE.glowRgb},0.16) 1px, transparent 0)`,
 					backgroundSize: `${GRID_CELL}px ${GRID_CELL}px`,
 					backgroundPosition: `${drift}px ${drift}px`,
 					maskImage:
@@ -66,8 +72,13 @@ export const PanelGround: React.FC = () => {
  */
 const Dither: React.FC = () => {
 	const seed = Math.round(random("dither-seed") * 1000);
+	const PALETTE = usePalette();
+	// The grain exists to break the banding flat navy invites. A light ground
+	// has no such gradient to band, and overlay grain on near-white only reads
+	// as dirt, so it is dialled right down there.
+	const opacity = PALETTE.ground === DARK_PALETTE.ground ? 0.014 : 0.006;
 	return (
-		<AbsoluteFill style={{ opacity: 0.014, mixBlendMode: "overlay" }}>
+		<AbsoluteFill style={{ opacity, mixBlendMode: "overlay" }}>
 			<svg width="100%" height="100%">
 				<title>grain</title>
 				<filter id="grain">
@@ -84,10 +95,19 @@ const Dither: React.FC = () => {
 	);
 };
 
-/** Ground + content. Every story's root. */
-export const Stage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-	<AbsoluteFill>
-		<PanelGround />
-		{children}
-	</AbsoluteFill>
+/**
+ * Ground + content. Every story's root, and the only place a palette is chosen:
+ * everything below reads it from context, so a primitive cannot quietly keep a
+ * dark value while the rest of a composition goes light.
+ */
+export const Stage: React.FC<{
+	children: React.ReactNode;
+	palette?: Palette;
+}> = ({ children, palette = DARK_PALETTE }) => (
+	<PaletteProvider value={palette}>
+		<AbsoluteFill>
+			<PanelGround />
+			{children}
+		</AbsoluteFill>
+	</PaletteProvider>
 );

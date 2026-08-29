@@ -2,7 +2,7 @@ import type React from "react";
 import { Sequence, useCurrentFrame } from "remotion";
 import { EASE_OUT, lerp } from "../anim";
 import { FONT_BODY, FONT_DISPLAY } from "../brand/fonts";
-import { PALETTE } from "../brand/palette";
+import { usePalette } from "../brand/palette";
 import { BEATS } from "../brand/timing";
 
 export type CaptionItem = { eyebrow: string; line: string };
@@ -20,6 +20,7 @@ const Caption: React.FC<CaptionItem & { duration: number }> = ({
 	duration,
 }) => {
 	const frame = useCurrentFrame();
+	const PALETTE = usePalette();
 
 	const enter = lerp(frame, [0, 16], [0, 1], EASE_OUT);
 	const exit = lerp(frame, [duration - 14, duration - 2], [1, 0], EASE_OUT);

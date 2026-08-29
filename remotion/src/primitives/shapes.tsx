@@ -1,5 +1,5 @@
 import type React from "react";
-import { PALETTE } from "../brand/palette";
+import { usePalette } from "../brand/palette";
 import { FONT_BODY } from "../brand/fonts";
 
 /**
@@ -40,7 +40,9 @@ export const Card: React.FC<
 	glow = 0,
 	borderColor,
 	children,
-}) => (
+}) => {
+	const PALETTE = usePalette();
+	return (
 	<div
 		style={{
 			position: "absolute",
@@ -56,7 +58,10 @@ export const Card: React.FC<
 						? PALETTE.surfaceHi
 						: PALETTE.surface,
 			border: `1px solid ${borderColor ?? PALETTE.hairline}`,
-			boxShadow: glow > 0 ? `0 0 ${44 * glow}px rgba(37,99,235,${0.5 * glow})` : undefined,
+			boxShadow:
+				glow > 0
+					? `0 0 ${44 * glow}px rgba(${PALETTE.glowRgb},${0.5 * glow})`
+					: undefined,
 			opacity,
 			transform: `scale(${scale})`,
 			transformOrigin: "center center",
@@ -64,7 +69,8 @@ export const Card: React.FC<
 	>
 		{children}
 	</div>
-);
+	);
+};
 
 /**
  * A content bar. `reveal` masks it left→right rather than fading it, so text
@@ -76,7 +82,8 @@ export const Bar: React.FC<{
 	w: number;
 	h?: number;
 	reveal?: number;
-	tone?: "muted" | "primary" | "ink";
+	/** `onPrimary` is for a bar sitting ON a primary fill, where ink goes muddy. */
+	tone?: "muted" | "primary" | "ink" | "onPrimary";
 	opacity?: number;
 	radius?: number;
 }> = ({
@@ -88,7 +95,9 @@ export const Bar: React.FC<{
 	tone = "muted",
 	opacity = 1,
 	radius,
-}) => (
+}) => {
+	const PALETTE = usePalette();
+	return (
 	<div
 		style={{
 			position: "absolute",
@@ -100,13 +109,16 @@ export const Bar: React.FC<{
 			backgroundColor:
 				tone === "primary"
 					? PALETTE.blue600
-					: tone === "ink"
-						? PALETTE.ink
-						: PALETTE.bar,
+					: tone === "onPrimary"
+						? "#ffffff"
+						: tone === "ink"
+							? PALETTE.ink
+							: PALETTE.bar,
 			opacity,
 		}}
 	/>
-);
+	);
+};
 
 /** A labelled pill. Only ever carries verified product vocabulary — see NOTE in the stories. */
 export const Chip: React.FC<{
@@ -116,7 +128,9 @@ export const Chip: React.FC<{
 	tone?: "muted" | "primary" | "outline";
 	scale?: number;
 	opacity?: number;
-}> = ({ x, y, label, tone = "muted", scale = 1, opacity = 1 }) => (
+}> = ({ x, y, label, tone = "muted", scale = 1, opacity = 1 }) => {
+	const PALETTE = usePalette();
+	return (
 	<div
 		style={{
 			position: "absolute",
@@ -137,7 +151,7 @@ export const Chip: React.FC<{
 					? PALETTE.blue600
 					: tone === "outline"
 						? "transparent"
-						: "rgba(148,163,184,0.14)",
+						: PALETTE.chipMuted,
 			border:
 				tone === "outline"
 					? `1px solid ${PALETTE.rim}`
@@ -150,7 +164,8 @@ export const Chip: React.FC<{
 	>
 		{label}
 	</div>
-);
+	);
+};
 
 /**
  * An abstract person mark. No faces and no photographs — the real marketplace
@@ -165,6 +180,7 @@ export const Avatar: React.FC<{
 	scale?: number;
 	opacity?: number;
 }> = ({ x, y, size = 96, variant = 0, ring = 0, scale = 1, opacity = 1 }) => {
+	const PALETTE = usePalette();
 	const fill = [PALETTE.blue600, PALETTE.blue500, PALETTE.blue400][variant];
 	return (
 		<div
@@ -175,9 +191,12 @@ export const Avatar: React.FC<{
 				width: size,
 				height: size,
 				borderRadius: size / 2,
-				backgroundColor: "rgba(37,99,235,0.16)",
+				backgroundColor: `rgba(${PALETTE.glowRgb},0.16)`,
 				border: `2px solid ${fill}`,
-				boxShadow: ring > 0 ? `0 0 0 ${8 * ring}px rgba(59,130,246,0.18)` : undefined,
+				boxShadow:
+					ring > 0
+						? `0 0 0 ${8 * ring}px rgba(${PALETTE.glowRgb},0.18)`
+						: undefined,
 				opacity,
 				transform: `scale(${scale})`,
 				transformOrigin: "center center",
@@ -222,7 +241,9 @@ export const Badge: React.FC<{
 	scale?: number;
 	opacity?: number;
 	children?: React.ReactNode;
-}> = ({ x, y, r = 34, scale = 1, opacity = 1, children }) => (
+}> = ({ x, y, r = 34, scale = 1, opacity = 1, children }) => {
+	const PALETTE = usePalette();
+	return (
 	<div
 		style={{
 			position: "absolute",
@@ -243,7 +264,8 @@ export const Badge: React.FC<{
 	>
 		{children}
 	</div>
-);
+	);
+};
 
 /** A tick that draws itself. */
 export const CheckMark: React.FC<{
@@ -252,7 +274,9 @@ export const CheckMark: React.FC<{
 	size?: number;
 	progress: number;
 	tone?: "primary" | "ok";
-}> = ({ x, y, size = 56, progress, tone = "primary" }) => (
+}> = ({ x, y, size = 56, progress, tone = "primary" }) => {
+	const PALETTE = usePalette();
+	return (
 	<svg
 		style={{ position: "absolute", left: x, top: y }}
 		width={size}
@@ -272,7 +296,8 @@ export const CheckMark: React.FC<{
 			strokeDashoffset={1 - Math.max(0, Math.min(1, progress))}
 		/>
 	</svg>
-);
+	);
+};
 
 /**
  * A connector that draws itself.
@@ -287,7 +312,9 @@ export const Connector: React.FC<{
 	width?: number;
 	tone?: "muted" | "primary";
 	opacity?: number;
-}> = ({ d, progress, width = 3, tone = "muted", opacity = 1 }) => (
+}> = ({ d, progress, width = 3, tone = "muted", opacity = 1 }) => {
+	const PALETTE = usePalette();
+	return (
 	<svg
 		style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}
 		width={1920}
@@ -297,7 +324,7 @@ export const Connector: React.FC<{
 		<title>connector</title>
 		<path
 			d={d}
-			stroke={tone === "primary" ? PALETTE.blue500 : "rgba(148,163,184,0.42)"}
+			stroke={tone === "primary" ? PALETTE.blue500 : PALETTE.wireMuted}
 			strokeWidth={width}
 			strokeLinecap="round"
 			fill="none"
@@ -307,4 +334,81 @@ export const Connector: React.FC<{
 			strokeDashoffset={1 - Math.max(0, Math.min(1, progress))}
 		/>
 	</svg>
-);
+	);
+};
+
+/**
+ * A chat bubble, for the host side of the MCP story.
+ *
+ * Height is an explicit stage pixel like everything else here rather than
+ * auto: content is laid out in absolute stage coordinates, so a box that
+ * resized with its text would move everything drawn against it. `label` is the
+ * one piece of text the bubble owns; anything else is drawn as a sibling.
+ *
+ * `labelReveal` wipes left→right in the same idiom as `Bar` and the captions,
+ * which reads as typing rather than as a fade.
+ */
+export const Bubble: React.FC<{
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+	tone?: "user" | "assistant";
+	label?: string;
+	labelReveal?: number;
+	opacity?: number;
+	scale?: number;
+}> = ({
+	x,
+	y,
+	w,
+	h,
+	tone = "assistant",
+	label,
+	labelReveal = 1,
+	opacity = 1,
+	scale = 1,
+}) => {
+	const PALETTE = usePalette();
+	const isUser = tone === "user";
+	return (
+		<div
+			style={{
+				position: "absolute",
+				left: x,
+				top: y,
+				width: w,
+				height: h,
+				borderRadius: 22,
+				// The squared corner is the tail: it points back at whoever spoke.
+				borderBottomRightRadius: isUser ? 6 : 22,
+				borderBottomLeftRadius: isUser ? 22 : 6,
+				backgroundColor: isUser ? PALETTE.blue600 : PALETTE.surfaceHi,
+				border: `1px solid ${isUser ? "transparent" : PALETTE.hairline}`,
+				opacity,
+				transform: `scale(${scale})`,
+				transformOrigin: isUser ? "right bottom" : "left bottom",
+			}}
+		>
+			{label ? (
+				<div
+					style={{
+						position: "absolute",
+						left: 22,
+						top: 18,
+						right: 22,
+						fontFamily: FONT_BODY,
+						fontSize: 22,
+						fontWeight: 500,
+						lineHeight: 1.35,
+						whiteSpace: "nowrap",
+						color: isUser ? "#ffffff" : PALETTE.ink,
+						clipPath: `inset(0 ${100 - 100 * Math.max(0, Math.min(1, labelReveal))}% 0 0)`,
+					}}
+				>
+					{label}
+				</div>
+			) : null}
+		</div>
+	);
+};

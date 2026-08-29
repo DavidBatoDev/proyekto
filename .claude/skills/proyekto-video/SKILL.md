@@ -57,11 +57,17 @@ Clip constants: `TALENT_CLIP` / `CONSULTANT_CLIP` in `web/src/routes/start-selli
   hex and fixed palette classes (`bg-white`, `bg-slate-500`, …), and they also check
   `web/src/routes/start-selling.tsx`. Use theme tokens in web/; `bg-black` and
   `text-white/85` are permitted and already used on that page.
-- **A baked MP4 cannot follow the page theme.** Clips sit on a self-contained navy ground
-  (`#0F1A2E`) so they read as a deliberate inset on both light and dark. No single colour
-  separates by luminance from both `#F9FAFB` and `#0E0F0F` — on dark themes the hue
-  difference plus the wrapper's `rounded-2xl border border-border` is what does the work,
-  so that wrapper is not optional.
+- **A baked MP4 cannot follow the page theme.** The `/start-selling` clips sit on a
+  self-contained navy ground (`#0F1A2E`) so they read as a deliberate inset on both light
+  and dark. No single colour separates by luminance from both `#F9FAFB` and `#0E0F0F` — on
+  dark themes the hue difference plus the wrapper's `rounded-2xl border border-border` is
+  what does the work, so that wrapper is not optional.
+- **`McpStory` is the deliberate exception**: it is embedded beside body copy in settings,
+  where a dark slab reads as a foreign object, so it uses `LIGHT_PALETTE` (the shipped
+  `html[data-ui-theme="light"]` tokens, primary `#5e6ad2`) and reads as another card.
+  Consequences to keep in mind: it does NOT separate from the page by luminance — the
+  wrapper border is the only thing drawing its edge — and it stays light on dark themes.
+  Pick a palette with `<Stage palette={…}>`; primitives read it from context.
 - **Ship a poster.** `AudienceVideo` renders it as a real layer under the video, not just
   the `poster` attribute, so the panel is never an empty box before load or under
   `prefers-reduced-motion` (where the video is hidden outright).
