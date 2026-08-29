@@ -159,6 +159,124 @@ describe('MCP roadmap_list_changes', () => {
   });
 });
 
+describe('MCP roadmap_get_by_project', () => {
+  it('denies a token without roadmaps:read and never touches the repository', async () => {
+    const findByProjectId = jest.fn();
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['projects:read'], {
+      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_by_project({
+      project_id: '11111111-1111-1111-1111-111111111111',
+    });
+
+    expect(isError(res)).toBe(true);
+    expect(errorCode(res)).toBe('FORBIDDEN');
+    expect(findByProjectId).not.toHaveBeenCalled();
+  });
+
+  it('returns the single linked roadmap under a singular `roadmap` key', async () => {
+    const roadmap = { id: 'r1', project_id: 'p1', name: 'Launch' };
+    const findByProjectId = jest.fn(() => Promise.resolve(roadmap));
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_by_project({ project_id: 'p1' });
+
+    expect(findByProjectId).toHaveBeenCalledWith('p1', 'user-1');
+    expect(isError(res)).toBeFalsy();
+    expect(payload(res)).toEqual({ roadmap });
+  });
+
+  it('returns roadmap: null when the project has no linked roadmap', async () => {
+    const findByProjectId = jest.fn(() => Promise.resolve(null));
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_by_project({ project_id: 'p1' });
+
+    expect(isError(res)).toBeFalsy();
+    expect(payload(res)).toEqual({ roadmap: null });
+  });
+
+  it('returns mixed JSON, SVG, and PNG content by default', async () => {
+    const roadmap = { id: 'r1', project_id: 'p1', name: 'Launch' };
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmaps: {
+        findByProjectId: jest.fn(() => Promise.resolve(roadmap)),
+        findByUser: jest.fn(),
+      } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_by_project({ project_id: 'p1' });
+
+    expect(res.content.map((item: any) => item.type)).toEqual([
+      'text',
+      'resource',
+      'image',
+    ]);
+    expect(res.content[1].resource.mimeType).toBe('image/svg+xml');
+    expect(res.content[2].mimeType).toBe('image/png');
+  });
+
+  it('returns the unchanged lean JSON result when visuals are disabled', async () => {
+    const roadmap = { id: 'r1', project_id: 'p1', name: 'Launch' };
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmaps: {
+        findByProjectId: jest.fn(() => Promise.resolve(roadmap)),
+        findByUser: jest.fn(),
+      } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmap_get_by_project({
+      project_id: 'p1',
+      include_visual: false,
+    });
+
+    expect(res.content).toHaveLength(1);
+    expect(payload(res)).toEqual({ roadmap });
+    expect(res.structuredContent).toEqual({ roadmap });
+  });
+});
+
+describe('MCP roadmaps_list', () => {
+  it('no longer declares a project_id input field', () => {
+    const { server, definitions } = captureServer();
+    registerRoadmapTools(server, depsWith(['roadmaps:read']));
+
+    expect(definitions.roadmaps_list.inputSchema).not.toHaveProperty(
+      'project_id',
+    );
+  });
+
+  it('lists the roadmaps the caller owns', async () => {
+    const roadmaps = [{ id: 'r1' }, { id: 'r2' }];
+    const findByUser = jest.fn(() => Promise.resolve(roadmaps));
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['roadmaps:read'], {
+      roadmaps: { findByProjectId: jest.fn(), findByUser } as any,
+    });
+    registerRoadmapTools(server, deps);
+
+    const res = await handlers.roadmaps_list({});
+
+    expect(findByUser).toHaveBeenCalledWith('user-1', 'user-1');
+    expect(payload(res)).toEqual({ roadmaps });
+  });
+});
+
 describe('MCP roadmap visual results', () => {
   const summary = {
     roadmap_id: '11111111-1111-1111-1111-111111111111',

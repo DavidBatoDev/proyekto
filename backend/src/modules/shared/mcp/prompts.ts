@@ -50,7 +50,7 @@ export function registerPrompts(server: McpServer) {
     },
     ({ project_id }) =>
       userMessage(
-        `Review the health of Proyekto project ${project_id}. Use projects_get and roadmaps_list to find its roadmap, then tasks_list (status: "blocked" and status: "open") to surface overdue and blocked work, and project_knowledge_search for recent activity. Report a concise status: what's at risk, what's blocked, and what changed recently. Cite node and task ids.`,
+        `Review the health of Proyekto project ${project_id}. Use projects_get and roadmap_get_by_project to find its roadmap, then tasks_list (status: "blocked" and status: "open") to surface overdue and blocked work, and project_knowledge_search for recent activity. Report a concise status: what's at risk, what's blocked, and what changed recently. Cite node and task ids.`,
       ),
   );
 

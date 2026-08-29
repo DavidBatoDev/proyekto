@@ -46,24 +46,16 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List roadmaps',
       description:
-        'List roadmaps with a compact portfolio visual by default. With a project_id, returns that project’s roadmap; without one, returns the roadmaps you own. Set include_visual=false for JSON only.',
+        'List the roadmaps you own, with a compact portfolio visual by default. Set include_visual=false for JSON only.',
       inputSchema: {
-        project_id: z.string().uuid().optional(),
         include_visual: z.boolean().optional(),
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ project_id, include_visual }) =>
+    async ({ include_visual }) =>
       runTool(
         async () => {
           requireScope(deps.caller, 'roadmaps:read');
-          if (project_id) {
-            const roadmap: unknown = await deps.s.roadmaps.findByProjectId(
-              project_id,
-              uid,
-            );
-            return { roadmaps: roadmap ? [roadmap] : [] };
-          }
           const roadmaps = await deps.s.roadmaps.findByUser(uid, uid);
           return { roadmaps };
         },
@@ -72,6 +64,45 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
           'proyekto://roadmaps/visual/list.svg',
           include_visual,
         ),
+      ),
+  );
+
+  defineTool(
+    server,
+    'roadmap_get_by_project',
+    {
+      title: "Get project's roadmap",
+      description:
+        'Get the single roadmap linked to this project. Projects have at most one linked roadmap; returns roadmap: null if none exists yet. Set include_visual=false for JSON only.',
+      inputSchema: {
+        project_id: z.string().uuid(),
+        include_visual: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ project_id, include_visual }) =>
+      runTool(
+        async () => {
+          requireScope(deps.caller, 'roadmaps:read');
+          const roadmap: unknown = await deps.s.roadmaps.findByProjectId(
+            project_id,
+            uid,
+          );
+          return { roadmap: roadmap ?? null };
+        },
+        {
+          enabled: include_visual !== false,
+          create: (data) =>
+            createRoadmapVisual(
+              'list',
+              {
+                roadmaps: (data as { roadmap: unknown }).roadmap
+                  ? [(data as { roadmap: unknown }).roadmap]
+                  : [],
+              },
+              `proyekto://roadmaps/visual/by-project/${project_id}.svg`,
+            ),
+        },
       ),
   );
 
