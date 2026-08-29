@@ -14,7 +14,14 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
@@ -146,6 +153,44 @@ const formatFileSize = (bytes?: number) => {
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
+
+export function AutoSizingTaskTitle({
+	value,
+	onChange,
+	disabled,
+	autoFocus,
+}: {
+	value: string;
+	onChange: (value: string) => void;
+	disabled?: boolean;
+	autoFocus?: boolean;
+}) {
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+	useLayoutEffect(() => {
+		const textarea = textareaRef.current;
+		if (!textarea) return;
+
+		textarea.style.height = "auto";
+		textarea.style.height = `${textarea.scrollHeight}px`;
+	}, [value]);
+
+	return (
+		<textarea
+			ref={textareaRef}
+			rows={1}
+			placeholder="Task title..."
+			value={value}
+			onChange={(event) => onChange(event.target.value.replace(/\r?\n/g, " "))}
+			onKeyDown={(event) => {
+				if (event.key === "Enter") event.preventDefault();
+			}}
+			disabled={disabled}
+			className="block w-full resize-none overflow-hidden border-none bg-transparent px-0 text-xl font-semibold leading-7 text-gray-900 focus:outline-none focus:ring-0 disabled:opacity-50"
+			autoFocus={autoFocus}
+		/>
+	);
+}
 
 // Stable empty reference so the Zustand selector for the feature team never
 // returns a fresh array (which would spin the render loop).
@@ -1066,21 +1111,17 @@ export const SidePanel = ({
 
 			{/* Title Section */}
 			<div className="px-6 py-4 border-b border-gray-200 shrink-0">
-				<input
-					type="text"
-					placeholder="Task title..."
-					value={isCreateMode ? newTaskData.title : editedTask?.title || ""}
-					onChange={(e) => {
+				<AutoSizingTaskTitle
+					key={isCreateMode ? "create-task" : task?.id}
+					value={isCreateMode ? (newTaskData.title ?? "") : (editedTask?.title ?? "")}
+					onChange={(title) => {
 						if (isCreateMode) {
-							setNewTaskData({ ...newTaskData, title: e.target.value });
+							setNewTaskData({ ...newTaskData, title });
 						} else {
-							setEditedTask(
-								editedTask ? { ...editedTask, title: e.target.value } : null,
-							);
+							setEditedTask(editedTask ? { ...editedTask, title } : null);
 						}
 					}}
 					disabled={isInteractionDisabled}
-					className="w-full text-xl font-semibold text-gray-900 border-none focus:outline-none focus:ring-0 px-0 disabled:opacity-50"
 					autoFocus
 				/>
 			</div>

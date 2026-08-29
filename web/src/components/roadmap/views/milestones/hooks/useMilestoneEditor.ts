@@ -13,12 +13,14 @@ interface UseMilestoneEditorParams {
 		color?: string;
 	}) => Promise<void> | void;
 	onUpdateMilestone: (milestone: RoadmapMilestone) => Promise<void> | void;
+	onDeleteMilestone: (id: string) => Promise<void> | void;
 }
 
 export function useMilestoneEditor({
 	sortedMilestones,
 	onAddMilestone,
 	onUpdateMilestone,
+	onDeleteMilestone,
 }: UseMilestoneEditorParams) {
 	const [milestoneModalMode, setMilestoneModalMode] =
 		useState<MilestoneModalMode>(null);
@@ -26,6 +28,7 @@ export function useMilestoneEditor({
 		null,
 	);
 	const [isSavingMilestone, setIsSavingMilestone] = useState(false);
+	const [isDeletingMilestone, setIsDeletingMilestone] = useState(false);
 	const [draftTitle, setDraftTitle] = useState("");
 	const [draftDate, setDraftDate] = useState(
 		new Date().toISOString().slice(0, 10),
@@ -109,11 +112,23 @@ export function useMilestoneEditor({
 		await saveNewMilestone();
 	};
 
+	const deleteEditingMilestone = async () => {
+		if (milestoneModalMode !== "edit" || !editingMilestoneId) return;
+		setIsDeletingMilestone(true);
+		try {
+			await onDeleteMilestone(editingMilestoneId);
+			cancelMilestoneEditor();
+		} finally {
+			setIsDeletingMilestone(false);
+		}
+	};
+
 	return {
 		milestoneModalMode,
 		editingMilestoneId,
 		isMilestoneModalOpen: milestoneModalMode !== null,
 		isSavingMilestone,
+		isDeletingMilestone,
 		draftTitle,
 		draftDate,
 		draftStatus,
@@ -126,6 +141,7 @@ export function useMilestoneEditor({
 		startEditMilestone,
 		cancelMilestoneEditor,
 		submitMilestone,
+		deleteEditingMilestone,
 	};
 }
 

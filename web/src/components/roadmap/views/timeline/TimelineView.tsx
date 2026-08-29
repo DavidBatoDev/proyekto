@@ -161,7 +161,7 @@ export const TimelineView = ({
 	epics,
 	onAddMilestone,
 	onUpdateMilestone,
-	onDeleteMilestone: _onDeleteMilestone,
+	onDeleteMilestone,
 	onUpdateFeature,
 	onUpdateEpic,
 	onAddFeature,
@@ -334,6 +334,7 @@ export const TimelineView = ({
 		sortedMilestones,
 		onAddMilestone,
 		onUpdateMilestone,
+		onDeleteMilestone,
 	});
 
 	useEffect(() => {
@@ -1225,6 +1226,7 @@ export const TimelineView = ({
 				isOpen={milestoneEditor.isMilestoneModalOpen}
 				mode={milestoneEditor.milestoneModalMode}
 				isSaving={milestoneEditor.isSavingMilestone}
+				isDeleting={milestoneEditor.isDeletingMilestone}
 				draftTitle={milestoneEditor.draftTitle}
 				draftDate={milestoneEditor.draftDate}
 				draftStatus={milestoneEditor.draftStatus}
@@ -1235,6 +1237,7 @@ export const TimelineView = ({
 				onDraftColorChange={milestoneEditor.setDraftColor}
 				onCancel={milestoneEditor.cancelMilestoneEditor}
 				onSubmit={milestoneEditor.submitMilestone}
+				onDelete={milestoneEditor.deleteEditingMilestone}
 			/>
 		</div>
 	);

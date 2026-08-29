@@ -6,7 +6,6 @@ import {
 	Plus,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useToast } from "@/hooks/useToast";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type {
 	Roadmap,
@@ -117,7 +116,7 @@ export const MilestonesView = ({
 	epics,
 	onAddMilestone,
 	onUpdateMilestone,
-	onDeleteMilestone: _onDeleteMilestone,
+	onDeleteMilestone,
 	onUpdateFeature,
 	onUpdateEpic,
 	onAddFeature,
@@ -127,7 +126,6 @@ export const MilestonesView = ({
 	onAddEpic,
 	onLinkRoadmap,
 }: MilestonesViewProps) => {
-	const toast = useToast();
 	const reorderFeaturesInEpic = useRoadmapStore(
 		(state) => state.reorderFeaturesInEpic,
 	);
@@ -387,6 +385,7 @@ export const MilestonesView = ({
 		milestoneModalMode,
 		isMilestoneModalOpen,
 		isSavingMilestone,
+		isDeletingMilestone,
 		draftTitle,
 		draftDate,
 		draftStatus,
@@ -399,10 +398,12 @@ export const MilestonesView = ({
 		startEditMilestone,
 		cancelMilestoneEditor,
 		submitMilestone,
+		deleteEditingMilestone,
 	} = useMilestoneEditor({
 		sortedMilestones: effectiveSortedMilestones,
 		onAddMilestone,
 		onUpdateMilestone,
+		onDeleteMilestone,
 	});
 
 	useMilestonesPan({
@@ -826,7 +827,6 @@ export const MilestonesView = ({
 			setIsPersistingFeatureReorder(true);
 			try {
 				await reorderFeaturesInEpic(change.epicId, change.nextOrderIds);
-				toast.success(`Reordered "${change.featureTitle}"`);
 			} catch (error) {
 				console.error("Failed to reorder features in milestone view", error);
 				previewFeatureOrderInEpic(change.epicId, change.previousOrderIds);
@@ -834,7 +834,7 @@ export const MilestonesView = ({
 				setIsPersistingFeatureReorder(false);
 			}
 		},
-		[previewFeatureOrderInEpic, reorderFeaturesInEpic, toast],
+		[previewFeatureOrderInEpic, reorderFeaturesInEpic],
 	);
 
 	const handleFeatureReorderDraft = useCallback(
@@ -885,7 +885,6 @@ export const MilestonesView = ({
 			setIsPersistingEpicReorder(true);
 			try {
 				await reorderEpicsInRoadmap(change.nextOrderIds);
-				toast.success(`Reordered epic "${change.epicTitle}"`);
 			} catch (error) {
 				console.error("Failed to reorder epics in milestone view", error);
 				previewEpicOrderInRoadmap(change.previousOrderIds);
@@ -893,7 +892,7 @@ export const MilestonesView = ({
 				setIsPersistingEpicReorder(false);
 			}
 		},
-		[previewEpicOrderInRoadmap, reorderEpicsInRoadmap, toast],
+		[previewEpicOrderInRoadmap, reorderEpicsInRoadmap],
 	);
 
 	const handleEpicReorderDraft = useCallback(
@@ -1191,6 +1190,7 @@ export const MilestonesView = ({
 					isOpen={isMilestoneModalOpen}
 					mode={milestoneModalMode}
 					isSaving={isSavingMilestone}
+					isDeleting={isDeletingMilestone}
 					draftTitle={draftTitle}
 					draftDate={draftDate}
 					draftStatus={draftStatus}
@@ -1201,6 +1201,7 @@ export const MilestonesView = ({
 					onDraftColorChange={setDraftColor}
 					onCancel={cancelMilestoneEditor}
 					onSubmit={submitMilestone}
+					onDelete={deleteEditingMilestone}
 				/>
 
 				<FeatureDateChangeConfirmModal
