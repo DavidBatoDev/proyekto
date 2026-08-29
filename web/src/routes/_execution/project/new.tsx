@@ -16,6 +16,10 @@ import { GoLiveNav } from "@/components/marketplace/wizard/GoLiveNav";
 import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
+// The same vocabulary the brief uses, rather than the hand-copied twin that
+// lived here — the two screens describe the same thing to the same people.
+// `custom` is deliberately absent: `projects` has no column to keep the text in.
+import { DURATION_OPTIONS } from "@/lib/durations";
 import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
 import { listMyTeams } from "@/services/teams.service";
@@ -44,13 +48,6 @@ export const Route = createFileRoute("/_execution/project/new")({
 });
 
 type ProjectCreationIntent = "client" | "consultant";
-
-const DURATION_OPTIONS = [
-	{ value: "<1_month", label: "Less than 1 month" },
-	{ value: "1-3_months", label: "1–3 months" },
-	{ value: "3-6_months", label: "3–6 months" },
-	{ value: "6+_months", label: "6+ months" },
-] as const;
 
 const TOTAL_STEPS = 3;
 

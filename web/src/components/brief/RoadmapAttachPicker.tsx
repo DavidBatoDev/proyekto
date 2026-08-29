@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, Map as MapIcon, X } from "lucide-react";
 import { useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
-import type { PostingRoadmapSummary } from "@/services/postings.service";
+import type { BriefRoadmapChip } from "@/lib/briefDraft";
 import { roadmapService } from "@/services/roadmap.service";
 
 /**
@@ -14,32 +14,38 @@ import { roadmapService } from "@/services/roadmap.service";
  * `project_access` and `roadmap_shares`, which is the one thing this feature
  * must not do.
  *
- * The logic here is `LinkRoadmapModal`'s — its markup is not reused because that
- * file is hardcoded light-mode (`bg-white`, `text-gray-*`, literal hex) and
+ * The logic here is the link-roadmap modal's — its markup is not reused because
+ * that file is hardcoded light-mode (`bg-white`, `text-gray-*`, literal hex) and
  * would break in the dark theme.
+ *
+ * The chip is driven by the picked roadmap itself rather than by the saved row,
+ * so it works on a brief that has not been created yet. The node counts only
+ * exist once the server has seen the brief; before that the name stands alone.
  */
 export function RoadmapAttachPicker({
-	roadmapId,
 	roadmap,
 	onChange,
 	disabled,
 }: {
-	roadmapId: string | null;
-	roadmap: PostingRoadmapSummary | null;
-	onChange: (roadmapId: string | null) => void;
+	roadmap: BriefRoadmapChip | null;
+	onChange: (roadmap: BriefRoadmapChip | null) => void;
 	disabled?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
+	const hasCounts =
+		typeof roadmap?.epic_count === "number" &&
+		typeof roadmap.feature_count === "number" &&
+		typeof roadmap.task_count === "number";
 
-	if (roadmapId) {
+	if (roadmap) {
 		return (
 			<div className="flex items-start gap-2.5 rounded-lg border border-border px-3 py-2.5">
 				<MapIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
 				<div className="min-w-0 flex-1">
 					<p className="truncate text-[13px] font-medium text-foreground">
-						{roadmap?.name ?? "Attached roadmap"}
+						{roadmap.name}
 					</p>
-					{roadmap && (
+					{hasCounts && (
 						<p className="mt-0.5 text-[11.5px] text-muted-foreground">
 							{roadmap.epic_count} epics · {roadmap.feature_count} features ·{" "}
 							{roadmap.task_count} tasks
@@ -77,8 +83,8 @@ export function RoadmapAttachPicker({
 			{open && (
 				<RoadmapPickerDialog
 					onClose={() => setOpen(false)}
-					onPick={(id) => {
-						onChange(id);
+					onPick={(picked) => {
+						onChange(picked);
 						setOpen(false);
 					}}
 				/>
@@ -92,7 +98,7 @@ function RoadmapPickerDialog({
 	onPick,
 }: {
 	onClose: () => void;
-	onPick: (roadmapId: string) => void;
+	onPick: (roadmap: BriefRoadmapChip) => void;
 }) {
 	const [selected, setSelected] = useState<string | null>(null);
 	const roadmapsQuery = useQuery({
@@ -122,7 +128,10 @@ function RoadmapPickerDialog({
 					<button
 						type="button"
 						disabled={!selected}
-						onClick={() => selected && onPick(selected)}
+						onClick={() => {
+							const picked = roadmaps.find((entry) => entry.id === selected);
+							if (picked) onPick({ id: picked.id, name: picked.name });
+						}}
 						className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
 					>
 						Attach

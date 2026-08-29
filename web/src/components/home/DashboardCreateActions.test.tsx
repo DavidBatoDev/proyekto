@@ -38,9 +38,7 @@ describe("DashboardCreateActions", () => {
 		const projectLink = screen.getByRole("link", { name: /create project/i });
 		const roadmapLink = screen.getByRole("link", { name: /create roadmap/i });
 
-		expect(projectLink.getAttribute("href")).toBe(
-			"/project/new",
-		);
+		expect(projectLink.getAttribute("href")).toBe("/project/new");
 		expect(projectLink.getAttribute("data-hierarchy-level")).toBe("project");
 		expect(roadmapLink.getAttribute("href")).toBe("/roadmap-templates");
 		expect(roadmapLink.getAttribute("data-hierarchy-level")).toBe("roadmap");
@@ -53,5 +51,8 @@ describe("DashboardCreateActions", () => {
 			"A roadmap can be integrated to a project",
 		);
 		expect(notice.getAttribute("aria-describedby")).toBe(tooltip.id);
+		expect(
+			screen.queryByRole("link", { name: /post a project brief/i }),
+		).toBeNull();
 	});
 });

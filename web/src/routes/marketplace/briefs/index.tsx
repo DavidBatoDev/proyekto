@@ -3,7 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Clock, DollarSign, Loader2 } from "lucide-react";
 import { useMarketplaceCategoryNavigationQuery } from "@/hooks/useMarketplaceTaxonomy";
 import { isActiveConsultant } from "@/lib/auth-utils";
-import { BRIEF_DURATIONS, ENGAGEMENT_TYPES } from "@/lib/briefSections";
+import { ENGAGEMENT_TYPES } from "@/lib/briefSections";
+import { DURATION_OPTIONS, describeDuration } from "@/lib/durations";
 import {
 	type PostingBoardEntry,
 	type PostingEngagementType,
@@ -127,7 +128,7 @@ function BriefBoardPage() {
 					className="rounded-lg border border-input bg-background px-3 py-2 text-[13px] text-foreground outline-none focus:border-primary"
 				>
 					<option value="">Any timeline</option>
-					{BRIEF_DURATIONS.map((option) => (
+					{DURATION_OPTIONS.map((option) => (
 						<option key={option.value} value={option.value}>
 							{option.label}
 						</option>
@@ -186,9 +187,7 @@ function BriefRow({ brief }: { brief: PostingBoardEntry }) {
 				: brief.budget_max !== null
 					? `Up to ${brief.budget_max.toLocaleString()} ${brief.currency}`
 					: null;
-	const duration = BRIEF_DURATIONS.find(
-		(option) => option.value === brief.duration,
-	)?.label;
+	const duration = describeDuration(brief.duration, brief.duration_custom);
 
 	return (
 		<Link

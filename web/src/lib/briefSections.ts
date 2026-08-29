@@ -15,6 +15,9 @@
  * can show "2 missing fields" without a round trip. Change one, change both.
  */
 
+import { CUSTOM_DURATION } from "@/lib/durations";
+import { isRichTextEmpty } from "@/lib/richText";
+
 export interface BriefSection {
 	key: string;
 	value: string;
@@ -81,34 +84,22 @@ export const ENGAGEMENT_TYPES = [
 	},
 ];
 
-export const BRIEF_DURATIONS = [
-	{ value: "<1_month", label: "Less than 1 month" },
-	{ value: "1-3_months", label: "1–3 months" },
-	{ value: "3-6_months", label: "3–6 months" },
-	{ value: "6+_months", label: "6+ months" },
-];
-
 export interface PublishReadiness {
 	summary?: string | null;
 	budget_min?: number | null;
 	budget_max?: number | null;
 	duration?: string | null;
+	duration_custom?: string | null;
 	category_id?: string | null;
 }
 
 /**
- * Strips tags before measuring, because the editor emits `<p></p>` for a
- * paragraph the author cleared and that is a non-empty string.
+ * Re-exported, not redefined: brief sections and service sections ask the same
+ * question ("did the author actually write anything?"), and two copies would
+ * eventually disagree about `<p><br></p>`. It lives in lib/richText with the
+ * rest of the editor's rules; the brief surfaces still import it from here.
  */
-export function isRichTextEmpty(value: string | null | undefined): boolean {
-	if (!value) return true;
-	return (
-		value
-			.replace(/<[^>]*>/g, "")
-			.replace(/&nbsp;/g, " ")
-			.trim() === ""
-	);
-}
+export { isRichTextEmpty };
 
 /** The labels shown in "N missing fields", in the order the editor lists them. */
 export function missingPublishFields(brief: PublishReadiness): string[] {
@@ -120,7 +111,14 @@ export function missingPublishFields(brief: PublishReadiness): string[] {
 	) {
 		missing.push("Budget");
 	}
-	if (!brief.duration) missing.push("Timeline");
+	// "Something else" with nothing typed beside it says less than leaving the
+	// field alone, so it does not count as answered. Mirrors the server.
+	if (
+		!brief.duration ||
+		(brief.duration === CUSTOM_DURATION && !brief.duration_custom?.trim())
+	) {
+		missing.push("Timeline");
+	}
 	if (!brief.category_id) missing.push("Category");
 	return missing;
 }

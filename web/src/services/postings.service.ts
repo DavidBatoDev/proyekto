@@ -58,6 +58,7 @@ export interface ProjectPosting {
 	budget_max: number | null;
 	currency: string;
 	duration: string | null;
+	duration_custom: string | null;
 	roadmap_id: string | null;
 	status: PostingStatus;
 	published_at: string | null;
@@ -111,6 +112,7 @@ export interface SavePostingPayload {
 	budget_max?: number | null;
 	currency?: string;
 	duration?: string | null;
+	duration_custom?: string | null;
 	roadmap_id?: string | null;
 }
 

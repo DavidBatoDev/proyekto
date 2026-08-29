@@ -44,6 +44,25 @@ describe("missingPublishFields", () => {
 		});
 		expect(ready).toEqual([]);
 	});
+
+	it("accepts a timeline the author wrote themselves", () => {
+		expect(
+			missingPublishFields({
+				summary: "<p>Build a marketplace</p>",
+				budget_min: 5000,
+				duration: "custom",
+				duration_custom: "about ten weeks",
+				category_id: "cat-1",
+			}),
+		).toEqual([]);
+	});
+
+	it('does not count "Something else" with an empty box as a timeline', () => {
+		expect(missingPublishFields({ duration: "custom" })).toContain("Timeline");
+		expect(
+			missingPublishFields({ duration: "custom", duration_custom: "  " }),
+		).toContain("Timeline");
+	});
 });
 
 describe("isRichTextEmpty", () => {

@@ -12,7 +12,8 @@ import { useState } from "react";
 import { BackLink } from "@/components/common/BackLink";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
-import { BRIEF_DURATIONS, ENGAGEMENT_TYPES } from "@/lib/briefSections";
+import { ENGAGEMENT_TYPES } from "@/lib/briefSections";
+import { describeDuration } from "@/lib/durations";
 import {
 	type PostingProposalWithConsultant,
 	type ProjectPostingDetail,
@@ -209,9 +210,7 @@ function MetaStrip({ brief }: { brief: ProjectPostingDetail }) {
 				: brief.budget_max !== null
 					? `Up to ${brief.budget_max.toLocaleString()} ${brief.currency}`
 					: null;
-	const duration = BRIEF_DURATIONS.find(
-		(option) => option.value === brief.duration,
-	)?.label;
+	const duration = describeDuration(brief.duration, brief.duration_custom);
 	const engagement = ENGAGEMENT_TYPES.find(
 		(option) => option.value === brief.engagement_type,
 	)?.label;
