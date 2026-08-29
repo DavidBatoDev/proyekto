@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Clock } from "lucide-react";
 import type { ConsultantPublicService } from "@/queries/consultants";
 
@@ -39,7 +40,13 @@ export function ConsultantServices({
 
 function ServiceCard({ service }: { service: ConsultantPublicService }) {
 	return (
-		<article className="flex flex-col overflow-hidden rounded-xl border border-border transition-colors hover:border-foreground/30">
+		// The card now opens the service's own page — packages, gallery and
+		// the contact CTA live there rather than on the profile grid.
+		<Link
+			to="/marketplace/services/$serviceId"
+			params={{ serviceId: service.id }}
+			className="flex flex-col overflow-hidden rounded-xl border border-border transition-colors hover:border-foreground/30"
+		>
 			{/* Only when there is one. An empty band reserved for a cover the
 			    consultant never uploaded is a third of the card doing nothing,
 			    and a stock placeholder would imply they chose it. */}
@@ -83,7 +90,7 @@ function ServiceCard({ service }: { service: ConsultantPublicService }) {
 					</p>
 				</div>
 			</div>
-		</article>
+		</Link>
 	);
 }
 

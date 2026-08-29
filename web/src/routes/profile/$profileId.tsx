@@ -27,6 +27,7 @@ import {
 	User,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ProfileServicesSection } from "@/components/marketplace/services/ProfileServicesSection";
 import { AboutModal } from "@/components/profile/AboutModal";
 import { CertificationModal } from "@/components/profile/CertificationModal";
 import { EducationModal } from "@/components/profile/EducationModal";
@@ -1347,6 +1348,9 @@ function ProfilePage() {
 									/>
 								)}
 							</Card>
+
+							{/* Services — productised offerings with tiered pricing */}
+							<ProfileServicesSection userId={profileId} isOwner={isOwner} />
 
 							{/* Work Experience — roadmap/timeline style */}
 							<Card className="p-6">

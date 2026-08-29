@@ -55,6 +55,16 @@ export function readChatDraftText(conversationKey: string): string {
 }
 
 /**
+ * Seed a conversation's draft from outside the composer — the service page's
+ * "Contact" CTA prefills an inquiry this way. Write-through with the change
+ * event, so sidebar previews show the "Draft:" line immediately. Callers
+ * check `readChatDraftText` first when they must not clobber typed text.
+ */
+export function seedChatDraftText(conversationKey: string, text: string): void {
+	writeDraft(conversationKey, { text, mentions: [] });
+}
+
+/**
  * Bumps whenever any chat draft changes (this tab or another), so a component
  * that renders draft previews via `readChatDraftText` re-reads. Cheap: a few
  * sidebar rows re-reading localStorage on keystroke.
