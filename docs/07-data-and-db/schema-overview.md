@@ -1,6 +1,6 @@
 # Schema Overview
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-26 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
 [`supabase/migrations/`](../../supabase/migrations/) — **255 migrations** spanning
@@ -47,7 +47,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 
 | Table | Purpose |
 | --- | --- |
-| `roadmaps` | One per project — `project_id` is `UNIQUE` (nullable since `20260210000001` for guest roadmaps) (`roadmap_status`) |
+| `roadmaps` | One per project — `project_id` is nullable (since `20260210000001`, for guest/draft roadmaps with no project yet) and unique only when set, via the partial unique index `uq_roadmaps_project_id_linked` (`roadmap_status`) |
 | `roadmap_milestones`, `roadmap_epics`, `roadmap_features`, `roadmap_tasks` | The graph (feature status is **derived in app code**, not a column) |
 | `milestone_features` | M:N milestones ↔ features (delivery tracking) |
 | `roadmap_task_assignees`, `roadmap_feature_assignees` | Multi-assignee joins |
@@ -157,7 +157,7 @@ profiles.id ─1:0..1─► talent_profiles.user_id
 consultant_profiles.user_id ◄── contracts.consultant_user_id  (durable party seat, RESTRICT)
 profiles.id ◄─ projects.owner_id
 projects.id ◄─ project_access.project_id ─► profiles.id     (authorization)
-projects.id ─1:1─► roadmaps.project_id
+projects.id ─1:1─► roadmaps.project_id (enforced via a partial unique index, not a plain UNIQUE column)
 roadmaps.id ◄─ roadmap_epics ◄─ roadmap_features ◄─ roadmap_tasks
 roadmap_milestones ◄─ milestone_features ─► roadmap_features   (M:N)
 roadmap_tasks ◄─ task_time_logs ─► payouts (payout_id)       (severable task/project/member FKs)
