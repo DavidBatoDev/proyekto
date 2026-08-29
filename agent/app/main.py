@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.briefs import router as briefs_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.sessions_support.runtime import configure_runtime_resolver
 from app.core.config import get_settings
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(sessions_router)
+app.include_router(briefs_router)
 
 
 def _resolve_agent_runtime() -> tuple[SessionStore, AgentService]:

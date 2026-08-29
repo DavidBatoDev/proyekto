@@ -35,6 +35,22 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
 
+    # ------------------------------------------------------------------
+    # Project-brief generator (app/core/briefs) — a single stateless call,
+    # not the v2 loop. Reached only from the NestJS backend, which is what
+    # authenticates the human; agent_internal_token is the shared secret that
+    # keeps it from being an open OpenAI proxy, and is required outside
+    # development -- unset there fails the endpoint closed.
+    # ------------------------------------------------------------------
+    agent_internal_token: str | None = Field(default=None, alias='AGENT_INTERNAL_TOKEN')
+    # Falls back to openai_model_v2 when unset, so there is one model knob to
+    # turn until the two genuinely need to diverge.
+    agent_brief_model: str | None = Field(default=None, alias='AGENT_BRIEF_MODEL')
+    agent_brief_max_output_tokens: int = Field(
+        default=3000,
+        alias='AGENT_BRIEF_MAX_OUTPUT_TOKENS',
+    )
+
     # 4h working-session window. Expiry is benign: the durable agent-state
     # snapshot (roadmap_ai_sessions.metadata.agent_state) restores pending
     # plans / undo history / recents on rehydration.
