@@ -62,12 +62,12 @@ const MCP_ENDPOINT = `${API_BASE_URL.replace(/\/$/, "")}/mcp`;
  * baked into the clip; bump the `?v=` whenever the MP4 is re-rendered.
  */
 const MCP_CLIP = {
-	src: "/mcp-access.mp4?v=1",
-	poster: "/mcp-access-poster.webp?v=1",
+	src: "/mcp-access.mp4?v=3",
+	poster: "/mcp-access-poster.webp?v=3",
 	steps: [
 		"Point your MCP host at Proyekto",
 		"Grant only the access you approve",
-		"It works with your real project data",
+		"Ask it, and it answers from your project",
 		"Checked every call — revoke anytime",
 	],
 } as const;
@@ -477,31 +477,39 @@ function McpTokensPage() {
 	return (
 		<>
 			<div className="app-fade-in">
-				{/* Header */}
-				<div className="mb-8 flex items-start gap-4">
-					<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
-						<KeyRound className="h-6 w-6" />
+				{/* Header. The clip explains the same four ideas the prose does, so
+				    they sit side by side rather than stacked - two full-width blocks
+				    saying one thing cost most of the first screen. */}
+				<div className="mb-8 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+					<div className="flex items-start gap-4">
+						<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
+							<KeyRound className="h-6 w-6" />
+						</div>
+						<div>
+							<h1 className="text-3xl font-semibold tracking-tight text-foreground">
+								MCP Access
+							</h1>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Let MCP hosts work with your Proyekto data on your behalf. Apps
+								like Claude connect through a sign-in prompt; command-line hosts
+								such as Claude Code and Codex use a Personal Access Token.
+								Either way, access is scoped to exactly what you approve,
+								re-checked against your permissions on every call, and revocable
+								at any time.
+							</p>
+						</div>
 					</div>
-					<div>
-						<h1 className="text-3xl font-semibold tracking-tight text-foreground">
-							MCP Access
-						</h1>
-						<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-							Let MCP hosts work with your Proyekto data on your behalf. Apps
-							like Claude connect through a sign-in prompt; command-line hosts
-							such as Claude Code and Codex use a Personal Access Token. Either
-							way, access is scoped to exactly what you approve, re-checked
-							against your permissions on every call, and revocable at any time.
-						</p>
-					</div>
-				</div>
 
-				<ExplainerVideo
-					src={MCP_CLIP.src}
-					poster={MCP_CLIP.poster}
-					steps={MCP_CLIP.steps}
-					className="mb-8"
-				/>
+					{/* The beats stay in `steps` for screen readers, but the visible
+					    line is off: the prose beside it already says the same thing. */}
+					<ExplainerVideo
+						src={MCP_CLIP.src}
+						poster={MCP_CLIP.poster}
+						steps={MCP_CLIP.steps}
+						stepsVisible={false}
+						className="w-full max-w-[300px] lg:justify-self-end"
+					/>
+				</div>
 
 				{/* Connect helper */}
 				<section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">

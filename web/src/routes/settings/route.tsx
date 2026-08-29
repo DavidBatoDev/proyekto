@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { DashboardShell } from "@/components/layout/DashboardShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AccountSettingsLayout } from "@/components/settings/AccountSettingsLayout";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -12,8 +12,8 @@ import { useAuthStore } from "@/stores/authStore";
  * jump into a mode switch the moment the two chromes diverge.
  *
  * Owning the layout here is also what lets each page render bare content: the
- * three settings routes used to import DashboardShell individually, which is
- * how a page ends up with the sidebar but no auth guard, or the reverse.
+ * three settings routes used to own their chrome individually, which is how a
+ * page ends up with inconsistent navigation or no auth guard.
  *
  * It also owns the settings nav (AccountSettingsLayout), so every section -
  * including one reached by a deep link from email - lands with the rail around
@@ -30,10 +30,14 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsLayout() {
 	return (
-		<DashboardShell>
-			<AccountSettingsLayout>
-				<Outlet />
-			</AccountSettingsLayout>
-		</DashboardShell>
+		<ProtectedRoute loadingFallback={null}>
+			<div className="app-shell-bg flex min-h-screen bg-background pt-app-header text-foreground">
+				<div className="min-w-0 flex-1">
+					<AccountSettingsLayout>
+						<Outlet />
+					</AccountSettingsLayout>
+				</div>
+			</div>
+		</ProtectedRoute>
 	);
 }
