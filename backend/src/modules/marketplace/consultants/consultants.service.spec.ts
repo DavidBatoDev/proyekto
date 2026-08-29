@@ -26,7 +26,7 @@ function awaitedRowsFor(
   switch (table) {
     case 'consultant_subcategories':
       return options.membershipRows ?? [];
-    case 'consultant_services':
+    case 'service_offerings':
       return options.services ?? [];
     case 'user_skills':
       return options.skills ?? [];
@@ -461,9 +461,9 @@ function createProfileDb(options: {
       ),
     };
 
-    // `consultant_services` and `user_skills` have no terminal call — the
+    // `service_offerings` and `user_skills` have no terminal call — the
     // builder itself is awaited — so they resolve through `then`.
-    if (table === 'consultant_services') {
+    if (table === 'service_offerings') {
       builder.order = jest.fn(() =>
         Promise.resolve({ data: options.serviceRows ?? [], error: null }),
       );
@@ -610,8 +610,8 @@ describe('ConsultantsService.findOne fan-out', () => {
       services: Array<{ starting_price: number | null }>;
     };
 
-    expect(filters['consultant_services']).toContain('status=published');
-    expect(selects['consultant_services']).not.toContain('*');
+    expect(filters['service_offerings']).toContain('status=published');
+    expect(selects['service_offerings']).not.toContain('*');
     // numeric(12,2) arrives as a string; the API must not hand that to the browser.
     expect(result.services[0].starting_price).toBe(50);
   });

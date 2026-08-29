@@ -20,7 +20,8 @@ import { PayoutsModule } from './modules/marketplace/payouts/payouts.module';
 import { AdminModule } from './modules/shared/admin/admin.module';
 import { ConsultantsModule } from './modules/marketplace/consultants/consultants.module';
 import { TaxonomyModule } from './modules/marketplace/taxonomy/taxonomy.module';
-import { ConsultantServicesModule } from './modules/marketplace/consultant-services/consultant-services.module';
+import { TalentModule } from './modules/marketplace/talent/talent.module';
+import { ServiceOfferingsModule } from './modules/marketplace/service-offerings/service-offerings.module';
 import { SurveyModule } from './modules/marketplace/survey/survey.module';
 import { ApplicationsModule } from './modules/marketplace/applications/applications.module';
 import { UploadsModule } from './modules/shared/uploads/uploads.module';
@@ -83,7 +84,8 @@ import { AppController } from './app.controller';
     AdminModule,
     ConsultantsModule,
     TaxonomyModule,
-    ConsultantServicesModule,
+    TalentModule,
+    ServiceOfferingsModule,
     SurveyModule,
     ApplicationsModule,
     UploadsModule,

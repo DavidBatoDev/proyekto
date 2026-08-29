@@ -13,6 +13,13 @@ import {
   attachMarketplaceEnrollmentFields,
   type MarketplaceEnrollmentFields,
 } from '../../../common/auth/consultant-capability';
+import {
+  PUBLIC_EXPERIENCE_COLUMNS,
+  PUBLIC_LANGUAGE_SELECT,
+  PUBLIC_PORTFOLIO_COLUMNS,
+  PUBLIC_RATE_COLUMNS,
+  PUBLIC_SKILL_SELECT,
+} from '../shared/public-profile.selects';
 import { TaxonomyService } from '../taxonomy/taxonomy.service';
 import type { ConsultantPlacement } from '../taxonomy/taxonomy.types';
 import { ConsultantDirectoryQueryDto } from './dto/consultants.dto';
@@ -49,32 +56,14 @@ export type ConsultantExpertise = ConsultantPlacement;
  * These clients run as SUPABASE_ADMIN and bypass RLS, so the `.eq()` filters in
  * each method below ARE the security boundary — they deliberately restate the
  * table policies rather than trusting them.
+ *
+ * Skills, rates, languages, experiences and portfolios render on the public
+ * talent profile too, so their allowlists live in
+ * `../shared/public-profile.selects` and are imported above — one definition
+ * for both seller surfaces.
  */
 const CONSULTANT_SERVICE_PUBLIC_COLUMNS =
   'id, title, description, cover_url, starting_price, currency, price_unit, delivery_days, position';
-
-const CONSULTANT_SKILL_PUBLIC_SELECT =
-  'proficiency_level, years_experience, skill:skills!inner(name, slug, category)';
-
-/**
- * `min_project_budget` and `weekly_hours` are deliberately absent. They are
- * negotiating positions, they appear on no public surface today, and
- * publishing them is a product decision rather than a plumbing one.
- */
-const CONSULTANT_RATE_PUBLIC_COLUMNS = 'hourly_rate, currency, availability';
-
-const CONSULTANT_LANGUAGE_PUBLIC_SELECT =
-  'fluency_level, language:languages!inner(code, name)';
-
-/**
- * Work history. `is_current` and the two dates are what let the profile print
- * "Feb 2019 - Present" and a duration without the browser guessing.
- */
-const CONSULTANT_EXPERIENCE_PUBLIC_COLUMNS =
-  'id, company, title, location, is_remote, description, start_date, end_date, is_current';
-
-const CONSULTANT_PORTFOLIO_PUBLIC_COLUMNS =
-  'id, title, description, url, image_url, tags, position';
 
 const CONSULTANT_TEMPLATE_PUBLIC_COLUMNS =
   'id, slug, title, summary, preview_url, difficulty, estimated_duration_days, rating_average, rating_count, use_count, published_at';
@@ -463,7 +452,7 @@ export class ConsultantsService {
   ): Promise<{ min: number; max: number } | null> {
     if (userIds.length === 0) return null;
     const { data, error } = await this.supabase
-      .from('consultant_services')
+      .from('service_offerings')
       .select('starting_price')
       .in('user_id', userIds)
       .eq('status', 'published')
@@ -651,7 +640,7 @@ export class ConsultantsService {
     query: ConsultantDirectoryQueryDto,
   ): Promise<string[]> {
     let builder = this.supabase
-      .from('consultant_services')
+      .from('service_offerings')
       .select('user_id')
       .eq('status', 'published');
 
@@ -683,7 +672,7 @@ export class ConsultantsService {
     if (userIds.length === 0) return result;
 
     const { data, error } = await this.supabase
-      .from('consultant_services')
+      .from('service_offerings')
       .select(
         'id, user_id, title, cover_url, starting_price, currency, price_unit, delivery_days, position',
       )
@@ -938,7 +927,7 @@ export class ConsultantsService {
    */
   private async findServices(id: string): Promise<ConsultantPublicService[]> {
     const { data, error } = await this.supabase
-      .from('consultant_services')
+      .from('service_offerings')
       .select(CONSULTANT_SERVICE_PUBLIC_COLUMNS)
       .eq('user_id', id)
       .eq('status', 'published')
@@ -969,7 +958,7 @@ export class ConsultantsService {
   private async findSkills(id: string): Promise<ConsultantPublicSkill[]> {
     const { data, error } = await this.supabase
       .from('user_skills')
-      .select(CONSULTANT_SKILL_PUBLIC_SELECT)
+      .select(PUBLIC_SKILL_SELECT)
       .eq('user_id', id);
     if (error) throw error;
 
@@ -997,7 +986,7 @@ export class ConsultantsService {
   private async findRates(id: string): Promise<ConsultantPublicRates | null> {
     const { data, error } = await this.supabase
       .from('user_rate_settings')
-      .select(CONSULTANT_RATE_PUBLIC_COLUMNS)
+      .select(PUBLIC_RATE_COLUMNS)
       .eq('user_id', id)
       .maybeSingle();
     if (error) throw error;
@@ -1032,7 +1021,7 @@ export class ConsultantsService {
   private async findLanguages(id: string) {
     const { data, error } = await this.supabase
       .from('user_languages')
-      .select(CONSULTANT_LANGUAGE_PUBLIC_SELECT)
+      .select(PUBLIC_LANGUAGE_SELECT)
       .eq('user_id', id);
     if (error) throw error;
 
@@ -1062,7 +1051,7 @@ export class ConsultantsService {
   private async findExperiences(id: string) {
     const { data, error } = await this.supabase
       .from('user_experiences')
-      .select(CONSULTANT_EXPERIENCE_PUBLIC_COLUMNS)
+      .select(PUBLIC_EXPERIENCE_COLUMNS)
       .eq('user_id', id)
       .order('is_current', { ascending: false })
       .order('start_date', { ascending: false });
@@ -1073,7 +1062,7 @@ export class ConsultantsService {
   private async findPortfolios(id: string) {
     const { data, error } = await this.supabase
       .from('user_portfolios')
-      .select(CONSULTANT_PORTFOLIO_PUBLIC_COLUMNS)
+      .select(PUBLIC_PORTFOLIO_COLUMNS)
       .eq('user_id', id)
       .order('position', { ascending: true })
       .limit(8);

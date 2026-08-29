@@ -79,3 +79,29 @@ export async function isActiveConsultantEnrollment(
 
   return !error && (count ?? 0) > 0;
 }
+
+/** Mirror of the consultant check for the talent side of the marketplace. */
+export async function isActiveTalentEnrollment(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('talent_profiles')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('status', 'active');
+
+  return !error && (count ?? 0) > 0;
+}
+
+/** A seller is anyone allowed to list service offerings: either enrollment. */
+export async function isActiveSellerEnrollment(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const [consultant, talent] = await Promise.all([
+    isActiveConsultantEnrollment(supabase, userId),
+    isActiveTalentEnrollment(supabase, userId),
+  ]);
+  return consultant || talent;
+}
