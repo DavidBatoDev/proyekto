@@ -10,6 +10,9 @@
  * 2. The beats are carried as visible text. The video is decorative to
  *    assistive tech (`aria-hidden`) and its own captions are baked pixels, so
  *    without `steps` that content reaches nobody using a screen reader.
+ *    `stepsVisible={false}` drops them from the layout but keeps them in the
+ *    accessibility tree, which is the only version of that trade worth having -
+ *    deleting `steps` outright would leave the panel with no text at all.
  *
  * The clips are authored in `remotion/` (see `remotion/src/stories/`) and
  * rendered into `web/public/`. To refresh one, edit the composition, re-run the
@@ -29,6 +32,8 @@ export function ExplainerVideo({
 	steps,
 	className,
 	frameClassName,
+	dimensions = { w: 1920, h: 1080 },
+	stepsVisible = true,
 }: {
 	/** Root-relative path, including the `?v=` cache-bust. */
 	src: string;
@@ -37,20 +42,25 @@ export function ExplainerVideo({
 	steps: readonly string[];
 	/** Wrapper sizing — the caller owns width and spacing. */
 	className?: string;
-	/** Extra classes on the 16:9 frame itself. */
+	/** Border classes on the frame. Defaults to the neutral page border. */
 	frameClassName?: string;
+	/** The clip's native size. Sets the frame aspect, so a 4:3 clip is not cropped. */
+	dimensions?: { w: number; h: number };
+	/** False hides the beats visually; they stay available to screen readers. */
+	stepsVisible?: boolean;
 }) {
 	return (
 		<figure className={className}>
 			<div
-				className={`relative aspect-video w-full overflow-hidden rounded-2xl border border-border ${frameClassName ?? ""}`}
+				className={`relative w-full overflow-hidden rounded-2xl border ${frameClassName ?? "border-border"}`}
+				style={{ aspectRatio: `${dimensions.w} / ${dimensions.h}` }}
 			>
 				<img
 					src={poster}
 					alt=""
 					aria-hidden="true"
-					width={1920}
-					height={1080}
+					width={dimensions.w}
+					height={dimensions.h}
 					loading="lazy"
 					decoding="async"
 					className="absolute inset-0 h-full w-full object-cover"
@@ -64,14 +74,20 @@ export function ExplainerVideo({
 					preload="metadata"
 					poster={poster}
 					aria-hidden="true"
-					width={1920}
-					height={1080}
+					width={dimensions.w}
+					height={dimensions.h}
 				>
 					<source src={src} type="video/mp4" />
 				</video>
 			</div>
 
-			<figcaption className="mt-4 text-[13px] leading-relaxed text-muted-foreground">
+			<figcaption
+				className={
+					stepsVisible
+						? "mt-4 text-[13px] leading-relaxed text-muted-foreground"
+						: "sr-only"
+				}
+			>
 				{steps.map((step, index) => (
 					<span key={step}>
 						{index > 0 ? (

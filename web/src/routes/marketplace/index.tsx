@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FeaturedSolutions } from "@/components/marketplace/home/FeaturedSolutions";
 import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
 import { MarketplaceHero } from "@/components/marketplace/home/MarketplaceHero";
 import { PickUpWhereYouLeftOff } from "@/components/marketplace/home/PickUpWhereYouLeftOff";
+import { SellerHub } from "@/components/marketplace/home/SellerHub";
 import { WhyProyekto } from "@/components/marketplace/home/WhyProyekto";
 import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
 
@@ -29,7 +29,7 @@ function MarketplaceHome() {
 			<MarketplaceCategoryBar />
 			<MarketplaceHero />
 			<PickUpWhereYouLeftOff />
-			<FeaturedSolutions />
+			<SellerHub />
 			<WhyProyekto />
 			<MarketplaceFooter />
 		</div>
