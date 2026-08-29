@@ -252,11 +252,7 @@ export const TaskListItem = memo(
 			[task],
 		);
 
-		const persistAssignees = (
-			ids: string[],
-			profiles: AssigneeProfile[],
-			toastMessage: string | null,
-		) => {
+		const persistAssignees = (ids: string[], profiles: AssigneeProfile[]) => {
 			const latestEpics = useRoadmapStore.getState().epics;
 			const currentTask = latestEpics
 				.flatMap((epic) => epic.features ?? [])
@@ -277,9 +273,6 @@ export const TaskListItem = memo(
 			void useRoadmapStore
 				.getState()
 				.updateTask(nextTask)
-				.then(() => {
-					if (toastMessage) toast.success(toastMessage);
-				})
 				.catch(() => {
 					toast.error("Failed to update task assignees");
 				});
@@ -288,15 +281,12 @@ export const TaskListItem = memo(
 		const toggleAssignment = (member: ProjectMember) => {
 			const id = member.user_id ?? member.user?.id;
 			if (!id) return;
-			const name =
-				member.user?.display_name?.trim() || member.user?.email || "member";
 			const isSelected = currentAssigneeIds.includes(id);
 
 			if (isSelected) {
 				persistAssignees(
 					currentAssigneeIds.filter((x) => x !== id),
 					currentAssigneeProfiles.filter((p) => p.id !== id),
-					`Removed ${name} from "${task.title}"`,
 				);
 				return;
 			}
@@ -317,7 +307,6 @@ export const TaskListItem = memo(
 				profile
 					? [...currentAssigneeProfiles, profile]
 					: currentAssigneeProfiles,
-				`Assigned ${name} to "${task.title}"`,
 			);
 		};
 
@@ -326,7 +315,7 @@ export const TaskListItem = memo(
 				setIsAssigneeMenuOpen(false);
 				return;
 			}
-			persistAssignees([], [], `Unassigned "${task.title}"`);
+			persistAssignees([], []);
 		};
 
 		const {

@@ -32,7 +32,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
-import { useToast } from "@/hooks/useToast";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { TaskListItem } from "../widgets/TaskListItem";
@@ -387,8 +386,6 @@ function ExplorerPanel({
 	mobile = false,
 }: ExplorerPanelProps) {
 	const NAVIGATION_OPEN_DELAY_MS = 700;
-	const toast = useToast();
-
 	// Subscribe to epics from store
 	const epics = useEpics();
 	const roadmap = useRoadmapStore((state) => state.roadmap);
@@ -867,7 +864,6 @@ function ExplorerPanel({
 		setIsPersistingFeatureReorder(true);
 		try {
 			await reorderFeaturesInEpic(change.epicId, change.nextOrderIds);
-			toast.success(`Reordered "${change.featureTitle}"`);
 		} catch {
 			previewFeatureOrderInEpic(change.epicId, change.previousOrderIds);
 		} finally {
@@ -917,7 +913,6 @@ function ExplorerPanel({
 				change.targetEpicId,
 				change.orderedTargetFeatureIds,
 			);
-			toast.success(`Moved "${change.featureTitle}"`);
 		} catch {
 			previewFeatureOrderInEpic(
 				change.sourceEpicId,
@@ -999,7 +994,6 @@ function ExplorerPanel({
 		setIsPersistingEpicReorder(true);
 		try {
 			await reorderEpicsInRoadmap(change.nextOrderIds);
-			toast.success(`Reordered epic "${change.epicTitle}"`);
 		} catch {
 			previewEpicOrderInRoadmap(change.previousOrderIds);
 		} finally {

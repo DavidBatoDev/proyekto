@@ -16,7 +16,12 @@ interface RoadmapMetadataModalProps {
 	onClose: () => void;
 	formData: RoadmapMetadataFormData;
 	onUpdateFormData: (updates: Partial<RoadmapMetadataFormData>) => void;
-	onSubmit: () => Promise<void>;
+	/**
+	 * Receives the freshly uploaded thumbnail URL when one was picked: the
+	 * upload happens inside this modal's submit, so `formData.preview_url` is
+	 * still the pre-upload value on that tick.
+	 */
+	onSubmit: (patch?: { preview_url?: string }) => Promise<void>;
 	isSubmitting: boolean;
 }
 
@@ -47,19 +52,28 @@ export function RoadmapMetadataModal({
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [thumbUploading, setThumbUploading] = useState(false);
 	const [thumbError, setThumbError] = useState<string | null>(null);
+	// Picked here, uploaded at Save. Cancelling the modal must not leave an
+	// image in R2 that no roadmap points at — nothing ever deletes it.
+	const [thumbFile, setThumbFile] = useState<File | null>(null);
+	const [thumbPreview, setThumbPreview] = useState<string | null>(null);
 
-	const handleThumbUpload = async (file: File) => {
-		setThumbError(null);
-		setThumbUploading(true);
-		try {
-			const url = await uploadService.upload("roadmap_previews", file);
-			onUpdateFormData({ preview_url: url });
-		} catch (err) {
-			setThumbError(err instanceof Error ? err.message : "Upload failed");
-		} finally {
-			setThumbUploading(false);
+	useEffect(() => {
+		if (!thumbFile) return;
+		const url = URL.createObjectURL(thumbFile);
+		setThumbPreview(url);
+		return () => URL.revokeObjectURL(url);
+	}, [thumbFile]);
+
+	// A reopened modal must not still be holding the previous session's pick.
+	useEffect(() => {
+		if (!isOpen) {
+			setThumbFile(null);
+			setThumbPreview(null);
+			setThumbError(null);
 		}
-	};
+	}, [isOpen]);
+
+	const previewSrc = thumbPreview ?? formData.preview_url;
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -74,9 +88,26 @@ export function RoadmapMetadataModal({
 		return () => document.removeEventListener("keydown", handleEscape);
 	}, [isOpen, isSubmitting, onClose]);
 
-	const handleSubmit = () => {
-		if (isSaveDisabled) return;
-		void onSubmit();
+	const handleSubmit = async () => {
+		if (isSaveDisabled || thumbUploading) return;
+
+		let previewUrl: string | undefined;
+		if (thumbFile) {
+			setThumbError(null);
+			setThumbUploading(true);
+			try {
+				previewUrl = await uploadService.upload("roadmap_previews", thumbFile);
+				onUpdateFormData({ preview_url: previewUrl });
+				setThumbFile(null);
+			} catch (err) {
+				setThumbError(err instanceof Error ? err.message : "Upload failed");
+				return;
+			} finally {
+				setThumbUploading(false);
+			}
+		}
+
+		await onSubmit(previewUrl ? { preview_url: previewUrl } : undefined);
 	};
 
 	return (
@@ -178,7 +209,7 @@ export function RoadmapMetadataModal({
 												event.key === "Enter"
 											) {
 												event.preventDefault();
-												handleSubmit();
+												void handleSubmit();
 											}
 										}}
 									/>
@@ -235,10 +266,10 @@ export function RoadmapMetadataModal({
 									<p className="text-xs text-gray-500">
 										Shown on the roadmap card.
 									</p>
-									{formData.preview_url ? (
+									{previewSrc ? (
 										<div className="space-y-2">
 											<img
-												src={formData.preview_url}
+												src={previewSrc}
 												alt="Roadmap thumbnail"
 												className="h-28 w-auto rounded-lg border border-gray-200 object-cover shadow-sm"
 											/>
@@ -283,7 +314,10 @@ export function RoadmapMetadataModal({
 										className="hidden"
 										onChange={(e) => {
 											const file = e.target.files?.[0];
-											if (file) void handleThumbUpload(file);
+											if (file) {
+												setThumbError(null);
+												setThumbFile(file);
+											}
 										}}
 									/>
 									{thumbError && (
@@ -303,12 +337,18 @@ export function RoadmapMetadataModal({
 								</button>
 								<button
 									type="button"
-									onClick={handleSubmit}
-									disabled={isSaveDisabled}
+									onClick={() => void handleSubmit()}
+									disabled={isSaveDisabled || thumbUploading}
 									className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
 								>
-									{isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-									{isSubmitting ? "Saving..." : "Save"}
+									{(isSubmitting || thumbUploading) && (
+										<Loader2 className="w-4 h-4 animate-spin" />
+									)}
+									{thumbUploading
+										? "Uploading…"
+										: isSubmitting
+											? "Saving..."
+											: "Save"}
 								</button>
 							</div>
 						</motion.div>

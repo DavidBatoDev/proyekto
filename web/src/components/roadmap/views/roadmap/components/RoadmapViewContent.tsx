@@ -772,8 +772,11 @@ export function RoadmapViewContent({
 		setFormData((prev) => ({ ...prev, ...updates }));
 	};
 
-	const handleModalSubmit = async () => {
-		await handleUpdateRoadmap();
+	const handleModalSubmit = async (patch?: { preview_url?: string }) => {
+		// The modal uploads a picked thumbnail as part of ITS submit, so the URL
+		// arrives here rather than through formData — which would still be the
+		// pre-upload value on this tick.
+		await handleUpdateRoadmap(patch);
 	};
 
 	const handleSaveRoadmapJson = async (parsedJson: unknown) => {
@@ -815,8 +818,10 @@ export function RoadmapViewContent({
 		}
 	};
 
-	const handleUpdateRoadmap = async () => {
+	const handleUpdateRoadmap = async (patch?: { preview_url?: string }) => {
 		if (!roadmapId) return;
+
+		const previewUrl = patch?.preview_url ?? formData.preview_url;
 
 		setIsUpdatingRoadmap(true);
 		try {
@@ -824,7 +829,7 @@ export function RoadmapViewContent({
 				name: formData.title || "Untitled Roadmap",
 				description: formData.description,
 				category: formData.category,
-				...(formData.preview_url ? { preview_url: formData.preview_url } : {}),
+				...(previewUrl ? { preview_url: previewUrl } : {}),
 			});
 
 			// Name/description/cover feed the dashboard ROADMAPS preview.
@@ -872,9 +877,6 @@ export function RoadmapViewContent({
 			try {
 				await updateTask(nextTask);
 				recordAssignment(avatar.userId);
-				toast.success(
-					`Assigned ${avatar.displayName} to "${currentTask.title}"`,
-				);
 			} catch {
 				toast.error("Failed to update task assignee");
 			}

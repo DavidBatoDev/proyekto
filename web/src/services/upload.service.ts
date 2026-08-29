@@ -88,11 +88,21 @@ class UploadService {
 		form.append("bucket", bucket);
 		form.append("file", file);
 
-		const res = await fetch(`${UPLOAD_WORKER_URL}/uploads`, {
-			method: "POST",
-			headers: token ? { Authorization: `Bearer ${token}` } : {},
-			body: form,
-		});
+		// A network-level failure (Worker down, DNS, blocked, offline) rejects
+		// rather than returning a status, so it needs the same fallback as a 401
+		// below — the backend can do this job. Uploads now run at save time, so
+		// an unreachable Worker would otherwise fail a whole save rather than a
+		// single file pick.
+		let res: Response;
+		try {
+			res = await fetch(`${UPLOAD_WORKER_URL}/uploads`, {
+				method: "POST",
+				headers: token ? { Authorization: `Bearer ${token}` } : {},
+				body: form,
+			});
+		} catch {
+			return this.uploadViaBackend(bucket, file);
+		}
 
 		// The Worker verifies the JWT against its OWN deployed SUPABASE_JWT_SECRET,
 		// which is the production project's. A local session signed by the hosted

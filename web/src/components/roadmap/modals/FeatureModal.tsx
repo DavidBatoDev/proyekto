@@ -133,11 +133,6 @@ export const FeatureModal = ({
 				currentMilestoneId,
 				toId,
 			);
-			toast.success(
-				toId
-					? "Feature moved to milestone"
-					: "Feature unassigned from milestone",
-			);
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Failed to update milestone",

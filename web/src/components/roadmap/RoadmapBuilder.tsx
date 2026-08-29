@@ -475,7 +475,9 @@ export function RoadmapBuilder({
 	const [selectedDescriptionKey, setSelectedDescriptionKey] = useState<
 		string | null
 	>(null);
-	const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+	const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+	// Local preview only; the real URL exists once handleCreate uploads it.
+	const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 	const [isSuggesting, setIsSuggesting] = useState(false);
 	const [isLocalThinking, setIsLocalThinking] = useState(false);
 	const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
@@ -534,7 +536,18 @@ export function RoadmapBuilder({
 	// An explicit upload always wins, then the curated photo, then the generated
 	// gradient. `stockPhotoUrl` is null whenever the flag is off, so disabling
 	// the feature restores the original behaviour with no other path dangling.
-	const previewUrl = thumbnailUrl || stockPhotoUrl || generatedPreviewUrl;
+	const previewUrl = thumbnailPreview || stockPhotoUrl || generatedPreviewUrl;
+
+	// The picked preview outlives no page: revoke it when the builder goes away.
+	const thumbnailPreviewRef = useRef<string | null>(null);
+	thumbnailPreviewRef.current = thumbnailPreview;
+	useEffect(
+		() => () => {
+			if (thumbnailPreviewRef.current)
+				URL.revokeObjectURL(thumbnailPreviewRef.current);
+		},
+		[],
+	);
 	const effectivePrompt = refinedPrompt.trim() || prompt.trim();
 	const hasCapturedSlots = INTAKE_SLOT_CHIPS.some((chip) =>
 		isSlotFilled(capturedView, chip.key),
@@ -897,30 +910,24 @@ export function RoadmapBuilder({
 		setIsLocalThinking(false);
 	};
 
-	const handleThumbnailUpload = async (file: File) => {
+	/**
+	 * Picks a thumbnail; the upload waits for "Create roadmap". A visitor who
+	 * abandons the builder here must leave nothing in R2 — no roadmap will ever
+	 * reference it, and nothing in this codebase deletes an orphaned object.
+	 */
+	const handleThumbnailPick = async (file: File) => {
 		setError(null);
-		setIsUploadingThumbnail(true);
-		try {
-			if (!authenticatedUser) {
-				const guestId = await getOrCreateGuestUser();
-				if (!guestId) throw new Error("Failed to initialize guest session");
-			}
-			const url = await uploadService.upload("roadmap_previews", file);
-			setThumbnailUrl(url);
-			appendMessage("user", "Uploaded a custom thumbnail.");
-			setIsLocalThinking(true);
-			await wait(550);
-			appendMessage(
-				"assistant",
-				"Nice, I will use that thumbnail. When you are ready, I can create the roadmap.",
-			);
-		} catch (uploadError) {
-			console.error("Failed to upload roadmap thumbnail:", uploadError);
-			setError("Could not upload that thumbnail. You can try again or skip.");
-		} finally {
-			setIsLocalThinking(false);
-			setIsUploadingThumbnail(false);
-		}
+		if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
+		setThumbnailFile(file);
+		setThumbnailPreview(URL.createObjectURL(file));
+		appendMessage("user", "Uploaded a custom thumbnail.");
+		setIsLocalThinking(true);
+		await wait(550);
+		appendMessage(
+			"assistant",
+			"Nice, I will use that thumbnail. When you are ready, I can create the roadmap.",
+		);
+		setIsLocalThinking(false);
 	};
 
 	const handleCreate = async (mode: "generated" | "uploaded" | "stock") => {
@@ -940,6 +947,25 @@ export function RoadmapBuilder({
 		setIsLocalThinking(true);
 
 		try {
+			// The one moment an upload is warranted: the roadmap is being created,
+			// so the object will have a row pointing at it.
+			let uploadedThumbnailUrl: string | null = null;
+			if (mode === "uploaded" && thumbnailFile) {
+				setIsUploadingThumbnail(true);
+				try {
+					if (!authenticatedUser) {
+						const guestId = await getOrCreateGuestUser();
+						if (!guestId) throw new Error("Failed to initialize guest session");
+					}
+					uploadedThumbnailUrl = await uploadService.upload(
+						"roadmap_previews",
+						thumbnailFile,
+					);
+				} finally {
+					setIsUploadingThumbnail(false);
+				}
+			}
+
 			const roadmap = await createRoadmapFromMetadata({
 				metadata: {
 					name: title,
@@ -949,9 +975,11 @@ export function RoadmapBuilder({
 				prompt: effectivePrompt,
 				projectId,
 				isAuthenticated: Boolean(authenticatedUser),
-				// Already a cdn.proyekto.tech URL (curated photo) or a data URI
-				// (generated gradient) — nothing to upload or re-host.
-				previewUrl,
+				// A cdn.proyekto.tech URL: either the thumbnail just uploaded, the
+				// curated photo, or a data URI for the generated gradient. Never
+				// the blob: preview, which means nothing outside this tab.
+				previewUrl:
+					uploadedThumbnailUrl ?? stockPhotoUrl ?? generatedPreviewUrl,
 				openMetadataModal: false,
 				// Carries audience/platform/v1 scope through to the agent turn that
 				// actually generates the epics - otherwise intake learns it and
@@ -1480,7 +1508,7 @@ export function RoadmapBuilder({
 										{isUploadingThumbnail ? "Uploading..." : "Upload thumbnail"}
 									</button>
 									{/* Only useful while the curated photo is what will be used. */}
-									{canShuffleStockPhoto && !thumbnailUrl && (
+									{canShuffleStockPhoto && !thumbnailFile && (
 										<button
 											type="button"
 											onClick={() => setStockOffset((current) => current + 1)}
@@ -1495,7 +1523,7 @@ export function RoadmapBuilder({
 										type="button"
 										onClick={() =>
 											void handleCreate(
-												thumbnailUrl
+												thumbnailPreview
 													? "uploaded"
 													: stockPhotoUrl
 														? "stock"
@@ -1506,7 +1534,7 @@ export function RoadmapBuilder({
 										className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-black text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
-										{thumbnailUrl
+										{thumbnailPreview
 											? "Use uploaded thumbnail"
 											: stockPhotoUrl
 												? "Use this image and create"
@@ -1521,7 +1549,7 @@ export function RoadmapBuilder({
 									className="hidden"
 									onChange={(event) => {
 										const file = event.target.files?.[0];
-										if (file) void handleThumbnailUpload(file);
+										if (file) void handleThumbnailPick(file);
 									}}
 								/>
 
@@ -1548,7 +1576,7 @@ export function RoadmapBuilder({
 									<div className="p-4">
 										<div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">
 											<CheckCircle2 className="h-4 w-4" />
-											{thumbnailUrl
+											{thumbnailPreview
 												? "Uploaded thumbnail"
 												: stockPhotoUrl
 													? "Cover image"

@@ -247,7 +247,6 @@ export function useRoadmapCanvasController({
 	const onUpdateEpic = useCallback(
 		async (...args: Parameters<typeof onUpdateEpicBase>) => {
 			try {
-				toast.success("Epic updated");
 				await onUpdateEpicBase(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to update epic"));
@@ -260,7 +259,6 @@ export function useRoadmapCanvasController({
 	const onAddEpicWithToast = useCallback(
 		async (...args: Parameters<typeof onAddEpic>) => {
 			try {
-				toast.success("Epic created");
 				await onAddEpic(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to create epic"));
@@ -273,7 +271,6 @@ export function useRoadmapCanvasController({
 	const onUpdateFeature = useCallback(
 		async (...args: Parameters<typeof onUpdateFeatureBase>) => {
 			try {
-				toast.success("Feature updated");
 				await onUpdateFeatureBase(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to update feature"));
@@ -289,7 +286,6 @@ export function useRoadmapCanvasController({
 			data: Parameters<typeof onAddFeature>[1],
 		) => {
 			try {
-				toast.success("Feature created");
 				await onAddFeature(epicId, data);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to create feature"));
@@ -338,7 +334,6 @@ export function useRoadmapCanvasController({
 
 			try {
 				await onUpdateTaskBase(...args);
-				toast.success("Task updated");
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to update task"));
 				throw error;
@@ -355,7 +350,6 @@ export function useRoadmapCanvasController({
 	const onAddMilestone = useCallback(
 		async (...args: Parameters<typeof onAddMilestoneBase>) => {
 			try {
-				toast.success("Milestone created");
 				await onAddMilestoneBase(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to create milestone"));
@@ -368,7 +362,6 @@ export function useRoadmapCanvasController({
 	const onUpdateMilestoneWithToast = useCallback(
 		async (...args: Parameters<typeof onUpdateMilestone>) => {
 			try {
-				toast.success("Milestone updated");
 				await onUpdateMilestone(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to update milestone"));
@@ -381,7 +374,6 @@ export function useRoadmapCanvasController({
 	const onDeleteMilestoneWithToast = useCallback(
 		async (...args: Parameters<typeof onDeleteMilestone>) => {
 			try {
-				toast.success("Milestone deleted");
 				await onDeleteMilestone(...args);
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to delete milestone"));
@@ -965,12 +957,10 @@ export function useRoadmapCanvasController({
 			try {
 				if (target.type === "epic") {
 					await onDuplicateEpic(target.id);
-					toast.success("Epic duplicated");
 					return;
 				}
 
 				await onDuplicateFeature(target.id);
-				toast.success("Feature duplicated");
 			} catch (error) {
 				toast.error(
 					getErrorMessage(
@@ -988,7 +978,6 @@ export function useRoadmapCanvasController({
 		async (id: string) => {
 			try {
 				await onDuplicateTask(id);
-				toast.success("Task duplicated");
 			} catch (error) {
 				toast.error(getErrorMessage(error, "Failed to duplicate task"));
 			}
