@@ -107,8 +107,15 @@ export async function fetchConsultants(): Promise<Profile[]> {
  */
 export async function fetchConsultantProfile(
 	userId: string,
+	options?: { noStore?: boolean },
 ): Promise<ConsultantPublicProfile> {
-	const response = await apiClient.get(`/api/consultants/${userId}`);
+	// `noStore` is the owner's freshness path: after a WYSIWYG edit the
+	// browser HTTP cache would otherwise serve the owner their own stale page
+	// for the response max-age, even though Redis and the edge were purged.
+	const response = await apiClient.get(
+		`/api/consultants/${userId}`,
+		options?.noStore ? { headers: { "Cache-Control": "no-cache" } } : undefined,
+	);
 	return response.data.data ?? response.data;
 }
 

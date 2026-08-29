@@ -6,12 +6,15 @@ import {
 	MessageCircle,
 	Plus,
 	User,
+	UserPlus,
+	X,
 } from "lucide-react";
+import { useState } from "react";
 import { ConsultantExperience } from "@/components/marketplace/consultant/ConsultantExperience";
 import { ConsultantServices } from "@/components/marketplace/consultant/ConsultantServices";
 import { ConsultantSkills } from "@/components/marketplace/consultant/ConsultantSkills";
-import { ConsultantTemplates } from "@/components/marketplace/consultant/ConsultantTemplates";
 import { MarketplaceCategoryBar } from "@/components/marketplace/home/MarketplaceCategoryBar";
+import { InviteModal } from "@/components/marketplace/InviteModal";
 import { MarketplaceFooter } from "@/components/marketplace/MarketplaceFooter";
 import { SectionEditButton } from "@/components/marketplace/profile/EditableSection";
 import {
@@ -19,39 +22,37 @@ import {
 	RAIL_BUTTON_CLASS,
 	RAIL_CTA_CLASS,
 } from "@/components/marketplace/profile/EngagePanel";
-import { formatMonthYear } from "@/components/marketplace/profile/formatters";
+import { MessageSellerButton } from "@/components/marketplace/profile/MessageSellerButton";
 import { SellerAbout } from "@/components/marketplace/profile/SellerAbout";
 import { SellerAvatar } from "@/components/marketplace/profile/SellerAvatar";
+import { SellerPortfolio } from "@/components/marketplace/profile/SellerPortfolio";
 import { useSellerProfileEditor } from "@/components/marketplace/profile/useSellerProfileEditor";
-import { useConsultantProfileQuery } from "@/hooks/useConsultants";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { usePublicServiceOfferingsByUserQuery } from "@/hooks/useServiceOfferings";
+import { useTalentProfileQuery } from "@/hooks/useTalent";
+import { isActiveConsultant } from "@/lib/auth-utils";
+import type { TalentPublicSpecialization } from "@/queries/talent";
 import { useAuthStore } from "@/stores/authStore";
-import type { ConsultantExpertise } from "@/types/marketplace-taxonomy";
 
-export const Route = createFileRoute("/marketplace/consultant/$profileId")({
-	component: ConsultantProfile,
+export const Route = createFileRoute("/marketplace/talent/$profileId")({
+	component: TalentProfile,
 });
 
 /**
- * The public consultant profile.
+ * The public talent profile — the talent twin of
+ * /marketplace/consultant/$profileId, in the same prose-flat layout with the
+ * engage panel as the one bordered surface.
  *
- * Prose flows flat down the left — headings and text directly on the page — and
- * the two things you can act on are bordered: the engage panel in the right
- * rail, and the service cards. Everything else reads as one column about one
- * person rather than a stack of competing boxes.
+ * Public on purpose: the endpoint only serves ACTIVE listings (paused = 404),
+ * so everything on this page is something the talent chose to publish. The
+ * page renders no rating and no review count — nothing writes `user_stats`,
+ * and an invented 0.0 is the most damaging lie a marketplace page can tell.
  *
- * WYSIWYG for the owner: this page IS the editor. Each section carries a
- * pencil that opens the same modal the private profile uses (via
- * useSellerProfileEditor), so what the consultant edits is exactly what
- * clients see. The private /profile page remains the account editor for
- * things with no public rendering (payouts, KYC, contact info).
- *
- * Still deliberately absent, and not to be added without the data behind them:
- * a star rating, a review count, a response time, and an online/offline dot.
- * `user_stats` has rating columns and NOTHING writes them. Expertise chips
- * have no pencil either — taxonomy placement is set by the consultant
- * application flow, not a profile modal.
+ * WYSIWYG for the owner: this page IS the editor. Every section carries a
+ * pencil opening the same modals the private profile uses; the private
+ * /profile page remains the account editor for payouts, KYC and contact info.
  */
-function ConsultantProfile() {
+function TalentProfile() {
 	const { profileId } = Route.useParams();
 	const { user } = useAuthStore();
 	const isOwner = user?.id === profileId;
@@ -59,27 +60,33 @@ function ConsultantProfile() {
 		data: profile,
 		isLoading,
 		error,
-	} = useConsultantProfileQuery(profileId, { noStore: isOwner });
+	} = useTalentProfileQuery(profileId, { noStore: isOwner });
+	const { data: services = [] } =
+		usePublicServiceOfferingsByUserQuery(profileId);
+	// The viewer's own profile — only to decide whether the consultant-only
+	// "Invite to project" secondary CTA renders.
+	const { data: viewerProfile } = useProfileQuery();
 	const editor = useSellerProfileEditor(profileId, isOwner);
+	const [inviteOpen, setInviteOpen] = useState(false);
 
 	if (isLoading) return <ProfileSkeleton />;
 	if (error || !profile) return <ProfileNotFound />;
 
-	const name = profile.display_name?.trim() || "Consultant";
+	const name = profile.display_name?.trim() || "Talent";
 	const initial = name.charAt(0).toUpperCase();
 	const location = [profile.city, profile.country].filter(Boolean).join(", ");
-	const expertise = profile.expertise ?? [];
-	const services = profile.services ?? [];
+	const specializations = profile.specializations ?? [];
 	const skills = profile.skills ?? [];
 	const languages = profile.languages ?? [];
 	const experiences = profile.experiences ?? [];
-	const templates = profile.templates ?? [];
+	const portfolios = profile.portfolios ?? [];
+	const viewerCanInvite = !isOwner && isActiveConsultant(viewerProfile);
 
 	return (
 		<div className="min-h-screen bg-background pt-app-header">
 			<MarketplaceCategoryBar />
 
-			<div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+			<div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 				<div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<div className="min-w-0">
 						<div className="flex items-start gap-6">
@@ -112,12 +119,12 @@ function ConsultantProfile() {
 							<div className="min-w-0 pt-1">
 								<div className="flex flex-wrap items-center gap-2">
 									<h1 className="text-2xl font-bold text-foreground">{name}</h1>
-									{profile.is_consultant_verified && (
-										<span className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-700 dark:text-emerald-400">
-											<BadgeCheck className="h-4 w-4 shrink-0" />
-											Verified consultant
-										</span>
-									)}
+									{/* Unconditional: the endpoint 404s anyone not actively
+									    listed, so a rendered page IS an open-to-work page. */}
+									<span className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-700 dark:text-emerald-400">
+										<BadgeCheck className="h-4 w-4 shrink-0" />
+										Open to work
+									</span>
 									{isOwner && (
 										<SectionEditButton
 											label="Edit headline"
@@ -181,14 +188,25 @@ function ConsultantProfile() {
 						<SellerAbout
 							bio={profile.bio}
 							isOwner={isOwner}
-							emptyOwnerCopy="You have not written an overview yet. Describe the kind of work you lead and the outcomes clients get."
-							emptyVisitorCopy="This consultant has not written an overview yet."
+							emptyOwnerCopy="You have not written an overview yet. Describe the work you do and the outcomes clients get."
+							emptyVisitorCopy={`${name} has not written an overview yet.`}
 						/>
 
 						<h2 className="mt-8 text-[15px] font-bold text-foreground">
-							Expertise
+							Specializations
+							{isOwner && (
+								<SectionEditButton
+									label="Add specialization"
+									onClick={editor.addSpecialization}
+								/>
+							)}
 						</h2>
-						<Expertise expertise={expertise} isOwner={isOwner} />
+						<Specializations
+							specializations={specializations}
+							isOwner={isOwner}
+							onEdit={isOwner ? editor.editSpecialization : undefined}
+							onDelete={isOwner ? editor.deleteSpecialization : undefined}
+						/>
 
 						{(skills.length > 0 || isOwner) && (
 							<>
@@ -205,13 +223,36 @@ function ConsultantProfile() {
 							</>
 						)}
 
+						{(services.length > 0 || isOwner) && (
+							<>
+								<h2 className="mt-10 text-[19px] font-bold text-foreground">
+									See my services
+								</h2>
+								<ConsultantServices
+									services={services}
+									isOwner={isOwner}
+									name={name}
+								/>
+							</>
+						)}
+
 						<h2 className="mt-10 text-[19px] font-bold text-foreground">
-							See my services
+							Portfolio
+							{isOwner && (
+								<SectionEditButton
+									label="Add portfolio item"
+									onClick={editor.addPortfolio}
+								/>
+							)}
 						</h2>
-						<ConsultantServices
-							services={services}
+						<SellerPortfolio
+							portfolios={portfolios}
 							isOwner={isOwner}
 							name={name}
+							onEditItem={isOwner ? editor.editPortfolio : undefined}
+							onDeleteItem={
+								isOwner ? (item) => editor.deletePortfolio(item.id) : undefined
+							}
 						/>
 
 						{(experiences.length > 0 || isOwner) && (
@@ -239,19 +280,6 @@ function ConsultantProfile() {
 							</>
 						)}
 
-						{(templates.length > 0 || isOwner) && (
-							<>
-								<h2 className="mt-10 text-[19px] font-bold text-foreground">
-									Roadmap templates
-								</h2>
-								<ConsultantTemplates
-									templates={templates}
-									isOwner={isOwner}
-									name={name}
-								/>
-							</>
-						)}
-
 						<h2 className="mt-10 text-[15px] font-bold text-foreground">
 							Reviews
 						</h2>
@@ -269,22 +297,18 @@ function ConsultantProfile() {
 							initial={initial}
 							avatarUrl={profile.avatar_url}
 							rates={profile.rates ?? null}
-							statusLine={
-								formatMonthYear(profile.consultant_verified_at)
-									? `Verified ${formatMonthYear(profile.consultant_verified_at)}`
-									: null
-							}
+							statusLine="Open to work"
 							createdAt={profile.created_at ?? null}
 							onEditRates={isOwner ? editor.openRates : undefined}
 							topLinks={
-								<>
-									<Link
-										to="/marketplace/consultant/browse"
-										className={RAIL_BUTTON_CLASS}
-									>
-										All consultants
-									</Link>
-									{isOwner ? (
+								isOwner ? (
+									<>
+										<Link
+											to="/marketplace/talent/settings"
+											className={RAIL_BUTTON_CLASS}
+										>
+											Talent settings
+										</Link>
 										<Link
 											to="/profile/$profileId"
 											params={{ profileId }}
@@ -292,37 +316,47 @@ function ConsultantProfile() {
 										>
 											Account settings
 										</Link>
-									) : (
-										<Link
-											to="/marketplace/talent/browse"
-											className={RAIL_BUTTON_CLASS}
-										>
-											Find work
+									</>
+								) : (
+									<>
+										<Link to="/start-selling" className={RAIL_BUTTON_CLASS}>
+											Start selling
 										</Link>
-									)}
-								</>
+										<Link to="/marketplace" className={RAIL_BUTTON_CLASS}>
+											Marketplace
+										</Link>
+									</>
+								)
 							}
 							note={
 								isOwner
-									? "This is your public profile — and your editor. What you change here is exactly what clients see."
-									: "Describe what you need. Scope, rates and dates are agreed in a signed contract before any work starts."
+									? "This is your public profile — and your editor. What you change here is exactly what clients and consultants see."
+									: `Talk first, then work under a signed contract — scope, rates and dates are agreed before anything starts.`
 							}
 							cta={
 								isOwner ? (
-									<Link
-										to="/marketplace/finance/contracts"
-										className={RAIL_CTA_CLASS}
-									>
+									<Link to="/engagements" className={RAIL_CTA_CLASS}>
 										Your contracts
 									</Link>
 								) : (
-									<Link
-										to="/brief/new"
-										search={{ need: undefined }}
-										className={RAIL_CTA_CLASS}
-									>
-										Post a brief
-									</Link>
+									<>
+										<MessageSellerButton
+											sellerId={profileId}
+											sellerName={name}
+											redirectTo={`/marketplace/talent/${profileId}`}
+											className={`${RAIL_CTA_CLASS} gap-2`}
+										/>
+										{viewerCanInvite && (
+											<button
+												type="button"
+												onClick={() => setInviteOpen(true)}
+												className="mt-2 inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border text-[14px] font-medium text-foreground transition-colors hover:bg-muted"
+											>
+												<UserPlus className="h-4 w-4" />
+												Invite to project
+											</button>
+										)}
+									</>
 								)
 							}
 						/>
@@ -332,51 +366,102 @@ function ConsultantProfile() {
 
 			<MarketplaceFooter />
 			{editor.modals}
+			{viewerCanInvite && (
+				<InviteModal
+					open={inviteOpen}
+					onClose={() => setInviteOpen(false)}
+					inviteeId={profileId}
+					inviteeName={name}
+				/>
+			)}
 		</div>
 	);
 }
 
-function Expertise({
-	expertise,
+/**
+ * Self-declared focus areas — plain chips, not links: unlike consultant
+ * expertise there is no taxonomy page behind them. `category` is a snake_case
+ * enum, prettified here because this is the only public surface it renders on.
+ */
+function Specializations({
+	specializations,
 	isOwner,
+	onEdit,
+	onDelete,
 }: {
-	expertise: ConsultantExpertise[];
+	specializations: TalentPublicSpecialization[];
 	isOwner: boolean;
+	onEdit?: (entry: TalentPublicSpecialization) => void;
+	onDelete?: (id: string) => void;
 }) {
-	if (expertise.length === 0) {
+	if (specializations.length === 0) {
 		return (
 			<p className="mt-3 text-[15px] text-muted-foreground">
 				{isOwner
-					? "You are not listed under any category yet, so you will not appear when clients browse by discipline."
-					: "This consultant is not listed under a category yet."}
+					? "Add the industries and problem spaces you know best — clients filter by them."
+					: "No specializations listed yet."}
 			</p>
 		);
 	}
 
 	return (
 		<div className="mt-3 flex flex-wrap gap-2">
-			{expertise.map((entry) => (
-				<Link
-					key={`${entry.categorySlug}/${entry.subcategorySlug}`}
-					to="/marketplace/category/$categorySlug/$subcategorySlug"
-					params={{
-						categorySlug: entry.categorySlug,
-						subcategorySlug: entry.subcategorySlug,
-					}}
-					title={`${entry.categoryName} · ${entry.subcategoryName}`}
-					className="rounded-full border border-border px-4 py-1.5 text-[14px] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
-				>
-					{entry.subcategoryName}
-				</Link>
-			))}
+			{specializations.map((entry) => {
+				const label = entry.subCategory
+					? `${prettify(entry.category)} · ${entry.subCategory}`
+					: prettify(entry.category);
+				if (!onEdit) {
+					return (
+						<span
+							key={entry.id}
+							title={entry.description ?? undefined}
+							className="rounded-full border border-border px-4 py-1.5 text-[14px] text-foreground"
+						>
+							{label}
+						</span>
+					);
+				}
+				return (
+					<span
+						key={entry.id}
+						className="inline-flex items-center gap-1 rounded-full border border-border py-1.5 pl-4 pr-2 text-[14px] text-foreground"
+					>
+						<button
+							type="button"
+							onClick={() => onEdit(entry)}
+							title="Edit specialization"
+							className="cursor-pointer hover:text-primary"
+						>
+							{label}
+						</button>
+						{onDelete && (
+							<button
+								type="button"
+								aria-label={`Remove ${label}`}
+								onClick={() => onDelete(entry.id)}
+								className="cursor-pointer rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+							>
+								<X className="h-3.5 w-3.5" />
+							</button>
+						)}
+					</span>
+				);
+			})}
 		</div>
 	);
+}
+
+function prettify(value: string): string {
+	return value
+		.split("_")
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(" ");
 }
 
 function ProfileSkeleton() {
 	return (
 		<div className="min-h-screen bg-background pt-app-header">
-			<div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+			<div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 				<div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<div className="space-y-4">
 						<div className="flex items-start gap-6">
@@ -401,17 +486,16 @@ function ProfileNotFound() {
 		<div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 pt-app-header">
 			<User className="h-12 w-12 text-muted-foreground" />
 			<h1 className="mt-4 text-lg font-semibold text-foreground">
-				Consultant not found
+				Talent profile not available
 			</h1>
 			<p className="mt-1 max-w-sm text-center text-[14px] text-muted-foreground">
-				This profile may have been removed, or the consultant is no longer
-				verified.
+				This listing may have been removed or paused by its owner.
 			</p>
 			<Link
-				to="/marketplace/consultant/browse"
+				to="/marketplace"
 				className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-foreground px-6 text-[14px] font-semibold text-background transition-opacity hover:opacity-90"
 			>
-				Browse consultants
+				Back to the marketplace
 			</Link>
 		</div>
 	);

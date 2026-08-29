@@ -86,7 +86,7 @@ export function TalentCard({ talent, onInvite }: TalentCardProps) {
 
 			<div className="mt-1 flex gap-2">
 				<Link
-					to="/profile/$profileId"
+					to="/marketplace/talent/$profileId"
 					params={{ profileId: talent.id }}
 					className="flex-1 text-center px-3 py-2 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
 				>

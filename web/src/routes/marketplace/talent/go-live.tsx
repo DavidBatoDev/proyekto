@@ -185,7 +185,7 @@ function TalentGoLivePage() {
 	 */
 	const goToProfile = () =>
 		navigate({
-			to: "/profile/$profileId",
+			to: "/marketplace/talent/$profileId",
 			params: { profileId: user?.id ?? "" },
 		});
 

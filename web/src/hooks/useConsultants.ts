@@ -23,10 +23,13 @@ export function useConsultantsQuery(options: { enabled?: boolean } = {}) {
 	});
 }
 
-export function useConsultantProfileQuery(userId: string) {
+export function useConsultantProfileQuery(
+	userId: string,
+	options?: { noStore?: boolean },
+) {
 	return useQuery({
 		queryKey: consultantKeys.detail(userId),
-		queryFn: () => fetchConsultantProfile(userId),
+		queryFn: () => fetchConsultantProfile(userId, options),
 		enabled: !!userId,
 		staleTime: 1000 * 60 * 5, // 5 minutes
 		retry: 1,

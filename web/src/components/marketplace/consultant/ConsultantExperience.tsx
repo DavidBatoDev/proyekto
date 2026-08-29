@@ -1,5 +1,9 @@
-import { Briefcase } from "lucide-react";
+import { Briefcase, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
+import {
+	EditableItem,
+	ItemControlButton,
+} from "@/components/marketplace/profile/EditableSection";
 import type { ConsultantPublicExperience } from "@/queries/consultants";
 
 const DESCRIPTION_CLAMP = 220;
@@ -8,15 +12,23 @@ const DESCRIPTION_CLAMP = 220;
  * Work history, in the shape the reference profile uses: role, then
  * company and arrangement, then the dated span with a duration, then a
  * clamped description.
+ *
+ * `onEditItem`/`onDeleteItem` are the WYSIWYG hooks: passed only when the
+ * viewer owns the profile, in which case each row grows hover controls.
+ * Without them a row's markup is exactly what it always was.
  */
 export function ConsultantExperience({
 	experiences,
 	isOwner,
 	name,
+	onEditItem,
+	onDeleteItem,
 }: {
 	experiences: ConsultantPublicExperience[];
 	isOwner: boolean;
 	name: string;
+	onEditItem?: (entry: ConsultantPublicExperience) => void;
+	onDeleteItem?: (entry: ConsultantPublicExperience) => void;
 }) {
 	if (experiences.length === 0) {
 		return (
@@ -31,7 +43,34 @@ export function ConsultantExperience({
 	return (
 		<ol className="mt-4 space-y-6">
 			{experiences.map((entry) => (
-				<ExperienceRow key={entry.id} entry={entry} />
+				<li key={entry.id}>
+					{onEditItem || onDeleteItem ? (
+						<EditableItem
+							controls={
+								<div className="flex gap-1">
+									{onEditItem && (
+										<ItemControlButton
+											label="Edit experience"
+											onClick={() => onEditItem(entry)}
+											icon={<Pencil className="h-3.5 w-3.5" />}
+										/>
+									)}
+									{onDeleteItem && (
+										<ItemControlButton
+											label="Delete experience"
+											onClick={() => onDeleteItem(entry)}
+											icon={<Trash2 className="h-3.5 w-3.5" />}
+										/>
+									)}
+								</div>
+							}
+						>
+							<ExperienceRow entry={entry} />
+						</EditableItem>
+					) : (
+						<ExperienceRow entry={entry} />
+					)}
+				</li>
 			))}
 		</ol>
 	);
@@ -47,7 +86,7 @@ function ExperienceRow({ entry }: { entry: ConsultantPublicExperience }) {
 		.join(" · ");
 
 	return (
-		<li className="flex gap-4">
+		<div className="flex gap-4">
 			<span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
 				<Briefcase className="h-4 w-4 text-muted-foreground" />
 			</span>
@@ -79,7 +118,7 @@ function ExperienceRow({ entry }: { entry: ConsultantPublicExperience }) {
 					</p>
 				)}
 			</div>
-		</li>
+		</div>
 	);
 }
 
