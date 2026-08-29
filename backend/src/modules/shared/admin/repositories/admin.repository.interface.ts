@@ -9,6 +9,11 @@ export interface AdminRepository {
     reviewedBy: string,
     reason?: string,
   ): Promise<unknown>;
+  /** Storage key of an identity document, after checking it belongs to the application's user. */
+  getIdentityDocumentForApplication(
+    applicationId: string,
+    documentId: string,
+  ): Promise<{ storage_path: string }>;
   listConsultants(): Promise<unknown[]>;
   suspendConsultant(
     userId: string,

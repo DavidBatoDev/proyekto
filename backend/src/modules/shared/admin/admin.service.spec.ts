@@ -3,9 +3,7 @@ import { AdminService } from './admin.service';
 describe('AdminService cache consistency', () => {
   const cacheInvalidation = {
     invalidateConsultantsCache: jest.fn().mockResolvedValue(undefined),
-    invalidateMarketplaceTalentCache: jest
-      .fn()
-      .mockResolvedValue(undefined),
+    invalidateMarketplaceTalentCache: jest.fn().mockResolvedValue(undefined),
     invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
   };
 
@@ -31,12 +29,17 @@ describe('AdminService cache consistency', () => {
     createNotification: jest.fn().mockResolvedValue({ id: 'notification-1' }),
   };
 
+  const uploads = {
+    getPrivateSignedUrl: jest.fn().mockResolvedValue('https://signed.example'),
+  };
+
   const service = new AdminService(
     adminRepo as any,
     cacheInvalidation as any,
     teamsService as any,
     authorization as any,
     notifications as any,
+    uploads as any,
   );
 
   beforeEach(() => {

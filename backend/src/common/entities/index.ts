@@ -368,6 +368,14 @@ export interface RoadmapShare {
   updated_at: string;
 }
 
+export interface ConsultantApplicationPlacement {
+  subcategory_id: string;
+  /** Bucket floor in years (0, 1, 3, 5, 10); null while the draft is mid-edit. */
+  years_experience?: number | null;
+  is_primary: boolean;
+  position: number;
+}
+
 export interface ConsultantApplication {
   id: string;
   user_id: string;
@@ -384,6 +392,8 @@ export interface ConsultantApplication {
   submitted_at?: string;
   created_at: string;
   updated_at: string;
+  /** Staged taxonomy picks, embedded from consultant_application_placements. */
+  placements?: ConsultantApplicationPlacement[];
 }
 
 export interface Skill {

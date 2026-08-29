@@ -43,7 +43,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     let q = this.supabase
       .from('consultant_applications')
       .select(
-        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status))',
+        '*, applicant:profiles!consultant_applications_user_id_fkey(id, display_name, first_name, last_name, avatar_url, email, headline, consultant_profile:consultant_profiles!consultant_profiles_user_id_fkey(status)), placements:consultant_application_placements(subcategory_id, is_primary, years_experience, subcategory:marketplace_subcategories(name, slug))',
       )
       .order('created_at', { ascending: false });
     if (filters.status) q = q.eq('status', filters.status);
@@ -121,6 +121,16 @@ export class SupabaseAdminRepository implements AdminRepository {
         .single(),
     ]);
 
+    // Staged taxonomy picks, with names, so the reviewer sees where approval
+    // will place this consultant in the directory.
+    const placements = await this.supabase
+      .from('consultant_application_placements')
+      .select(
+        'subcategory_id, is_primary, position, years_experience, subcategory:marketplace_subcategories(name, slug)',
+      )
+      .eq('application_id', id)
+      .order('position');
+
     const profileData = profile.data
       ? attachMarketplaceEnrollmentFields(
           profile.data as Record<string, unknown>,
@@ -153,6 +163,7 @@ export class SupabaseAdminRepository implements AdminRepository {
         specializations: specializations.data || [],
         identity_documents: identityDocs.data || [],
         rate_settings: rateSettings.data || null,
+        placements: placements.data || [],
       },
     };
   }
@@ -174,49 +185,27 @@ export class SupabaseAdminRepository implements AdminRepository {
   }
 
   async approveApplication(id: string, reviewedBy: string) {
-    const appResult = (await this.supabase
-      .from('consultant_applications')
-      .select('user_id')
-      .eq('id', id)
-      .single()) as unknown as RepositoryResult<{ user_id: string }>;
-    const app = appResult.data;
-    if (!app) throw new NotFoundException('Application not found');
+    // One transaction on the DB side: application -> approved, enrollment ->
+    // verified, staged placements -> consultant_subcategories. The old
+    // two-write path could leave a verified consultant whose application
+    // still said 'submitted' if the second write failed.
+    const result = (await this.supabase.rpc('approve_consultant_application', {
+      p_application_id: id,
+      p_reviewed_by: reviewedBy,
+    })) as unknown as RepositoryResult<Record<string, unknown>>;
 
-    const now = new Date().toISOString();
-    const userId = app.user_id;
-    const enrollmentUpsert = (await this.supabase
-      .from('consultant_profiles')
-      .upsert(
-        {
-          user_id: userId,
-          status: 'verified',
-          application_id: id,
-          verified_at: now,
-          suspended_at: null,
-          revoked_at: null,
-          status_reason: null,
-          status_changed_by: reviewedBy,
-        },
-        { onConflict: 'user_id' },
-      )) as unknown as {
-      error: { message: string } | null;
-    };
-    if (enrollmentUpsert.error) {
-      throw new Error(enrollmentUpsert.error.message);
+    if (result.error) {
+      const message = result.error.message || '';
+      if (message.includes('APPLICATION_NOT_FOUND')) {
+        throw new NotFoundException('Application not found');
+      }
+      if (message.includes('INVALID_STATUS')) {
+        throw new ConflictException(
+          'Only a submitted application can be approved.',
+        );
+      }
+      throw new Error(message);
     }
-
-    const result = (await this.supabase
-      .from('consultant_applications')
-      .update({
-        status: 'approved',
-        reviewed_at: now,
-        reviewed_by: reviewedBy,
-        rejection_reason: null,
-      })
-      .eq('id', id)
-      .select()
-      .single()) as unknown as RepositoryResult<Record<string, unknown>>;
-    if (result.error) throw new Error(result.error.message);
     return result.data;
   }
 
@@ -230,10 +219,41 @@ export class SupabaseAdminRepository implements AdminRepository {
         reviewed_by: reviewedBy,
       })
       .eq('id', id)
+      // Precondition closes the reject-after-approve hole: rejecting an
+      // approved application used to flip its status while the verified
+      // enrollment silently survived.
+      .eq('status', 'submitted')
       .select()
       .single()) as unknown as RepositoryResult<Record<string, unknown>>;
-    if (result.error) throw new Error(result.error.message);
+    if (result.error || !result.data) {
+      throw new ConflictException(
+        'Only a submitted application can be rejected.',
+      );
+    }
     return result.data;
+  }
+
+  async getIdentityDocumentForApplication(
+    applicationId: string,
+    documentId: string,
+  ): Promise<{ storage_path: string }> {
+    const appResult = (await this.supabase
+      .from('consultant_applications')
+      .select('user_id')
+      .eq('id', applicationId)
+      .single()) as unknown as RepositoryResult<{ user_id: string }>;
+    if (!appResult.data) throw new NotFoundException('Application not found');
+
+    const docResult = (await this.supabase
+      .from('user_identity_documents')
+      .select('storage_path')
+      .eq('id', documentId)
+      .eq('user_id', appResult.data.user_id)
+      .single()) as unknown as RepositoryResult<{ storage_path: string }>;
+    if (!docResult.data) {
+      throw new NotFoundException('Document not found on this application');
+    }
+    return docResult.data;
   }
 
   async listConsultants(): Promise<unknown[]> {

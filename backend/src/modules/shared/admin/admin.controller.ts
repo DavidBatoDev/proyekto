@@ -48,6 +48,15 @@ export class AdminController {
     return this.adminService.getApplicationDetail(id);
   }
 
+  @Get('applications/:id/documents/:documentId/url')
+  @UseGuards(AdminGuard)
+  getIdentityDocumentUrl(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.adminService.getIdentityDocumentUrl(id, documentId);
+  }
+
   @Post('applications/:id/approve')
   @UseGuards(AdminGuard)
   approveApplication(

@@ -30,6 +30,12 @@ const NOTIFICATION_TITLES: Record<string, string> = {
   time_log_day_rejected: 'Time logs rejected',
   time_log_comment_added: 'New time log comment',
   freelancer_invite_received: 'Talent invitation',
+  consultant_application_submitted: 'Consultant application to review',
+  consultant_application_approved: 'Consultant application approved',
+  consultant_application_rejected: 'Consultant application decision',
+  consultant_suspended: 'Consultant status update',
+  consultant_reinstated: 'Consultant status update',
+  consultant_revoked: 'Consultant status update',
 };
 
 const DEFAULT_TITLE = 'Proyekto';

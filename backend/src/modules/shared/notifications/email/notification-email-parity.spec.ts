@@ -14,7 +14,10 @@ import { EMAILABLE_NOTIFICATION_TYPES } from './notification-email-registry';
  * deliberate UPDATE, reviewed on its own.
  */
 describe('notification email switch parity', () => {
-  const migrationsDir = join(__dirname, '../../../../../../supabase/migrations');
+  const migrationsDir = join(
+    __dirname,
+    '../../../../../../supabase/migrations',
+  );
 
   it('ships every type dark — no migration sets email_eligible = true', () => {
     const migration = readFileSync(
@@ -30,11 +33,13 @@ describe('notification email switch parity', () => {
     expect(migration).not.toMatch(/SET\s+email_eligible\s*=\s*true/i);
   });
 
-  it('renders exactly the four mention types, DMs, and mention invites', () => {
+  it('renders exactly the mention types, DMs, mention invites, and application verdicts', () => {
     // Anything else showing up here means scope crept without a decision.
     expect([...EMAILABLE_NOTIFICATION_TYPES].sort()).toEqual([
       'chat_dm_received',
       'chat_mention',
+      'consultant_application_approved',
+      'consultant_application_rejected',
       'epic_comment_mention',
       'feature_comment_mention',
       'roadmap_mention_invite',

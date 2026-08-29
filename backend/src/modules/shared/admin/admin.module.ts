@@ -6,9 +6,15 @@ import { ADMIN_REPOSITORY } from './admin.service';
 import { TeamsModule } from '../../execution/teams/teams.module';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [TeamsModule, AuthorizationModule, NotificationsModule],
+  imports: [
+    TeamsModule,
+    AuthorizationModule,
+    NotificationsModule,
+    UploadsModule,
+  ],
   controllers: [AdminController],
   providers: [
     AdminService,

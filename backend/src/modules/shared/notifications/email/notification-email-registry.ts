@@ -148,6 +148,9 @@ const MENTION_FOOTER =
 const DM_FOOTER =
   'You received this email because you have an unread direct message on Proyekto.';
 
+const VERDICT_FOOTER =
+  'You received this email because you applied to become a consultant on Proyekto.';
+
 const REGISTRY: Record<string, Renderer> = {
   task_comment_mention: (ctx) =>
     buildMentionStyleEmail(ctx, {
@@ -238,6 +241,82 @@ const REGISTRY: Record<string, Renderer> = {
       ctaLabel: 'Open conversation',
       footerNote: DM_FOOTER,
     }),
+
+  // ── Consultant application verdicts ────────────────────────────────────────
+  // Not mention-style: there is no actor to name (the platform is speaking)
+  // and no excerpt to quote. A verdict is one clear sentence and one button.
+
+  consultant_application_approved: (ctx) => {
+    const href = absolute(ctx.appUrl, ctx.linkUrl);
+    const bodyHtml = [
+      renderParagraph(
+        'Your consultant application was <strong>approved</strong>. You are now a verified consultant on Proyekto.',
+      ),
+      renderParagraph(
+        'The consultant surfaces are open to you: browse the talent pool, respond to project briefs, publish templates, and build your service catalog. Your expertise placements are already live in the marketplace directory.',
+      ),
+    ].join('\n');
+    return {
+      subject: 'Your consultant application was approved',
+      html: renderEmailLayout({
+        preheader: 'You are now a verified consultant on Proyekto.',
+        title: "You're verified",
+        greeting: firstNameGreeting(ctx.recipientName) ?? undefined,
+        bodyHtml,
+        cta: { label: 'Open your profile', href },
+        footerNote: VERDICT_FOOTER,
+        unsubscribeHref: ctx.unsubscribeUrl ?? undefined,
+      }),
+      text: renderTextEmail([
+        firstNameGreeting(ctx.recipientName),
+        '',
+        'Your consultant application was approved. You are now a verified consultant on Proyekto.',
+        '',
+        'The consultant surfaces are open to you: the talent pool, project briefs, templates, and your service catalog.',
+        '',
+        `Open your profile: ${href}`,
+      ]),
+    };
+  },
+
+  consultant_application_rejected: (ctx) => {
+    const reason = str(ctx.content, 'reason');
+    const href = absolute(ctx.appUrl, ctx.linkUrl);
+    const bodyHtml = [
+      renderParagraph(
+        'Your consultant application was not approved this time.',
+      ),
+      reason ? renderQuoteBlock(reason) : null,
+      renderParagraph(
+        'You can revise your application and submit it again whenever you are ready — the reviewer’s note above is the place to start.',
+      ),
+    ]
+      .filter((block): block is string => block !== null)
+      .join('\n');
+    return {
+      subject: 'About your consultant application',
+      html: renderEmailLayout({
+        preheader:
+          'Your application was not approved — you can revise and resubmit.',
+        title: 'Application decision',
+        greeting: firstNameGreeting(ctx.recipientName) ?? undefined,
+        bodyHtml,
+        cta: { label: 'Revise your application', href },
+        footerNote: VERDICT_FOOTER,
+        unsubscribeHref: ctx.unsubscribeUrl ?? undefined,
+      }),
+      text: renderTextEmail([
+        firstNameGreeting(ctx.recipientName),
+        '',
+        'Your consultant application was not approved this time.',
+        reason ? `Reviewer note: ${reason}` : null,
+        '',
+        'You can revise your application and submit it again whenever you are ready.',
+        '',
+        `Revise your application: ${href}`,
+      ]),
+    };
+  },
 };
 
 /** Every type this build can render. The database must not exceed this set. */

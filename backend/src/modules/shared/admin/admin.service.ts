@@ -15,6 +15,7 @@ import {
 import { TeamsService } from '../../execution/teams/teams.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UploadsService } from '../uploads/uploads.controller';
 
 @Injectable()
 export class AdminService {
@@ -24,6 +25,7 @@ export class AdminService {
     private readonly teamsService: TeamsService,
     private readonly authorization: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
+    private readonly uploads: UploadsService,
   ) {}
 
   getAdminProfile(userId: string) {
@@ -34,6 +36,19 @@ export class AdminService {
   }
   getApplicationDetail(id: string) {
     return this.adminRepo.getApplicationDetail(id);
+  }
+  /**
+   * Time-limited signed URL for a reviewer to open an uploaded identity
+   * document. Ownership (document belongs to this application's user) is the
+   * authorization; the admin guard on the route is the audience.
+   */
+  async getIdentityDocumentUrl(applicationId: string, documentId: string) {
+    const document = await this.adminRepo.getIdentityDocumentForApplication(
+      applicationId,
+      documentId,
+    );
+    const url = await this.uploads.getPrivateSignedUrl(document.storage_path);
+    return { url };
   }
   async approveApplication(id: string, reviewedBy: string) {
     const applicantUserId = await this.adminRepo.getApplicationUserId(id);
