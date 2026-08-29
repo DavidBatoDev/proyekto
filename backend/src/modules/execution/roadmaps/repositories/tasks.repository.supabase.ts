@@ -292,6 +292,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       : undefined;
 
     const dbPayload = {
+      ...(dto.feature_id !== undefined && { feature_id: dto.feature_id }),
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.priority !== undefined && { priority: dto.priority }),

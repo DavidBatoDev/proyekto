@@ -1,3 +1,6 @@
+import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { motion } from "framer-motion";
 import {
 	Calendar,
@@ -5,6 +8,7 @@ import {
 	ChevronDown,
 	Copy,
 	Edit2,
+	GripVertical,
 	Link2,
 	List,
 	Maximize2,
@@ -15,6 +19,7 @@ import {
 import {
 	type DragEvent,
 	memo,
+	type ReactNode,
 	useEffect,
 	useMemo,
 	useRef,
@@ -50,6 +55,7 @@ import {
 	Position,
 } from "../views/roadmap/canvas/ports/node";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
+import { MoveTaskMenu } from "./MoveTaskMenu";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -184,6 +190,18 @@ const CanvasTaskRow = memo(
 		const projectId = useRoadmapStore(
 			(state) => state.roadmap?.project_id ?? "",
 		);
+		const {
+			attributes,
+			listeners,
+			setNodeRef,
+			setActivatorNodeRef,
+			transform,
+			transition,
+			isDragging,
+		} = useSortable({
+			id: task.id,
+			data: { type: "task", taskId: task.id, featureId: task.feature_id },
+		});
 		const [isStatusOpen, setIsStatusOpen] = useState(false);
 		const statusTriggerRef = useRef<HTMLButtonElement>(null);
 		const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -244,14 +262,32 @@ const CanvasTaskRow = memo(
 
 		return (
 			<div
+				ref={setNodeRef}
 				data-task-id={task.id}
-				className={`nodrag group flex h-7 items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
+				style={{
+					transform: CSS.Transform.toString(transform),
+					transition,
+					opacity: isDragging ? 0 : 1,
+				}}
+				className={`nodrag group flex h-7 items-center gap-1 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
 					isRunning
 						? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200"
 						: ""
 				} ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
 				onClick={() => onClick?.(task)}
 			>
+				<button
+					type="button"
+					ref={setActivatorNodeRef}
+					className="nodrag flex h-4 w-3 shrink-0 cursor-grab touch-none items-center opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100"
+					onClick={(e) => e.stopPropagation()}
+					title="Drag to reorder or move between features"
+					{...attributes}
+					{...listeners}
+				>
+					<GripVertical className="h-3 w-3 text-gray-400" />
+				</button>
+
 				{onToggleComplete && (
 					<button
 						type="button"
@@ -284,7 +320,7 @@ const CanvasTaskRow = memo(
 
 				<div
 					data-task-row-controls
-					className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
+					className="ml-auto grid shrink-0 grid-cols-[6.75rem_1.5rem_1.5rem_1.5rem_3.5rem] items-center gap-1.5"
 				>
 					<div className="relative flex w-full min-w-0 justify-start">
 						{onUpdateStatus ? (
@@ -358,6 +394,17 @@ const CanvasTaskRow = memo(
 					<span className="flex h-6 w-6 items-center justify-center">
 						<EditingTaskAvatar editors={editors} />
 					</span>
+					<span
+						className={`flex h-6 w-6 items-center justify-center transition-opacity ${
+							isRunning ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+						}`}
+					>
+						<MoveTaskMenu
+							task={task}
+							triggerClassName="p-0.5 rounded hover:bg-gray-100 transition-colors"
+							iconClassName="w-3 h-3 text-gray-500"
+						/>
+					</span>
 					<span className="flex h-6 w-14 items-center justify-end">
 						<CanvasTaskAssignees task={task} />
 					</span>
@@ -368,6 +415,54 @@ const CanvasTaskRow = memo(
 );
 
 CanvasTaskRow.displayName = "CanvasTaskRow";
+
+/**
+ * Drop target for a feature's task list on the canvas — lets a dragged task
+ * land on a card whose own rows aren't under the cursor. Wraps the existing
+ * absolute-positioned shell/box so the drop styling lives on the same
+ * rounded box tasks already render inside.
+ */
+function TaskListDropZone({
+	featureId,
+	allTasksCount,
+	commentGutter,
+	children,
+}: {
+	featureId: string;
+	allTasksCount: number;
+	commentGutter?: ReactNode;
+	children: ReactNode;
+}) {
+	const { setNodeRef, isOver } = useDroppable({
+		id: featureId,
+		data: { type: "task-list-container", featureId },
+	});
+
+	return (
+		<div
+			role="presentation"
+			data-task-list-shell
+			className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
+			style={{
+				height: `${(allTasksCount + 2) * 1.75}rem`,
+				maxHeight: "calc(100% - 1.5rem)",
+			}}
+			onClick={(e) => e.stopPropagation()}
+			onPointerDown={(e) => e.stopPropagation()}
+		>
+			<div
+				ref={setNodeRef}
+				data-task-list-container
+				className={`flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-sm transition-colors ${
+					isOver ? "border-blue-400 bg-blue-50/40" : "border-gray-200 bg-white"
+				}`}
+			>
+				{children}
+			</div>
+			{commentGutter}
+		</div>
+	);
+}
 
 function CanvasTaskList({
 	tasks,
@@ -389,20 +484,22 @@ function CanvasTaskList({
 	onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 }) {
 	return (
-		<div className="flex flex-col gap-0 px-2">
-			{tasks.map((task) => (
-				<CanvasTaskRow
-					key={task.id}
-					task={task}
-					isRunning={runningTaskId === task.id}
-					pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
-					editors={taskEditorsByNodeId?.get(task.id)}
-					onClick={onSelectTask}
-					onToggleComplete={onToggleComplete}
-					onUpdateStatus={onUpdateStatus}
-				/>
-			))}
-		</div>
+		<SortableContext items={tasks.map((t) => t.id)}>
+			<div className="flex flex-col gap-0 px-2">
+				{tasks.map((task) => (
+					<CanvasTaskRow
+						key={task.id}
+						task={task}
+						isRunning={runningTaskId === task.id}
+						pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
+						editors={taskEditorsByNodeId?.get(task.id)}
+						onClick={onSelectTask}
+						onToggleComplete={onToggleComplete}
+						onUpdateStatus={onUpdateStatus}
+					/>
+				))}
+			</div>
+		</SortableContext>
 	);
 }
 
@@ -917,149 +1014,142 @@ export const FeatureWidget = memo(
 						{(() => {
 							const allTasks = feature.tasks ?? [];
 							return (
-								<div
-									role="presentation"
-									data-task-list-shell
-									className="absolute top-1/2 left-[540px] w-[460px] -translate-y-1/2"
-									style={{
-										height: `${(allTasks.length + 2) * 1.75}rem`,
-										maxHeight: "calc(100% - 1.5rem)",
-									}}
-									onClick={(e) => e.stopPropagation()}
-									onPointerDown={(e) => e.stopPropagation()}
-								>
-									<div
-										data-task-list-container
-										className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-									>
-										{/* Header */}
-										<button
-											type="button"
-											className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
-											onClick={(e) => {
-												e.stopPropagation();
-												setIsTaskListModalOpen(true);
-											}}
-										>
-											<span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-												Tasks - {allTasks.length}
-											</span>
-											<Maximize2 className="w-3 h-3 text-gray-500" />
-										</button>
-
-										{/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
-										<div
-											role="presentation"
-											ref={taskListRef}
-											className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
-											onClick={(e) => e.stopPropagation()}
-											onScroll={(event) =>
-												setTaskListScrollTop(event.currentTarget.scrollTop)
-											}
-										>
-											<CanvasTaskList
-												tasks={allTasks}
-												pulseTaskId={pulseTaskId}
-												pulseTaskToken={pulseTaskToken}
-												runningTaskId={runningTaskId}
-												taskEditorsByNodeId={taskEditorsByNodeId}
-												onSelectTask={onSelectTask}
-												onToggleComplete={
-													onUpdateTask
-														? (task) => {
-																safelyUpdateTask({
-																	...task,
-																	status:
-																		task.status === "done" ? "todo" : "done",
-																});
-															}
-														: undefined
-												}
-												onUpdateStatus={
-													onUpdateTask
-														? (task, status) => {
-																safelyUpdateTask({ ...task, status });
-															}
-														: undefined
-												}
-											/>
-										</div>
-										<button
-											type="button"
-											className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
-											onClick={(event) => {
-												event.stopPropagation();
-												setIsTaskListModalOpen(true);
-											}}
-										>
-											<Maximize2 className="h-3 w-3" />
-											Full task controls
-										</button>
-									</div>
-
-									{onSelectTask && (
-										<div
-											data-task-comment-gutter
-											className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
-										>
+								<TaskListDropZone
+									featureId={feature.id}
+									allTasksCount={allTasks.length}
+									commentGutter={
+										onSelectTask && (
 											<div
-												style={{
-													transform: `translateY(-${taskListScrollTop}px)`,
-												}}
+												data-task-comment-gutter
+												className="pointer-events-none absolute top-7 bottom-7 -right-12 w-11 overflow-hidden"
 											>
-												{allTasks.map((task) => {
-													const summary = commentSummaryByNodeId?.get(task.id);
-													const commentCount = Math.max(
-														0,
-														Math.floor(summary?.comment_count ?? 0),
-													);
-													const preview = summary?.last_comment ?? null;
+												<div
+													style={{
+														transform: `translateY(-${taskListScrollTop}px)`,
+													}}
+												>
+													{allTasks.map((task) => {
+														const summary = commentSummaryByNodeId?.get(
+															task.id,
+														);
+														const commentCount = Math.max(
+															0,
+															Math.floor(summary?.comment_count ?? 0),
+														);
+														const preview = summary?.last_comment ?? null;
 
-													return (
-														<div
-															key={task.id}
-															className="flex h-7 items-center justify-start"
-														>
-															{commentCount > 0 && (
-																<CommentPreviewPopover
-																	preview={preview}
-																	commentCount={commentCount}
-																	contextTitle={task.title}
-																	className="pointer-events-auto"
-																>
-																	<button
-																		type="button"
-																		className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
-																		onClick={(event) => {
-																			event.stopPropagation();
-																			onSelectTask(task, "comments");
-																		}}
-																		title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
-																		aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
+														return (
+															<div
+																key={task.id}
+																className="flex h-7 items-center justify-start"
+															>
+																{commentCount > 0 && (
+																	<CommentPreviewPopover
+																		preview={preview}
+																		commentCount={commentCount}
+																		contextTitle={task.title}
+																		className="pointer-events-auto"
 																	>
-																		<span
-																			aria-hidden="true"
-																			className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																		<button
+																			type="button"
+																			className="pointer-events-auto flex h-7 min-w-11 items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-card/95 py-1 pl-1 pr-2 text-card-foreground shadow-md shadow-black/15 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] hover:border-primary/45 hover:bg-accent hover:shadow-lg hover:shadow-black/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:shadow-black/35 dark:hover:shadow-black/45"
+																			onClick={(event) => {
+																				event.stopPropagation();
+																				onSelectTask(task, "comments");
+																			}}
+																			title={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${task.title}`}
+																			aria-label={`Open ${commentCount} ${commentCount === 1 ? "comment" : "comments"} for ${task.title}`}
 																		>
-																			<span className="relative z-10 flex items-center gap-0.5">
-																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
-																				<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																			<span
+																				aria-hidden="true"
+																				className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-primary shadow-sm ring-2 ring-primary/15 after:absolute after:-bottom-0.5 after:left-1 after:h-1.5 after:w-1.5 after:rotate-45 after:rounded-[1px] after:bg-primary"
+																			>
+																				<span className="relative z-10 flex items-center gap-0.5">
+																					<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																					<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																					<span className="h-1 w-1 rounded-full bg-primary-foreground" />
+																				</span>
 																			</span>
-																		</span>
-																		<span className="tabular-nums text-[11px] font-bold tracking-tight">
-																			{commentCount > 99 ? "99+" : commentCount}
-																		</span>
-																	</button>
-																</CommentPreviewPopover>
-															)}
-														</div>
-													);
-												})}
+																			<span className="tabular-nums text-[11px] font-bold tracking-tight">
+																				{commentCount > 99
+																					? "99+"
+																					: commentCount}
+																			</span>
+																		</button>
+																	</CommentPreviewPopover>
+																)}
+															</div>
+														);
+													})}
+												</div>
 											</div>
-										</div>
-									)}
-								</div>
+										)
+									}
+								>
+									{/* Header */}
+									<button
+										type="button"
+										className="flex h-7 w-full shrink-0 cursor-pointer items-center justify-between px-2.5 text-left transition-colors hover:bg-gray-50"
+										onClick={(e) => {
+											e.stopPropagation();
+											setIsTaskListModalOpen(true);
+										}}
+									>
+										<span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+											Tasks - {allTasks.length}
+										</span>
+										<Maximize2 className="w-3 h-3 text-gray-500" />
+									</button>
+
+									{/* Canvas task list: sortable, but light — no per-row query cost. */}
+									<div
+										role="presentation"
+										ref={taskListRef}
+										className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:var(--color-gray-300)_white][&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+										onClick={(e) => e.stopPropagation()}
+										onScroll={(event) =>
+											setTaskListScrollTop(event.currentTarget.scrollTop)
+										}
+									>
+										<CanvasTaskList
+											tasks={allTasks}
+											pulseTaskId={pulseTaskId}
+											pulseTaskToken={pulseTaskToken}
+											runningTaskId={runningTaskId}
+											taskEditorsByNodeId={taskEditorsByNodeId}
+											onSelectTask={onSelectTask}
+											onToggleComplete={
+												onUpdateTask
+													? (task) => {
+															safelyUpdateTask({
+																...task,
+																status:
+																	task.status === "done" ? "todo" : "done",
+															});
+														}
+													: undefined
+											}
+											onUpdateStatus={
+												onUpdateTask
+													? (task, status) => {
+															safelyUpdateTask({ ...task, status });
+														}
+													: undefined
+											}
+										/>
+									</div>
+									<button
+										type="button"
+										className="flex h-7 w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
+										onClick={(event) => {
+											event.stopPropagation();
+											setIsTaskListModalOpen(true);
+										}}
+									>
+										<Maximize2 className="h-3 w-3" />
+										Full task controls
+									</button>
+								</TaskListDropZone>
 							);
 						})()}
 

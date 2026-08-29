@@ -33,6 +33,7 @@ import type { ProjectMember } from "@/services/project.service";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { AssigneeProfile, RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { EditingTaskAvatar } from "../collaboration/EditingPresenceBadge";
+import { MoveTaskMenu } from "./MoveTaskMenu";
 
 const getInitials = (name: string) =>
 	name
@@ -788,6 +789,7 @@ export const TaskListItem = memo(
 				{/* Actions (shown on hover) */}
 				<div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 					<TaskTimerButton projectId={projectId} taskId={task.id} />
+					<MoveTaskMenu task={task} />
 					{onDelete && (
 						<button
 							type="button"
