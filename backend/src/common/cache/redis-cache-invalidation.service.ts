@@ -107,15 +107,37 @@ export class RedisCacheInvalidationService {
     );
   }
 
-  async invalidateMarketplaceTalentCache(): Promise<void> {
-    this.logger.log('cache_invalidate scope=marketplace index_count=1');
-    await this.cache.clearIndex(REDIS_CACHE_KEYS.marketplaceTalentIndex);
+  async invalidateMarketplaceTalentCache(userId?: string): Promise<void> {
+    this.logger.log(
+      `cache_invalidate scope=marketplace index_count=1 profile=${userId ? 1 : 0}`,
+    );
+    const work: Promise<void>[] = [
+      this.runBestEffort('redis_clear_marketplace_talent', () =>
+        this.cache.clearIndex(REDIS_CACHE_KEYS.marketplaceTalentIndex),
+      ),
+    ];
+    if (userId) {
+      // The public talent profile is cached whole (Redis) and at the edge;
+      // both must go, or the owner's WYSIWYG edit "saves" into a stale page
+      // for a full TTL.
+      work.push(
+        this.runBestEffort('redis_del_talent_profile', () =>
+          this.cache.del(REDIS_CACHE_KEYS.talentProfile(userId)),
+        ),
+        this.runBestEffort('edge_purge_talent_profile', () =>
+          this.cloudflarePurge.purgePaths([
+            `/api/marketplace/talent/${encodeURIComponent(userId)}`,
+          ]),
+        ),
+      );
+    }
+    await Promise.all(work);
   }
 
   async invalidateDiscoveryCaches(userId: string): Promise<void> {
     await Promise.all([
       this.invalidateConsultantsCache(userId),
-      this.invalidateMarketplaceTalentCache(),
+      this.invalidateMarketplaceTalentCache(userId),
     ]);
   }
 }

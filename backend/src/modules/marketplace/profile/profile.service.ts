@@ -86,7 +86,10 @@ export class ProfileService {
     userId: string,
     dto: AddLanguageDto,
   ): Promise<UserLanguage> {
-    return this.profileRepo.addLanguage(userId, dto);
+    const language = await this.profileRepo.addLanguage(userId, dto);
+    // Languages render on both cached public seller profiles.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return language;
   }
 
   async updateLanguage(
@@ -94,11 +97,14 @@ export class ProfileService {
     userId: string,
     dto: UpdateLanguageDto,
   ): Promise<UserLanguage> {
-    return this.profileRepo.updateLanguage(id, userId, dto);
+    const language = await this.profileRepo.updateLanguage(id, userId, dto);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return language;
   }
 
   async deleteLanguage(id: string, userId: string): Promise<void> {
-    return this.profileRepo.deleteLanguage(id, userId);
+    await this.profileRepo.deleteLanguage(id, userId);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
   }
 
   async addEducation(
@@ -143,7 +149,10 @@ export class ProfileService {
     userId: string,
     dto: AddExperienceDto,
   ): Promise<UserExperience> {
-    return this.profileRepo.addExperience(userId, dto);
+    const experience = await this.profileRepo.addExperience(userId, dto);
+    // Work history renders on both cached public seller profiles.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return experience;
   }
 
   async updateExperience(
@@ -151,18 +160,28 @@ export class ProfileService {
     userId: string,
     dto: UpdateExperienceDto,
   ): Promise<UserExperience> {
-    return this.profileRepo.updateExperience(id, userId, dto);
+    const experience = await this.profileRepo.updateExperience(
+      id,
+      userId,
+      dto,
+    );
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return experience;
   }
 
   async deleteExperience(id: string, userId: string): Promise<void> {
-    return this.profileRepo.deleteExperience(id, userId);
+    await this.profileRepo.deleteExperience(id, userId);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
   }
 
   async addPortfolio(
     userId: string,
     dto: AddPortfolioDto,
   ): Promise<UserPortfolio> {
-    return this.profileRepo.addPortfolio(userId, dto);
+    const portfolio = await this.profileRepo.addPortfolio(userId, dto);
+    // Portfolios are in both cached public seller-profile payloads.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return portfolio;
   }
 
   async updatePortfolio(
@@ -170,11 +189,14 @@ export class ProfileService {
     userId: string,
     dto: UpdatePortfolioDto,
   ): Promise<UserPortfolio> {
-    return this.profileRepo.updatePortfolio(id, userId, dto);
+    const portfolio = await this.profileRepo.updatePortfolio(id, userId, dto);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return portfolio;
   }
 
   async deletePortfolio(id: string, userId: string): Promise<void> {
-    return this.profileRepo.deletePortfolio(id, userId);
+    await this.profileRepo.deletePortfolio(id, userId);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
   }
 
   async upsertRateSettings(
@@ -210,7 +232,7 @@ export class ProfileService {
     dto: AddSpecializationDto,
   ): Promise<UserSpecialization> {
     const specialization = await this.profileRepo.addSpecialization(userId, dto);
-    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache(userId);
     return specialization;
   }
 
@@ -224,13 +246,13 @@ export class ProfileService {
       userId,
       dto,
     );
-    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache(userId);
     return specialization;
   }
 
   async deleteSpecialization(id: string, userId: string): Promise<void> {
     await this.profileRepo.deleteSpecialization(id, userId);
-    await this.cacheInvalidation.invalidateMarketplaceTalentCache();
+    await this.cacheInvalidation.invalidateMarketplaceTalentCache(userId);
   }
 
   async addIdentityDocument(

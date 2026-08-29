@@ -56,6 +56,39 @@ describe('RedisCacheInvalidationService', () => {
     );
   });
 
+  it('drops the public talent profile and purges its edge path when user is provided', async () => {
+    const service = new RedisCacheInvalidationService(
+      cache as any,
+      cloudflarePurge as any,
+    );
+    await service.invalidateMarketplaceTalentCache('user-1');
+
+    expect(cache.clearIndex).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.marketplaceTalentIndex,
+    );
+    expect(cache.del).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.talentProfile('user-1'),
+    );
+    expect(cloudflarePurge.purgePaths).toHaveBeenCalledWith([
+      '/api/marketplace/talent/user-1',
+    ]);
+  });
+
+  it('discovery invalidation covers both seller profiles for the user', async () => {
+    const service = new RedisCacheInvalidationService(
+      cache as any,
+      cloudflarePurge as any,
+    );
+    await service.invalidateDiscoveryCaches('user-1');
+
+    expect(cache.delMany).toHaveBeenCalledWith(
+      expect.arrayContaining([REDIS_CACHE_KEYS.consultantsProfile('user-1')]),
+    );
+    expect(cache.del).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.talentProfile('user-1'),
+    );
+  });
+
   it('invalidates indexed roadmap template responses and purges the catalog', async () => {
     const service = new RedisCacheInvalidationService(
       cache as any,

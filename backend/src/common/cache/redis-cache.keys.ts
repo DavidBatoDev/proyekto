@@ -38,6 +38,7 @@ export const REDIS_CACHE_KEYS = {
   marketplaceTalentByHash: (queryHash: string) =>
     `cache:v1:marketplace:talent:${queryHash}`,
   marketplaceTalentIndex: 'cache:v1:index:marketplace:talent',
+  talentProfile: (userId: string) => `cache:v1:talent:profile:${userId}`,
 } as const;
 
 type MarketplaceQueryShape = {

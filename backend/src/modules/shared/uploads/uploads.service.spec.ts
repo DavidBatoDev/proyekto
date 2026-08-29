@@ -11,8 +11,16 @@ const r2Config: R2Config = {
 
 function makeService(supabase: unknown = {}) {
   const r2 = { send: jest.fn().mockResolvedValue({}) } as any;
-  const service = new UploadsService(supabase as any, r2, r2Config);
-  return { service, r2 };
+  const cacheInvalidation = {
+    invalidateDiscoveryCaches: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new UploadsService(
+    supabase as any,
+    r2,
+    r2Config,
+    cacheInvalidation as any,
+  );
+  return { service, r2, cacheInvalidation };
 }
 
 function makeFile(
@@ -37,7 +45,11 @@ describe('UploadsService.uploadFile', () => {
 
   it('uploads a public file to proyekto-media and returns a cdn URL', async () => {
     const { service, r2 } = makeService();
-    const res = await service.uploadFile('user-1', 'avatars', makeFile() as any);
+    const res = await service.uploadFile(
+      'user-1',
+      'avatars',
+      makeFile() as any,
+    );
 
     expect(r2.send).toHaveBeenCalledTimes(1);
     const cmd = r2.send.mock.calls[0][0];
@@ -54,7 +66,10 @@ describe('UploadsService.uploadFile', () => {
     const res = await service.uploadFile(
       'user-1',
       'identity_documents',
-      makeFile({ originalname: 'passport.pdf', mimetype: 'application/pdf' }) as any,
+      makeFile({
+        originalname: 'passport.pdf',
+        mimetype: 'application/pdf',
+      }) as any,
     );
 
     const cmd = r2.send.mock.calls[0][0];
@@ -81,7 +96,11 @@ describe('UploadsService.uploadFile', () => {
   it('rejects files over the per-bucket size limit', async () => {
     const { service } = makeService();
     await expect(
-      service.uploadFile('user-1', 'avatars', makeFile({ size: 50 * 1024 * 1024 }) as any),
+      service.uploadFile(
+        'user-1',
+        'avatars',
+        makeFile({ size: 50 * 1024 * 1024 }) as any,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -94,6 +113,50 @@ describe('UploadsService.uploadFile', () => {
         makeFile({ mimetype: 'application/x-msdownload' }) as any,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('UploadsService.confirmAvatar', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  /**
+   * Avatars render on the cached public seller profiles; a confirm that skips
+   * invalidation leaves the old photo up for a full TTL.
+   */
+  it('purges the discovery caches so public profiles show the new photo', async () => {
+    const chain: Record<string, unknown> = {};
+    chain.update = jest.fn(() => chain);
+    chain.eq = jest.fn(() => chain);
+    chain.select = jest.fn(() => chain);
+    chain.single = jest
+      .fn()
+      .mockResolvedValue({ data: { id: 'user-1' }, error: null });
+    const supabase = { from: jest.fn(() => chain) };
+
+    const { service, cacheInvalidation } = makeService(supabase);
+    await service.confirmAvatar('user-1', { avatar_url: 'url' } as any);
+
+    expect(cacheInvalidation.invalidateDiscoveryCaches).toHaveBeenCalledWith(
+      'user-1',
+    );
+  });
+
+  it('purges on banner confirm for the same reason', async () => {
+    const chain: Record<string, unknown> = {};
+    chain.update = jest.fn(() => chain);
+    chain.eq = jest.fn(() => chain);
+    chain.select = jest.fn(() => chain);
+    chain.single = jest
+      .fn()
+      .mockResolvedValue({ data: { id: 'user-1' }, error: null });
+    const supabase = { from: jest.fn(() => chain) };
+
+    const { service, cacheInvalidation } = makeService(supabase);
+    await service.confirmBanner('user-1', { banner_url: 'url' } as any);
+
+    expect(cacheInvalidation.invalidateDiscoveryCaches).toHaveBeenCalledWith(
+      'user-1',
+    );
   });
 });
 

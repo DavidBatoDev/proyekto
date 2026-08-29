@@ -22,6 +22,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { R2_CLIENT, R2_CONFIG, type R2Config } from '../../../config/r2.module';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -129,6 +130,7 @@ export class UploadsService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     @Inject(R2_CLIENT) private readonly r2: S3Client,
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async uploadFile(userId: string, bucketName: string, file: UploadedFileLike) {
@@ -240,6 +242,9 @@ export class UploadsService {
       .select()
       .single();
     if (error) throw new BadRequestException(error.message);
+    // Avatars render on the cached public seller profiles and directory
+    // cards; without this the new photo sits stale for a full TTL.
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return data;
   }
 
@@ -251,6 +256,7 @@ export class UploadsService {
       .select()
       .single();
     if (error) throw new BadRequestException(error.message);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return data;
   }
 
