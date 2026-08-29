@@ -28,6 +28,12 @@ export const Route = createFileRoute(
 
 function WorkItemsLayout() {
 	const { projectId } = Route.useParams();
+	// Standalone roadmaps use "n" as the no-project sentinel. The roadmap API
+	// authorizes these directly, so a project permission lookup would request
+	// /projects/n/my-permissions and prevent the nested board from mounting.
+	if (projectId === "n") {
+		return <WorkItemsLayoutBody />;
+	}
 	return (
 		<RequireProjectAccess projectId={projectId} access="work_items">
 			<WorkItemsLayoutBody />
@@ -40,7 +46,9 @@ function WorkItemsLayoutBody() {
 	const { projectId } = Route.useParams();
 	const navigate = useNavigate();
 	const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-	const linkedRoadmapQuery = useLinkedRoadmapQuery(projectId);
+	const linkedRoadmapQuery = useLinkedRoadmapQuery(
+		projectId === "n" ? "" : projectId,
+	);
 	const { invalidateLinkedRoadmap } = useInvalidateProjectQueries(projectId);
 
 	useEffect(() => {

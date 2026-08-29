@@ -382,7 +382,9 @@ export function KanbanFilters({
 	onSearchChange: (value: string) => void;
 }) {
 	const { projectId } = useParams({ strict: false }) as { projectId?: string };
-	const membersQuery = useProjectMembersQuery(projectId ?? "");
+	const membersQuery = useProjectMembersQuery(
+		projectId === "n" ? "" : (projectId ?? ""),
+	);
 	const members = membersQuery.data ?? [];
 
 	const { epics, boardFilters, setBoardFilters, resetBoardFilters } =

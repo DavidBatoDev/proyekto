@@ -71,7 +71,11 @@ const resolveMemberName = (member: ProjectMember): string => {
 export function useRecentAssignees(projectId: string) {
 	const user = useUser();
 	const profile = useProfile();
-	const membersQuery = useProjectMembersQuery(projectId);
+	// "n" is the standalone-roadmap sentinel, not a real project id. Timeline
+	// and roadmap views still use this hook for the current-user avatar.
+	const membersQuery = useProjectMembersQuery(
+		projectId === "n" ? "" : projectId,
+	);
 	const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]);
 
 	const [recents, setRecents] = useState<string[]>(() =>

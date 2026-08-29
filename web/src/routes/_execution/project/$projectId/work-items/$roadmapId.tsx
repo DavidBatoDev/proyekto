@@ -111,7 +111,7 @@ function WorkItemsBoardPage() {
 			</div>
 
 			<WorkItemsBrowserModal
-				projectId={projectId}
+				projectId={projectId === "n" ? "" : projectId}
 				roadmapId={roadmapId}
 				isOpen={isBrowserOpen}
 				onClose={() => setIsBrowserOpen(false)}
