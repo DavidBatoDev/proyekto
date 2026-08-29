@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -184,6 +184,6 @@ payouts and invoices.
 ## Code locations
 
 - **Backend:** [`backend/src/modules/marketplace/payouts/`](../../../backend/src/modules/marketplace/payouts/), [`backend/src/modules/marketplace/invoices/`](../../../backend/src/modules/marketplace/invoices/), [`backend/src/modules/marketplace/finance/`](../../../backend/src/modules/marketplace/finance/)
-- **Web finance surface:** [`web/src/routes/_execution/engagements/finance/`](../../../web/src/routes/_execution/engagements/finance/) (thin route) over [`web/src/components/finance/portfolio/`](../../../web/src/components/finance/portfolio/) (the four tab panels, filters, and shared list primitives)
+- **Web finance surface:** [`web/src/routes/marketplace/finance/`](../../../web/src/routes/marketplace/finance/) (thin route) over [`web/src/components/finance/portfolio/`](../../../web/src/components/finance/portfolio/) (the four tab panels, filters, and shared list primitives)
 - **Status vocabulary:** [`web/src/lib/finance-status.ts`](../../../web/src/lib/finance-status.ts) — one label/tone map for contract, invoice and engagement statuses, built on the `--success` / `--warning` / `--info` / `--destructive` theme tokens
 - **Payout RPCs:** `create_payout_and_mark_paid`, `void_payout_and_revert` (see [migrations-workflow.md](../../07-data-and-db/migrations-workflow.md))

@@ -18,9 +18,6 @@ import { PdfTextExtractorService } from './services/pdf-text-extractor.service';
     PdfjsLoaderService,
     CvExtractorService,
   ],
-  // The pdf text layer is reused by the finance import workspace, which reads
-  // uploaded invoices; the loader travels with it because the extractor holds
-  // the only reference to it.
-  exports: [ProfileImportService, PdfTextExtractorService, PdfjsLoaderService],
+  exports: [ProfileImportService],
 })
 export class ProfileImportModule {}

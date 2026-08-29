@@ -582,31 +582,14 @@ export class ProjectsService {
     };
   }> {
     const feeVisibleProjectIds = new Set<string>();
-    // Invoice totals cover the projects the caller OWNS — their own book, the
-    // set the personal finance surfaces list (see ConsultantFinanceAccessService).
-    //
-    // It followed `finance.view` before, which is the owner|admin baseline, so
-    // an admin on someone else's project saw that project's invoices totalled
-    // on their own dashboard while `/engagements/finance` — owner-scoped —
-    // showed them nothing: a card reading "120,000 · 11 invoices" above a
-    // portfolio with no invoices in it. Someone else's billing is theirs to
-    // total, not the admin's; the admin still reads it inside that project.
-    const ownedProjectIds = new Set<string>();
     if (query.project_id) {
-      const role = await this.authorization.assertRole(
-        userId,
-        query.project_id,
-        'viewer',
-      );
+      await this.authorization.assertRole(userId, query.project_id, 'viewer');
       const permissions = await this.authorization.resolvePermissions(
         userId,
         query.project_id,
       );
       if (permissions?.time.view_team_logs) {
         feeVisibleProjectIds.add(query.project_id);
-      }
-      if (role === 'owner') {
-        ownedProjectIds.add(query.project_id);
       }
     }
     if (query.team_id) {
@@ -651,9 +634,6 @@ export class ProjectsService {
         const permissions = resolvePermissions(row.role, row.capabilities);
         if (permissions.time.view_team_logs) {
           feeVisibleProjectIds.add(row.project_id);
-        }
-        if (row.role === 'owner') {
-          ownedProjectIds.add(row.project_id);
         }
       }
       projectIds = Array.from(
@@ -852,13 +832,10 @@ export class ProjectsService {
       }
     }
 
-    const invoiceSummary = await this.commerce.getInvoiceSummary(
-      [...ownedProjectIds],
-      {
-        from: query.from,
-        to: query.to,
-      },
-    );
+    const invoiceSummary = await this.commerce.getInvoiceSummary(projectIds, {
+      from: query.from,
+      to: query.to,
+    });
 
     return {
       filters: {

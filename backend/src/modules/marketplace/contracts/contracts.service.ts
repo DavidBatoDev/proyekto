@@ -357,18 +357,7 @@ export class ContractsService {
     callerId: string,
     projectId: string,
   ): Promise<ContractWithSchedule[]> {
-    // Either the consultant's own book (verified consultant + project owner)
-    // or the project finance capability — a project admin may READ the
-    // project's contracts; contract control below stays consultant-bound.
-    try {
-      await this.financeAccess.assertProject(callerId, projectId);
-    } catch {
-      await this.projectAuth.assertPermission(
-        callerId,
-        projectId,
-        'finance.view_contracts',
-      );
-    }
+    await this.financeAccess.assertProject(callerId, projectId);
     const { data, error } = await this.supabase
       .from('contracts')
       .select('*')
@@ -1137,15 +1126,14 @@ export class ContractsService {
       return;
     }
     if (contract.project_id) {
-      // `finance.view_contracts` covers the project owner (allTrue baseline)
-      // and the admin ("HR") tier alike — replacing the old owner_id-only
-      // lookup. The consultant-equality carve-out above still short-circuits,
-      // so a consultant who lost the seat cannot re-enter through here.
-      const permissions = await this.projectAuth.resolvePermissions(
-        callerId,
-        contract.project_id,
-      );
-      if (permissions?.finance.view_contracts) return;
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', contract.project_id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const ownerId = (data as { owner_id: string | null } | null)?.owner_id;
+      if (callerId === ownerId && ownerId !== consultantId) return;
     }
     throw new NotFoundException('Contract not found');
   }
@@ -1990,7 +1978,7 @@ export class ContractsService {
               row?.title ?? contract.project_title_snapshot ?? null,
             message: 'The service agreement is now fully signed.',
           },
-          link_url: `/engagements/finance/${contract.id}?section=signatures`,
+          link_url: `/marketplace/finance/${contract.id}?section=signatures`,
         });
       } catch {
         // A notification failure must not undo a signature.

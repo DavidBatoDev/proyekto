@@ -705,7 +705,7 @@ async function seed() {
 
 	log("");
 	log("Done. Open:");
-	log(`  ${process.env.CLIENT_URL ?? "http://localhost:3000"}/engagements/finance`);
+	log(`  ${process.env.CLIENT_URL ?? "http://localhost:3000"}/marketplace/finance?tab=engagements`);
 	log(`  …?tab=overview&projectId=${project.id}`);
 	log("");
 	log(`Demo logins: <name>@${DEMO_EMAIL_DOMAIN} / ${DEMO_PASSWORD}`);

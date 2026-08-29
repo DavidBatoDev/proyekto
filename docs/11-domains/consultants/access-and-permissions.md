@@ -1,6 +1,6 @@
 # Consultant Access and Permissions
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-08-18 · **Status:** current
 
 Active-consultant status unlocks consultant-only product capabilities, but it does not itself
 grant access to any project. Project authority comes from `project_access` — a `role` on the
@@ -22,7 +22,7 @@ share_role ladder plus per-member `capabilities`, and nothing else.
 
 Every one of these writes `origin = 'direct'` (or `invited` / `team:<id>`), because origin is
 provenance and never authority. **`role = 'owner'` is what carries the authority**, and it is
-also what finance scopes on: `/engagements/finance` returns projects where the caller has active
+also what finance scopes on: `/marketplace/finance` returns projects where the caller has active
 consultant capability *and* a `role=owner` access row.
 
 ## What was removed

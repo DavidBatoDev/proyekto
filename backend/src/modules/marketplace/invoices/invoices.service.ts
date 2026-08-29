@@ -8,7 +8,7 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { MailerService } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { TeamFinanceAccessService } from '../finance/team-finance-access.service';
+import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
 import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
@@ -55,8 +55,7 @@ export interface InvoiceRow {
   due_date: string | null;
   period_start: string | null;
   period_end: string | null;
-  /** How the invoice came to exist; 'imported' was read from a document. */
-  origin: 'manual' | 'scheduled' | 'imported';
+  origin: 'manual' | 'scheduled';
   hours_detail_level: HoursDetailLevel;
   bill_to: InvoiceParty;
   issued_by: InvoiceParty;
@@ -74,8 +73,6 @@ export interface InvoiceRow {
   replaces_invoice_id: string | null;
   replaced_by_invoice_id: string | null;
   pdf_path: string | null;
-  /** The `finance_documents` row an imported invoice was read from. */
-  source_document_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -187,10 +184,7 @@ interface ComposeLinesInput {
 export class InvoicesService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    // The either/or facade (consultant+owner OR project finance capability),
-    // so a project admin can run the invoice lifecycle. See the class note on
-    // TeamFinanceAccessService.
-    private readonly financeAccess: TeamFinanceAccessService,
+    private readonly financeAccess: ConsultantFinanceAccessService,
     private readonly notifications: NotificationsService,
     private readonly contracts: ContractsService,
     private readonly composition: InvoiceCompositionService,
@@ -205,11 +199,7 @@ export class InvoicesService {
     projectId: string,
     query: InvoiceListQueryDto,
   ): Promise<{ items: InvoiceWithLines[]; total: number }> {
-    await this.financeAccess.assertProjectFinanceActor(
-      callerId,
-      projectId,
-      'read',
-    );
+    await this.financeAccess.assertProject(callerId, projectId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
     const offset = (page - 1) * limit;
@@ -242,10 +232,9 @@ export class InvoicesService {
     callerId: string,
     dto: CreateInvoiceDto,
   ): Promise<InvoiceWithLines> {
-    const project = await this.financeAccess.assertProjectFinanceActor(
+    const project = await this.financeAccess.assertProject(
       callerId,
       dto.project_id,
-      'manage',
     );
 
     // An explicitly selected contract is exact invoice provenance. Without
@@ -426,11 +415,7 @@ export class InvoicesService {
     invoice: InvoiceRow,
   ): Promise<void> {
     if (invoice.project_id) {
-      await this.financeAccess.assertProjectFinanceActor(
-        callerId,
-        invoice.project_id,
-        'read',
-      );
+      await this.financeAccess.assertProject(callerId, invoice.project_id);
       return;
     }
     if (invoice.issuer_user_id === callerId) return;
@@ -459,10 +444,9 @@ export class InvoicesService {
     dto: UpdateInvoiceDto,
   ): Promise<InvoiceWithLines> {
     const existing = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(existing),
-      'manage',
     );
     if (existing.status !== 'draft') {
       throw new BadRequestException(
@@ -582,10 +566,9 @@ export class InvoicesService {
    */
   async deleteInvoice(callerId: string, invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'manage',
     );
 
     if (invoice.status !== 'draft') {
@@ -608,16 +591,11 @@ export class InvoicesService {
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
-    await this.financeAccess.assertProjectFinanceActor(
-      callerId,
-      projectId,
-      'manage',
-    );
+    await this.financeAccess.assertProject(callerId, projectId);
     await this.qaFixtures.assertProjectSideEffectAllowed(
       projectId,
       'Invoice issuing',
     );
-    this.assertNotImported(invoice, 'issued');
 
     if (invoice.status !== 'draft') {
       throw new BadRequestException(
@@ -811,10 +789,9 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceRecipient> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'read',
     );
     return this.resolveRecipient(invoice);
   }
@@ -828,16 +805,14 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<InvoiceEmailDelivery> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
       'Invoice email delivery',
     );
-    this.assertNotImported(invoice, 'emailed');
     if (invoice.status === 'draft' || invoice.status === 'void') {
       throw new BadRequestException(
         'Only issued invoices can be sent to the client.',
@@ -852,10 +827,9 @@ export class InvoicesService {
     dto: RecordInvoicePaymentDto,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
@@ -872,7 +846,6 @@ export class InvoicesService {
         'Payment cannot exceed the remaining invoice balance.',
       );
     }
-    const settlement = this.resolveSettlement(invoice.currency, amount, dto);
     const { error } = await this.supabase.from('invoice_payments').insert({
       invoice_id: invoiceId,
       amount,
@@ -881,10 +854,6 @@ export class InvoicesService {
       reference: dto.reference?.trim() || null,
       note: dto.note?.trim() || null,
       recorded_by: callerId,
-      settled_currency: settlement?.currency ?? null,
-      settled_amount: settlement?.amount ?? null,
-      fx_rate: settlement?.rate ?? null,
-      proof_document_id: dto.proof_document_id ?? null,
     });
     if (error) throw new BadRequestException(error.message);
     await this.refreshPaymentState(invoiceId);
@@ -892,9 +861,6 @@ export class InvoicesService {
       amount,
       payment_date: dto.payment_date,
       reference: dto.reference?.trim() || null,
-      settled_currency: settlement?.currency ?? null,
-      settled_amount: settlement?.amount ?? null,
-      fx_rate: settlement?.rate ?? null,
     });
     return this.getInvoiceInternal(invoiceId);
   }
@@ -906,10 +872,9 @@ export class InvoicesService {
     reason: string,
   ): Promise<InvoiceWithLines> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'manage',
     );
     await this.qaFixtures.assertProjectSideEffectAllowed(
       this.requireInvoiceProjectId(invoice),
@@ -965,11 +930,7 @@ export class InvoicesService {
   ): Promise<{ voided: InvoiceWithLines; replacement: InvoiceWithLines }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const projectId = this.requireInvoiceProjectId(invoice);
-    await this.financeAccess.assertProjectFinanceActor(
-      callerId,
-      projectId,
-      'manage',
-    );
+    await this.financeAccess.assertProject(callerId, projectId);
     await this.qaFixtures.assertProjectSideEffectAllowed(
       projectId,
       'Invoice void and replacement',
@@ -1088,12 +1049,10 @@ export class InvoicesService {
     generated_at: string;
   }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'manage',
     );
-    this.assertNotImported(invoice, 'rendered as a PDF');
     if (invoice.status !== 'draft' && invoice.pdf_path) {
       throw new BadRequestException(
         'Issued invoices use their finalized PDF and cannot be regenerated.',
@@ -1228,10 +1187,9 @@ export class InvoicesService {
     invoiceId: string,
   ): Promise<{ url: string; expires_in: number }> {
     const invoice = await this.getInvoiceInternal(invoiceId);
-    await this.financeAccess.assertProjectFinanceActor(
+    await this.financeAccess.assertProject(
       callerId,
       this.requireInvoiceProjectId(invoice),
-      'read',
     );
     if (!invoice.pdf_path) {
       throw new NotFoundException(
@@ -1347,70 +1305,7 @@ export class InvoicesService {
     return parsed;
   }
 
-  /**
-   * What actually landed, and at what rate.
-   *
-   * A settlement in the invoice's own currency is not a foreign settlement and
-   * is stored as none at all — otherwise every ordinary payment would carry a
-   * meaningless rate of 1. An omitted rate is derived from the two amounts,
-   * which is the only rate that reconciles them.
-   */
-  private resolveSettlement(
-    invoiceCurrency: string,
-    amount: number,
-    dto: {
-      settled_currency?: string;
-      settled_amount?: number;
-      fx_rate?: number;
-    },
-  ): { currency: string; amount: number; rate: number } | null {
-    const currency = dto.settled_currency?.trim().toUpperCase();
-    if (!currency && dto.settled_amount === undefined) return null;
-    if (!currency || dto.settled_amount === undefined) {
-      throw new BadRequestException(
-        'A settlement needs both the currency it arrived in and the amount that arrived.',
-      );
-    }
-    if (currency === invoiceCurrency.trim().toUpperCase()) return null;
-
-    const settledAmount = roundMoney(dto.settled_amount);
-    const rate = dto.fx_rate ?? settledAmount / amount;
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new BadRequestException('The settlement rate must be positive.');
-    }
-    return {
-      currency,
-      amount: settledAmount,
-      rate: Math.round(rate * 1_000_000) / 1_000_000,
-    };
-  }
-
-  /**
-   * Refuse the transitions that would produce a second document of record.
-   *
-   * An imported invoice already exists on paper: it was rendered elsewhere,
-   * numbered elsewhere, and sent to the client elsewhere. Issuing, re-rendering
-   * or emailing it from here would either overwrite the evidence it was booked
-   * from or send the client a second, differently-formatted copy of an invoice
-   * they were already paid on.
-   */
-  private assertNotImported(invoice: InvoiceRow, action: string): void {
-    if (invoice.origin === 'imported') {
-      throw new BadRequestException(
-        `This invoice was imported from a document, so it cannot be ${action}. Its original document stays the record.`,
-      );
-    }
-  }
-
-  /**
-   * Recompute status and `paid_at` from the payment ledger.
-   *
-   * Public because the historical import path (FinanceImportsService) inserts
-   * a settled invoice's payments in one pass and then asks for the resulting
-   * state, rather than restating the paid/partially-paid rule itself. There is
-   * one rule and it lives here.
-   */
-  async refreshPaymentState(invoiceId: string): Promise<void> {
+  private async refreshPaymentState(invoiceId: string): Promise<void> {
     const invoice = await this.getInvoiceInternal(invoiceId);
     const status: InvoiceStatus =
       invoice.balance_due <= 0

@@ -1,6 +1,6 @@
 # Consultants
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-08-12 · **Status:** current
 
 Consultants are Proyekto's vetted delivery operators. There is no consultant account
 identity — consultant capability begins at admin approval and nowhere else. The
@@ -63,4 +63,4 @@ deleted.
 - **Predicate and guard:** [`backend/src/common/auth/consultant-capability.ts`](../../../backend/src/common/auth/consultant-capability.ts), [`backend/src/common/guards/consultant-only.guard.ts`](../../../backend/src/common/guards/consultant-only.guard.ts)
 - **Applications and approval:** [`backend/src/modules/marketplace/applications/`](../../../backend/src/modules/marketplace/applications/), [`backend/src/modules/shared/admin/`](../../../backend/src/modules/shared/admin/)
 - **Consultant directory:** [`backend/src/modules/marketplace/consultants/`](../../../backend/src/modules/marketplace/consultants/)
-- **Web:** every consultant surface, public and authenticated alike, now lives in [`web/src/routes/marketplace/consultant/`](../../../web/src/routes/marketplace/consultant/), with finance in [`web/src/routes/_execution/engagements/finance/`](../../../web/src/routes/_execution/engagements/finance/)
+- **Web:** every consultant surface, public and authenticated alike, now lives in [`web/src/routes/marketplace/consultant/`](../../../web/src/routes/marketplace/consultant/), with finance in [`web/src/routes/marketplace/finance/`](../../../web/src/routes/marketplace/finance/)

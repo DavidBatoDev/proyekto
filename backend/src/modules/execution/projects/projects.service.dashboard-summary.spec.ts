@@ -191,7 +191,7 @@ describe('ProjectsService dashboard invoice summary', () => {
       accessRows: [
         {
           project_id: 'project-1',
-          role: 'owner',
+          role: 'admin',
           origin: 'invited',
           capabilities: {},
         },
@@ -236,34 +236,6 @@ describe('ProjectsService dashboard invoice summary', () => {
       from: '2026-01-01',
       to: '2026-02-01',
     });
-  });
-
-  it("totals only the caller's own projects, not every project they administer", async () => {
-    // An admin on someone else's project reads its invoices inside that
-    // project; they are not part of the admin's own book, and totalling them
-    // here put money on a dashboard whose Finance surface showed none of it.
-    const getInvoiceSummary = jest.fn().mockResolvedValue({
-      total_count: 0,
-      total_amount: 0,
-      status_counts: {},
-    });
-    const service = buildService({
-      logs: [],
-      accessRows: [
-        { project_id: 'mine', role: 'owner', origin: null, capabilities: {} },
-        {
-          project_id: 'theirs',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: {},
-        },
-      ],
-      commerce: { getInvoiceSummary },
-    });
-
-    await service.getDashboardSummary('user-1', {});
-
-    expect(getInvoiceSummary).toHaveBeenCalledWith(['mine'], expect.anything());
   });
 
   it('reports zeroes when no commerce implementation is bound', async () => {

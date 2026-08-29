@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-08-24 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -14,7 +14,7 @@ gating done in route `beforeLoad` hooks and project components.
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
 | `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
-| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/*` (redirect stubs only — finance lives at `/engagements/finance` since 2026-08-26; see below), `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
+| `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
@@ -64,15 +64,6 @@ the finance tab lived six days, rendered only for verified consultants, and — 
 grep and against production — no notification row, email, FCM payload, or trigger ever
 carried the path; every reference was an in-app typed `Link`. Any future move that fails
 even one of those tests keeps a redirect.
-
-Finance itself moved on 2026-08-26: `/marketplace/finance/**` became
-`/engagements/finance/**` (its own shell under Engagements, so team finance can sit
-outside the marketplace's consultant gate). This move fails the test above three times
-over — the invoice scheduler and contracts service both persisted the old paths into
-`notifications.link_url` — so every old finance URL keeps a permanent `beforeLoad`
-redirect stub under [`routes/marketplace/finance/`](../../web/src/routes/marketplace/finance/),
-and both `/finance` and `/marketplace/finance` map straight to `/engagements/finance`
-in `legacyRoutePaths.ts` so historical links land in one hop.
 
 ## Marketplace category pages
 

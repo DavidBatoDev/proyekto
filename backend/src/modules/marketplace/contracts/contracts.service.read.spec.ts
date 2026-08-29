@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ContractsService, type ContractRow } from './contracts.service';
 import { contractFixture } from './contracts.service.test-fixtures';
 
-function serviceFor(contract: ContractRow, viewerCanReadFinance = false) {
+function serviceFor(contract: ContractRow, ownerId: string | null = null) {
   const query = (data: unknown) => {
     const builder = {
       select: jest.fn(() => builder),
@@ -19,31 +19,20 @@ function serviceFor(contract: ContractRow, viewerCanReadFinance = false) {
         ? query(contract)
         : table === 'contract_positions'
           ? query([])
-          : query(null),
+          : query({ owner_id: ownerId }),
     ),
   } as unknown as SupabaseClient;
   const financeAccess = { assertProject: jest.fn().mockResolvedValue({}) };
-  // Only the field assertContractRead actually dereferences. A project-bound
-  // read resolves the caller's permissions and checks finance.view_contracts —
-  // owner and admin baselines both grant it.
-  const projectAuth = {
-    resolvePermissions: jest
-      .fn()
-      .mockResolvedValue(
-        viewerCanReadFinance ? { finance: { view_contracts: true } } : null,
-      ),
-  };
   return {
     service: new ContractsService(
       supabase,
       financeAccess as never,
       { createNotification: jest.fn() } as never,
-      projectAuth as never,
+      { getProjectConsultantId: jest.fn() } as never,
       // Initials are not exercised by these specs.
       { listForContract: async () => [] } as never,
     ),
     financeAccess,
-    projectAuth,
   };
 }
 
@@ -66,22 +55,12 @@ describe('ContractsService position-based reads', () => {
     ).resolves.toEqual(expect.objectContaining({ id: 'contract-1' }));
   });
 
-  it('lets a project member with finance.view_contracts read', async () => {
-    // Covers the project owner AND the admin ("HR") tier: both role baselines
-    // resolve finance.view_contracts, which replaced the owner_id-only lookup.
-    const { service } = serviceFor(contractFixture(), true);
+  it('lets a distinct live project owner read', async () => {
+    const { service } = serviceFor(contractFixture(), 'project-owner');
 
     await expect(
-      service.getContract('project-admin', 'contract-1'),
+      service.getContract('project-owner', 'contract-1'),
     ).resolves.toEqual(expect.objectContaining({ id: 'contract-1' }));
-  });
-
-  it('hides a project contract from a member without the capability', async () => {
-    const { service } = serviceFor(contractFixture(), false);
-
-    await expect(
-      service.getContract('project-viewer', 'contract-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('hides a contract from a caller with no party position', async () => {

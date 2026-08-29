@@ -67,15 +67,6 @@ export class ProjectCommerceAdapter implements ProjectCommercePort {
     projectIds: string[],
     range: { from?: string; to?: string },
   ): Promise<ProjectInvoiceSummary> {
-    // An owner-less caller asks for nothing; `.in('project_id', [])` is not a
-    // query worth sending, and PostgREST's answer to it is not worth relying on.
-    if (projectIds.length === 0) {
-      return {
-        ...EMPTY_INVOICE_SUMMARY,
-        status_counts: { ...EMPTY_INVOICE_SUMMARY.status_counts },
-      };
-    }
-
     let query = this.supabase
       .from('invoices')
       .select('status, total, project_id, created_at')
