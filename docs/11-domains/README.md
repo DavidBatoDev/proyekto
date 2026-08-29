@@ -1,6 +1,6 @@
 # Feature Domains
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-08-26 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
@@ -22,7 +22,7 @@ vetting. See [Product → roles and capabilities](../01-product/personas.md).
 
 | Doc | What's in it |
 | --- | --- |
-| [marketplace/](./marketplace/README.md) | Consultant applications, vetting, Talent discovery, and hiring |
+| [marketplace/](./marketplace/README.md) | Consultant applications, vetting, Talent discovery, hiring, and client-authored [project briefs](./marketplace/project-briefs.md) |
 | [teams-and-time/](./teams-and-time/README.md) | Reusable teams, project curation → access, rates, and billable time |
 | [finance/](./finance/README.md) | Payouts, invoices, contract pricing boundaries, and the retired escrow |
 

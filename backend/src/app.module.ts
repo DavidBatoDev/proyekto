@@ -22,6 +22,7 @@ import { ConsultantsModule } from './modules/marketplace/consultants/consultants
 import { TaxonomyModule } from './modules/marketplace/taxonomy/taxonomy.module';
 import { TalentModule } from './modules/marketplace/talent/talent.module';
 import { ServiceOfferingsModule } from './modules/marketplace/service-offerings/service-offerings.module';
+import { PostingsModule } from './modules/marketplace/postings/postings.module';
 import { SurveyModule } from './modules/marketplace/survey/survey.module';
 import { ApplicationsModule } from './modules/marketplace/applications/applications.module';
 import { UploadsModule } from './modules/shared/uploads/uploads.module';
@@ -86,6 +87,7 @@ import { AppController } from './app.controller';
     TaxonomyModule,
     TalentModule,
     ServiceOfferingsModule,
+    PostingsModule,
     SurveyModule,
     ApplicationsModule,
     UploadsModule,

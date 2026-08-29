@@ -1,10 +1,13 @@
 # Marketplace & Applications
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-26 · **Status:** current
 
 Two related domains that feed Proyekto's managed model: **applications** (how someone
 becomes a vetted consultant) and the **marketplace** (how a verified consultant finds
 and hires talent). The gate between them is consultant verification.
+
+The marketplace runs in both directions as of 2026-08-26: consultant → talent invites,
+and client → consultant [project briefs](./project-briefs.md).
 
 ## Applications
 

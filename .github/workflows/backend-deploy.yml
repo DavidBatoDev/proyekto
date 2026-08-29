@@ -37,6 +37,8 @@ jobs:
       PRODUCTION_QA_ENABLED: ${{ vars.PRODUCTION_QA_ENABLED }}
       GOOGLE_OAUTH_ENABLED: ${{ vars.GOOGLE_OAUTH_ENABLED }}
       KNOWLEDGE_INGEST_ENABLED: ${{ vars.KNOWLEDGE_INGEST_ENABLED }}
+      BRIEF_GENERATOR_ENABLED: ${{ vars.BRIEF_GENERATOR_ENABLED }}
+      AGENT_API_URL: ${{ vars.AGENT_API_URL }}
       ROADMAP_ACTIVITY_LOG_ENABLED: ${{ vars.ROADMAP_ACTIVITY_LOG_ENABLED }}
       ACTIVITY_FLUSH_TIMEOUT_MS: ${{ vars.ACTIVITY_FLUSH_TIMEOUT_MS }}
       ACTIVITY_MAX_EVENTS_PER_REQUEST: ${{ vars.ACTIVITY_MAX_EVENTS_PER_REQUEST }}
@@ -171,6 +173,21 @@ jobs:
             echo "Knowledge ingest enabled for this deploy."
           else
             echo "Knowledge ingest disabled (create KNOWLEDGE_INGEST_SECRET secret, then set the KNOWLEDGE_INGEST_ENABLED repo var to enable)."
+          fi
+
+          # Project-brief AI generator. Not a feature gate -- the brief surfaces
+          # ship on regardless; this only wires up the credentials the generator
+          # needs. Without them the backend leaves it dormant and briefs are
+          # hand-authored. To wire it up: create the AGENT_INTERNAL_TOKEN secret
+          # in Secret Manager and set the AGENT_API_URL repo var to the agent's
+          # Cloud Run URL, then set BRIEF_GENERATOR_ENABLED to have this deploy
+          # pass them through.
+          if [[ -n "${BRIEF_GENERATOR_ENABLED:-}" ]]; then
+            ENV_VARS="${ENV_VARS},AGENT_API_URL=${AGENT_API_URL}"
+            SECRETS="${SECRETS},AGENT_INTERNAL_TOKEN=AGENT_INTERNAL_TOKEN:latest"
+            echo "Brief generator enabled for this deploy."
+          else
+            echo "Brief generator disabled (create AGENT_INTERNAL_TOKEN secret + AGENT_API_URL repo var, then set BRIEF_GENERATOR_ENABLED to enable)."
           fi
 
           # Roadmap activity log (project Logs page). ON BY DEFAULT — the repo

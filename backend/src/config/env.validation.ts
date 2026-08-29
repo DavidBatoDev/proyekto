@@ -237,6 +237,22 @@ class EnvironmentVariables {
   @IsNumber()
   REALTIME_PUBLISH_TIMEOUT_MS?: number;
 
+  // Python agent, for the project-brief generator. The browser never calls it
+  // directly: this route spends OpenAI credits and touches no data, so it sits
+  // behind the backend's auth and a shared secret. Unset = the generator is
+  // dormant and briefs are hand-authored, which is a supported state.
+  @IsOptional()
+  @IsString()
+  AGENT_API_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  AGENT_INTERNAL_TOKEN?: string;
+
+  @IsOptional()
+  @IsNumber()
+  AGENT_BRIEF_TIMEOUT_MS?: number;
+
   // Firebase Admin (FCM) push notifications. When all three are set, the backend
   // sends pushes to registered device tokens via firebase-admin; unset = push is
   // a no-op (dev/CI/tests), so the rest of the app is unaffected. FIREBASE_PRIVATE_KEY

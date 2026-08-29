@@ -204,6 +204,24 @@ const UPLOAD_BUCKETS: Record<
       "application/octet-stream",
     ],
   },
+  // Supporting files on a project brief. Must stay in step with BUCKET_CONFIG in
+  // backend/src/modules/shared/uploads/uploads.controller.ts -- the browser tries
+  // this Worker first and only falls back to the backend, so a bucket missing
+  // from either side fails for half the callers and works for the other half.
+  brief_attachments: {
+    maxSize: 25 * 1024 * 1024,
+    allowedTypes: [
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain", "text/csv",
+      "application/zip",
+      "application/octet-stream",
+    ],
+  },
 };
 
 /** Structural shape of an uploaded multipart File at runtime (workers-types' FormData typing omits DOM File). */

@@ -105,6 +105,27 @@ const BUCKET_CONFIG: Record<
       'application/octet-stream',
     ],
   },
+  // A project brief's supporting files: specs, wireframes, an existing RFP. Same
+  // ceiling and allow-list as chat, because it is the same kind of payload and a
+  // brief with a 6MB PDF attached is the ordinary case, not the abusive one.
+  brief_attachments: {
+    maxSize: 25 * 1024 * 1024,
+    allowedTypes: [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+      'text/csv',
+      'application/zip',
+      'application/octet-stream',
+    ],
+  },
 };
 
 /** Buckets that must NOT be publicly readable — uploaded to the private R2 bucket. */

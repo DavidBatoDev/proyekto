@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-18 · **Status:** draft
+> **Last updated:** 2026-08-26 · **Status:** draft
 
 Proyekto today has **no monetization layer at all**: no plans, no subscriptions, no payment
 processor, no entitlements, no usage caps. This page designs one. It splits the product into
@@ -49,9 +49,9 @@ file is cited so the cost of the change is visible.
 
 | Pitch-deck feature | Reality |
 | --- | --- |
-| **Post/bid a project** | Does not exist. `'bidding'` was added to the `project_status` enum (`20260216000000_add_bidding_status.sql`) and never used — no `bids` table, no UI. `web/src/routes/marketplace/marketplace/project-posting.tsx` is a project-creation wizard, not a public listing. |
+| **Post/bid a project** | **Built 2026-08-26** as client-authored project briefs (`project_postings`), not as bids on a project. See [Marketplace → project briefs](../11-domains/marketplace/project-briefs.md). |
 | **Sell a roadmap** | Half exists. The template marketplace (`roadmap_public_templates`, versions, ratings, usages — `20260714100000_...`) has publish (consultant-only), browse, and instantiate — but **no price column, no purchase, no revenue share**. Selling is a monetization layer on an existing distribution surface. |
-| **Find & apply to a project** | Does not exist in that direction. Today's marketplace module is consultant→talent *invites* only (`backend/src/modules/marketplace/marketplace/`, `project_invites`, `profiles.is_public`). `applications/` is consultant **vetting**, not project applications. |
+| **Find & apply to a project** | **Built 2026-08-26.** Verified consultants browse `/marketplace/briefs` and send a lightweight proposal (pitch + indicative rate). Pricing and contract machinery are still out of scope. |
 
 ## The two platforms, four tiers
 
@@ -231,7 +231,7 @@ Rules, in order of importance:
 - **E11 — Free-tier abuse.** "3 projects" per *what*? Per account — else serial team
   creation resets limits. Deleted (archived) projects continue to count for 30 days to
   block create/delete cycling.
-- **E12 — Bidding ghost state.** The `'bidding'` project status exists in the enum with no
+- **E12 — Bidding ghost state.** *(Resolved 2026-08-26.)* Project briefs deliberately left `'bidding'` alone: it is still written by client-mode project creation and rendered by three dashboard surfaces, and the brief board reads `project_postings` instead, so old rows cannot leak into the listings surface.
   feature behind it. Building "post/bid" must either adopt it deliberately or leave it
   untouched; don't let old rows with that status leak into a new listings surface.
 - **E13 — AI limit race.** Counter increments must be check-and-increment (Redis INCR
