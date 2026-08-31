@@ -21,10 +21,9 @@ interface BrandMarkProps {
  * Proyekto brand mark.
  *
  * `lockup` (logomark + "Proyekto") and `logomark` (icon only) render the real
- * artwork from `public/proyektologos/`. The lockup's wordmark is baked at
- * #0F172A so it only reads on light surfaces; the logomark is indigo line art
- * and works on either. `wordmark`/`mark` remain text-based placeholders that
- * inherit `currentColor`.
+ * artwork from `public/proyektologos/v3/` — indigo line art on transparency,
+ * so both read on light and dark surfaces. `wordmark`/`mark` remain text-based
+ * placeholders that inherit `currentColor`.
  *
  * Sizing: height-based (matches legacy `h-N` Tailwind classes used on the
  * old `<img>` tags). The `mark` variant is square; the `wordmark` flows to
@@ -38,7 +37,7 @@ export function BrandMark({
 	if (variant === "lockup") {
 		return (
 			<img
-				src="/proyektologos/logo-primary.png"
+				src="/proyektologos/v3/logo-primary.png"
 				alt={ariaLabel}
 				className={`w-auto object-contain ${className ?? ""}`}
 			/>
@@ -48,7 +47,7 @@ export function BrandMark({
 	if (variant === "logomark") {
 		return (
 			<img
-				src="/proyektologos/logomark.png"
+				src="/proyektologos/v3/logomark.png"
 				alt={ariaLabel}
 				className={`w-auto object-contain ${className ?? ""}`}
 			/>
