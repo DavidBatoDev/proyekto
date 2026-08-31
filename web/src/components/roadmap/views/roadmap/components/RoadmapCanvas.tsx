@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarDays, Link2, Plus } from "lucide-react";
+import { Link2, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CollaborationPresenceBar } from "@/components/roadmap/collaboration/CollaborationPresenceBar";
@@ -8,6 +8,7 @@ import { useRoadmapCollaboration } from "@/hooks/useRoadmapCollaboration";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { RoadmapLeftSidePanel } from "../../../panels/RoadmapLeftSidePanel";
+import { MobileTimelineView } from "../../timeline/mobile";
 import { TimelineView } from "../../timeline/TimelineView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
 import type { RoadmapCanvasProps } from "../models/types";
@@ -315,18 +316,27 @@ const RoadmapCanvas = ({
 			<div className="flex-1 relative overflow-hidden">
 				{mobile ? (
 					viewMode === "milestones" ? (
-						<div className="flex h-full flex-col items-center justify-center px-8 text-center">
-							<div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-								<CalendarDays className="h-6 w-6 text-muted-foreground" />
-							</div>
-							<h3 className="text-base font-semibold text-foreground">
-								Timeline
-							</h3>
-							<p className="mt-1 max-w-xs text-sm text-muted-foreground">
-								The Timeline is best viewed on a larger screen. Open Roadmap to
-								browse epics, features, and tasks.
-							</p>
-						</div>
+						<MobileTimelineView
+							roadmap={roadmap}
+							milestones={milestones}
+							epics={epics}
+							onAddMilestone={onAddMilestone}
+							onUpdateMilestone={onUpdateMilestone}
+							onDeleteMilestone={onDeleteMilestone}
+							onUpdateFeature={onUpdateFeature}
+							onUpdateEpic={onUpdateEpic}
+							onOpenFeatureEditor={handleOpenEditFeatureModal}
+							onOpenEpicEditor={handleSelectEpic}
+							canEditTimelineDates={canEditTimelineDates && !presentationMode}
+							onAddEpic={
+								presentationMode ? undefined : () => setIsAddEpicModalOpen(true)
+							}
+							onLinkRoadmap={
+								canLinkExisting && !presentationMode
+									? () => setIsLinkRoadmapModalOpen(true)
+									: undefined
+							}
+						/>
 					) : epics.length === 0 ? (
 						<div className="flex h-full flex-col items-center justify-center px-8 text-center">
 							<div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">

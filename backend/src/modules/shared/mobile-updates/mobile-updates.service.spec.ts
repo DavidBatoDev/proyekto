@@ -96,3 +96,113 @@ describe('MobileUpdatesService.resolveUpdate', () => {
     expect(res).toMatchObject({ error: 'no_new_version_available' });
   });
 });
+
+describe('MobileUpdatesService.resolveRequirement', () => {
+  const row = {
+    min_supported_build: 1000,
+    latest_build: 2000,
+    latest_version: '2.0.0',
+    store_url:
+      'https://play.google.com/store/apps/details?id=tech.proyekto.app',
+    message: null,
+  };
+
+  const ok = {
+    status: 'ok',
+    latestVersion: null,
+    latestBuild: null,
+    storeUrl: null,
+    message: null,
+  };
+
+  it('blocks a shell below min_supported_build', async () => {
+    const { svc } = make({ data: row, error: null });
+    const res = await svc.resolveRequirement({
+      platform: 'android',
+      build: '999',
+    });
+    expect(res.status).toBe('required');
+    expect(res.storeUrl).toBe(row.store_url);
+    expect(res.latestVersion).toBe('2.0.0');
+  });
+
+  it('nudges a shell between min_supported_build and latest_build', async () => {
+    const { svc } = make({ data: row, error: null });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '1500' }),
+    ).resolves.toMatchObject({ status: 'optional' });
+  });
+
+  it('is quiet on the boundary and above it', async () => {
+    const { svc } = make({ data: row, error: null });
+    // Exactly min_supported_build is supported, not blocked.
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '1000' }),
+    ).resolves.toMatchObject({ status: 'optional' });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '2000' }),
+    ).resolves.toMatchObject({ status: 'ok' });
+    // A shell newer than the newest release is still fine.
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '2500' }),
+    ).resolves.toMatchObject({ status: 'ok' });
+  });
+
+  it('scopes the lookup to the platform and channel', async () => {
+    const { svc, builder, from } = make({ data: row, error: null });
+    await svc.resolveRequirement({
+      platform: 'ios',
+      build: '10',
+      channel: 'beta',
+    });
+    expect(from).toHaveBeenCalledWith('mobile_app_requirements');
+    expect(builder.eq).toHaveBeenCalledWith('platform', 'ios');
+    expect(builder.eq).toHaveBeenCalledWith('channel', 'beta');
+  });
+
+  it('defaults to the production channel', async () => {
+    const { svc, builder } = make({ data: row, error: null });
+    await svc.resolveRequirement({ platform: 'android', build: '10' });
+    expect(builder.eq).toHaveBeenCalledWith('channel', 'production');
+  });
+
+  // Every one of these must fail OPEN. A blocking dialog is the worst thing
+  // this endpoint can emit, so anything unexpected resolves to "ok".
+  it('fails open on an unknown platform', async () => {
+    const { svc } = make({ data: row, error: null });
+    await expect(
+      svc.resolveRequirement({ platform: 'web', build: '1' }),
+    ).resolves.toEqual(ok);
+  });
+
+  it('fails open on an unparseable build', async () => {
+    const { svc } = make({ data: row, error: null });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: 'nonsense' }),
+    ).resolves.toEqual(ok);
+    await expect(
+      svc.resolveRequirement({ platform: 'android' }),
+    ).resolves.toEqual(ok);
+  });
+
+  it('fails open when no row is configured', async () => {
+    const { svc } = make({ data: null, error: null });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '1' }),
+    ).resolves.toEqual(ok);
+  });
+
+  it('fails open when the query errors', async () => {
+    const { svc } = make({ data: null, error: { message: 'boom' } });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '1' }),
+    ).resolves.toEqual(ok);
+  });
+
+  it('fails open when the row has no store URL to send anyone to', async () => {
+    const { svc } = make({ data: { ...row, store_url: '' }, error: null });
+    await expect(
+      svc.resolveRequirement({ platform: 'android', build: '1' }),
+    ).resolves.toEqual(ok);
+  });
+});

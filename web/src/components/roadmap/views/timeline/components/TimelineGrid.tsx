@@ -1,4 +1,10 @@
 import type { CSSProperties } from "react";
+import {
+	FEATURE_LABEL_CHAR_PX,
+	FEATURE_LABEL_HORIZONTAL_PADDING,
+	FEATURE_LABEL_MIN_INSIDE_WIDTH,
+	FEATURE_LABEL_OUTSIDE_GAP,
+} from "../../milestones/model/constants";
 import type { MilestoneMarker } from "../../milestones/model/types";
 import type { DependencyHandleSide } from "../hooks/useDependencyDrag";
 import type { BarGestureMode } from "../hooks/useTimelineBarDrag";
@@ -27,6 +33,24 @@ interface TimelineGridProps {
 	) => void;
 	onOpenRow: (row: TimelineRow) => void;
 	onBarContextMenu: (event: React.MouseEvent, row: TimelineRow) => void;
+	/**
+	 * Single-click/tap on a bar. Touch has no double-click — double-tap is the
+	 * browser's own zoom — so mobile opens its detail sheet from here instead of
+	 * from `onOpenRow`'s double-click. Desktop leaves this unset and keeps
+	 * double-click, so a single click there still just selects.
+	 */
+	onBarClick?: (row: TimelineRow) => void;
+	/**
+	 * Draw each row's title on its bar. Used when the task column is collapsed,
+	 * which is the only thing naming the rows — without it the chart is a field
+	 * of anonymous bars.
+	 */
+	showBarLabels?: boolean;
+	/**
+	 * Suppress the right-click menu. Chrome on Android fires `contextmenu` on a
+	 * long press, which would open the desktop menu underneath the mobile sheet.
+	 */
+	disableContextMenu?: boolean;
 	/** Bar extents, resolved once by the view so arrows cannot drift from bars. */
 	geometryByRowKey: Map<string, BarGeometry>;
 	dependencyEdges: DependencyEdgeGeometry[];
@@ -76,6 +100,9 @@ export const TimelineGrid = ({
 	onBarGesture,
 	onOpenRow,
 	onBarContextMenu,
+	onBarClick,
+	disableContextMenu = false,
+	showBarLabels = false,
 	geometryByRowKey,
 	dependencyEdges,
 	selectedDependencyId,
@@ -186,10 +213,52 @@ export const TimelineGrid = ({
 									opacity: isEpic ? 0.85 : 1,
 								}}
 								onPointerDown={(event) => onBarGesture(event, row, "move")}
+								onClick={onBarClick ? () => onBarClick(row) : undefined}
 								onDoubleClick={() => onOpenRow(row)}
-								onContextMenu={(event) => onBarContextMenu(event, row)}
+								onContextMenu={
+									disableContextMenu
+										? (event) => event.preventDefault()
+										: (event) => onBarContextMenu(event, row)
+								}
 								title={row.kind === "epic" ? row.epic.title : row.feature.title}
 							>
+								{/* The only label while `showBarLabels` is on; the desktop's
+								    inside-only label below is suppressed in that case, or the
+								    two double up on any bar wide enough for both. */}
+								{showBarLabels &&
+									(() => {
+										const label =
+											row.kind === "epic" ? row.epic.title : row.feature.title;
+										// Fit the WHOLE title or put it outside — never truncate.
+										// A clipped "Featur…" names nothing, and the bar already
+										// carries its own tooltip.
+										const estimatedLabelWidth =
+											label.length * FEATURE_LABEL_CHAR_PX +
+											FEATURE_LABEL_HORIZONTAL_PADDING;
+										const fitsInside =
+											width >=
+											Math.max(
+												FEATURE_LABEL_MIN_INSIDE_WIDTH,
+												estimatedLabelWidth,
+											);
+
+										return fitsInside ? (
+											<span className="pointer-events-none w-full truncate px-1.5 text-[11px] font-medium leading-none text-white">
+												{label}
+											</span>
+										) : (
+											// Parked just past the right edge. The bar is
+											// overflow-visible so this is not clipped, and
+											// pointer-events-none keeps the tap on the bar.
+											<span
+												className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-medium leading-none text-gray-700"
+												style={{ marginLeft: FEATURE_LABEL_OUTSIDE_GAP }}
+											>
+												{label}
+											</span>
+										);
+									})()}
+
 								{canEditDates && (
 									<>
 										<button
@@ -245,7 +314,7 @@ export const TimelineGrid = ({
 									</>
 								)}
 
-								{!isEpic && width > 60 && (
+								{!showBarLabels && !isEpic && width > 60 && (
 									<span className="pointer-events-none truncate px-2 text-[11px] font-medium text-white">
 										{row.feature.title}
 									</span>

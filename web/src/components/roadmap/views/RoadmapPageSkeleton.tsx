@@ -1,5 +1,56 @@
 const LEFT_PANEL_WIDTH = 320;
 
+/** Indent + title width per placeholder row, to read as an epic/feature tree. */
+const MOBILE_ROWS: { depth: 0 | 1; width: string }[] = [
+	{ depth: 0, width: "68%" },
+	{ depth: 1, width: "80%" },
+	{ depth: 1, width: "62%" },
+	{ depth: 0, width: "54%" },
+	{ depth: 1, width: "74%" },
+	{ depth: 1, width: "58%" },
+	{ depth: 1, width: "70%" },
+	{ depth: 0, width: "60%" },
+	{ depth: 1, width: "66%" },
+];
+
+/**
+ * Phone-sized placeholder, matching what actually loads on mobile:
+ * `MobileRoadmapView`'s slim header over a vertical tree — never the desktop
+ * three-column layout. Before this, the skeleton rendered its fixed 320px left
+ * panel at every width, so on a 390px phone the "sidebar" was the entire page
+ * and the loading state promised a layout that never arrived.
+ */
+function MobileRoadmapSkeleton() {
+	return (
+		<div className="flex h-full flex-col md:hidden">
+			<div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2.5">
+				<div className="h-5 min-w-0 flex-1 rounded-md bg-muted" />
+				<div className="h-9 w-9 shrink-0 rounded-lg bg-muted" />
+				<div className="h-9 w-9 shrink-0 rounded-lg bg-muted" />
+			</div>
+
+			<div className="min-h-0 flex-1 space-y-3.5 overflow-hidden bg-card px-3 py-4">
+				<div className="h-9 w-full rounded-lg bg-muted" />
+				{MOBILE_ROWS.map((row, index) => (
+					<div
+						key={`${row.depth}-${row.width}-${index}`}
+						className="flex items-center gap-2.5"
+						style={{ paddingLeft: row.depth * 18 }}
+					>
+						<div className="h-4 w-4 shrink-0 rounded bg-muted" />
+						<div
+							className={`h-3.5 rounded ${
+								row.depth === 0 ? "bg-muted" : "bg-muted/50"
+							}`}
+							style={{ width: row.width }}
+						/>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 interface RoadmapPageSkeletonProps {
 	showLeftPanel?: boolean;
 }
@@ -9,7 +60,9 @@ export function RoadmapPageSkeleton({
 }: RoadmapPageSkeletonProps) {
 	return (
 		<div className="flex flex-col h-full app-shell-bg overflow-hidden animate-pulse">
-			<div className="bg-card border-b border-border flex items-center justify-between w-full shrink-0 z-10 overflow-hidden">
+			<MobileRoadmapSkeleton />
+
+			<div className="hidden bg-card border-b border-border md:flex items-center justify-between w-full shrink-0 z-10 overflow-hidden">
 				<div className="flex items-center flex-1 h-full">
 					<div
 						className="flex items-center gap-3 px-4 py-3 shrink-0"
@@ -32,7 +85,7 @@ export function RoadmapPageSkeleton({
 				</div>
 			</div>
 
-			<div className="flex-1 flex overflow-hidden">
+			<div className="hidden flex-1 md:flex overflow-hidden">
 				{showLeftPanel && (
 					<div
 						className="relative h-full border-r border-border bg-card shrink-0"

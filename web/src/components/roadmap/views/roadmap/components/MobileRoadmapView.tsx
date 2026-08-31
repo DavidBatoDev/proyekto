@@ -7,6 +7,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState } from "react";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { Roadmap } from "@/types/roadmap";
 import { RoadmapAiAssistantPanel } from "../../../ai/RoadmapAiAssistantPanel";
 import type { RoadmapPerformanceMode } from "../models/types";
@@ -34,6 +35,10 @@ interface MobileRoadmapViewProps {
  * body (rendered by RoadmapCanvas in `mobile` mode so the editor overlays stay
  * wired), and the AI assistant as a slide-up sheet. The canvas is never mounted
  * here.
+ *
+ * This shell also carries the Timeline route, which reaches mobile through the
+ * same `isMobile` branch in RoadmapViewContent; `RoadmapCanvas` picks the Gantt
+ * or the explorer off the view mode, and the header titles itself to match.
  */
 export function MobileRoadmapView({
 	projectId,
@@ -49,6 +54,7 @@ export function MobileRoadmapView({
 	onInitialAiMessageConsumed,
 }: MobileRoadmapViewProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
 
 	return (
 		<div className="flex h-full flex-col bg-white">
@@ -56,7 +62,7 @@ export function MobileRoadmapView({
 			<header className="relative z-10 shrink-0 border-b border-slate-200 bg-white">
 				<div className="flex items-center gap-2 px-3 pt-2">
 					<h1 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
-						{roadmap.name}
+						{canvasViewMode === "milestones" ? "Timeline" : roadmap.name}
 					</h1>
 					<button
 						type="button"

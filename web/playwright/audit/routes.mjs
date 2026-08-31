@@ -139,4 +139,7 @@ export const NARROW_STRESS = [
   "/teams/:teamId/settings/logs",
   "/project/:projectId/payments",
   "/project/:projectId/logs",
+  // The mobile Gantt budgets a 132px frozen task column against the viewport;
+  // at 320px that leaves 188px of chart, which is where it will break first.
+  "/project/:projectId/timeline/:roadmapId",
 ];
