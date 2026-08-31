@@ -116,3 +116,28 @@ jobs:
           files: |
             Proyekto-${{ steps.ver.outputs.version }}.apk
             Proyekto-${{ steps.ver.outputs.version }}.aab
+
+      # Ships DARK behind the PLAY_PUBLISH_ENABLED repo variable, the same idiom
+      # as OTA_PUBLISH_ENABLED in mobile-ota-deploy.yml. (A variable, not the
+      # secret itself: the `secrets` context is not available in a step `if`.)
+      # Until it is set, this is skipped and the release still lands on GitHub.
+      # Needs the PLAY_SERVICE_ACCOUNT_JSON secret as well.
+      #
+      # Google Play will NOT accept the first upload for a new app over the API —
+      # one AAB has to be uploaded by hand in the Play Console before the
+      # Publishing API will take a track. So the order for launch is: create the
+      # app in Play Console -> build this tag -> upload the AAB manually once ->
+      # every later release flows through here.
+      #
+      # `track: internal` + `status: draft` on purpose: nothing reaches users
+      # until someone promotes it in the console. Promote to `production` here
+      # only once you actually want tag pushes going live.
+      - name: Upload to Google Play
+        if: ${{ vars.PLAY_PUBLISH_ENABLED != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: tech.proyekto.app
+          releaseFiles: Proyekto-${{ steps.ver.outputs.version }}.aab
+          track: internal
+          status: draft

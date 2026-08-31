@@ -16,6 +16,11 @@ import type {
   CheckResult,
 } from './dto/capgo.types';
 import { PresignBundleDto, RegisterBundleDto } from './dto/publish-bundle.dto';
+import {
+  NO_UPDATE_REQUIRED,
+  type RequirementQuery,
+  type RequirementResult,
+} from './dto/requirements.types';
 
 const NO_UPDATE: CheckResult = {
   error: 'no_new_version_available',
@@ -83,6 +88,74 @@ export class MobileUpdatesService {
       version: data.version as string,
       url: data.url as string,
       checksum: data.checksum as string,
+    };
+  }
+
+  /**
+   * Native-shell update gate. Answers "is the app itself too old?", which the
+   * Capgo check deliberately cannot: `resolveUpdate` silently filters shells
+   * below a bundle's `native_build_min`, so those devices stop receiving OTA
+   * updates with no signal. This is that signal.
+   *
+   * Fails open in every failure mode. A blocking dialog is the most damaging
+   * thing this service can produce, so an unknown platform, an unparseable
+   * build, a missing row or a dead query all resolve to "ok".
+   */
+  async resolveRequirement(
+    query: RequirementQuery,
+  ): Promise<RequirementResult> {
+    const platform =
+      query.platform === 'ios'
+        ? 'ios'
+        : query.platform === 'android'
+          ? 'android'
+          : null;
+    const channel =
+      typeof query.channel === 'string' && query.channel.trim()
+        ? query.channel.trim()
+        : 'production';
+    const build = Number.parseInt(String(query.build ?? ''), 10);
+
+    if (!platform || Number.isNaN(build)) {
+      return NO_UPDATE_REQUIRED;
+    }
+
+    const { data, error } = await this.supabase
+      .from('mobile_app_requirements')
+      .select(
+        'min_supported_build, latest_build, latest_version, store_url, message',
+      )
+      .eq('platform', platform)
+      .eq('channel', channel)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(`resolveRequirement query failed: ${error.message}`);
+      return NO_UPDATE_REQUIRED;
+    }
+
+    if (!data) return NO_UPDATE_REQUIRED;
+
+    const minSupported = Number(data.min_supported_build);
+    const latestBuild = Number(data.latest_build);
+    const storeUrl = typeof data.store_url === 'string' ? data.store_url : '';
+
+    // Without somewhere to send the user, a prompt is a dead end — say "ok".
+    if (!storeUrl) return NO_UPDATE_REQUIRED;
+
+    const status: RequirementResult['status'] =
+      build < minSupported
+        ? 'required'
+        : build < latestBuild
+          ? 'optional'
+          : 'ok';
+
+    return {
+      status,
+      latestVersion: (data.latest_version as string) ?? null,
+      latestBuild: Number.isFinite(latestBuild) ? latestBuild : null,
+      storeUrl,
+      message: (data.message as string | null) ?? null,
     };
   }
 

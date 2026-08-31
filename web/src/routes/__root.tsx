@@ -4,6 +4,7 @@ import { lazy, Suspense } from "react";
 import Header from "../components/layout/Header";
 import { NotFoundRoute } from "../components/layout/NotFoundRoute";
 import { MigrationHandler } from "../components/migration";
+import { AppUpdateGate } from "../components/mobile/AppUpdateGate";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
 import { ConfirmProvider } from "../hooks/useConfirm";
@@ -35,6 +36,9 @@ function RootLayout() {
 				<Outlet />
 				<FloatingActiveTimer />
 				<MigrationHandler />
+				{/* Native-only; renders nothing on web and nothing unless the
+				    backend says this shell is out of date. */}
+				<AppUpdateGate />
 				{DevelopmentDevtools && (
 					<Suspense fallback={null}>
 						<DevelopmentDevtools />

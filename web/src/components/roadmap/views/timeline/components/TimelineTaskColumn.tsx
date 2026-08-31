@@ -16,6 +16,13 @@ interface TimelineTaskColumnProps {
 	canReorder: boolean;
 	reorderRowKey: string | null;
 	dropIndex: number | null;
+	/** Frozen task-column width. Narrowed on mobile; defaults to the desktop 320. */
+	taskColWidth?: number;
+	/**
+	 * Hide the checkbox and the row key. Both are desktop-only affordances that
+	 * would crowd out the title in a narrow mobile column.
+	 */
+	compact?: boolean;
 	onToggleSelect: (row: TimelineRow) => void;
 	onToggleExpand: (epicId: string) => void;
 	onOpenRow: (row: TimelineRow) => void;
@@ -36,6 +43,8 @@ export const TimelineTaskColumn = ({
 	canReorder,
 	reorderRowKey,
 	dropIndex,
+	taskColWidth = TASK_COL_WIDTH,
+	compact = false,
 	onToggleSelect,
 	onToggleExpand,
 	onOpenRow,
@@ -45,7 +54,7 @@ export const TimelineTaskColumn = ({
 	return (
 		<div
 			className="sticky left-0 z-20 shrink-0 bg-white border-r border-gray-200"
-			style={{ width: TASK_COL_WIDTH, height: totalHeight }}
+			style={{ width: taskColWidth, height: totalHeight }}
 		>
 			{dropIndex !== null && (
 				<div
@@ -63,14 +72,16 @@ export const TimelineTaskColumn = ({
 				return (
 					<div
 						key={row.rowKey}
-						className={`group absolute left-0 flex items-center gap-2 pr-3 border-b border-gray-100 ${
-							isReordering ? "opacity-40" : ""
-						} ${isSelected ? "bg-blue-50/60" : "hover:bg-gray-50"}`}
+						className={`group absolute left-0 flex items-center gap-2 border-b border-gray-100 ${
+							compact ? "pr-1.5" : "pr-3"
+						} ${isReordering ? "opacity-40" : ""} ${
+							isSelected ? "bg-blue-50/60" : "hover:bg-gray-50"
+						}`}
 						style={{
 							top: rowIndex * ROW_H,
 							height: ROW_H,
-							width: TASK_COL_WIDTH,
-							paddingLeft: 8 + row.depth * 20,
+							width: taskColWidth,
+							paddingLeft: compact ? 6 + row.depth * 10 : 8 + row.depth * 20,
 						}}
 					>
 						{canReorder ? (
@@ -84,24 +95,31 @@ export const TimelineTaskColumn = ({
 								<GripVertical className="h-3.5 w-3.5" />
 							</button>
 						) : (
-							<span className="w-3.5 shrink-0" />
+							!compact && <span className="w-3.5 shrink-0" />
 						)}
 
-						<input
-							type="checkbox"
-							data-no-pan="true"
-							checked={isSelected}
-							onChange={() => onToggleSelect(row)}
-							className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 accent-blue-600"
-							aria-label={`Select ${title}`}
-						/>
+						{!compact && (
+							<input
+								type="checkbox"
+								data-no-pan="true"
+								checked={isSelected}
+								onChange={() => onToggleSelect(row)}
+								className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 accent-blue-600"
+								aria-label={`Select ${title}`}
+							/>
+						)}
 
 						{row.kind === "epic" && row.hasChildren ? (
 							<button
 								type="button"
 								data-no-pan="true"
 								onClick={() => onToggleExpand(row.epic.id)}
-								className="shrink-0 text-gray-400 hover:text-gray-600"
+								// Compact widens the hit area to the full row height so the
+								// chevron clears the 44px touch-target floor without changing
+								// the glyph size or the row rhythm.
+								className={`shrink-0 text-gray-400 hover:text-gray-600 ${
+									compact ? "-my-2 flex items-center px-1 py-2" : ""
+								}`}
 								aria-label={row.isExpanded ? "Collapse" : "Expand"}
 							>
 								{row.isExpanded ? (
@@ -111,14 +129,16 @@ export const TimelineTaskColumn = ({
 								)}
 							</button>
 						) : (
-							<span className="w-3.5 shrink-0" />
+							<span className={compact ? "w-1 shrink-0" : "w-3.5 shrink-0"} />
 						)}
 
 						{row.kind === "epic" ? <EpicGlyph /> : <FeatureGlyph />}
 
-						<span className="shrink-0 text-[11px] font-medium text-gray-400 tabular-nums">
-							{rowDisplayKey(row)}
-						</span>
+						{!compact && (
+							<span className="shrink-0 text-[11px] font-medium text-gray-400 tabular-nums">
+								{rowDisplayKey(row)}
+							</span>
+						)}
 
 						<button
 							type="button"

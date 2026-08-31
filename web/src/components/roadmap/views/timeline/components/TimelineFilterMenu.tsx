@@ -21,7 +21,7 @@ export const countActiveFilters = (filters: TimelineFilters): number =>
 	filters.assigneeIds.size +
 	(filters.schedule === "all" ? 0 : 1);
 
-const STATUS_LABELS: Record<FeatureStatus, string> = {
+export const STATUS_LABELS: Record<FeatureStatus, string> = {
 	not_started: "Not started",
 	in_progress: "In progress",
 	in_review: "In review",
@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<FeatureStatus, string> = {
 	blocked: "Blocked",
 };
 
-const SCHEDULE_LABELS: Record<ScheduleFilter, string> = {
+export const SCHEDULE_LABELS: Record<ScheduleFilter, string> = {
 	all: "All",
 	scheduled: "Scheduled",
 	unscheduled: "No dates",

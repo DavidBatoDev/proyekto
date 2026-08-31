@@ -26,7 +26,7 @@ import { ModalPortal } from "@/components/common/ModalPortal";
  */
 
 export type AppDialogSize = "sm" | "md" | "lg" | "xl";
-export type AppDialogVariant = "center" | "drawer-right";
+export type AppDialogVariant = "center" | "drawer-right" | "bottom-sheet";
 
 const SIZE_CLASS: Record<AppDialogSize, string> = {
 	sm: "max-w-sm",
@@ -175,9 +175,15 @@ export function AppDialog({
 	if (!open) return null;
 
 	const isDrawer = variant === "drawer-right";
+	const isSheet = variant === "bottom-sheet";
+	// The sheet clears the home indicator with .pb-app-sheet and is capped short
+	// of the viewport so the backdrop above it stays a visible tap-to-dismiss
+	// target — a sheet flush with the top edge reads as a full page.
 	const panelClass = isDrawer
 		? `flex h-full w-full flex-col border-l border-border bg-card shadow-2xl ${DRAWER_SIZE_CLASS[size]}`
-		: `flex max-h-[90vh] w-full flex-col rounded-2xl border border-border bg-card shadow-xl ${SIZE_CLASS[size]}`;
+		: isSheet
+			? "flex max-h-[85vh] w-full flex-col rounded-t-2xl border-t border-border bg-card pb-app-sheet shadow-2xl"
+			: `flex max-h-[90vh] w-full flex-col rounded-2xl border border-border bg-card shadow-xl ${SIZE_CLASS[size]}`;
 
 	return (
 		<ModalPortal>
@@ -190,7 +196,11 @@ export function AppDialog({
 					transition={{ duration: 0.15 }}
 					style={{ zIndex }}
 					className={`fixed inset-0 flex bg-black/50 ${
-						isDrawer ? "justify-end" : "items-center justify-center p-4"
+						isDrawer
+							? "justify-end"
+							: isSheet
+								? "items-end justify-center"
+								: "items-center justify-center p-4"
 					}`}
 					onClick={() => {
 						if (!busy) onClose();
@@ -205,16 +215,38 @@ export function AppDialog({
 						aria-describedby={description ? descId : undefined}
 						tabIndex={-1}
 						initial={
-							isDrawer ? { x: 24, opacity: 0 } : { scale: 0.97, opacity: 0 }
+							isDrawer
+								? { x: 24, opacity: 0 }
+								: isSheet
+									? { y: "100%" }
+									: { scale: 0.97, opacity: 0 }
 						}
-						animate={isDrawer ? { x: 0, opacity: 1 } : { scale: 1, opacity: 1 }}
+						animate={
+							isDrawer
+								? { x: 0, opacity: 1 }
+								: isSheet
+									? { y: 0 }
+									: { scale: 1, opacity: 1 }
+						}
 						exit={
-							isDrawer ? { x: 24, opacity: 0 } : { scale: 0.97, opacity: 0 }
+							isDrawer
+								? { x: 24, opacity: 0 }
+								: isSheet
+									? { y: "100%" }
+									: { scale: 0.97, opacity: 0 }
 						}
-						transition={{ duration: 0.15 }}
+						transition={
+							isSheet ? { duration: 0.25, ease: "easeOut" } : { duration: 0.15 }
+						}
 						className={`${panelClass} ${className ?? ""} outline-none`}
 						onClick={(e) => e.stopPropagation()}
 					>
+						{isSheet && (
+							<span
+								aria-hidden="true"
+								className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border"
+							/>
+						)}
 						{(title || !hideCloseButton) && (
 							<div className="flex items-start gap-3 border-b border-border px-5 py-4">
 								<div className="min-w-0 flex-1">

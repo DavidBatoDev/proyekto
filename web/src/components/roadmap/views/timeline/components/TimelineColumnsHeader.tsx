@@ -19,6 +19,8 @@ interface TimelineColumnsHeaderProps {
 	milestoneMarkers: MilestoneMarker[];
 	canEditDates: boolean;
 	gridBackground: CSSProperties;
+	/** Frozen task-column width. Narrowed on mobile; defaults to the desktop 320. */
+	taskColWidth?: number;
 	onMilestoneSelect: (marker: MilestoneMarker) => void;
 	onMilestonePointerDown: (
 		event: React.PointerEvent,
@@ -43,6 +45,7 @@ export const TimelineColumnsHeader = ({
 	milestoneMarkers,
 	canEditDates,
 	gridBackground,
+	taskColWidth = TASK_COL_WIDTH,
 	onMilestoneSelect,
 	onMilestonePointerDown,
 }: TimelineColumnsHeaderProps) => {
@@ -52,12 +55,12 @@ export const TimelineColumnsHeader = ({
 	return (
 		<div
 			className="sticky top-0 z-30 flex bg-white border-b border-gray-200"
-			style={{ height: HEADER_H, width: TASK_COL_WIDTH + totalWidth }}
+			style={{ height: HEADER_H, width: taskColWidth + totalWidth }}
 		>
 			{/* Task-column corner, pinned against horizontal scroll. */}
 			<div
 				className="sticky left-0 z-20 shrink-0 h-full bg-white border-r border-gray-200 flex items-end"
-				style={{ width: TASK_COL_WIDTH }}
+				style={{ width: taskColWidth }}
 			>
 				<span className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
 					Task

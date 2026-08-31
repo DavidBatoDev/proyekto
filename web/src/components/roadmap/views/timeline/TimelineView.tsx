@@ -49,7 +49,6 @@ import {
 import { TimelineColumnsHeader } from "./components/TimelineColumnsHeader";
 import { TimelineEmptyState } from "./components/TimelineEmptyState";
 import {
-	countActiveFilters,
 	EMPTY_TIMELINE_FILTERS,
 	type TimelineFilters,
 } from "./components/TimelineFilterMenu";
@@ -74,6 +73,7 @@ import {
 } from "./model/dependencyConflicts";
 import { buildDependencyEdges } from "./model/dependencyGeometry";
 import { buildAdjacency } from "./model/dependencyGraph";
+import { buildMatchedRowKeys } from "./model/rowFilter";
 import {
 	buildTimelineRows,
 	HEADER_H,
@@ -232,53 +232,15 @@ export const TimelineView = ({
 		);
 	}, [sortedEpics]);
 
-	const activeFilterCount = countActiveFilters(filters);
-
 	/**
 	 * Search + filters resolve to the set of rows worth showing. An epic
 	 * survives if it matches itself or if any of its features do, so a matching
 	 * feature is never orphaned from its parent.
 	 */
-	const matchedRowKeys = useMemo(() => {
-		const trimmed = query.trim().toLowerCase();
-		if (!trimmed && activeFilterCount === 0) return null;
-
-		const featureMatches = (feature: RoadmapFeature): boolean => {
-			if (trimmed && !feature.title.toLowerCase().includes(trimmed)) {
-				return false;
-			}
-			if (filters.statuses.size > 0 && !filters.statuses.has(feature.status)) {
-				return false;
-			}
-			if (filters.assigneeIds.size > 0) {
-				const ids = feature.assignees?.map((assignee) => assignee.id) ?? [];
-				if (!ids.some((id) => filters.assigneeIds.has(id))) return false;
-			}
-			if (filters.schedule !== "all") {
-				const isScheduled = Boolean(feature.start_date && feature.end_date);
-				if (filters.schedule === "scheduled" && !isScheduled) return false;
-				if (filters.schedule === "unscheduled" && isScheduled) return false;
-			}
-			return true;
-		};
-
-		const keys = new Set<string>();
-		for (const epic of sortedEpics) {
-			const matchingFeatures = (epic.features ?? []).filter(featureMatches);
-			for (const feature of matchingFeatures) {
-				keys.add(`feature:${feature.id}`);
-			}
-
-			// The epic row itself only stands alone when nothing but a text query
-			// is in play — a status/assignee filter is about features.
-			const epicMatchesQuery =
-				Boolean(trimmed) && epic.title.toLowerCase().includes(trimmed);
-			if (matchingFeatures.length > 0 || epicMatchesQuery) {
-				keys.add(`epic:${epic.id}`);
-			}
-		}
-		return keys;
-	}, [query, sortedEpics, filters, activeFilterCount]);
+	const matchedRowKeys = useMemo(
+		() => buildMatchedRowKeys({ epics: sortedEpics, query, filters }),
+		[query, sortedEpics, filters],
+	);
 
 	const rows = useMemo(() => {
 		const all = buildTimelineRows(sortedEpics, collapsed);

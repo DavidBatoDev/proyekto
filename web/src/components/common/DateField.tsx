@@ -85,9 +85,16 @@ export function DateField({
 	return (
 		<div ref={rootRef} className="relative">
 			<div className="mb-1.5 flex items-center gap-1">
-				<span className="text-xs font-semibold text-muted-foreground">
+				{/* A real <label>, not a span: `button` is a labelable element, so this
+				    gives the trigger an accessible name. Without it two DateFields in
+				    the same form announce only their values ("Mar 2, 2026"), with
+				    nothing to say which is the start and which is the end. */}
+				<label
+					htmlFor={id}
+					className="text-xs font-semibold text-muted-foreground"
+				>
 					{label}
-				</span>
+				</label>
 				{hint && <FieldHint label={label} hint={hint} />}
 			</div>
 			<button

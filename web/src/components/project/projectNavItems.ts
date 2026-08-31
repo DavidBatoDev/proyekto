@@ -276,17 +276,19 @@ export function buildProjectBottomNav(args: BuildArgs): {
 } {
 	const items = createProjectNavItems(args);
 	return {
+		// Timeline sits in the primary row alongside the other two ways of reading
+		// the same roadmap (Roadmap, Board). It was demoted while the chart was
+		// desktop-only; it now has a real touch view, so it comes back and
+		// Resources — a file list, reached far less often — takes its place below.
 		primary: [
 			items.overview,
 			items.roadmap,
 			items.board,
-			items.chat,
-			items.resources,
-		],
-		// Timeline is here rather than in the primary row because the chart is
-		// desktop-only anyway.
-		more: [
 			items.timeline,
+			items.chat,
+		],
+		more: [
+			items.resources,
 			items.deliverables,
 			items.changeRequests,
 			items.risks,
