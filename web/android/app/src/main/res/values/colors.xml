@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Accent Android applies to the status-bar notification icon. The icon
+      itself is a white-on-transparent silhouette (Android re-tints by alpha),
+      so this is what gives it the brand colour.
+
+      Distinct name on purpose: @color/colorPrimary is defined by the
+      @capacitor/android library and referenced by styles.xml; shadowing it here
+      would retheme the whole app.
+    -->
+    <color name="notification_accent">#5E6AD2</color>
+</resources>

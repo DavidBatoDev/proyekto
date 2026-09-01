@@ -24,6 +24,23 @@
 
         </activity>
 
+        <!--
+          Firebase notification defaults. Without default_notification_icon
+          Android draws a grey square in the status bar for every push.
+          default_notification_channel_id must name a channel the app creates
+          (see ensureNotificationChannels in src/services/pushNotifications.ts);
+          messages that set their own android.notification.channel_id override it.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_proyekto" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="proyekto_general" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -127,6 +127,11 @@ export async function syncPushRegistration(
 			getAppBuild(),
 		]);
 
+		// Before anything can bail: AndroidManifest names `proyekto_general` as the
+		// Firebase default channel, so it has to exist regardless of whether this
+		// device ends up with a token.
+		void ensureNotificationChannels().then(refreshChannels);
+
 		let permission = await checkPermission();
 
 		// Android: the token does not need the permission, so ask only when we
@@ -161,8 +166,6 @@ export async function syncPushRegistration(
 			lastAttemptFailed = true;
 			return finish(permission, result.error);
 		}
-
-		void ensureNotificationChannels().then(refreshChannels);
 
 		if (!shouldRegister(result.token, trigger)) {
 			return getPushStatus();
