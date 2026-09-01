@@ -129,3 +129,72 @@ if (!only.length || only.includes("web")) {
   fs.writeFileSync("public/favicon.ico", Buffer.concat([header, entries, ...images]));
   console.log(`[web-icon] public/favicon.ico (${icoSizes.join(", ")})`);
 }
+
+// ---------------------------------------------------------------------------
+// Android status-bar (notification) icon.
+//
+// Android ignores RGB entirely here and re-tints the icon by its ALPHA channel,
+// so the artwork *is* the alpha mask. Without one of these the system draws a
+// grey square for every notification.
+//
+// Deliberately pure sharp: `@capacitor/assets generate` never writes
+// drawable-*dpi/ic_stat_*, and running it would reformat AndroidManifest.xml
+// (stripping the meta-data that points here), the iOS AppIcon Contents.json and
+// public/manifest.json, and emit an unserved web/icons/ set. Doing it directly
+// avoids all of that. androidNotificationAssets.test.ts guards the result.
+// ---------------------------------------------------------------------------
+if (!only.length || only.includes("notification")) {
+  const RES = path.resolve(process.cwd(), "android/app/src/main/res");
+  // Material spec: a 24dp canvas with the glyph inside a 22dp keyline.
+  const BUCKETS = [
+    ["drawable-mdpi", 24],
+    ["drawable-hdpi", 36],
+    ["drawable-xhdpi", 48],
+    ["drawable-xxhdpi", 72],
+    ["drawable-xxxhdpi", 96],
+  ];
+
+  for (const [bucket, size] of BUCKETS) {
+    const inner = Math.round((size * 22) / 24);
+    // The mark is taller than it is wide, so height drives the fit.
+    const scaled = await sharp(MARK_SRC)
+      .resize({ height: inner, fit: "inside" })
+      .ensureAlpha()
+      .toBuffer();
+    const meta = await sharp(scaled).metadata();
+    const w = meta.width ?? inner;
+    const h = meta.height ?? inner;
+
+    // A modest alpha lift keeps the mark's thin interior strokes alive at 24px.
+    // Not a hard threshold: that would destroy the antialiasing and leave jagged
+    // edges at xxxhdpi.
+    const mask = await sharp(scaled)
+      .extractChannel("alpha")
+      .linear(1.15, 0)
+      .raw()
+      .toBuffer();
+
+    const silhouette = await sharp({
+      create: { width: w, height: h, channels: 3, background: "#ffffff" },
+    })
+      .joinChannel(mask, { raw: { width: w, height: h, channels: 1 } })
+      .png()
+      .toBuffer();
+
+    const left = Math.floor((size - w) / 2);
+    const top = Math.floor((size - h) / 2);
+    const dir = path.join(RES, bucket);
+    fs.mkdirSync(dir, { recursive: true });
+    await sharp(silhouette)
+      .extend({
+        left,
+        top,
+        right: size - w - left,
+        bottom: size - h - top,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png({ compressionLevel: 9 })
+      .toFile(path.join(dir, "ic_stat_proyekto.png"));
+    console.log(`[notification] ${bucket}/ic_stat_proyekto.png (${size}x${size})`);
+  }
+}

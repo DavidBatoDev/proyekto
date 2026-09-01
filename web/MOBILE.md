@@ -148,9 +148,31 @@ These can't be done on Windows; do them on a Mac:
 
 ## 7. How the push flow works
 
-1. On login, `usePushNotifications` requests permission, gets the FCM token, and
-   `POST /api/push/tokens` upserts it into `device_tokens` (UNIQUE token, many
-   rows per user → multi-device).
+1. On login — and again on every app resume — `usePushNotifications` calls
+   `syncPushRegistration`, which gets the FCM token and `POST /api/push/tokens`
+   upserts it into `device_tokens` (UNIQUE token, many rows per user →
+   multi-device). Repeat runs are throttled unless the token changed, the last
+   attempt failed, or 12h have passed.
+
+   On **Android the token is fetched regardless of the notification
+   permission** — it is not required, and registering anyway means push starts
+   working the moment a user enables notifications, with no re-registration. On
+   **iOS** the token comes from APNs and genuinely needs authorization first, so
+   an unauthorized device stops there. Gating Android on the permission is what
+   left `device_tokens` empty for two months.
+
+   Every outcome, including each failure and its reason, is recorded in
+   `services/pushStatus.ts` and rendered by the "Push notifications" card at
+   Settings → Notifications. That card is the app's ONLY error reporting of any
+   kind — check it first when push misbehaves.
+
+   Android notification channels (`proyekto_general`, `proyekto_chat`) are
+   created on the same path. `AndroidManifest.xml` names `proyekto_general` as
+   the Firebase default, and the status-bar icon comes from
+   `drawable-*/ic_stat_proyekto.png` — regenerate those with
+   `node render-final-assets.mjs notification`, and never with
+   `@capacitor/assets generate`, which rewrites the manifest and strips the
+   meta-data (`src/lib/androidNotificationAssets.test.ts` guards this).
 2. Any `NotificationsService.createNotification()` call inserts the in-app row,
    then fires an FCM push (bounded `Promise.race` timeout, errors swallowed — a
    push failure never blocks or breaks the triggering action).
