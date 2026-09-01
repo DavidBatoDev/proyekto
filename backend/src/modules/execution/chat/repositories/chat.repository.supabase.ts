@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { isActiveSellerEnrollment } from '../../../../common/auth/consultant-capability';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
+import { DEFAULT_CHAT_NOTIFICATION_LEVEL } from './chat.repository.interface';
 import type {
   ChatAttachment,
   ChatLibraryAttachment,
@@ -12,9 +13,11 @@ import type {
   ChatMessageReaction,
   ChatMessageReactionSummary,
   ChatMessageSearchHit,
+  ChatNotificationLevel,
   ChatParticipant,
   ChatRepository,
   ChatRoom,
+  ChatRoomNotificationPreference,
   ChatRoomWithLastMessage,
 } from './chat.repository.interface';
 
@@ -99,6 +102,8 @@ type RawReactionRow = {
 
 @Injectable()
 export class SupabaseChatRepository implements ChatRepository {
+  private readonly logger = new Logger(SupabaseChatRepository.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
@@ -398,7 +403,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
   async getProjectIsPersonal(projectId: string): Promise<boolean> {
     const { data, error } = await this.supabase
-      .from('personal_workspaces')
+      .from('personal_projects')
       .select('project_id')
       .eq('project_id', projectId)
       .maybeSingle();
@@ -929,6 +934,96 @@ export class SupabaseChatRepository implements ChatRepository {
       starred.add(row.room_id);
     }
     return starred;
+  }
+
+  async listRoomNotificationLevels(
+    roomId: string,
+  ): Promise<Map<string, ChatNotificationLevel>> {
+    const levels = new Map<string, ChatNotificationLevel>();
+
+    const { data, error } = await this.supabase
+      .from('chat_room_notification_prefs')
+      .select('user_id, level')
+      .eq('room_id', roomId);
+
+    // FAIL OPEN. Returning an empty map means "no overrides", which resolves
+    // every recipient to the default and notifies them — the opposite of the
+    // `[]`-on-error convention used by the read projections above, and
+    // deliberate: a lookup blip must never silently mute a whole room.
+    if (error) {
+      this.logger.warn(
+        `listRoomNotificationLevels failed for room ${roomId}: ${error.message}`,
+      );
+      return levels;
+    }
+
+    for (const row of (data || []) as {
+      user_id: string;
+      level: ChatNotificationLevel;
+    }[]) {
+      levels.set(row.user_id, row.level);
+    }
+    return levels;
+  }
+
+  async listUserNotificationLevels(
+    userId: string,
+    roomIds: string[],
+  ): Promise<Map<string, ChatNotificationLevel>> {
+    const levels = new Map<string, ChatNotificationLevel>();
+    if (roomIds.length === 0) return levels;
+
+    const { data, error } = await this.supabase
+      .from('chat_room_notification_prefs')
+      .select('room_id, level')
+      .eq('user_id', userId)
+      .in('room_id', roomIds);
+
+    if (error) throw new Error(error.message);
+    for (const row of (data || []) as {
+      room_id: string;
+      level: ChatNotificationLevel;
+    }[]) {
+      levels.set(row.room_id, row.level);
+    }
+    return levels;
+  }
+
+  async setRoomNotificationLevel(params: {
+    roomId: string;
+    userId: string;
+    level: ChatNotificationLevel;
+  }): Promise<ChatRoomNotificationPreference> {
+    // Back to the default? Delete the row rather than storing it. The table is
+    // sparse by design, and a stored 'all' would be indistinguishable from an
+    // override the user actually chose.
+    if (params.level === DEFAULT_CHAT_NOTIFICATION_LEVEL) {
+      const { error } = await this.supabase
+        .from('chat_room_notification_prefs')
+        .delete()
+        .eq('room_id', params.roomId)
+        .eq('user_id', params.userId);
+      if (error) throw new Error(error.message);
+      return {
+        room_id: params.roomId,
+        level: DEFAULT_CHAT_NOTIFICATION_LEVEL,
+        is_default: true,
+      };
+    }
+
+    const { error } = await this.supabase
+      .from('chat_room_notification_prefs')
+      .upsert(
+        {
+          room_id: params.roomId,
+          user_id: params.userId,
+          level: params.level,
+        },
+        { onConflict: 'room_id,user_id' },
+      );
+
+    if (error) throw new Error(error.message);
+    return { room_id: params.roomId, level: params.level, is_default: false };
   }
 
   async softDeleteMessage(params: {

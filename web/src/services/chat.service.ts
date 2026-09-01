@@ -76,6 +76,15 @@ export interface ChatMessageReaction {
 	reacted_by_me: boolean;
 }
 
+export type ChatNotificationLevel = "all" | "mentions" | "none";
+
+export interface ChatRoomNotificationPreference {
+	room_id: string;
+	level: ChatNotificationLevel;
+	/** True when no override is stored and `level` is the fallback. */
+	is_default: boolean;
+}
+
 export interface ChatRoom {
 	id: string;
 	project_id: string | null;
@@ -404,6 +413,33 @@ class ChatService {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ emoji }),
+			},
+		);
+	}
+
+	getRoomNotificationLevel(
+		roomId: string,
+	): Promise<ChatRoomNotificationPreference> {
+		return this.request<ChatRoomNotificationPreference>(
+			`/chat/rooms/${roomId}/notifications`,
+			{ method: "GET" },
+		);
+	}
+
+	/**
+	 * How much this room notifies you. `all` is the default for every room —
+	 * every message pushes — so this exists to turn it down, not up.
+	 */
+	setRoomNotificationLevel(
+		roomId: string,
+		level: ChatNotificationLevel,
+	): Promise<ChatRoomNotificationPreference> {
+		return this.request<ChatRoomNotificationPreference>(
+			`/chat/rooms/${roomId}/notifications`,
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ level }),
 			},
 		);
 	}

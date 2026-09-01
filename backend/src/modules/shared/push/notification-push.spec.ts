@@ -61,12 +61,12 @@ describe('buildPushMessage', () => {
     expect(msg.data).toMatchObject({ task_id: 't-1' });
   });
 
-  it('titles a DM and keeps its ids actionable', () => {
+  it('leads a DM with the sender and what they actually said', () => {
     const msg = buildPushMessage({
       notificationId: 'n-1',
       typeName: 'chat_dm_received',
       content: {
-        message: 'Ada sent you a message',
+        message: 'Ada: are you free at 3?',
         room_id: 'room-1',
         message_id: 'msg-1',
         excerpt: 'are you free at 3?',
@@ -75,16 +75,53 @@ describe('buildPushMessage', () => {
       linkUrl: '/inbox?r=room-1',
     });
 
-    expect(msg.title).toBe('New message');
-    // The body deliberately carries no message text — nothing should leak to a
-    // lock screen. The excerpt is email-only.
-    expect(msg.body).toBe('Ada sent you a message');
+    // This REVERSES the previous rule that the body carry no message text
+    // ("nothing should leak to a lock screen"). The lock screen is protected a
+    // layer down instead: chat is routed to the proyekto_chat Android channel,
+    // created with visibility: Private, so the text shows in the shade but not
+    // on a locked device. The excerpt is no longer email-only.
+    expect(msg.title).toBe('Ada');
+    expect(msg.body).toBe('are you free at 3?');
+    // Still kept out of the machine payload — it is prose, and the data map has
+    // a 4KB budget.
     expect(msg.data).not.toHaveProperty('excerpt');
     expect(msg.data).toMatchObject({
       room_id: 'room-1',
       message_id: 'msg-1',
       link_url: '/inbox?r=room-1',
     });
+    // Groups by conversation without collapsing, so a burst stacks.
+    expect(msg.threadKey).toBe('chat:room-1');
+  });
+
+  it('names the channel in the title of a channel message', () => {
+    const msg = buildPushMessage({
+      notificationId: 'n-2',
+      typeName: 'chat_message_received',
+      content: {
+        message: 'Ada in #general: deploy is green',
+        room_id: 'room-2',
+        excerpt: 'deploy is green',
+        actor_name: 'Ada',
+        room_label: '#general',
+      },
+    });
+
+    expect(msg.title).toBe('Ada in #general');
+    expect(msg.body).toBe('deploy is green');
+    // room_label is presentation-only; it must not reach the data map.
+    expect(msg.data).not.toHaveProperty('room_label');
+  });
+
+  it('falls back to the old summary when a chat row has no actor', () => {
+    const msg = buildPushMessage({
+      notificationId: 'n-3',
+      typeName: 'chat_dm_received',
+      content: { message: 'Someone sent you a message', room_id: 'room-3' },
+    });
+
+    expect(msg.title).toBe('New message');
+    expect(msg.body).toBe('Someone sent you a message');
   });
 
   it('drops non-scalar content values', () => {

@@ -196,7 +196,15 @@ export class NotificationsService {
     return { deleted: true };
   }
 
-  async createNotification(payload: CreateNotificationDto) {
+  /**
+   * `skipPush` is a second argument rather than a DTO field on purpose: the
+   * global ValidationPipe runs whitelist + forbidNonWhitelisted, which makes
+   * every DTO field part of a public request contract. This one is internal.
+   */
+  async createNotification(
+    payload: CreateNotificationDto,
+    options?: { skipPush?: boolean },
+  ) {
     const { data: type, error: typeError } = await this.supabase
       .from('notification_types')
       .select('id')
@@ -233,7 +241,13 @@ export class NotificationsService {
     // rethrows, so a delivery failure can't block or break the action that
     // created the notification. (Bounded await rather than a detached promise
     // because Cloud Run may freeze instance CPU once the response is sent.)
-    await this.sendPush(payload, data.id as string);
+    //
+    // Chat opts out: ChatPushService sends per MESSAGE, while this row is
+    // deduped to one per room per read-cycle. Without skipPush the first message
+    // of a burst would push twice.
+    if (!options?.skipPush) {
+      await this.sendPush(payload, data.id as string);
+    }
 
     return data;
   }

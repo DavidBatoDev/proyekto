@@ -1,5 +1,6 @@
 import { ArrowLeft, Hash, UserRoundSearch } from "lucide-react";
 import { ChatAvatar } from "./Avatar";
+import { RoomNotificationMenu } from "./RoomNotificationMenu";
 
 export function ChatHeader({
 	title,
@@ -9,6 +10,7 @@ export function ChatHeader({
 	isProfilePanelOpen,
 	onToggleProfilePanel,
 	onBack,
+	roomId,
 }: {
 	title: string;
 	subtitle: string;
@@ -18,6 +20,8 @@ export function ChatHeader({
 	onToggleProfilePanel?: () => void;
 	/** Called on mobile to navigate back to the conversation list. */
 	onBack?: () => void;
+	/** Present once a real room is open; enables the per-room mute control. */
+	roomId?: string | null;
 }) {
 	return (
 		<header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-6 md:py-4">
@@ -50,20 +54,23 @@ export function ChatHeader({
 					</div>
 				</div>
 
-				<button
-					type="button"
-					onClick={onToggleProfilePanel}
-					className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-						isProfilePanelOpen
-							? "border-primary bg-primary text-white"
-							: "border-slate-200 text-slate-600 hover:bg-slate-100"
-					}`}
-					aria-label={
-						isProfilePanelOpen ? "Hide member panel" : "Show member panel"
-					}
-				>
-					<UserRoundSearch className="w-4 h-4" />
-				</button>
+				<div className="flex shrink-0 items-center gap-2">
+					{roomId && <RoomNotificationMenu roomId={roomId} />}
+					<button
+						type="button"
+						onClick={onToggleProfilePanel}
+						className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+							isProfilePanelOpen
+								? "border-primary bg-primary text-white"
+								: "border-slate-200 text-slate-600 hover:bg-slate-100"
+						}`}
+						aria-label={
+							isProfilePanelOpen ? "Hide member panel" : "Show member panel"
+						}
+					>
+						<UserRoundSearch className="w-4 h-4" />
+					</button>
+				</div>
 			</div>
 		</header>
 	);

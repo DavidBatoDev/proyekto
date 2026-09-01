@@ -283,6 +283,18 @@ class EnvironmentVariables {
   @IsNumber()
   PUSH_SEND_TIMEOUT_MS?: number;
 
+  // Android notification channel for chat pushes. Routes them to the shell's
+  // "Chat messages" channel, which is created with visibility: Private — that is
+  // what keeps message text out of a locked device's lock screen while still
+  // showing it in the notification shade.
+  //
+  // Unset means the field is omitted and Android uses the manifest default. Do
+  // NOT set it to a channel the installed shell has not created: Android 8+
+  // drops such notifications SILENTLY. `proyekto_chat` exists from v0.3.1 on.
+  @IsOptional()
+  @IsString()
+  PUSH_ANDROID_CHAT_CHANNEL_ID?: string;
+
   // Shared bearer secret guarding the self-hosted OTA publish endpoints
   // (/api/mobile-updates/bundles*). Only CI needs it; the public check/stats
   // endpoints work without it. Unset = publishing is closed (guard denies all).
