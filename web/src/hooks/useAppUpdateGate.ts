@@ -76,18 +76,26 @@ export function useAppUpdateGate(): AppUpdateGateState {
 		if (!isNativePlatform()) return;
 		void check();
 
+		let cancelled = false;
 		let detach: (() => void) | undefined;
 		void (async () => {
 			const { App } = await import("@capacitor/app");
 			const handle = await App.addListener("resume", () => {
 				void check();
 			});
-			detach = () => {
-				void handle.remove();
-			};
+			// The dynamic import can resolve after unmount; without this the
+			// listener is attached and never removed.
+			if (cancelled) void handle.remove();
+			else
+				detach = () => {
+					void handle.remove();
+				};
 		})();
 
-		return () => detach?.();
+		return () => {
+			cancelled = true;
+			detach?.();
+		};
 	}, [check]);
 
 	const snooze = useCallback(() => {

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Bell, Loader2, Mail } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { PushNotificationsSection } from "@/components/settings/PushNotificationsSection";
 import { useToast } from "@/hooks/useToast";
 import {
 	type NotificationPreferences,
@@ -210,11 +211,17 @@ function NotificationSettingsPage() {
 							Notifications
 						</h1>
 						<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-							Choose what Proyekto emails you about. In-app notifications are
-							unaffected.
+							Choose how Proyekto reaches you. In-app notifications are always
+							on.
 						</p>
 					</div>
 				</header>
+
+				{/* Outside the gate below on purpose: if the email-preferences API is
+				    down, the push diagnostics must still render. */}
+				<div className="mb-6">
+					<PushNotificationsSection />
+				</div>
 
 				{loading ? (
 					<div className="flex items-center gap-2 py-12 text-muted-foreground">
