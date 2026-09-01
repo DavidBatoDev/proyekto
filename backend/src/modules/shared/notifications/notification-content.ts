@@ -29,4 +29,16 @@ export const PRESENTATION_ONLY_CONTENT_KEYS: ReadonlySet<string> = new Set([
   'excerpt',
   'actor_name',
   'context_title',
+  'room_label',
 ]);
+
+/**
+ * Human label for the chat room a notification came from — `#General` for a
+ * channel, absent for a DM. Feeds the push title (`Ada in #General`).
+ *
+ * Deliberately NOT `context_title`, which the email renderer appends to its lead
+ * as ` in <context_title>`. A DM's label is the literal string "a direct
+ * message", so reusing that key would render "sent you a message in a direct
+ * message" — see the comment on the DM producer in chat.service.ts.
+ */
+export const ROOM_LABEL_CONTENT_KEY = 'room_label';

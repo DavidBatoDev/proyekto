@@ -1378,6 +1378,7 @@ function ChatPage() {
 					<ChatHeader
 						title={activeTitle}
 						subtitle={activeSubtitle}
+						roomId={activeRoomId}
 						isChannel={activeTarget.kind === "channel"}
 						avatarUrl={activeAvatarUrl}
 						isProfilePanelOpen={isProfilePanelOpen}

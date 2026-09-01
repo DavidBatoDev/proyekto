@@ -6,12 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
+import { UpdateRoomNotificationLevelDto } from './dto/chat-notification-prefs.dto';
 import { ChatService } from './chat.service';
 import {
   ChatMessagesQueryDto,
@@ -83,13 +85,38 @@ export class ChatRoomsController {
     return this.chatService.toggleRoomStar(roomId, user.id);
   }
 
+  @Get('rooms/:roomId/notifications')
+  getRoomNotificationLevel(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.getRoomNotificationLevel(roomId, user.id);
+  }
+
+  @Put('rooms/:roomId/notifications')
+  setRoomNotificationLevel(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateRoomNotificationLevelDto,
+  ) {
+    return this.chatService.setRoomNotificationLevel(
+      roomId,
+      user.id,
+      dto.level,
+    );
+  }
+
   @Post('messages/:messageId/reactions')
   toggleReaction(
     @Param('messageId') messageId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ToggleChatReactionDto,
   ) {
-    return this.chatService.toggleMessageReaction(messageId, user.id, dto.emoji);
+    return this.chatService.toggleMessageReaction(
+      messageId,
+      user.id,
+      dto.emoji,
+    );
   }
 
   @Patch('messages/:messageId')

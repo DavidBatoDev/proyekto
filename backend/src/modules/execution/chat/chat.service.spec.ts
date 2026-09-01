@@ -1,3 +1,4 @@
+import { ChatPushService } from './chat-push.service';
 import { ChatService } from './chat.service';
 import type { RealtimePublisher } from '../../shared/realtime/realtime-publisher.service';
 import type { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
@@ -146,10 +147,29 @@ describe('ChatService', () => {
       isEnabled: jest.fn().mockReturnValue(false),
     }) as unknown as import('../../shared/knowledge/knowledge-outbox.service').KnowledgeOutboxService;
 
+  // A real ChatPushService would need a PushService and ConfigService; the
+  // send path is covered in chat-push.service.spec.ts. Here we only need to
+  // observe that it is called, and to keep previewText/roomLabel behaviour so
+  // the notification `content` assertions below stay meaningful.
+  const buildChatPush = (overrides: Record<string, unknown> = {}) => {
+    const real = new ChatPushService(
+      {} as never,
+      {} as never,
+      { get: () => undefined } as never,
+    );
+    return {
+      sendForMessage: jest.fn().mockResolvedValue(undefined),
+      previewText: real.previewText.bind(real),
+      roomLabel: real.roomLabel.bind(real),
+      ...overrides,
+    } as unknown as ChatPushService;
+  };
+
   const makeService = (
     repo: ChatRepository,
     authOverrides = {},
     notifications = buildNotifications(),
+    chatPush = buildChatPush(),
   ) =>
     new ChatService(
       repo,
@@ -159,6 +179,7 @@ describe('ChatService', () => {
       r2Config,
       notifications,
       buildKnowledgeOutbox(),
+      chatPush,
     );
 
   // ── Channels: arbitrary channel fixtures for visibility tests ──────────────
@@ -881,8 +902,11 @@ describe('ChatService', () => {
 
     await flush();
     expect(createNotification).toHaveBeenCalledTimes(1);
+    // The second argument is load-bearing: ChatPushService already pushed this
+    // message, so without skipPush the mention is delivered twice.
     expect(createNotification).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'm2', type_name: 'chat_mention' }),
+      { skipPush: true },
     );
   });
 
@@ -910,8 +934,11 @@ describe('ChatService', () => {
       mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
     });
 
+    // The second argument is load-bearing: ChatPushService already pushed this
+    // message, so without skipPush the mention is delivered twice.
     expect(createNotification).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'm2', type_name: 'chat_mention' }),
+      { skipPush: true },
     );
   });
 
@@ -1320,7 +1347,7 @@ describe('ChatService', () => {
       // 'hello', and snapshotting what was actually stored is the correct
       // behaviour.
       expect(content.excerpt).toBe('hello');
-      expect(content.message).toBe('Ada Lovelace sent you a message');
+      expect(content.message).toBe('Ada Lovelace: hello');
       // Would render "sent you a message in a direct message".
       expect(content).not.toHaveProperty('context_title');
     });
@@ -1338,6 +1365,14 @@ describe('ChatService', () => {
           project_id: null,
           sender_id: 'actor-1',
           content: '',
+          attachments: [
+            {
+              url: 'https://cdn.proyekto.tech/chat_attachments/actor-1/a.png',
+              name: 'a.png',
+              content_type: 'image/png',
+              size: 10,
+            },
+          ],
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }),
@@ -1362,8 +1397,9 @@ describe('ChatService', () => {
         string,
         unknown
       >;
-      expect(content.message).toBe('Ada Lovelace sent you an attachment');
-      expect(content).not.toHaveProperty('excerpt');
+      // An attachment-only message used to arrive as a blank notification.
+      expect(content.message).toBe('Ada Lovelace: 📷 Photo');
+      expect(content.excerpt).toBe('📷 Photo');
     });
 
     it('mention wins — a mentioned recipient gets no DM notification', async () => {

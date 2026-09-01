@@ -106,7 +106,7 @@ jobs:
           # var; defaults to tech-proyekto-app). Until then push is a no-op.
           if [[ -n "${FCM_PUSH_ENABLED:-}" ]]; then
             FIREBASE_PROJECT_ID_VALUE="${FIREBASE_PROJECT_ID:-tech-proyekto-app}"
-            ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID_VALUE},FIREBASE_USE_ADC=true,PUSH_SEND_TIMEOUT_MS=1500"
+            ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID_VALUE},FIREBASE_USE_ADC=true,PUSH_SEND_TIMEOUT_MS=1500,PUSH_ANDROID_CHAT_CHANNEL_ID=proyekto_chat"
             echo "FCM push enabled (keyless ADC) for this deploy."
           else
             echo "FCM push disabled (grant the runtime SA FCM access, then set the FCM_PUSH_ENABLED repo var to enable)."

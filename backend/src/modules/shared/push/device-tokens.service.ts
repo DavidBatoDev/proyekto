@@ -13,6 +13,16 @@ export interface DeviceTokenRow {
   platform: DevicePlatform;
 }
 
+export interface OwnedDeviceTokenRow extends DeviceTokenRow {
+  user_id: string;
+}
+
+/**
+ * PostgREST puts `.in()` values in the query string, so a very large room would
+ * build a URL long enough to be rejected. Chunk well below that.
+ */
+const USER_CHUNK = 200;
+
 /**
  * Owns the `device_tokens` table. Registration goes through the authenticated
  * backend endpoint (service-role writes), so a token row's `user_id` is always
@@ -84,6 +94,46 @@ export class DeviceTokensService {
     }
 
     return (data ?? []) as DeviceTokenRow[];
+  }
+
+  /**
+   * Tokens for many users in one round trip, grouped by user.
+   *
+   * The chat push path fans out to a whole room on every message, so calling
+   * `getTokensForUser` per recipient would be an N+1 on an awaited request.
+   * Best-effort like its sibling: a query failure yields an empty map rather
+   * than throwing into the send that triggered it.
+   */
+  async getTokensForUsers(
+    userIds: string[],
+  ): Promise<Map<string, DeviceTokenRow[]>> {
+    const grouped = new Map<string, DeviceTokenRow[]>();
+    const unique = Array.from(new Set(userIds));
+    if (unique.length === 0) return grouped;
+
+    for (let i = 0; i < unique.length; i += USER_CHUNK) {
+      const chunk = unique.slice(i, i + USER_CHUNK);
+      const { data, error } = await this.supabase
+        .from('device_tokens')
+        .select('user_id, token, platform')
+        .in('user_id', chunk);
+
+      if (error) {
+        this.logger.warn(`getTokensForUsers failed: ${error.message}`);
+        continue;
+      }
+
+      for (const row of (data ?? []) as OwnedDeviceTokenRow[]) {
+        const list = grouped.get(row.user_id);
+        if (list) list.push({ token: row.token, platform: row.platform });
+        else
+          grouped.set(row.user_id, [
+            { token: row.token, platform: row.platform },
+          ]);
+      }
+    }
+
+    return grouped;
   }
 
   /** Remove tokens FCM reported as dead. Best-effort. */

@@ -33,14 +33,18 @@ import {
 import { AuditService } from '../../shared/audit/audit.service';
 import { KnowledgeOutboxService } from '../../shared/knowledge/knowledge-outbox.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
-import { truncatePromptText } from '../../../common/utils/html-to-text.util';
-import { MENTION_EXCERPT_MAX_CHARS } from '../../shared/notifications/notification-content';
 import { runNotifyWork } from '../../shared/notifications/notify-work';
+import { ChatPushService } from './chat-push.service';
+import { CHAT_REPOSITORY, EVERYONE_MENTION_ID } from './chat.tokens';
+import { DEFAULT_CHAT_NOTIFICATION_LEVEL } from './repositories/chat.repository.interface';
+import type {
+  ChatNotificationLevel,
+  ChatRoomNotificationPreference,
+} from './repositories/chat.repository.interface';
 
 /** Sentinel `user_id` for an @everyone mention (expands to all room members). */
-const EVERYONE_MENTION_ID = 'everyone';
 
-export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
+export { CHAT_REPOSITORY, EVERYONE_MENTION_ID } from './chat.tokens';
 
 type SystemRoomSpec = {
   slug: string;
@@ -83,6 +87,7 @@ export class ChatService {
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
     private readonly notifications: NotificationsService,
     private readonly knowledgeOutbox: KnowledgeOutboxService,
+    private readonly chatPush: ChatPushService,
   ) {}
 
   /**
@@ -123,6 +128,7 @@ export class ChatService {
     message: ChatMessage,
     senderId: string,
     mentions: ChatMention[],
+    actorName: string | null,
   ): Promise<void> {
     if (!mentions.length) return;
 
@@ -164,35 +170,45 @@ export class ChatService {
             // it the link lands on the inbox list rather than the thread.
             `/inbox?r=${room.id}`;
 
-      // Snapshot what a human-facing message needs, once for the whole
-      // fan-out: the actor is the same person for every recipient, and the
-      // message body may be edited or unsent before the notification is
-      // acted on.
-      const actorName = await this.notifications.resolveActorName(senderId);
+      // `actorName` is resolved once by the caller for the whole send. The
+      // message body is snapshotted here because it may be edited or unsent
+      // before the notification is acted on.
+      //
       // Plain text, not HTML — truncate only. Running it through htmlToText
       // would decode entities a user typed literally ("&amp;" -> "&").
-      const excerpt = truncatePromptText(
-        (message.content ?? '').trim(),
-        MENTION_EXCERPT_MAX_CHARS,
-      );
+      // `previewText` falls back to an attachment stand-in, which fixes a real
+      // gap: an attachment-only @mention previously carried no excerpt at all.
+      const excerpt = this.chatPush.previewText(message);
+      const roomLabelForPush = this.chatPush.roomLabel(room);
+      const lead = actorName ?? 'Someone';
 
       await Promise.allSettled(
         Array.from(targets).map((userId) =>
-          this.notifications.createNotification({
-            user_id: userId,
-            actor_id: senderId,
-            project_id: room.project_id || undefined,
-            type_name: 'chat_mention',
-            content: {
-              message: `You were mentioned in ${roomLabel}`,
-              room_id: room.id,
-              message_id: message.id,
-              ...(actorName ? { actor_name: actorName } : {}),
-              ...(excerpt ? { excerpt } : {}),
-              ...(roomLabel ? { context_title: roomLabel } : {}),
+          this.notifications.createNotification(
+            {
+              user_id: userId,
+              actor_id: senderId,
+              project_id: room.project_id || undefined,
+              type_name: 'chat_mention',
+              content: {
+                // The bell body. Leads with who and what, matching the push and
+                // the email rather than restating the notification's own type.
+                message: excerpt
+                  ? `${lead}${roomLabelForPush ? ` in ${roomLabelForPush}` : ''}: ${excerpt}`
+                  : `You were mentioned in ${roomLabel}`,
+                room_id: room.id,
+                message_id: message.id,
+                ...(actorName ? { actor_name: actorName } : {}),
+                ...(excerpt ? { excerpt } : {}),
+                ...(roomLabel ? { context_title: roomLabel } : {}),
+                ...(roomLabelForPush ? { room_label: roomLabelForPush } : {}),
+              },
+              link_url: linkUrl,
             },
-            link_url: linkUrl,
-          }),
+            // ChatPushService already pushed this message. Without skipPush the
+            // recipient gets two notifications for one mention.
+            { skipPush: true },
+          ),
         ),
       );
     } catch {
@@ -222,24 +238,23 @@ export class ChatService {
     senderId: string;
     mentions: ChatMention[];
     participants: { user_id: string; last_read_at: string | null }[];
+    actorName: string | null;
   }): Promise<void> {
-    const { room, message, senderId, mentions, participants } = params;
+    const { room, message, senderId, mentions, participants, actorName } =
+      params;
 
     const recipients = participants.filter((p) => p.user_id !== senderId);
     if (recipients.length === 0) return;
 
-    const hasBody = (message.content ?? '').trim().length > 0;
-    const actorName = await this.notifications.resolveActorName(senderId);
     const actorLabel = actorName ?? 'Someone';
-    // Count-agnostic on purpose: the row is created once per read-cycle and is
-    // never refreshed, so it must not claim a number it cannot keep accurate.
-    const summary = hasBody
-      ? `${actorLabel} sent you a message`
-      : `${actorLabel} sent you an attachment`;
-    const excerpt = truncatePromptText(
-      (message.content ?? '').trim(),
-      MENTION_EXCERPT_MAX_CHARS,
-    );
+    const excerpt = this.chatPush.previewText(message);
+    // The bell body. Count-agnostic on purpose: this row is created once per
+    // read-cycle and never refreshed, so it must not claim a number it cannot
+    // keep accurate. Push is not bound by that — ChatPushService sends one per
+    // message.
+    const summary = excerpt
+      ? `${actorLabel}: ${excerpt}`
+      : `${actorLabel} sent you a message`;
 
     await Promise.allSettled(
       recipients.map(async (recipient) => {
@@ -262,25 +277,31 @@ export class ChatService {
         );
         if (live) return;
 
-        await this.notifications.createNotification({
-          user_id: recipient.user_id,
-          actor_id: senderId,
-          type_name: 'chat_dm_received',
-          content: {
-            message: summary,
-            // Both ids are load-bearing downstream: `room_id` is the dedup key,
-            // and without `message_id` the email worker's `seen_in_app` gate
-            // silently disables itself and mails people who already read the DM.
-            room_id: room.id,
-            message_id: message.id,
-            ...(actorName ? { actor_name: actorName } : {}),
-            ...(excerpt ? { excerpt } : {}),
-            // Deliberately no `context_title`: the email renderer appends
-            // " in <context>", which would read "sent you a message in a
-            // direct message".
+        await this.notifications.createNotification(
+          {
+            user_id: recipient.user_id,
+            actor_id: senderId,
+            type_name: 'chat_dm_received',
+            content: {
+              message: summary,
+              // Both ids are load-bearing downstream: `room_id` is the dedup key,
+              // and without `message_id` the email worker's `seen_in_app` gate
+              // silently disables itself and mails people who already read the DM.
+              room_id: room.id,
+              message_id: message.id,
+              ...(actorName ? { actor_name: actorName } : {}),
+              ...(excerpt ? { excerpt } : {}),
+              // Deliberately no `context_title`: the email renderer appends
+              // " in <context>", which would read "sent you a message in a
+              // direct message". `room_label` is the separate, push-only key —
+              // and a DM has none, since the sender IS the title.
+            },
+            link_url: `/inbox?r=${room.id}`,
           },
-          link_url: `/inbox?r=${room.id}`,
-        });
+          // ChatPushService already pushed this message, per message rather
+          // than per read-cycle. This row is only the bell + email trigger.
+          { skipPush: true },
+        );
       }),
     );
   }
@@ -546,6 +567,37 @@ export class ChatService {
     return this.listMembers(projectId, userId);
   }
 
+  /**
+   * This viewer's notification level for a room. `all` unless they changed it —
+   * every message in every chat notifies by default.
+   */
+  async getRoomNotificationLevel(
+    roomId: string,
+    userId: string,
+  ): Promise<ChatRoomNotificationPreference> {
+    await this.assertRoomAccess(roomId, userId);
+    const levels = await this.chatRepo.listUserNotificationLevels(userId, [
+      roomId,
+    ]);
+    const level = levels.get(roomId);
+    return {
+      room_id: roomId,
+      level: level ?? DEFAULT_CHAT_NOTIFICATION_LEVEL,
+      is_default: level === undefined,
+    };
+  }
+
+  async setRoomNotificationLevel(
+    roomId: string,
+    userId: string,
+    level: ChatNotificationLevel,
+  ): Promise<ChatRoomNotificationPreference> {
+    // Gate on room access: a preference row is personal and inert, but there is
+    // no reason to let someone write one for a room they cannot see.
+    await this.assertRoomAccess(roomId, userId);
+    return this.chatRepo.setRoomNotificationLevel({ roomId, userId, level });
+  }
+
   private async assertRoomAccess(
     roomId: string,
     userId: string,
@@ -800,7 +852,31 @@ export class ChatService {
     // every message. A lost mention notification heals nothing.
     this.fanoutChat(room.id, projectId, 'message');
     await runNotifyWork(
-      this.fireMentionNotifications(room, message, senderId, mentions),
+      (async () => {
+        const [actorName, recipientIds] = await Promise.all([
+          this.notifications.resolveActorName(senderId),
+          // Channels span the project roster, not chat_room_participants —
+          // joining a channel is lazy, so that table is not authoritative.
+          this.chatRepo.listProjectParticipantUserIds(projectId),
+        ]);
+        await Promise.all([
+          this.fireMentionNotifications(
+            room,
+            message,
+            senderId,
+            mentions,
+            actorName,
+          ),
+          this.chatPush.sendForMessage({
+            room,
+            message,
+            senderId,
+            actorName,
+            mentions,
+            recipientIds,
+          }),
+        ]);
+      })(),
     );
     this.knowledgeOutbox.enqueue({
       sourceType: 'chat_message',
@@ -892,17 +968,35 @@ export class ChatService {
     // landed in the database, so neither has to observe the other.
     await runNotifyWork(
       (async () => {
-        const participants = await this.chatRepo.listRoomParticipantReadState(
-          room.id,
-        );
+        const [participants, actorName] = await Promise.all([
+          this.chatRepo.listRoomParticipantReadState(room.id),
+          // Resolved once for the whole send: the actor is the same person for
+          // every recipient, and this path used to look it up twice.
+          this.notifications.resolveActorName(senderId),
+        ]);
         await Promise.all([
-          this.fireMentionNotifications(room, message, senderId, mentions),
+          this.fireMentionNotifications(
+            room,
+            message,
+            senderId,
+            mentions,
+            actorName,
+          ),
           this.notifyDmRecipients({
             room,
             message,
             senderId,
             mentions,
             participants,
+            actorName,
+          }),
+          this.chatPush.sendForMessage({
+            room,
+            message,
+            senderId,
+            actorName,
+            mentions,
+            recipientIds: participants.map((p) => p.user_id),
           }),
         ]);
       })(),

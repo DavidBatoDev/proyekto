@@ -8,7 +8,43 @@ export interface PushMessage {
   body: string;
   /** FCM data must be string -> string; carries type, ids, and deep-link. */
   data?: Record<string, string>;
+  /**
+   * Conversation key, used for GROUPING only — never collapsing.
+   *
+   * Deliberately not Android `tag` or `apns-collapse-id`: both REPLACE the
+   * previous notification for the key, so a three-message burst would leave one
+   * tray row and silently lose the first two unless the body carried an
+   * "N new messages" count. Getting that count right means a per-recipient
+   * unread query on the awaited send path. Stacking instead costs nothing,
+   * loses nothing, and still groups: iOS bundles by `thread-id`, and Android
+   * bundles same-app notifications on its own.
+   */
+  threadKey?: string;
+  /**
+   * Android notification channel id.
+   *
+   * A channel the shell has not created makes Android 8+ drop the notification
+   * SILENTLY, so this is only ever set from configuration — never guessed.
+   */
+  channelId?: string;
+  /** App icon badge. Omitted rather than zeroed when unknown. */
+  badge?: number;
 }
+
+/** One recipient and the payload built for them (badges differ per person). */
+export interface PushTarget {
+  userId: string;
+  message: PushMessage;
+}
+
+/** FCM caps a single sendEach batch. */
+const FCM_BATCH_LIMIT = 500;
+
+const DEAD_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+  'messaging/invalid-argument',
+]);
 
 /**
  * Sends FCM push notifications via firebase-admin.
@@ -90,49 +126,89 @@ export class PushService {
     return this.app;
   }
 
+  /** Compose the platform payloads for one device. */
+  private toMessage(
+    token: string,
+    message: PushMessage,
+  ): admin.messaging.Message {
+    const { threadKey, channelId, badge } = message;
+    return {
+      token,
+      notification: { title: message.title, body: message.body },
+      data: message.data ?? {},
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          defaultSound: true,
+          ...(channelId ? { channelId } : {}),
+          ...(badge !== undefined ? { notificationCount: badge } : {}),
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            ...(threadKey ? { 'thread-id': threadKey } : {}),
+            ...(badge !== undefined ? { badge } : {}),
+          },
+        },
+      },
+    };
+  }
+
   /**
    * Fan a push out to all of a user's registered devices. Best-effort: any
    * failure is logged, never thrown. Dead tokens are pruned.
    */
   async sendToUser(userId: string, message: PushMessage): Promise<void> {
+    await this.sendToUsers([{ userId, message }]);
+  }
+
+  /**
+   * Send a per-recipient payload to many users in one pass.
+   *
+   * One token query for the whole set, then a single `sendEach`. Note it cannot
+   * be `sendEachForMulticast`: that broadcasts ONE identical payload, and the
+   * badge and unread count differ per recipient.
+   */
+  async sendToUsers(targets: PushTarget[]): Promise<void> {
     const app = this.getApp();
-    if (!app) return;
+    if (!app || targets.length === 0) return;
 
-    const rows = await this.deviceTokens.getTokensForUser(userId);
-    const tokens = rows.map((r) => r.token);
-    if (tokens.length === 0) return;
+    const tokensByUser = await this.deviceTokens.getTokensForUsers(
+      targets.map((t) => t.userId),
+    );
 
-    const response = await admin.messaging(app).sendEachForMulticast({
-      tokens,
-      notification: { title: message.title, body: message.body },
-      data: message.data ?? {},
-      android: {
-        priority: 'high',
-        notification: { sound: 'default', defaultSound: true },
-      },
-      apns: {
-        payload: { aps: { sound: 'default' } },
-      },
-    });
-
-    if (response.failureCount === 0) return;
+    // Flat, index-aligned with the responses so pruning can map back.
+    const messages: admin.messaging.Message[] = [];
+    const tokens: string[] = [];
+    for (const target of targets) {
+      for (const row of tokensByUser.get(target.userId) ?? []) {
+        messages.push(this.toMessage(row.token, target.message));
+        tokens.push(row.token);
+      }
+    }
+    if (messages.length === 0) return;
 
     const dead: string[] = [];
-    response.responses.forEach((resp, i) => {
-      if (resp.success) return;
-      const code = resp.error?.code;
-      if (
-        code === 'messaging/registration-token-not-registered' ||
-        code === 'messaging/invalid-registration-token' ||
-        code === 'messaging/invalid-argument'
-      ) {
-        dead.push(tokens[i]);
-      } else {
-        this.logger.warn(
-          `push to ${userId} token #${i} failed: ${code ?? 'unknown'}`,
-        );
+    for (let i = 0; i < messages.length; i += FCM_BATCH_LIMIT) {
+      const slice = messages.slice(i, i + FCM_BATCH_LIMIT);
+      let response: admin.messaging.BatchResponse;
+      try {
+        response = await admin.messaging(app).sendEach(slice);
+      } catch (err) {
+        this.logger.warn(`push batch failed: ${(err as Error)?.message}`);
+        continue;
       }
-    });
+
+      response.responses.forEach((resp, offset) => {
+        if (resp.success) return;
+        const code = resp.error?.code;
+        if (code && DEAD_TOKEN_CODES.has(code)) dead.push(tokens[i + offset]);
+        else this.logger.warn(`push failed: ${code ?? 'unknown'}`);
+      });
+    }
 
     await this.deviceTokens.pruneTokens(dead);
   }

@@ -16,6 +16,21 @@ export type ChatTeam = {
 
 export type ChatRoomType = 'channel' | 'dm';
 
+/**
+ * Per-room notification level. Sparse in the database: an absent row means
+ * `all`, so every room notifies until someone says otherwise.
+ */
+export type ChatNotificationLevel = 'all' | 'mentions' | 'none';
+
+export const DEFAULT_CHAT_NOTIFICATION_LEVEL: ChatNotificationLevel = 'all';
+
+export type ChatRoomNotificationPreference = {
+  room_id: string;
+  level: ChatNotificationLevel;
+  /** True when no row exists and the level above is the fallback. */
+  is_default: boolean;
+};
+
 export type ChatRoom = {
   id: string;
   project_id: string | null;
@@ -270,6 +285,25 @@ export interface ChatRepository {
   }): Promise<{ starred: boolean }>;
   /** Subset of `roomIds` that `userId` has starred. */
   listStarredRoomIds(userId: string, roomIds: string[]): Promise<Set<string>>;
+  /**
+   * Notification levels for one room, keyed by user. SPARSE — only users who
+   * set an override appear. Callers resolve the rest to
+   * DEFAULT_CHAT_NOTIFICATION_LEVEL. Runs on the awaited message-send path.
+   */
+  listRoomNotificationLevels(
+    roomId: string,
+  ): Promise<Map<string, ChatNotificationLevel>>;
+  /** One user's overrides across many rooms, for hydrating the room list. */
+  listUserNotificationLevels(
+    userId: string,
+    roomIds: string[],
+  ): Promise<Map<string, ChatNotificationLevel>>;
+  /** Set (or clear, when level is the default) a personal room notification level. */
+  setRoomNotificationLevel(params: {
+    roomId: string;
+    userId: string;
+    level: ChatNotificationLevel;
+  }): Promise<ChatRoomNotificationPreference>;
   /** Soft-delete (tombstone): set deleted_at, keep the row for audit. */
   softDeleteMessage(params: {
     messageId: string;
