@@ -16,16 +16,20 @@ import type { Profile, Session, User } from "../types";
  */
 async function unregisterCurrentDeviceToken(): Promise<void> {
 	try {
-		const { isNativePlatform, getToken } = await import(
+		const { isNativePlatform, getTokenOrNull } = await import(
 			"../services/pushNotifications"
 		);
 		if (!isNativePlatform()) return;
-		const token = await getToken();
+		const token = await getTokenOrNull();
 		if (!token) return;
 		const { deviceTokensService } = await import(
 			"../services/deviceTokens.service"
 		);
 		await deviceTokensService.unregister(token);
+		const { resetPushRegistration } = await import(
+			"../services/pushRegistration"
+		);
+		resetPushRegistration();
 	} catch {
 		// ignore — logout must stay idempotent
 	}
