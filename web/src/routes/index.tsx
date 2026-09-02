@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AIDemoSection } from "@/components/root/AIDemoSection";
 import { CTAFooterSection } from "@/components/root/CTAFooterSection";
@@ -22,6 +23,14 @@ export const Route = createFileRoute("/")({
 		const { isAuthenticated, isLoading } = useAuthStore.getState();
 		if (!isLoading && isAuthenticated) {
 			throw redirect({ to: "/dashboard", replace: true });
+		}
+		// In the installed app a signed-out visitor gets the Get Started deck
+		// instead of this page: the landing is eight animated desktop-shaped
+		// sections, which is the wrong first screen on a phone. Browsers on a
+		// phone still get the landing — it is a marketing page and it should
+		// stay linkable and indexable.
+		if (Capacitor.isNativePlatform()) {
+			throw redirect({ to: "/get-started", replace: true });
 		}
 	},
 	component: LandingPage,

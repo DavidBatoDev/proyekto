@@ -15,6 +15,7 @@ import { Route as StartSellingRouteImport } from './routes/start-selling'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
 import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
@@ -190,6 +191,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GetStartedRoute = GetStartedRouteImport.update({
+  id: '/get-started',
+  path: '/get-started',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -1024,6 +1030,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -1172,6 +1179,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -1321,6 +1329,7 @@ export interface FileRoutesById {
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -1476,6 +1485,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/workspace'
     | '/admin'
+    | '/get-started'
     | '/home'
     | '/notifications'
     | '/onboarding'
@@ -1624,6 +1634,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/workspace'
+    | '/get-started'
     | '/home'
     | '/notifications'
     | '/onboarding'
@@ -1772,6 +1783,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/_execution'
     | '/admin'
+    | '/get-started'
     | '/home'
     | '/notifications'
     | '/onboarding'
@@ -1927,6 +1939,7 @@ export interface RootRouteChildren {
   WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  GetStartedRoute: typeof GetStartedRoute
   HomeRoute: typeof HomeRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -1989,6 +2002,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/get-started': {
+      id: '/get-started'
+      path: '/get-started'
+      fullPath: '/get-started'
+      preLoaderRoute: typeof GetStartedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -3569,6 +3589,7 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  GetStartedRoute: GetStartedRoute,
   HomeRoute: HomeRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,

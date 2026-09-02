@@ -33,6 +33,8 @@ const Header = () => {
 		"/start-selling",
 		// `/contract/sign/$token` is deliberately absent: the account-free
 		// signing page carries no app chrome, exactly as before the move.
+		// `/get-started` likewise — the mobile deck is full-bleed and draws its
+		// own brand mark.
 		"/freelancer",
 	];
 
