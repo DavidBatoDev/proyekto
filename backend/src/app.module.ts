@@ -36,6 +36,7 @@ import { PushModule } from './modules/shared/push/push.module';
 import { MobileUpdatesModule } from './modules/shared/mobile-updates/mobile-updates.module';
 import { ChatModule } from './modules/execution/chat/chat.module';
 import { TeamsModule } from './modules/execution/teams/teams.module';
+import { WorkspacesModule } from './modules/execution/workspaces/workspaces.module';
 import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
@@ -101,6 +102,7 @@ import { AppController } from './app.controller';
     MobileUpdatesModule,
     ChatModule,
     TeamsModule,
+    WorkspacesModule,
     TeamTimeModule,
     MeetingsModule,
     InvoicesModule,

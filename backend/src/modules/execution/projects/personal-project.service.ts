@@ -3,7 +3,12 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ChatService } from '../chat/chat.service';
 
-export interface PersonalWorkspace {
+/**
+ * The project provisioned for every user as their own space. Formerly called a
+ * "personal workspace" — renamed when Workspace became the organization tier,
+ * because the two were entirely different things wearing the same word.
+ */
+export interface PersonalProject {
   id: string;
   title: string;
   owner_id: string;
@@ -15,7 +20,7 @@ interface SupabaseResult {
   error: { message: string } | null;
 }
 
-function isPersonalWorkspace(value: unknown): value is PersonalWorkspace {
+function isPersonalProject(value: unknown): value is PersonalProject {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
   return (
@@ -33,8 +38,8 @@ function firstEmbeddedRow(value: unknown): unknown {
 }
 
 @Injectable()
-export class PersonalWorkspaceService {
-  private readonly logger = new Logger(PersonalWorkspaceService.name);
+export class PersonalProjectService {
+  private readonly logger = new Logger(PersonalProjectService.name);
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
@@ -42,28 +47,27 @@ export class PersonalWorkspaceService {
   ) {}
 
   /**
-   * Idempotently provision the user's single personal workspace.
+   * Idempotently provision the user's single personal project.
    *
    * The database RPC owns the transaction, advisory lock, project insert,
-   * normalized personal_workspaces mapping, and owner access grant.
+   * normalized personal_projects mapping, owner access grant, and stamping the
+   * project into the user's default workspace.
    */
-  async provision(userId: string): Promise<PersonalWorkspace> {
+  async provision(userId: string): Promise<PersonalProject> {
     const { data, error } = (await this.supabase.rpc(
-      'provision_personal_workspace',
+      'provision_personal_project',
       { p_user_id: userId },
     )) as unknown as SupabaseResult;
     const created = firstEmbeddedRow(data);
 
-    if (error || !isPersonalWorkspace(created)) {
+    if (error || !isPersonalProject(created)) {
       this.logger.error(
-        `Failed to provision personal workspace for ${userId}: ${error?.message ?? 'RPC returned no row'}`,
+        `Failed to provision personal project for ${userId}: ${error?.message ?? 'RPC returned no row'}`,
       );
-      throw new Error(
-        error?.message ?? 'Personal workspace RPC returned no row',
-      );
+      throw new Error(error?.message ?? 'Personal project RPC returned no row');
     }
 
-    // Solo workspace → a single #general channel (best-effort; listRooms
+    // Solo project → a single #general channel (best-effort; listRooms
     // backfills if this fails).
     try {
       await this.chatService.provisionDefaultChannels(
@@ -73,7 +77,7 @@ export class PersonalWorkspaceService {
       );
     } catch (err) {
       this.logger.warn(
-        `provisionDefaultChannels failed for personal workspace ${created.id}: ${
+        `provisionDefaultChannels failed for personal project ${created.id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -83,25 +87,23 @@ export class PersonalWorkspaceService {
   }
 
   /**
-   * Look up the existing personal workspace for a user, or null if none.
+   * Look up the existing personal project for a user, or null if none.
    * Public so AuthService / route handlers can read without forcing a write.
    */
-  async findForUser(userId: string): Promise<PersonalWorkspace | null> {
+  async findForUser(userId: string): Promise<PersonalProject | null> {
     return this.findExisting(userId);
   }
 
-  private async findExisting(
-    userId: string,
-  ): Promise<PersonalWorkspace | null> {
+  private async findExisting(userId: string): Promise<PersonalProject | null> {
     const { data, error } = (await this.supabase
-      .from('personal_workspaces')
+      .from('personal_projects')
       .select('project:projects(id, title, owner_id, status)')
       .eq('user_id', userId)
       .maybeSingle()) as unknown as SupabaseResult;
 
     if (error) {
       this.logger.error(
-        `Failed to look up personal workspace for ${userId}: ${error.message}`,
+        `Failed to look up personal project for ${userId}: ${error.message}`,
       );
       throw new Error(error.message);
     }
@@ -110,6 +112,6 @@ export class PersonalWorkspaceService {
         ? (data as Record<string, unknown>).project
         : null;
     const project = firstEmbeddedRow(embeddedProject);
-    return isPersonalWorkspace(project) ? project : null;
+    return isPersonalProject(project) ? project : null;
   }
 }

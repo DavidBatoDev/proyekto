@@ -91,6 +91,7 @@ describe('TeamsService — invitation email', () => {
           key === 'CLIENT_URL' ? 'https://www.proyekto.test' : undefined,
         ),
       } as any,
+      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
     );
 
     // Authorization and team lookup are exercised by their own specs; stub the

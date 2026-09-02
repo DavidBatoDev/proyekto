@@ -54,6 +54,7 @@ function buildService(input: {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     // Object.assign, not a spread: NoopProjectCommerce's methods live on the
     // prototype, and spreading an instance copies only own properties.
     Object.assign(

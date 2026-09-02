@@ -1,4 +1,4 @@
-import { PersonalWorkspaceService } from './personal-workspace.service';
+import { PersonalProjectService } from './personal-project.service';
 
 function buildService(options?: {
   rpcData?: unknown;
@@ -19,7 +19,7 @@ function buildService(options?: {
       error: options?.rpcError ?? null,
     }),
     from: jest.fn((table: string) => {
-      if (table !== 'personal_workspaces') {
+      if (table !== 'personal_projects') {
         throw new Error(`Unexpected table access: ${table}`);
       }
       return query;
@@ -29,7 +29,7 @@ function buildService(options?: {
     provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
   };
   return {
-    service: new PersonalWorkspaceService(
+    service: new PersonalProjectService(
       supabase as never,
       chatService as never,
     ),
@@ -39,24 +39,24 @@ function buildService(options?: {
   };
 }
 
-describe('PersonalWorkspaceService', () => {
+describe('PersonalProjectService', () => {
   it('provisions through the race-safe database RPC', async () => {
-    const workspace = {
-      id: 'ws-1',
-      title: "Alex's Workspace",
+    const project = {
+      id: 'proj-1',
+      title: "Alex's Space",
       owner_id: 'user-1',
       status: 'active',
     };
     const { service, supabase, chatService } = buildService({
-      rpcData: [workspace],
+      rpcData: [project],
     });
 
-    await expect(service.provision('user-1')).resolves.toEqual(workspace);
-    expect(supabase.rpc).toHaveBeenCalledWith('provision_personal_workspace', {
+    await expect(service.provision('user-1')).resolves.toEqual(project);
+    expect(supabase.rpc).toHaveBeenCalledWith('provision_personal_project', {
       p_user_id: 'user-1',
     });
     expect(chatService.provisionDefaultChannels).toHaveBeenCalledWith(
-      'ws-1',
+      'proj-1',
       'user-1',
       'personal',
     );
@@ -72,23 +72,23 @@ describe('PersonalWorkspaceService', () => {
     );
   });
 
-  it('looks up the workspace through the normalized mapping', async () => {
-    const workspace = {
-      id: 'ws-2',
-      title: "Sam's Workspace",
+  it('looks up the project through the normalized mapping', async () => {
+    const project = {
+      id: 'proj-2',
+      title: "Sam's Space",
       owner_id: 'user-2',
       status: 'active',
     };
     const { service, supabase, query } = buildService({
-      mappingData: { project: workspace },
+      mappingData: { project },
     });
 
-    await expect(service.findForUser('user-2')).resolves.toEqual(workspace);
-    expect(supabase.from).toHaveBeenCalledWith('personal_workspaces');
+    await expect(service.findForUser('user-2')).resolves.toEqual(project);
+    expect(supabase.from).toHaveBeenCalledWith('personal_projects');
     expect(query.eq).toHaveBeenCalledWith('user_id', 'user-2');
   });
 
-  it('returns null when the user has no workspace mapping', async () => {
+  it('returns null when the user has no personal-project mapping', async () => {
     const { service } = buildService();
     await expect(service.findForUser('user-x')).resolves.toBeNull();
   });

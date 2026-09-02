@@ -63,6 +63,7 @@ import { NotificationsService } from '../../shared/notifications/notifications.s
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
 import { TeamTimeService } from '../team-time/team-time.service';
+import { WorkspacesService } from '../workspaces/workspaces.service';
 import {
   type PermissionPath,
   type ProjectPermissions,
@@ -127,6 +128,7 @@ export class ProjectsService {
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
     private readonly teamTime: TeamTimeService,
+    private readonly workspaces: WorkspacesService,
     // Optional so execution boots without marketplace: absent the binding, the
     // no-op applies and nothing forbids deletion or reports invoices.
     @Optional()
@@ -885,9 +887,17 @@ export class ProjectsService {
 
     const creationMode = dto.creation_mode ?? 'client';
 
+    // Resolved once for both creation modes. Throws if the caller named a
+    // workspace they are not a member of; falls back to their default one.
+    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(
+      userId,
+      dto.workspace_id,
+    );
+
     if (creationMode === 'client') {
       const project = await this.projectsRepo.create(userId, {
         ...dto,
+        workspace_id: workspaceId ?? undefined,
         creation_mode: 'client',
       });
       // The creator gets admin. No owner exists yet — a marketplace project is
@@ -928,6 +938,7 @@ export class ProjectsService {
 
     const project = await this.projectsRepo.create(userId, {
       ...dto,
+      workspace_id: workspaceId ?? undefined,
       creation_mode: 'consultant',
       status: 'draft',
     });
@@ -1056,11 +1067,17 @@ export class ProjectsService {
     let project: Project | null = null;
     let defaultRoadmap: { id: string; name: string } | null = null;
 
+    // The converted project lands in the CONVERTING user's workspace, not the
+    // guest's — a guest has none. Resolved from userId rather than from a
+    // request field so the web conversion route needs no change.
+    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(userId);
+
     try {
       project = await this.projectsRepo.create(userId, {
         title: projectTitle,
         description: projectDescription,
         status: 'draft',
+        workspace_id: workspaceId ?? undefined,
         creation_mode: 'client',
       });
 

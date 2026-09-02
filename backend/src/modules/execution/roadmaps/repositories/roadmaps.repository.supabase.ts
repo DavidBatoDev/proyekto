@@ -174,7 +174,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
 
     const { data: ownedRoadmaps, error: ownedError } = await this.db
       .from('roadmaps')
-      .select('*, project:projects(id, title)')
+      .select('*, project:projects(id, title, workspace_id)')
       .eq('owner_id', userId)
       .order('created_at', { ascending: false });
     if (ownedError) throw new Error(ownedError.message);
@@ -183,7 +183,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     if (accessibleProjectIds.length > 0) {
       const { data, error } = await this.db
         .from('roadmaps')
-        .select('*, project:projects(id, title)')
+        .select('*, project:projects(id, title, workspace_id)')
         .in('project_id', accessibleProjectIds)
         .neq('owner_id', userId)
         .order('created_at', { ascending: false });
@@ -210,7 +210,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   ): Promise<any | null> {
     const { data, error } = await this.db
       .from('roadmaps')
-      .select('*, project:projects(id, title)')
+      .select('*, project:projects(id, title, workspace_id)')
       .eq('project_id', projectId)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -230,7 +230,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   async findById(id: string, userId?: string): Promise<any | null> {
     const query = this.db
       .from('roadmaps')
-      .select('*, project:projects(id, title)')
+      .select('*, project:projects(id, title, workspace_id)')
       .eq('id', id);
 
     const { data, error } = await query.single();
@@ -278,7 +278,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     // result is consumed as `any` and normalized below.
     const selectString: string = `
         *,
-        project:projects(id, title),
+        project:projects(id, title, workspace_id),
         milestones:roadmap_milestones(*),
         epics:roadmap_epics(*, ${featureSelect})
       `;
@@ -334,7 +334,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .select(
         `
         *,
-        project:projects(id, title),
+        project:projects(id, title, workspace_id),
         milestones:roadmap_milestones(*),
         epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))))
       `,
@@ -352,7 +352,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   async findByUser(userId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('roadmaps')
-      .select('*, project:projects(id, title)')
+      .select('*, project:projects(id, title, workspace_id)')
       .eq('owner_id', userId)
       .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
@@ -770,7 +770,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     const { data: ownedRoadmaps, error: ownedRoadmapsError } = await this.db
       .from('roadmaps')
       .select(
-        'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title)',
+        'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title, workspace_id)',
       )
       .eq('owner_id', userId)
       .order('updated_at', { ascending: false });
@@ -782,7 +782,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       const { data, error } = await this.db
         .from('roadmaps')
         .select(
-          'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title)',
+          'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title, workspace_id)',
         )
         .in('project_id', accessibleProjectIds)
         .neq('owner_id', userId)

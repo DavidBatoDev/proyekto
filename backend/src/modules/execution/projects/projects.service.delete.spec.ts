@@ -75,9 +75,17 @@ function buildHarness(input: { vetoWith?: Error } = {}) {
     {} as never,
     {} as never,
     teamTime as never,
+    {} as never,
     commerce,
   );
-  return { service, projectsRepo, teamTime, cacheInvalidation, commerce, sequence };
+  return {
+    service,
+    projectsRepo,
+    teamTime,
+    cacheInvalidation,
+    commerce,
+    sequence,
+  };
 }
 
 describe('ProjectsService.deleteProject', () => {
@@ -152,12 +160,15 @@ describe('ProjectsService.deleteProject', () => {
       {} as never,
       {} as never,
       {} as never,
-      { invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
+      } as never,
       {} as never,
       {} as never,
       {} as never,
       {} as never,
       { stopRunningLogsForProject: jest.fn().mockResolvedValue(0) } as never,
+      {} as never,
     );
 
     await expect(

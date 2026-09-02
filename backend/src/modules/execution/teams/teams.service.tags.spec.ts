@@ -75,6 +75,7 @@ describe('TeamsService — tags', () => {
       { createNotification: jest.fn() } as any,
       { send: jest.fn() } as any,
       { get: jest.fn() } as any,
+      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
     );
 
     return { service, captured };

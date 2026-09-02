@@ -73,6 +73,7 @@ describe('ProjectsService listRoadmapLinkCandidates', () => {
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
       { log: jest.fn() } as any, // AuditService
       { stopRunningLogsForProject: jest.fn() } as any,
+      {} as never,
     );
   };
 
