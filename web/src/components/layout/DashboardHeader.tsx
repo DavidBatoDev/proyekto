@@ -2,6 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { Menu, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { toWorkspacePath } from "@/lib/workspacePaths";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 import { HEADER_NAV_ITEMS } from "./headerNavigation";
@@ -11,6 +13,7 @@ import { GlobalSearchBar } from "./search/GlobalSearchBar";
 import UserMenu from "./UserMenu";
 
 const DashboardHeader = () => {
+	const workspaceSlug = useCurrentWorkspace().workspace?.slug ?? null;
 	const { isAuthenticated, profile } = useAuthStore();
 	const isAuthLoading = useIsLoading();
 	const isLoading = isAuthLoading || (isAuthenticated && !profile);
@@ -32,7 +35,7 @@ const DashboardHeader = () => {
 				</button>
 			)}
 			<Link
-				to="/"
+				to="/home"
 				className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
 			>
 				<BrandMark variant="logomark" className="h-7" />
@@ -49,7 +52,7 @@ const DashboardHeader = () => {
 					{HEADER_NAV_ITEMS.map((item) => (
 						<Link
 							key={item.label}
-							to={item.to}
+							to={toWorkspacePath(item.to, workspaceSlug)}
 							className="rounded-md px-2 py-1 text-[14px] font-semibold text-foreground transition-colors hover:bg-muted hover:text-foreground"
 						>
 							{item.label}

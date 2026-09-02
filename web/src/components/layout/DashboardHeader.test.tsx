@@ -22,6 +22,16 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 }));
 
+// The header slugs its nav links from the current workspace; with none
+// known the links stay bare, which is what this suite asserts.
+vi.mock("@/hooks/useWorkspaceQueries", () => ({
+	useCurrentWorkspace: () => ({
+		workspace: null,
+		workspaces: [],
+		isLoading: false,
+	}),
+}));
+
 vi.mock("@/components/brand/BrandMark", () => ({
 	BrandMark: () => <span>Proyekto</span>,
 }));
