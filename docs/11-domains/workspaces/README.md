@@ -9,17 +9,16 @@ and holding a workspace seat grants nothing inside any project — which is the 
 marketplace half of the product survives a tenant tier, because a consultant delivering work on a
 client's project has `project_access` there and no seat in that client's workspace.
 
-> **⚠️ Deployment state (2026-09-01).** The schema is live in **both** environments, but the
-> application code is not yet deployed anywhere. Applied via the Supabase MCP `apply_migration`
-> tool, in order, to hosted dev (`vyiedlwasdwmjbztqznl`) and to production
-> (`byvbnkpiselvvulsvxgo`): the core tables, invites, the two `workspace_id` columns, the
-> provisioning RPC, the general backfill, the Prodigitality seed (a no-op on dev), and the
-> `personal_projects` rename with its compatibility shim. Production after apply: 29 workspaces
-> (28 personal + 1 organization), no unhomed team or project, no guest holding a seat. The
-> contraction half, `20260902130000_drop_personal_workspace_compat.sql`, is deliberately
-> **unapplied in both environments** until the workspace-aware backend revision is serving. The
-> still-deployed backend keeps working through the shim: its only use of the old name is the
-> `provision_personal_workspace` RPC, which now delegates to `provision_personal_project`.
+> **Deployment state (2026-09-02).** Live in **both** environments, schema and code. Migrations
+> were applied via the Supabase MCP `apply_migration` tool to hosted dev (`vyiedlwasdwmjbztqznl`)
+> and production (`byvbnkpiselvvulsvxgo`) in order: the core tables, invites, the two
+> `workspace_id` columns, the provisioning RPC, the general backfill, the Prodigitality seed (a
+> no-op on dev), the `personal_projects` rename with its compatibility shim, and — once the
+> workspace-aware backend revision was serving — the contraction
+> `20260902130000_drop_personal_workspace_compat.sql`, which removed the shim. The backfill was
+> re-run after the deploy to cover signups made during the window. Production after apply:
+> 29 workspaces (28 personal + 1 organization), no unhomed team or project, no guest holding a
+> seat. Code shipped in commits `edd59e03`..`672bd021` on `main`.
 
 ## The shape
 
