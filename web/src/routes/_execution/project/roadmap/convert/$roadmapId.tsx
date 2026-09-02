@@ -29,7 +29,7 @@ const steps = [
 	"Creating project",
 	"Importing roadmap",
 	"Preparing Kanban board",
-	"Opening workspace",
+	"Opening project",
 ];
 
 type ConversionResult = Awaited<

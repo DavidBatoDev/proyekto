@@ -27,11 +27,14 @@ export interface ProjectWithAccess {
 	members?: ProjectAccessMember[] | null;
 }
 
-export function isPersonalWorkspace(
-	project?: ProjectWithAccess | null,
-): boolean {
+// The auto-provisioned personal project. The DB literal is still
+// 'personal_workspace' — that origin value is wired through the permission
+// matrix and is deliberately not renamed — so both spellings must match.
+export function isPersonalProject(project?: ProjectWithAccess | null): boolean {
 	return (project?.members ?? []).some(
-		(member) => member.origin === "personal_workspace",
+		(member) =>
+			member.origin === "personal_project" ||
+			member.origin === "personal_workspace",
 	);
 }
 

@@ -46,7 +46,12 @@ describe("classifyPerson", () => {
 		);
 	});
 
-	it("treats a personal workspace as internal", () => {
+	it("treats a personal project as internal, under either origin spelling", () => {
+		// The DB still writes 'personal_workspace'; new rows may say
+		// 'personal_project'. Both mean the personal project.
+		expect(classifyPerson([member({ origin: "personal_project" })])).toBe(
+			"internal",
+		);
 		expect(classifyPerson([member({ origin: "personal_workspace" })])).toBe(
 			"internal",
 		);
@@ -109,6 +114,13 @@ describe("accessSources", () => {
 			{ [TEAM]: "Design" },
 		);
 		expect(sources.map((s) => s.kind)).toEqual(["direct", "team"]);
+	});
+
+	it("labels the personal project under either origin spelling", () => {
+		for (const origin of ["personal_project", "personal_workspace"]) {
+			const sources = accessSources([member({ origin })], {});
+			expect(sources[0].label).toBe("Owner of this personal project");
+		}
 	});
 
 	it("falls back to a generic label for an unrecognised origin", () => {

@@ -1,10 +1,11 @@
 /* @vitest-environment jsdom */
 
 /**
- * The welcome deck had no test at all, and this change puts a REQUIRED step in
- * front of every new user. What matters here is less the happy path than the
- * ways it could strand someone: a failed save, a revisit that silently creates
- * a second team, or a personal team getting renamed by the deck.
+ * The workspace step is REQUIRED and sits in front of every new user, over a
+ * server-guaranteed invariant (onboarding completion provisions a default
+ * workspace). What matters here is less the happy path than the ways it could
+ * go wrong: advancing with no name, a revisit that creates a second workspace
+ * instead of renaming the existing one, or the create fallback firing twice.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,25 +17,34 @@ import {
 	waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 
-// Each case walks five animated slides before it can assert anything, which
+// Each case walks several animated slides before it can assert anything, which
 // runs comfortably under a second alone but exceeds the 5s default when the
 // suite runs in parallel.
 vi.setConfig({ testTimeout: 30_000 });
 
-const { createTeam, listMyTeams, updateTeam, navigate, toastError } =
-	vi.hoisted(() => ({
-		createTeam: vi.fn(),
-		listMyTeams: vi.fn(),
-		updateTeam: vi.fn(),
-		navigate: vi.fn(),
-		toastError: vi.fn(),
-	}));
+const {
+	listMyWorkspaces,
+	createWorkspace,
+	updateWorkspace,
+	createWorkspaceInvite,
+	navigate,
+	toastError,
+} = vi.hoisted(() => ({
+	listMyWorkspaces: vi.fn(),
+	createWorkspace: vi.fn(),
+	updateWorkspace: vi.fn(),
+	createWorkspaceInvite: vi.fn(),
+	navigate: vi.fn(),
+	toastError: vi.fn(),
+}));
 
-vi.mock("@/services/teams.service", () => ({
-	createTeam,
-	listMyTeams,
-	updateTeam,
+vi.mock("@/services/workspaces.service", () => ({
+	listMyWorkspaces,
+	createWorkspace,
+	updateWorkspace,
+	createWorkspaceInvite,
 }));
 
 // Partial mock: createFileRoute pulls in real router internals
@@ -48,27 +58,21 @@ vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({ success: vi.fn(), error: toastError, info: vi.fn() }),
 }));
 
+// Transitive imports (guestAuth, profile queries) reach for the real axios
+// client and Supabase client at module load — keep both inert.
 vi.mock("@/api", () => ({
-	apiClient: { patch: vi.fn().mockResolvedValue({ data: {} }), post: vi.fn() },
+	apiClient: { patch: vi.fn(), post: vi.fn(), get: vi.fn() },
 }));
-
-vi.mock("@/lib/auth-api", () => ({ completeOnboarding: vi.fn() }));
 
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
-		from: () => ({
-			select: () => ({
-				eq: () => ({
-					maybeSingle: () =>
-						Promise.resolve({
-							data: { project: { id: "ws-1", title: "My workspace" } },
-							error: null,
-						}),
-				}),
-			}),
-		}),
+		auth: {
+			getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+		},
 	},
 }));
+
+vi.mock("@/lib/auth-api", () => ({ completeOnboarding: vi.fn() }));
 
 vi.mock("@/stores/authStore", () => ({
 	useAuthStore: Object.assign(
@@ -78,14 +82,24 @@ vi.mock("@/stores/authStore", () => ({
 	),
 }));
 
-const TEAM = {
-	id: "team-1",
-	owner_id: "user-1",
-	name: "Engineering Squad",
-	description: "Builds things",
-	tags: ["design"],
-	is_personal: false,
+const OWNED_WORKSPACE = {
+	id: "ws-1",
+	name: "Ada's Workspace",
+	description: null,
+	avatar_url: null,
+	created_by: "user-1",
+	created_at: "2026-01-02T00:00:00Z",
+	updated_at: "2026-01-02T00:00:00Z",
+	my_role: "owner" as const,
+};
+
+// Older than the owned one — the prefill must skip it anyway.
+const MEMBER_WORKSPACE = {
+	...OWNED_WORKSPACE,
+	id: "ws-other",
+	name: "Someone Else's Org",
 	created_at: "2026-01-01T00:00:00Z",
+	my_role: "member" as const,
 };
 
 import { ClientTalentWelcomeDeck } from "./welcome";
@@ -101,49 +115,79 @@ function renderDeck() {
 	);
 }
 
-/**
- * Walk from slide 1 to the team slide. Each click is awaited because
- * AnimatePresence swaps slides asynchronously.
- */
+function workspaceNameInput(): HTMLInputElement {
+	return screen.getByLabelText(/workspace name/i) as HTMLInputElement;
+}
+
 async function clickNext() {
 	fireEvent.click(await screen.findByRole("button", { name: /^next$/i }));
 }
 
-async function advanceToTeamSlide() {
-	fireEvent.click(await screen.findByRole("button", { name: /get started/i }));
-	// Click through however many slides precede the team step — the theme slide
-	// is flag-gated, so the count isn't fixed.
+/**
+ * Walk to a target slide. Each click is awaited because AnimatePresence swaps
+ * slides asynchronously, and the theme slide is flag-gated so the slide count
+ * isn't fixed.
+ */
+async function advanceUntil(marker: RegExp) {
 	for (let i = 0; i < 5; i++) {
 		try {
-			await screen.findByText(/create your team/i, {}, { timeout: 400 });
+			await screen.findByText(marker, {}, { timeout: 400 });
 			return;
 		} catch {
 			await clickNext();
 		}
 	}
-	throw new Error("never reached the team slide");
+	throw new Error(`never reached the slide matching ${marker}`);
+}
+
+async function advanceToWorkspaceSlide() {
+	fireEvent.click(await screen.findByRole("button", { name: /get started/i }));
+	await advanceUntil(/create your workspace/i);
+}
+
+async function advanceToInviteSlide() {
+	await advanceUntil(/invite people to your workspace/i);
+}
+
+async function goBackToWorkspaceSlide() {
+	for (let i = 0; i < 5; i++) {
+		try {
+			await screen.findByText(/create your workspace/i, {}, { timeout: 400 });
+			return;
+		} catch {
+			fireEvent.click(await screen.findByRole("button", { name: /^back$/i }));
+		}
+	}
+	throw new Error("never got back to the workspace slide");
 }
 
 beforeEach(() => {
-	listMyTeams.mockResolvedValue([]);
-	createTeam.mockResolvedValue({ ...TEAM, tags: [] });
-	updateTeam.mockResolvedValue(TEAM);
+	listMyWorkspaces.mockResolvedValue([]);
+	createWorkspace.mockResolvedValue({
+		...OWNED_WORKSPACE,
+		id: "ws-new",
+		name: "Acme Inc.",
+	});
+	updateWorkspace.mockResolvedValue(OWNED_WORKSPACE);
+	createWorkspaceInvite.mockResolvedValue({ id: "invite-1" });
 });
 
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	useWorkspaceStore.getState().clear();
+	window.localStorage.clear();
 });
 
-describe("welcome deck — team step", () => {
-	it("blocks Next until the team has a name", async () => {
+describe("welcome deck — workspace step", () => {
+	it("blocks Next until the workspace has a name", async () => {
 		renderDeck();
-		await advanceToTeamSlide();
+		await advanceToWorkspaceSlide();
 		const next = screen.getByRole("button", { name: /next/i });
 		expect((next as HTMLButtonElement).disabled).toBe(true);
 
-		fireEvent.change(screen.getByPlaceholderText(/engineering squad/i), {
-			target: { value: "Analytical Engines" },
+		fireEvent.change(workspaceNameInput(), {
+			target: { value: "Analytical Engines Ltd" },
 		});
 		expect(
 			(screen.getByRole("button", { name: /next/i }) as HTMLButtonElement)
@@ -151,90 +195,147 @@ describe("welcome deck — team step", () => {
 		).toBe(false);
 	});
 
-	it("creates the team once and advances to the invite step", async () => {
+	it("prefills from the owned workspace on re-entry and updates instead of creating", async () => {
+		listMyWorkspaces.mockResolvedValue([MEMBER_WORKSPACE, OWNED_WORKSPACE]);
 		renderDeck();
-		await advanceToTeamSlide();
-		fireEvent.change(screen.getByPlaceholderText(/engineering squad/i), {
-			target: { value: "Analytical Engines" },
+		await advanceToWorkspaceSlide();
+
+		await waitFor(() =>
+			expect(workspaceNameInput().value).toBe("Ada's Workspace"),
+		);
+
+		fireEvent.change(workspaceNameInput(), {
+			target: { value: "Analytical Engines Ltd" },
 		});
 		fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-		await waitFor(() => expect(createTeam).toHaveBeenCalledTimes(1));
-		expect(createTeam).toHaveBeenCalledWith(
-			expect.objectContaining({ name: "Analytical Engines" }),
+		await waitFor(() => expect(updateWorkspace).toHaveBeenCalledTimes(1));
+		expect(updateWorkspace).toHaveBeenCalledWith("ws-1", {
+			name: "Analytical Engines Ltd",
+		});
+		expect(createWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("creates the workspace once when none is owned, then updates on a later edit", async () => {
+		renderDeck();
+		await advanceToWorkspaceSlide();
+
+		fireEvent.change(workspaceNameInput(), {
+			target: { value: "Acme Inc." },
+		});
+		fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+		await waitFor(() => expect(createWorkspace).toHaveBeenCalledTimes(1));
+		expect(createWorkspace).toHaveBeenCalledWith({ name: "Acme Inc." });
+		await advanceToInviteSlide();
+
+		// Coming back and editing must PATCH the workspace just created — a
+		// second POST here would mean a duplicate org.
+		await goBackToWorkspaceSlide();
+		fireEvent.change(workspaceNameInput(), {
+			target: { value: "Acme Corp" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+		await waitFor(() =>
+			expect(updateWorkspace).toHaveBeenCalledWith("ws-new", {
+				name: "Acme Corp",
+			}),
 		);
-		await screen.findByText(/invite people to your workspace/i);
+		expect(createWorkspace).toHaveBeenCalledTimes(1);
 	});
 
 	it("stays on the slide when the save fails, and retries on a second Next", async () => {
-		createTeam.mockRejectedValue(new Error("network down"));
+		createWorkspace.mockRejectedValue(new Error("network down"));
 		renderDeck();
-		await advanceToTeamSlide();
-		fireEvent.change(screen.getByPlaceholderText(/engineering squad/i), {
-			target: { value: "Analytical Engines" },
+		await advanceToWorkspaceSlide();
+		fireEvent.change(workspaceNameInput(), {
+			target: { value: "Acme Inc." },
 		});
 
 		fireEvent.click(screen.getByRole("button", { name: /next/i }));
 		await waitFor(() => expect(toastError).toHaveBeenCalled());
-		// Still here — not advanced to the invite slide.
-		expect(screen.getByText(/create your team/i)).toBeTruthy();
+		// Still here — not advanced past the workspace slide.
+		expect(screen.getByText(/create your workspace/i)).toBeTruthy();
 
 		fireEvent.click(screen.getByRole("button", { name: /next/i }));
-		await waitFor(() => expect(createTeam).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(createWorkspace).toHaveBeenCalledTimes(2));
 	});
 
-	it("prefills from an owned team on re-entry and updates instead of creating", async () => {
-		listMyTeams.mockResolvedValue([TEAM]);
+	it("offers a skip when the workspace lookup itself failed", async () => {
+		listMyWorkspaces.mockRejectedValue(new Error("lookup exploded"));
 		renderDeck();
-		await advanceToTeamSlide();
-
-		await waitFor(() =>
-			expect(
-				(screen.getByPlaceholderText(/engineering squad/i) as HTMLInputElement)
-					.value,
-			).toBe("Engineering Squad"),
-		);
-
-		fireEvent.change(screen.getByPlaceholderText(/engineering squad/i), {
-			target: { value: "Renamed Squad" },
-		});
-		fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-		await waitFor(() => expect(updateTeam).toHaveBeenCalledTimes(1));
-		expect(createTeam).not.toHaveBeenCalled();
-	});
-
-	/**
-	 * The personal team belongs to consultant vetting. If the deck prefilled
-	 * from it, continuing would rename it — so it must be ignored entirely.
-	 */
-	it("ignores a personal team and creates a new non-personal one", async () => {
-		listMyTeams.mockResolvedValue([{ ...TEAM, is_personal: true }]);
-		renderDeck();
-		await advanceToTeamSlide();
-
-		const input = screen.getByPlaceholderText(
-			/engineering squad/i,
-		) as HTMLInputElement;
-		expect(input.value).toBe("");
-
-		fireEvent.change(input, { target: { value: "Fresh Team" } });
-		fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-		await waitFor(() => expect(createTeam).toHaveBeenCalledTimes(1));
-		expect(updateTeam).not.toHaveBeenCalled();
-	});
-
-	it("offers a skip when the team lookup itself failed", async () => {
-		listMyTeams.mockRejectedValue(new Error("lookup exploded"));
-		renderDeck();
-		await advanceToTeamSlide();
+		await advanceToWorkspaceSlide();
 
 		const skip = await screen.findByRole("button", { name: /skip for now/i });
 		fireEvent.click(skip);
 
-		await screen.findByText(/invite people to your workspace/i);
-		expect(createTeam).not.toHaveBeenCalled();
-		expect(updateTeam).not.toHaveBeenCalled();
+		await advanceToInviteSlide();
+		expect(createWorkspace).not.toHaveBeenCalled();
+		expect(updateWorkspace).not.toHaveBeenCalled();
+	});
+});
+
+describe("welcome deck — invite step", () => {
+	it("sends workspace invites, defaulting to the member role", async () => {
+		listMyWorkspaces.mockResolvedValue([OWNED_WORKSPACE]);
+		renderDeck();
+		await advanceToWorkspaceSlide();
+		await waitFor(() =>
+			expect(workspaceNameInput().value).toBe("Ada's Workspace"),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /next/i }));
+		await advanceToInviteSlide();
+
+		fireEvent.change(screen.getByPlaceholderText(/teammate@company.com/i), {
+			target: { value: "grace@example.com" },
+		});
+		fireEvent.click(
+			screen.getByRole("button", { name: /send 1 invite & finish/i }),
+		);
+
+		await waitFor(() => expect(createWorkspaceInvite).toHaveBeenCalledTimes(1));
+		expect(createWorkspaceInvite).toHaveBeenCalledWith("ws-1", {
+			email: "grace@example.com",
+			role: "member",
+		});
+		await waitFor(() =>
+			expect(navigate).toHaveBeenCalledWith({ to: "/dashboard" }),
+		);
+	});
+});
+
+describe("welcome deck — finish routing", () => {
+	it("routes to the guest-roadmap conversion route when one is pending", async () => {
+		window.localStorage.setItem(
+			"proyekto_pending_project_from_roadmap",
+			JSON.stringify({
+				roadmapId: "rm-1",
+				createdAt: new Date().toISOString(),
+				source: "roadmap_cta",
+			}),
+		);
+		listMyWorkspaces.mockResolvedValue([OWNED_WORKSPACE]);
+		renderDeck();
+		await advanceToWorkspaceSlide();
+		await waitFor(() =>
+			expect(workspaceNameInput().value).toBe("Ada's Workspace"),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /next/i }));
+		await advanceToInviteSlide();
+
+		fireEvent.click(screen.getByRole("button", { name: /skip for now/i }));
+
+		await waitFor(() =>
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/project/roadmap/convert/$roadmapId",
+				params: { roadmapId: "rm-1" },
+			}),
+		);
+		// The convert route clears the pending key after a successful migration;
+		// the deck must not clear it pre-emptively.
+		expect(
+			window.localStorage.getItem("proyekto_pending_project_from_roadmap"),
+		).not.toBeNull();
 	});
 });

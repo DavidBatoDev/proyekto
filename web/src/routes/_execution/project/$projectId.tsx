@@ -62,7 +62,7 @@ function ProjectLayout() {
 	// backend's ProjectAuthorizationService. The Overview tab shows a
 	// non-blocking "Bring in a consultant" card when a marketplace project
 	// has no consultant of record yet (rendered inside the overview component, not
-	// at this route shell). Personal workspaces never show the card.
+	// at this route shell). Personal projects never show the card.
 
 	const shell = (
 		<div className="app-shell-bg flex h-screen flex-col overflow-hidden pt-app-header">

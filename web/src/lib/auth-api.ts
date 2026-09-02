@@ -7,13 +7,15 @@ import type { Profile, ProfileUpdateData } from "../types";
 
 export interface CompleteOnboardingResult {
 	profile: Profile;
-	personal_workspace_id: string | null;
+	personal_project_id: string | null;
 	personal_team_id: string | null;
+	/** The organization-tier workspace, distinct from the personal project. */
+	workspace_id: string | null;
 }
 
 /**
  * Complete onboarding through the server-owned path. Lane-free: the server
- * records completion and provisions the personal workspace. A network or
+ * records completion and provisions the personal project. A network or
  * backend failure deliberately leaves onboarding incomplete and retryable.
  */
 export async function completeOnboarding(): Promise<CompleteOnboardingResult> {

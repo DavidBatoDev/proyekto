@@ -11,7 +11,9 @@ import {
 import { MemberDisplay } from "@/components/common/MemberDisplay";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { AcceptProjectTeamInviteDialog } from "@/components/team/AcceptProjectTeamInviteDialog";
+import { WorkspaceInviteCard } from "@/components/workspace/WorkspaceInviteCard";
 import { useToast } from "@/hooks/useToast";
+import { useMyWorkspaceInvitesQuery } from "@/hooks/useWorkspaceQueries";
 import { parseInviteIdParam } from "@/lib/inviteIdParam";
 import {
 	listMyProjectTeamInvites,
@@ -62,6 +64,9 @@ function TeamInvitesPage() {
 		queryKey: ["teams", "my-project-invites"],
 		queryFn: listMyProjectTeamInvites,
 	});
+	// The third kind: workspace (organization) invitations, answered here for
+	// the same reason the project ones are.
+	const workspaceInvitesQuery = useMyWorkspaceInvitesQuery();
 
 	const invites = invitesQuery.data ?? [];
 	const pending = invites.filter((i) => i.status === "pending");
@@ -71,8 +76,22 @@ function TeamInvitesPage() {
 	const pendingProject = projectInvites.filter((i) => i.status === "pending");
 	const settledProject = projectInvites.filter((i) => i.status !== "pending");
 
-	const isLoading = invitesQuery.isLoading || projectInvitesQuery.isLoading;
-	const isEmpty = invites.length === 0 && projectInvites.length === 0;
+	const workspaceInvites = workspaceInvitesQuery.data ?? [];
+	const pendingWorkspace = workspaceInvites.filter(
+		(i) => i.status === "pending",
+	);
+	const settledWorkspace = workspaceInvites.filter(
+		(i) => i.status !== "pending",
+	);
+
+	const isLoading =
+		invitesQuery.isLoading ||
+		projectInvitesQuery.isLoading ||
+		workspaceInvitesQuery.isLoading;
+	const isEmpty =
+		invites.length === 0 &&
+		projectInvites.length === 0 &&
+		workspaceInvites.length === 0;
 
 	return (
 		<DashboardShell>
@@ -80,7 +99,7 @@ function TeamInvitesPage() {
 				<AppSectionHeader
 					kicker="Invitations"
 					title="Your invites"
-					subtitle="Invitations to join other people's teams, and to bring one of your teams onto their projects."
+					subtitle="Invitations to join other people's workspaces and teams, and to bring one of your teams onto their projects."
 				/>
 
 				{isLoading ? (
@@ -98,6 +117,22 @@ function TeamInvitesPage() {
 					</div>
 				) : (
 					<div className="mt-8 space-y-8">
+						{pendingWorkspace.length > 0 && (
+							<section>
+								<h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
+									Workspace invites ({pendingWorkspace.length})
+								</h3>
+								<div className="space-y-3">
+									{pendingWorkspace.map((invite) => (
+										<WorkspaceInviteCard
+											key={invite.id}
+											invite={invite}
+											highlighted={invite.id === inviteId}
+										/>
+									))}
+								</div>
+							</section>
+						)}
 						{pendingProject.length > 0 && (
 							<section>
 								<h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
@@ -132,12 +167,21 @@ function TeamInvitesPage() {
 								</div>
 							</section>
 						)}
-						{(settled.length > 0 || settledProject.length > 0) && (
+						{(settled.length > 0 ||
+							settledProject.length > 0 ||
+							settledWorkspace.length > 0) && (
 							<section>
 								<h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
 									Past invites
 								</h3>
 								<div className="space-y-3">
+									{settledWorkspace.map((invite) => (
+										<WorkspaceInviteCard
+											key={invite.id}
+											invite={invite}
+											interactive={false}
+										/>
+									))}
 									{settledProject.map((invite) => (
 										<ProjectInviteCard
 											key={invite.id}

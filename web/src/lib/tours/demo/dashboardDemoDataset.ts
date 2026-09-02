@@ -35,7 +35,7 @@ const teams: Team[] = [
 	{
 		id: "tour-demo-team-2",
 		owner_id: DEMO_OWNER_ID,
-		name: "My Workspace",
+		name: "My First Project",
 		description: null,
 		avatar_url: null,
 		tags: [],

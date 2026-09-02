@@ -41,10 +41,13 @@ import { getTeam } from "@/services/teams.service";
 // the key to `(project_id, user_id)`. The tab strip that presented a member's
 // several grants has been removed along with it.
 
+// Both spellings label the personal project: the DB literal is still
+// 'personal_workspace' and is deliberately not renamed.
 const DIRECT_ORIGIN_LABELS: Record<string, string> = {
 	direct: "Direct",
 	invited: "Direct · Invited",
-	personal_workspace: "Personal workspace",
+	personal_project: "Personal project",
+	personal_workspace: "Personal project",
 	legacy: "Direct · Legacy",
 };
 

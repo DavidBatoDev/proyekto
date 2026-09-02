@@ -14,24 +14,24 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiClient } from "@/api";
 import { ModalPortal } from "@/components/common/ModalPortal";
-import { normalizeTags } from "@/components/common/TagInput";
-import {
-	EMPTY_TEAM_DRAFT,
-	type TeamDraft,
-	TeamFormFields,
-} from "@/components/team/TeamFormFields";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { useToast } from "@/hooks/useToast";
 import { completeOnboarding } from "@/lib/auth-api";
 import { clearAuthContinuation } from "@/lib/authContinuation";
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
-import { supabase } from "@/lib/supabase";
-import { createTeam, listMyTeams, updateTeam } from "@/services/teams.service";
+import { workspaceKeys } from "@/queries/workspaces";
+import {
+	createWorkspace,
+	createWorkspaceInvite,
+	listMyWorkspaces,
+	updateWorkspace,
+	type WorkspaceAssignableRole,
+} from "@/services/workspaces.service";
 import { useAppearanceStore } from "@/stores/appearanceStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { PRESET_THEMES, THEME_OPTIONS } from "@/theme/presets";
 import type { ThemeId } from "@/theme/types";
 import { Button } from "@/ui/button";
@@ -104,15 +104,9 @@ function WelcomePage() {
 // Ordered step keys. The "theme" step is inserted only when the theme system is
 // enabled, so navigation and the stepper total are driven off this array rather
 // than a fixed number.
-type CFStep =
-	| "welcome"
-	| "capabilities"
-	| "workspace"
-	| "theme"
-	| "team"
-	| "invite";
+type CFStep = "welcome" | "capabilities" | "workspace" | "theme" | "invite";
 
-type InviteRole = "editor" | "viewer";
+type InviteRole = WorkspaceAssignableRole;
 
 interface InviteRow {
 	id: string;
@@ -121,7 +115,7 @@ interface InviteRow {
 }
 
 function newInviteRow(): InviteRow {
-	return { id: crypto.randomUUID(), email: "", role: "editor" };
+	return { id: crypto.randomUUID(), email: "", role: "member" };
 }
 
 function isValidEmail(email: string): boolean {
@@ -150,31 +144,40 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 	const user = useAuthStore((s) => s.user);
 	const queryClient = useQueryClient();
 
-	// ── Workspace lookup ─────────────────────────────────────────────────────
+	// ── Workspace (organization) lookup ──────────────────────────────────────
 	const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 	const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
 	const [workspaceLoadFailed, setWorkspaceLoadFailed] = useState(false);
+	const [savingWorkspace, setSavingWorkspace] = useState(false);
+	const [workspaceFailureCount, setWorkspaceFailureCount] = useState(0);
 
+	// Onboarding completion already provisions a default workspace server-side
+	// (idempotent), so this slide is normally a rename ceremony, not a create.
+	// Prefill from the oldest workspace the user OWNS — mere membership in
+	// someone else's workspace must never be renamed here.
 	useEffect(() => {
 		if (!user?.id) return;
 		let cancelled = false;
 		(async () => {
-			const { data, error } = await supabase
-				.from("personal_workspaces")
-				.select("project:projects(id, title)")
-				.eq("user_id", user.id)
-				.maybeSingle();
-			if (cancelled) return;
-			const project = data?.project as
-				| { id: string; title: string | null }
-				| null
-				| undefined;
-			if (error || !project) {
+			try {
+				const workspaces = await listMyWorkspaces();
+				if (cancelled) return;
+				// The list arrives ordered by `workspace_members.joined_at`, which
+				// is the backend's definition of the default workspace. Re-sorting
+				// by `workspaces.created_at` would name a different one for anyone
+				// owning several, so the deck would rename a workspace the server
+				// does not consider their default.
+				const owned = workspaces.find((w) => w.my_role === "owner");
+				if (!owned) return;
+				setWorkspaceId(owned.id);
+				setWorkspaceTitle(owned.name);
+			} catch (err) {
+				if (cancelled) return;
+				console.error("Welcome-deck workspace lookup failed:", err);
+				// Enables the skip escape hatch — a lookup we can't do must not
+				// leave the user stuck behind a required step.
 				setWorkspaceLoadFailed(true);
-				return;
 			}
-			setWorkspaceId(project.id);
-			setWorkspaceTitle(project.title ?? "");
 		})();
 		return () => {
 			cancelled = true;
@@ -185,7 +188,6 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 	const steps = useMemo<CFStep[]>(() => {
 		const list: CFStep[] = ["welcome", "capabilities", "workspace"];
 		if (featureFlags.themeSystem) list.push("theme");
-		list.push("team");
 		list.push("invite");
 		return list;
 	}, []);
@@ -205,126 +207,57 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 		}
 	};
 
-	// ── Team step ────────────────────────────────────────────────────────────
-	const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_TEAM_DRAFT);
-	const [teamId, setTeamId] = useState<string | null>(null);
-	const [existingTeamName, setExistingTeamName] = useState<string | null>(null);
-	const [teamLookupFailed, setTeamLookupFailed] = useState(false);
-	const [savingTeam, setSavingTeam] = useState(false);
-	const [teamFailureCount, setTeamFailureCount] = useState(0);
-	const lastSavedTeamRef = useRef<TeamDraft | null>(null);
-
-	// Re-entry: /welcome is revisitable (the completeOnboarding backstop above,
-	// legacy accounts, a failed OAuth callback). Without this, every revisit
-	// would make another team. Look up teams this user already OWNS and prefill.
-	//
-	// `is_personal` teams are excluded deliberately: a consultant vetted before
-	// revisiting has one, and prefilling from it would let the deck rename the
-	// team that vetting provisioned.
-	useEffect(() => {
-		if (!user?.id) return;
-		let cancelled = false;
-		(async () => {
-			try {
-				const teams = await listMyTeams();
-				if (cancelled) return;
-				const existing = teams
-					.filter((t) => t.owner_id === user.id && !t.is_personal)
-					.sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-				if (!existing) return;
-				const draft: TeamDraft = {
-					name: existing.name,
-					description: existing.description ?? "",
-					tags: existing.tags ?? [],
-				};
-				setTeamId(existing.id);
-				setExistingTeamName(existing.name);
-				setTeamDraft(draft);
-				lastSavedTeamRef.current = draft;
-			} catch (err) {
-				if (cancelled) return;
-				console.error("Welcome-deck team lookup failed:", err);
-				// Enables the skip escape hatch — a lookup we can't do must not
-				// leave the user stuck behind a required step.
-				setTeamLookupFailed(true);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [user?.id]);
-
-	const persistTeam = async () => {
-		const name = teamDraft.name.trim();
-		if (!name) {
-			toast.error("Give your team a name");
-			throw new Error("empty team name");
-		}
-		const description = teamDraft.description.trim();
-		const tags = normalizeTags(teamDraft.tags);
-		const saved = lastSavedTeamRef.current;
-		const unchanged =
-			saved !== null &&
-			saved.name === name &&
-			saved.description === description &&
-			saved.tags.length === tags.length &&
-			saved.tags.every((t, i) => t === tags[i]);
-		if (unchanged) return;
-
-		setSavingTeam(true);
-		try {
-			if (teamId) {
-				// Re-entry, or already created earlier in this session: PATCH.
-				// Never a second POST.
-				const updated = await updateTeam(teamId, { name, description, tags });
-				setExistingTeamName(updated.name);
-			} else {
-				const created = await createTeam({
-					name,
-					description: description || undefined,
-					tags,
-				});
-				// Storing the id is the in-session duplicate guard: a later edit
-				// on this slide updates instead of creating a second team.
-				setTeamId(created.id);
-				setExistingTeamName(created.name);
-			}
-			lastSavedTeamRef.current = { name, description, tags };
-			setTeamFailureCount(0);
-			void queryClient.invalidateQueries({ queryKey: ["teams"] });
-		} catch (err) {
-			console.error("Welcome-deck team save failed:", err);
-			setTeamFailureCount((n) => n + 1);
-			toast.error(
-				(err as Error).message || "Couldn't save your team. Try again.",
-			);
-			throw err;
-		} finally {
-			setSavingTeam(false);
-		}
-	};
-
 	// ── Slide 3: workspace name ──────────────────────────────────────────────
 	const [draftTitle, setDraftTitle] = useState<string>("");
 	useEffect(() => {
 		setDraftTitle(workspaceTitle);
 	}, [workspaceTitle]);
 
-	const persistTitleIfChanged = async () => {
-		if (!workspaceId) return;
-		const trimmed = draftTitle.trim();
-		if (!trimmed) {
-			toast.error("Workspace name can't be empty");
-			throw new Error("empty title");
+	const selectWorkspace = (id: string) => {
+		if (user?.id) {
+			useWorkspaceStore.getState().setCurrentWorkspace(id, user.id);
 		}
-		if (trimmed === workspaceTitle) return;
+	};
+
+	const persistWorkspace = async () => {
+		const name = draftTitle.trim();
+		if (!name) {
+			toast.error("Give your workspace a name");
+			throw new Error("empty workspace name");
+		}
+		if (workspaceId && name === workspaceTitle) {
+			selectWorkspace(workspaceId);
+			return;
+		}
+
+		setSavingWorkspace(true);
 		try {
-			await apiClient.patch(`/api/projects/${workspaceId}`, { title: trimmed });
-			setWorkspaceTitle(trimmed);
+			let id = workspaceId;
+			if (id) {
+				// Re-entry, or the server-provisioned default: PATCH. Never a
+				// second POST.
+				await updateWorkspace(id, { name });
+			} else {
+				// The lookup found nothing owned — the server backstop raced or
+				// failed. Storing the id is the in-session duplicate guard: a later
+				// edit on this slide updates instead of creating a second workspace.
+				const created = await createWorkspace({ name });
+				id = created.id;
+				setWorkspaceId(created.id);
+			}
+			setWorkspaceTitle(name);
+			setWorkspaceFailureCount(0);
+			void queryClient.invalidateQueries({ queryKey: workspaceKeys.all });
+			selectWorkspace(id);
 		} catch (err) {
-			console.error("Failed to rename workspace:", err);
-			toast.error("Couldn't save the workspace name. Try again.");
+			console.error("Welcome-deck workspace save failed:", err);
+			setWorkspaceFailureCount((n) => n + 1);
+			toast.error(
+				(err as Error).message || "Couldn't save your workspace. Try again.",
+			);
 			throw err;
+		} finally {
+			setSavingWorkspace(false);
 		}
 	};
 
@@ -352,10 +285,9 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 		let failures = 0;
 		for (const row of valid) {
 			try {
-				await apiClient.post(`/api/projects/${workspaceId}/invites`, {
+				await createWorkspaceInvite(workspaceId, {
 					email: row.email.trim(),
-					default_role: row.role,
-					role: "member",
+					role: row.role,
 				});
 			} catch (err) {
 				failures += 1;
@@ -366,7 +298,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 		if (failures > 0) {
 			toast.error(
 				failures === valid.length
-					? "All invites failed. You can retry from the workspace settings later."
+					? "All invites failed. You can retry from your workspace settings later."
 					: `${failures} of ${valid.length} invites failed.`,
 			);
 		} else if (valid.length > 0) {
@@ -382,8 +314,9 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 	// ── Close confirmation (only offered from the first slide) ───────────────
 	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 	// Always offer the exit. This used to act as Back on slides 2+, which was
-	// already redundant with NavRow's Back — and with a required team step it
-	// would leave the X as the only visible way out while not actually being one.
+	// already redundant with NavRow's Back — and with a required workspace step
+	// it would leave the X as the only visible way out while not actually being
+	// one.
 	const handleClose = () => setShowCloseConfirm(true);
 
 	return (
@@ -429,10 +362,16 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 						key="cf-3"
 						draftTitle={draftTitle}
 						setDraftTitle={setDraftTitle}
+						submitting={savingWorkspace}
+						// Two failed saves, or a lookup we couldn't do at all, means
+						// something is wrong on our side — don't hold the user hostage
+						// to a required step we can't complete.
+						allowSkip={workspaceLoadFailed || workspaceFailureCount >= 2}
+						onSkip={goNext}
 						onBack={goBack}
 						onNext={async () => {
 							try {
-								await persistTitleIfChanged();
+								await persistWorkspace();
 								goNext();
 							} catch {
 								/* toast already shown */
@@ -447,30 +386,6 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 						key="cf-theme"
 						onBack={goBack}
 						onNext={goNext}
-						direction={direction}
-					/>
-				)}
-				{current === "team" && (
-					<SlideTeamCF
-						key="cf-team"
-						draft={teamDraft}
-						setDraft={setTeamDraft}
-						existingTeamName={existingTeamName}
-						submitting={savingTeam}
-						// Two failed saves, or a lookup we couldn't do at all, means
-						// something is wrong on our side — don't hold the user hostage
-						// to a required step we can't complete.
-						allowSkip={teamLookupFailed || teamFailureCount >= 2}
-						onSkip={goNext}
-						onBack={goBack}
-						onNext={async () => {
-							try {
-								await persistTeam();
-								goNext();
-							} catch {
-								/* toast already shown */
-							}
-						}}
 						direction={direction}
 					/>
 				)}
@@ -699,9 +614,18 @@ function SlideTwoCF({
 
 // ─── C/F Slide 3: Workspace name ────────────────────────────────────────────
 
+/**
+ * Required step: every user leaves onboarding inside a named workspace (the
+ * organization tier — not the personal project this slide used to rename).
+ * The server already provisions one on onboarding completion, so this is
+ * normally a rename; the create fallback only covers that backstop failing.
+ */
 function SlideThreeCF({
 	draftTitle,
 	setDraftTitle,
+	submitting,
+	allowSkip,
+	onSkip,
 	onBack,
 	onNext,
 	workspaceLoadFailed,
@@ -709,6 +633,9 @@ function SlideThreeCF({
 }: {
 	draftTitle: string;
 	setDraftTitle: (v: string) => void;
+	submitting: boolean;
+	allowSkip: boolean;
+	onSkip: () => void;
 	onBack: () => void;
 	onNext: () => void;
 	workspaceLoadFailed: boolean;
@@ -724,10 +651,11 @@ function SlideThreeCF({
 			transition={slideTransition}
 		>
 			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				Your workspace is ready
+				Create your workspace
 			</h1>
 			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				Give it a name that fits how you'll use it. You can change it anytime.
+				Your workspace is where your teams, projects, and billing live. Name it
+				after your company — you can change it anytime.
 			</p>
 
 			<div className="mx-auto mt-8 max-w-md">
@@ -743,92 +671,23 @@ function SlideThreeCF({
 					value={draftTitle}
 					onChange={(e) => setDraftTitle(e.target.value)}
 					maxLength={120}
-					disabled={workspaceLoadFailed}
-					placeholder={workspaceLoadFailed ? "Loading…" : "My Workspace"}
+					disabled={submitting}
+					placeholder="Acme Inc."
 					className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
 				/>
 				{workspaceLoadFailed && (
 					<p className="mt-2 text-xs text-amber-700">
-						We couldn't load your workspace just yet. You can still continue —
-						we'll save the name on the next step.
+						We couldn't check for an existing workspace. Continuing will create
+						one with this name.
 					</p>
 				)}
-			</div>
-
-			<NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
-		</motion.div>
-	);
-}
-
-// ─── C/F Slide 4: Invite ────────────────────────────────────────────────────
-
-/**
- * Required step: every user leaves onboarding owning a team.
- *
- * The team created here is deliberately NOT the personal team — that one is
- * still provisioned only at consultant vetting approval, and nothing on this
- * slide writes `is_personal`.
- */
-function SlideTeamCF({
-	draft,
-	setDraft,
-	existingTeamName,
-	submitting,
-	allowSkip,
-	onSkip,
-	onBack,
-	onNext,
-	direction,
-}: {
-	draft: TeamDraft;
-	setDraft: (next: TeamDraft) => void;
-	existingTeamName: string | null;
-	submitting: boolean;
-	allowSkip: boolean;
-	onSkip: () => void;
-	onBack: () => void;
-	onNext: () => void;
-	direction: 1 | -1;
-}) {
-	return (
-		<motion.div
-			custom={direction}
-			variants={slideVariants}
-			initial="enter"
-			animate="center"
-			exit="exit"
-			transition={slideTransition}
-		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-				Create your team
-			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				A team is a reusable group of people you attach to projects. You'll be
-				its owner — the name and everything else can change later.
-			</p>
-
-			{existingTeamName && (
-				<p className="mx-auto mt-4 max-w-md rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
-					You already have <strong>{existingTeamName}</strong> — we've filled it
-					in. Continuing keeps it and saves any edits.
-				</p>
-			)}
-
-			<div className="mx-auto mt-8 max-w-md">
-				<TeamFormFields
-					draft={draft}
-					onChange={setDraft}
-					disabled={submitting}
-					autoFocus
-					variant="deck"
-				/>
 			</div>
 
 			<NavRow
 				onBack={onBack}
 				onNext={onNext}
 				nextLabel={submitting ? "Saving…" : "Next"}
-				nextDisabled={submitting || !draft.name.trim()}
+				nextDisabled={submitting || !draftTitle.trim()}
 				extraAction={
 					allowSkip ? (
 						<button
@@ -844,6 +703,8 @@ function SlideTeamCF({
 		</motion.div>
 	);
 }
+
+// ─── C/F Slide 4: Invite ────────────────────────────────────────────────────
 
 function SlideFourCF({
 	invites,
@@ -879,13 +740,9 @@ function SlideFourCF({
 			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
 				Invite people to your workspace
 			</h1>
-			{/* Deliberately workspace invites, not team invites: only a
-			    project_access row lets someone actually open anything, and team
-			    membership alone grants none until the team is attached to a
-			    project and its members curated in. */}
 			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-				These people get access to your workspace. Managing your team's roster
-				happens later, in Team settings. You can skip and add them anytime.
+				They'll join your workspace as members and can be added to its teams and
+				projects. You can skip and invite them anytime.
 			</p>
 
 			<div className="mx-auto mt-8 max-w-xl space-y-3">
@@ -1104,7 +961,7 @@ function RoleToggle({
 }) {
 	return (
 		<div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
-			{(["editor", "viewer"] as InviteRole[]).map((r) => (
+			{(["member", "admin"] as InviteRole[]).map((r) => (
 				<button
 					key={r}
 					type="button"
@@ -1115,7 +972,7 @@ function RoleToggle({
 							: "text-slate-500 hover:text-slate-700"
 					}`}
 				>
-					{r === "editor" ? "Editor" : "Viewer"}
+					{r === "member" ? "Member" : "Admin"}
 				</button>
 			))}
 		</div>
@@ -1135,7 +992,7 @@ function NavRow({
 	onNext: () => void;
 	nextLabel: string;
 	nextDisabled?: boolean;
-	/** Optional third control between Back and Next (the team step's skip). */
+	/** Optional third control between Back and Next (the workspace step's skip). */
 	extraAction?: React.ReactNode;
 }) {
 	return (

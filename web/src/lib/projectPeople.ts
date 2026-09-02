@@ -8,6 +8,10 @@ import type { ProjectMember } from "@/services/project.service";
  *
  *   client | consultant | invited | personal_workspace | legacy | team:<uuid>
  *
+ * `personal_workspace` marks the auto-provisioned personal project. The DB
+ * literal keeps its old spelling on purpose — it is wired through the
+ * permission matrix — so both it and `personal_project` are handled below.
+ *
  * Everything the People surface says about "internal vs external" is derived
  * here, so there is one place to correct if that vocabulary ever changes.
  */
@@ -33,7 +37,8 @@ export function teamIdFromOrigin(origin?: string | null): string | null {
 const DIRECT_ORIGIN_LABELS: Record<string, string> = {
 	direct: "Added directly to this project",
 	invited: "Invited directly",
-	personal_workspace: "Owner of this personal workspace",
+	personal_project: "Owner of this personal project",
+	personal_workspace: "Owner of this personal project",
 	legacy: "Added before access tracking",
 };
 
@@ -57,7 +62,9 @@ export function classifyPerson(rows: ProjectMember[]): PersonKind {
 	const internal = rows.some((row) => {
 		const origin = row.origin ?? "";
 		return (
-			origin.startsWith(TEAM_ORIGIN_PREFIX) || origin === "personal_workspace"
+			origin.startsWith(TEAM_ORIGIN_PREFIX) ||
+			origin === "personal_project" ||
+			origin === "personal_workspace"
 		);
 	});
 	return internal ? "internal" : "external";

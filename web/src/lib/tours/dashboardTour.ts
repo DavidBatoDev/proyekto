@@ -33,7 +33,7 @@ const teamsStep: Step = {
 	target: '[data-tour="dashboard-teams"]',
 	title: "Your teams",
 	content:
-		"Everyone gets a workspace of their own. Create more teams to group the people you deliver with, and pending invitations show up here first.",
+		"Everyone starts with a personal project of their own to work in. Create teams to group the people you deliver with, and pending invitations show up here first.",
 	placement: "top",
 };
 

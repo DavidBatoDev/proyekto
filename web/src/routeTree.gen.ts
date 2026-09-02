@@ -16,6 +16,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
+import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
 import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as MarketplaceRouteRouteImport } from './routes/marketplace/route'
@@ -50,12 +51,15 @@ import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dash
 import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
+import { Route as WorkspaceSettingsIndexRouteImport } from './routes/workspace/settings/index'
 import { Route as MarketplaceTalentIndexRouteImport } from './routes/marketplace/talent/index'
 import { Route as MarketplaceServicesIndexRouteImport } from './routes/marketplace/services/index'
 import { Route as MarketplaceConsultantIndexRouteImport } from './routes/marketplace/consultant/index'
 import { Route as MarketplaceBriefsIndexRouteImport } from './routes/marketplace/briefs/index'
 import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/teams/index'
 import { Route as ExecutionEngagementsIndexRouteImport } from './routes/_execution/engagements/index'
+import { Route as WorkspaceSettingsMembersRouteImport } from './routes/workspace/settings/members'
+import { Route as WorkspaceSettingsBillingRouteImport } from './routes/workspace/settings/billing'
 import { Route as MarketplaceTalentSettingsRouteImport } from './routes/marketplace/talent/settings'
 import { Route as MarketplaceTalentGoLiveRouteImport } from './routes/marketplace/talent/go-live'
 import { Route as MarketplaceTalentBrowseRouteImport } from './routes/marketplace/talent/browse'
@@ -168,6 +172,11 @@ const AdminRoute = AdminRouteImport.update({
 } as any)
 const ExecutionRoute = ExecutionRouteImport.update({
   id: '/_execution',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkspaceRouteRoute = WorkspaceRouteRouteImport.update({
+  id: '/workspace',
+  path: '/workspace',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRouteRoute = SettingsRouteRouteImport.update({
@@ -342,6 +351,11 @@ const MarketplaceCategoryRouteRoute =
     path: '/category',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const WorkspaceSettingsIndexRoute = WorkspaceSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => WorkspaceRouteRoute,
+} as any)
 const MarketplaceTalentIndexRoute = MarketplaceTalentIndexRouteImport.update({
   id: '/talent/',
   path: '/talent/',
@@ -374,6 +388,18 @@ const ExecutionEngagementsIndexRoute =
     id: '/engagements/',
     path: '/engagements/',
     getParentRoute: () => ExecutionRoute,
+  } as any)
+const WorkspaceSettingsMembersRoute =
+  WorkspaceSettingsMembersRouteImport.update({
+    id: '/settings/members',
+    path: '/settings/members',
+    getParentRoute: () => WorkspaceRouteRoute,
+  } as any)
+const WorkspaceSettingsBillingRoute =
+  WorkspaceSettingsBillingRouteImport.update({
+    id: '/settings/billing',
+    path: '/settings/billing',
+    getParentRoute: () => WorkspaceRouteRoute,
   } as any)
 const MarketplaceTalentSettingsRoute =
   MarketplaceTalentSettingsRouteImport.update({
@@ -845,6 +871,7 @@ export interface FileRoutesByFullPath {
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
+  '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -899,12 +926,15 @@ export interface FileRoutesByFullPath {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
+  '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/briefs': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services': typeof MarketplaceServicesIndexRoute
   '/marketplace/talent': typeof MarketplaceTalentIndexRoute
+  '/workspace/settings': typeof WorkspaceSettingsIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
@@ -968,6 +998,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/start-selling': typeof StartSellingRoute
@@ -1020,12 +1051,15 @@ export interface FileRoutesByTo {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
+  '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
   '/marketplace/briefs': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services': typeof MarketplaceServicesIndexRoute
   '/marketplace/talent': typeof MarketplaceTalentIndexRoute
+  '/workspace/settings': typeof WorkspaceSettingsIndexRoute
   '/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
@@ -1091,6 +1125,7 @@ export interface FileRoutesById {
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
+  '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/notifications': typeof NotificationsRoute
@@ -1147,12 +1182,15 @@ export interface FileRoutesById {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
+  '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/_execution/engagements/': typeof ExecutionEngagementsIndexRoute
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
   '/marketplace/briefs/': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant/': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services/': typeof MarketplaceServicesIndexRoute
   '/marketplace/talent/': typeof MarketplaceTalentIndexRoute
+  '/workspace/settings/': typeof WorkspaceSettingsIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/_execution/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
   '/_execution/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
@@ -1221,6 +1259,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
+    | '/workspace'
     | '/admin'
     | '/notifications'
     | '/onboarding'
@@ -1275,12 +1314,15 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/workspace/settings/billing'
+    | '/workspace/settings/members'
     | '/engagements'
     | '/teams'
     | '/marketplace/briefs'
     | '/marketplace/consultant'
     | '/marketplace/services'
     | '/marketplace/talent'
+    | '/workspace/settings'
     | '/teams/$teamId/time'
     | '/brief/$briefId/edit'
     | '/project/$projectId/change-requests'
@@ -1344,6 +1386,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/workspace'
     | '/notifications'
     | '/onboarding'
     | '/start-selling'
@@ -1396,12 +1439,15 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/workspace/settings/billing'
+    | '/workspace/settings/members'
     | '/engagements'
     | '/teams'
     | '/marketplace/briefs'
     | '/marketplace/consultant'
     | '/marketplace/services'
     | '/marketplace/talent'
+    | '/workspace/settings'
     | '/brief/$briefId/edit'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
@@ -1466,6 +1512,7 @@ export interface FileRouteTypes {
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
+    | '/workspace'
     | '/_execution'
     | '/admin'
     | '/notifications'
@@ -1522,12 +1569,15 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/workspace/settings/billing'
+    | '/workspace/settings/members'
     | '/_execution/engagements/'
     | '/_execution/teams/'
     | '/marketplace/briefs/'
     | '/marketplace/consultant/'
     | '/marketplace/services/'
     | '/marketplace/talent/'
+    | '/workspace/settings/'
     | '/_execution/teams/$teamId/time'
     | '/_execution/brief/$briefId/edit'
     | '/_execution/project/$projectId/change-requests'
@@ -1595,6 +1645,7 @@ export interface RootRouteChildren {
   MarketplaceRouteRoute: typeof MarketplaceRouteRouteWithChildren
   RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
+  WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
   NotificationsRoute: typeof NotificationsRoute
@@ -1664,6 +1715,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: ''
       preLoaderRoute: typeof ExecutionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/workspace': {
+      id: '/workspace'
+      path: '/workspace'
+      fullPath: '/workspace'
+      preLoaderRoute: typeof WorkspaceRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -1904,6 +1962,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceCategoryRouteRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/workspace/settings/': {
+      id: '/workspace/settings/'
+      path: '/settings'
+      fullPath: '/workspace/settings'
+      preLoaderRoute: typeof WorkspaceSettingsIndexRouteImport
+      parentRoute: typeof WorkspaceRouteRoute
+    }
     '/marketplace/talent/': {
       id: '/marketplace/talent/'
       path: '/talent'
@@ -1945,6 +2010,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/engagements'
       preLoaderRoute: typeof ExecutionEngagementsIndexRouteImport
       parentRoute: typeof ExecutionRoute
+    }
+    '/workspace/settings/members': {
+      id: '/workspace/settings/members'
+      path: '/settings/members'
+      fullPath: '/workspace/settings/members'
+      preLoaderRoute: typeof WorkspaceSettingsMembersRouteImport
+      parentRoute: typeof WorkspaceRouteRoute
+    }
+    '/workspace/settings/billing': {
+      id: '/workspace/settings/billing'
+      path: '/settings/billing'
+      fullPath: '/workspace/settings/billing'
+      preLoaderRoute: typeof WorkspaceSettingsBillingRouteImport
+      parentRoute: typeof WorkspaceRouteRoute
     }
     '/marketplace/talent/settings': {
       id: '/marketplace/talent/settings'
@@ -2645,6 +2724,22 @@ const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
   SettingsRouteRouteChildren,
 )
 
+interface WorkspaceRouteRouteChildren {
+  WorkspaceSettingsBillingRoute: typeof WorkspaceSettingsBillingRoute
+  WorkspaceSettingsMembersRoute: typeof WorkspaceSettingsMembersRoute
+  WorkspaceSettingsIndexRoute: typeof WorkspaceSettingsIndexRoute
+}
+
+const WorkspaceRouteRouteChildren: WorkspaceRouteRouteChildren = {
+  WorkspaceSettingsBillingRoute: WorkspaceSettingsBillingRoute,
+  WorkspaceSettingsMembersRoute: WorkspaceSettingsMembersRoute,
+  WorkspaceSettingsIndexRoute: WorkspaceSettingsIndexRoute,
+}
+
+const WorkspaceRouteRouteWithChildren = WorkspaceRouteRoute._addFileChildren(
+  WorkspaceRouteRouteChildren,
+)
+
 interface ExecutionProjectProjectIdChangeRequestsRouteChildren {
   ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
 }
@@ -2949,6 +3044,7 @@ const rootRouteChildren: RootRouteChildren = {
   MarketplaceRouteRoute: MarketplaceRouteRouteWithChildren,
   RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
+  WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
   NotificationsRoute: NotificationsRoute,
