@@ -356,7 +356,7 @@ export function SignupForm(_props: SignupFormProps) {
 		<div style={{ width: "100%" }}>
 			{/* Logo */}
 			<div style={{ marginBottom: "24px" }}>
-				<BrandMark className="h-8 text-primary" />
+				<BrandMark variant="lockup" className="h-9 self-start" />
 			</div>
 
 			{/* Invite context banner — shown when user arrived from an invite link */}
