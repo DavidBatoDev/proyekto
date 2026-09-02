@@ -112,9 +112,14 @@ export async function signInWithGoogleNative(): Promise<GoogleAuthResult> {
 		const rawNonce = randomNonce();
 		const hashedNonce = await sha256Hex(rawNonce);
 
+		// No `scopes` here, deliberately. The Android provider rejects ANY scopes
+		// array with "You CANNOT use scopes without modifying the main activity"
+		// unless MainActivity is subclassed (GoogleProvider.java:314) — and it
+		// already adds openid + userinfo.email + userinfo.profile unconditionally,
+		// which is everything the ID token needs. Passing them was all cost.
 		const response = await SocialLogin.login({
 			provider: "google",
-			options: { scopes: ["profile", "email"], nonce: hashedNonce },
+			options: { nonce: hashedNonce },
 		});
 
 		const idToken =
