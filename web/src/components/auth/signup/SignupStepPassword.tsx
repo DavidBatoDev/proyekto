@@ -118,7 +118,7 @@ export function SignupStepPassword({
 						fontFamily: "'Sora', 'Manrope', sans-serif",
 						fontSize: "1.4rem",
 						fontWeight: 700,
-						color: "#0F172A",
+						color: "var(--foreground)",
 						margin: "0 0 4px",
 						lineHeight: 1.25,
 					}}
@@ -156,7 +156,7 @@ export function SignupStepPassword({
 								border: "none",
 								cursor: "pointer",
 								padding: "2px",
-								color: "#94A3B8",
+								color: "var(--muted-foreground)",
 								display: "flex",
 								alignItems: "center",
 							}}
@@ -201,7 +201,7 @@ export function SignupStepPassword({
 							border: "none",
 							cursor: "pointer",
 							padding: "2px",
-							color: "#94A3B8",
+							color: "var(--muted-foreground)",
 							display: "flex",
 							alignItems: "center",
 						}}

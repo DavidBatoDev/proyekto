@@ -250,7 +250,7 @@ export function DatePickerField({
 					border: isActive ? "1px solid #334155" : "1px solid #CBD5E1",
 					boxShadow: isActive ? "0 0 0 3px rgba(255, 150, 46, 0.12)" : "none",
 					background: disabled ? "#F9F9F9" : "white",
-					color: "#0F172A",
+					color: "var(--foreground)",
 					fontSize: "14px",
 					fontFamily: "'Manrope', sans-serif",
 					transition: "border-color 0.2s, box-shadow 0.2s",
@@ -271,7 +271,7 @@ export function DatePickerField({
 					transform: floated ? "none" : "translateY(-50%)",
 					fontSize: floated ? "10px" : "14px",
 					fontWeight: 500,
-					color: isActive ? "#334155" : "#94A3B8",
+					color: isActive ? "#334155" : "var(--muted-foreground)",
 					transition: "all 0.2s ease",
 					pointerEvents: "none",
 					lineHeight: 1,
@@ -301,7 +301,7 @@ export function DatePickerField({
 					cursor: disabled ? "not-allowed" : "pointer",
 					padding: "4px",
 					borderRadius: "6px",
-					color: isActive ? "#334155" : "#94A3B8",
+					color: isActive ? "#334155" : "var(--muted-foreground)",
 					display: "flex",
 					alignItems: "center",
 					transition: "color 0.2s",
@@ -439,7 +439,7 @@ export function DatePickerField({
 									textAlign: "center",
 									fontSize: "10px",
 									fontWeight: 700,
-									color: "#94A3B8",
+									color: "var(--muted-foreground)",
 									padding: "3px 0",
 									letterSpacing: "0.03em",
 								}}
@@ -508,7 +508,7 @@ function NavButton({
 				cursor: "pointer",
 				padding: "5px",
 				borderRadius: "6px",
-				color: "#0F172A",
+				color: "var(--foreground)",
 				display: "flex",
 				alignItems: "center",
 				flexShrink: 0,
@@ -551,7 +551,11 @@ function DayCell({
 				borderRadius: "7px",
 				border: "none",
 				background: isSelected ? "#334155" : "transparent",
-				color: isDisabled ? "#D0D0D0" : isSelected ? "white" : "#0F172A",
+				color: isDisabled
+					? "#D0D0D0"
+					: isSelected
+						? "white"
+						: "var(--foreground)",
 				fontSize: "12px",
 				fontWeight: isSelected ? 700 : 400,
 				cursor: isDisabled ? "not-allowed" : "pointer",
@@ -631,7 +635,7 @@ function MonthDropdown({
 					cursor: "pointer",
 					fontSize: "12px",
 					fontWeight: 600,
-					color: open ? "#334155" : "#0F172A",
+					color: open ? "#334155" : "var(--foreground)",
 					fontFamily: "'Manrope', sans-serif",
 					minWidth: "108px",
 					justifyContent: "space-between",
@@ -664,7 +668,7 @@ function MonthDropdown({
 				>
 					<path
 						d="M1 1l4 4 4-4"
-						stroke="#94A3B8"
+						stroke="var(--muted-foreground)"
 						strokeWidth="1.5"
 						strokeLinecap="round"
 						fill="none"
@@ -710,7 +714,7 @@ function MonthDropdown({
 								fontSize: "11px",
 								fontWeight: i === month ? 700 : 500,
 								background: i === month ? "#334155" : "transparent",
-								color: i === month ? "white" : "#0F172A",
+								color: i === month ? "white" : "var(--foreground)",
 								fontFamily: "'Manrope', sans-serif",
 								textAlign: "center",
 								transition: "background 0.12s",
@@ -803,7 +807,7 @@ function YearDropdown({
 					cursor: "pointer",
 					fontSize: "12px",
 					fontWeight: 600,
-					color: open ? "#334155" : "#0F172A",
+					color: open ? "#334155" : "var(--foreground)",
 					fontFamily: "'Manrope', sans-serif",
 					minWidth: "72px",
 					justifyContent: "space-between",
@@ -836,7 +840,7 @@ function YearDropdown({
 				>
 					<path
 						d="M1 1l4 4 4-4"
-						stroke="#94A3B8"
+						stroke="var(--muted-foreground)"
 						strokeWidth="1.5"
 						strokeLinecap="round"
 						fill="none"
@@ -917,7 +921,7 @@ function YearDropdown({
 									fontSize: "12px",
 									fontWeight: y === year ? 700 : 400,
 									background: y === year ? "#334155" : "transparent",
-									color: y === year ? "white" : "#0F172A",
+									color: y === year ? "white" : "var(--foreground)",
 									fontFamily: "'Manrope', sans-serif",
 									transition: "background 0.12s",
 								}}
@@ -940,7 +944,7 @@ function YearDropdown({
 								style={{
 									padding: "8px",
 									fontSize: "12px",
-									color: "#94A3B8",
+									color: "var(--muted-foreground)",
 									textAlign: "center",
 								}}
 							>

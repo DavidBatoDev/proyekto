@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 // ── PrimaryButton ─────────────────────────────────────────────────────────────
-// Uses a gradient overlay that transitions opacity so we never repaint between
-// a solid background-color and a background-image (which causes the white flash).
+// Theme primary (blue-600 scale), never a hardcoded navy. Uses a gradient
+// overlay that transitions opacity so we never repaint between a solid
+// background-color and a background-image (which causes the white flash).
 
 interface PrimaryButtonProps {
 	children: React.ReactNode;
@@ -42,8 +43,8 @@ export function PrimaryButton({
 				height: "50px",
 				borderRadius: "14px",
 				border: "none",
-				background: "#0F172A",
-				color: "white",
+				background: "var(--primary)",
+				color: "var(--primary-foreground)",
 				fontFamily: "'Manrope', sans-serif",
 				fontSize: "14px",
 				fontWeight: 700,
@@ -51,8 +52,8 @@ export function PrimaryButton({
 				opacity: isDisabled ? 0.7 : 1,
 				boxShadow:
 					hovered && !isDisabled
-						? "0 10px 26px rgba(15, 23, 42, 0.35)"
-						: "0 6px 18px rgba(15, 23, 42, 0.22)",
+						? "0 10px 26px color-mix(in oklab, var(--primary) 40%, transparent)"
+						: "0 6px 18px color-mix(in oklab, var(--primary) 28%, transparent)",
 				transition: "box-shadow 0.22s ease, opacity 0.15s ease",
 				display: "flex",
 				alignItems: "center",
@@ -67,7 +68,7 @@ export function PrimaryButton({
 					position: "absolute",
 					inset: 0,
 					backgroundImage:
-						"linear-gradient(135deg, #1E1B4B 0%, #312E81 55%, #4338CA 100%)",
+						"linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%)",
 					opacity: hovered && !isDisabled ? 1 : 0,
 					transition: "opacity 0.22s ease",
 					borderRadius: "inherit",
@@ -124,9 +125,9 @@ export function SecondaryButton({
 				width: "100%",
 				height: "50px",
 				borderRadius: "14px",
-				border: `1px solid ${hovered ? "#475569" : "#CBD5E1"}`,
-				background: hovered ? "#F8FAFC" : "transparent",
-				color: "#334155",
+				border: `1px solid ${hovered ? "var(--ring)" : "var(--border)"}`,
+				background: hovered ? "var(--accent)" : "transparent",
+				color: "var(--foreground)",
 				fontFamily: "'Manrope', sans-serif",
 				fontSize: "14px",
 				fontWeight: 700,
@@ -165,9 +166,9 @@ export function GoogleButton({ onClick, children }: GoogleButtonProps) {
 				width: "100%",
 				height: "50px",
 				borderRadius: "14px",
-				border: `1px solid ${hovered ? "#475569" : "#CBD5E1"}`,
-				background: hovered ? "#F8FAFC" : "white",
-				color: "#0F172A",
+				border: `1px solid ${hovered ? "var(--ring)" : "var(--border)"}`,
+				background: hovered ? "var(--accent)" : "var(--card)",
+				color: "var(--foreground)",
 				fontFamily: "'Manrope', sans-serif",
 				fontSize: "14px",
 				fontWeight: 700,

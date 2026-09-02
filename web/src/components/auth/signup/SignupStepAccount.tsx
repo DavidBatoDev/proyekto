@@ -120,7 +120,7 @@ export function SignupStepAccount({
 						fontFamily: "'Sora', 'Manrope', sans-serif",
 						fontSize: "1.4rem",
 						fontWeight: 700,
-						color: "#0F172A",
+						color: "var(--foreground)",
 						margin: "0 0 4px",
 						lineHeight: 1.25,
 					}}
@@ -151,7 +151,7 @@ export function SignupStepAccount({
 				<span
 					style={{
 						fontSize: "12px",
-						color: "#94A3B8",
+						color: "var(--muted-foreground)",
 						fontWeight: 500,
 						fontFamily: "'Manrope', sans-serif",
 					}}
@@ -218,7 +218,7 @@ export function SignupStepAccount({
 				style={{
 					textAlign: "center",
 					fontSize: "13px",
-					color: "#94A3B8",
+					color: "var(--muted-foreground)",
 					margin: 0,
 					fontFamily: "'Manrope', sans-serif",
 				}}

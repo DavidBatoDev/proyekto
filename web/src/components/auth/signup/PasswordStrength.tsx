@@ -12,7 +12,7 @@ const checks = [
 
 const LABELS = ["Too Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"];
 const COLORS = [
-	"#94A3B8",
+	"var(--muted-foreground)",
 	"#DC2626",
 	"#D97706",
 	"#1E40AF",

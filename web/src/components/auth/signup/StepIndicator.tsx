@@ -38,13 +38,17 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
 								whiteSpace: "nowrap",
 								transition: "all 0.3s ease",
 								background: isActive
-									? "#0F172A"
+									? "var(--primary)"
 									: isDone
 										? "rgba(51, 65, 85, 0.12)"
 										: "#F8FAFC",
-								color: isActive ? "white" : isDone ? "#334155" : "#94A3B8",
+								color: isActive
+									? "white"
+									: isDone
+										? "#334155"
+										: "var(--muted-foreground)",
 								border: isActive
-									? "1px solid #0F172A"
+									? "1px solid var(--primary)"
 									: isDone
 										? "1px solid rgba(51, 65, 85, 0.45)"
 										: "1px solid #E2E8F0",

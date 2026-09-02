@@ -334,16 +334,16 @@ function RouteComponent() {
 								height: "52px",
 								borderRadius: "12px",
 								border: "none",
-								background:
-									"linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
-								color: "white",
+								background: "var(--primary)",
+								color: "var(--primary-foreground)",
 								fontSize: "1rem",
 								fontWeight: 700,
 								cursor: verifyLoading ? "not-allowed" : "pointer",
 								opacity: verifyLoading ? 0.7 : 1,
 								fontFamily: "'Manrope', sans-serif",
 								transition: "opacity 0.2s",
-								boxShadow: "0 8px 20px rgba(15,23,42,0.25)",
+								boxShadow:
+									"0 8px 20px color-mix(in oklab, var(--primary) 30%, transparent)",
 							}}
 						>
 							{verifyLoading ? "Verifying..." : "Verify & Sign In"}
@@ -500,8 +500,8 @@ function RouteComponent() {
 						width: "100%",
 						height: "52px",
 						borderRadius: "12px",
-						border: "1px solid rgba(148, 163, 184, 0.28)",
-						background: "#1f2130",
+						border: "1px solid var(--border)",
+						background: "var(--card)",
 						display: "flex",
 						alignItems: "center",
 						justifyContent: "center",
@@ -509,7 +509,7 @@ function RouteComponent() {
 						cursor: isLoading ? "not-allowed" : "pointer",
 						fontSize: "0.95rem",
 						fontWeight: 700,
-						color: "#f8fafc",
+						color: "var(--foreground)",
 						fontFamily: "'Manrope', sans-serif",
 						transition:
 							"background-color 0.2s, box-shadow 0.2s, border-color 0.2s",
@@ -517,15 +517,15 @@ function RouteComponent() {
 					}}
 					onMouseEnter={(e) => {
 						if (!isLoading) {
-							e.currentTarget.style.background = "#282b3d";
-							e.currentTarget.style.borderColor = "rgba(203, 213, 225, 0.42)";
+							e.currentTarget.style.background = "var(--accent)";
+							e.currentTarget.style.borderColor = "var(--ring)";
 							e.currentTarget.style.boxShadow =
-								"0 10px 24px rgba(0, 0, 0, 0.24)";
+								"0 10px 24px color-mix(in oklab, var(--foreground) 10%, transparent)";
 						}
 					}}
 					onMouseLeave={(e) => {
-						e.currentTarget.style.background = "#1f2130";
-						e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.28)";
+						e.currentTarget.style.background = "var(--card)";
+						e.currentTarget.style.borderColor = "var(--border)";
 						e.currentTarget.style.boxShadow = "none";
 					}}
 				>
@@ -681,16 +681,16 @@ function RouteComponent() {
 							borderRadius: "12px",
 							border: "none",
 							marginTop: "4px",
-							background:
-								"linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
-							color: "white",
+							background: "var(--primary)",
+							color: "var(--primary-foreground)",
 							fontSize: "1rem",
 							fontWeight: 700,
 							cursor: isLoading ? "not-allowed" : "pointer",
 							opacity: isLoading ? 0.7 : 1,
 							fontFamily: "'Manrope', sans-serif",
 							transition: "opacity 0.2s, transform 0.15s",
-							boxShadow: "0 8px 20px rgba(15,23,42,0.25)",
+							boxShadow:
+								"0 8px 20px color-mix(in oklab, var(--primary) 30%, transparent)",
 						}}
 						onMouseEnter={(e) => {
 							if (!isLoading)

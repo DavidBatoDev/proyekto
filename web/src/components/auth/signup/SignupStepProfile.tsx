@@ -58,7 +58,7 @@ export function SignupStepProfile({
 						fontFamily: "'Sora', 'Manrope', sans-serif",
 						fontSize: "1.4rem",
 						fontWeight: 700,
-						color: "#0F172A",
+						color: "var(--foreground)",
 						margin: "0 0 4px",
 						lineHeight: 1.25,
 					}}
@@ -83,7 +83,7 @@ export function SignupStepProfile({
 					style={{
 						fontSize: "11px",
 						fontWeight: 600,
-						color: "#94A3B8",
+						color: "var(--muted-foreground)",
 						marginBottom: "8px",
 						margin: "0 0 8px",
 						fontFamily: "'Manrope', sans-serif",
@@ -106,10 +106,14 @@ export function SignupStepProfile({
 									height: "48px",
 									borderRadius: "12px",
 									border: isSelected
-										? "1px solid #334155"
-										: "1px solid #CBD5E1",
-									background: isSelected ? "rgba(51, 65, 85, 0.08)" : "white",
-									color: isSelected ? "#0F172A" : "#94A3B8",
+										? "1px solid var(--primary)"
+										: "1px solid var(--border)",
+									background: isSelected
+										? "var(--primary-light)"
+										: "var(--card)",
+									color: isSelected
+										? "var(--primary-dark)"
+										: "var(--muted-foreground)",
 									fontFamily: "'Manrope', sans-serif",
 									fontSize: "14px",
 									fontWeight: isSelected ? 600 : 500,
@@ -211,7 +215,7 @@ export function SignupStepProfile({
 				<span
 					style={{
 						fontSize: "13px",
-						color: "#0F172A",
+						color: "var(--foreground)",
 						lineHeight: 1.5,
 						fontFamily: "'Manrope', sans-serif",
 					}}

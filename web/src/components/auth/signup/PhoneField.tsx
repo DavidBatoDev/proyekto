@@ -295,7 +295,7 @@ export function PhoneField({ country, value, onChange }: PhoneFieldProps) {
 				style={{
 					fontSize: "11px",
 					fontWeight: 600,
-					color: "#94A3B8",
+					color: "var(--muted-foreground)",
 					margin: "0 0 8px",
 					fontFamily: "'Manrope', sans-serif",
 					textTransform: "uppercase",
@@ -352,7 +352,9 @@ export function PhoneField({ country, value, onChange }: PhoneFieldProps) {
 						style={{
 							fontSize: "14px",
 							fontFamily: "'Manrope', sans-serif",
-							color: hasCountry ? "#0F172A" : "#94A3B8",
+							color: hasCountry
+								? "var(--foreground)"
+								: "var(--muted-foreground)",
 							fontWeight: 500,
 							minWidth: "30px",
 						}}
@@ -388,7 +390,7 @@ export function PhoneField({ country, value, onChange }: PhoneFieldProps) {
 						padding: "0 14px",
 						fontSize: "14px",
 						fontFamily: "'Manrope', sans-serif",
-						color: "#0F172A",
+						color: "var(--foreground)",
 						background: "transparent",
 						cursor: hasCountry ? "text" : "not-allowed",
 					}}

@@ -488,7 +488,7 @@ export function SignupForm(_props: SignupFormProps) {
 										fontFamily: "'Sora', 'Manrope', sans-serif",
 										fontSize: "1.4rem",
 										fontWeight: 700,
-										color: "#0F172A",
+										color: "var(--foreground)",
 										margin: "0 0 8px",
 									}}
 								>
@@ -503,7 +503,9 @@ export function SignupForm(_props: SignupFormProps) {
 									}}
 								>
 									We sent a 6-digit code to{" "}
-									<strong style={{ color: "#0F172A" }}>{email}</strong>
+									<strong style={{ color: "var(--foreground)" }}>
+										{email}
+									</strong>
 								</p>
 							</div>
 
@@ -536,7 +538,7 @@ export function SignupForm(_props: SignupFormProps) {
 										fontSize: "28px",
 										fontWeight: 700,
 										letterSpacing: "8px",
-										color: "#0F172A",
+										color: "var(--foreground)",
 										outline: "none",
 										fontFamily: "monospace",
 										transition: "border-color 0.2s",
@@ -561,9 +563,8 @@ export function SignupForm(_props: SignupFormProps) {
 										height: "50px",
 										borderRadius: "14px",
 										border: "none",
-										background:
-											"linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
-										color: "white",
+										background: "var(--primary)",
+										color: "var(--primary-foreground)",
 										fontFamily: "'Manrope', sans-serif",
 										fontSize: "14px",
 										fontWeight: 700,
@@ -609,7 +610,7 @@ export function SignupForm(_props: SignupFormProps) {
 										border: "none",
 										cursor: "pointer",
 										fontSize: "13px",
-										color: "#94A3B8",
+										color: "var(--muted-foreground)",
 										fontFamily: "'Manrope', sans-serif",
 										padding: 0,
 									}}
@@ -619,7 +620,7 @@ export function SignupForm(_props: SignupFormProps) {
 									}}
 									onMouseLeave={(e) => {
 										(e.currentTarget as HTMLButtonElement).style.color =
-											"#94A3B8";
+											"var(--muted-foreground)";
 									}}
 								>
 									← Back
@@ -640,7 +641,7 @@ export function SignupForm(_props: SignupFormProps) {
 										border: "none",
 										cursor: isResending ? "not-allowed" : "pointer",
 										fontSize: "13px",
-										color: "#94A3B8",
+										color: "var(--muted-foreground)",
 										fontFamily: "'Manrope', sans-serif",
 										padding: 0,
 										opacity: isResending ? 0.5 : 1,
@@ -653,7 +654,7 @@ export function SignupForm(_props: SignupFormProps) {
 									}}
 									onMouseLeave={(e) => {
 										(e.currentTarget as HTMLButtonElement).style.color =
-											"#94A3B8";
+											"var(--muted-foreground)";
 									}}
 								>
 									{isResending ? "Resending…" : "Resend Code"}
@@ -664,7 +665,7 @@ export function SignupForm(_props: SignupFormProps) {
 								style={{
 									textAlign: "center",
 									fontSize: "13px",
-									color: "#94A3B8",
+									color: "var(--muted-foreground)",
 									margin: 0,
 									fontFamily: "'Manrope', sans-serif",
 								}}

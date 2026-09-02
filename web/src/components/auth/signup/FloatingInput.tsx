@@ -40,7 +40,11 @@ export function FloatingInput({
 		: focused
 			? "0 0 0 3px rgba(51, 65, 85, 0.15)"
 			: "none";
-	const labelColor = error ? "#DC2626" : focused ? "#334155" : "#94A3B8";
+	const labelColor = error
+		? "#DC2626"
+		: focused
+			? "#334155"
+			: "var(--muted-foreground)";
 
 	return (
 		<div className="relative w-full">
@@ -69,7 +73,7 @@ export function FloatingInput({
 					outline: "none",
 					width: "100%",
 					background: disabled ? "#F9F9F9" : "white",
-					color: "#0F172A",
+					color: "var(--foreground)",
 					fontSize: "14px",
 					fontFamily: "'Manrope', sans-serif",
 					transition: "border-color 0.2s, box-shadow 0.2s",

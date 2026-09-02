@@ -68,7 +68,7 @@ export function ZipInput({
 							? "0 0 0 3px rgba(255, 150, 46, 0.12)"
 							: "none",
 					background: disabled ? "#F9F9F9" : "white",
-					color: "#0F172A",
+					color: "var(--foreground)",
 					fontSize: "14px",
 					fontFamily: "'Manrope', sans-serif",
 					transition: "border-color 0.2s, box-shadow 0.2s",
@@ -89,7 +89,11 @@ export function ZipInput({
 					transform: floated ? "none" : "translateY(-50%)",
 					fontSize: floated ? "10px" : "14px",
 					fontWeight: 500,
-					color: hasError ? "#DC2626" : isActive ? "#334155" : "#94A3B8",
+					color: hasError
+						? "#DC2626"
+						: isActive
+							? "#334155"
+							: "var(--muted-foreground)",
 					transition: "all 0.2s ease",
 					pointerEvents: "none",
 					lineHeight: 1,
