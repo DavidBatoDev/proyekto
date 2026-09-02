@@ -5,6 +5,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -28,6 +29,17 @@ export type WorkspaceAssignableRole =
 
 export const WORKSPACE_NAME_MAX_LENGTH = 120;
 export const WORKSPACE_DESCRIPTION_MAX_LENGTH = 2000;
+
+/**
+ * Shape of a workspace URL handle (/w/<slug>/...). Shape only: whether a slug
+ * is reserved, taken, or still redirecting elsewhere is the database's call
+ * (workspace_reserved_slugs, workspace_slug_history, and the guard trigger),
+ * because the backfill and the provisioning RPC never pass through here. Keep
+ * in lockstep with the workspaces_slug_format CHECK constraint.
+ */
+export const WORKSPACE_SLUG_MIN_LENGTH = 3;
+export const WORKSPACE_SLUG_MAX_LENGTH = 60;
+export const WORKSPACE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const WORKSPACE_PLANS = [
   'free',
@@ -66,6 +78,18 @@ export class UpdateWorkspaceDto {
   @IsOptional()
   @IsString()
   avatar_url?: string;
+
+  /**
+   * Owner-only (see WORKSPACE_OWNER_ONLY_UPDATE_FIELDS): renaming the handle
+   * changes every link to the organization, even though old ones redirect.
+   */
+  @IsOptional()
+  @IsString()
+  @Length(WORKSPACE_SLUG_MIN_LENGTH, WORKSPACE_SLUG_MAX_LENGTH)
+  @Matches(WORKSPACE_SLUG_PATTERN, {
+    message: 'Use lowercase letters, numbers, and single hyphens',
+  })
+  slug?: string;
 }
 
 export class InviteWorkspaceMemberDto {

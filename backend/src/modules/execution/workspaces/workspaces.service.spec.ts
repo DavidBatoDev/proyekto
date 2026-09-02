@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { WorkspacesService } from './workspaces.service';
 
 /**
@@ -16,6 +20,8 @@ const STRANGER = 'user-stranger';
 const WORKSPACE = {
   id: 'ws-1',
   name: 'Acme',
+  slug: 'acme',
+  previous_slugs: [],
   description: null,
   avatar_url: null,
   created_by: OWNER,
@@ -248,12 +254,10 @@ describe('WorkspacesService.resolveWorkspaceForWrite', () => {
 
   /** Self-heal for a real user who deleted their only workspace. */
   it('provisions a workspace for a non-guest who owns none', async () => {
-    const rpc = jest
-      .fn()
-      .mockResolvedValue({
-        data: [{ id: 'ws-new', name: 'Mine' }],
-        error: null,
-      });
+    const rpc = jest.fn().mockResolvedValue({
+      data: [{ id: 'ws-new', name: 'Mine' }],
+      error: null,
+    });
     const supabase = buildSupabase({
       rpc,
       onTable: (table) => {
@@ -362,5 +366,125 @@ describe('WorkspacesService.updateMember — ownership transfer', () => {
     await expect(
       service.updateMember('ws-1', OWNER, ADMIN, { role: 'member' }),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+describe('WorkspacesService - slug', () => {
+  function buildWithRole(
+    role: string,
+    updateResult: {
+      data?: unknown;
+      error?: { code: string; message: string };
+    } = {},
+  ) {
+    const captured: Record<string, unknown> = {};
+    const supabase = buildSupabase({
+      captured,
+      onTable: (table) => {
+        if (table === 'workspaces') {
+          return {
+            maybeSingle: { data: WORKSPACE, error: null },
+            single: {
+              data: updateResult.data ?? { ...WORKSPACE, slug: 'acme-corp' },
+              error: updateResult.error ?? null,
+            },
+          };
+        }
+        if (table === 'workspace_members') {
+          return { maybeSingle: { data: { role }, error: null } };
+        }
+        return {};
+      },
+    });
+    return { service: buildService(supabase), captured };
+  }
+
+  /**
+   * The handle is the organization's public address, so it sits with the
+   * owner-only fields. An admin must be refused outright rather than have the
+   * field silently dropped.
+   */
+  it('refuses a slug change from an admin', async () => {
+    const { service, captured } = buildWithRole('admin');
+    await expect(
+      service.updateWorkspace('ws-1', ADMIN, { slug: 'acme-corp' }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(captured.updates).toBeUndefined();
+  });
+
+  it('lets the owner change the slug and returns the read-back row', async () => {
+    const { service, captured } = buildWithRole('owner');
+    const updated = await service.updateWorkspace('ws-1', OWNER, {
+      slug: 'acme-corp',
+    });
+    const updates = captured.updates as Record<string, any[]>;
+    expect(updates.workspaces[0]).toMatchObject({ slug: 'acme-corp' });
+    expect(updated.slug).toBe('acme-corp');
+  });
+
+  /**
+   * The guard trigger's refusals arrive as unique_violation with a message
+   * written for people; the API forwards it as a 409 rather than a 500.
+   */
+  it('maps a taken or reserved slug to 409 with the database message', async () => {
+    const { service } = buildWithRole('owner', {
+      error: { code: '23505', message: 'The URL "teams" is reserved' },
+    });
+    await expect(
+      service.updateWorkspace('ws-1', OWNER, { slug: 'teams' }),
+    ).rejects.toThrow(new ConflictException('The URL "teams" is reserved'));
+  });
+
+  it('shapes previous_slugs from the embedded history, newest first', async () => {
+    const supabase = buildSupabase({
+      onTable: (table) => {
+        if (table === 'workspace_members') {
+          return {
+            list: {
+              data: [
+                {
+                  workspace_id: 'ws-1',
+                  role: 'owner',
+                  joined_at: '2026-01-01',
+                  workspace: {
+                    ...WORKSPACE,
+                    slug_history: [
+                      { slug: 'acme-old', replaced_at: '2026-02-01T00:00:00Z' },
+                      {
+                        slug: 'acme-older',
+                        replaced_at: '2026-01-15T00:00:00Z',
+                      },
+                    ],
+                  },
+                },
+              ],
+              error: null,
+            },
+            maybeSingle: { data: null, error: null },
+          };
+        }
+        return {};
+      },
+    });
+    const service = buildService(supabase);
+    const [row] = await service.listMyWorkspaces(OWNER);
+    expect(row.previous_slugs).toEqual(['acme-old', 'acme-older']);
+    expect(
+      (row as unknown as Record<string, unknown>).slug_history,
+    ).toBeUndefined();
+  });
+
+  it('defaults previous_slugs to an empty list when no history is embedded', async () => {
+    const supabase = buildSupabase({
+      onTable: (table) =>
+        table === 'workspaces'
+          ? { single: { data: WORKSPACE, error: null } }
+          : {},
+    });
+    const created = await buildService(supabase).createWorkspace(OWNER, {
+      name: 'Acme',
+    });
+    expect(created.previous_slugs).toEqual([]);
+    expect(created.slug).toBe('acme');
   });
 });

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -30,6 +31,17 @@ import {
 export interface WorkspaceRow {
   id: string;
   name: string;
+  /**
+   * URL handle under /w/<slug>/. Allocated by the database on insert and
+   * owner-editable; never null once the row exists.
+   */
+  slug: string;
+  /**
+   * Handles this workspace used to have, most recent first. The web redirects
+   * a stale link to the current slug from these; they can never be reused by
+   * another workspace while they are here.
+   */
+  previous_slugs: string[];
   description: string | null;
   avatar_url: string | null;
   created_by: string | null;
@@ -89,7 +101,12 @@ export interface WorkspaceInviteRow {
   responded_at: string | null;
   created_at: string;
   updated_at: string;
-  workspace?: { id: string; name: string; avatar_url: string | null } | null;
+  workspace?: {
+    id: string;
+    name: string;
+    slug: string;
+    avatar_url: string | null;
+  } | null;
   invited_by_profile?: {
     id: string;
     display_name: string | null;
@@ -101,9 +118,40 @@ export interface WorkspaceInviteRow {
 const WORKSPACE_MEMBER_SELECT =
   '*, user:profiles!workspace_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)';
 
+/**
+ * A workspace row plus its retired handles in one round trip. The embed is
+ * folded into `previous_slugs` by toWorkspaceRow; the raw `slug_history` key
+ * never leaves the service.
+ */
+const WORKSPACE_SLUG_HISTORY_EMBED =
+  'slug_history:workspace_slug_history(slug, replaced_at)';
+const WORKSPACE_SELECT = `*, ${WORKSPACE_SLUG_HISTORY_EMBED}`;
+
+interface SlugHistoryEmbed {
+  slug: string;
+  replaced_at: string;
+}
+
+function toWorkspaceRow(raw: Record<string, unknown>): WorkspaceRow {
+  const { slug_history, ...rest } = raw as Record<string, unknown> & {
+    slug_history?: SlugHistoryEmbed[] | SlugHistoryEmbed | null;
+  };
+  const history = Array.isArray(slug_history)
+    ? slug_history
+    : slug_history
+      ? [slug_history]
+      : [];
+  return {
+    ...(rest as unknown as WorkspaceRow),
+    previous_slugs: [...history]
+      .sort((a, b) => b.replaced_at.localeCompare(a.replaced_at))
+      .map((entry) => entry.slug),
+  };
+}
+
 const WORKSPACE_INVITE_SELECT = `
   *,
-  workspace:workspaces!workspace_invites_workspace_id_fkey(id, name, avatar_url),
+  workspace:workspaces!workspace_invites_workspace_id_fkey(id, name, slug, avatar_url),
   invited_by_profile:profiles!workspace_invites_invited_by_fkey(id, display_name, avatar_url, email)
 `;
 
@@ -132,13 +180,16 @@ const WORKSPACE_SHARED_UPDATE_FIELDS = [
 void WORKSPACE_SHARED_UPDATE_FIELDS;
 
 /**
- * Owner only. Empty today, and that is the point: the workspace is the billing
- * boundary, so the first plan, seat-limit, or billing-identity field to land on
- * UpdateWorkspaceDto must be classified here rather than silently becoming
- * admin-editable. See the exhaustiveness check below.
+ * Owner only. The slug is the organization's public address: renaming it
+ * changes every link to the workspace, even though old ones redirect. The same
+ * bar applies to any future plan, seat-limit, or billing-identity field — the
+ * workspace is the billing boundary, so such a field must be classified here
+ * rather than silently becoming admin-editable. See the exhaustiveness check
+ * below.
  */
-const WORKSPACE_OWNER_ONLY_UPDATE_FIELDS =
-  [] as const satisfies readonly UpdateWorkspaceField[];
+const WORKSPACE_OWNER_ONLY_UPDATE_FIELDS = [
+  'slug',
+] as const satisfies readonly UpdateWorkspaceField[];
 
 /**
  * Adding a field to UpdateWorkspaceDto without classifying it above is a compile
@@ -150,11 +201,6 @@ const WORKSPACE_OWNER_ONLY_UPDATE_FIELDS =
 type UnclassifiedUpdateWorkspaceField = Exclude<
   UpdateWorkspaceField,
   | (typeof WORKSPACE_SHARED_UPDATE_FIELDS)[number]
-  // Indexing the empty owner-only tuple yields `never` today, which the lint
-  // rule flags as a redundant union member. Keep the arm: it is what makes the
-  // guard start working the moment the first billing field is classified there,
-  // and the disable comment goes away with it.
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   | (typeof WORKSPACE_OWNER_ONLY_UPDATE_FIELDS)[number]
 >;
 const _everyUpdateWorkspaceFieldIsClassified: UnclassifiedUpdateWorkspaceField extends never
@@ -261,7 +307,9 @@ export class WorkspacesService {
   async listMyWorkspaces(userId: string): Promise<WorkspaceRow[]> {
     const { data: memberships, error } = await this.supabase
       .from('workspace_members')
-      .select('workspace_id, role, joined_at, workspace:workspaces(*)')
+      .select(
+        `workspace_id, role, joined_at, workspace:workspaces(*, ${WORKSPACE_SLUG_HISTORY_EMBED})`,
+      )
       .eq('user_id', userId)
       .order('joined_at', { ascending: true });
     if (error) throw new Error(error.message);
@@ -271,14 +319,17 @@ export class WorkspacesService {
       role: WorkspaceMemberRole;
       // The client types an embedded relation as an array even when it is
       // to-one, so normalize both shapes rather than trusting either.
-      workspace: WorkspaceRow | WorkspaceRow[] | null;
+      workspace: Record<string, unknown> | Record<string, unknown>[] | null;
     }>;
     const present = rows
-      .map((row) => ({
-        workspace_id: row.workspace_id,
-        role: row.role,
-        workspace: firstEmbeddedRow(row.workspace),
-      }))
+      .map((row) => {
+        const raw = firstEmbeddedRow(row.workspace);
+        return {
+          workspace_id: row.workspace_id,
+          role: row.role,
+          workspace: raw ? toWorkspaceRow(raw) : null,
+        };
+      })
       .filter(
         (row): row is typeof row & { workspace: WorkspaceRow } =>
           row.workspace !== null,
@@ -408,12 +459,14 @@ export class WorkspacesService {
         avatar_url: dto.avatar_url ?? null,
         created_by: userId,
       })
-      .select('*')
+      .select(WORKSPACE_SELECT)
       .single();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to create workspace');
     }
-    const workspace = data as WorkspaceRow;
+    // The slug is allocated by the database on insert (trg_workspaces_slug_guard),
+    // so it is only known after the read-back.
+    const workspace = toWorkspaceRow(data as Record<string, unknown>);
 
     const insertOwner = await this.supabase.from('workspace_members').insert({
       workspace_id: workspace.id,
@@ -488,17 +541,55 @@ export class WorkspacesService {
       patch.description = dto.description.trim() || null;
     }
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
+    if (dto.slug !== undefined) patch.slug = dto.slug;
 
     const { data, error } = await this.supabase
       .from('workspaces')
       .update(patch)
       .eq('id', workspaceId)
-      .select('*')
+      .select(WORKSPACE_SELECT)
       .single();
-    if (error || !data) {
-      throw new Error(error?.message ?? 'Failed to update workspace');
+    if (error) {
+      // The guard trigger refuses a reserved, taken, or still-redirecting slug
+      // with a user-facing message under unique_violation; the format CHECK
+      // (e.g. a uuid-shaped handle) surfaces as check_violation.
+      if (error.code === '23505') throw new ConflictException(error.message);
+      if (error.code === '23514') {
+        throw new BadRequestException('That URL is not allowed');
+      }
+      throw new Error(error.message);
     }
-    return { ...(data as WorkspaceRow), my_role: role };
+    if (!data) throw new Error('Failed to update workspace');
+    return {
+      ...toWorkspaceRow(data as Record<string, unknown>),
+      my_role: role,
+    };
+  }
+
+  /**
+   * The slug of the workspace a team belongs to, for links into that team's
+   * pages. Null when the team is unhomed (workspace deleted) or unknown; the
+   * caller then emits the bare path, which the web redirects.
+   *
+   * Lives here rather than on TeamsService because the modules that need it
+   * (team-time, payouts) do not import TeamsModule — that would pull in
+   * ProjectsModule and a cycle — while this module imports nothing of theirs.
+   */
+  async findSlugForTeam(teamId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('workspace:workspaces(slug)')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const workspace = firstEmbeddedRow(
+      (
+        data as {
+          workspace?: { slug: string } | { slug: string }[] | null;
+        } | null
+      )?.workspace,
+    );
+    return workspace?.slug ?? null;
   }
 
   /**
@@ -922,12 +1013,12 @@ export class WorkspacesService {
   async fetchWorkspaceOrThrow(workspaceId: string): Promise<WorkspaceRow> {
     const { data, error } = await this.supabase
       .from('workspaces')
-      .select('*')
+      .select(WORKSPACE_SELECT)
       .eq('id', workspaceId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) throw new NotFoundException('Workspace not found');
-    return data as WorkspaceRow;
+    return toWorkspaceRow(data as Record<string, unknown>);
   }
 
   private async findMembership(
