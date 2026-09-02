@@ -158,12 +158,10 @@ export function AutoSizingTaskTitle({
 	value,
 	onChange,
 	disabled,
-	autoFocus,
 }: {
 	value: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
-	autoFocus?: boolean;
 }) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -187,7 +185,6 @@ export function AutoSizingTaskTitle({
 			}}
 			disabled={disabled}
 			className="block w-full resize-none overflow-hidden border-none bg-transparent px-0 text-xl font-semibold leading-7 text-gray-900 focus:outline-none focus:ring-0 disabled:opacity-50"
-			autoFocus={autoFocus}
 		/>
 	);
 }
@@ -1113,7 +1110,9 @@ export const SidePanel = ({
 			<div className="px-6 py-4 border-b border-gray-200 shrink-0">
 				<AutoSizingTaskTitle
 					key={isCreateMode ? "create-task" : task?.id}
-					value={isCreateMode ? (newTaskData.title ?? "") : (editedTask?.title ?? "")}
+					value={
+						isCreateMode ? (newTaskData.title ?? "") : (editedTask?.title ?? "")
+					}
 					onChange={(title) => {
 						if (isCreateMode) {
 							setNewTaskData({ ...newTaskData, title });
@@ -1122,7 +1121,6 @@ export const SidePanel = ({
 						}
 					}}
 					disabled={isInteractionDisabled}
-					autoFocus
 				/>
 			</div>
 

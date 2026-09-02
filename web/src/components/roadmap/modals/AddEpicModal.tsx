@@ -641,7 +641,6 @@ export const EpicModal = ({
 			canComment={Boolean(user)}
 			rightPanelTabs={rightPanelTabs}
 			defaultRightPanelTabId="features"
-			autoFocusTitle={true}
 		/>
 	);
 };

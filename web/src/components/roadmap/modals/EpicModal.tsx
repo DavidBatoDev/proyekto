@@ -731,7 +731,6 @@ export const EpicModal = ({
 			canComment={Boolean(user) && !isReadOnlyPending}
 			rightPanelTabs={rightPanelTabs}
 			defaultRightPanelTabId="comments"
-			autoFocusTitle={true}
 		/>
 	);
 };
