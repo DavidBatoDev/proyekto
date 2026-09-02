@@ -1,11 +1,14 @@
 import { useRouterState } from "@tanstack/react-router";
+import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 import { ProjectInvitePromptManager } from "../invites/ProjectInvitePromptManager";
 import { ProjectHeader } from "../project/ProjectHeader";
 import DashboardHeader from "./DashboardHeader";
 
 const Header = () => {
 	const routerState = useRouterState();
-	const currentPath = routerState.location.pathname;
+	// Organizational pages carry a /w/<slug>/ prefix; every matcher below runs
+	// on the bare path so it keeps working on both shapes.
+	const currentPath = stripWorkspacePrefix(routerState.location.pathname);
 
 	// Prefix allowlist. An unlisted path renders NO header while the page still
 	// reserves its height, so anything added under a new namespace must appear

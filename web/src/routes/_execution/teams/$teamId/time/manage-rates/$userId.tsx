@@ -1,16 +1,11 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-// The per-member logs page was retired: "View logs" now opens Team Logs
-// pre-filtered to the member. This route stays only to redirect any old links
-// (e.g. bookmarks) to that filtered Team Logs view.
+/**
+ * Empty shell. The page moved to /w/<slug>/teams/$teamId/time/manage-rates/$userId — this
+ * file only keeps the bare path a real route (so persisted links and typed
+ * `to`s still compile) while the parent, routes/_execution/teams/$teamId.tsx, redirects
+ * every bare URL to its workspace-scoped twin before this ever renders.
+ */
 export const Route = createFileRoute(
 	"/_execution/teams/$teamId/time/manage-rates/$userId",
-)({
-	beforeLoad: ({ params }) => {
-		throw redirect({
-			to: "/teams/$teamId/time/team-logs",
-			params: { teamId: params.teamId },
-			search: { member: params.userId },
-		});
-	},
-});
+)({});

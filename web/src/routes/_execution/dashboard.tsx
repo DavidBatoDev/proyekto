@@ -1,35 +1,44 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { PrimaryFlow } from "@/components/home/LeftSide";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { TourRunner } from "@/components/tour/TourRunner";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { DASHBOARD_TOUR_KEY } from "@/lib/tours/dashboardTour";
-import { TourDemoProvider } from "@/lib/tours/demo/TourDemoContext";
-import { useAuthStore } from "@/stores/authStore";
+import { CreateWorkspaceCard } from "@/components/workspace/CreateWorkspaceCard";
+import { resolveLastVisitedWorkspace } from "@/lib/workspaceRouting";
 
+/**
+ * Bare /dashboard: forward to the last-visited workspace's dashboard (or the
+ * user's default when this device has none stored). The page itself lives at
+ * /w/<slug>/dashboard. Permanent, not transitional — bare paths keep arriving
+ * from post-auth continuation, persisted notification links, and push
+ * payloads.
+ *
+ * This is also the only landing for an account with no workspace at all: the
+ * server provisions one at signup, so that state should be unreachable, but
+ * if the backstop ever fails the user gets a way to create one instead of a
+ * redirect loop.
+ */
 export const Route = createFileRoute("/_execution/dashboard")({
-	beforeLoad: () => {
-		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
+	beforeLoad: async ({ context, location }) => {
+		const workspace = await resolveLastVisitedWorkspace(
+			context.queryClient,
+			location,
+		);
+		if (workspace) {
+			throw redirect({
+				to: "/w/$workspaceSlug/dashboard",
+				params: { workspaceSlug: workspace.slug },
+				search: true,
+				replace: true,
+			});
 		}
 	},
-	component: DashboardPage,
+	component: NoWorkspaceFallback,
 });
 
-function DashboardPage() {
-	useProfileQuery();
+function NoWorkspaceFallback() {
 	return (
-		// The demo provider wraps the content, not the shell: a tour replay swaps
-		// the dashboard's own data for fixtures, but the sidebar and header keep
-		// showing the user's real workspace.
-		<TourDemoProvider>
-			<DashboardShell>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10 app-slide-up">
-					<PrimaryFlow />
-				</div>
-				<TourRunner tourKey={DASHBOARD_TOUR_KEY} />
-			</DashboardShell>
-		</TourDemoProvider>
+		<DashboardShell>
+			<div className="mx-auto max-w-7xl px-4 pt-10 pb-10 sm:px-6 lg:px-8">
+				<CreateWorkspaceCard />
+			</div>
+		</DashboardShell>
 	);
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
 import { useMemo } from "react";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
@@ -57,6 +57,7 @@ export function TeamsGrid() {
 	const isLoading = !isDemo && (teamsQuery.isPending || invitesQuery.isPending);
 
 	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
 	const myWorkspaceIds = useMemo(
 		() => workspaces.map((item) => item.id),
 		[workspaces],
@@ -110,7 +111,8 @@ export function TeamsGrid() {
 					</p>
 				</div>
 				<Link
-					to="/teams"
+					to="/w/$workspaceSlug/teams"
+					params={{ workspaceSlug }}
 					className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-slate-700 hover:text-slate-900"
 				>
 					All teams
@@ -142,6 +144,7 @@ export function TeamsGrid() {
 }
 
 function TeamCard({ team }: { team: Team }) {
+	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
 	const totalMembers = team.members_count ?? 0;
 	const previews = (team.members_preview ?? []).filter(
 		(p): p is ProfileSummary => Boolean(p),
@@ -151,8 +154,8 @@ function TeamCard({ team }: { team: Team }) {
 
 	return (
 		<Link
-			to="/teams/$teamId"
-			params={{ teamId: team.id }}
+			to="/w/$workspaceSlug/teams/$teamId"
+			params={{ workspaceSlug, teamId: team.id }}
 			className="group flex items-center gap-3 rounded-xl border border-border bg-(--app-surface-strong) px-4 py-3 text-card-foreground shadow-sm transition-all duration-200 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
 		>
 			<TeamAvatar team={team} />
@@ -327,6 +330,7 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 }
 
 function TeamsEmptyState({ className }: { className?: string }) {
+	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
 	return (
 		<div
 			className={`rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm ${className ?? ""}`}
@@ -342,7 +346,8 @@ function TeamsEmptyState({ className }: { className?: string }) {
 				team to any project.
 			</p>
 			<Link
-				to="/teams"
+				to="/w/$workspaceSlug/teams"
+				params={{ workspaceSlug }}
 				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
 			>
 				<Plus className="h-4 w-4" />

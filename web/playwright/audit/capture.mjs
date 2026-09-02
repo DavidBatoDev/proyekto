@@ -107,6 +107,10 @@ async function discoverIds(context) {
 
   // projectId — first project card on the dashboard.
   await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  // workspaceSlug — bare /dashboard redirects to /w/<slug>/dashboard for the
+  // last-visited workspace; the slug is read off the URL we landed on.
+  await page.waitForURL(/\/w\/[^/?#]+\//, { timeout: 15_000 }).catch(() => {});
+  ids.workspaceSlug = page.url().match(/\/w\/([^/?#]+)/)?.[1] || null;
   await settle(page);
   ids.profileId = await readProfileId(page);
   ids.userId = ids.profileId;

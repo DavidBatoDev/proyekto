@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { workspaceKeys } from "@/queries/workspaces";
 import {
@@ -86,16 +87,24 @@ export function useMyWorkspaceInvitesQuery() {
 }
 
 /**
- * The currently selected workspace, joined from the selection store and the
- * workspace list. Returns null while the list is loading or when the user
- * belongs to none — callers treat null as "omit workspace_id and let the
- * backend default".
+ * The workspace the user is looking at.
+ *
+ * Under /w/<slug>/ the URL decides — two tabs on different workspaces stay
+ * independent, and a reload lands where the address bar says. Everywhere else
+ * (project pages, the inbox) the selection store's "last visited" workspace
+ * stands in. Null while the list is loading or when the user belongs to none;
+ * callers treat null as "omit workspace_id and let the backend default".
+ *
+ * Must only be called under the router: it reads route params.
  */
 export function useCurrentWorkspace(): {
 	workspace: Workspace | null;
 	workspaces: Workspace[];
 	isLoading: boolean;
 } {
+	const { workspaceSlug } = useParams({ strict: false }) as {
+		workspaceSlug?: string;
+	};
 	const currentWorkspaceId = useWorkspaceStore(
 		(state) => state.currentWorkspaceId,
 	);
@@ -103,10 +112,15 @@ export function useCurrentWorkspace(): {
 
 	return useMemo(() => {
 		const workspaces = data ?? [];
+		const fromUrl = workspaceSlug
+			? (workspaces.find((item) => item.slug === workspaceSlug) ?? null)
+			: null;
 		const workspace =
-			workspaces.find((item) => item.id === currentWorkspaceId) ?? null;
+			fromUrl ??
+			workspaces.find((item) => item.id === currentWorkspaceId) ??
+			null;
 		return { workspace, workspaces, isLoading };
-	}, [data, currentWorkspaceId, isLoading]);
+	}, [data, workspaceSlug, currentWorkspaceId, isLoading]);
 }
 
 export function useCreateWorkspaceMutation() {

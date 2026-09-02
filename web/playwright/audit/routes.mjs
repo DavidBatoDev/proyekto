@@ -5,12 +5,17 @@
  * filled at runtime from ids discovered after login. Anything we can't resolve
  * is recorded as `skipped` in the manifest rather than silently dropped.
  *
- * Placeholders: :projectId :roadmapId :chatRef :teamId :profileId :token
+ * Placeholders: :projectId :roadmapId :chatRef :teamId :profileId :token :workspaceSlug
+ *
+ * Organizational pages live under /w/:workspaceSlug/…; their bare twins
+ * (/dashboard, /teams/…, /workspace/…) are still generated routes — redirect
+ * stubs — so both stay listed, or the coverage assert fails.
  */
 
 export const STATIC_ROUTES = [
   // ── public / unauthenticated ────────────────────────────────────────────
   { path: "/", group: "public", auth: false },
+  { path: "/home", group: "public", auth: false },
   { path: "/landing", group: "public", auth: false },
   { path: "/auth/login", group: "auth", auth: false },
   { path: "/auth/signup", group: "auth", auth: false },
@@ -61,6 +66,12 @@ export const STATIC_ROUTES = [
   // ── teams (list + self) ─────────────────────────────────────────────────
   { path: "/teams", group: "teams", auth: true },
   { path: "/teams/me/invites", group: "teams", auth: true },
+
+  // ── bare workspace settings (redirect stubs to /w/:workspaceSlug/settings) ──
+  { path: "/workspace", group: "workspace", auth: true },
+  { path: "/workspace/settings", group: "workspace", auth: true },
+  { path: "/workspace/settings/members", group: "workspace", auth: true },
+  { path: "/workspace/settings/billing", group: "workspace", auth: true },
 
   // ── talent / consultant authed ──────────────────────────────────────
   { path: "/marketplace/talent/go-live", group: "talent", auth: true },
@@ -119,6 +130,27 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/teams/:teamId/time/log/:logId", needs: ["teamId", "logId"], group: "teams", auth: true },
   { tpl: "/teams/:teamId/time/manage-rates/:userId", needs: ["teamId", "userId"], group: "teams", auth: true },
 
+  // ── workspace-scoped twins (the real pages) ────────────────────────────
+  { tpl: "/w/:workspaceSlug", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/dashboard", needs: ["workspaceSlug"], group: "global", auth: true },
+  { tpl: "/w/:workspaceSlug/settings", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/settings/members", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/settings/billing", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/teams", needs: ["workspaceSlug"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/settings", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/settings/general", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/settings/projects", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/settings/logs", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/settings/time", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/my-logs", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/team-logs", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/manage-rates", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/payouts", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/log/:logId", needs: ["workspaceSlug", "teamId", "logId"], group: "teams", auth: true },
+  { tpl: "/w/:workspaceSlug/teams/:teamId/time/manage-rates/:userId", needs: ["workspaceSlug", "teamId", "userId"], group: "teams", auth: true },
+
   // ── profile ─────────────────────────────────────────────────────────────
   { tpl: "/profile/:profileId", needs: ["profileId"], group: "profile", auth: true },
   { tpl: "/marketplace/consultant/:profileId", needs: ["profileId"], group: "profile", auth: false },
@@ -134,9 +166,10 @@ export const DYNAMIC_ROUTES = [
 export const NARROW_STRESS = [
   "/dashboard",
   "/work-items",
-  "/teams/:teamId/time/team-logs",
-  "/teams/:teamId/time/my-logs",
-  "/teams/:teamId/settings/logs",
+  "/w/:workspaceSlug/dashboard",
+  "/w/:workspaceSlug/teams/:teamId/time/team-logs",
+  "/w/:workspaceSlug/teams/:teamId/time/my-logs",
+  "/w/:workspaceSlug/teams/:teamId/settings/logs",
   "/project/:projectId/payments",
   "/project/:projectId/logs",
   // The mobile Gantt budgets a 132px frozen task column against the viewport;

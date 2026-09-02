@@ -122,7 +122,10 @@ function isValidEmail(email: string): boolean {
 	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-function navigateAfterWelcome(navigate: ReturnType<typeof useNavigate>) {
+function navigateAfterWelcome(
+	navigate: ReturnType<typeof useNavigate>,
+	workspaceSlug: string | null,
+) {
 	clearAuthContinuation();
 	const pending = getPendingProjectFromRoadmap();
 	if (pending?.roadmapId) {
@@ -133,6 +136,15 @@ function navigateAfterWelcome(navigate: ReturnType<typeof useNavigate>) {
 		return;
 	}
 
+	// Land in the workspace the deck just set up. Bare /dashboard is the
+	// fallback when the lookup failed: its redirect stub resolves the default.
+	if (workspaceSlug) {
+		navigate({
+			to: "/w/$workspaceSlug/dashboard",
+			params: { workspaceSlug },
+		});
+		return;
+	}
 	navigate({ to: "/dashboard" });
 }
 
@@ -146,6 +158,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 
 	// ── Workspace (organization) lookup ──────────────────────────────────────
 	const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+	const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
 	const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
 	const [workspaceLoadFailed, setWorkspaceLoadFailed] = useState(false);
 	const [savingWorkspace, setSavingWorkspace] = useState(false);
@@ -170,6 +183,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 				const owned = workspaces.find((w) => w.my_role === "owner");
 				if (!owned) return;
 				setWorkspaceId(owned.id);
+				setWorkspaceSlug(owned.slug);
 				setWorkspaceTitle(owned.name);
 			} catch (err) {
 				if (cancelled) return;
@@ -244,6 +258,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 				const created = await createWorkspace({ name });
 				id = created.id;
 				setWorkspaceId(created.id);
+				setWorkspaceSlug(created.slug);
 			}
 			setWorkspaceTitle(name);
 			setWorkspaceFailureCount(0);
@@ -306,10 +321,11 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 				`${valid.length} invite${valid.length === 1 ? "" : "s"} sent`,
 			);
 		}
-		navigateAfterWelcome(navigate);
+		navigateAfterWelcome(navigate, workspaceSlug);
 	};
 
-	const skipInvitesAndFinish = () => navigateAfterWelcome(navigate);
+	const skipInvitesAndFinish = () =>
+		navigateAfterWelcome(navigate, workspaceSlug);
 
 	// ── Close confirmation (only offered from the first slide) ───────────────
 	const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -410,7 +426,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 					title="Skip the welcome tour?"
 					description="You can always come back to set up your workspace later from your dashboard."
 					onCancel={() => setShowCloseConfirm(false)}
-					onConfirm={() => navigateAfterWelcome(navigate)}
+					onConfirm={() => navigateAfterWelcome(navigate, workspaceSlug)}
 				/>
 			)}
 		</DeckShell>

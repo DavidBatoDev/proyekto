@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import {
 	ChevronRight,
 	ClipboardList,
@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 
 interface TeamSettingsLayoutProps {
 	teamId: string;
@@ -21,32 +22,33 @@ export function TeamSettingsLayout({
 	teamName,
 	children,
 }: TeamSettingsLayoutProps) {
+	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
 	const currentPath = useRouterState({
-		select: (state) => state.location.pathname,
+		select: (state) => stripWorkspacePrefix(state.location.pathname),
 	});
 
 	const navItems = [
 		{
 			label: "General",
-			to: `/teams/${teamId}/settings/general`,
+			to: `/w/${workspaceSlug}/teams/${teamId}/settings/general`,
 			icon: Settings,
 			active: currentPath === `/teams/${teamId}/settings/general`,
 		},
 		{
 			label: "Projects",
-			to: `/teams/${teamId}/settings/projects`,
+			to: `/w/${workspaceSlug}/teams/${teamId}/settings/projects`,
 			icon: FolderKanban,
 			active: currentPath.startsWith(`/teams/${teamId}/settings/projects`),
 		},
 		{
 			label: "Time",
-			to: `/teams/${teamId}/settings/time`,
+			to: `/w/${workspaceSlug}/teams/${teamId}/settings/time`,
 			icon: Clock,
 			active: currentPath.startsWith(`/teams/${teamId}/settings/time`),
 		},
 		{
 			label: "Logs",
-			to: `/teams/${teamId}/settings/logs`,
+			to: `/w/${workspaceSlug}/teams/${teamId}/settings/logs`,
 			icon: ClipboardList,
 			active: currentPath.startsWith(`/teams/${teamId}/settings/logs`),
 		},
@@ -97,7 +99,8 @@ export function TeamSettingsLayout({
 							className="mb-5 flex items-center gap-1.5 text-sm font-medium"
 						>
 							<Link
-								to="/teams"
+								to="/w/$workspaceSlug/teams"
+								params={{ workspaceSlug }}
 								className="text-slate-600 transition-colors hover:text-slate-900"
 							>
 								Teams
@@ -107,8 +110,8 @@ export function TeamSettingsLayout({
 								aria-hidden="true"
 							/>
 							<Link
-								to="/teams/$teamId"
-								params={{ teamId }}
+								to="/w/$workspaceSlug/teams/$teamId"
+								params={{ workspaceSlug, teamId }}
 								className="truncate text-slate-600 transition-colors hover:text-slate-900"
 							>
 								{teamName || "Team"}

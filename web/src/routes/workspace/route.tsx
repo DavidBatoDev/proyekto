@@ -1,44 +1,22 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { WorkspaceSettingsLayout } from "@/components/workspace/settings/WorkspaceSettingsLayout";
-import { useAuthStore } from "@/stores/authStore";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import {
+	resolveLastVisitedWorkspace,
+	throwWorkspacePathRedirect,
+} from "@/lib/workspaceRouting";
 
 /**
- * Chrome and auth for every workspace settings page — the same split as
- * `routes/settings/route.tsx`: the layout route owns the guard and the rail so
- * each section renders bare content and a deep link still lands with
- * navigation around it.
- *
- * The URL carries no tenant segment: which workspace these pages act on comes
- * from the selection store, not the path.
+ * Bare /workspace[/settings/…]: forward to /w/<slug>/settings/… for the
+ * last-visited workspace. The settings pages themselves live under
+ * routes/w/$workspaceSlug/settings/; the leaves below this file are empty
+ * shells that keep the bare paths real routes for persisted links.
  */
 export const Route = createFileRoute("/workspace")({
-	beforeLoad: ({ location }) => {
-		if (!useAuthStore.getState().isAuthenticated) {
-			throw redirect({ to: "/auth/login" });
-		}
-		// Bare /workspace has no page of its own — land on General instead of an
-		// empty outlet.
-		if (
-			location.pathname === "/workspace" ||
-			location.pathname === "/workspace/"
-		) {
-			throw redirect({ to: "/workspace/settings" });
-		}
+	beforeLoad: async ({ context, location }) => {
+		const workspace = await resolveLastVisitedWorkspace(
+			context.queryClient,
+			location,
+		);
+		if (!workspace) throw redirect({ to: "/dashboard", replace: true });
+		throwWorkspacePathRedirect(location.pathname, workspace.slug);
 	},
-	component: WorkspaceLayout,
 });
-
-function WorkspaceLayout() {
-	return (
-		<ProtectedRoute loadingFallback={null}>
-			<div className="app-shell-bg flex min-h-screen bg-background pt-app-header text-foreground">
-				<div className="min-w-0 flex-1">
-					<WorkspaceSettingsLayout>
-						<Outlet />
-					</WorkspaceSettingsLayout>
-				</div>
-			</div>
-		</ProtectedRoute>
-	);
-}

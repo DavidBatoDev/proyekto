@@ -1,8 +1,9 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, Building2, CreditCard, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 
 interface WorkspaceSettingsLayoutProps {
 	children: ReactNode;
@@ -11,38 +12,38 @@ interface WorkspaceSettingsLayoutProps {
 /**
  * Nav for every workspace settings page — the same rail/content split as
  * AccountSettingsLayout, with the current workspace named in the kicker so the
- * page always says whose settings these are. The URL stays clean (no tenant
- * segment); the workspace comes from the selection store.
+ * page always says whose settings these are. Lives under /w/$workspaceSlug/,
+ * so the workspace is the one in the URL: links carry the slug, and the active
+ * check runs on the path with that prefix stripped.
  */
 export function WorkspaceSettingsLayout({
 	children,
 }: WorkspaceSettingsLayoutProps) {
 	const currentPath = useRouterState({
-		select: (state) => state.location.pathname,
+		select: (state) => stripWorkspacePrefix(state.location.pathname),
 	});
 	const { workspace } = useCurrentWorkspace();
+	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
 
 	const navItems = [
 		{
 			label: "General",
-			to: "/workspace/settings",
+			to: `/w/${workspaceSlug}/settings`,
 			icon: Building2,
 			// Exact match — Members and Billing live under this prefix.
-			active:
-				currentPath === "/workspace/settings" ||
-				currentPath === "/workspace/settings/",
+			active: currentPath === "/settings" || currentPath === "/settings/",
 		},
 		{
 			label: "Members",
-			to: "/workspace/settings/members",
+			to: `/w/${workspaceSlug}/settings/members`,
 			icon: Users,
-			active: currentPath.startsWith("/workspace/settings/members"),
+			active: currentPath.startsWith("/settings/members"),
 		},
 		{
 			label: "Billing",
-			to: "/workspace/settings/billing",
+			to: `/w/${workspaceSlug}/settings/billing`,
 			icon: CreditCard,
-			active: currentPath.startsWith("/workspace/settings/billing"),
+			active: currentPath.startsWith("/settings/billing"),
 		},
 	];
 
@@ -87,7 +88,8 @@ export function WorkspaceSettingsLayout({
 						{/* Leaves workspace settings entirely, so it must not read as a tab. */}
 						<div className="mt-5 border-t border-border pt-5">
 							<Link
-								to="/dashboard"
+								to="/w/$workspaceSlug/dashboard"
+								params={{ workspaceSlug }}
 								className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 							>
 								<ArrowLeft className="h-4 w-4" />
@@ -119,7 +121,7 @@ export function WorkspaceSettingsLayout({
 									</Link>
 								);
 							})}
-							<Link to="/dashboard">
+							<Link to="/w/$workspaceSlug/dashboard" params={{ workspaceSlug }}>
 								<AppNavPill className="gap-1.5">
 									<ArrowLeft className="h-4 w-4" />
 									Dashboard

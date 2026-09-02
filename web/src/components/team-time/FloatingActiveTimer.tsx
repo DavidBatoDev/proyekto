@@ -10,6 +10,7 @@ import {
 	Timer,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useActiveTimer } from "./useActiveTimer";
 
@@ -64,7 +65,9 @@ function workTypeLabel(value: "real_work" | "training"): string {
 }
 
 export function FloatingActiveTimer() {
-	const pathname = useRouterState({ select: (s) => s.location.pathname });
+	const pathname = useRouterState({
+		select: (s) => stripWorkspacePrefix(s.location.pathname),
+	});
 	const shouldRender = shouldShowOnPath(pathname);
 	const [anchor, setAnchor] = useState<TimerAnchor>("bottom-right");
 	const [isCollapsed, setIsCollapsed] = useState(false);

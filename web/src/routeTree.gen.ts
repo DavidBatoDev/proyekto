@@ -14,6 +14,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as StartSellingRouteImport } from './routes/start-selling'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
 import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
@@ -49,6 +50,7 @@ import { Route as ExecutionInvitesRouteImport } from './routes/_execution/invite
 import { Route as ExecutionInboxRouteImport } from './routes/_execution/inbox'
 import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dashboard'
 import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
+import { Route as WWorkspaceSlugRouteRouteImport } from './routes/w/$workspaceSlug/route'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
 import { Route as WorkspaceSettingsIndexRouteImport } from './routes/workspace/settings/index'
@@ -60,6 +62,7 @@ import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/tea
 import { Route as ExecutionEngagementsIndexRouteImport } from './routes/_execution/engagements/index'
 import { Route as WorkspaceSettingsMembersRouteImport } from './routes/workspace/settings/members'
 import { Route as WorkspaceSettingsBillingRouteImport } from './routes/workspace/settings/billing'
+import { Route as WWorkspaceSlugDashboardRouteImport } from './routes/w/$workspaceSlug/dashboard'
 import { Route as MarketplaceTalentSettingsRouteImport } from './routes/marketplace/talent/settings'
 import { Route as MarketplaceTalentGoLiveRouteImport } from './routes/marketplace/talent/go-live'
 import { Route as MarketplaceTalentBrowseRouteImport } from './routes/marketplace/talent/browse'
@@ -79,12 +82,17 @@ import { Route as ExecutionProjectNewRouteImport } from './routes/_execution/pro
 import { Route as ExecutionProjectProjectIdRouteImport } from './routes/_execution/project/$projectId'
 import { Route as ExecutionEngagementsEngagementIdRouteImport } from './routes/_execution/engagements/$engagementId'
 import { Route as ExecutionBriefNewRouteImport } from './routes/_execution/brief/new'
+import { Route as WWorkspaceSlugSettingsRouteRouteImport } from './routes/w/$workspaceSlug/settings/route'
+import { Route as WWorkspaceSlugTeamsIndexRouteImport } from './routes/w/$workspaceSlug/teams/index'
+import { Route as WWorkspaceSlugSettingsIndexRouteImport } from './routes/w/$workspaceSlug/settings/index'
 import { Route as MarketplaceServicesServiceIdIndexRouteImport } from './routes/marketplace/services/$serviceId/index'
 import { Route as MarketplaceFinancePortfolioIndexRouteImport } from './routes/marketplace/finance/_portfolio/index'
 import { Route as MarketplaceCategoryCategorySlugIndexRouteImport } from './routes/marketplace/category/$categorySlug/index'
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as ExecutionBriefBriefIdIndexRouteImport } from './routes/_execution/brief/$briefId/index'
+import { Route as WWorkspaceSlugSettingsMembersRouteImport } from './routes/w/$workspaceSlug/settings/members'
+import { Route as WWorkspaceSlugSettingsBillingRouteImport } from './routes/w/$workspaceSlug/settings/billing'
 import { Route as MarketplaceServicesServiceIdEditRouteImport } from './routes/marketplace/services/$serviceId/edit'
 import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/marketplace/finance/invoices/new'
 import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
@@ -104,6 +112,7 @@ import { Route as ExecutionProjectProjectIdDecisionsRouteImport } from './routes
 import { Route as ExecutionProjectProjectIdChangeRequestsRouteImport } from './routes/_execution/project/$projectId/change-requests'
 import { Route as ExecutionBriefBriefIdEditRouteImport } from './routes/_execution/brief/$briefId/edit'
 import { Route as ExecutionTeamsTeamIdTimeRouteRouteImport } from './routes/_execution/teams/$teamId/time/route'
+import { Route as WWorkspaceSlugTeamsTeamIdIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/index'
 import { Route as MarketplaceCategoryCategorySlugSubcategorySlugIndexRouteImport } from './routes/marketplace/category/$categorySlug/$subcategorySlug/index'
 import { Route as ExecutionTeamsTeamIdTimeIndexRouteImport } from './routes/_execution/teams/$teamId/time/index'
 import { Route as ExecutionTeamsTeamIdSettingsIndexRouteImport } from './routes/_execution/teams/$teamId/settings/index'
@@ -136,9 +145,22 @@ import { Route as ExecutionProjectProjectIdDeliverablesDeliverableIdRouteImport 
 import { Route as ExecutionProjectProjectIdDecisionsDecisionIdRouteImport } from './routes/_execution/project/$projectId/decisions/$decisionId'
 import { Route as ExecutionProjectProjectIdChatChatRefRouteImport } from './routes/_execution/project/$projectId/chat/$chatRef'
 import { Route as ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport } from './routes/_execution/project/$projectId/change-requests/$changeRequestId'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeRouteRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/route'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/index'
+import { Route as WWorkspaceSlugTeamsTeamIdSettingsIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/index'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/index'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeTeamLogsRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/team-logs'
+import { Route as WWorkspaceSlugTeamsTeamIdTimePayoutsRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/payouts'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeMyLogsRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/my-logs'
+import { Route as WWorkspaceSlugTeamsTeamIdSettingsTimeRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/time'
+import { Route as WWorkspaceSlugTeamsTeamIdSettingsProjectsRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/projects'
+import { Route as WWorkspaceSlugTeamsTeamIdSettingsLogsRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/logs'
+import { Route as WWorkspaceSlugTeamsTeamIdSettingsGeneralRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/general'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/$userId'
 import { Route as ExecutionTeamsTeamIdTimeLogLogIdRouteImport } from './routes/_execution/teams/$teamId/time/log/$logId'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/manage-rates/index'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+import { Route as WWorkspaceSlugTeamsTeamIdTimeLogLogIdRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/log/$logId'
 
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
@@ -163,6 +185,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const NotificationsRoute = NotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -340,6 +367,11 @@ const ExecutionCommandCenterRoute = ExecutionCommandCenterRouteImport.update({
   path: '/command-center',
   getParentRoute: () => ExecutionRoute,
 } as any)
+const WWorkspaceSlugRouteRoute = WWorkspaceSlugRouteRouteImport.update({
+  id: '/w/$workspaceSlug',
+  path: '/w/$workspaceSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketplaceFinanceRouteRoute = MarketplaceFinanceRouteRouteImport.update({
   id: '/finance',
   path: '/finance',
@@ -401,6 +433,11 @@ const WorkspaceSettingsBillingRoute =
     path: '/settings/billing',
     getParentRoute: () => WorkspaceRouteRoute,
   } as any)
+const WWorkspaceSlugDashboardRoute = WWorkspaceSlugDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => WWorkspaceSlugRouteRoute,
+} as any)
 const MarketplaceTalentSettingsRoute =
   MarketplaceTalentSettingsRouteImport.update({
     id: '/talent/settings',
@@ -506,6 +543,24 @@ const ExecutionBriefNewRoute = ExecutionBriefNewRouteImport.update({
   path: '/brief/new',
   getParentRoute: () => ExecutionRoute,
 } as any)
+const WWorkspaceSlugSettingsRouteRoute =
+  WWorkspaceSlugSettingsRouteRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsIndexRoute =
+  WWorkspaceSlugTeamsIndexRouteImport.update({
+    id: '/teams/',
+    path: '/teams/',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugSettingsIndexRoute =
+  WWorkspaceSlugSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
+  } as any)
 const MarketplaceServicesServiceIdIndexRoute =
   MarketplaceServicesServiceIdIndexRouteImport.update({
     id: '/services/$serviceId/',
@@ -541,6 +596,18 @@ const ExecutionBriefBriefIdIndexRoute =
     id: '/brief/$briefId/',
     path: '/brief/$briefId/',
     getParentRoute: () => ExecutionRoute,
+  } as any)
+const WWorkspaceSlugSettingsMembersRoute =
+  WWorkspaceSlugSettingsMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
+  } as any)
+const WWorkspaceSlugSettingsBillingRoute =
+  WWorkspaceSlugSettingsBillingRouteImport.update({
+    id: '/billing',
+    path: '/billing',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
   } as any)
 const MarketplaceServicesServiceIdEditRoute =
   MarketplaceServicesServiceIdEditRouteImport.update({
@@ -654,6 +721,12 @@ const ExecutionTeamsTeamIdTimeRouteRoute =
     id: '/time',
     path: '/time',
     getParentRoute: () => ExecutionTeamsTeamIdRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdIndexRoute =
+  WWorkspaceSlugTeamsTeamIdIndexRouteImport.update({
+    id: '/teams/$teamId/',
+    path: '/teams/$teamId/',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
   } as any)
 const MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute =
   MarketplaceCategoryCategorySlugSubcategorySlugIndexRouteImport.update({
@@ -847,11 +920,71 @@ const ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute =
     path: '/$changeRequestId',
     getParentRoute: () => ExecutionProjectProjectIdChangeRequestsRoute,
   } as any)
+const WWorkspaceSlugTeamsTeamIdTimeRouteRoute =
+  WWorkspaceSlugTeamsTeamIdTimeRouteRouteImport.update({
+    id: '/teams/$teamId/time',
+    path: '/teams/$teamId/time',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimeIndexRoute =
+  WWorkspaceSlugTeamsTeamIdTimeIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdSettingsIndexRoute =
+  WWorkspaceSlugTeamsTeamIdSettingsIndexRouteImport.update({
+    id: '/teams/$teamId/settings/',
+    path: '/teams/$teamId/settings/',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
 const ExecutionTeamsTeamIdTimeManageRatesIndexRoute =
   ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport.update({
     id: '/manage-rates/',
     path: '/manage-rates/',
     getParentRoute: () => ExecutionTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute =
+  WWorkspaceSlugTeamsTeamIdTimeTeamLogsRouteImport.update({
+    id: '/team-logs',
+    path: '/team-logs',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimePayoutsRoute =
+  WWorkspaceSlugTeamsTeamIdTimePayoutsRouteImport.update({
+    id: '/payouts',
+    path: '/payouts',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute =
+  WWorkspaceSlugTeamsTeamIdTimeMyLogsRouteImport.update({
+    id: '/my-logs',
+    path: '/my-logs',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdSettingsTimeRoute =
+  WWorkspaceSlugTeamsTeamIdSettingsTimeRouteImport.update({
+    id: '/teams/$teamId/settings/time',
+    path: '/teams/$teamId/settings/time',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute =
+  WWorkspaceSlugTeamsTeamIdSettingsProjectsRouteImport.update({
+    id: '/teams/$teamId/settings/projects',
+    path: '/teams/$teamId/settings/projects',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdSettingsLogsRoute =
+  WWorkspaceSlugTeamsTeamIdSettingsLogsRouteImport.update({
+    id: '/teams/$teamId/settings/logs',
+    path: '/teams/$teamId/settings/logs',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute =
+  WWorkspaceSlugTeamsTeamIdSettingsGeneralRouteImport.update({
+    id: '/teams/$teamId/settings/general',
+    path: '/teams/$teamId/settings/general',
+    getParentRoute: () => WWorkspaceSlugRouteRoute,
   } as any)
 const ExecutionTeamsTeamIdTimeManageRatesUserIdRoute =
   ExecutionTeamsTeamIdTimeManageRatesUserIdRouteImport.update({
@@ -865,6 +998,24 @@ const ExecutionTeamsTeamIdTimeLogLogIdRoute =
     path: '/log/$logId',
     getParentRoute: () => ExecutionTeamsTeamIdTimeRouteRoute,
   } as any)
+const WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute =
+  WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRouteImport.update({
+    id: '/manage-rates/',
+    path: '/manage-rates/',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute =
+  WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRouteImport.update({
+    id: '/manage-rates/$userId',
+    path: '/manage-rates/$userId',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute =
+  WWorkspaceSlugTeamsTeamIdTimeLogLogIdRouteImport.update({
+    id: '/log/$logId',
+    path: '/log/$logId',
+    getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -873,6 +1024,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/start-selling': typeof StartSellingRoute
@@ -880,6 +1032,7 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioRouteWithChildren
+  '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
   '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
@@ -908,6 +1061,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsRouteRouteWithChildren
   '/brief/new': typeof ExecutionBriefNewRoute
   '/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
   '/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
@@ -926,6 +1080,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/w/$workspaceSlug/dashboard': typeof WWorkspaceSlugDashboardRoute
   '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements': typeof ExecutionEngagementsIndexRoute
@@ -954,12 +1109,17 @@ export interface FileRoutesByFullPath {
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
+  '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
+  '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
   '/marketplace/category/$categorySlug': typeof MarketplaceCategoryCategorySlugIndexRoute
   '/marketplace/finance/': typeof MarketplaceFinancePortfolioIndexRoute
   '/marketplace/services/$serviceId': typeof MarketplaceServicesServiceIdIndexRoute
+  '/w/$workspaceSlug/settings/': typeof WWorkspaceSlugSettingsIndexRoute
+  '/w/$workspaceSlug/teams': typeof WWorkspaceSlugTeamsIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren
   '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
   '/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
@@ -992,13 +1152,27 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/settings': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time/': typeof ExecutionTeamsTeamIdTimeIndexRoute
   '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
+  '/w/$workspaceSlug/teams/$teamId': typeof WWorkspaceSlugTeamsTeamIdIndexRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/logs': typeof WWorkspaceSlugTeamsTeamIdSettingsLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/projects': typeof WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/time': typeof WWorkspaceSlugTeamsTeamIdSettingsTimeRoute
+  '/w/$workspaceSlug/teams/$teamId/time/my-logs': typeof WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/payouts': typeof WWorkspaceSlugTeamsTeamIdTimePayoutsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/team-logs': typeof WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/settings': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time/': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/start-selling': typeof StartSellingRoute
@@ -1006,6 +1180,7 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioIndexRoute
+  '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
   '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
@@ -1051,6 +1226,7 @@ export interface FileRoutesByTo {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/w/$workspaceSlug/dashboard': typeof WWorkspaceSlugDashboardRoute
   '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements': typeof ExecutionEngagementsIndexRoute
@@ -1078,11 +1254,15 @@ export interface FileRoutesByTo {
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
+  '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
+  '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
   '/marketplace/category/$categorySlug': typeof MarketplaceCategoryCategorySlugIndexRoute
   '/marketplace/services/$serviceId': typeof MarketplaceServicesServiceIdIndexRoute
+  '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsIndexRoute
+  '/w/$workspaceSlug/teams': typeof WWorkspaceSlugTeamsIndexRoute
   '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
   '/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
@@ -1115,9 +1295,22 @@ export interface FileRoutesByTo {
   '/teams/$teamId/settings': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeIndexRoute
   '/marketplace/category/$categorySlug/$subcategorySlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
+  '/w/$workspaceSlug/teams/$teamId': typeof WWorkspaceSlugTeamsTeamIdIndexRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/logs': typeof WWorkspaceSlugTeamsTeamIdSettingsLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/projects': typeof WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/time': typeof WWorkspaceSlugTeamsTeamIdSettingsTimeRoute
+  '/w/$workspaceSlug/teams/$teamId/time/my-logs': typeof WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/payouts': typeof WWorkspaceSlugTeamsTeamIdTimePayoutsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/team-logs': typeof WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/settings': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1128,6 +1321,7 @@ export interface FileRoutesById {
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/start-selling': typeof StartSellingRoute
@@ -1135,6 +1329,7 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinanceRouteRouteWithChildren
+  '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
   '/_execution/command-center': typeof ExecutionCommandCenterRoute
   '/_execution/dashboard': typeof ExecutionDashboardRoute
   '/_execution/inbox': typeof ExecutionInboxRoute
@@ -1163,6 +1358,7 @@ export interface FileRoutesById {
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsRouteRouteWithChildren
   '/_execution/brief/new': typeof ExecutionBriefNewRoute
   '/_execution/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
   '/_execution/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
@@ -1182,6 +1378,7 @@ export interface FileRoutesById {
   '/marketplace/talent/browse': typeof MarketplaceTalentBrowseRoute
   '/marketplace/talent/go-live': typeof MarketplaceTalentGoLiveRoute
   '/marketplace/talent/settings': typeof MarketplaceTalentSettingsRoute
+  '/w/$workspaceSlug/dashboard': typeof WWorkspaceSlugDashboardRoute
   '/workspace/settings/billing': typeof WorkspaceSettingsBillingRoute
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/_execution/engagements/': typeof ExecutionEngagementsIndexRoute
@@ -1210,12 +1407,17 @@ export interface FileRoutesById {
   '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
+  '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
+  '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/_execution/brief/$briefId/': typeof ExecutionBriefBriefIdIndexRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
   '/marketplace/category/$categorySlug/': typeof MarketplaceCategoryCategorySlugIndexRoute
   '/marketplace/finance/_portfolio/': typeof MarketplaceFinancePortfolioIndexRoute
   '/marketplace/services/$serviceId/': typeof MarketplaceServicesServiceIdIndexRoute
+  '/w/$workspaceSlug/settings/': typeof WWorkspaceSlugSettingsIndexRoute
+  '/w/$workspaceSlug/teams/': typeof WWorkspaceSlugTeamsIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren
   '/_execution/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/_execution/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
   '/_execution/project/$projectId/decisions/$decisionId': typeof ExecutionProjectProjectIdDecisionsDecisionIdRoute
@@ -1248,9 +1450,22 @@ export interface FileRoutesById {
   '/_execution/teams/$teamId/settings/': typeof ExecutionTeamsTeamIdSettingsIndexRoute
   '/_execution/teams/$teamId/time/': typeof ExecutionTeamsTeamIdTimeIndexRoute
   '/marketplace/category/$categorySlug/$subcategorySlug/': typeof MarketplaceCategoryCategorySlugSubcategorySlugIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/': typeof WWorkspaceSlugTeamsTeamIdIndexRoute
   '/_execution/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/_execution/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/logs': typeof WWorkspaceSlugTeamsTeamIdSettingsLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/projects': typeof WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/time': typeof WWorkspaceSlugTeamsTeamIdSettingsTimeRoute
+  '/w/$workspaceSlug/teams/$teamId/time/my-logs': typeof WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/payouts': typeof WWorkspaceSlugTeamsTeamIdTimePayoutsRoute
+  '/w/$workspaceSlug/teams/$teamId/time/team-logs': typeof WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute
   '/_execution/teams/$teamId/time/manage-rates/': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/settings/': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time/': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
+  '/w/$workspaceSlug/teams/$teamId/time/manage-rates/': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1261,6 +1476,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/workspace'
     | '/admin'
+    | '/home'
     | '/notifications'
     | '/onboarding'
     | '/start-selling'
@@ -1268,6 +1484,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
+    | '/w/$workspaceSlug'
     | '/command-center'
     | '/dashboard'
     | '/inbox'
@@ -1296,6 +1513,7 @@ export interface FileRouteTypes {
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
+    | '/w/$workspaceSlug/settings'
     | '/brief/new'
     | '/engagements/$engagementId'
     | '/project/$projectId'
@@ -1314,6 +1532,7 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/w/$workspaceSlug/dashboard'
     | '/workspace/settings/billing'
     | '/workspace/settings/members'
     | '/engagements'
@@ -1342,12 +1561,17 @@ export interface FileRouteTypes {
     | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
+    | '/w/$workspaceSlug/settings/billing'
+    | '/w/$workspaceSlug/settings/members'
     | '/brief/$briefId'
     | '/project/roadmap'
     | '/teams/$teamId/'
     | '/marketplace/category/$categorySlug'
     | '/marketplace/finance/'
     | '/marketplace/services/$serviceId'
+    | '/w/$workspaceSlug/settings/'
+    | '/w/$workspaceSlug/teams'
+    | '/w/$workspaceSlug/teams/$teamId/time'
     | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/decisions/$decisionId'
@@ -1380,13 +1604,27 @@ export interface FileRouteTypes {
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time/'
     | '/marketplace/category/$categorySlug/$subcategorySlug'
+    | '/w/$workspaceSlug/teams/$teamId'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/settings/general'
+    | '/w/$workspaceSlug/teams/$teamId/settings/logs'
+    | '/w/$workspaceSlug/teams/$teamId/settings/projects'
+    | '/w/$workspaceSlug/teams/$teamId/settings/time'
+    | '/w/$workspaceSlug/teams/$teamId/time/my-logs'
+    | '/w/$workspaceSlug/teams/$teamId/time/payouts'
+    | '/w/$workspaceSlug/teams/$teamId/time/team-logs'
     | '/teams/$teamId/time/manage-rates'
+    | '/w/$workspaceSlug/teams/$teamId/settings'
+    | '/w/$workspaceSlug/teams/$teamId/time/'
+    | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/workspace'
+    | '/home'
     | '/notifications'
     | '/onboarding'
     | '/start-selling'
@@ -1394,6 +1632,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
+    | '/w/$workspaceSlug'
     | '/command-center'
     | '/dashboard'
     | '/inbox'
@@ -1439,6 +1678,7 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/w/$workspaceSlug/dashboard'
     | '/workspace/settings/billing'
     | '/workspace/settings/members'
     | '/engagements'
@@ -1466,11 +1706,15 @@ export interface FileRouteTypes {
     | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
+    | '/w/$workspaceSlug/settings/billing'
+    | '/w/$workspaceSlug/settings/members'
     | '/brief/$briefId'
     | '/project/roadmap'
     | '/teams/$teamId'
     | '/marketplace/category/$categorySlug'
     | '/marketplace/services/$serviceId'
+    | '/w/$workspaceSlug/settings'
+    | '/w/$workspaceSlug/teams'
     | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/decisions/$decisionId'
@@ -1503,9 +1747,22 @@ export interface FileRouteTypes {
     | '/teams/$teamId/settings'
     | '/teams/$teamId/time'
     | '/marketplace/category/$categorySlug/$subcategorySlug'
+    | '/w/$workspaceSlug/teams/$teamId'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/settings/general'
+    | '/w/$workspaceSlug/teams/$teamId/settings/logs'
+    | '/w/$workspaceSlug/teams/$teamId/settings/projects'
+    | '/w/$workspaceSlug/teams/$teamId/settings/time'
+    | '/w/$workspaceSlug/teams/$teamId/time/my-logs'
+    | '/w/$workspaceSlug/teams/$teamId/time/payouts'
+    | '/w/$workspaceSlug/teams/$teamId/time/team-logs'
     | '/teams/$teamId/time/manage-rates'
+    | '/w/$workspaceSlug/teams/$teamId/settings'
+    | '/w/$workspaceSlug/teams/$teamId/time'
+    | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates'
   id:
     | '__root__'
     | '/'
@@ -1515,6 +1772,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/_execution'
     | '/admin'
+    | '/home'
     | '/notifications'
     | '/onboarding'
     | '/start-selling'
@@ -1522,6 +1780,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
+    | '/w/$workspaceSlug'
     | '/_execution/command-center'
     | '/_execution/dashboard'
     | '/_execution/inbox'
@@ -1550,6 +1809,7 @@ export interface FileRouteTypes {
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
+    | '/w/$workspaceSlug/settings'
     | '/_execution/brief/new'
     | '/_execution/engagements/$engagementId'
     | '/_execution/project/$projectId'
@@ -1569,6 +1829,7 @@ export interface FileRouteTypes {
     | '/marketplace/talent/browse'
     | '/marketplace/talent/go-live'
     | '/marketplace/talent/settings'
+    | '/w/$workspaceSlug/dashboard'
     | '/workspace/settings/billing'
     | '/workspace/settings/members'
     | '/_execution/engagements/'
@@ -1597,12 +1858,17 @@ export interface FileRouteTypes {
     | '/marketplace/finance/_portfolio/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
+    | '/w/$workspaceSlug/settings/billing'
+    | '/w/$workspaceSlug/settings/members'
     | '/_execution/brief/$briefId/'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
     | '/marketplace/category/$categorySlug/'
     | '/marketplace/finance/_portfolio/'
     | '/marketplace/services/$serviceId/'
+    | '/w/$workspaceSlug/settings/'
+    | '/w/$workspaceSlug/teams/'
+    | '/w/$workspaceSlug/teams/$teamId/time'
     | '/_execution/project/$projectId/change-requests/$changeRequestId'
     | '/_execution/project/$projectId/chat/$chatRef'
     | '/_execution/project/$projectId/decisions/$decisionId'
@@ -1635,9 +1901,22 @@ export interface FileRouteTypes {
     | '/_execution/teams/$teamId/settings/'
     | '/_execution/teams/$teamId/time/'
     | '/marketplace/category/$categorySlug/$subcategorySlug/'
+    | '/w/$workspaceSlug/teams/$teamId/'
     | '/_execution/teams/$teamId/time/log/$logId'
     | '/_execution/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/settings/general'
+    | '/w/$workspaceSlug/teams/$teamId/settings/logs'
+    | '/w/$workspaceSlug/teams/$teamId/settings/projects'
+    | '/w/$workspaceSlug/teams/$teamId/settings/time'
+    | '/w/$workspaceSlug/teams/$teamId/time/my-logs'
+    | '/w/$workspaceSlug/teams/$teamId/time/payouts'
+    | '/w/$workspaceSlug/teams/$teamId/time/team-logs'
     | '/_execution/teams/$teamId/time/manage-rates/'
+    | '/w/$workspaceSlug/teams/$teamId/settings/'
+    | '/w/$workspaceSlug/teams/$teamId/time/'
+    | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+    | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1648,11 +1927,13 @@ export interface RootRouteChildren {
   WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  HomeRoute: typeof HomeRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   StartSellingRoute: typeof StartSellingRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
+  WWorkspaceSlugRouteRoute: typeof WWorkspaceSlugRouteRouteWithChildren
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -1701,6 +1982,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -1948,6 +2236,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionCommandCenterRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/w/$workspaceSlug': {
+      id: '/w/$workspaceSlug'
+      path: '/w/$workspaceSlug'
+      fullPath: '/w/$workspaceSlug'
+      preLoaderRoute: typeof WWorkspaceSlugRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/marketplace/finance': {
       id: '/marketplace/finance'
       path: '/finance'
@@ -2024,6 +2319,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/settings/billing'
       preLoaderRoute: typeof WorkspaceSettingsBillingRouteImport
       parentRoute: typeof WorkspaceRouteRoute
+    }
+    '/w/$workspaceSlug/dashboard': {
+      id: '/w/$workspaceSlug/dashboard'
+      path: '/dashboard'
+      fullPath: '/w/$workspaceSlug/dashboard'
+      preLoaderRoute: typeof WWorkspaceSlugDashboardRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
     }
     '/marketplace/talent/settings': {
       id: '/marketplace/talent/settings'
@@ -2158,6 +2460,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionBriefNewRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/w/$workspaceSlug/settings': {
+      id: '/w/$workspaceSlug/settings'
+      path: '/settings'
+      fullPath: '/w/$workspaceSlug/settings'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsRouteRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/teams/': {
+      id: '/w/$workspaceSlug/teams/'
+      path: '/teams'
+      fullPath: '/w/$workspaceSlug/teams'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/settings/': {
+      id: '/w/$workspaceSlug/settings/'
+      path: '/'
+      fullPath: '/w/$workspaceSlug/settings/'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
+    }
     '/marketplace/services/$serviceId/': {
       id: '/marketplace/services/$serviceId/'
       path: '/services/$serviceId'
@@ -2199,6 +2522,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/brief/$briefId'
       preLoaderRoute: typeof ExecutionBriefBriefIdIndexRouteImport
       parentRoute: typeof ExecutionRoute
+    }
+    '/w/$workspaceSlug/settings/members': {
+      id: '/w/$workspaceSlug/settings/members'
+      path: '/members'
+      fullPath: '/w/$workspaceSlug/settings/members'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsMembersRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
+    }
+    '/w/$workspaceSlug/settings/billing': {
+      id: '/w/$workspaceSlug/settings/billing'
+      path: '/billing'
+      fullPath: '/w/$workspaceSlug/settings/billing'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsBillingRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
     }
     '/marketplace/services/$serviceId/edit': {
       id: '/marketplace/services/$serviceId/edit'
@@ -2332,6 +2669,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/teams/$teamId/time'
       preLoaderRoute: typeof ExecutionTeamsTeamIdTimeRouteRouteImport
       parentRoute: typeof ExecutionTeamsTeamIdRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/': {
+      id: '/w/$workspaceSlug/teams/$teamId/'
+      path: '/teams/$teamId'
+      fullPath: '/w/$workspaceSlug/teams/$teamId'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
     }
     '/marketplace/category/$categorySlug/$subcategorySlug/': {
       id: '/marketplace/category/$categorySlug/$subcategorySlug/'
@@ -2557,12 +2901,82 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport
       parentRoute: typeof ExecutionProjectProjectIdChangeRequestsRoute
     }
+    '/w/$workspaceSlug/teams/$teamId/time': {
+      id: '/w/$workspaceSlug/teams/$teamId/time'
+      path: '/teams/$teamId/time'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/'
+      path: '/'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/settings/': {
+      id: '/w/$workspaceSlug/teams/$teamId/settings/'
+      path: '/teams/$teamId/settings'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/settings'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
     '/_execution/teams/$teamId/time/manage-rates/': {
       id: '/_execution/teams/$teamId/time/manage-rates/'
       path: '/manage-rates'
       fullPath: '/teams/$teamId/time/manage-rates'
       preLoaderRoute: typeof ExecutionTeamsTeamIdTimeManageRatesIndexRouteImport
       parentRoute: typeof ExecutionTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/team-logs': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/team-logs'
+      path: '/team-logs'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/team-logs'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeTeamLogsRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/payouts': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/payouts'
+      path: '/payouts'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/payouts'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimePayoutsRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/my-logs': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/my-logs'
+      path: '/my-logs'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/my-logs'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeMyLogsRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/settings/time': {
+      id: '/w/$workspaceSlug/teams/$teamId/settings/time'
+      path: '/teams/$teamId/settings/time'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/settings/time'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsTimeRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/settings/projects': {
+      id: '/w/$workspaceSlug/teams/$teamId/settings/projects'
+      path: '/teams/$teamId/settings/projects'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/settings/projects'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsProjectsRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/settings/logs': {
+      id: '/w/$workspaceSlug/teams/$teamId/settings/logs'
+      path: '/teams/$teamId/settings/logs'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/settings/logs'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsLogsRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/settings/general': {
+      id: '/w/$workspaceSlug/teams/$teamId/settings/general'
+      path: '/teams/$teamId/settings/general'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/settings/general'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRouteImport
+      parentRoute: typeof WWorkspaceSlugRouteRoute
     }
     '/_execution/teams/$teamId/time/manage-rates/$userId': {
       id: '/_execution/teams/$teamId/time/manage-rates/$userId'
@@ -2577,6 +2991,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/teams/$teamId/time/log/$logId'
       preLoaderRoute: typeof ExecutionTeamsTeamIdTimeLogLogIdRouteImport
       parentRoute: typeof ExecutionTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/manage-rates/': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/manage-rates/'
+      path: '/manage-rates'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/manage-rates'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+      path: '/manage-rates/$userId'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/w/$workspaceSlug/teams/$teamId/time/log/$logId': {
+      id: '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
+      path: '/log/$logId'
+      fullPath: '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
+      preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRouteImport
+      parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
     }
   }
 }
@@ -3039,6 +3474,93 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface WWorkspaceSlugSettingsRouteRouteChildren {
+  WWorkspaceSlugSettingsBillingRoute: typeof WWorkspaceSlugSettingsBillingRoute
+  WWorkspaceSlugSettingsMembersRoute: typeof WWorkspaceSlugSettingsMembersRoute
+  WWorkspaceSlugSettingsIndexRoute: typeof WWorkspaceSlugSettingsIndexRoute
+}
+
+const WWorkspaceSlugSettingsRouteRouteChildren: WWorkspaceSlugSettingsRouteRouteChildren =
+  {
+    WWorkspaceSlugSettingsBillingRoute: WWorkspaceSlugSettingsBillingRoute,
+    WWorkspaceSlugSettingsMembersRoute: WWorkspaceSlugSettingsMembersRoute,
+    WWorkspaceSlugSettingsIndexRoute: WWorkspaceSlugSettingsIndexRoute,
+  }
+
+const WWorkspaceSlugSettingsRouteRouteWithChildren =
+  WWorkspaceSlugSettingsRouteRoute._addFileChildren(
+    WWorkspaceSlugSettingsRouteRouteChildren,
+  )
+
+interface WWorkspaceSlugTeamsTeamIdTimeRouteRouteChildren {
+  WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute: typeof WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute
+  WWorkspaceSlugTeamsTeamIdTimePayoutsRoute: typeof WWorkspaceSlugTeamsTeamIdTimePayoutsRoute
+  WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute: typeof WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute
+  WWorkspaceSlugTeamsTeamIdTimeIndexRoute: typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute: typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
+  WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute: typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
+  WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute: typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
+}
+
+const WWorkspaceSlugTeamsTeamIdTimeRouteRouteChildren: WWorkspaceSlugTeamsTeamIdTimeRouteRouteChildren =
+  {
+    WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute:
+      WWorkspaceSlugTeamsTeamIdTimeMyLogsRoute,
+    WWorkspaceSlugTeamsTeamIdTimePayoutsRoute:
+      WWorkspaceSlugTeamsTeamIdTimePayoutsRoute,
+    WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute:
+      WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute,
+    WWorkspaceSlugTeamsTeamIdTimeIndexRoute:
+      WWorkspaceSlugTeamsTeamIdTimeIndexRoute,
+    WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute:
+      WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute,
+    WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute:
+      WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute,
+    WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute:
+      WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute,
+  }
+
+const WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren =
+  WWorkspaceSlugTeamsTeamIdTimeRouteRoute._addFileChildren(
+    WWorkspaceSlugTeamsTeamIdTimeRouteRouteChildren,
+  )
+
+interface WWorkspaceSlugRouteRouteChildren {
+  WWorkspaceSlugSettingsRouteRoute: typeof WWorkspaceSlugSettingsRouteRouteWithChildren
+  WWorkspaceSlugDashboardRoute: typeof WWorkspaceSlugDashboardRoute
+  WWorkspaceSlugTeamsIndexRoute: typeof WWorkspaceSlugTeamsIndexRoute
+  WWorkspaceSlugTeamsTeamIdTimeRouteRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren
+  WWorkspaceSlugTeamsTeamIdIndexRoute: typeof WWorkspaceSlugTeamsTeamIdIndexRoute
+  WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
+  WWorkspaceSlugTeamsTeamIdSettingsLogsRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsLogsRoute
+  WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute
+  WWorkspaceSlugTeamsTeamIdSettingsTimeRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsTimeRoute
+  WWorkspaceSlugTeamsTeamIdSettingsIndexRoute: typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
+}
+
+const WWorkspaceSlugRouteRouteChildren: WWorkspaceSlugRouteRouteChildren = {
+  WWorkspaceSlugSettingsRouteRoute:
+    WWorkspaceSlugSettingsRouteRouteWithChildren,
+  WWorkspaceSlugDashboardRoute: WWorkspaceSlugDashboardRoute,
+  WWorkspaceSlugTeamsIndexRoute: WWorkspaceSlugTeamsIndexRoute,
+  WWorkspaceSlugTeamsTeamIdTimeRouteRoute:
+    WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren,
+  WWorkspaceSlugTeamsTeamIdIndexRoute: WWorkspaceSlugTeamsTeamIdIndexRoute,
+  WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute:
+    WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute,
+  WWorkspaceSlugTeamsTeamIdSettingsLogsRoute:
+    WWorkspaceSlugTeamsTeamIdSettingsLogsRoute,
+  WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute:
+    WWorkspaceSlugTeamsTeamIdSettingsProjectsRoute,
+  WWorkspaceSlugTeamsTeamIdSettingsTimeRoute:
+    WWorkspaceSlugTeamsTeamIdSettingsTimeRoute,
+  WWorkspaceSlugTeamsTeamIdSettingsIndexRoute:
+    WWorkspaceSlugTeamsTeamIdSettingsIndexRoute,
+}
+
+const WWorkspaceSlugRouteRouteWithChildren =
+  WWorkspaceSlugRouteRoute._addFileChildren(WWorkspaceSlugRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MarketplaceRouteRoute: MarketplaceRouteRouteWithChildren,
@@ -3047,11 +3569,13 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  HomeRoute: HomeRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   StartSellingRoute: StartSellingRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,
+  WWorkspaceSlugRouteRoute: WWorkspaceSlugRouteRouteWithChildren,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRoute,

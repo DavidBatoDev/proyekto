@@ -6,6 +6,7 @@ import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDia
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { stripWorkspacePrefix, toWorkspacePath } from "@/lib/workspacePaths";
 import { groupByWorkspace } from "@/lib/workspaceScope";
 import type { Project } from "@/services/project.service";
 import {
@@ -63,7 +64,7 @@ export function SidebarContent() {
 	const user = useUser();
 	const profile = useProfile();
 	const routerState = useRouterState();
-	const currentPath = routerState.location.pathname;
+	const currentPath = stripWorkspacePrefix(routerState.location.pathname);
 
 	const projectsQuery = useDashboardProjectsQuery();
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
@@ -80,6 +81,7 @@ export function SidebarContent() {
 	// project access rather than membership — a consultant inside a client's
 	// project — lands in "Shared with you" instead of disappearing.
 	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const workspaceSlug = currentWorkspace?.slug ?? null;
 	const myWorkspaceIds = useMemo(
 		() => workspaces.map((item) => item.id),
 		[workspaces],
@@ -212,7 +214,7 @@ export function SidebarContent() {
 					{EXECUTION_PRIMARY_NAV_ITEMS.map((item) => (
 						<SidebarNavLink
 							key={item.key}
-							to={item.to}
+							to={toWorkspacePath(item.to, workspaceSlug)}
 							icon={item.icon}
 							label={item.label}
 							active={isExecutionNavItemActive(item, currentPath)}
@@ -224,7 +226,7 @@ export function SidebarContent() {
 					<div className="mb-1 flex items-center justify-between pr-1">
 						<SidebarSectionHeader>Teams</SidebarSectionHeader>
 						<Link
-							to="/teams"
+							to={toWorkspacePath("/teams", workspaceSlug)}
 							className={
 								currentPath === "/teams"
 									? "rounded bg-sidebar-primary p-1 text-sidebar-primary-foreground"
@@ -244,7 +246,7 @@ export function SidebarContent() {
 							icon={<StackedPapersIcon />}
 							label="No teams yet"
 							ctaLabel="Add your first team"
-							ctaTo="/teams"
+							ctaTo={toWorkspacePath("/teams", workspaceSlug)}
 						/>
 					) : (
 						<div className="space-y-0.5">
@@ -252,6 +254,7 @@ export function SidebarContent() {
 								const expanded = t.id === openTeamId;
 								return (
 									<TeamSidebarGroup
+										workspaceSlug={workspaceSlug}
 										key={t.id}
 										team={t}
 										isExpanded={expanded}
@@ -271,6 +274,7 @@ export function SidebarContent() {
 									const expanded = t.id === openTeamId;
 									return (
 										<TeamSidebarGroup
+											workspaceSlug={workspaceSlug}
 											key={t.id}
 											team={t}
 											isExpanded={expanded}

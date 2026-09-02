@@ -1,5 +1,6 @@
 import { Clock, House, Settings } from "lucide-react";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { toWorkspacePath } from "@/lib/workspacePaths";
 import type { Team } from "@/services/teams.service";
 import { CollapsibleNavGroup, SidebarSubLink } from "./SidebarPrimitives";
 
@@ -8,11 +9,15 @@ export function TeamSidebarGroup({
 	isExpanded,
 	onToggle,
 	currentPath,
+	workspaceSlug,
 }: {
 	team: Team;
 	isExpanded: boolean;
 	onToggle: () => void;
+	/** Already stripped of any /w/<slug> prefix by the caller. */
 	currentPath: string;
+	/** Null only while the workspace list loads; links then stay bare and ride the redirect stubs. */
+	workspaceSlug: string | null;
 }) {
 	const teamActive =
 		currentPath.startsWith(`/teams/${team.id}`) ||
@@ -22,7 +27,7 @@ export function TeamSidebarGroup({
 		{
 			label: "Home",
 			icon: House,
-			to: `/teams/${team.id}`,
+			to: toWorkspacePath(`/teams/${team.id}`, workspaceSlug),
 			active: currentPath === `/teams/${team.id}`,
 		},
 		// Time + rates only show once the team owner has enabled time
@@ -33,7 +38,7 @@ export function TeamSidebarGroup({
 					{
 						label: "Time",
 						icon: Clock,
-						to: `/teams/${team.id}/time`,
+						to: toWorkspacePath(`/teams/${team.id}/time`, workspaceSlug),
 						active: currentPath.startsWith(`/teams/${team.id}/time`),
 					},
 				]
@@ -41,7 +46,7 @@ export function TeamSidebarGroup({
 		{
 			label: "Settings",
 			icon: Settings,
-			to: `/teams/${team.id}/settings`,
+			to: toWorkspacePath(`/teams/${team.id}/settings`, workspaceSlug),
 			active: currentPath.startsWith(`/teams/${team.id}/settings`),
 		},
 	];

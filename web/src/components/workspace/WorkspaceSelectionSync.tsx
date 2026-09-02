@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useMyWorkspacesQuery } from "@/hooks/useWorkspaceQueries";
+import { pickDefaultWorkspace } from "@/lib/workspaceRouting";
 import { useUser } from "@/stores/authStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -11,7 +12,12 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * a shared machine. So the selection is always reconciled against the list the
  * server actually returned, and a stale id is replaced rather than trusted.
  *
- * Renders nothing; mounted once near the router.
+ * On a /w/<slug>/ page the URL is the source of truth and the layout mirrors
+ * it into the store; this component never fights that — it only ever replaces
+ * an id that is absent from the list.
+ *
+ * Renders nothing; mounted once beside the router, outside it, so it must not
+ * read route params.
  */
 export function WorkspaceSelectionSync() {
 	const user = useUser();
@@ -48,22 +54,14 @@ export function WorkspaceSelectionSync() {
 		);
 		if (stillAMember) return;
 
-		if (workspaces.length === 0) {
+		const fallback = pickDefaultWorkspace(workspaces);
+		if (!fallback) {
 			// Genuinely none — the provisioning backstop failed or the user left
 			// every workspace. Leave the selection null; consumers read that as
 			// "omit workspace_id and let the backend default".
 			if (currentWorkspaceId !== null) setCurrentWorkspace(null, user.id);
 			return;
 		}
-
-		// Prefer one they own. The list already arrives ordered by
-		// `workspace_members.joined_at`, which is the backend's definition of the
-		// default workspace — re-sorting by `workspaces.created_at` here would
-		// pick a different one for anyone owning several, and the app would then
-		// disagree with the workspace the server files their new work into.
-		const fallback =
-			workspaces.find((workspace) => workspace.my_role === "owner") ??
-			workspaces[0];
 		setCurrentWorkspace(fallback.id, user.id);
 	}, [
 		user?.id,

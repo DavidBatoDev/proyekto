@@ -91,6 +91,8 @@ const OWNED_WORKSPACE = {
 	created_at: "2026-01-02T00:00:00Z",
 	updated_at: "2026-01-02T00:00:00Z",
 	my_role: "owner" as const,
+	slug: "owned-workspace",
+	previous_slugs: [],
 };
 
 // Older than the owned one — the prefill must skip it anyway.
@@ -100,6 +102,8 @@ const MEMBER_WORKSPACE = {
 	name: "Someone Else's Org",
 	created_at: "2026-01-01T00:00:00Z",
 	my_role: "member" as const,
+	slug: "member-workspace",
+	previous_slugs: [],
 };
 
 import { ClientTalentWelcomeDeck } from "./welcome";
@@ -300,7 +304,10 @@ describe("welcome deck — invite step", () => {
 			role: "member",
 		});
 		await waitFor(() =>
-			expect(navigate).toHaveBeenCalledWith({ to: "/dashboard" }),
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/w/$workspaceSlug/dashboard",
+				params: { workspaceSlug: "owned-workspace" },
+			}),
 		);
 	});
 });

@@ -1,11 +1,18 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Building2, Check, Loader2, Quote, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { MemberDisplay } from "@/components/common/MemberDisplay";
+import { useEnterWorkspace } from "@/hooks/useEnterWorkspace";
 import { useToast } from "@/hooks/useToast";
 import { useRespondWorkspaceInviteMutation } from "@/hooks/useWorkspaceQueries";
-import type { WorkspaceInvite } from "@/services/workspaces.service";
+import { workspaceKeys } from "@/queries/workspaces";
+import {
+	listMyWorkspaces,
+	type WorkspaceInvite,
+} from "@/services/workspaces.service";
+import { useUser } from "@/stores/authStore";
 
 /**
  * "Join our workspace" — the organization tier above teams and projects.
@@ -26,6 +33,9 @@ export function WorkspaceInviteCard({
 	const toast = useToast();
 	const cardRef = useRef<HTMLDivElement | null>(null);
 	const respondMutation = useRespondWorkspaceInviteMutation();
+	const enterWorkspace = useEnterWorkspace();
+	const queryClient = useQueryClient();
+	const user = useUser();
 
 	// Scroll once the card is actually mounted, rather than on query settle, so
 	// a slow list still lands on the right invitation.
@@ -38,10 +48,23 @@ export function WorkspaceInviteCard({
 		respondMutation.mutate(
 			{ inviteId: invite.id, status },
 			{
-				onSuccess: () =>
+				onSuccess: async () => {
 					toast.success(
 						status === "accepted" ? "Invite accepted" : "Invite declined",
-					),
+					);
+					if (status !== "accepted" || !user) return;
+					// Accepting means joining: land on the new workspace's dashboard.
+					// The list is refetched (not read from cache) because the
+					// membership did not exist a moment ago.
+					const workspaces = await queryClient.fetchQuery({
+						queryKey: workspaceKeys.mine(user.id),
+						queryFn: listMyWorkspaces,
+					});
+					const joined = workspaces.find(
+						(workspace) => workspace.id === invite.workspace_id,
+					);
+					if (joined) enterWorkspace(joined);
+				},
 				onError: (err) => toast.error((err as Error).message),
 			},
 		);

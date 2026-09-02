@@ -1,3 +1,5 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Building2, Loader2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { workspaceMemberName } from "@/components/workspace/settings/memberName";
@@ -7,7 +9,13 @@ import {
 	useUpdateWorkspaceMutation,
 	useWorkspaceMembersQuery,
 } from "@/hooks/useWorkspaceQueries";
+import {
+	isValidWorkspaceSlug,
+	normalizeWorkspaceSlug,
+} from "@/lib/workspaceSlug";
+import { workspaceKeys } from "@/queries/workspaces";
 import type { Workspace, WorkspaceMember } from "@/services/workspaces.service";
+import { useUser } from "@/stores/authStore";
 
 export function WorkspaceGeneralSettings() {
 	return (
@@ -24,12 +32,22 @@ export function WorkspaceGeneralSettings() {
 function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 	const canEdit =
 		workspace.my_role === "owner" || workspace.my_role === "admin";
+	// Renaming the URL handle breaks every link that carries it, so only an
+	// owner may. The backend enforces the same split.
+	const canEditSlug = workspace.my_role === "owner";
 	const updateWorkspace = useUpdateWorkspaceMutation(workspace.id);
 	const membersQuery = useWorkspaceMembersQuery(workspace.id);
 	const { success, error: toastError } = useToast();
+	const user = useUser();
+	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 
 	const [name, setName] = useState(workspace.name);
 	const [description, setDescription] = useState(workspace.description ?? "");
+	const [slug, setSlug] = useState(workspace.slug);
+	const slugChanged = canEditSlug && slug !== workspace.slug;
+	const slugValid = isValidWorkspaceSlug(slug);
+	const origin = typeof window === "undefined" ? "" : window.location.origin;
 
 	const owners = (membersQuery.data ?? []).filter(
 		(member) => member.role === "owner",
@@ -37,16 +55,42 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 
 	const dirty =
 		name.trim() !== workspace.name ||
-		description.trim() !== (workspace.description ?? "");
+		description.trim() !== (workspace.description ?? "") ||
+		slugChanged;
 
 	const onSubmit = (event: FormEvent) => {
 		event.preventDefault();
 		const trimmedName = name.trim();
 		if (!trimmedName || !dirty || updateWorkspace.isPending) return;
+		if (slugChanged && !slugValid) return;
 		updateWorkspace.mutate(
-			{ name: trimmedName, description: description.trim() },
 			{
-				onSuccess: () => success("Workspace updated."),
+				name: trimmedName,
+				description: description.trim(),
+				...(slugChanged ? { slug } : {}),
+			},
+			{
+				onSuccess: (updated) => {
+					success("Workspace updated.");
+					if (updated.slug === workspace.slug) return;
+					// The page's own URL just changed. Patch the cached list first so
+					// the /w/$workspaceSlug layout resolves the new handle without a
+					// round trip, then move to it.
+					if (user?.id) {
+						queryClient.setQueryData<Workspace[]>(
+							workspaceKeys.mine(user.id),
+							(list) =>
+								list?.map((item) =>
+									item.id === updated.id ? { ...item, ...updated } : item,
+								),
+						);
+					}
+					void navigate({
+						to: "/w/$workspaceSlug/settings",
+						params: { workspaceSlug: updated.slug },
+						replace: true,
+					});
+				},
 				onError: (err) =>
 					toastError(
 						err instanceof Error ? err.message : "Failed to update workspace",
@@ -92,6 +136,52 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 
 						<div>
 							<label
+								htmlFor="workspace-slug"
+								className="block text-sm font-medium text-foreground"
+							>
+								URL handle
+							</label>
+							{canEditSlug ? (
+								<>
+									<div className="mt-1.5 flex w-full max-w-md items-stretch overflow-hidden rounded-xl border border-border bg-background focus-within:border-primary">
+										<span className="flex select-none items-center border-r border-border bg-muted px-3 text-sm text-muted-foreground">
+											/w/
+										</span>
+										<input
+											id="workspace-slug"
+											type="text"
+											value={slug}
+											onChange={(event) =>
+												setSlug(normalizeWorkspaceSlug(event.target.value))
+											}
+											spellCheck={false}
+											autoComplete="off"
+											aria-invalid={slugChanged && !slugValid}
+											className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+										/>
+									</div>
+									<p className="mt-1.5 text-xs text-muted-foreground">
+										{slugChanged && !slugValid
+											? "Use 3 to 60 lowercase letters, numbers, and single hyphens."
+											: slugChanged
+												? "Old links keep working: they redirect to the new handle."
+												: `${origin}/w/${workspace.slug}/dashboard`}
+									</p>
+								</>
+							) : (
+								<>
+									<p className="mt-1.5 text-sm text-muted-foreground">
+										{origin}/w/{workspace.slug}/dashboard
+									</p>
+									<p className="mt-1 text-xs text-muted-foreground">
+										Only the workspace owner can change the URL handle.
+									</p>
+								</>
+							)}
+						</div>
+
+						<div>
+							<label
 								htmlFor="workspace-description"
 								className="block text-sm font-medium text-foreground"
 							>
@@ -113,7 +203,12 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 						<div className="flex items-center gap-3">
 							<button
 								type="submit"
-								disabled={!dirty || !name.trim() || updateWorkspace.isPending}
+								disabled={
+									!dirty ||
+									!name.trim() ||
+									(slugChanged && !slugValid) ||
+									updateWorkspace.isPending
+								}
 								className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{updateWorkspace.isPending ? (
@@ -131,6 +226,12 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 							</p>
 							<p className="mt-1 text-sm text-muted-foreground">
 								{workspace.name}
+							</p>
+						</div>
+						<div>
+							<p className="text-sm font-medium text-foreground">URL handle</p>
+							<p className="mt-1 text-sm text-muted-foreground">
+								{origin}/w/{workspace.slug}/dashboard
 							</p>
 						</div>
 						<div>

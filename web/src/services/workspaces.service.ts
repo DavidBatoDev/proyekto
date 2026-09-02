@@ -27,6 +27,13 @@ export interface WorkspaceSubscription {
 export interface Workspace {
 	id: string;
 	name: string;
+	/** URL handle: the organization lives at /w/<slug>/. Owner-editable. */
+	slug: string;
+	/**
+	 * Handles this workspace used to have, newest first. A link carrying one of
+	 * these redirects to the current slug; nothing else can take them.
+	 */
+	previous_slugs: string[];
 	description: string | null;
 	avatar_url: string | null;
 	created_by: string | null;
@@ -101,6 +108,8 @@ export interface UpdateWorkspacePatch {
 	name?: string;
 	description?: string;
 	avatar_url?: string;
+	/** Owner-only on the server; a taken or reserved handle comes back as 409. */
+	slug?: string;
 }
 
 export interface InviteWorkspaceMemberInput {

@@ -9,13 +9,13 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
+import { useEnterWorkspace } from "@/hooks/useEnterWorkspace";
 import {
 	useCreateWorkspaceMutation,
 	useCurrentWorkspace,
 } from "@/hooks/useWorkspaceQueries";
 import type { Workspace } from "@/services/workspaces.service";
 import { useUser } from "@/stores/authStore";
-import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { WorkspaceInviteDialog } from "./WorkspaceInviteDialog";
 
 function initials(name: string): string {
@@ -35,10 +35,8 @@ function initials(name: string): string {
 export function WorkspaceSwitcher() {
 	const user = useUser();
 	const { workspace, workspaces, isLoading } = useCurrentWorkspace();
-	const setCurrentWorkspace = useWorkspaceStore(
-		(state) => state.setCurrentWorkspace,
-	);
 	const createWorkspace = useCreateWorkspaceMutation();
+	const enterWorkspace = useEnterWorkspace();
 
 	const [open, setOpen] = useState(false);
 	const [creating, setCreating] = useState(false);
@@ -61,18 +59,27 @@ export function WorkspaceSwitcher() {
 		);
 	}
 
-	const select = (next: Workspace) => {
-		setCurrentWorkspace(next.id, user.id);
+	// Switching lands on /w/<slug>/dashboard of the workspace just entered,
+	// showing its skeletons while the data loads — the same move whether you
+	// were on a settings page, deep in a project, or already on a dashboard.
+	// The move itself (store, cache resets, navigation) lives in
+	// useEnterWorkspace so creating and invite-accept behave identically.
+	const enter = (next: Pick<Workspace, "id" | "slug">) => {
 		setOpen(false);
+		setCreating(false);
+		enterWorkspace(next);
+	};
+
+	const select = (next: Workspace) => {
+		enter(next);
 	};
 
 	const submitNew = async () => {
 		const name = newName.trim();
 		if (!name) return;
-		await createWorkspace.mutateAsync({ name });
+		const created = await createWorkspace.mutateAsync({ name });
 		setNewName("");
-		setCreating(false);
-		setOpen(false);
+		enter(created);
 	};
 
 	const label = workspace?.name ?? "No workspace";
@@ -162,7 +169,8 @@ export function WorkspaceSwitcher() {
 							<>
 								{workspace && (
 									<Link
-										to="/workspace/settings"
+										to="/w/$workspaceSlug/settings"
+										params={{ workspaceSlug: workspace.slug }}
 										onClick={() => setOpen(false)}
 										role="menuitem"
 										className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"

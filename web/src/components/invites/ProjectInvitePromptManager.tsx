@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useToast } from "@/hooks/useToast";
+import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 import {
 	type NotificationItem,
 	notificationsService,
@@ -174,7 +175,12 @@ export function ProjectInvitePromptManager() {
 
 	useEffect(() => {
 		if (!isAuthenticated || !profile?.id) return;
-		if (!routerState.location.pathname.startsWith("/dashboard")) return;
+		if (
+			!stripWorkspacePrefix(routerState.location.pathname).startsWith(
+				"/dashboard",
+			)
+		)
+			return;
 		if (!pendingInvites.length || !unreadProjectInviteNotifications.length)
 			return;
 
