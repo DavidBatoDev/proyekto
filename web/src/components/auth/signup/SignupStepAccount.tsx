@@ -1,11 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-	clearAuthContinuation,
-	rememberAuthContinuation,
-} from "@/lib/authContinuation";
-import { useToast } from "../../../hooks/useToast";
-import { supabase } from "../../../lib/supabase";
+import { useGoogleSignIn } from "../../../hooks/useGoogleSignIn";
 import { FloatingInput } from "./FloatingInput";
 import { GoogleButton } from "./SignupButtons";
 import { WizardNav } from "./WizardNav";
@@ -60,36 +55,16 @@ export function SignupStepAccount({
 	onBack,
 	authRedirect,
 }: SignupStepAccountProps) {
-	const toast = useToast();
 	const [errors, setErrors] = useState<FieldErrors>({
 		firstName: "",
 		lastName: "",
 		email: "",
 	});
 
-	const handleGoogleSignIn = async () => {
-		try {
-			rememberAuthContinuation({
-				redirectTo: authRedirect,
-				source: "signup",
-				authMethod: "google",
-			});
-
-			const { error } = await supabase.auth.signInWithOAuth({
-				provider: "google",
-				options: {
-					redirectTo: `${window.location.origin}/auth/callback`,
-				},
-			});
-
-			if (error) throw error;
-		} catch (error) {
-			clearAuthContinuation();
-			toast.error(
-				error instanceof Error ? error.message : "Google sign-in failed",
-			);
-		}
-	};
+	const { signIn: handleGoogleSignIn } = useGoogleSignIn({
+		source: "signup",
+		redirectTo: authRedirect,
+	});
 
 	const validateField = (field: keyof FieldErrors, value: string): string => {
 		if (field === "firstName")

@@ -13,6 +13,7 @@ import {
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
+import { useGoogleSignIn } from "../../hooks/useGoogleSignIn";
 import { useToast } from "../../hooks/useToast";
 import {
 	confirmEmailVerificationCode,
@@ -116,29 +117,15 @@ function RouteComponent() {
 		e.currentTarget.style.boxShadow = "none";
 	}
 
+	const { signIn: googleSignIn, isNative: isNativeGoogle } = useGoogleSignIn({
+		source: "login",
+		redirectTo,
+		onSettled: () => setIsLoading(false),
+	});
+
 	const handleGoogleSignIn = async () => {
 		setIsLoading(true);
-		try {
-			rememberAuthContinuation({
-				redirectTo,
-				source: "login",
-				authMethod: "google",
-			});
-
-			const { error } = await supabase.auth.signInWithOAuth({
-				provider: "google",
-				options: {
-					redirectTo: `${window.location.origin}/auth/callback`,
-				},
-			});
-			if (error) throw error;
-		} catch (error) {
-			clearAuthContinuation();
-			setIsLoading(false);
-			toast.error(
-				error instanceof Error ? error.message : "Google sign-in failed",
-			);
-		}
+		await googleSignIn();
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -547,7 +534,11 @@ function RouteComponent() {
 						alt="Google"
 						style={{ width: "20px", height: "20px", objectFit: "contain" }}
 					/>
-					{isLoading ? "Redirecting to Google..." : "Continue with Google"}
+					{isLoading
+						? isNativeGoogle
+							? "Signing in..."
+							: "Redirecting to Google..."
+						: "Continue with Google"}
 				</button>
 
 				{/* OR divider */}
