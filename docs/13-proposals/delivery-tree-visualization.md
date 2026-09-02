@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-08-07 · **Status:** draft
+> **Last updated:** 2026-09-01 · **Status:** draft
 
 Once projects have a parent and services have roadmaps, there is a shape worth seeing: an
 organization's entire delivery, from the client at the top down to individual roadmaps, on one
@@ -10,8 +10,13 @@ canvas that you zoom into rather than navigate through. This proposes that view 
 tree over `Org → Project → Service → Roadmap` that hands off to the existing roadmap canvas
 rather than trying to replace it.
 
-**Depends on** [organizations-and-services.md](./organizations-and-services.md). Without
-`organizations` and `services` there is no tree to draw.
+**Half the dependency now exists.** The organization level shipped on 2026-09-01 as
+[Workspaces](../11-domains/workspaces/README.md) — so the tree's top level is
+`workspaces` + `workspace_members` + `projects.workspace_id`, not the proposed
+`organizations` with `client_org_id`/`provider_org_id`. The **Service** level is still
+unbuilt and remains a hard dependency: see
+[services-and-multi-roadmap.md](./services-and-multi-roadmap.md). Without `services` there is
+no `Project → Service → Roadmap` fan-out to draw.
 
 ## The levels
 
@@ -191,6 +196,7 @@ render roadmap internals. When this ships, that page should gain a sentence dist
 
 ## See also
 
-- [organizations-and-services.md](./organizations-and-services.md) — the prerequisite structure.
+- [11-domains/workspaces](../11-domains/workspaces/README.md) — the top level of the tree, as shipped.
+- [services-and-multi-roadmap.md](./services-and-multi-roadmap.md) — the remaining prerequisite structure.
 - [Web → roadmap canvas](../04-web/roadmap-canvas.md) — the existing canvas and its dagre note.
 - [Product → roadmap and milestones](../01-product/roadmap-and-milestones.md) — the view principles.

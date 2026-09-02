@@ -1,6 +1,6 @@
 # Feature Domains
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
@@ -17,6 +17,12 @@ vetting. See [Product → roles and capabilities](../01-product/personas.md).
 | --- | --- |
 | [talent/](./talent/README.md) | The Talent position — discovery, project access, delivery, time, and payout boundaries (a full sub-set) |
 | [consultants/](./consultants/README.md) | The Consultant position — vetting, active capabilities, project operation, and consultant-only surfaces (a full sub-set) |
+
+## Organization & billing
+
+| Doc | What's in it |
+| --- | --- |
+| [workspaces/](./workspaces/README.md) | The Workspace tier — the top-level container for teams and projects, the seat pool, invites, and the billing scaffold. **Built, not yet in production** |
 
 ## Delivery lifecycle
 
@@ -45,7 +51,9 @@ vetting. See [Product → roles and capabilities](../01-product/personas.md).
 
 Most domains hang off a **project** and reuse the same spine: `project_access` for
 authorization, `NotificationsModule` for alerts, and the realtime Worker for live
-updates. The roadmap itself has its own sections
+updates. The [Workspace](./workspaces/README.md) tier sits *above* projects as an
+organizational and billing container and deliberately stays out of that spine — it grants
+no project access at all. The roadmap itself has its own sections
 ([Product → roadmap](../01-product/roadmap-and-milestones.md),
 [Agent & Roadmap AI](../05-agent-ai/README.md)).
 

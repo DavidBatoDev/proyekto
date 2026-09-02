@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -14,13 +14,14 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Active talent** | An account with `talent_profiles.status='active'`; this controls public-pool discovery and can be paused or resumed by the owner. |
 | **Project** | The delivery container: roadmap + team + chat + meetings + billing. |
 | **Brief** | A project's structured intent (mission/vision, summary, custom fields) — `project_briefs`. |
-| **Roadmap** | The plan for a project — a tree of epics, features, and tasks. One per project (`roadmaps.project_id` is `UNIQUE`); [a proposal](../13-proposals/organizations-and-services.md#resolving-1-roadmap--1-service) would relax this to one per service. |
+| **Roadmap** | The plan for a project — a tree of epics, features, and tasks. One per project (unique when `roadmaps.project_id` is set, via the partial index `uq_roadmaps_project_id_linked`); [a proposal](../13-proposals/services-and-multi-roadmap.md#resolving-1-roadmap--1-service) would relax this to one per service. |
 | **Epic** | A value-based initiative (e.g. "User Authentication"), not a tech layer. |
 | **Feature** | A time-bound deliverable within an epic; carries the timeline dates. Status is derived from its tasks. |
 | **Task** | The smallest execution unit; has status, assignees, comments, dependencies. |
 | **Milestone** | A timeline checkpoint linked to a set of features (`milestone_features`). |
 | **Canvas view mode** | The four projections of one roadmap — roadmap tree, epic, Gantt/milestones, and kanban. Views are projections, not separate entities. |
-| **Team** | A reusable group of people; attached to projects and curated per project. |
+| **Workspace** | The top-level organizational and billing container (`workspaces`). It owns teams and projects, and `workspace_members` is the billable seat pool. It is **never** an authorization source — a workspace seat grants nothing inside a project. Required at signup. Built 2026-09-01; not yet in production. See [Domains → Workspaces](../11-domains/workspaces/README.md). |
+| **Team** | A reusable group of people; attached to projects and curated per project. Lives in a workspace (`teams.workspace_id`, nullable) but is owned by a user. |
 | **`project_access`** | The authorization row — exactly one per (project, user) since `20260507000130` — carrying a `share_role` (`owner > admin > editor > commenter > viewer`), an `origin` label, and a capabilities delta. |
 | **Team tag** | A freeform descriptive label on a team (`teams.tags text[]`) — cohort, source, intent. Normalized on write (trimmed, deduped, max 20 × 40 chars). Like **Origin** below, it is descriptive only and takes no part in permission resolution. |
 | **Origin** | Provenance of an access grant — *how* someone joined, never what they can do: `direct`, `invited`, `personal_workspace`, `legacy`, or `team:<id>`. It takes no part in permission resolution. The former `client` and `consultant` values were folded into `direct` on 2026-08-18. |
@@ -32,7 +33,7 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Contract position** | One of the two seats on a contract (`contract_positions`) — hirer or provider, each resolved to an existing account by exact email. Two signed positions are what activate an engagement; contracts predating positions stay valid but activate nothing. |
 | **Engagement** | The durable record of who hired whom (`engagements` + `engagement_parties`), created only by the final signature on a two-position contract. It organizes commercial effects (project links, time policy, rates) and is never a source of project authorization. Read at `/engagements`. The term may be renamed "deals" / "deals center" — see the naming note in [Engagements](../14-engagement/README.md). |
 | **Engagement activation** | The `SECURITY DEFINER` RPC (`sign_contract_position_and_activate`) run by the final signature, writing the engagement, its parties, project links, time settings, and rates in one idempotent transaction. Distinct from **Activation** above, which is the project checklist flip. |
-| **Personal workspace** | A project linked one-to-one to its user through `personal_workspaces`; the owner's `project_access` row has `origin='personal_workspace'`. |
+| **Personal project** | A project linked one-to-one to its user through `personal_projects` (renamed from `personal_workspaces` on 2026-09-01, when "workspace" became the organization tier). The owner's `project_access` row still has `origin='personal_workspace'` — the literal was deliberately not renamed. Titled `"<name>'s Space"`. |
 | **Time log** | A billable record of work against a task (`task_time_logs`), rolled into invoices/payouts. |
 | **Payout / Invoice** | The live money paths — manual payouts of approved time, and generated project invoices. |
 | **Guest** | An anonymous user (a `profiles` row with `is_guest`) who can build a roadmap before signing up. |

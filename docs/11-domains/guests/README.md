@@ -1,6 +1,6 @@
 # Guests
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Anonymous users can build a roadmap **before signing up** — typically from the hero
 chat — and their work migrates to a real account when they register. There's no
@@ -31,6 +31,11 @@ On signup, the guest's roadmap(s) migrate to the new authenticated user:
 - `POST /roadmaps/migrate` (rejects guest callers — the *authenticated* user claims
   the guest's work).
 - Web side: `web/src/services/migration.service.ts` orchestrates the handoff.
+- **Guests have no workspace.** `provision_default_workspace` rejects them outright, and the
+  `20260902090400` backfill skips them, so a guest-owned project carries
+  `workspace_id IS NULL`. On conversion, `ProjectsService.createProjectFromRoadmap` resolves
+  the workspace from the **converting** user, so the new project lands in *their*
+  organization. See [Workspaces](../workspaces/README.md).
 
 > Don't confuse this **guest→user** migration with the **Supabase Storage → R2**
 > file migration — different thing, see [Storage & Media](../../08-storage-media/README.md).

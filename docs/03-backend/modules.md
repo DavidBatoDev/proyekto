@@ -1,9 +1,11 @@
 # Modules
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
-The backend is **37 feature modules** under
-[`backend/src/modules/`](../../backend/src/modules/), each self-contained
+The backend is **41 feature modules** under
+[`backend/src/modules/`](../../backend/src/modules/) (counted from directories holding their own
+`*.module.ts`; three further nested modules — `projects/access-sync`, `projects/authorization`,
+and the global `realtime/realtime-publisher` — are not feature modules), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
 actual `.from('…')` calls — the identity domain uses **`user_*`** tables, with
@@ -15,7 +17,7 @@ Modules are grouped by platform responsibility:
 
 ```text
 modules/
-|-- execution/    projects, roadmaps, chat, meetings, teams, time, activity
+|-- execution/    workspaces, projects, roadmaps, chat, meetings, teams, time, activity
 |-- marketplace/  contracts, engagements, invoices, finance, payouts, discovery, profiles
 `-- shared/       auth, users, admin, notifications, infrastructure adapters
 ```
@@ -27,7 +29,8 @@ group-level barrel modules.
 
 | Module | Purpose | Key tables |
 | --- | --- | --- |
-| `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a personal workspace for every user | `profiles` |
+| `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a **workspace then a personal project** for every user, in that order | `profiles` |
+| `workspaces` | The organizational/billing tier — workspaces, the member seat pool, invites, and the plan scaffold. **Never an authorization source.** Built, hosted dev only | `workspaces`, `workspace_members`, `workspace_subscriptions`, `workspace_invites` |
 | `users` | Own-account read/update | `profiles` |
 | `profile` | Full consultant/talent profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
@@ -60,16 +63,33 @@ group-level barrel modules.
 | `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
 | `mcp` | First-party read + write MCP server, Personal Access Tokens, OAuth 2.1 authorization server | `mcp_personal_access_tokens`, `mcp_oauth_clients`, `mcp_oauth_grants` |
 
+> **⚠️ The table above lists 33 of the 41 modules.** Eight exist in source and are not yet
+> detailed here: `delivery`, `postings`, `profile-import`, `project-commerce`,
+> `service-offerings`, `survey`, `talent`, and `qa-fixtures`. Their existence is verified;
+> their purposes and tables are **unverified in this page** — read the source, not this table,
+> for them.
+
 ## Identity & accounts
 
 **`auth`** — Supabase-backed auth (session + email OTP) and lane-free onboarding:
 `PATCH /auth/onboarding/complete` takes an empty body, writes
-`settings.onboarding = { completed_at }`, and provisions a personal workspace for
-every user (no team is auto-provisioned at signup; the `/welcome` deck asks the
-user to create a non-personal one, while the *personal* team is still provisioned
-at vetting approval). Imports
-`ProjectsModule`, `ProfileModule`, `TeamsModule`. Files: `auth.service.ts`,
+`settings.onboarding = { completed_at }`, and then provisions **the workspace first and the
+personal project second** — the order matters, because `provision_personal_project` stamps the
+new project into the caller's default workspace. It returns `workspace_id`,
+`personal_project_id`, a deprecated `personal_workspace_id` alias, and an always-null
+`personal_team_id`. No team is auto-provisioned at signup and the `/welcome` deck no longer
+asks for one; the *personal* team is still provisioned at vetting approval. Imports
+`ProjectsModule`, `ProfileModule`, `TeamsModule`, `WorkspacesModule`. Files: `auth.service.ts`,
 `email-otp.service.ts`.
+
+**`workspaces`** — the organizational and billing tier (`/api/workspaces`). Teams-style
+shape: the service injects `SUPABASE_ADMIN` directly, with **no repository**. It owns
+`WorkspacesService.resolveWorkspaceForWrite`, the single definition of which workspace a new
+team or project lands in, called by `TeamsService`, `ProjectsService`, and guest-roadmap
+conversion. It sends its own invite email (the `workspace_invite_received` notification type
+is deliberately **not** email-eligible, so the outbox does not send a second one). Nothing in
+this module reads or writes `project_access`. Full page:
+[Domains → Workspaces](../11-domains/workspaces/README.md).
 
 **`users`** — thin own-account CRUD over `profiles` (`GET/PATCH /users/me`, plus a
 public `GET /users/:id`).
@@ -218,7 +238,7 @@ screen, and rotating refresh tokens on durable per-connection grants
 ## Structural notes
 
 - **Co-located services** (no separate `*.service.ts`): `uploads`, `applications`, `guests`.
-- **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`. `taxonomy` is repository-backed.
+- **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`, `workspaces`. `taxonomy` is repository-backed.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
 - **Global modules**: `SupabaseModule`, `RedisModule`, `R2Module`,

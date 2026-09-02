@@ -1,6 +1,6 @@
 # Project Structure
 
-> **Last updated:** 2026-08-05 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Where everything lives under `backend/src/`. Two things to internalize: **global
 concerns sit in `config/` and `common/`**, and **every feature is a self-contained
@@ -18,11 +18,12 @@ backend/
     main.ts               Nest bootstrap (middleware, prefix, pipe, filter, interceptors)
     tracing.ts            OpenTelemetry → Google Cloud Trace
     lambda.ts             orphaned Vercel/serverless adapter — NOT deployed
-    app.module.ts         root module: infra + 24 feature modules, Throttler
+    app.module.ts         root module: infra + 41 feature modules, Throttler
     app.controller.ts     GET / health ("status":"ok"), excluded from /api prefix
     config/               global infra providers (see below)
     common/               cross-cutting utilities (see below)
-    modules/              the 24 feature modules
+    modules/              the 41 feature modules, grouped:
+                            execution/  marketplace/  shared/
 ```
 
 ## `config/` — global infra providers
@@ -61,7 +62,7 @@ See [auth-and-guards.md](./auth-and-guards.md) for the guards/decorators and
 Each feature module is a folder with a consistent internal shape:
 
 ```
-modules/<feature>/
+modules/<execution|marketplace|shared>/<feature>/
   <feature>.module.ts             wiring: controllers + providers + { provide: TOKEN, useClass }
   <feature>.controller.ts         HTTP routes + @UseGuards
   <feature>.service.ts            business logic + authorization; exports the Symbol DI token
@@ -78,7 +79,7 @@ Variations you'll see (all intentional):
   `roadmap-ai-sessions`); `chat/` has 4; `teams/` has 3.
 - **Co-located service** — `uploads/`, `applications/`, and `guests/` define their
   `*Service` inside the controller file (no separate service file).
-- **No repository** — `consultants/`, `marketplace/`, `notifications/` query
+- **No repository** — `consultants/`, `marketplace/`, `notifications/`, `workspaces/` query
   Supabase directly from the service; `realtime/` and `audit/` have no tables at all.
 - **Sub-modules** — `projects/` nests `authorization/` and `access-sync/`.
 

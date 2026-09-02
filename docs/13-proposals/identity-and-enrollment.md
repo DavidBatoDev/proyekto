@@ -1,6 +1,6 @@
 # Identity and Enrollment
 
-> **Last updated:** 2026-08-18 · **Status:** draft
+> **Last updated:** 2026-09-01 · **Status:** draft
 
 > **⚠️ Proposed runtime — not built.** P4b's expand schema is applied, but its runtime is
 > inactive; P4c's client projection remains undesigned. Phases 1–3,
@@ -221,12 +221,19 @@ snapshots never reprice. See
 
 ## Decisions to review
 
-> **2026-08-10 reconciliation with
-> [organizations-and-services.md](./organizations-and-services.md):** that proposal's
+> **2026-08-10 reconciliation with the organizations proposal:** that proposal's
 > 2026-08-09 callout noted `account_role` was compatible with progressive organizations.
 > Removing `account_role` does not disturb any of its seven decisions — none depend on
-> account identity — and enrollment shares its core philosophy: progressive, never
-> required, no auto-provisioning. The two proposals compose.
+> account identity — and enrollment shared its core philosophy: progressive, never
+> required, no auto-provisioning. The two proposals composed.
+>
+> **2026-09-01 update:** the organization tier shipped as
+> [Workspaces](../11-domains/workspaces/README.md) and **reversed** that shared philosophy for
+> itself — a workspace is required at signup and server-provisioned, with a full backfill.
+> Enrollment is unaffected: nothing in the workspace tier reads or writes enrollment, and
+> capability still comes from `consultant_profiles` / `talent_profiles` alone. The
+> "progressive, never required" rule still holds for **enrollment**; it no longer holds for
+> the organizational container.
 
 | # | Decision | Rejected alternative |
 | --- | --- | --- |
@@ -240,8 +247,8 @@ snapshots never reprice. See
 
 ## See also
 
-- [organizations-and-services.md](./organizations-and-services.md) — the org tier this
-  composes with.
+- [11-domains/workspaces](../11-domains/workspaces/README.md) — the org tier this composes
+  with, now shipped as "Workspace".
 - [01-product/personas.md](../01-product/personas.md) — the current-state role model this
   replaces.
 - [07-data-and-db/identity-vetting-model.md](../07-data-and-db/identity-vetting-model.md) —

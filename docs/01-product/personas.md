@@ -1,6 +1,6 @@
 # Roles and Capabilities
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Proyekto has **no stored account role**. "Client", "Talent", and "Consultant" are
 words for **market positions** — who pays, who leads, who executes on a given
@@ -52,7 +52,10 @@ Different data answers different authorization questions:
   discoverable; the owner may pause and resume it.
 
 Nothing gates on a declared identity: signup is lane-free, onboarding records only
-`settings.onboarding.completed_at`, and every user gets a personal workspace.
+`settings.onboarding.completed_at`, and every user gets a **workspace** (the organization
+tier — required at signup, with a server-side backstop) and a **personal project**. Neither
+is an identity and neither grants project access; see
+[Domains → Workspaces](../11-domains/workspaces/README.md).
 Consultant capability is earned through the vetting flow: a
 `consultant_applications` record, admin review of the full `user_*` identity, and
 approval, which upserts a verified `consultant_profiles` row. See

@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -116,6 +116,12 @@ Per-type policy also lives there: `email_delay_seconds` (600 for mentions, **180
 DMs** — threads are bursty and usually answered within minutes, so a ten-minute fuse
 would mail people mid-conversation) and `email_default_enabled` (whether users are
 opted in by default).
+
+> **⚠️ Some types are deliberately `email_eligible = false` because the service mails them
+> itself.** `workspace_invite_received` (`20260902090100`, built and on hosted dev only) is
+> seeded that way: `WorkspacesService` sends the invite email directly, exactly as
+> `TeamsService` does for team invites — because an invitee with no account has no
+> notification row to enqueue from. Flipping the flag on those types sends **two** emails.
 
 ### How a mention becomes an email
 

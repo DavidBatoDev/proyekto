@@ -16,7 +16,7 @@
 > That also settles the "two traps" section, whose open design question was an artefact of
 > origin-driven permissions.
 
-> **Last updated:** 2026-08-18 · **Status:** draft
+> **Last updated:** 2026-09-01 · **Status:** draft
 
 When a consultant starts work, the client has to hand over access to a pile of external
 systems: the Canva brand kit, Google Drive, GA4, Google Tag Manager, Search Console, the
@@ -386,5 +386,6 @@ deploy.
 ## See also
 
 - [11-domains/finance](../11-domains/finance/README.md#contract-parties) — where the paying counterparty is recorded now.
-- [organizations-and-services.md](./organizations-and-services.md) — the other half of the
-  client structure work.
+- [services-and-multi-roadmap.md](./services-and-multi-roadmap.md) — the other half of the
+  client structure work (its organization tier shipped as
+  [Workspaces](../11-domains/workspaces/README.md)).

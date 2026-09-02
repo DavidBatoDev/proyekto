@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -18,6 +18,7 @@ gating done in route `beforeLoad` hooks and project components.
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
 | `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
+| `workspace/` | `route.tsx` layout (auth guard + rail; bare `/workspace` redirects to settings) + `settings/{index,members,billing}`. **No tenant segment in the URL** — which workspace the pages act on comes from `useWorkspaceStore`, not the path. Billing is a placeholder |
 | `project/` | `new` (create a project) + `$projectId` layout and tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
@@ -100,13 +101,23 @@ every future taxonomy edit a negotiation between them.
 
 Signup is **lane-free**: a 4-step wizard (Account → Password → Profile → Verify) in
 [`SignupForm.tsx`](../../web/src/components/auth/signup/SignupForm.tsx) with no role
-or lane selection anywhere. `/welcome` shows a single deck (project setup + team
-creation + invites)
-with no role picker, and the OAuth callback completes onboarding unconditionally —
-there is no stored account role to choose. The old lane step, `SignupStepLane.tsx`,
-and `onboardingLane.ts` are deleted; see
+or lane selection anywhere. `/welcome` shows a single deck with no role picker, and the
+OAuth callback completes onboarding unconditionally — there is no stored account role to
+choose. The old lane step, `SignupStepLane.tsx`, and `onboardingLane.ts` are deleted; see
 [Proposals → identity and enrollment](../13-proposals/identity-and-enrollment.md)
 for the rationale.
+
+The deck's slides are `welcome → capabilities → workspace → [theme] → invite` (the theme
+slide only when `featureFlags.themeSystem`):
+
+- **Creating a workspace is required.** It is the organization tier, not the personal project
+  this slide used to rename — see [Domains → Workspaces](../11-domains/workspaces/README.md).
+  It normally *renames* the server-provisioned default (prefilled from the oldest workspace the
+  user **owns**, never one they merely belong to) and only creates when that backstop failed.
+  A "Skip for now" escape hatch appears after a failed lookup or two failed saves.
+- **The "create a team" step is gone**, and the final invite step now invites people to the
+  **workspace** (`POST /api/workspaces/:id/invites`), not to a team or the personal project.
+- Signup is still lane-free — a workspace is a container, not an identity.
 
 > **No `client/` route subtree.** Client-facing surfaces live under `project/`,
 > `dashboard`, and the public `contract/sign/$token` page — `web/src/routes/client/`

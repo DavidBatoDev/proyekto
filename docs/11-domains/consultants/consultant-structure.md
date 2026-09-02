@@ -1,6 +1,6 @@
 # Consultant Structure
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 `consultant_profiles` stores the lifecycle of the vetted marketplace capability.
 It does not duplicate the public profile: presentation and professional facts remain
@@ -35,14 +35,17 @@ the enrollment — `profiles.role` was dropped 2026-08-10 (see
 ## Provisioning
 
 Signup is lane-free and identical for everyone: onboarding writes
-`settings.onboarding.completed_at` and provisions a personal **workspace**. The
-personal **team** is provisioned at admin approval, idempotently and before
-verification, so an active consultant never exists without their required team.
+`settings.onboarding.completed_at` and provisions a **workspace** (the organization tier)
+and then a **personal project**. The personal **team** is provisioned at admin approval,
+idempotently and before verification, so an active consultant never exists without their
+required team.
 
-The `/welcome` deck asks every user to create a team, but that is an ordinary
-user-named team with `is_personal = false`. It does not claim the personal-team
-slot guarded by the partial unique index `teams(owner_id) WHERE is_personal`, so
-`provisionPersonalTeam` at approval still creates the personal team as before.
+Since 2026-09-01 the `/welcome` deck **no longer asks anyone to create a team** — that step
+was removed to make room for the required workspace step. Nothing about the personal-team
+slot changed: it is still guarded by the partial unique index `teams(owner_id) WHERE
+is_personal`, and `provisionPersonalTeam` at approval still creates it as before. The deck's
+invite step now invites people to the workspace, which grants no project access. See
+[Workspaces](../workspaces/README.md).
 
 ## Public directory
 

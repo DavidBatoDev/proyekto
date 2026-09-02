@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-08-19 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
 times across 40 migrations — essentially every domain table), but it is **not the
@@ -36,11 +36,20 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
 | `is_active_consultant(uid)` | Verified consultant enrollment: `consultant_profiles.status = 'verified'` |
 | `is_active_talent(uid)` | Active public-pool enrollment: `talent_profiles.status = 'active'` |
+| `is_workspace_member`, `can_manage_workspace`, `is_workspace_owner` | Workspace standing — **organization surface only, never project access** (built, hosted dev only) |
 
 Both enrollment predicates are `SECURITY DEFINER` with `search_path = public`.
 They deliberately avoid `profiles`: querying `profiles` from its own policy recurses,
 and querying the owner-readable enrollment tables as the caller would hide other
 users' rows.
+
+The three workspace predicates follow the same rule for the same reason: the
+`workspaces` / `workspace_members` / `workspace_subscriptions` / `workspace_invites`
+policies **must** call them rather than inlining an `EXISTS` over `workspace_members`,
+which would recurse. All four tables are write-nowhere for `authenticated` — every
+INSERT/UPDATE/DELETE goes through `WorkspacesService` on the service role. Their
+`owner`/`admin`/`member` vocabulary is **not** `share_role` and grants nothing inside a
+project.
 
 The `share_role` hierarchy is `owner > admin > editor > commenter > viewer`.
 Finance RLS uses consultant-origin owner rows in `project_access`; explicit contract

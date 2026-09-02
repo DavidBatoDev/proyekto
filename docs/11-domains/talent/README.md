@@ -1,6 +1,6 @@
 # Talent
 
-> **Last updated:** 2026-08-12 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Talent are the people who deliver project work — a **market position, not an account
 attribute** (there is no stored account role; `profiles.role` was dropped 2026-08-10).
@@ -28,7 +28,7 @@ eligibility before creating or resuming the enrollment.
 
 ```text
 Signup (lane-free)
-  -> personal workspace
+  -> workspace (required at signup) + personal project
   -> complete profile, rates, portfolio, and identity
   -> go live (`talent_profiles.status='active'`)
   -> active consultant sends a project invite

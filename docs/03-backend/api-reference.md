@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -27,7 +27,7 @@ row says otherwise, the route requires a Supabase JWT
 | POST | /api/auth/password-reset/request | Public | Request password reset |
 | POST | /api/auth/password-reset/confirm | Public | Confirm password reset |
 | GET | /api/auth/profile | Supabase | Current user's profile |
-| PATCH | /api/auth/onboarding/complete | Supabase | Mark onboarding complete (empty body; legacy `lane`/`intent` accepted-but-ignored) |
+| PATCH | /api/auth/onboarding/complete | Supabase | Mark onboarding complete (empty body; legacy `lane`/`intent` accepted-but-ignored). Provisions the **workspace first, then the personal project**; returns `workspace_id`, `personal_project_id`, the deprecated `personal_workspace_id` alias, and an always-null `personal_team_id` |
 | PATCH | /api/auth/profile | Supabase | Update profile |
 
 ## users · `users`
@@ -131,10 +131,37 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 `GET /roadmap-shares/shared-with-me`, comment on shared epic/feature. `GET
 /roadmap-shares/token/:shareToken` is **Public** (the shared-view entry point).
 
+## workspaces · `workspaces`
+
+The organizational/billing tier. All `Supabase`. **Built, applied to hosted dev only.**
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | /api/workspaces | Any member — the switcher list (`my_role`, `member_count`, `plan`) |
+| POST | /api/workspaces | Any authenticated user; creator becomes `owner` |
+| GET | /api/workspaces/me/invites | The invitee |
+| POST | /api/workspaces/me/invites/:inviteId/respond | The invitee only (`accepted` \| `declined`) |
+| GET | /api/workspaces/:id | Any member; owner/admin also get `subscription` + `seats_used` |
+| PATCH | /api/workspaces/:id | owner/admin |
+| DELETE | /api/workspaces/:id | owner |
+| GET | /api/workspaces/:id/members | Any member |
+| PATCH | /api/workspaces/:id/members/:userId | owner/admin; owner-role changes are owner-only |
+| DELETE | /api/workspaces/:id/members/:userId | owner/admin, or self (leave) |
+| POST | /api/workspaces/:id/invites | owner/admin |
+| GET | /api/workspaces/:id/invites | Any member |
+| DELETE | /api/workspaces/:id/invites/:inviteId | owner/admin |
+
+`me/invites` is declared **before** the `:id` routes so `me` is not matched as a workspace id.
+`POST /api/teams` and `POST /api/projects` take an optional `workspace_id`; omitted means the
+caller's default workspace. A workspace must always keep at least one owner.
+
 ## teams · `teams` / `projects/:projectId/teams` / `…/rates`
 
 **`teams`** — list/create (create and update accept `tags: string[]`, normalized
-server-side to at most 20 labels of 40 chars), `GET /teams/me/invites` + respond, workspace defaults,
+server-side to at most 20 labels of 40 chars, and an optional `workspace_id`),
+`GET /teams/me/invites` + respond, `PATCH /teams/preferences/defaults` (the sidebar's default
+team/project — `settings.workspace_defaults`, which predates and is unrelated to the workspace
+tier),
 `GET/PATCH/DELETE /teams/:id`, members list/update/remove, `POST/GET/DELETE
 /teams/:id/invites`. **`project-teams`** (base `projects/:projectId/teams`) — attach/
 detach a team, curated + available members. **`team-member-rates`** (base

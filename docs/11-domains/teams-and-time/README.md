@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -9,11 +9,19 @@ right project access.
 
 ## Teams
 
-A team is owned by any user and reused across projects.
+A team is owned by any user and reused across projects. Since 2026-09-01 it also has an
+organizational home: `teams.workspace_id`, set on create from
+`WorkspacesService.resolveWorkspaceForWrite` (an explicit `workspace_id` on `POST /api/teams`
+requires membership of any role; otherwise the caller's default workspace). It is **nullable,
+`ON DELETE SET NULL`, and permanently so** — a deleted workspace orphans the team rather than
+destroying it. `workspace_id` is on `CreateTeamDto` only and **not** on `UpdateTeamDto`: there
+is no "move team between workspaces" endpoint, because moving one would have to carry its
+projects, rates, and payouts with it. Team access is still `teams.owner_id` + `team_members`;
+the workspace grants nothing. See [Workspaces](../workspaces/README.md).
 
 | Table | Holds |
 | --- | --- |
-| `teams` | The team (rate/time flags, default currency, freeform `tags`) |
+| `teams` | The team (rate/time flags, default currency, freeform `tags`, and a nullable `workspace_id`) |
 | `team_members` | Roster + role (`owner` \| `admin` \| `member`) |
 | `team_invites` | Email invites to join a team |
 | `project_teams` | Attaches a team to a project (primary / contributor) |
@@ -35,13 +43,13 @@ exactly the sense `project_access.origin` is descriptive: nothing in authorizati
 them, and nothing may start. They are set when a team is created (the `/welcome` deck and
 the `/teams` modal) and edited under Team settings → General.
 
-**Where onboarding invites go.** The `/welcome` invite step invites people to the personal
-*workspace project*, not to the team created a step earlier. Team membership alone grants no
-project access — access appears only once a team is attached (`project_teams`) and its
-members are curated in (`project_team_members`), which is what fires the trigger above. A
-variant that invites to the team *and* auto-attaches it to the personal workspace was
-considered and deferred: it changes what a personal workspace is and doubles the invite
-fan-out.
+**Where onboarding invites go — changed 2026-09-01.** The `/welcome` deck no longer creates a
+team at all: that step was removed when the workspace step became required, and the invite step
+now invites people to the **workspace** (`POST /api/workspaces/:id/invites`), not to a team and
+not to the personal project. Nothing about access changed by it — a workspace seat grants no
+project access either. Team membership alone still grants no project access: access appears only
+once a team is attached (`project_teams`) and its members are curated in
+(`project_team_members`), which is what fires the trigger above.
 
 ## Time tracking
 
@@ -78,4 +86,5 @@ team ──attach──► project_teams ──curate──► project_team_memb
 ## See also
 
 - [Product → project lifecycle](../../01-product/project-lifecycle.md) — where teams fit end to end.
+- [Workspaces](../workspaces/README.md) — the container teams now live in, and why it grants nothing.
 - [Finance](../finance/README.md) — what billable time becomes.

@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-08-18 · **Status:** current (all 15 sections written)
+> **Last updated:** 2026-09-01 · **Status:** current (all 15 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -38,9 +38,9 @@ site, so links are relative filesystem paths. Every page carries a
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | **current** |
 | 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | **current** |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | **current** |
-| 11 | [Feature Domains](./11-domains/README.md) | Participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
+| 11 | [Feature Domains](./11-domains/README.md) | Workspaces, participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
-| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, organizations & services, the delivery tree, identity & enrollment | **draft** |
+| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, services & multi-roadmap, the delivery tree, identity & enrollment, pricing tiers | **draft** |
 | 14 | [Engagements](./14-engagement/README.md) | P4b tables, the integration surface, scenarios, lifecycle rules, commercial time, and privacy boundaries | **current** |
 
 > **⚠️ Section 13 is the exception to the current-state rule.** Everything in `00`–`12`

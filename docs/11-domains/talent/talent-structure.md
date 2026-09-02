@@ -1,6 +1,6 @@
 # Talent Structure
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 There is no account-level talent identity. `talent_profiles` is a marketplace
 availability enrollment, not a person type —
@@ -43,12 +43,14 @@ profiles.has_completed_onboarding = true
 profiles.settings.onboarding      = { completed_at: ... }
 ```
 
-The backend then provisions a personal workspace project for every user and records its
-identity in `personal_workspaces`; nobody gets a personal team at signup (consultants get
-one at vetting approval). The `/welcome` deck does ask every user to name a team, but that
-creates an ordinary `is_personal = false` team by user action — no team is auto-provisioned.
-Onboarding is idempotent, and the legacy `lane`/`intent` request fields are accepted but
-ignored.
+The backend then provisions a **workspace** and a **personal project** for every user, in that
+order, recording the personal project's identity in `personal_projects` (renamed from
+`personal_workspaces` on 2026-09-01). Nobody gets a personal team at signup — consultants get
+one at vetting approval — and the `/welcome` deck's team-creation step was removed; the deck
+now asks for a workspace name instead, and its invite step invites to that workspace. Neither
+the workspace nor its seats grant any project access. Onboarding is idempotent, and the legacy
+`lane`/`intent` request fields are accepted but ignored. See
+[Workspaces](../workspaces/README.md).
 
 ## Profile data
 

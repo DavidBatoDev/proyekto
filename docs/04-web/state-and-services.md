@@ -1,15 +1,15 @@
 # State & Services
 
-> **Last updated:** 2026-08-07 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Two kinds of state: **server state** (cached by TanStack Query, fetched through
-per-domain service clients) and a small amount of **client state** (five Zustand
+per-domain service clients) and a small amount of **client state** (six Zustand
 stores). API calls go through two axios instances — one for the backend, one for the
 agent.
 
 ## Zustand stores (`web/src/stores/`)
 
-Exactly five:
+Exactly six:
 
 | Store | Holds |
 | --- | --- |
@@ -18,8 +18,10 @@ Exactly five:
 | `roadmapAiThreadsStore` | Persisted (localStorage) AI thread picker state — active thread per roadmap + draft input. The threads/messages themselves are server state. |
 | `projectSettingsStore` | Persisted UI prefs (sidebar expanded, toggles); migrates the legacy `prdigy-*` key. |
 | `appearanceStore` | Persisted theme/appearance preferences, backing `/settings/appearance` and the theme tokens in `styles.css`. |
+| `workspaceStore` | **Only the open-workspace selection** (`currentWorkspaceId` + the user it was hydrated for), persisted to per-user `localStorage` (`proyekto_current_workspace:<userId>`). The workspace list itself stays in TanStack Query. Read outside React via `getCurrentWorkspaceId()`. |
 
 Everything else is server state — don't add a store for data that lives on the backend.
+`workspaceStore` is the model of that rule: it holds the *selection* and not the rows.
 
 ## API clients (`web/src/api/`)
 

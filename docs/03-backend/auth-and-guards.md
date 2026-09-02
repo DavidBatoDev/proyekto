@@ -1,6 +1,6 @@
 # Authentication & Guards
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Auth is entirely **guard-based** — there is no Express auth middleware. Guards are
 applied **per-controller** with `@UseGuards(...)` (there is no global `APP_GUARD`),
@@ -13,11 +13,18 @@ empty body and writes only `settings.onboarding = { completed_at }`. The DTO
 ([`auth.dto.ts`](../../backend/src/modules/shared/auth/dto/auth.dto.ts)) still declares
 optional `lane` and `intent` fields as accepted-but-ignored legacy — the global
 `forbidNonWhitelisted` ValidationPipe would 400 older web/mobile bundles otherwise.
-Every user gets a personal workspace at onboarding; nobody gets an auto-created
-team. The `/welcome` deck does ask the user to name a team, but that is a user
-action creating an ordinary `is_personal = false` team — the **personal** team is
-still provisioned only at consultant vetting approval, and nothing in the
-onboarding path writes `is_personal`.
+Every user gets a **workspace and then a personal project** at onboarding, in that order
+(`provision_default_workspace` before `provision_personal_project`, because the latter stamps
+the project into the caller's default workspace). Nobody gets an auto-created team: the
+`/welcome` deck's team-creation step was **removed** when the workspace step became required,
+and the **personal** team is still provisioned only at consultant vetting approval — nothing in
+the onboarding path writes `is_personal`. Provisioning a workspace is a server-side backstop, so
+abandoning the deck still leaves the user with one; guests are rejected by the RPC. See
+[Domains → Workspaces](../11-domains/workspaces/README.md).
+
+> **⚠️ A workspace seat is not authorization.** `workspace_members.role`
+> (`owner`/`admin`/`member`) gates the organization surface only. There is no workspace guard,
+> no workspace branch in `resolvePermissions`, and no `project_access` fan-out from membership.
 
 ## The guards
 

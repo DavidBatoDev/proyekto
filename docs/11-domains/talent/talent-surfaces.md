@@ -1,6 +1,6 @@
 # Talent Surfaces
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-09-01 · **Status:** current
 
 Talent uses shared account, team, and project routes. Only two route files retain the legacy
 `talent` namespace: the go-live wizard and an invite redirect. There is no Talent-only
@@ -18,7 +18,8 @@ dashboard subtree.
 
 | Route | Talent access |
 | --- | --- |
-| `/dashboard` | Yes; personal workspace and accessible projects |
+| `/dashboard` | Yes; scoped to the open workspace, with a "Shared with you" group for projects reached through `project_access` outside it |
+| `/workspace/settings/*` | Yes; general and members follow `workspace_members.role`, billing is a placeholder |
 | `/profile/$profileId` | Yes; profile editing follows ownership checks |
 | `/teams`, `/teams/$teamId/*` | Yes according to team membership and team role |
 | `/work-items` (labelled **Board**), `/meetings`, `/inbox`, `/notifications` | Yes; authenticated shared surfaces |
