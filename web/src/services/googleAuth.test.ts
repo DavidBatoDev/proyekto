@@ -110,6 +110,18 @@ describe("googleAuth", () => {
 			expect(sent).toBe(expected);
 		});
 
+		// Regression: passing any scopes array makes the Android provider reject the
+		// call outright ("You CANNOT use scopes without modifying the main activity"),
+		// and it grants openid/email/profile by default anyway.
+		it("asks for no scopes", async () => {
+			const { signInWithGoogleNative } = await load();
+			await signInWithGoogleNative();
+
+			expect(socialLogin.login.mock.calls[0][0].options).not.toHaveProperty(
+				"scopes",
+			);
+		});
+
 		it("uses a fresh nonce per attempt", async () => {
 			const { signInWithGoogleNative } = await load();
 			await signInWithGoogleNative();

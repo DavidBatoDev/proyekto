@@ -4,6 +4,7 @@ import {
 	type FormEvent,
 	type ReactNode,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -26,7 +27,6 @@ interface RoadmapModalLayoutProps {
 	commentPlaceholder?: string;
 	rightPanelTabs?: { id: string; label: string; content: ReactNode }[];
 	defaultRightPanelTabId?: string;
-	autoFocusTitle?: boolean;
 }
 
 export const RoadmapModalLayout = ({
@@ -45,10 +45,21 @@ export const RoadmapModalLayout = ({
 	commentPlaceholder = "Write a comment...",
 	rightPanelTabs,
 	defaultRightPanelTabId,
-	autoFocusTitle,
 }: RoadmapModalLayoutProps) => {
 	const scrollContainerRef = useRef<HTMLFormElement>(null);
+	const titleRef = useRef<HTMLTextAreaElement>(null);
 	const [isScrolled, setIsScrolled] = useState(false);
+
+	// The title is a textarea rather than an input so a long epic or feature
+	// name wraps instead of scrolling out of view, matching the task panel.
+	// It has to be re-measured on open too: while the modal is closed the
+	// textarea is unmounted, so scrollHeight is only meaningful once it is.
+	useLayoutEffect(() => {
+		const textarea = titleRef.current;
+		if (!textarea) return;
+		textarea.style.height = "auto";
+		textarea.style.height = `${textarea.scrollHeight}px`;
+	}, [title]);
 
 	const tabs = useMemo(() => {
 		if (rightPanelTabs?.length) {
@@ -178,23 +189,28 @@ export const RoadmapModalLayout = ({
 
 							{/* Header */}
 							<div className="px-4 pt-12 pb-4 md:px-12 md:pt-6 md:pb-6">
-								<div className="flex items-center gap-3 mb-6">
+								<div className="flex items-start gap-3 mb-6">
 									<button
 										type="button"
 										disabled={isReadOnly}
-										className="w-6 h-6 rounded-full border-2 border-gray-300 hover:border-gray-400 transition-colors shrink-0"
+										className="w-6 h-6 mt-1.5 md:mt-2.5 rounded-full border-2 border-gray-300 hover:border-gray-400 transition-colors shrink-0"
 										aria-label="Mark complete"
 									/>
-									<input
-										type="text"
-										autoFocus={autoFocusTitle}
+									<textarea
+										ref={titleRef}
+										rows={1}
 										value={title}
-										onChange={(e) => onTitleChange(e.target.value)}
+										onChange={(e) =>
+											onTitleChange(e.target.value.replace(/\r?\n/g, " "))
+										}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") e.preventDefault();
+										}}
 										readOnly={isReadOnly}
 										disabled={isReadOnly}
 										placeholder={titlePlaceholder}
 										required
-										className="text-2xl md:text-4xl font-bold text-gray-900 border-none outline-none bg-transparent w-full placeholder:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
+										className="block w-full resize-none overflow-hidden border-none outline-none bg-transparent text-2xl md:text-4xl font-bold leading-tight text-gray-900 placeholder:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
 									/>
 								</div>
 
