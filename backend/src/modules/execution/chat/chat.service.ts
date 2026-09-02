@@ -1319,6 +1319,27 @@ export class ChatService {
       is_private: dto.is_private,
     });
 
+    // Going public → private: prune the participant rows.
+    //
+    // On a public channel those rows are lazy-join bookkeeping — listRooms adds
+    // one for every project member who opens the sidebar — not access anybody
+    // was granted. Left alone they would survive the flip and keep the whole
+    // project inside a channel that now reads as private, so the toggle would
+    // hide nothing. There is no membership to preserve here because there was
+    // none before the flip; keep the actor and the creator so the channel is
+    // not orphaned, and let everyone else be added back deliberately.
+    //
+    // Private → public needs no prune: the rows simply become bookkeeping again.
+    let prunedParticipants = 0;
+    if (dto.is_private === true && room.is_private === false) {
+      const keep = [userId, room.created_by].filter(
+        (id): id is string => typeof id === 'string' && id.length > 0,
+      );
+      prunedParticipants = await this.chatRepo.retainParticipants(roomId, [
+        ...new Set(keep),
+      ]);
+    }
+
     this.audit.log({
       projectId,
       actorId: userId,
@@ -1329,6 +1350,9 @@ export class ChatService {
         name,
         is_archived: dto.is_archived,
         is_private: dto.is_private,
+        ...(prunedParticipants > 0
+          ? { participants_pruned: prunedParticipants }
+          : {}),
       },
     });
     this.notifyProjectRoomsChanged(projectId, roomId);

@@ -29,19 +29,43 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 }));
 
+vi.mock("@/components/roadmap/RoadmapStartDialog", () => ({
+	RoadmapStartTrigger: ({
+		children,
+		className,
+		hierarchyLevel,
+	}: {
+		children?: ReactNode;
+		className?: string;
+		hierarchyLevel?: string;
+	}) => (
+		<button
+			type="button"
+			className={className}
+			data-hierarchy-level={hierarchyLevel}
+		>
+			{children}
+		</button>
+	),
+}));
+
 afterEach(cleanup);
 
 describe("DashboardCreateActions", () => {
-	it("links to project and standalone roadmap creation", () => {
+	it("links to project creation and opens the roadmap chooser", () => {
 		render(<DashboardCreateActions />);
 
 		const projectLink = screen.getByRole("link", { name: /create project/i });
-		const roadmapLink = screen.getByRole("link", { name: /create roadmap/i });
+		const roadmapButton = screen.getByRole("button", {
+			name: /create roadmap/i,
+		});
 
 		expect(projectLink.getAttribute("href")).toBe("/project/new");
 		expect(projectLink.getAttribute("data-hierarchy-level")).toBe("project");
-		expect(roadmapLink.getAttribute("href")).toBe("/roadmap-templates");
-		expect(roadmapLink.getAttribute("data-hierarchy-level")).toBe("roadmap");
+		// The templates gallery used to be this button's only destination. It is
+		// now one of three choices behind the chooser, so there is no href here.
+		expect(screen.queryByRole("link", { name: /create roadmap/i })).toBeNull();
+		expect(roadmapButton.getAttribute("data-hierarchy-level")).toBe("roadmap");
 
 		const notice = screen.getByRole("button", {
 			name: /about roadmap integration/i,

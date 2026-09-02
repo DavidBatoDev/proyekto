@@ -76,6 +76,18 @@ export function ChannelDetailsPanel({
 	const isBusy = leaveChannel.isPending || removeMember.isPending;
 	const canLeave =
 		isPrivate && !!currentUserId && currentMemberIds.has(currentUserId);
+	/**
+	 * Membership is only real on a private channel.
+	 *
+	 * A public channel is visible to every project member (`canViewChannel` in
+	 * the backend's ChatService), and `listChannelMembers` answers with the whole
+	 * project roster rather than the participant table. So Add would pre-create a
+	 * row that the next sidebar load would have created anyway, and Remove would
+	 * delete a row that the same load puts straight back — a button that reads as
+	 * permanent and is not. The way to control who is in a channel is to make it
+	 * private, which is what the settings gear is for.
+	 */
+	const canEditMembership = canManage && isPrivate;
 
 	return (
 		<div className="h-full flex flex-col">
@@ -119,7 +131,7 @@ export function ChannelDetailsPanel({
 				</div>
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-4">
+			<div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-3 py-3 space-y-4">
 				{/* Identity */}
 				<div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
 					<div className="flex items-center gap-2">
@@ -135,9 +147,19 @@ export function ChannelDetailsPanel({
 								{channelName}
 							</p>
 							<p className="text-xs text-slate-500">
-								{isPrivate ? "Private channel" : "Channel"} ·{" "}
-								{channelMembers.length} member
-								{channelMembers.length === 1 ? "" : "s"}
+								{isPrivate ? (
+									<>
+										Private channel · {channelMembers.length} member
+										{channelMembers.length === 1 ? "" : "s"}
+									</>
+								) : (
+									// Not "N members": on a public channel the count is the
+									// project roster, and reading it as an access list is the
+									// whole confusion this panel used to invite.
+									<>
+										Channel · everyone in the project ({channelMembers.length})
+									</>
+								)}
 							</p>
 						</div>
 					</div>
@@ -149,7 +171,7 @@ export function ChannelDetailsPanel({
 						<p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
 							Members
 						</p>
-						{canManage && addableMembers.length > 0 && (
+						{canEditMembership && addableMembers.length > 0 && (
 							<button
 								type="button"
 								onClick={() => setShowAddModal(true)}
@@ -160,6 +182,13 @@ export function ChannelDetailsPanel({
 							</button>
 						)}
 					</div>
+
+					{!isPrivate && (
+						<p className="mb-1.5 px-1 text-xs text-slate-500">
+							Everyone in the project can see this channel. Make it private in
+							settings to choose who joins.
+						</p>
+					)}
 
 					<div className="rounded-xl border border-slate-200 bg-white p-1.5">
 						{membersQuery.isPending ? (
@@ -201,7 +230,7 @@ export function ChannelDetailsPanel({
 												{participant.team ? ` · ${participant.team.name}` : ""}
 											</span>
 										</span>
-										{canManage && (
+										{canEditMembership && (
 											<button
 												type="button"
 												disabled={isBusy}

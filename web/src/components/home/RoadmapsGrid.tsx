@@ -15,6 +15,7 @@ import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
+import { RoadmapStartTrigger } from "@/components/roadmap/RoadmapStartDialog";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import {
 	useTourDemo,
@@ -161,13 +162,10 @@ export function RoadmapsGrid() {
 							MY ROADMAPS
 						</h2>
 					</div>
-					<Link
-						to="/roadmap-templates"
-						className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm"
-					>
+					<RoadmapStartTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm">
 						<Plus className="h-3.5 w-3.5" />
 						New roadmap
-					</Link>
+					</RoadmapStartTrigger>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
 					Each matched project unlocks a consultant-led roadmap for structured
@@ -198,13 +196,10 @@ export function RoadmapsGrid() {
 						Post your project vision to trigger consultant matching and
 						automatically generate your roadmap.
 					</p>
-					<Link
-						to="/roadmap-templates"
-						className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-					>
+					<RoadmapStartTrigger className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
 						<Plus className="h-4 w-4" />
 						Create roadmap
-					</Link>
+					</RoadmapStartTrigger>
 				</div>
 			) : (
 				<>

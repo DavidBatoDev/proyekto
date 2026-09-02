@@ -15,6 +15,50 @@ import { TeamGroupCard } from "./TeamGroupCard";
 import { type PersonAccess, useProjectPeople } from "./useProjectPeople";
 
 /**
+ * A ghost of the real TeamGroupCard: the tinted header strip carrying a team
+ * logo and name, with a couple of member rows beneath it. Three are fanned
+ * behind the empty-state copy so the blank page shows the shape of what
+ * attaching a team produces.
+ */
+function GhostTeamCard({ className }: { className?: string }) {
+	return (
+		<div
+			aria-hidden
+			className={`w-44 overflow-hidden rounded-xl border border-border bg-card shadow-sm ${className ?? ""}`}
+		>
+			<div className="flex items-center gap-2 border-b border-border bg-muted/40 px-2.5 py-2">
+				<span className="h-5 w-5 shrink-0 rounded-md bg-muted-foreground/25" />
+				<span className="h-2 w-1/2 rounded-full bg-muted-foreground/25" />
+			</div>
+			<div className="space-y-2 p-2.5">
+				{[0, 1].map((row) => (
+					<div key={row} className="flex items-center gap-2">
+						<span className="h-4 w-4 shrink-0 rounded-full bg-muted-foreground/20" />
+						<span
+							className={`h-1.5 rounded-full bg-muted-foreground/15 ${
+								row === 0 ? "w-2/3" : "w-1/2"
+							}`}
+						/>
+						<span className="ml-auto h-3 w-6 shrink-0 rounded-full bg-primary/20" />
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+/** The fanned trio, sized to sit above the empty-state copy. */
+function AttachedTeamsIllustration() {
+	return (
+		<div className="relative flex h-28 w-64 items-end justify-center">
+			<GhostTeamCard className="absolute bottom-2 left-0 -rotate-6 opacity-45" />
+			<GhostTeamCard className="absolute bottom-2 right-0 rotate-6 opacity-45" />
+			<GhostTeamCard className="relative z-10 shadow-md" />
+		</div>
+	);
+}
+
+/**
  * Manage which teams are attached to this project — attach, detach, make
  * primary, and see/curate each team's members here. The Members page shows
  * everyone flat; this is where team-level relationships are actually edited.
@@ -124,12 +168,12 @@ export function ProjectTeamsPage({
 
 			{people.groups.length === 0 ? (
 				<AppEmptyState
-					icon={Users}
+					illustration={<AttachedTeamsIllustration />}
 					title="No teams attached"
 					description="Attach a team to bring its members onto this project."
 					action={
 						people.canManageTeams && (
-							<div className="flex items-center gap-2">
+							<>
 								<button
 									type="button"
 									onClick={() => setAttachOpen(true)}
@@ -148,7 +192,7 @@ export function ProjectTeamsPage({
 										Invite a team
 									</button>
 								)}
-							</div>
+							</>
 						)
 					}
 				/>
@@ -159,6 +203,9 @@ export function ProjectTeamsPage({
 							key={group.attachment.team_id}
 							projectId={projectId}
 							group={group}
+							allPeople={people.people}
+							curatedTeamIdsByUserId={people.curatedTeamIdsByUserId}
+							teamNameById={people.teamNameById}
 							canManageTeams={people.canManageTeams}
 							canManageMembers={people.canManageMembers}
 							defaultOpen={

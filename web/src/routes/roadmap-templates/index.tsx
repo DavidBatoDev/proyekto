@@ -4,6 +4,7 @@ import {
 	AppWindow,
 	ArrowUpRight,
 	BrainCircuit,
+	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	Cloud,
@@ -101,6 +102,10 @@ export function RoadmapTemplateCatalogPage() {
 	const [sort, setSort] = useState<
 		"featured" | "newest" | "popular" | "rating"
 	>("featured");
+	// Four full-width fields plus a segmented control is a whole phone screen
+	// standing between the reader and the first template, so below sm everything
+	// except the search box collapses behind a toggle.
+	const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 	const categoryRailRef = useRef<HTMLDivElement>(null);
 	const categoriesQuery = useQuery({
 		queryKey: ["roadmap-template-categories"],
@@ -145,6 +150,16 @@ export function RoadmapTemplateCatalogPage() {
 			sort !== "featured",
 	);
 
+	// What the collapsed panel is hiding. Shown as a badge so a filter that is
+	// doing something is never invisible.
+	const hiddenFilterCount = [
+		tags,
+		difficulty,
+		scheduleKind,
+		sort !== "featured" ? sort : "",
+	].filter(Boolean).length;
+	const collapsedOnMobile = mobileFiltersOpen ? "" : "hidden sm:block";
+
 	const clearFilters = () => {
 		setSearch("");
 		setCategory("");
@@ -183,7 +198,7 @@ export function RoadmapTemplateCatalogPage() {
 						<p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
 							Template marketplace
 						</p>
-						<h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">
+						<h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-5xl">
 							What will you build next?
 						</h1>
 						<p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
@@ -205,13 +220,19 @@ export function RoadmapTemplateCatalogPage() {
 						</button>
 						<div
 							ref={categoryRailRef}
-							className="flex gap-2 overflow-x-auto px-0 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-12"
+							// Full-bleed below sm: the negative margin cancels the section's
+							// px-4 so the rail scrolls edge to edge and the item at the
+							// boundary is visibly cut off rather than looking like the end of
+							// the list. The matching px-4 keeps the first and last items clear
+							// of the screen edge. Snapping stops a flick from parking an icon
+							// half off-screen.
+							className="-mx-4 flex snap-x snap-proximity gap-2 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-12"
 						>
 							<button
 								type="button"
 								onClick={() => setCategory("")}
 								aria-pressed={!category}
-								className="group flex w-[92px] shrink-0 flex-col items-center gap-2 rounded-2xl px-2 py-2 text-center"
+								className="group flex w-[92px] shrink-0 snap-start flex-col items-center gap-2 rounded-2xl px-2 py-2 text-center"
 							>
 								<span
 									className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${
@@ -233,7 +254,7 @@ export function RoadmapTemplateCatalogPage() {
 										type="button"
 										onClick={() => setCategory(item.slug)}
 										aria-pressed={selected}
-										className="group flex w-[92px] shrink-0 flex-col items-center gap-2 rounded-2xl px-2 py-2 text-center"
+										className="group flex w-[92px] shrink-0 snap-start flex-col items-center gap-2 rounded-2xl px-2 py-2 text-center"
 									>
 										<span
 											className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${
@@ -286,6 +307,27 @@ export function RoadmapTemplateCatalogPage() {
 					<div className="flex items-center gap-2 px-1 text-sm font-semibold">
 						<SlidersHorizontal className="h-4 w-4 text-primary" />
 						Filters
+						{hiddenFilterCount > 0 ? (
+							<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary sm:hidden">
+								{hiddenFilterCount}
+								{/* The digit alone means nothing read aloud, and this badge is
+								    the only clue that a collapsed panel is still filtering. */}
+								<span className="sr-only"> filters hidden</span>
+							</span>
+						) : null}
+						<button
+							type="button"
+							onClick={() => setMobileFiltersOpen((open) => !open)}
+							aria-expanded={mobileFiltersOpen}
+							className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-primary sm:hidden"
+						>
+							{mobileFiltersOpen ? "Fewer options" : "More options"}
+							<ChevronDown
+								className={`h-3.5 w-3.5 transition-transform ${
+									mobileFiltersOpen ? "rotate-180" : ""
+								}`}
+							/>
+						</button>
 					</div>
 					<div className="grid flex-1 gap-2 sm:grid-cols-2 xl:flex">
 						<label className="relative">
@@ -303,13 +345,13 @@ export function RoadmapTemplateCatalogPage() {
 							value={tags}
 							onChange={(event) => setTags(event.target.value)}
 							placeholder="Filter by tags"
-							className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary xl:w-52"
+							className={`h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary xl:w-52 ${collapsedOnMobile}`}
 						/>
 						<select
 							value={difficulty}
 							onChange={(event) => setDifficulty(event.target.value)}
 							aria-label="Difficulty"
-							className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground xl:w-40"
+							className={`h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground xl:w-40 ${collapsedOnMobile}`}
 						>
 							<option value="">All levels</option>
 							<option value="beginner">Beginner</option>
@@ -320,7 +362,7 @@ export function RoadmapTemplateCatalogPage() {
 							value={sort}
 							onChange={(event) => setSort(event.target.value as typeof sort)}
 							aria-label="Sort templates"
-							className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground xl:w-40"
+							className={`h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground xl:w-40 ${collapsedOnMobile}`}
 						>
 							<option value="featured">Featured</option>
 							<option value="newest">Newest</option>
@@ -328,7 +370,11 @@ export function RoadmapTemplateCatalogPage() {
 							<option value="rating">Top rated</option>
 						</select>
 					</div>
-					<div className="flex flex-wrap items-center gap-1 rounded-xl bg-muted p-1">
+					<div
+						className={`flex-wrap items-center gap-1 rounded-xl bg-muted p-1 ${
+							mobileFiltersOpen ? "flex" : "hidden sm:flex"
+						}`}
+					>
 						{SCHEDULE_OPTIONS.map((item) => (
 							<button
 								key={item.value}
@@ -395,6 +441,7 @@ export function RoadmapTemplateCatalogPage() {
 									interactive
 									title={template.title}
 									description={template.summary}
+									previewImageUrl={template.preview_url}
 									epics={template.preview.epics}
 									status={
 										<span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground">

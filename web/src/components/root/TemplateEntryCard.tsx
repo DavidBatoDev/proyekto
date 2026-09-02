@@ -25,6 +25,7 @@ export function TemplateEntryCard({
 				interactive
 				title={template.title}
 				description={template.summary}
+				previewImageUrl={template.preview_url}
 				epics={template.preview.epics}
 				status={
 					<span className="shrink-0 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">

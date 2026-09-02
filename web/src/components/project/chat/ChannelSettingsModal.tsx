@@ -134,6 +134,16 @@ export function ChannelSettingsModal({
 							</span>
 						</label>
 
+						{/* Only when actually flipping a public channel private — the
+						    backend prunes the lazy-joined rows on save, and losing the
+						    roster is not something to discover afterwards. */}
+						{isPrivate && !room.is_private && (
+							<p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+								Only you and the channel creator will keep access. Everyone else
+								must be added back.
+							</p>
+						)}
+
 						{!isDefault && (
 							<div className="border-t border-slate-100 pt-3">
 								<button

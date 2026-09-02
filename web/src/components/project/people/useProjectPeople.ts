@@ -73,6 +73,12 @@ export interface ProjectPeople {
 	teamNameById: Record<string, string>;
 	/** Team identity per attached team — rows need the logo, not just the name. */
 	teamById: Record<string, TeamSummary>;
+	/**
+	 * Which attached teams hold a curation (project_team_members) row per
+	 * user — the structural record a team detach actually deletes, unlike
+	 * `PersonAccess.teamIds` which also unions origin labels.
+	 */
+	curatedTeamIdsByUserId: Map<string, Set<string>>;
 	summary: PeopleSummary;
 	canManageMembers: boolean;
 	canManageTeams: boolean;
@@ -292,6 +298,7 @@ export function useProjectPeople(
 		direct,
 		teamNameById,
 		teamById,
+		curatedTeamIdsByUserId,
 		summary,
 		canManageMembers,
 		canManageTeams,

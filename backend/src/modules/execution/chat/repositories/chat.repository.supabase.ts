@@ -519,6 +519,24 @@ export class SupabaseChatRepository implements ChatRepository {
     if (error) throw new Error(error.message);
   }
 
+  async retainParticipants(
+    roomId: string,
+    keepUserIds: string[],
+  ): Promise<number> {
+    // Never let an empty keep-list turn into "delete everyone".
+    if (keepUserIds.length === 0) return 0;
+
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .delete()
+      .eq('room_id', roomId)
+      .not('user_id', 'in', `(${keepUserIds.join(',')})`)
+      .select('user_id');
+
+    if (error) throw new Error(error.message);
+    return data?.length ?? 0;
+  }
+
   async isRoomParticipant(roomId: string, userId: string): Promise<boolean> {
     const { data, error } = await this.supabase
       .from('chat_room_participants')

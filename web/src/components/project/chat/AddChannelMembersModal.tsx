@@ -80,7 +80,7 @@ export function AddChannelMembersModal({
 					</div>
 
 					<div className="px-5 py-4">
-						<div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
+						<div className="max-h-72 overflow-y-auto thin-scrollbar rounded-lg border border-slate-200">
 							{addable.length === 0 ? (
 								<p className="px-3 py-4 text-sm text-slate-400">
 									Everyone in the project is already a member.

@@ -19,7 +19,7 @@ export function ChatSidebarSkeleton({
 }) {
 	return (
 		<aside className="fixed md:static z-40 top-0 left-0 h-full w-[320px] border-r border-gray-200 bg-[#f8f8f9]">
-			<div className="h-full overflow-y-auto">
+			<div className="h-full overflow-y-auto thin-scrollbar">
 				<div className="px-4 py-3 border-b border-gray-200 bg-[#f8f8f9] space-y-3">
 					<PulseBlock className="h-7 w-44 rounded-md" animated={animated} />
 					<div className="flex items-center justify-between">
@@ -96,7 +96,7 @@ export function ChatCenterShellSkeleton({
 				</div>
 			</header>
 
-			<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6 md:py-5">
+			<div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden thin-scrollbar px-3 py-4 md:px-6 md:py-5">
 				<div className="w-full max-w-4xl mr-auto min-w-0 space-y-4">
 					{Array.from({ length: 9 }).map((_, index) => (
 						<div
@@ -161,7 +161,7 @@ export function ChatProfilePanelSkeleton({
 				</div>
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-y-auto px-3 pt-3 pb-4">
+			<div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-3 pt-3 pb-4">
 				<PulseBlock className="h-3 w-28 rounded mb-2" animated={animated} />
 				<div className="rounded-xl border border-gray-200 bg-white p-1.5 space-y-1.5">
 					{Array.from({ length: 8 }).map((_, index) => (

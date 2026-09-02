@@ -10,6 +10,7 @@ import {
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { CreateTeamModal } from "@/components/team/CreateTeamModal";
+import { richTextToPlain } from "@/lib/richText";
 import {
 	listMyTeams,
 	type ProfileSummary,
@@ -160,7 +161,11 @@ function TeamCard({ team }: { team: Team }) {
 function TeamCardSubLine({ team }: { team: Team }) {
 	const role = team.viewer_role;
 	const position = team.viewer_position;
-	const description = team.description ?? (team.is_personal ? "My team" : null);
+	// The column can hold rich HTML since the Overview tab; this is a one-line
+	// summary, so it takes the visible text rather than the markup.
+	const rawDescription =
+		team.description ?? (team.is_personal ? "My team" : null);
+	const description = rawDescription ? richTextToPlain(rawDescription) : null;
 
 	const chip = position ? (
 		<PositionBadge>{position}</PositionBadge>

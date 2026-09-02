@@ -113,6 +113,12 @@ interface AppEmptyStateProps {
 	title: string;
 	description: string;
 	icon?: LucideIcon;
+	/**
+	 * Replaces the icon medallion when a surface has something better to show —
+	 * usually a flat ghost of the card that will fill the space. Wins over
+	 * `icon` when both are given.
+	 */
+	illustration?: ReactNode;
 	action?: ReactNode;
 	className?: string;
 }
@@ -121,6 +127,7 @@ export function AppEmptyState({
 	title,
 	description,
 	icon: Icon,
+	illustration,
 	action,
 	className,
 }: AppEmptyStateProps) {
@@ -131,7 +138,9 @@ export function AppEmptyState({
 				className,
 			)}
 		>
-			{Icon ? (
+			{illustration ? (
+				<div className="mb-5 flex justify-center">{illustration}</div>
+			) : Icon ? (
 				<div className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-600">
 					<Icon className="h-5 w-5" />
 				</div>
@@ -140,7 +149,14 @@ export function AppEmptyState({
 			<p className="mx-auto mt-1 max-w-xl text-sm text-slate-600">
 				{description}
 			</p>
-			{action ? <div className="mt-5">{action}</div> : null}
+			{/* flex + justify-center, not just the parent's text-center: an action
+			    that is itself a flex row (two buttons side by side) is a block
+			    box, and text-center does not move it. */}
+			{action ? (
+				<div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+					{action}
+				</div>
+			) : null}
 		</div>
 	);
 }

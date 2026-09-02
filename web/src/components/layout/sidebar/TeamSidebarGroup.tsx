@@ -1,4 +1,4 @@
-import { Clock, Settings, Users } from "lucide-react";
+import { Clock, House, Settings } from "lucide-react";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import type { Team } from "@/services/teams.service";
 import { CollapsibleNavGroup, SidebarSubLink } from "./SidebarPrimitives";
@@ -20,8 +20,8 @@ export function TeamSidebarGroup({
 
 	const subItems = [
 		{
-			label: "Team",
-			icon: Users,
+			label: "Home",
+			icon: House,
 			to: `/teams/${team.id}`,
 			active: currentPath === `/teams/${team.id}`,
 		},

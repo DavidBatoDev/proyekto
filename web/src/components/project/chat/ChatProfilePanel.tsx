@@ -59,14 +59,14 @@ export function ChatProfilePanel({
 				initial={{ opacity: 0, y: 8 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.2, ease: "easeOut" }}
-				className="flex-1 min-h-0 overflow-y-auto"
+				className="flex-1 min-h-0 overflow-y-auto thin-scrollbar"
 			>
 				{mode === "channel" ? (
 					<div className="px-3 pt-3 pb-2">
 						<p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
 							Project Members
 						</p>
-						<div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5">
+						<div className="max-h-64 overflow-y-auto thin-scrollbar rounded-xl border border-slate-200 bg-white p-1.5">
 							{projectMembers.map((projectMember) => {
 								return (
 									<div

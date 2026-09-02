@@ -176,6 +176,12 @@ export interface Project {
   description?: string;
   status: ProjectStatus;
   owner_id: string;
+  /**
+   * Organizational home. Nullable: ON DELETE SET NULL when a workspace is
+   * removed, and null for a guest's project until they convert. Never an
+   * authorization source — project_access remains the only one.
+   */
+  workspace_id?: string | null;
   duration?: string;
   created_at: string;
   updated_at: string;
@@ -207,6 +213,31 @@ export interface ProjectResourceFolder {
 export interface ProjectResourceLink {
   id: string;
   project_id: string;
+  folder_id?: string | null;
+  title: string;
+  url: string;
+  description?: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamResourceFolder {
+  id: string;
+  team_id: string;
+  name: string;
+  /** Lucide icon token; see the web folder icon map. */
+  icon: string;
+  /** Accent colour token (Tailwind palette name) for the card's top border. */
+  color: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamResourceLink {
+  id: string;
+  team_id: string;
   folder_id?: string | null;
   title: string;
   url: string;

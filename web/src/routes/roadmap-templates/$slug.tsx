@@ -7,6 +7,7 @@ import {
 	instantiateRoadmapTemplate,
 	recordRoadmapTemplateView,
 } from "@/api";
+import { TemplateCoverImage } from "@/components/roadmap/templates/TemplateCoverImage";
 import { TemplateRoadmapFlow } from "@/components/roadmap/templates/TemplateRoadmapFlow";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { projectService } from "@/services/project.service";
@@ -218,7 +219,15 @@ function RoadmapTemplateDetailPage() {
 								: "mt-6 lg:absolute lg:right-8 lg:top-10 lg:mt-0 lg:w-[360px]"
 						}
 					>
-						<div className="rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-(--app-shadow-lg)">
+						<div className="overflow-hidden rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-(--app-shadow-lg)">
+							{/* Full-bleed inside a padded card: the negative margins and the
+							    matching extra width cancel the p-4 on three sides. max-w-none
+							    is required because Tailwind's preflight caps images at 100%,
+							    which would otherwise undo the widening. */}
+							<TemplateCoverImage
+								src={template.preview_url}
+								className="-mx-4 -mt-4 mb-4 h-32 w-[calc(100%+2rem)] max-w-none object-cover"
+							/>
 							<h2 className="text-base font-bold">Use this template</h2>
 							<p className="mt-0.5 text-xs leading-5 text-muted-foreground">
 								Creates an independent copy pinned to version{" "}

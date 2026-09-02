@@ -34,6 +34,26 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 }));
 
+vi.mock("@/components/roadmap/RoadmapStartDialog", () => ({
+	RoadmapStartTrigger: ({
+		children,
+		className,
+		hierarchyLevel,
+	}: {
+		children?: ReactNode;
+		className?: string;
+		hierarchyLevel?: string;
+	}) => (
+		<button
+			type="button"
+			className={className}
+			data-hierarchy-level={hierarchyLevel}
+		>
+			{children}
+		</button>
+	),
+}));
+
 vi.mock("@/components/home/RoadmapPreviewCard", () => ({
 	RoadmapPreviewCard: ({ title }: { title: string }) => (
 		<article>{title}</article>
@@ -72,9 +92,7 @@ describe("RoadmapsGrid", () => {
 		renderGrid();
 
 		expect(await screen.findByText("Existing roadmap")).toBeTruthy();
-		expect(
-			screen.getByRole("link", { name: /new roadmap/i }).getAttribute("href"),
-		).toBe("/roadmap-templates");
+		expect(screen.getByRole("button", { name: /new roadmap/i })).toBeTruthy();
 	});
 
 	it("retains the empty-state creation action", async () => {
@@ -86,12 +104,8 @@ describe("RoadmapsGrid", () => {
 			await screen.findByText("Your first roadmap is taking shape"),
 		).toBeTruthy();
 		expect(
-			screen
-				.getByRole("link", { name: /^create roadmap$/i })
-				.getAttribute("href"),
-		).toBe("/roadmap-templates");
-		expect(
-			screen.getByRole("link", { name: /new roadmap/i }).getAttribute("href"),
-		).toBe("/roadmap-templates");
+			screen.getByRole("button", { name: /^create roadmap$/i }),
+		).toBeTruthy();
+		expect(screen.getByRole("button", { name: /new roadmap/i })).toBeTruthy();
 	});
 });

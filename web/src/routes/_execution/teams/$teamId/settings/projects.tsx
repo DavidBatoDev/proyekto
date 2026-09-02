@@ -1,16 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import {
-	AlertTriangle,
-	FolderKanban,
-	Loader2,
-	Search,
-	Unlink,
-} from "lucide-react";
+import { FolderKanban, Loader2, Search, Unlink } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ModalPortal } from "@/components/common/ModalPortal";
+import { AppDialog } from "@/components/common/AppDialog";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
+import { projectKeys } from "@/queries/project";
 import {
 	detachTeam,
 	getTeam,
@@ -52,7 +47,14 @@ function TeamProjectsSettings() {
 
 	const [filter, setFilter] = useState("");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
-	const [confirmOpen, setConfirmOpen] = useState(false);
+	/** Project ids awaiting detach confirmation — bulk or a single row. */
+	const [pendingDetach, setPendingDetach] = useState<string[] | null>(null);
+	const [detachMode, setDetachMode] = useState<"remove" | "keep">("remove");
+
+	const askDetach = (projectIds: string[]) => {
+		setDetachMode("remove");
+		setPendingDetach(projectIds);
+	};
 
 	const visible = useMemo(() => {
 		const q = filter.trim().toLowerCase();
@@ -85,19 +87,38 @@ function TeamProjectsSettings() {
 	};
 
 	const detachMutation = useMutation({
-		mutationFn: async (projectIds: string[]) => {
+		mutationFn: async ({
+			projectIds,
+			members,
+		}: {
+			projectIds: string[];
+			members: "remove" | "keep";
+		}) => {
 			const results = await Promise.allSettled(
-				projectIds.map((pid) => detachTeam(pid, teamId)),
+				projectIds.map((pid) => detachTeam(pid, teamId, { members })),
 			);
 			const failed = results.filter((r) => r.status === "rejected");
-			return { ok: results.length - failed.length, failed: failed.length };
+			return {
+				ok: results.length - failed.length,
+				failed: failed.length,
+				projectIds,
+			};
 		},
-		onSuccess: ({ ok, failed }) => {
+		onSuccess: ({ ok, failed, projectIds }) => {
 			void queryClient.invalidateQueries({
 				queryKey: ["teams", "projects", teamId],
 			});
+			// The project pages cache their own views of this attachment.
+			for (const pid of projectIds) {
+				void queryClient.invalidateQueries({
+					queryKey: ["project", pid, "teams"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: projectKeys.members(pid),
+				});
+			}
 			setSelected(new Set());
-			setConfirmOpen(false);
+			setPendingDetach(null);
 			if (failed > 0) {
 				toast.error(
 					`Detached ${ok}; ${failed} failed (you may not have permission on those projects).`,
@@ -156,7 +177,7 @@ function TeamProjectsSettings() {
 							</span>
 							<button
 								type="button"
-								onClick={() => setConfirmOpen(true)}
+								onClick={() => askDetach(Array.from(selected.values()))}
 								disabled={
 									!isOwner || selected.size === 0 || detachMutation.isPending
 								}
@@ -205,9 +226,7 @@ function TeamProjectsSettings() {
 											selected={selected.has(row.project_id)}
 											onToggle={() => toggle(row.project_id)}
 											isOwner={isOwner}
-											onDetachOne={() =>
-												detachMutation.mutate([row.project_id])
-											}
+											onDetachOne={() => askDetach([row.project_id])}
 											pending={detachMutation.isPending}
 										/>
 									))}
@@ -228,51 +247,112 @@ function TeamProjectsSettings() {
 				</div>
 			</div>
 
-			{confirmOpen && (
-				<ModalPortal>
-					<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-						<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-							<div className="border-b border-slate-100 bg-rose-50 px-6 py-4">
-								<div className="flex items-center gap-2">
-									<AlertTriangle className="h-5 w-5 text-rose-600" />
-									<h3 className="text-[16px] font-semibold text-rose-700">
-										Detach team from {selected.size}{" "}
-										{selected.size === 1 ? "project" : "projects"}?
-									</h3>
-								</div>
-								<p className="mt-1 text-sm text-rose-700">
-									Members of this team will lose project-level access through
-									this attachment. They keep direct project memberships, if any.
-								</p>
-							</div>
-							<div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
-								<button
-									type="button"
-									onClick={() => setConfirmOpen(false)}
-									className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+			{pendingDetach && (
+				<AppDialog
+					open
+					onClose={() => setPendingDetach(null)}
+					size="md"
+					busy={detachMutation.isPending}
+					title={`Detach ${team?.name ?? "this team"} from ${pendingDetach.length} ${
+						pendingDetach.length === 1 ? "project" : "projects"
+					}?`}
+					description="Detaching here is the same as removing the team from each project's settings."
+					footer={
+						<>
+							<button
+								type="button"
+								onClick={() => setPendingDetach(null)}
+								disabled={detachMutation.isPending}
+								className="rounded-lg border border-input px-4 py-2 text-sm text-foreground transition hover:bg-muted disabled:opacity-50"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									detachMutation.mutate({
+										projectIds: pendingDetach,
+										members: detachMode,
+									})
+								}
+								disabled={detachMutation.isPending}
+								className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+									detachMode === "remove"
+										? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+										: "bg-primary text-primary-foreground hover:bg-primary/90"
+								}`}
+							>
+								{detachMutation.isPending ? (
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								) : (
+									<Unlink className="h-3.5 w-3.5" />
+								)}
+								{detachMode === "remove"
+									? "Detach team"
+									: "Detach & keep members"}
+							</button>
+						</>
+					}
+				>
+					<div>
+						<p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							What happens to its members
+						</p>
+						<div className="space-y-1.5">
+							<label
+								className={`flex w-full cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+									detachMode === "remove"
+										? "border-primary bg-primary/5"
+										: "border-border hover:bg-muted"
+								}`}
+							>
+								<input
+									type="radio"
+									name="team-detach-mode"
+									checked={detachMode === "remove"}
+									onChange={() => setDetachMode("remove")}
 									disabled={detachMutation.isPending}
-								>
-									Cancel
-								</button>
-								<button
-									type="button"
-									onClick={() =>
-										detachMutation.mutate(Array.from(selected.values()))
-									}
+									className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+								/>
+								<span className="text-xs text-foreground">
+									<span className="font-semibold">
+										Remove members brought by this team
+									</span>
+									<span className="mt-0.5 block text-[11px] text-muted-foreground">
+										People whose access to these projects comes only from this
+										team lose it. Direct members, project owners, and people on
+										other attached teams are unaffected.
+									</span>
+								</span>
+							</label>
+							<label
+								className={`flex w-full cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+									detachMode === "keep"
+										? "border-primary bg-primary/5"
+										: "border-border hover:bg-muted"
+								}`}
+							>
+								<input
+									type="radio"
+									name="team-detach-mode"
+									checked={detachMode === "keep"}
+									onChange={() => setDetachMode("keep")}
 									disabled={detachMutation.isPending}
-									className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-								>
-									{detachMutation.isPending ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<Unlink className="h-4 w-4" />
-									)}
-									Confirm detach
-								</button>
-							</div>
+									className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+								/>
+								<span className="text-xs text-foreground">
+									<span className="font-semibold">
+										Keep them as direct project members
+									</span>
+									<span className="mt-0.5 block text-[11px] text-muted-foreground">
+										Everyone this team brought in stays on each project with
+										their current role — no longer tied to the team.
+									</span>
+								</span>
+							</label>
 						</div>
 					</div>
-				</ModalPortal>
+				</AppDialog>
 			)}
 		</TeamSettingsLayout>
 	);

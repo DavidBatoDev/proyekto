@@ -31,8 +31,10 @@ interface AppTabsProps<K extends string> {
 	 * `segmented` is the boxed pill strip (the default, as extracted).
 	 * `underline` is the page-level treatment: no container, an active
 	 * bottom rule, and a rule running the width of the page beneath.
+	 * `pill` is free-standing outlined capsules with no container at all —
+	 * the airiest of the three, for pages that put an action beside the tabs.
 	 */
-	variant?: "segmented" | "underline";
+	variant?: "segmented" | "underline" | "pill";
 	className?: string;
 }
 
@@ -46,22 +48,37 @@ export function AppTabs<K extends string>({
 	className,
 }: AppTabsProps<K>) {
 	const underline = variant === "underline";
+	const pill = variant === "pill";
 	const pad = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
+	const pillPad = size === "sm" ? "px-3 py-1 text-xs" : "px-4 py-1.5 text-sm";
 
-	const classFor = (key: K, disabled?: boolean) =>
-		underline
-			? // -mb-px pulls each tab onto the strip's own border so the active
-				// rule replaces it rather than stacking two lines.
-				`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition ${
-					active === key
-						? "border-primary font-semibold text-foreground"
-						: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-				} ${disabled ? "pointer-events-none opacity-50" : ""}`
-			: `rounded-md font-medium transition ${pad} ${
-					active === key
-						? "bg-primary text-primary-foreground"
-						: "text-muted-foreground hover:bg-muted hover:text-foreground"
-				} ${disabled ? "pointer-events-none opacity-50" : ""}`;
+	const classFor = (key: K, disabled?: boolean) => {
+		const dim = disabled ? "pointer-events-none opacity-50" : "";
+		if (underline) {
+			// -mb-px pulls each tab onto the strip's own border so the active
+			// rule replaces it rather than stacking two lines.
+			return `-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition ${
+				active === key
+					? "border-primary font-semibold text-foreground"
+					: "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+			} ${dim}`;
+		}
+		if (pill) {
+			// The active capsule carries the brand colour. A neutral fill was too
+			// close to the page ground to read as "you are here" — on a light
+			// background the selected tab simply disappeared.
+			return `inline-flex items-center gap-1.5 rounded-full border font-medium transition ${pillPad} ${
+				active === key
+					? "border-primary bg-primary font-semibold text-primary-foreground"
+					: "border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+			} ${dim}`;
+		}
+		return `rounded-md font-medium transition ${pad} ${
+			active === key
+				? "bg-primary text-primary-foreground"
+				: "text-muted-foreground hover:bg-muted hover:text-foreground"
+		} ${dim}`;
+	};
 
 	// Left/Right move between tabs the way a real tablist does.
 	const onKeyDown = (e: React.KeyboardEvent, index: number) => {
@@ -83,7 +100,9 @@ export function AppTabs<K extends string>({
 			className={`${
 				underline
 					? "flex flex-wrap items-center gap-1 border-b border-border"
-					: "inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5"
+					: pill
+						? "flex flex-wrap items-center gap-2"
+						: "inline-flex flex-wrap rounded-lg border border-border bg-card p-0.5"
 			} ${className ?? ""}`}
 		>
 			{items.map((item, index) => {
@@ -93,6 +112,16 @@ export function AppTabs<K extends string>({
 						{typeof item.count === "number" &&
 							(underline ? (
 								<span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+									{item.count}
+								</span>
+							) : pill ? (
+								<span
+									className={`text-xs font-normal ${
+										active === item.key
+											? "text-primary-foreground/75"
+											: "text-muted-foreground"
+									}`}
+								>
 									{item.count}
 								</span>
 							) : (

@@ -100,7 +100,7 @@ export function ChatSidebar({
 
 	return (
 		<aside className="h-full border-r border-slate-200 bg-slate-50">
-			<div className="h-full overflow-y-auto">
+			<div className="h-full overflow-y-auto thin-scrollbar">
 				<div className="border-b border-slate-200 bg-white/70 px-4 py-3">
 					<div className="flex items-center justify-between gap-2">
 						<h1 className="text-[18px] font-semibold leading-none text-slate-900 md:text-[23px]">
@@ -149,7 +149,7 @@ export function ChatSidebar({
 
 				{showPeoplePicker && (
 					<div className="px-4 pb-2">
-						<div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+						<div className="max-h-56 overflow-y-auto thin-scrollbar rounded-xl border border-slate-200 bg-white">
 							{members.map((member) => {
 								const label =
 									member.user?.display_name ||

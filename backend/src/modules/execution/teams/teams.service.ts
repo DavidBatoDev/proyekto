@@ -12,6 +12,10 @@ import {
   MailerService,
   type SendMailResult,
 } from '../../../common/mail/mailer.service';
+import {
+  fetchRoadmapSummaries,
+  type ProjectRoadmapSummary,
+} from '../../../common/roadmap/roadmap-summary';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
@@ -19,6 +23,8 @@ import { MissingPermissionException } from '../projects/authorization/missing-pe
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
+import { sanitizeOptionalRichHtml } from '../../../common/rich-text/sanitize-rich-html';
+import { WorkspacesService } from '../workspaces/workspaces.service';
 import { normalizeTeamTags } from './team-tags';
 import {
   AddTeamMemberDto,
@@ -28,6 +34,7 @@ import {
   PayPeriodInput,
   RespondTeamInviteDto,
   TeamMemberRole,
+  TeamStatus,
   UpdateTeamDto,
   UpdateTeamMemberDto,
   UpdateWorkspaceDefaultsDto,
@@ -53,11 +60,39 @@ export interface TeamAttachedProject {
     display_name: string | null;
     avatar_url: string | null;
   } | null;
+  /**
+   * The same rollup the dashboard cards use, so the team's Projects tab can
+   * render the identical card instead of a reduced one. Null for a project
+   * with no roadmap yet.
+   */
+  roadmap_summary?: ProjectRoadmapSummary | null;
+  /**
+   * This team's curated members on that project — the avatar stack on the
+   * card. Batched with the list rather than fetched per card, which is what
+   * the web used to do.
+   */
+  curated_members?: Array<{
+    user_id: string;
+    user: {
+      id: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      email: string | null;
+      first_name: string | null;
+      last_name: string | null;
+    } | null;
+  }>;
 }
 
 export interface TeamRow {
   id: string;
   owner_id: string;
+  /**
+   * Organizational home. Nullable: ON DELETE SET NULL when a workspace goes
+   * away, and never an authorization source — team access is still owner_id
+   * plus team_members.
+   */
+  workspace_id: string | null;
   name: string;
   description: string | null;
   avatar_url: string | null;
@@ -80,6 +115,8 @@ export interface TeamRow {
   retroactive_log_days: number | null;
   default_currency: string;
   pay_period_config: PayPeriodConfigInput | null;
+  /** Lifecycle chip on the Overview tab. NOT NULL DEFAULT 'active' in the DB. */
+  status: TeamStatus;
   created_at: string;
   updated_at: string;
   // Populated by listMyTeams for the team-list UI. Other endpoints that
@@ -94,6 +131,61 @@ export interface TeamRow {
 }
 
 const TEAM_LIST_PREVIEW_LIMIT = 6;
+
+type UpdateTeamField = keyof UpdateTeamDto;
+
+/**
+ * Editable by the team owner AND by team admins: the team's identity, which is
+ * what the Overview tab puts on screen.
+ */
+const TEAM_SHARED_UPDATE_FIELDS = [
+  'name',
+  'description',
+  'avatar_url',
+  'status',
+  'tags',
+] as const satisfies readonly UpdateTeamField[];
+// Consumed only by the type-level check below — which is the whole reason it
+// exists. Referenced here so it does not read as dead code.
+void TEAM_SHARED_UPDATE_FIELDS;
+
+/**
+ * Owner only. Every one of these is money or a legal identity:
+ *  - legal_name / billing_address / tax_id / billing_email are snapshotted onto
+ *    signed contracts and invoices, so an admin must not be able to change who
+ *    gets paid.
+ *  - time_tracking_enabled is gated on assertOwnerIsConsultant, which checks
+ *    the OWNER's consultant enrollment rather than the caller's — an admin
+ *    flipping it on would be spending someone else's capability.
+ *  - retroactive_log_days / default_currency / pay_period_config drive payout
+ *    windows and amounts.
+ */
+const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
+  'legal_name',
+  'billing_address',
+  'tax_id',
+  'billing_email',
+  'time_tracking_enabled',
+  'retroactive_log_days',
+  'default_currency',
+  'pay_period_config',
+] as const satisfies readonly UpdateTeamField[];
+
+/**
+ * Adding a field to UpdateTeamDto without classifying it above is a compile
+ * error, not a silent grant. This is the whole safeguard: the failure mode we
+ * are guarding against is an admin quietly gaining a billing field months from
+ * now, and that should surface as tsc output rather than as an incident.
+ */
+type UnclassifiedUpdateTeamField = Exclude<
+  UpdateTeamField,
+  | (typeof TEAM_SHARED_UPDATE_FIELDS)[number]
+  | (typeof TEAM_OWNER_ONLY_UPDATE_FIELDS)[number]
+>;
+const _everyUpdateTeamFieldIsClassified: UnclassifiedUpdateTeamField extends never
+  ? true
+  : never = true;
+void _everyUpdateTeamFieldIsClassified;
 
 export interface TeamMemberRow {
   id: string;
@@ -160,6 +252,7 @@ export class TeamsService {
     // MailModule is @Global(), so TeamsModule needs no import for these.
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    private readonly workspaces: WorkspacesService,
   ) {}
 
   /**
@@ -173,11 +266,15 @@ export class TeamsService {
     if (existing) return existing;
 
     const name = await this.buildDefaultPersonalTeamName(userId);
+    // No dto here — this is the post-vetting consultant flow — so the personal
+    // team lands in the owner's default workspace.
+    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(userId);
 
     const { data: created, error } = await this.supabase
       .from('teams')
       .insert({
         owner_id: userId,
+        workspace_id: workspaceId,
         name,
         is_personal: true,
       })
@@ -326,17 +423,28 @@ export class TeamsService {
 
   async getTeam(teamId: string, userId: string): Promise<TeamRow> {
     const team = await this.fetchTeamOrThrow(teamId);
-    await this.assertCanRead(team, userId);
-    return team;
+    // Returned so the Overview tab can decide editable-vs-read-only without a
+    // second round trip. Until now only listMyTeams populated viewer_role, so
+    // a single-team fetch had to infer it from the member list.
+    const role = await this.assertCanRead(team, userId);
+    return { ...team, viewer_role: role };
   }
 
   async createTeam(userId: string, dto: CreateTeamDto): Promise<TeamRow> {
+    // Which organization this team belongs to. Throws if the caller named a
+    // workspace they are not a member of; falls back to their default one.
+    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(
+      userId,
+      dto.workspace_id,
+    );
+
     const { data, error } = await this.supabase
       .from('teams')
       .insert({
         owner_id: userId,
+        workspace_id: workspaceId,
         name: dto.name,
-        description: dto.description ?? null,
+        description: sanitizeOptionalRichHtml(dto.description) ?? null,
         avatar_url: dto.avatar_url ?? null,
         tags: normalizeTeamTags(dto.tags),
       })
@@ -378,14 +486,39 @@ export class TeamsService {
     dto: UpdateTeamDto,
   ): Promise<TeamRow> {
     const team = await this.fetchTeamOrThrow(teamId);
-    if (team.owner_id !== userId) {
-      throw new ForbiddenException('Only the team owner can update the team');
+    const role = await this.assertCanManageTeam(
+      team,
+      userId,
+      'update the team',
+    );
+
+    // Admins may edit the team's identity — the Overview tab's surface — but
+    // not its money or its legal identity. Reject rather than silently drop:
+    // a silent drop shows the web a success toast while the value snaps back
+    // on the next refetch, which is the worst of both outcomes.
+    if (role !== 'owner') {
+      const blocked = TEAM_OWNER_ONLY_UPDATE_FIELDS.filter(
+        (key) => dto[key] !== undefined,
+      );
+      if (blocked.length > 0) {
+        throw new ForbiddenException(
+          `Only the team owner can change: ${blocked.join(', ')}`,
+        );
+      }
     }
+
     const patch: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
     if (dto.name !== undefined) patch.name = dto.name;
-    if (dto.description !== undefined) patch.description = dto.description;
+    // Sanitized on write as well as on render. The render pass protects rows
+    // written before this existed; this one means a direct API call cannot
+    // park live markup in a column that other readers (mobile, email, PDF)
+    // will later trust.
+    if (dto.description !== undefined) {
+      patch.description = sanitizeOptionalRichHtml(dto.description);
+    }
+    if (dto.status !== undefined) patch.status = dto.status;
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
     // Tags clear with `[]`, never with `null` — deliberately kept out of the
     // ''→null billing loop below, which is string-specific. No consultant gate:
@@ -548,6 +681,75 @@ export class TeamsService {
    * team settings "Projects" tab to show + detach attachments. Reads
    * via service role and gates on the same readership rule as getTeam.
    */
+  /**
+   * This team's curated members across several projects at once, keyed by
+   * project id. Only the fields an avatar stack needs.
+   */
+  private async fetchCuratedMembersByProject(
+    teamId: string,
+    projectIds: string[],
+  ): Promise<
+    Map<
+      string,
+      Array<{
+        user_id: string;
+        user: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          email: string | null;
+          first_name: string | null;
+          last_name: string | null;
+        } | null;
+      }>
+    >
+  > {
+    const byProject = new Map<
+      string,
+      Array<{
+        user_id: string;
+        user: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          email: string | null;
+          first_name: string | null;
+          last_name: string | null;
+        } | null;
+      }>
+    >();
+    if (projectIds.length === 0) return byProject;
+
+    const { data, error } = await this.supabase
+      .from('project_team_members')
+      .select(
+        'project_id, user_id, user:profiles!project_team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
+      )
+      .eq('team_id', teamId)
+      .in('project_id', projectIds);
+
+    // A failed avatar strip is not worth failing the page for.
+    if (error || !data) return byProject;
+
+    for (const row of data as unknown as Array<{
+      project_id: string;
+      user_id: string;
+      user: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        email: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      } | null;
+    }>) {
+      const list = byProject.get(row.project_id) ?? [];
+      list.push({ user_id: row.user_id, user: row.user });
+      byProject.set(row.project_id, list);
+    }
+    return byProject;
+  }
+
   async listProjectsForTeam(
     teamId: string,
     callerId: string,
@@ -601,9 +803,22 @@ export class TeamsService {
         typedAccessRows.map((row) => [row.project_id, row.role]),
       );
     }
+    // Two extra queries for the whole page, not two per card. The web
+    // previously ran one curated-members request per attached project.
+    const [summaries, curatedByProject] = await Promise.all([
+      fetchRoadmapSummaries(this.supabase, projectIds),
+      this.fetchCuratedMembersByProject(teamId, projectIds),
+    ]);
+
     return rows.map((r) => ({
       ...r,
-      project: r.project,
+      project: r.project
+        ? {
+            ...r.project,
+            roadmap_summary: summaries.get(r.project_id) ?? null,
+            curated_members: curatedByProject.get(r.project_id) ?? [],
+          }
+        : null,
       viewer_has_access: accessSet.has(r.project_id),
       viewer_role: roleMap.get(r.project_id) ?? null,
     }));
@@ -819,19 +1034,19 @@ export class TeamsService {
     return data as TeamRow;
   }
 
-  async assertCanRead(team: TeamRow, userId: string): Promise<void> {
-    if (team.owner_id === userId) return;
-    const { count } = await this.supabase
-      .from('team_members')
-      .select('*', { count: 'exact', head: true })
-      .eq('team_id', team.id)
-      .eq('user_id', userId);
-    if ((count ?? 0) > 0) return;
-    throw new ForbiddenException('You do not have access to this team');
-  }
-
-  async assertCanManageMembers(team: TeamRow, userId: string): Promise<void> {
-    if (team.owner_id === userId) return;
+  /**
+   * The caller's standing in this team, or null when they have none.
+   * `teams.owner_id` wins over any `team_members` row.
+   *
+   * The three assert* helpers below all resolve through this, so there is one
+   * definition of "what is this user to this team" rather than three lookups
+   * that can drift apart.
+   */
+  async resolveViewerRole(
+    team: TeamRow,
+    userId: string,
+  ): Promise<TeamMemberRole | null> {
+    if (team.owner_id === userId) return 'owner';
     const { data, error } = await this.supabase
       .from('team_members')
       .select('role')
@@ -839,11 +1054,38 @@ export class TeamsService {
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!data || data.role !== 'admin') {
+    return (data?.role as TeamMemberRole | undefined) ?? null;
+  }
+
+  /** Any standing at all. Returns the role so callers can reuse it. */
+  async assertCanRead(team: TeamRow, userId: string): Promise<TeamMemberRole> {
+    const role = await this.resolveViewerRole(team, userId);
+    if (!role) {
+      throw new ForbiddenException('You do not have access to this team');
+    }
+    return role;
+  }
+
+  /**
+   * Owner or admin. `action` only shapes the message, so existing callers keep
+   * the exact string they raised before.
+   */
+  async assertCanManageTeam(
+    team: TeamRow,
+    userId: string,
+    action = 'manage members',
+  ): Promise<'owner' | 'admin'> {
+    const role = await this.resolveViewerRole(team, userId);
+    if (role !== 'owner' && role !== 'admin') {
       throw new ForbiddenException(
-        'Only the team owner or team admins can manage members',
+        `Only the team owner or team admins can ${action}`,
       );
     }
+    return role;
+  }
+
+  async assertCanManageMembers(team: TeamRow, userId: string): Promise<void> {
+    await this.assertCanManageTeam(team, userId, 'manage members');
   }
 
   // Public so the team-member-rates service can reuse the same gate.

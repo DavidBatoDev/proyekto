@@ -5,7 +5,8 @@ import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import { projectKeys } from "@/queries/project";
-import { detachTeam, updateProjectTeam } from "@/services/teams.service";
+import { updateProjectTeam } from "@/services/teams.service";
+import { DetachTeamDialog } from "./DetachTeamDialog";
 import { PersonRow } from "./PersonRow";
 import type { PeopleTeamGroup, PersonAccess } from "./useProjectPeople";
 
@@ -20,6 +21,9 @@ import type { PeopleTeamGroup, PersonAccess } from "./useProjectPeople";
 export function TeamGroupCard({
 	projectId,
 	group,
+	allPeople,
+	curatedTeamIdsByUserId,
+	teamNameById,
 	canManageTeams,
 	canManageMembers,
 	defaultOpen,
@@ -28,6 +32,10 @@ export function TeamGroupCard({
 }: {
 	projectId: string;
 	group: PeopleTeamGroup;
+	/** The whole project roster — the detach dialog predicts outcomes from it. */
+	allPeople: PersonAccess[];
+	curatedTeamIdsByUserId: Map<string, Set<string>>;
+	teamNameById: Record<string, string>;
 	canManageTeams: boolean;
 	canManageMembers: boolean;
 	defaultOpen: boolean;
@@ -38,21 +46,13 @@ export function TeamGroupCard({
 	const toast = useToast();
 	const confirm = useConfirm();
 	const [open, setOpen] = useState(defaultOpen);
+	const [detachOpen, setDetachOpen] = useState(false);
 
 	const teamName = group.team?.name ?? "Team";
 	const invalidate = () => {
 		void qc.invalidateQueries({ queryKey: ["project", projectId, "teams"] });
 		void qc.invalidateQueries({ queryKey: projectKeys.members(projectId) });
 	};
-
-	const detachMutation = useMutation({
-		mutationFn: () => detachTeam(projectId, group.attachment.team_id),
-		onSuccess: () => {
-			toast.success(`${teamName} detached`);
-			invalidate();
-		},
-		onError: (err) => toast.error((err as Error).message),
-	});
 
 	// First caller of updateProjectTeam anywhere in the app: the primary team
 	// could previously only be chosen at attach time and never changed after.
@@ -68,16 +68,6 @@ export function TeamGroupCard({
 		onError: (err) => toast.error((err as Error).message),
 	});
 
-	const askDetach = async () => {
-		const ok = await confirm({
-			title: `Detach ${teamName}?`,
-			message: `Everyone added to this project from ${teamName} loses access. The team itself isn't changed, and you can attach it again later.`,
-			confirmLabel: "Detach team",
-			tone: "danger",
-		});
-		if (ok) detachMutation.mutate();
-	};
-
 	const askMakePrimary = async () => {
 		const ok = await confirm({
 			title: `Make ${teamName} the primary team?`,
@@ -88,7 +78,7 @@ export function TeamGroupCard({
 		if (ok) primaryMutation.mutate();
 	};
 
-	const busy = detachMutation.isPending || primaryMutation.isPending;
+	const busy = primaryMutation.isPending;
 
 	return (
 		<section className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -149,7 +139,7 @@ export function TeamGroupCard({
 					{canManageTeams && (
 						<button
 							type="button"
-							onClick={() => void askDetach()}
+							onClick={() => setDetachOpen(true)}
 							disabled={busy}
 							className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
 						>
@@ -159,6 +149,18 @@ export function TeamGroupCard({
 					)}
 				</div>
 			</div>
+
+			{detachOpen && (
+				<DetachTeamDialog
+					projectId={projectId}
+					attachment={group.attachment}
+					team={group.team}
+					people={allPeople}
+					curatedTeamIdsByUserId={curatedTeamIdsByUserId}
+					teamNameById={teamNameById}
+					onClose={() => setDetachOpen(false)}
+				/>
+			)}
 
 			{open &&
 				(group.people.length === 0 ? (

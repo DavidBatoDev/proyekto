@@ -83,6 +83,7 @@ describe('ChatService', () => {
       upsertDm: jest.fn().mockResolvedValue(buildRoom()),
       upsertParticipants: jest.fn().mockResolvedValue(undefined),
       removeParticipant: jest.fn().mockResolvedValue(undefined),
+      retainParticipants: jest.fn().mockResolvedValue(0),
       isRoomParticipant: jest.fn().mockResolvedValue(true),
       listRoomParticipantUserIds: jest.fn().mockResolvedValue([]),
       listRoomParticipantReadState: jest.fn().mockResolvedValue([]),
@@ -433,6 +434,64 @@ describe('ChatService', () => {
       is_archived: undefined,
       is_private: true,
     });
+  });
+
+  it('updateChannel prunes lazy-joined participants when a public channel goes private', async () => {
+    // Everyone who ever opened the channel holds a participant row. They were
+    // never granted anything — listRooms wrote those rows on their behalf — so
+    // the flip must not leave them inside a channel that now reads as private.
+    const retainParticipants = jest.fn().mockResolvedValue(7);
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue({
+        ...channel('design-review', false),
+        created_by: 'creator-1',
+      }),
+      updateRoom: jest.fn().mockResolvedValue(channel('design-review', true)),
+      retainParticipants,
+    });
+    const service = makeService(repo);
+
+    await service.updateChannel('project-1', 'actor-1', 'room-design-review', {
+      is_private: true,
+    });
+
+    expect(retainParticipants).toHaveBeenCalledWith('room-design-review', [
+      'actor-1',
+      'creator-1',
+    ]);
+  });
+
+  it('updateChannel does not prune when a private channel goes public', async () => {
+    const retainParticipants = jest.fn().mockResolvedValue(0);
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('war-room', true)),
+      updateRoom: jest.fn().mockResolvedValue(channel('war-room', false)),
+      retainParticipants,
+    });
+    const service = makeService(repo);
+
+    await service.updateChannel('project-1', 'actor-1', 'room-war-room', {
+      is_private: false,
+    });
+
+    // The rows become lazy-join bookkeeping again — nothing to clean up.
+    expect(retainParticipants).not.toHaveBeenCalled();
+  });
+
+  it('updateChannel does not prune when only the name changes', async () => {
+    const retainParticipants = jest.fn().mockResolvedValue(0);
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('war-room', true)),
+      updateRoom: jest.fn().mockResolvedValue(channel('war-room', true)),
+      retainParticipants,
+    });
+    const service = makeService(repo);
+
+    await service.updateChannel('project-1', 'actor-1', 'room-war-room', {
+      name: 'Situation Room',
+    });
+
+    expect(retainParticipants).not.toHaveBeenCalled();
   });
 
   it('leaveChannel removes the caller without manage_channels', async () => {

@@ -20,6 +20,7 @@ import {
   UpdateProjectResourceLinkDto,
 } from '../dto/project.dto';
 import type { ProjectPermissions } from '../permissions/project-permissions';
+import type { ProjectRoadmapSummary } from '../../../../common/roadmap/roadmap-summary';
 
 export type ProjectResourceFolderWithLinks = ProjectResourceFolder & {
   links: ProjectResourceLink[];
@@ -35,16 +36,10 @@ export type ProjectResourcesPayload = {
  * mirrors the SQL cascade (task status weight -> feature avg -> epic avg ->
  * roadmap avg) so the bar matches what the roadmap canvas reports.
  */
-export interface ProjectRoadmapSummary {
-  roadmap_id: string;
-  name: string;
-  epic_count: number;
-  feature_count: number;
-  task_count: number;
-  done_task_count: number;
-  /** 0-100, rounded to the nearest integer. */
-  progress: number;
-}
+// Defined in common/roadmap so the teams module can build the same summary
+// without importing a repository interface it does not otherwise use. Still
+// re-exported here, so every existing importer is unchanged.
+export type { ProjectRoadmapSummary };
 
 export type DashboardProject = Project & {
   roadmap_summary?: ProjectRoadmapSummary | null;

@@ -216,6 +216,14 @@ export interface ChatRepository {
   upsertDm(params: { slug: string }): Promise<ChatRoom>;
   upsertParticipants(roomId: string, userIds: string[]): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
+  /**
+   * Drop every participant of `roomId` except `keepUserIds`, and report how
+   * many rows went. Used when a public channel is made private: its rows are
+   * lazy-join bookkeeping, not granted access, so they must not survive the
+   * flip. Returns 0 for an empty `keepUserIds` guard-rail rather than wiping
+   * the room.
+   */
+  retainParticipants(roomId: string, keepUserIds: string[]): Promise<number>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
   /** All user ids participating in a room (for realtime inbox fan-out). */
   listRoomParticipantUserIds(roomId: string): Promise<string[]>;

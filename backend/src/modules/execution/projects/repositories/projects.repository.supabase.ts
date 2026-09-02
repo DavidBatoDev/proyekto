@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
+import { normalizeReorderItems } from '../../../../common/resources/reorder';
+import { fetchRoadmapSummaries } from '../../../../common/roadmap/roadmap-summary';
 import { ProjectsRepository } from './projects.repository.interface';
 import {
   Project,
@@ -43,66 +45,6 @@ import {
 
 const PROJECT_MEMBER_SELECT =
   'members:project_access(user_id, role, origin, has_direct_grant, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, headline, email))';
-
-// Mirrors get_task_progress in the roadmap canvas schema so the dashboard
-// progress bar agrees with the canvas cascade.
-const TASK_STATUS_PROGRESS: Record<string, number> = {
-  todo: 0,
-  in_progress: 25,
-  in_review: 75,
-  done: 100,
-  blocked: 0,
-};
-
-type RoadmapSummaryRow = {
-  id: string;
-  name: string;
-  project_id: string | null;
-  updated_at: string;
-  epics?: Array<{
-    id: string;
-    features?: Array<{
-      id: string;
-      tasks?: Array<{ status: string }>;
-    }>;
-  }>;
-};
-
-const average = (values: number[]): number =>
-  values.length === 0
-    ? 0
-    : values.reduce((sum, value) => sum + value, 0) / values.length;
-
-function buildRoadmapSummary(row: RoadmapSummaryRow): ProjectRoadmapSummary {
-  const epics = row.epics ?? [];
-  let featureCount = 0;
-  let taskCount = 0;
-  let doneTaskCount = 0;
-
-  const epicProgress = epics.map((epic) => {
-    const features = epic.features ?? [];
-    featureCount += features.length;
-    const featureProgress = features.map((feature) => {
-      const tasks = feature.tasks ?? [];
-      taskCount += tasks.length;
-      doneTaskCount += tasks.filter((task) => task.status === 'done').length;
-      return average(
-        tasks.map((task) => TASK_STATUS_PROGRESS[task.status] ?? 0),
-      );
-    });
-    return average(featureProgress);
-  });
-
-  return {
-    roadmap_id: row.id,
-    name: row.name,
-    epic_count: epics.length,
-    feature_count: featureCount,
-    task_count: taskCount,
-    done_task_count: doneTaskCount,
-    progress: Math.round(average(epicProgress)),
-  };
-}
 
 @Injectable()
 export class SupabaseProjectsRepository implements ProjectsRepository {
@@ -191,7 +133,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       deduped.set(project.id, project);
     }
 
-    const summaries = await this.fetchRoadmapSummaries(
+    const summaries = await fetchRoadmapSummaries(
+      this.supabase,
       Array.from(deduped.keys()),
     );
     for (const project of deduped.values()) {
@@ -209,36 +152,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
    * ids/statuses needed to derive counts and cascade progress. When a project
    * has several roadmaps, the most recently updated one represents it.
    */
-  private async fetchRoadmapSummaries(
-    projectIds: string[],
-  ): Promise<Map<string, ProjectRoadmapSummary>> {
-    const summaries = new Map<string, ProjectRoadmapSummary>();
-    if (projectIds.length === 0) return summaries;
-
-    const { data, error } = await this.supabase
-      .from('roadmaps')
-      .select(
-        'id, name, project_id, updated_at, epics:roadmap_epics(id, features:roadmap_features(id, tasks:roadmap_tasks(status)))',
-      )
-      .in('project_id', projectIds);
-
-    if (error || !data) return summaries;
-
-    const latestByProject = new Map<string, RoadmapSummaryRow>();
-    for (const row of data as unknown as RoadmapSummaryRow[]) {
-      if (!row.project_id) continue;
-      const current = latestByProject.get(row.project_id);
-      if (!current || row.updated_at > current.updated_at) {
-        latestByProject.set(row.project_id, row);
-      }
-    }
-
-    for (const [projectId, row] of latestByProject) {
-      summaries.set(projectId, buildRoadmapSummary(row));
-    }
-    return summaries;
-  }
-
   async findById(id: string): Promise<
     | (Project & {
         client?: unknown;
@@ -277,6 +190,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .insert({
         ...projectPayload,
         owner_id: userId,
+        // Organizational home. Resolved by the service through
+        // WorkspacesService.resolveWorkspaceForWrite; null only for guests,
+        // whose projects are homed when they convert.
+        workspace_id: dto.workspace_id ?? null,
       })
       .select()
       .single()) as unknown as {
@@ -468,6 +385,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         user_id: userId,
         role: 'editor',
         origin: 'invited',
+        // Direct add: the flag keeps the row alive when a team the user
+        // is curated onto is later detached (the project_team_members
+        // DELETE trigger removes rows without it).
+        has_direct_grant: true,
       })
       .select(
         'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
@@ -1100,48 +1021,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return typeof data?.position === 'number' ? data.position + 1 : 0;
   }
 
-  private normalizeReorderItems(
-    items: Array<{ id: string; position: number }>,
-    existingIds: string[],
-    subject: string,
-  ): Array<{ id: string; position: number }> {
-    const seenIds = new Set<string>();
-    for (const item of items) {
-      if (seenIds.has(item.id)) {
-        throw new BadRequestException(
-          `${subject} reorder payload contains duplicate ids.`,
-        );
-      }
-      seenIds.add(item.id);
-    }
-
-    if (items.length !== existingIds.length) {
-      throw new BadRequestException(
-        `${subject} reorder payload must include all items in the container.`,
-      );
-    }
-
-    const existingIdSet = new Set(existingIds);
-    for (const item of items) {
-      if (!existingIdSet.has(item.id)) {
-        throw new BadRequestException(
-          `${subject} reorder payload contains ids outside the container.`,
-        );
-      }
-    }
-
-    const sorted = [...items].sort((a, b) => a.position - b.position);
-    sorted.forEach((item, index) => {
-      if (item.position !== index) {
-        throw new BadRequestException(
-          `${subject} reorder positions must be contiguous and start at 0.`,
-        );
-      }
-    });
-
-    return sorted;
-  }
-
   private async compactResourceLinksContainer(
     projectId: string,
     folderId: string | null,
@@ -1357,7 +1236,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       throw new BadRequestException('No resource folders found to reorder.');
     }
 
-    const sortedItems = this.normalizeReorderItems(
+    const sortedItems = normalizeReorderItems(
       dto.items,
       existing.map((item) => item.id),
       'Folder',
@@ -1585,7 +1464,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       throw new BadRequestException('No resource links found to reorder.');
     }
 
-    const sortedItems = this.normalizeReorderItems(
+    const sortedItems = normalizeReorderItems(
       dto.items,
       existing.map((item) => item.id),
       'Link',

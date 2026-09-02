@@ -314,7 +314,7 @@ export function ChatInfoPanel({
 				</div>
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-y-auto">
+			<div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
 				{/* Identity */}
 				<div className="flex flex-col items-center gap-2 px-4 pt-5 pb-4 text-center">
 					{isChannel ? (

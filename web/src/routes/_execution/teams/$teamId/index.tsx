@@ -1,55 +1,37 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
-	useMutation,
-	useQueries,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
-import {
-	createFileRoute,
-	Link,
-	redirect,
-	useNavigate,
-} from "@tanstack/react-router";
-import {
-	Check,
-	ChevronRight,
+	FolderKanban,
 	Loader2,
 	Lock,
 	Mail,
-	MoreHorizontal,
 	Pencil,
 	Plus,
 	Trash2,
 	Users,
 	X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import {
-	AppSectionHeader,
-	AppSurfaceCard,
-} from "@/components/common/AppPrimitives";
+import { useMemo, useState } from "react";
+import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { AppTabs } from "@/components/common/AppTabs";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { RoleBadge } from "@/components/common/SemanticBadge";
 import {
-	PositionBadge,
-	ProjectStatusBadge,
-	RoleBadge,
-} from "@/components/common/SemanticBadge";
-import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+	PROJECT_STATUS_CONFIG,
+	ProjectCard,
+} from "@/components/home/ProjectsGrid";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { TeamOverviewTab } from "@/components/team/overview/TeamOverviewTab";
+import { canEditTeam } from "@/components/team/teamPermissions";
 import { invalidateMyTeams } from "@/hooks/dashboardInvalidation";
-import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useToast } from "@/hooks/useToast";
-import { projectService } from "@/services/project.service";
 import {
 	cancelTeamInvite,
 	getTeam,
 	inviteTeamMemberByEmail,
-	listCuratedMembers,
 	listTeamInvites,
 	listTeamMembers,
 	listTeamProjects,
-	type ProjectTeamMember,
 	removeTeamMember,
 	type TeamInvite,
 	type TeamMember,
@@ -57,14 +39,6 @@ import {
 	updateTeamMember,
 } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
-
-/**
- * Blue chip for the free-form member position (e.g. "Backend Developer").
- * Mirrors the landing-page accent palette.
- */
-function PositionChip({ children }: { children: ReactNode }) {
-	return <PositionBadge>{children}</PositionBadge>;
-}
 
 /**
  * Slate chip for the access level (owner / admin / member). All three
@@ -76,337 +50,180 @@ function RoleChip({ role }: { role: TeamRole }) {
 	return <RoleBadge>{role}</RoleBadge>;
 }
 
-function CardActionMenu({
-	projectId,
-	teamId,
-	canSetStatus,
-	currentStatus,
-}: {
-	projectId: string;
-	teamId: string;
-	canSetStatus: boolean;
-	currentStatus: string | null;
-}) {
-	const [open, setOpen] = useState(false);
-	const [statusOpen, setStatusOpen] = useState(false);
-	const wrapperRef = useRef<HTMLDivElement>(null);
-	const navigate = useNavigate();
-	const queryClient = useQueryClient();
-	const toast = useToast();
-
-	useEffect(() => {
-		if (!open) return;
-		const handler = (e: MouseEvent) => {
-			if (
-				wrapperRef.current &&
-				!wrapperRef.current.contains(e.target as Node)
-			) {
-				setOpen(false);
-				setStatusOpen(false);
-			}
-		};
-		document.addEventListener("mousedown", handler);
-		return () => document.removeEventListener("mousedown", handler);
-	}, [open]);
-
-	const statusMutation = useMutation({
-		mutationFn: (status: string) =>
-			projectService.update(projectId, {
-				status: status as
-					| "draft"
-					| "active"
-					| "bidding"
-					| "paused"
-					| "completed"
-					| "archived",
-			}),
-		onSuccess: () => {
-			void queryClient.invalidateQueries({
-				queryKey: ["teams", "projects", teamId],
-			});
-			void invalidateDashboardProjects(queryClient);
-			toast.success("Status updated");
-			setOpen(false);
-			setStatusOpen(false);
-		},
-		onError: (err) => toast.error((err as Error).message),
-	});
-
-	const statuses = Object.entries(PROJECT_STATUS_CONFIG);
-
+/**
+ * A ghost of the real CompactProjectCard, drawn in flat theme tokens: banner
+ * strip, title bar, status dot, avatar row. Three of them are fanned behind
+ * the empty-state copy so the blank tab shows the shape of what will fill it
+ * rather than a lone icon in a circle.
+ */
+function GhostProjectCard({ className }: { className?: string }) {
 	return (
-		<div ref={wrapperRef} className="absolute right-2 top-2 z-20">
-			<button
-				type="button"
-				aria-label="Card actions"
-				onClick={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					setOpen((v) => !v);
-					setStatusOpen(false);
-				}}
-				className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-			>
-				<MoreHorizontal className="h-4 w-4" />
-			</button>
-
-			{open && (
-				<div
-					className="absolute right-0 top-8 z-50 w-44 overflow-visible rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl"
-					onClick={(e) => e.stopPropagation()}
-				>
-					{/* Go to Project */}
-					<button
-						type="button"
-						className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
-						onClick={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							void navigate({
-								to: "/project/$projectId/roadmap",
-								params: { projectId },
-							});
-						}}
-					>
-						Go to Project
-					</button>
-
-					{/* Set Status */}
-					{canSetStatus && (
-						<div className="relative">
-							<button
-								type="button"
-								className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
-								onClick={(e) => {
-									e.preventDefault();
-									e.stopPropagation();
-									setStatusOpen((v) => !v);
-								}}
-							>
-								Set Status
-								<ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-							</button>
-
-							{statusOpen && (
-								<div className="absolute left-full top-0 ml-1 w-40 rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl">
-									{statuses.map(([key, cfg]) => (
-										<button
-											key={key}
-											type="button"
-											disabled={statusMutation.isPending}
-											className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted disabled:opacity-50"
-											onClick={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												statusMutation.mutate(key);
-											}}
-										>
-											<span
-												className="h-2 w-2 shrink-0 rounded-full"
-												style={{ backgroundColor: cfg.color }}
-											/>
-											<span className="flex-1">{cfg.label}</span>
-											{currentStatus?.toLowerCase() === key && (
-												<Check className="h-3.5 w-3.5 text-muted-foreground" />
-											)}
-										</button>
-									))}
-								</div>
-							)}
-						</div>
-					)}
+		<div
+			aria-hidden
+			className={`h-24 w-40 overflow-hidden rounded-xl border border-border bg-card shadow-sm ${className ?? ""}`}
+		>
+			<div className="h-1/5 w-full bg-primary/15" />
+			<div className="flex h-4/5 flex-col justify-between p-2.5">
+				<div className="space-y-1.5">
+					<div className="h-2 w-3/4 rounded-full bg-muted-foreground/25" />
+					<div className="h-1.5 w-1/2 rounded-full bg-muted-foreground/15" />
 				</div>
+				<div className="flex items-center justify-between">
+					<span className="flex items-center gap-1">
+						<span className="h-1.5 w-1.5 rounded-full bg-primary/50" />
+						<span className="h-1.5 w-8 rounded-full bg-muted-foreground/15" />
+					</span>
+					<span className="flex items-center">
+						{[0, 1, 2].map((i) => (
+							<span
+								key={i}
+								className="h-4 w-4 rounded-full border-2 border-card bg-muted-foreground/20"
+								style={{ marginLeft: i === 0 ? 0 : -5 }}
+							/>
+						))}
+					</span>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * The Members tab before anyone has joined. Same grammar as the projects
+ * ghost: a flat stand-in for the real table row (avatar, name and email bars,
+ * position and role chips) so the shape of what is missing is legible.
+ */
+function GhostMemberRow({ className }: { className?: string }) {
+	return (
+		<div
+			aria-hidden
+			className={`flex w-72 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm ${className ?? ""}`}
+		>
+			<span className="h-8 w-8 shrink-0 rounded-full bg-muted-foreground/20" />
+			<span className="flex-1 space-y-1.5">
+				<span className="block h-2 w-2/3 rounded-full bg-muted-foreground/25" />
+				<span className="block h-1.5 w-1/2 rounded-full bg-muted-foreground/15" />
+			</span>
+			<span className="h-4 w-12 shrink-0 rounded-full bg-primary/20" />
+			<span className="h-4 w-9 shrink-0 rounded-full bg-muted-foreground/15" />
+		</div>
+	);
+}
+
+/**
+ * Members is the one tab whose action lives on this page, so the owner gets
+ * the real Invite button here; everyone else gets the explanation without a
+ * button they cannot use.
+ */
+function TeamMembersEmptyState({
+	teamName,
+	canInvite,
+	onInvite,
+}: {
+	teamName?: string | null;
+	canInvite: boolean;
+	onInvite: () => void;
+}) {
+	return (
+		<div className="relative overflow-hidden rounded-2xl border border-dashed border-border bg-linear-to-b from-primary/5 to-card px-6 py-12 text-center">
+			{/* Three rows stacked with a slight scale/offset falloff, so the strip
+			    reads as a member list receding rather than three equal cards. */}
+			<div className="mx-auto mb-7 flex w-72 flex-col items-center gap-2">
+				<GhostMemberRow />
+				<GhostMemberRow className="scale-95 opacity-60" />
+				<GhostMemberRow className="scale-90 opacity-35" />
+			</div>
+
+			<h4 className="text-lg font-semibold text-foreground">No members yet</h4>
+			<p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+				{canInvite
+					? "Invite people by email. Give each one a position and an access level, and they carry both onto every project this team is attached to."
+					: `${teamName?.trim() || "This team"} has no members yet. The team owner can invite people by email.`}
+			</p>
+
+			{canInvite && (
+				<button
+					type="button"
+					onClick={onInvite}
+					className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+				>
+					<Plus className="h-4 w-4" />
+					Invite member
+				</button>
 			)}
 		</div>
 	);
 }
 
-function MemberAvatar({
-	member,
-	size = 6,
-}: {
-	member: ProjectTeamMember;
-	size?: number;
-}) {
-	const initial = (member.user?.display_name ||
-		member.user?.first_name ||
-		"?")[0].toUpperCase();
-	const sizeClass = `h-${size} w-${size}`;
-	return member.user?.avatar_url ? (
-		<img
-			src={member.user.avatar_url}
-			alt={member.user.display_name ?? ""}
-			className={`${sizeClass} rounded-full object-cover`}
-		/>
-	) : (
-		<span
-			className={`flex ${sizeClass} items-center justify-center rounded-full bg-slate-400 text-[9px] font-bold text-white`}
-		>
-			{initial}
-		</span>
+/**
+ * The Projects tab before anything is attached. A team cannot attach a project
+ * from here — attachment lives on the project's own Team page — so the copy
+ * says where to go and the buttons take you there, rather than dangling an
+ * action this page cannot perform.
+ */
+function TeamProjectsEmptyState({ teamName }: { teamName?: string | null }) {
+	return (
+		<div className="px-6 py-12 text-center">
+			<div className="relative mx-auto mb-7 flex h-28 w-64 items-end justify-center">
+				<GhostProjectCard className="absolute bottom-2 left-0 -rotate-6 opacity-45" />
+				<GhostProjectCard className="absolute bottom-2 right-0 rotate-6 opacity-45" />
+				<GhostProjectCard className="relative z-10 shadow-md" />
+			</div>
+
+			<h4 className="text-lg font-semibold text-foreground">No projects yet</h4>
+			<p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+				Attach {teamName?.trim() || "this team"} to a project and it lands here
+				— with its status, its owner, and the members working on it. Attaching
+				happens on the project&rsquo;s own Team page.
+			</p>
+
+			<div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+				<Link
+					to="/dashboard"
+					className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+				>
+					<FolderKanban className="h-4 w-4" />
+					Browse projects
+				</Link>
+				<Link
+					to="/project/new"
+					search={{ roadmapId: undefined }}
+					className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+				>
+					<Plus className="h-4 w-4" />
+					New project
+				</Link>
+			</div>
+		</div>
 	);
 }
 
-function CompactProjectCard({
-	projectId,
-	teamId,
-	title,
-	owner,
-	status,
-	bannerUrl = null,
-	isLocked = false,
-	canSetStatus = false,
-	members = [],
-}: {
-	projectId: string;
-	teamId: string;
-	title: string;
-	owner: string;
-	status: string;
-	bannerUrl?: string | null;
-	isLocked?: boolean;
-	canSetStatus?: boolean;
-	members?: ProjectTeamMember[];
-}) {
-	const displayedMembers = members.slice(0, 9);
-	const extraCount = Math.max(0, members.length - 9);
-
-	const avatarStrip =
-		displayedMembers.length > 0 ? (
-			<div className="flex items-center justify-end">
-				<div className="group/avatars relative">
-					<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-border bg-popover py-2 text-popover-foreground shadow-xl group-hover/avatars:block">
-						<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-							Team members ({members.length})
-						</p>
-						<ul className="max-h-52 overflow-y-auto">
-							{members.map((m) => (
-								<li
-									key={m.user_id}
-									className="flex items-center gap-2 px-3 py-1"
-								>
-									<div className="shrink-0 overflow-hidden rounded-full border border-border">
-										<MemberAvatar member={m} size={5} />
-									</div>
-									<span className="truncate text-[11px] text-popover-foreground">
-										{m.user?.display_name ||
-											[m.user?.first_name, m.user?.last_name]
-												.filter(Boolean)
-												.join(" ") ||
-											"Unknown"}
-									</span>
-								</li>
-							))}
-						</ul>
-					</div>
-					<div className="flex items-center">
-						{displayedMembers.map((m, i) => (
-							<div
-								key={m.user_id}
-								className="shrink-0 overflow-hidden rounded-full border-2 border-(--app-surface-strong)"
-								style={{
-									marginLeft: i === 0 ? 0 : -6,
-									zIndex: displayedMembers.length - i,
-								}}
-							>
-								<MemberAvatar member={m} size={6} />
-							</div>
-						))}
-						{extraCount > 0 && (
-							<div
-								className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-(--app-surface-strong) bg-muted px-1 text-[9px] font-bold text-muted-foreground"
-								style={{ marginLeft: -6, zIndex: 0 }}
-							>
-								+{extraCount}
-							</div>
-						)}
-					</div>
-				</div>
-			</div>
-		) : null;
-
-	if (isLocked) {
-		return (
-			<div className="flex h-36 cursor-not-allowed select-none flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground opacity-60 shadow-sm grayscale">
-				{bannerUrl && (
-					<div className="relative h-1/5 w-full shrink-0 overflow-hidden rounded-t-xl">
-						<img
-							src={bannerUrl}
-							alt=""
-							className="h-full w-full object-cover"
-						/>
-						<div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
-					</div>
-				)}
-				<div className="flex flex-1 flex-col gap-2 p-3">
-					<div>
-						<span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-							<Lock className="h-2.5 w-2.5" />
-							No access
-						</span>
-					</div>
-					<div className="min-w-0">
-						<h4 className="truncate text-sm font-semibold text-card-foreground">
-							{title}
-						</h4>
-						<p className="truncate text-[11px] text-muted-foreground">
-							<span className="font-medium text-card-foreground/80">
-								Owner:
-							</span>{" "}
-							{owner}
-						</p>
-					</div>
-				</div>
-			</div>
-		);
-	}
-
+/**
+ * A project this team is attached to that the viewer cannot open.
+ *
+ * Rendered instead of the real card rather than as a disabled version of it:
+ * the full card advertises progress, a roadmap and a "view project" link, none
+ * of which this viewer can act on, and the link would 403.
+ */
+function LockedProjectCard({ title }: { title: string }) {
 	return (
-		<Link
-			to="/project/$projectId/roadmap"
-			params={{ projectId }}
-			className="group relative flex h-36 flex-col rounded-xl border border-border bg-(--app-surface-strong) text-card-foreground shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md"
-		>
-			<CardActionMenu
-				projectId={projectId}
-				teamId={teamId}
-				canSetStatus={canSetStatus}
-				currentStatus={status}
-			/>
-			{bannerUrl && (
-				<div className="relative h-1/5 w-full shrink-0 overflow-hidden rounded-t-xl">
-					<img
-						src={bannerUrl}
-						alt=""
-						className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-					/>
-					{/* No scrim over the image — the badge carries its own
-					    background, and at this height a gradient would swallow
-					    the whole cover. */}
-					<div className="absolute bottom-1 left-2">
-						<ProjectStatusBadge status={status} />
-					</div>
-				</div>
-			)}
-			<div className="flex flex-1 flex-col gap-2 p-3">
-				{!bannerUrl && (
-					<div>
-						<ProjectStatusBadge status={status} />
-					</div>
-				)}
-				<div className="min-w-0">
-					<h4 className="truncate text-sm font-semibold text-card-foreground">
-						{title}
-					</h4>
-					<p className="truncate text-[11px] text-muted-foreground">
-						<span className="font-medium text-card-foreground/80">Owner:</span>{" "}
-						{owner}
-					</p>
-				</div>
-				{avatarStrip ? <div className="mt-auto pt-1">{avatarStrip}</div> : null}
-			</div>
-		</Link>
+		<div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/60 px-4 py-10 text-center">
+			<Lock className="h-4 w-4 text-muted-foreground" />
+			<p className="text-sm font-medium text-foreground">{title}</p>
+			<p className="text-xs text-muted-foreground">
+				You do not have access to this project
+			</p>
+		</div>
 	);
+}
+
+const TEAM_TABS = ["overview", "projects", "members"] as const;
+type TeamTab = (typeof TEAM_TABS)[number];
+
+interface TeamDetailSearch {
+	/** Optional so links elsewhere can point here without a tab, and so the
+	 *  default tab (Projects) leaves the URL clean. */
+	tab?: TeamTab;
 }
 
 export const Route = createFileRoute("/_execution/teams/$teamId/")({
@@ -416,11 +233,20 @@ export const Route = createFileRoute("/_execution/teams/$teamId/")({
 			throw redirect({ to: "/auth/login" });
 		}
 	},
+	// The tab lives in the URL so a deep link lands on the right one and the
+	// back button steps through them. Unknown values fall back to Projects.
+	validateSearch: (search: Record<string, unknown>): TeamDetailSearch => ({
+		tab: TEAM_TABS.includes(search.tab as TeamTab)
+			? (search.tab as TeamTab)
+			: undefined,
+	}),
 	component: TeamDetailPage,
 });
 
 function TeamDetailPage() {
 	const { teamId } = Route.useParams();
+	const { tab: tabParam } = Route.useSearch();
+	const tab: TeamTab = tabParam ?? "overview";
 	const user = useUser();
 	const teamQuery = useQuery({
 		queryKey: ["teams", "detail", teamId],
@@ -450,24 +276,12 @@ function TeamDetailPage() {
 		});
 	}, [projectsQuery.data]);
 
-	const projectMemberQueries = useQueries({
-		queries: attachedProjects.map((row) => ({
-			queryKey: ["teams", "projects", "members", row.project_id, teamId],
-			queryFn: () => listCuratedMembers(row.project_id, teamId),
-			enabled: !!row.project && !!row.viewer_has_access,
-			staleTime: 60_000,
-		})),
-	});
-	const projectMembersMap = new Map(
-		attachedProjects.map((row, i) => [
-			row.project_id,
-			projectMemberQueries[i]?.data ?? [],
-		]),
-	);
-
 	const team = teamQuery.data;
 	const members = membersQuery.data ?? [];
 	const isOwner = team && user && team.owner_id === user.id;
+	// Owner or team admin. Derived from the member list rather than
+	// `team.viewer_role`, which is only reliably populated by listMyTeams.
+	const canEdit = canEditTeam(team, membersQuery.data, user?.id);
 	const [inviteOpen, setInviteOpen] = useState(false);
 
 	// Pending invites are only readable by owner / admins. We gate the
@@ -480,6 +294,10 @@ function TeamDetailPage() {
 	const pendingInvites = (invitesQuery.data ?? []).filter(
 		(i) => i.status === "pending",
 	);
+	const membersIsEmpty =
+		!membersQuery.isLoading &&
+		members.length === 0 &&
+		pendingInvites.length === 0;
 
 	if (teamQuery.isLoading) {
 		return (
@@ -505,138 +323,185 @@ function TeamDetailPage() {
 	return (
 		<DashboardShell>
 			<div className="w-full px-6 pb-6 pt-10">
-				<div className="flex items-center gap-4">
-					<TeamAvatar team={team} size="md" />
-					<AppSectionHeader
-						title={team.name}
-						subtitle={team.description ?? undefined}
+				{/* Tabs and the tab's own action share one row: the action belongs
+				    to whichever tab is open, so it reads as part of the switcher
+				    rather than as a second, competing page header. The team's name
+				    and avatar are not repeated here — they live on the Overview,
+				    where they are also editable. */}
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<AppTabs
+						items={[
+							{ key: "overview", label: "Overview" },
+							{
+								key: "projects",
+								label: "Projects",
+								count: attachedProjects.length,
+							},
+							{
+								key: "members",
+								label: "Members",
+								count: members.length + pendingInvites.length,
+							},
+						]}
+						active={tab}
+						linkFor={(key) => ({
+							to: "/teams/$teamId",
+							params: { teamId },
+							// Overview is the default, so it clears the param rather than
+							// stamping ?tab=overview onto every share of the page.
+							search: { tab: key === "overview" ? undefined : key },
+						})}
+						variant="pill"
 					/>
-				</div>
 
-				<div className="mt-8">
-					<div className="mb-3 flex items-center justify-between">
-						<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
-							Projects ({attachedProjects.length})
-						</h3>
-					</div>
-					{projectsQuery.isLoading ? (
-						<AppSurfaceCard className="flex items-center justify-center py-10 text-slate-500">
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							Loading projects…
-						</AppSurfaceCard>
-					) : attachedProjects.length === 0 ? (
-						<AppSurfaceCard className="px-6 py-10 text-center text-sm text-slate-500">
-							No projects attached to this team yet.
-						</AppSurfaceCard>
-					) : (
-						// Cards are a fixed h-36 so a cover banner (h-1/5 of the card)
-						// and no banner come out the same height; auto-rows-fr keeps
-						// the rows themselves uniform.
-						<div className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-							{attachedProjects.map((row) => {
-								if (!row.project) return null;
-								const statusKey = (row.project.status || "").toLowerCase();
-								const statusConfig = PROJECT_STATUS_CONFIG[statusKey] ?? {
-									label: row.project.status || "Unknown",
-									color: "#9c27b0",
-								};
-								return (
-									<CompactProjectCard
-										key={row.project.id}
-										projectId={row.project.id}
-										teamId={teamId}
-										title={row.project.title ?? "Untitled project"}
-										owner={row.project.owner?.display_name || "Assigned"}
-										status={statusConfig.label}
-										bannerUrl={row.project.banner_url}
-										isLocked={!row.viewer_has_access}
-										canSetStatus={
-											!!user?.id &&
-											(row.project.owner_id === user.id ||
-												["owner", "admin"].includes(
-													(row.viewer_role ?? "").toLowerCase(),
-												))
-										}
-										members={projectMembersMap.get(row.project.id)}
-									/>
-								);
-							})}
-						</div>
+					{/* Hidden while the members empty state is up — that carries its
+					    own Invite button, and two side by side reads as a bug. */}
+					{tab === "members" && isOwner && !membersIsEmpty && (
+						<button
+							type="button"
+							onClick={() => setInviteOpen(true)}
+							className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+						>
+							<Plus className="h-4 w-4" />
+							Add a member
+						</button>
 					)}
 				</div>
 
-				<div className="mt-8">
-					<div className="mb-3 flex items-center justify-between">
-						<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
-							Members ({members.length}
-							{pendingInvites.length > 0
-								? ` · ${pendingInvites.length} pending`
-								: ""}
-							)
-						</h3>
-						{isOwner && (
-							<button
-								type="button"
-								onClick={() => setInviteOpen(true)}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
-							>
-								<Plus className="h-4 w-4" />
-								Invite member
-							</button>
+				{tab === "overview" && (
+					<div className="mt-6">
+						<TeamOverviewTab
+							team={team}
+							members={members}
+							projectCount={attachedProjects.length}
+							canEdit={canEdit}
+						/>
+					</div>
+				)}
+
+				{tab === "projects" && (
+					<div className="mt-6">
+						{projectsQuery.isLoading ? (
+							<AppSurfaceCard className="flex items-center justify-center py-10 text-slate-500">
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								Loading projects…
+							</AppSurfaceCard>
+						) : attachedProjects.length === 0 ? (
+							<TeamProjectsEmptyState teamName={team.name} />
+						) : (
+							// The same card the dashboard uses, so a project reads
+							// identically wherever it is listed.
+							<div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+								{attachedProjects.map((row) => {
+									if (!row.project) return null;
+									const project = row.project;
+									const statusKey = (project.status || "").toLowerCase();
+									const statusConfig = PROJECT_STATUS_CONFIG[statusKey] ?? {
+										label: project.status || "Unknown",
+										color: "#9c27b0",
+									};
+
+									// A team can be attached to a project the viewer has no
+									// access to. Showing the full card would offer a "view
+									// project" link that 403s, so those stay a locked stub.
+									if (!row.viewer_has_access) {
+										return (
+											<LockedProjectCard
+												key={project.id}
+												title={project.title ?? "Untitled project"}
+											/>
+										);
+									}
+
+									return (
+										<ProjectCard
+											key={project.id}
+											projectId={project.id}
+											status={statusConfig.label}
+											title={project.title ?? "Untitled project"}
+											owner={project.owner?.display_name || "Assigned"}
+											progress={
+												project.roadmap_summary
+													? project.roadmap_summary.progress
+													: project.status === "completed"
+														? 100
+														: null
+											}
+											progressColor={statusConfig.color}
+											roadmapSummary={project.roadmap_summary ?? null}
+											dueDate={null}
+											// This team's curated members on the project — the one
+											// thing that actually differs between two projects in
+											// this list. Batched by the API, not fetched per card.
+											members={project.curated_members ?? []}
+										/>
+									);
+								})}
+							</div>
 						)}
 					</div>
-					<AppSurfaceCard className="overflow-hidden">
+				)}
+
+				{tab === "members" && (
+					<div className="mt-6">
 						{membersQuery.isLoading ? (
-							<div className="flex items-center justify-center py-10 text-slate-500">
+							<AppSurfaceCard className="flex items-center justify-center py-10 text-slate-500">
 								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 								Loading…
-							</div>
-						) : members.length === 0 && pendingInvites.length === 0 ? (
-							<div className="px-6 py-10 text-center text-sm text-slate-500">
-								No members yet.
-							</div>
+							</AppSurfaceCard>
+						) : membersIsEmpty ? (
+							<TeamMembersEmptyState
+								teamName={team.name}
+								canInvite={Boolean(isOwner)}
+								onInvite={() => setInviteOpen(true)}
+							/>
 						) : (
-							<table className="w-full">
-								<thead>
-									<tr className="border-b border-slate-200 bg-slate-50">
-										<th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-											Member
-										</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-											Position
-										</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-											Role
-										</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-											Joined
-										</th>
-										<th className="px-4 py-3" />
-									</tr>
-								</thead>
-								<tbody className="divide-y divide-slate-100">
-									{members.map((m) => (
-										<MemberRow
-											key={m.id}
-											member={m}
-											teamId={teamId}
-											isOwnerView={Boolean(isOwner)}
-											ownerId={team.owner_id}
-										/>
-									))}
-									{pendingInvites.map((invite) => (
-										<PendingInviteRow
-											key={invite.id}
-											invite={invite}
-											teamId={teamId}
-											isOwnerView={Boolean(isOwner)}
-										/>
-									))}
-								</tbody>
-							</table>
+							// Borderless on the page ground: no card, no header fill, no row
+							// rules. The avatars and the role chips carry the structure, so
+							// every line of chrome removed is one less thing competing.
+							<div className="-mx-2 overflow-x-auto">
+								<table className="w-full min-w-[640px] border-separate border-spacing-0">
+									<thead>
+										<tr>
+											<th className="px-2 pb-3 text-left text-sm font-normal text-muted-foreground">
+												Name
+											</th>
+											<th className="px-2 pb-3 text-left text-sm font-normal text-muted-foreground">
+												Email
+											</th>
+											<th className="px-2 pb-3 text-left text-sm font-normal text-muted-foreground">
+												Role
+											</th>
+											<th className="px-2 pb-3 text-left text-sm font-normal text-muted-foreground">
+												Joined
+											</th>
+											<th className="px-2 pb-3" />
+										</tr>
+									</thead>
+									<tbody>
+										{members.map((m) => (
+											<MemberRow
+												key={m.id}
+												member={m}
+												teamId={teamId}
+												isOwnerView={Boolean(isOwner)}
+												ownerId={team.owner_id}
+											/>
+										))}
+										{pendingInvites.map((invite) => (
+											<PendingInviteRow
+												key={invite.id}
+												invite={invite}
+												teamId={teamId}
+												isOwnerView={Boolean(isOwner)}
+											/>
+										))}
+									</tbody>
+								</table>
+							</div>
 						)}
-					</AppSurfaceCard>
-				</div>
+					</div>
+				)}
 			</div>
 
 			{inviteOpen && (
@@ -707,10 +572,10 @@ function MemberRow({
 
 	return (
 		<>
-			<tr className="transition-colors hover:bg-slate-50/60">
-				<td className="px-5 py-3">
+			<tr className="group transition-colors hover:bg-muted/40">
+				<td className="rounded-l-lg px-2 py-2.5">
 					<div className="flex items-center gap-3">
-						<div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200">
+						<div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-muted">
 							{member.user?.avatar_url ? (
 								<img
 									src={member.user.avatar_url}
@@ -718,45 +583,48 @@ function MemberRow({
 									className="h-full w-full object-cover"
 								/>
 							) : (
-								<span className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+								<span className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">
 									{avatarInitial}
 								</span>
 							)}
 						</div>
+						{/* The position rides under the name as plain text rather than in
+						    its own chip column — it identifies the person, the way a
+						    handle does, and the row is calmer for it. */}
 						<div className="min-w-0">
-							<p className="truncate text-sm font-medium text-slate-900">
+							<p className="truncate text-sm font-medium text-foreground">
 								{displayName}
 							</p>
-							{member.user?.email && (
-								<p className="truncate text-xs text-slate-400">
-									{member.user.email}
+							{member.position && (
+								<p className="truncate text-xs text-muted-foreground">
+									{member.position}
 								</p>
 							)}
 						</div>
 					</div>
 				</td>
-				<td className="px-4 py-3">
-					{member.position ? (
-						<PositionChip>{member.position}</PositionChip>
-					) : (
-						<span className="text-slate-300">—</span>
-					)}
+				<td className="px-2 py-2.5 text-sm text-muted-foreground">
+					<span className="block max-w-[260px] truncate">
+						{member.user?.email || "—"}
+					</span>
 				</td>
-				<td className="px-4 py-3">
+				<td className="px-2 py-2.5">
 					<RoleChip role={member.role} />
 				</td>
-				<td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+				<td className="px-2 py-2.5 text-sm whitespace-nowrap text-muted-foreground">
 					{joinedLabel}
 				</td>
-				<td className="px-4 py-3 text-right">
-					<div className="flex items-center justify-end gap-1">
+				<td className="rounded-r-lg px-2 py-2.5 text-right">
+					{/* Row actions stay out of the way until the row is hovered or
+					    focused, which is what keeps the list reading as a list. */}
+					<div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
 						{isOwnerView && (
 							<button
 								type="button"
 								onClick={() => setEditOpen(true)}
 								aria-label="Edit member"
 								title="Edit member"
-								className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+								className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
 							>
 								<Pencil className="h-3.5 w-3.5" />
 							</button>
@@ -768,7 +636,7 @@ function MemberRow({
 								disabled={removeMutation.isPending}
 								aria-label="Remove member"
 								title="Remove member"
-								className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+								className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
 							>
 								{removeMutation.isPending ? (
 									<Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1000,11 +868,6 @@ function PendingInviteRow({
 			.join(" ") ||
 		null;
 
-	const metaParts: string[] = [];
-	if (invite.position) metaParts.push(invite.position);
-	metaParts.push(invite.role);
-	if (displayName) metaParts.push(displayEmail);
-
 	const invitedLabel = new Date(invite.created_at).toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
@@ -1012,44 +875,42 @@ function PendingInviteRow({
 	});
 
 	return (
-		<tr className="bg-amber-50/30 transition-colors hover:bg-amber-50/60">
-			<td className="px-5 py-3">
+		<tr className="group transition-colors hover:bg-muted/40">
+			<td className="rounded-l-lg px-2 py-2.5">
 				<div className="flex items-center gap-3">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
 						<Mail className="h-4 w-4" />
 					</div>
 					<div className="min-w-0">
-						<p className="truncate text-sm font-medium text-slate-900">
+						<p className="truncate text-sm font-medium text-foreground">
 							{displayName || displayEmail}
 						</p>
-						{displayName && (
-							<p className="truncate text-xs text-slate-400">{displayEmail}</p>
+						{invite.position && (
+							<p className="truncate text-xs text-muted-foreground">
+								{invite.position}
+							</p>
 						)}
 					</div>
 				</div>
 			</td>
-			<td className="px-4 py-3">
-				{invite.position ? (
-					<PositionChip>{invite.position}</PositionChip>
-				) : (
-					<span className="text-slate-300">—</span>
-				)}
+			<td className="px-2 py-2.5 text-sm text-muted-foreground">
+				<span className="block max-w-[260px] truncate">{displayEmail}</span>
 			</td>
-			<td className="px-4 py-3">
-				<span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+			<td className="px-2 py-2.5">
+				<span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
 					Pending · {invite.role}
 				</span>
 			</td>
-			<td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+			<td className="px-2 py-2.5 text-sm whitespace-nowrap text-muted-foreground">
 				Invited {invitedLabel}
 			</td>
-			<td className="px-4 py-3 text-right">
+			<td className="rounded-r-lg px-2 py-2.5 text-right">
 				{isOwnerView && (
 					<button
 						type="button"
 						onClick={() => cancelMutation.mutate()}
 						disabled={cancelMutation.isPending}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
 					>
 						{cancelMutation.isPending ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />

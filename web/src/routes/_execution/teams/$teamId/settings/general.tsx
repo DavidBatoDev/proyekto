@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	redirect,
+	useNavigate,
+} from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	Edit2,
@@ -12,11 +17,13 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { RichBody } from "@/components/common/RichBody";
 import { TagInput } from "@/components/common/TagInput";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
+import { isRichTextEmpty } from "@/lib/richText";
 import {
 	deleteTeam,
 	getTeam,
@@ -54,8 +61,6 @@ function TeamGeneralSettings() {
 
 	const [isEditingName, setIsEditingName] = useState(false);
 	const [nameDraft, setNameDraft] = useState("");
-	const [isEditingDescription, setIsEditingDescription] = useState(false);
-	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [isEditingTags, setIsEditingTags] = useState(false);
 	const [tagsDraft, setTagsDraft] = useState<string[]>([]);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -73,7 +78,6 @@ function TeamGeneralSettings() {
 	useEffect(() => {
 		if (team) {
 			setNameDraft(team.name || "");
-			setDescriptionDraft(team.description ?? "");
 			setTagsDraft(team.tags ?? []);
 			setBillingDraft({
 				legal_name: team.legal_name ?? "",
@@ -114,13 +118,6 @@ function TeamGeneralSettings() {
 		}
 		await updateMutation.mutateAsync({ name: trimmed });
 		setIsEditingName(false);
-	};
-
-	const saveDescription = async () => {
-		await updateMutation.mutateAsync({
-			description: descriptionDraft.trim(),
-		});
-		setIsEditingDescription(false);
 	};
 
 	const saveTags = async () => {
@@ -324,69 +321,38 @@ function TeamGeneralSettings() {
 								)}
 							</section>
 
+							{/* Read-only here on purpose. The description holds rich text
+							    written on the Overview tab; a plain textarea would show its
+							    markup as literal characters and re-save the flattened
+							    result, silently destroying formatting. One editor, one
+							    place. */}
 							<section>
 								<div className="mb-2.5 flex items-center justify-between gap-2">
 									<h3 className="text-[18px] font-semibold text-slate-900">
 										Description
 									</h3>
-									{isOwner && !isEditingDescription && (
-										<button
-											type="button"
-											onClick={() => setIsEditingDescription(true)}
+									{isOwner && (
+										<Link
+											to="/teams/$teamId"
+											params={{ teamId }}
+											search={{ tab: undefined }}
 											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
 										>
 											<Edit2 className="h-4 w-4" />
-											Edit
-										</button>
+											Edit on Overview
+										</Link>
 									)}
 								</div>
 
-								{isEditingDescription ? (
-									<div className="space-y-3">
-										<textarea
-											value={descriptionDraft}
-											onChange={(e) => setDescriptionDraft(e.target.value)}
-											placeholder="Add a short description"
-											rows={4}
-											disabled={updateMutation.isPending}
-											className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
-										/>
-										<div className="flex items-center gap-2">
-											<button
-												type="button"
-												onClick={() => void saveDescription()}
-												disabled={updateMutation.isPending}
-												className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-											>
-												{updateMutation.isPending ? (
-													<Loader2 className="h-4 w-4 animate-spin" />
-												) : (
-													<Save className="h-4 w-4" />
-												)}
-												Save
-											</button>
-											<button
-												type="button"
-												onClick={() => {
-													setDescriptionDraft(team.description ?? "");
-													setIsEditingDescription(false);
-												}}
-												disabled={updateMutation.isPending}
-												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-											>
-												<X className="h-4 w-4" />
-												Cancel
-											</button>
-										</div>
-									</div>
-								) : (
-									<p className="text-[13px] leading-6 text-slate-600">
-										{team.description?.trim() || (
-											<span className="text-slate-400">
-												No description added yet.
-											</span>
-										)}
+								{isRichTextEmpty(team.description ?? "") ? (
+									<p className="text-[13px] leading-6 text-slate-400">
+										No description added yet.
 									</p>
+								) : (
+									<RichBody
+										value={team.description ?? ""}
+										className="text-[13px] leading-6 text-slate-600"
+									/>
 								)}
 							</section>
 

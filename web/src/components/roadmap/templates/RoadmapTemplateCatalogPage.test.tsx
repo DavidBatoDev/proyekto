@@ -77,4 +77,36 @@ describe("RoadmapTemplateCatalogPage", () => {
 			tags: "",
 		});
 	});
+
+	it("keeps a collapsed filter panel honest about what it is hiding", () => {
+		render(<RoadmapTemplateCatalogPage />);
+
+		const toggle = screen.getByRole("button", { name: /more options/i });
+		expect(toggle.getAttribute("aria-expanded")).toBe("false");
+		expect(screen.queryByText(/filters hidden/i)).toBeNull();
+
+		// Search stays visible on a phone, so it is deliberately not counted.
+		fireEvent.change(screen.getByLabelText("Search roadmap templates"), {
+			target: { value: "onboarding" },
+		});
+		expect(screen.queryByText(/filters hidden/i)).toBeNull();
+
+		fireEvent.change(screen.getByPlaceholderText("Filter by tags"), {
+			target: { value: "retention" },
+		});
+		fireEvent.change(screen.getByLabelText("Difficulty"), {
+			target: { value: "beginner" },
+		});
+		// getByText lands on the sr-only span; the count lives on its parent.
+		expect(screen.getByText(/filters hidden/i).parentElement?.textContent).toBe(
+			"2 filters hidden",
+		);
+
+		fireEvent.click(toggle);
+		expect(
+			screen
+				.getByRole("button", { name: /fewer options/i })
+				.getAttribute("aria-expanded"),
+		).toBe("true");
+	});
 });

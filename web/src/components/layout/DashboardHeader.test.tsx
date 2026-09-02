@@ -10,11 +10,16 @@ vi.mock("@tanstack/react-router", () => ({
 		children,
 		to,
 		hash,
+		...rest
 	}: {
 		children?: ReactNode;
 		to: string;
 		hash?: string;
-	}) => <a href={hash ? `${to}#${hash}` : to}>{children}</a>,
+	} & Record<string, unknown>) => (
+		<a href={hash ? `${to}#${hash}` : to} {...rest}>
+			{children}
+		</a>
+	),
 }));
 
 vi.mock("@/components/brand/BrandMark", () => ({
@@ -69,5 +74,13 @@ describe("DashboardHeader navigation", () => {
 			.map((link) => link.textContent)
 			.filter((label) => label === "Marketplace" || label === "Execution");
 		expect(labels).toEqual(["Execution", "Marketplace"]);
+	});
+
+	it("points the messages icon at the inbox", () => {
+		render(<DashboardHeader />);
+
+		expect(
+			screen.getByRole("link", { name: "Messages" }).getAttribute("href"),
+		).toBe("/inbox");
 	});
 });

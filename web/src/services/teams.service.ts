@@ -1,5 +1,6 @@
 import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import type { ProjectRoadmapSummary } from "@/services/project.service";
 
 function maybeRewriteRateSchemaError(message: string): string {
 	const lower = message.toLowerCase();
@@ -12,6 +13,12 @@ function maybeRewriteRateSchemaError(message: string): string {
 }
 
 export type TeamRole = "owner" | "admin" | "member";
+
+/**
+ * The team's lifecycle chip on the Overview tab. Descriptive only — it gates
+ * no read, write, or invite path.
+ */
+export type TeamStatus = "active" | "paused" | "archived";
 export type ProjectTeamDefaultRole =
 	| "admin"
 	| "editor"
@@ -37,6 +44,11 @@ export interface PayPeriodConfig {
 export interface Team {
 	id: string;
 	owner_id: string;
+	/**
+	 * Organizational home. Nullable — a workspace deletion detaches its teams
+	 * rather than destroying them. Never an authorization source.
+	 */
+	workspace_id?: string | null;
 	name: string;
 	description: string | null;
 	avatar_url: string | null;
@@ -56,6 +68,12 @@ export interface Team {
 	tax_id?: string | null;
 	billing_email?: string | null;
 	time_tracking_enabled: boolean;
+	/**
+	 * Optional for the same reason `tags` is: query-cache entries persisted
+	 * before this shipped carry no `status`. Read sites use
+	 * `team.status ?? "active"`.
+	 */
+	status?: TeamStatus;
 	retroactive_log_days?: number | null;
 	default_currency?: string | null;
 	pay_period_config?: PayPeriodConfig | null;
@@ -245,6 +263,13 @@ export interface CreateTeamInput {
 	description?: string;
 	avatar_url?: string;
 	tags?: string[];
+	/**
+	 * Which workspace the team belongs to. Omit to let the backend use the
+	 * caller's default workspace. There is deliberately no equivalent on
+	 * UpdateTeamPatch — moving a team between organizations would have to carry
+	 * its projects, rates, and payouts with it.
+	 */
+	workspace_id?: string;
 }
 
 export interface UpdateTeamPatch {
@@ -253,6 +278,7 @@ export interface UpdateTeamPatch {
 	avatar_url?: string;
 	/** `[]` clears them; omitting the field leaves them alone. */
 	tags?: string[];
+	status?: TeamStatus;
 	legal_name?: string;
 	billing_address?: string;
 	tax_id?: string;
@@ -550,6 +576,13 @@ export interface TeamProjectAttachment {
 			display_name: string | null;
 			avatar_url: string | null;
 		} | null;
+		/** Same rollup the dashboard cards use, so both render the same card. */
+		roadmap_summary?: ProjectRoadmapSummary | null;
+		/** This team's curated members on that project — the card's avatar stack. */
+		curated_members?: Array<{
+			user_id: string;
+			user: ProfileSummary | null;
+		}>;
 	} | null;
 }
 
@@ -618,9 +651,19 @@ export async function attachTeam(
 export async function detachTeam(
 	projectId: string,
 	teamId: string,
+	opts?: {
+		/**
+		 * What happens to members whose access is sustained only by this
+		 * team: "remove" (default) lets the detach revoke their access;
+		 * "keep" promotes them to direct project members first.
+		 */
+		members?: "remove" | "keep";
+	},
 ): Promise<void> {
 	try {
-		await apiClient.delete(`/api/projects/${projectId}/teams/${teamId}`);
+		await apiClient.delete(`/api/projects/${projectId}/teams/${teamId}`, {
+			params: opts?.members === "keep" ? { members: "keep" } : undefined,
+		});
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(

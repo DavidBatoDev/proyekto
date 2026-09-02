@@ -40,13 +40,13 @@ import {
 	TeamLogsStatusTabs,
 } from "@/components/team-time/TeamLogsStatusTabs";
 import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
-import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
 	ManualLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { TimeLogDetailModal } from "@/components/team-time/TimeLogDetailModal";
 import { TASK_STATUS_FILTER_OPTIONS } from "@/components/team-time/taskStatusFilter";
 import {
 	fromLocalDateTimeInput,

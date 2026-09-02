@@ -1,4 +1,4 @@
-import { type RefObject, useRef } from "react";
+import { type ReactNode, type RefObject, useRef } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { isRichTextEmpty } from "@/lib/richText";
@@ -42,6 +42,7 @@ export function InlineRichText({
 	autoFocus = true,
 	containerRef,
 	editLabel,
+	renderBody,
 }: {
 	value: string;
 	onChange: (value: string) => void;
@@ -61,6 +62,14 @@ export function InlineRichText({
 	 */
 	containerRef?: RefObject<HTMLElement | null>;
 	editLabel: string;
+	/**
+	 * How the closed, non-empty state renders. Defaults to the raw stored HTML,
+	 * which is right for a field the editor is the only writer of. Fields whose
+	 * existing rows predate the editor — or that an API caller can write
+	 * directly — should pass a renderer that sanitizes and handles the legacy
+	 * format (see `components/common/RichBody`).
+	 */
+	renderBody?: (value: string) => ReactNode;
 }) {
 	const ownRef = useRef<HTMLDivElement>(null);
 
@@ -97,13 +106,20 @@ export function InlineRichText({
 		>
 			{isRichTextEmpty(value) ? (
 				<span className="text-[13.5px] text-muted-foreground">{emptyHint}</span>
+			) : renderBody ? (
+				<span className="block text-[13.5px] leading-relaxed text-muted-foreground">
+					{renderBody(value)}
+				</span>
 			) : (
 				<span
 					// Authored in this app's own rich-text editor and stored as its
 					// sanitized output — the same trust boundary the project overview
 					// uses for a brief.
 					dangerouslySetInnerHTML={{ __html: value }}
-					className="prose-brief block text-[13.5px] leading-relaxed text-muted-foreground"
+					// rich-prose, not prose-brief: the latter matched no rule in
+					// styles.css, so Tailwind's preflight was stripping list markers
+					// and heading sizes out of every closed block.
+					className="rich-prose block text-[13.5px] leading-relaxed text-muted-foreground"
 				/>
 			)}
 		</button>

@@ -58,7 +58,7 @@ export function ChatShell({
 							<div className="relative min-h-0 flex-1">
 								<div
 									ref={messagesContainerRef}
-									className="h-full overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+									className="h-full overflow-x-hidden overflow-y-auto thin-scrollbar px-3 py-4 md:px-6 md:py-5"
 								>
 									{messages}
 								</div>
@@ -86,7 +86,7 @@ export function ChatShell({
 				{/* Mobile full-screen info page */}
 				{profilePanel && (
 					<div
-						className={`h-full overflow-y-auto border-l border-slate-200 bg-slate-50 md:hidden ${
+						className={`h-full overflow-y-auto thin-scrollbar border-l border-slate-200 bg-slate-50 md:hidden ${
 							mobileView === "info" ? "block" : "hidden"
 						}`}
 					>
@@ -113,7 +113,7 @@ export function ChatShell({
 								animate={{ x: 0, opacity: 1 }}
 								exit={{ x: 24, opacity: 0 }}
 								transition={{ duration: 0.22, ease: "easeOut" }}
-								className="fixed right-0 top-0 z-50 hidden h-full w-[340px] max-w-[92vw] overflow-y-auto border-l border-slate-200 bg-slate-50 shadow-[0_16px_40px_rgba(0,0,0,0.16)] md:block xl:hidden"
+								className="fixed right-0 top-0 z-50 hidden h-full w-[340px] max-w-[92vw] overflow-y-auto thin-scrollbar border-l border-slate-200 bg-slate-50 shadow-[0_16px_40px_rgba(0,0,0,0.16)] md:block xl:hidden"
 							>
 								{profilePanel}
 							</motion.aside>
@@ -128,7 +128,7 @@ export function ChatShell({
 						animate={{ width: isProfilePanelOpen ? 340 : 0 }}
 						transition={{ duration: 0.22, ease: "easeOut" }}
 					>
-						<div className="h-full w-[340px] overflow-y-auto">
+						<div className="h-full w-[340px] overflow-y-auto thin-scrollbar">
 							{profilePanel}
 						</div>
 					</motion.div>

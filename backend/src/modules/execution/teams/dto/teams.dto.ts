@@ -40,6 +40,26 @@ export interface PayPeriodConfigInput {
   periods: PayPeriodInput[];
 }
 
+/**
+ * Ceiling on the team blurb, which holds sanitized rich-text HTML from the
+ * Overview tab. Was 500 while the field was a plain textarea; HTML carries
+ * roughly two to three times its visible text in markup, so this is ~600-900
+ * words of formatted prose. Mirrored by a CHECK on the column
+ * (20260901162000_teams_description_length.sql) so the ceiling survives a DTO
+ * edit, and matches the repo's only other rich-text cap
+ * (ServiceDescriptionSectionDto.body).
+ */
+export const TEAM_DESCRIPTION_MAX_LENGTH = 8000;
+
+/**
+ * The team's lifecycle chip on the Overview tab. Text + CHECK in the DB rather
+ * than an enum, matching every other status-like column in this schema: adding
+ * a value is a one-line CHECK swap instead of an ALTER TYPE holding an ACCESS
+ * EXCLUSIVE lock. Descriptive only — it gates no read, write, or invite path.
+ */
+export const TEAM_STATUSES = ['active', 'paused', 'archived'] as const;
+export type TeamStatus = (typeof TEAM_STATUSES)[number];
+
 export class CreateTeamDto {
   @IsString()
   @Length(1, 120)
@@ -47,7 +67,7 @@ export class CreateTeamDto {
 
   @IsOptional()
   @IsString()
-  @Length(0, 500)
+  @MaxLength(TEAM_DESCRIPTION_MAX_LENGTH)
   description?: string;
 
   @IsOptional()
@@ -65,6 +85,18 @@ export class CreateTeamDto {
   @IsString({ each: true })
   @MaxLength(TEAM_TAG_MAX_LENGTH, { each: true })
   tags?: string[];
+
+  /**
+   * Which workspace the team belongs to. Omit to use the caller's default
+   * workspace — see WorkspacesService.resolveWorkspaceForWrite.
+   *
+   * Deliberately absent from UpdateTeamDto: moving a team between organizations
+   * would have to carry its projects, rates, and payouts with it, and that is
+   * not a rename.
+   */
+  @IsOptional()
+  @IsUUID()
+  workspace_id?: string;
 }
 
 export class UpdateTeamDto {
@@ -75,12 +107,21 @@ export class UpdateTeamDto {
 
   @IsOptional()
   @IsString()
-  @Length(0, 500)
+  @MaxLength(TEAM_DESCRIPTION_MAX_LENGTH)
   description?: string;
 
   @IsOptional()
   @IsString()
   avatar_url?: string;
+
+  /**
+   * Lifecycle chip. Must be declared here even though it is a plain string:
+   * the global ValidationPipe runs whitelist + forbidNonWhitelisted, so an
+   * undeclared `status` would 400 rather than being ignored.
+   */
+  @IsOptional()
+  @IsIn(TEAM_STATUSES)
+  status?: TeamStatus;
 
   /**
    * Freeform descriptive labels. `[]` clears them; omitting the field leaves
@@ -405,6 +446,18 @@ export class AddCuratedMemberDto {
   @IsOptional()
   @IsBoolean()
   move_direct_grant?: boolean;
+}
+
+export class DetachTeamQueryDto {
+  /**
+   * What happens to members whose access is sustained only by this team:
+   * 'remove' (default) lets the detach reclaim their project_access rows;
+   * 'keep' promotes them to direct members first — the inverse of
+   * AddCuratedMemberDto.move_direct_grant.
+   */
+  @IsOptional()
+  @IsIn(['remove', 'keep'])
+  members?: 'remove' | 'keep';
 }
 
 // ─── "Invite a team" (project_team_invites) ─────────────────────────────

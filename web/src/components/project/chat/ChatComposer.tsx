@@ -294,7 +294,7 @@ export function ChatComposer({
 			<div className="relative">
 				{mentionOpen && (
 					<div className="absolute bottom-full left-0 z-40 mb-2 w-72 max-w-[calc(100%-1rem)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-						<ul className="max-h-60 overflow-y-auto">
+						<ul className="max-h-60 overflow-y-auto thin-scrollbar">
 							{mentionOptions.map((option, idx) => (
 								<li key={option.user_id}>
 									<button

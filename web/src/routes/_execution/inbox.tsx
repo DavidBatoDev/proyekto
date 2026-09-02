@@ -7,7 +7,6 @@ import {
 	Hash,
 	Inbox,
 	Lock,
-	MessageSquare,
 	PanelRight,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +20,7 @@ import {
 	type PendingAttachment,
 	TypingIndicator,
 } from "@/components/project/chat";
+import { ChatAvatar } from "@/components/project/chat/Avatar";
 import {
 	forgetAttachmentBlob,
 	rememberAttachmentBlob,
@@ -125,17 +125,69 @@ function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 	);
 }
 
+/**
+ * The other person in a DM. `counterpart` is the decorated field the DM list
+ * endpoint sets; the participant scan is the fallback for rooms that arrive
+ * undecorated (per-project fetches, realtime patches).
+ */
+function getDmCounterpart(room: ChatRoom, currentUserId?: string) {
+	return (
+		room.counterpart ??
+		room.participants.find((p) => p.user_id !== currentUserId) ??
+		null
+	);
+}
+
 function getRoomTitle(room: ChatRoom, currentUserId?: string): string {
 	if (room.type === "channel") {
 		return room.name ?? `#${room.slug}`;
 	}
-	const counterpart =
-		room.counterpart ??
-		room.participants.find((p) => p.user_id !== currentUserId);
+	const counterpart = getDmCounterpart(room, currentUserId);
 	return (
 		counterpart?.user?.display_name ??
 		counterpart?.user?.email ??
 		"Direct message"
+	);
+}
+
+/**
+ * The avatar for a conversation: the hash/lock badge for a channel, the other
+ * person's face for a DM.
+ *
+ * A DM row used to carry the same generic speech-bubble glyph as every other
+ * DM row, which made the list scannable only by reading the names. `ChatAvatar`
+ * is the same component the chat sidebar and message list use, so a person
+ * looks identical wherever they appear, and it falls back to their initials
+ * when there is no photo.
+ */
+function ConversationAvatar({
+	room,
+	title,
+	currentUserId,
+}: {
+	room: ChatRoom;
+	title: string;
+	currentUserId?: string;
+}) {
+	if (room.type === "dm") {
+		const counterpart = getDmCounterpart(room, currentUserId);
+		return (
+			<ChatAvatar
+				name={title}
+				avatarUrl={counterpart?.user?.avatar_url ?? null}
+				size="lg"
+			/>
+		);
+	}
+
+	return (
+		<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+			{room.is_private ? (
+				<Lock className="h-4 w-4" />
+			) : (
+				<Hash className="h-4 w-4" />
+			)}
+		</div>
 	);
 }
 
@@ -542,16 +594,12 @@ function InboxRow({
 					isSelected ? "bg-muted" : "hover:bg-muted/60"
 				}`}
 			>
-				<div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-					{isChannel ? (
-						entry.room.is_private ? (
-							<Lock className="h-4 w-4" />
-						) : (
-							<Hash className="h-4 w-4" />
-						)
-					) : (
-						<MessageSquare className="h-4 w-4" />
-					)}
+				<div className="mt-0.5">
+					<ConversationAvatar
+						room={entry.room}
+						title={title}
+						currentUserId={currentUserId}
+					/>
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-baseline justify-between gap-2">
@@ -1107,17 +1155,11 @@ function InboxThread({
 								<ArrowLeft className="h-5 w-5" />
 							</button>
 						)}
-						<div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-							{room.type === "channel" ? (
-								room.is_private ? (
-									<Lock className="h-4 w-4" />
-								) : (
-									<Hash className="h-4 w-4" />
-								)
-							) : (
-								<MessageSquare className="h-4 w-4" />
-							)}
-						</div>
+						<ConversationAvatar
+							room={room}
+							title={title}
+							currentUserId={currentUserId}
+						/>
 						<div className="min-w-0">
 							<h2 className="truncate text-base font-semibold text-slate-900">
 								{title}

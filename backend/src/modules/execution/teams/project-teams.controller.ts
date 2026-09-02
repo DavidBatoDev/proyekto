@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
@@ -15,6 +16,7 @@ import { ProjectTeamsService } from './project-teams.service';
 import {
   AddCuratedMemberDto,
   AttachTeamDto,
+  DetachTeamQueryDto,
   UpdateProjectTeamDto,
 } from './dto/teams.dto';
 
@@ -55,8 +57,11 @@ export class ProjectTeamsController {
     @Param('projectId') projectId: string,
     @Param('teamId') teamId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query() query: DetachTeamQueryDto,
   ) {
-    return this.projectTeams.detach(projectId, teamId, user.id);
+    return this.projectTeams.detach(projectId, teamId, user.id, {
+      retainMembers: query.members === 'keep',
+    });
   }
 
   @Get(':teamId/members')

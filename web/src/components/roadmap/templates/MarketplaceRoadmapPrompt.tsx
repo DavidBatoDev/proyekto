@@ -85,7 +85,12 @@ export function MarketplaceRoadmapPrompt() {
 					rows={1}
 					maxLength={2000}
 					placeholder="Describe what you want to build..."
-					className="block min-h-16 max-h-40 w-full resize-none overflow-y-auto rounded-2xl bg-transparent py-4 pl-14 pr-16 text-base leading-8 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:pr-44"
+					// min-h-16 is exactly one line of leading-8 plus py-4. On a phone the
+					// placeholder wraps to two, and since a placeholder never fires
+					// onChange the auto-grow in handleChange never ran - the second line
+					// was simply cut off. Two lines of room below sm fixes it without
+					// touching the desktop box.
+					className="block min-h-24 max-h-40 w-full resize-none overflow-y-auto rounded-2xl bg-transparent py-4 pl-14 pr-16 text-base leading-8 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:min-h-16 sm:pr-44"
 				/>
 				<button
 					type="button"

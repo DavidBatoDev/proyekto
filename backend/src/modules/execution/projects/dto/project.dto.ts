@@ -18,6 +18,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  RESOURCE_FOLDER_COLORS,
+  RESOURCE_FOLDER_ICONS,
+} from '../../../../common/resources/folder-tokens';
 
 export enum ProjectMemberRole {
   CONSULTANT = 'consultant',
@@ -199,6 +203,16 @@ export class CreateProjectDto {
   @IsOptional()
   creation_mode?: 'client' | 'consultant';
 
+  /**
+   * Which workspace the project belongs to. Omit to use the caller's default
+   * workspace — see WorkspacesService.resolveWorkspaceForWrite. Declared here
+   * because the global ValidationPipe runs forbidNonWhitelisted, so an
+   * undeclared field would 400 the request.
+   */
+  @IsUUID()
+  @IsOptional()
+  workspace_id?: string;
+
   @IsString() @MaxLength(200) title: string;
   @IsString() @IsOptional() @MaxLength(500) brief?: string;
   @IsString() @IsOptional() @MaxLength(2000) description?: string;
@@ -255,41 +269,8 @@ class ResourceReorderItemDto {
  * Folder decoration tokens. Kept in code rather than the DB so adding an icon
  * is a deploy, not a migration; the column only guards shape and length.
  */
-export const PROJECT_RESOURCE_FOLDER_ICONS = [
-  'folder',
-  'code',
-  'terminal',
-  'bot',
-  'package',
-  'database',
-  'globe',
-  'server',
-  'cpu',
-  'layers',
-  'braces',
-  'rocket',
-  'wrench',
-  'briefcase',
-  'building',
-  'palette',
-  'gauge',
-  'sparkles',
-  'file-text',
-  'box',
-] as const;
-
-export const PROJECT_RESOURCE_FOLDER_COLORS = [
-  'white',
-  'slate',
-  'red',
-  'orange',
-  'amber',
-  'green',
-  'teal',
-  'blue',
-  'violet',
-  'pink',
-] as const;
+export const PROJECT_RESOURCE_FOLDER_ICONS = RESOURCE_FOLDER_ICONS;
+export const PROJECT_RESOURCE_FOLDER_COLORS = RESOURCE_FOLDER_COLORS;
 
 export class CreateProjectResourceFolderDto {
   @IsString()

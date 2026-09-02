@@ -195,7 +195,7 @@ export function CreateChannelModal({
 								<p className="mb-1 text-xs font-medium text-slate-600">
 									Add members
 								</p>
-								<div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200">
+								<div className="max-h-40 overflow-y-auto thin-scrollbar rounded-lg border border-slate-200">
 									{selectableMembers.map((member) => {
 										const label =
 											member.user?.display_name ||

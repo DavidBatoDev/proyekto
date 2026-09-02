@@ -80,13 +80,14 @@ const DashboardHeader = () => {
 					</div>
 				) : isAuthenticated ? (
 					<>
-						<button
-							type="button"
+						<Link
+							to="/inbox"
+							search={{ r: undefined }}
 							className="flex items-center justify-center rounded-full p-2 text-foreground transition-colors hover:bg-muted"
 							aria-label="Messages"
 						>
 							<MessageCircle size={20} />
-						</button>
+						</Link>
 
 						<NotificationBell />
 

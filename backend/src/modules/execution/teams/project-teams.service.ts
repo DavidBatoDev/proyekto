@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import {
+  ProjectAuthorizationService,
+  type ProjectRole,
+} from '../projects/authorization/project-authorization.service';
 import {
   AddCuratedMemberDto,
   AttachTeamDto,
@@ -82,7 +85,7 @@ export class ProjectTeamsService {
   ): Promise<void> {
     const { data: existing, error: lookupErr } = await this.supabase
       .from('project_access')
-      .select('id, origin, has_direct_grant')
+      .select('id, role, origin, has_direct_grant')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -105,7 +108,12 @@ export class ProjectTeamsService {
       if (
         moveDirectGrant &&
         existing.origin === 'invited' &&
-        existing.has_direct_grant === true
+        existing.has_direct_grant === true &&
+        // Never demote an owner to a team-sustained grant: without the
+        // direct flag, detaching the team would delete their access row
+        // (the trigger's owner guard is the backstop; this keeps the
+        // demotion from happening at all).
+        existing.role !== 'owner'
       ) {
         const { error: moveErr } = await this.supabase
           .from('project_access')
@@ -120,30 +128,23 @@ export class ProjectTeamsService {
     }
 
     const role: ProjectTeamDefaultRole = pickedRole ?? 'editor';
-    const { error: paErr } = await this.supabase
-      .from('project_access')
-      .insert({
-        project_id: projectId,
-        user_id: userId,
-        role,
-        origin: `team:${teamId}`,
-        granted_by: callerId,
-        capabilities: {},
-        has_direct_grant: false,
-      });
+    const { error: paErr } = await this.supabase.from('project_access').insert({
+      project_id: projectId,
+      user_id: userId,
+      role,
+      origin: `team:${teamId}`,
+      granted_by: callerId,
+      capabilities: {},
+      has_direct_grant: false,
+    });
     if (paErr) throw new Error(paErr.message);
   }
 
-  async list(
-    projectId: string,
-    callerId: string,
-  ): Promise<ProjectTeamRow[]> {
+  async list(projectId: string, callerId: string): Promise<ProjectTeamRow[]> {
     await this.projectAuth.assertPermission(callerId, projectId, 'teams.view');
     const { data, error } = await this.supabase
       .from('project_teams')
-      .select(
-        '*, team:teams!project_teams_team_id_fkey(id, name, avatar_url)',
-      )
+      .select('*, team:teams!project_teams_team_id_fkey(id, name, avatar_url)')
       .eq('project_id', projectId);
     if (error) throw new Error(error.message);
     return (data ?? []) as unknown as ProjectTeamRow[];
@@ -187,35 +188,39 @@ export class ProjectTeamsService {
       projectId,
       'members.manage',
     );
-    const [{ data: teamMembers, error: tmErr }, { data: curated, error: cErr }] =
-      await Promise.all([
-        this.supabase
-          .from('team_members')
-          .select(
-            'user_id, role, user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
-          )
-          .eq('team_id', teamId),
-        this.supabase
-          .from('project_team_members')
-          .select('user_id')
-          .eq('project_id', projectId)
-          .eq('team_id', teamId),
-      ]);
+    const [
+      { data: teamMembers, error: tmErr },
+      { data: curated, error: cErr },
+    ] = await Promise.all([
+      this.supabase
+        .from('team_members')
+        .select(
+          'user_id, role, user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
+        )
+        .eq('team_id', teamId),
+      this.supabase
+        .from('project_team_members')
+        .select('user_id')
+        .eq('project_id', projectId)
+        .eq('team_id', teamId),
+    ]);
     if (tmErr) throw new Error(tmErr.message);
     if (cErr) throw new Error(cErr.message);
     const taken = new Set((curated ?? []).map((c) => c.user_id));
-    return ((teamMembers ?? []) as unknown as Array<{
-      user_id: string;
-      role: string;
-      user: {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        email: string | null;
-        first_name: string | null;
-        last_name: string | null;
-      } | null;
-    }>).filter((m) => !taken.has(m.user_id));
+    return (
+      (teamMembers ?? []) as unknown as Array<{
+        user_id: string;
+        role: string;
+        user: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          email: string | null;
+          first_name: string | null;
+          last_name: string | null;
+        } | null;
+      }>
+    ).filter((m) => !taken.has(m.user_id));
   }
 
   async attach(
@@ -344,12 +349,18 @@ export class ProjectTeamsService {
     projectId: string,
     teamId: string,
     callerId: string,
+    opts?: { retainMembers?: boolean },
   ): Promise<void> {
     await this.projectAuth.assertPermission(
       callerId,
       projectId,
       'teams.manage',
     );
+
+    if (opts?.retainMembers) {
+      await this.promoteTeamSustainedMembers(projectId, teamId, callerId);
+    }
+
     // Cascade: deleting project_teams cascade-deletes
     // project_team_members; the DELETE trigger fires per row and
     // garbage-collects project_access rows that no longer have any
@@ -360,6 +371,85 @@ export class ProjectTeamsService {
       .eq('project_id', projectId)
       .eq('team_id', teamId);
     if (error) throw new Error(error.message);
+  }
+
+  /**
+   * "Detach but keep members": promote to direct members exactly the
+   * users the detach would otherwise remove — curated by this team, no
+   * direct grant, and not sustained by another attached team. Direct
+   * members already survive the detach, and members another team
+   * curates stay team-sustained rather than being silently promoted to
+   * an access that outlives that other team too.
+   */
+  private async promoteTeamSustainedMembers(
+    projectId: string,
+    teamId: string,
+    callerId: string,
+  ): Promise<void> {
+    const { data: curated, error: curatedErr } = await this.supabase
+      .from('project_team_members')
+      .select('user_id')
+      .eq('project_id', projectId)
+      .eq('team_id', teamId);
+    if (curatedErr) throw new Error(curatedErr.message);
+    const userIds = (curated ?? []).map((row) => row.user_id as string);
+    if (userIds.length === 0) return;
+
+    const [otherCurations, accessRows] = await Promise.all([
+      this.supabase
+        .from('project_team_members')
+        .select('user_id')
+        .eq('project_id', projectId)
+        .neq('team_id', teamId)
+        .in('user_id', userIds),
+      this.supabase
+        .from('project_access')
+        .select('user_id, role, has_direct_grant')
+        .eq('project_id', projectId)
+        .in('user_id', userIds),
+    ]);
+    if (otherCurations.error) throw new Error(otherCurations.error.message);
+    if (accessRows.error) throw new Error(accessRows.error.message);
+
+    const sustainedElsewhere = new Set(
+      (otherCurations.data ?? []).map((row) => row.user_id as string),
+    );
+    const retained = (
+      (accessRows.data ?? []) as Array<{
+        user_id: string;
+        role: ProjectRole;
+        has_direct_grant: boolean | null;
+      }>
+    ).filter(
+      (row) =>
+        row.has_direct_grant !== true && !sustainedElsewhere.has(row.user_id),
+    );
+    if (retained.length === 0) return;
+
+    // grant() keeps the existing role (it never demotes), sets
+    // has_direct_grant=true, and writes the access.granted audit entry.
+    for (const row of retained) {
+      await this.projectAuth.grant({
+        projectId,
+        userId: row.user_id,
+        role: row.role,
+        origin: 'invited',
+        grantedBy: callerId,
+      });
+    }
+
+    // The row is a direct membership now — relabel the origin so the
+    // People page stops attributing it to a team that is about to be
+    // gone. Exact inverse of curateOne's move-direct-grant.
+    const { error: originErr } = await this.supabase
+      .from('project_access')
+      .update({ origin: 'invited' })
+      .eq('project_id', projectId)
+      .in(
+        'user_id',
+        retained.map((row) => row.user_id),
+      );
+    if (originErr) throw new Error(originErr.message);
   }
 
   async updateAttachment(
