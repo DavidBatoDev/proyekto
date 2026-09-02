@@ -16,6 +16,8 @@ import {
   UpdatePayoutMethodDto,
 } from './dto/payouts.dto';
 import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
+import { teamTimePath } from '../../execution/workspaces/workspace-paths';
+import { WorkspacesService } from '../../execution/workspaces/workspaces.service';
 
 const PAYOUT_METHOD_SELECT = `
   id, user_id, method_type, label, account_name, account_identifier,
@@ -81,6 +83,7 @@ export class PayoutsService {
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
     private readonly qaFixtures: QaFixturePolicyService,
+    private readonly workspaces: WorkspacesService,
   ) {}
 
   // ─── payout methods (owner-scoped) ───────────────────────────────────
@@ -633,7 +636,11 @@ export class PayoutsService {
           log_count: logCount,
           message: `You were paid ${payout.total_amount} ${payout.currency} for ${logCount} time log(s).`,
         },
-        link_url: `/teams/${payout.team_id}/time/my-logs`,
+        link_url: teamTimePath(
+          await this.workspaces.findSlugForTeam(payout.team_id),
+          payout.team_id,
+          'my-logs',
+        ),
       });
     } catch (err) {
       this.logger.warn(

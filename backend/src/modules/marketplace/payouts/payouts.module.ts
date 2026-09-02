@@ -5,6 +5,7 @@ import { UploadsModule } from '../../shared/uploads/uploads.module';
 import { PayoutsController } from './payouts.controller';
 import { PayoutsService } from './payouts.service';
 import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
+import { WorkspacesModule } from '../../execution/workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
     NotificationsModule,
     UploadsModule,
     QaFixturesModule,
+    WorkspacesModule,
   ],
   controllers: [PayoutsController],
   providers: [PayoutsService],

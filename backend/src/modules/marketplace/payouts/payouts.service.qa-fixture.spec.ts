@@ -22,6 +22,7 @@ describe('PayoutsService QA fixture safety', () => {
       {} as never,
       {} as never,
       qaFixtures as never,
+      {} as never,
     );
 
     await expect(

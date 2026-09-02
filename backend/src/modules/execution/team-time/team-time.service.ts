@@ -21,6 +21,8 @@ import {
   UpdateTimeLogDto,
 } from './dto/team-time.dto';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { teamTimePath } from '../workspaces/workspace-paths';
+import { WorkspacesService } from '../workspaces/workspaces.service';
 
 const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,
@@ -215,6 +217,7 @@ export class TeamTimeService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
+    private readonly workspaces: WorkspacesService,
   ) {}
 
   // ─── maintenance ──────────────────────────────────────────────────────
@@ -1789,6 +1792,9 @@ export class TeamTimeService {
     const recipients = await this.listTeamApproverRecipientIds(log.team_id);
     const day = this.toUtcDay(log.started_at);
     const dayText = day ?? 'this day';
+    const workspaceSlug = log.team_id
+      ? await this.workspaces.findSlugForTeam(log.team_id)
+      : null;
 
     await Promise.all(
       recipients
@@ -1806,7 +1812,9 @@ export class TeamTimeService {
               day,
               message: `A time log is ready for approval for ${dayText}.`,
             },
-            link_url: `/teams/${log.team_id}/time/team-logs`,
+            link_url: log.team_id
+              ? teamTimePath(workspaceSlug, log.team_id, 'team-logs')
+              : undefined,
           }),
         ),
     );
@@ -1828,6 +1836,16 @@ export class TeamTimeService {
           : 'time_log_pending';
 
     const sentDayRejection = new Set<string>();
+    // One workspace lookup per team across the whole batch.
+    const slugByTeam = new Map<string, Promise<string | null>>();
+    const slugFor = (teamId: string) => {
+      let pending = slugByTeam.get(teamId);
+      if (!pending) {
+        pending = this.workspaces.findSlugForTeam(teamId);
+        slugByTeam.set(teamId, pending);
+      }
+      return pending;
+    };
 
     for (const row of reviewedRows) {
       const day = this.toUtcDay(row.started_at);
@@ -1848,7 +1866,7 @@ export class TeamTimeService {
             message: `Your time log was ${decisionLabel}.`,
           },
           link_url: row.team_id
-            ? `/teams/${row.team_id}/time/my-logs`
+            ? teamTimePath(await slugFor(row.team_id), row.team_id, 'my-logs')
             : undefined,
         });
       }
@@ -1871,7 +1889,11 @@ export class TeamTimeService {
               rejected_logs: summary.rejected_logs,
               message: `One or more logs were rejected for ${summary.day}.`,
             },
-            link_url: `/teams/${row.team_id}/time/my-logs`,
+            link_url: teamTimePath(
+              await slugFor(row.team_id),
+              row.team_id,
+              'my-logs',
+            ),
           });
         }
       }
@@ -1902,6 +1924,9 @@ export class TeamTimeService {
       comment.body.length > 140
         ? `${comment.body.slice(0, 137)}...`
         : comment.body;
+    const workspaceSlug = log.team_id
+      ? await this.workspaces.findSlugForTeam(log.team_id)
+      : null;
 
     await Promise.all(
       Array.from(recipients).map((userId) =>
@@ -1915,12 +1940,13 @@ export class TeamTimeService {
             comment_id: comment.id,
             message: `New comment on a time log: "${snippet}"`,
           },
-          link_url:
-            log.team_id && userId === log.member_user_id
-              ? `/teams/${log.team_id}/time/my-logs`
-              : log.team_id
-                ? `/teams/${log.team_id}/time/team-logs`
-                : undefined,
+          link_url: log.team_id
+            ? teamTimePath(
+                workspaceSlug,
+                log.team_id,
+                userId === log.member_user_id ? 'my-logs' : 'team-logs',
+              )
+            : undefined,
         }),
       ),
     );
