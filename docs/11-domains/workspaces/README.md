@@ -1,6 +1,6 @@
 # Workspaces
 
-> **Last updated:** 2026-09-01 · **Status:** draft (code is built and merged-pending; **not yet in production**)
+> **Last updated:** 2026-09-03 · **Status:** shipped (in production since 2026-09-02; URL handles added 2026-09-03)
 
 A **workspace** is the top-level organizational and billing boundary: it owns teams and
 projects, and `workspace_members` is the billable seat pool. It is deliberately **not** an
@@ -46,7 +46,9 @@ most important fact on this page: the organizations proposal's fan-out design wa
 
 | Table | Holds |
 | --- | --- |
-| `workspaces` | `id`, `name` (1–120 chars, non-blank), `description` (≤2000), `avatar_url`, `created_by` (→ `profiles`, **ON DELETE SET NULL**, audit only), timestamps. **No `slug`** (routes carry no tenant segment) and **no `owner_id`** |
+| `workspaces` | `id`, `name` (1–120 chars, non-blank), `description` (≤2000), `avatar_url`, `slug` (**the URL handle**, `/w/<slug>/…`: NOT NULL, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 3–60 chars, never uuid-shaped; filled by the `workspaces_slug_guard` trigger from the name on insert, so no insert path needs to know the rule), `created_by` (→ `profiles`, **ON DELETE SET NULL**, audit only), timestamps. **No `owner_id`** |
+| `workspace_slug_history` | `slug` **PK** → `workspace_id` (**CASCADE**), `replaced_at`. A renamed workspace's old handles, kept so old links redirect (GitHub model). Renaming back to an own old handle reclaims it; another workspace can never take it. RLS: members read their workspace's rows, which is how `previous_slugs` rides the membership list |
+| `workspace_reserved_slugs` | `slug` **PK**, `note`. The single source of truth for handles a workspace may not take: everything that is a route name under `/w/<slug>/` (`settings`, `teams`, `dashboard`, `members`, `billing`, `time`, `my-logs`, …), every top-level route name, and the usual `admin`/`api`/`www`/`login`… set. Publicly readable |
 | `workspace_members` | The seat pool. `workspace_id` + `user_id` + `role` (`owner` \| `admin` \| `member`) + `joined_at`, `UNIQUE (workspace_id, user_id)` |
 | `workspace_subscriptions` | `workspace_id` **PK** (1:1), `plan` (`free` \| `pro` \| `business` \| `enterprise`), `status` (`active` \| `trialing` \| `past_due` \| `canceled`), nullable `seat_limit`, period columns, `metadata` jsonb |
 | `workspace_invites` | Structural mirror of `team_invites` — both `invitee_id` and `invitee_email`, `role`, `status` (`pending`/`accepted`/`declined`/`cancelled`), plus a profile-insert reconciliation trigger |
@@ -246,9 +248,23 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   the workspace list stays in TanStack Query. The selection is per-device on purpose, and it is
   **not** `profiles.settings.workspace_defaults` — that key already means the sidebar's default
   team/project and predates this tier.
-- **Settings** — `/workspace/settings` (general), `/workspace/settings/members`,
-  `/workspace/settings/billing`. `/workspace` redirects to `/workspace/settings`. The URL carries
-  **no tenant segment**: which workspace the pages act on comes from the selection store.
+- **URLs** — organizational pages live at `/w/<slug>/dashboard`, `/w/<slug>/teams/…`, and
+  `/w/<slug>/settings{,/members,/billing}`. The `/w/$workspaceSlug` layout route resolves the slug
+  against the caller's **own** membership list: a retired slug redirects to the current one with
+  the rest of the path intact; an unknown or non-member slug is **not found** (never 403, so slugs
+  cannot enumerate organizations). Bare `/dashboard`, `/teams/…`, and `/workspace/…` are
+  permanent redirect stubs to the last-visited workspace (a bare `/teams/<id>/…` link prefers the
+  team's own workspace), because persisted notification links and push payloads keep carrying
+  them. Entity pages (`/project/**`) stay global. `/teams/me/invites` is personal and never gains
+  the segment. See `docs/04-web/routing-and-access.md`.
+- **URL handle** — the General settings page shows the handle; only an **owner** can change it
+  (`PATCH /workspaces/:id { slug }`, owner-only via `WORKSPACE_OWNER_ONLY_UPDATE_FIELDS`). The
+  database trigger validates it: reserved, taken, or another workspace's old handle → `23505` →
+  **409** with the trigger's message; bad shape → `23514` → **400**. On success the page patches
+  the cached list and moves to the new `/w/<slug>/settings`. Old handles keep redirecting.
+- **Entering a workspace** — switching, creating, and accepting a workspace invite all go through
+  `useEnterWorkspace`: remember the selection, reset the dashboard/teams caches (so the skeletons
+  show instead of the previous workspace's rows), and navigate to `/w/<slug>/dashboard`.
 - **Billing is a placeholder.** It renders the plan label and seats-used and nothing else — there
   is no payment processor, no checkout, and no enforcement anywhere in the product.
 - **Scoping** — `groupByWorkspace` (`web/src/lib/workspaceScope.ts`) splits teams and projects

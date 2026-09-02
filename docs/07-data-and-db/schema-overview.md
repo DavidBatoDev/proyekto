@@ -30,7 +30,7 @@ trigger, and workspace membership never implies project access.
 
 | Table | Purpose |
 | --- | --- |
-| `workspaces` | The organization: `name`, `description`, `avatar_url`, `created_by` (→ `profiles` **ON DELETE SET NULL**, audit only). **No `slug`, no `owner_id`** — ownership is `workspace_members.role = 'owner'` |
+| `workspaces` | The organization: `name`, `description`, `avatar_url`, `slug` (unique URL handle for `/w/<slug>/…`, trigger-filled from the name; renames archive the old handle into `workspace_slug_history`, and `workspace_reserved_slugs` lists what may not be taken), `created_by` (→ `profiles` **ON DELETE SET NULL**, audit only). **No `owner_id`** — ownership is `workspace_members.role = 'owner'` |
 | `workspace_members` | Membership and the **billable seat pool** — `role` ∈ (`owner`, `admin`, `member`), `UNIQUE (workspace_id, user_id)`. Independent of `team_members` and `project_access` |
 | `workspace_subscriptions` | `workspace_id` **PK** plan scaffold — `plan` ∈ (`free`, `pro`, `business`, `enterprise`), `status`, nullable `seat_limit`, period columns, `metadata`. **Deliberately no seat-count column**: seats used is always `COUNT(workspace_members)`. Nothing enforces `seat_limit` |
 | `workspace_invites` | Structural mirror of `team_invites` — dual `invitee_id`/`invitee_email`, partial unique indexes on the pending row, profile-insert reconciliation trigger, deep link `/teams/me/invites` |

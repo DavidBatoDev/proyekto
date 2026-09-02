@@ -17,8 +17,9 @@ gating done in route `beforeLoad` hooks and project components.
 | `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
-| `teams/` | `teams/index`, `$teamId/*` (settings, time, payouts, rates), `me/invites` |
-| `workspace/` | `route.tsx` layout (auth guard + rail; bare `/workspace` redirects to settings) + `settings/{index,members,billing}`. **No tenant segment in the URL** — which workspace the pages act on comes from `useWorkspaceStore`, not the path. Billing is a placeholder |
+| `w/$workspaceSlug/` | **The workspace segment.** `route.tsx` layout resolves the slug against the caller's own membership list (`ensureQueryData` in an async `beforeLoad`): a retired slug redirects to the current one with the rest of the path intact, an unknown or non-member slug is **not found** (never 403, so slugs do not enumerate organizations), bare `/w/<slug>` goes to `dashboard`. Children: `dashboard`, `teams/{index,$teamId/**}` (settings, time, payouts, rates), `settings/{route,index,members,billing}`. The layout component mirrors the URL's workspace into `useWorkspaceStore` (the "last visited" memory) from an effect, never from `beforeLoad`, which also runs on hover preload |
+| `teams/` | `me/invites` (personal: invites arrive from workspaces you are not in, so it never gains a tenant segment). `teams/index`, `$teamId.tsx`, and the `$teamId/**` leaves are **permanent redirect stubs**: bare `/teams/<id>/…` forwards to `/w/<slug>/teams/<id>/…` — the team's own workspace when the caller is in it, else the last-visited one — keeping path and query. Bare paths keep arriving from persisted `link_url`s and push payloads, so the stubs are not transitional |
+| `workspace/` | Redirect stub only: `/workspace[/settings/*]` forwards to `/w/<slug>/settings/*` for the last-visited workspace; `settings/{index,members,billing}` are empty shells that keep the bare paths real routes |
 | `project/` | `new` (create a project) + `$projectId` layout and tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
@@ -26,8 +27,22 @@ gating done in route `beforeLoad` hooks and project components.
 | `contract/` | `sign/$token` — the public, account-free client signing page |
 | `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
-Top-level routes: `index` (landing), `dashboard`, `onboarding`, `welcome`, `inbox`,
-`notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`, `command-center`.
+Top-level routes: `index` (the landing for anonymous visitors; a signed-in user is
+forwarded to `/dashboard`, GitHub/Vercel style), `home` (the same landing, always reachable;
+the in-app brand mark links here), `dashboard` (a redirect stub to `/w/<slug>/dashboard`;
+it renders a create-workspace card only for an account with no workspace at all), `onboarding`,
+`welcome`, `inbox`, `notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`,
+`command-center`.
+
+Which URLs carry the `/w/<slug>/` segment is decided once, in
+`web/src/lib/workspacePaths.ts`: only the organizational surfaces (`/dashboard`, `/teams/**`
+except `/teams/me/**`, `/workspace/**` → `/settings/**`). Entity pages (`/project/**`, roadmap
+URLs) stay global because a consultant reaches a client's project through `project_access`
+without holding a seat in that workspace. Every path matcher in the chrome (`Header.tsx`
+`validPaths`, the sidebar, the floating timer, the invite prompt) runs `stripWorkspacePrefix`
+first, and string-built links go through `toWorkspacePath`, so both URL shapes keep working.
+The seam for components is `useCurrentWorkspace()`: the URL's slug wins when present, else the
+selection store's last-visited workspace.
 
 ## The marketplace / execution split
 

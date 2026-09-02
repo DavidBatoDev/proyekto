@@ -14,7 +14,7 @@ Local context for the web unit. Cross-cutting rules live in the root CLAUDE.md.
 
 - Path alias @/* -> web/src/*.
 - Routing: TanStack Router file-based routes under src/routes/, grouped by product area (admin/, auth/, consultant/, contract/, finance/, freelancer/, oauth/, profile/, project/, roadmap/, roadmap-templates/, settings/, teams/) - there is NO client/ subtree. src/routeTree.gen.ts is GENERATED - never hand-edit (a hook blocks it); it regenerates via the dev server or build.
-- New page paths must be added to Header.tsx validPaths or the header breaks on them.
+- New page paths must be added to Header.tsx validPaths or the header breaks on them. Organizational pages live under /w/$workspaceSlug/ (dashboard, teams, workspace settings); path matchers in the chrome run stripWorkspacePrefix first and string-built links go through toWorkspacePath (both in src/lib/workspacePaths.ts) - do not add "/w" to validPaths (it would also match /welcome and /work-items).
 - Styling: MUI 7 and Tailwind 4 coexist. Use theme tokens (bg-primary, text-primary, the blue-600 scale) - NEVER hardcode hex colors. Theme tokens live in src/styles.css.
 - User-facing copy says "Proyekto" - never "Prodigy".
 - State: server state in TanStack Query (src/queries/), client state in the 6 Zustand stores (src/stores/: authStore, roadmapStore, roadmapAiThreadsStore, projectSettingsStore, appearanceStore, workspaceStore). workspaceStore holds only the CURRENT WORKSPACE SELECTION - the workspace list itself stays in TanStack Query. API calls go through src/services/ + src/api/ (axios.ts for backend, agent-axios.ts for the agent).
