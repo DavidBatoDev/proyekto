@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { PUSH_FALLBACK_PATH, resolvePushLink } from "@/lib/pushLink";
 import {
 	isNativePlatform,
 	type PushDataPayload,
@@ -48,11 +49,14 @@ export function usePushNotifications(): void {
 		let cancelled = false;
 
 		const goToLink = (data: PushDataPayload) => {
-			const link = data.link_url || "/notifications";
+			// Same treatment as a persisted link in the notification bell: legacy
+			// paths mapped, bare organizational paths left for their redirect
+			// stubs, anything that is not an in-app path dropped.
+			const link = resolvePushLink(data.link_url);
 			try {
 				router.history.push(link);
 			} catch {
-				router.history.push("/notifications");
+				router.history.push(PUSH_FALLBACK_PATH);
 			}
 		};
 

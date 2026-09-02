@@ -29,8 +29,15 @@ notification created ─► NotificationsService.createNotification()
 3. The payload carries both `notification` (title/body) and `data` (`type`,
    `notification_id`, `link_url`, ids) so a background/cold-start tap keeps the
    deep-link.
-4. Tapping routes to `data.link_url` (default `/notifications`); foreground receipt
-   refreshes the notification queries (bell badge + lists).
+4. Tapping routes to `data.link_url` (default `/notifications`) through
+   `resolvePushLink` (`web/src/lib/pushLink.ts`): the same legacy-path map the
+   notification bell applies, absolute URLs reduced to their path, anything that
+   is not an in-app path dropped. Bare organizational paths (`/dashboard`,
+   `/teams/<id>/…`) that older pushes still carry are left alone — they are real
+   routes that redirect to the workspace-scoped page (`/w/<slug>/…`, see
+   `docs/04-web/routing-and-access.md`), and a bare team link lands in that
+   team's own workspace. Foreground receipt refreshes the notification queries
+   (bell badge + lists).
 5. On logout the device token is deleted; tokens FCM reports as unregistered are
    pruned on the next send.
 
