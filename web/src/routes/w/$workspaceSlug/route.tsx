@@ -9,11 +9,10 @@ import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
 import { stripWorkspacePrefix } from "@/lib/workspacePaths";
 import {
 	ensureMyWorkspaces,
+	refetchMyWorkspaces,
 	requireAuthenticatedUserId,
 	resolveWorkspaceSlug,
 } from "@/lib/workspaceRouting";
-import { workspaceKeys } from "@/queries/workspaces";
-import { listMyWorkspaces } from "@/services/workspaces.service";
 import { useUser } from "@/stores/authStore";
 import {
 	getCurrentWorkspaceId,
@@ -40,14 +39,12 @@ export const Route = createFileRoute("/w/$workspaceSlug")({
 		let workspaces = await ensureMyWorkspaces(context.queryClient, userId);
 		let resolved = resolveWorkspaceSlug(workspaces, params.workspaceSlug);
 
-		// The cached list may predate a rename made elsewhere — another tab, or
-		// another owner. One forced refetch before deciding "not found", so a
-		// fresh slug is never a false 404.
+		// The cached list may predate this workspace entirely (fetched at boot,
+		// before the welcome deck created it) or a rename made elsewhere. One
+		// real refetch before deciding "not found", so a fresh slug is never a
+		// false 404.
 		if (!resolved.current && !resolved.renamedTo) {
-			workspaces = await context.queryClient.fetchQuery({
-				queryKey: workspaceKeys.mine(userId),
-				queryFn: listMyWorkspaces,
-			});
+			workspaces = await refetchMyWorkspaces(context.queryClient, userId);
 			resolved = resolveWorkspaceSlug(workspaces, params.workspaceSlug);
 		}
 

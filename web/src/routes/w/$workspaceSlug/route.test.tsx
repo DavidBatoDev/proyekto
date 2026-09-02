@@ -1,6 +1,12 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient } from "@tanstack/react-query";
+
+// The app client keeps data fresh for 30s; a stale list must still be
+// re-read before a slug is declared missing or an account workspace-less.
+const newClient = () =>
+	new QueryClient({ defaultOptions: { queries: { staleTime: 30_000 } } });
+
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/services/workspaces.service";
@@ -53,7 +59,7 @@ const ACME = workspace("ws-acme", "acme", ["acme-old"]);
 function run(slug: string, pathname = `/w/${slug}/dashboard`) {
 	return beforeLoad({
 		params: { workspaceSlug: slug },
-		context: { queryClient: new QueryClient() },
+		context: { queryClient: newClient() },
 		location: { href: pathname, pathname },
 	});
 }
@@ -113,6 +119,24 @@ describe("/w/$workspaceSlug beforeLoad", () => {
 			isNotFound(err),
 		);
 		expect(listMyWorkspaces).toHaveBeenCalledTimes(2);
+	});
+
+	it("resolves a new workspace's slug over a fresh-but-stale cached list", async () => {
+		const client = newClient();
+		client.setQueryData(["workspaces", "mine", "user-1"], []);
+		const GLOBEX = workspace("ws-globex", "globex");
+		listMyWorkspaces.mockResolvedValue([ACME, GLOBEX]);
+		await expect(
+			beforeLoad({
+				params: { workspaceSlug: "globex" },
+				context: { queryClient: client },
+				location: {
+					href: "/w/globex/dashboard",
+					pathname: "/w/globex/dashboard",
+				},
+			}),
+		).resolves.toEqual({ workspace: GLOBEX });
+		expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
 	});
 
 	it("resolves a slug that only the refetch knows about", async () => {

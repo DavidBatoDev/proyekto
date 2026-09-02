@@ -37,6 +37,23 @@ export function ensureMyWorkspaces(
 }
 
 /**
+ * A real round trip, ignoring the client's default 30s freshness window.
+ * `fetchQuery` alone would hand back a list cached at boot — before the
+ * welcome deck created the workspace, or before another owner renamed it.
+ * Dedupes with any refetch an invalidation already has in flight.
+ */
+export function refetchMyWorkspaces(
+	queryClient: QueryClient,
+	userId: string,
+): Promise<Workspace[]> {
+	return queryClient.fetchQuery({
+		queryKey: workspaceKeys.mine(userId),
+		queryFn: listMyWorkspaces,
+		staleTime: 0,
+	});
+}
+
+/**
  * The default workspace when nothing has been chosen: one the user owns, in
  * the server's order (`workspace_members.joined_at`, which is also the
  * backend's definition of the default), else the first they belong to.
@@ -80,7 +97,11 @@ export async function resolveLastVisitedWorkspace(
 	const store = useWorkspaceStore.getState();
 	if (store.hydratedForUserId !== userId) store.hydrateForUser(userId);
 
-	const list = await ensureMyWorkspaces(queryClient, userId);
+	let list = await ensureMyWorkspaces(queryClient, userId);
+	// An empty list is more likely a cache from before signup provisioning
+	// than a genuinely workspace-less account: confirm before offering to
+	// create one.
+	if (list.length === 0) list = await refetchMyWorkspaces(queryClient, userId);
 	const storedId = useWorkspaceStore.getState().currentWorkspaceId;
 	return (
 		list.find((workspace) => workspace.id === storedId) ??

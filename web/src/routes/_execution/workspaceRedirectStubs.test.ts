@@ -1,6 +1,12 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient } from "@tanstack/react-query";
+
+// The app client keeps data fresh for 30s; a stale list must still be
+// re-read before a slug is declared missing or an account workspace-less.
+const newClient = () =>
+	new QueryClient({ defaultOptions: { queries: { staleTime: 30_000 } } });
+
 import { isRedirect } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/services/workspaces.service";
@@ -87,7 +93,7 @@ function call(
 ) {
 	return guard(route)({
 		params,
-		context: { queryClient: new QueryClient() },
+		context: { queryClient: newClient() },
 		location: { href: pathname, pathname },
 	});
 }
@@ -117,6 +123,25 @@ describe("bare /dashboard", () => {
 	it("falls back to the owned workspace when nothing is stored", async () => {
 		const options = await redirectFrom(call(DashboardStub, "/dashboard"));
 		expect(options.params).toEqual({ workspaceSlug: "acme" });
+	});
+
+	/**
+	 * Right after signup the cached list predates the workspace the welcome
+	 * deck created. A cached empty list is re-read before the create prompt.
+	 */
+	it("re-reads an empty cached list before offering to create a workspace", async () => {
+		const client = newClient();
+		client.setQueryData(["workspaces", "mine", "user-1"], []);
+		listMyWorkspaces.mockResolvedValue([ACME]);
+		const options = await redirectFrom(
+			guard(DashboardStub)({
+				params: {},
+				context: { queryClient: client },
+				location: { href: "/dashboard", pathname: "/dashboard" },
+			}),
+		);
+		expect(options.params).toEqual({ workspaceSlug: "acme" });
+		expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
 	});
 
 	/** The only place a zero-workspace account can land: it renders, not loops. */
