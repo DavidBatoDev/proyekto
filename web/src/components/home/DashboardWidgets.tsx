@@ -8,10 +8,12 @@ import {
 } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { TourDemoBanner } from "@/components/tour/TourDemoBanner";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
+import { groupByWorkspace } from "@/lib/workspaceScope";
 import {
 	MEETING_TYPE_LABELS,
 	type Meeting,
@@ -148,14 +150,31 @@ export function DashboardWidgets({
 	const isMilestonesLoading = timelineQuery.isPending;
 	const isMeetingsLoading = meetingsQuery.isPending;
 
-	const projectActiveCount = useMemo(() => projects.length, [projects]);
+	// Counters follow the workspace that is open, so the tiles agree with the
+	// lists below them. `projects` stays unscoped for the title lookup further
+	// down — a timeline entry for a project in another workspace should still
+	// render with its name rather than as an unlabelled row.
+	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const scopedProjects = useMemo(() => {
+		const grouped = groupByWorkspace(
+			projects,
+			currentWorkspace?.id ?? null,
+			workspaces.map((item) => item.id),
+		);
+		return [...grouped.current, ...grouped.shared];
+	}, [projects, currentWorkspace?.id, workspaces]);
+
+	const projectActiveCount = useMemo(
+		() => scopedProjects.length,
+		[scopedProjects],
+	);
 
 	const clientPendingProjectsCount = useMemo(
 		() =>
-			projects.filter(
+			scopedProjects.filter(
 				(project) => String(project.status || "").toLowerCase() === "bidding",
 			).length,
-		[projects],
+		[scopedProjects],
 	);
 
 	const projectTitleById = useMemo(() => {

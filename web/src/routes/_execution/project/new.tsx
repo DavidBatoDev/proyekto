@@ -24,6 +24,7 @@ import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
 import { listMyTeams } from "@/services/teams.service";
 import { useProfile, useUser } from "@/stores/authStore";
+import { getCurrentWorkspaceId } from "@/stores/workspaceStore";
 import type { Roadmap } from "@/types/roadmap";
 
 /**
@@ -156,6 +157,9 @@ function NewProjectPage() {
 					effectiveIntent === "consultant" && primaryTeamId
 						? primaryTeamId
 						: undefined,
+				// The workspace the user is currently in. Null (no selection yet)
+				// falls through to the backend's default-workspace rule.
+				workspace_id: getCurrentWorkspaceId() ?? undefined,
 			});
 
 			if (referencedRoadmap) {

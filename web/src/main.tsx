@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { AuthInitializer } from "./components/auth/AuthInitializer";
 import { ThemeRuntime } from "./components/theme/ThemeRuntime";
+import { WorkspaceSelectionSync } from "./components/workspace/WorkspaceSelectionSync";
 import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
 
 // Tell the OTA updater the web bundle booted OK, so it commits the new bundle
@@ -59,6 +60,7 @@ if (rootElement && !rootElement.innerHTML) {
 			<TanStackQueryProvider.Provider {...TanStackQueryProviderContext}>
 				<ThemeRuntime>
 					<AuthInitializer>
+						<WorkspaceSelectionSync />
 						<RouterProvider router={router} />
 					</AuthInitializer>
 				</ThemeRuntime>

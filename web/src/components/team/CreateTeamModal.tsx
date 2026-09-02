@@ -16,6 +16,7 @@ import {
 } from "@/components/team/TeamFormFields";
 import { useToast } from "@/hooks/useToast";
 import { createTeam } from "@/services/teams.service";
+import { getCurrentWorkspaceId } from "@/stores/workspaceStore";
 
 export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 	const queryClient = useQueryClient();
@@ -28,6 +29,9 @@ export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 				name: draft.name.trim(),
 				description: draft.description.trim() || undefined,
 				tags: draft.tags,
+				// Omitted when no workspace is selected yet; the backend then uses
+				// the caller's default workspace.
+				workspace_id: getCurrentWorkspaceId() ?? undefined,
 			}),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["teams"] });

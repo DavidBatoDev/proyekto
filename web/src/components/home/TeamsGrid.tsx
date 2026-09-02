@@ -1,12 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
+import { useMemo } from "react";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { richTextToPlain } from "@/lib/richText";
 import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
+import { groupByWorkspace } from "@/lib/workspaceScope";
 import {
 	listMyTeamInvites,
 	listMyTeams,
@@ -52,10 +56,30 @@ export function TeamsGrid() {
 	const isDemo = useTourDemoActive();
 	const isLoading = !isDemo && (teamsQuery.isPending || invitesQuery.isPending);
 
+	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const myWorkspaceIds = useMemo(
+		() => workspaces.map((item) => item.id),
+		[workspaces],
+	);
+
+	// Scoped to the workspace that is open, plus anything reached through
+	// project access rather than membership. Teams in the user's OTHER
+	// workspaces are left out — they appear on switching. Flattened rather than
+	// split into two labelled groups, because this is a three-card preview
+	// strip, not the full list the sidebar and /teams render.
+	const visibleTeams = useMemo(() => {
+		const grouped = groupByWorkspace(
+			teams,
+			currentWorkspace?.id ?? null,
+			myWorkspaceIds,
+		);
+		return [...grouped.current, ...grouped.shared];
+	}, [teams, currentWorkspace?.id, myWorkspaceIds]);
+
 	// Dashboard preview is a single row: pending invites first (they're
 	// time-sensitive), then the 3 most recently updated teams. Anything
 	// beyond that lives on the /teams page.
-	const recentTeams = [...teams]
+	const recentTeams = [...visibleTeams]
 		.sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
 		.slice(0, 3);
 
@@ -157,7 +181,11 @@ function TeamCard({ team }: { team: Team }) {
 function TeamCardSubLine({ team }: { team: Team }) {
 	const role = team.viewer_role;
 	const position = team.viewer_position;
-	const description = team.description ?? (team.is_personal ? "My team" : null);
+	// The column can hold rich HTML since the Overview tab; this is a one-line
+	// summary, so it takes the visible text rather than the markup.
+	const rawDescription =
+		team.description ?? (team.is_personal ? "My team" : null);
+	const description = rawDescription ? richTextToPlain(rawDescription) : null;
 
 	const chip = position ? (
 		<PositionBadge>{position}</PositionBadge>

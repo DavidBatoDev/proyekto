@@ -9,20 +9,24 @@ import {
 	Plus,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { Avatar } from "@/components/common/Avatar";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { dashboardProjectsQueryOptions } from "@/hooks/useDashboardProjectsQuery";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { supabase } from "@/lib/supabase";
 import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
+import { groupByWorkspace } from "@/lib/workspaceScope";
 import {
 	type Project,
 	type ProjectInvite,
 	type ProjectRoadmapSummary,
 	projectService,
 } from "@/services/project.service";
+import type { ProfileSummary } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
 type DashboardCard =
@@ -97,10 +101,23 @@ export function ProjectsGrid() {
 	});
 	// See TeamsGrid: fixtures are swapped in ahead of the card-building memos so
 	// the real derivation logic runs unchanged during a tour replay.
-	const projects = useTourDemo<Project[]>(
+	const allProjects = useTourDemo<Project[]>(
 		"projects",
 		(projectsQuery.data as Project[] | undefined) ?? [],
 	);
+
+	// Scoped to the open workspace, keeping work reached through project access
+	// rather than membership. Projects in the user's other workspaces surface
+	// when they switch.
+	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const projects = useMemo(() => {
+		const grouped = groupByWorkspace(
+			allProjects,
+			currentWorkspace?.id ?? null,
+			workspaces.map((item) => item.id),
+		);
+		return [...grouped.current, ...grouped.shared];
+	}, [allProjects, currentWorkspace?.id, workspaces]);
 	const invitesQuery = useQuery({
 		queryKey: ["projects", "my-invites"],
 		queryFn: () => projectService.getMyInvites(),
@@ -428,6 +445,49 @@ function ProjectsEmptyState({
 	);
 }
 
+export interface ProjectCardMember {
+	user_id: string;
+	user: ProfileSummary | null;
+}
+
+/**
+ * Overlapping faces, capped at five with a "+n" tail. Negative margins rather
+ * than a gap, so the stack stays a fixed width as the roster grows and cannot
+ * push the view-project link off the card.
+ */
+function ProjectCardAvatars({ members }: { members: ProjectCardMember[] }) {
+	const visible = members.slice(0, 5);
+	const overflow = members.length - visible.length;
+
+	return (
+		<span
+			className="flex items-center"
+			aria-label={`${members.length} members`}
+		>
+			{visible.map((member, index) => (
+				<span
+					key={member.user_id}
+					className="rounded-full ring-2 ring-(--app-surface-strong)"
+					style={{
+						marginLeft: index === 0 ? 0 : -8,
+						zIndex: visible.length - index,
+					}}
+				>
+					<Avatar user={member.user} size="xs" />
+				</span>
+			))}
+			{overflow > 0 && (
+				<span
+					className="flex h-6 min-w-6 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold text-muted-foreground ring-2 ring-(--app-surface-strong)"
+					style={{ marginLeft: -8 }}
+				>
+					+{overflow}
+				</span>
+			)}
+		</span>
+	);
+}
+
 export function ProjectCard({
 	projectId,
 	status,
@@ -437,6 +497,7 @@ export function ProjectCard({
 	progressColor,
 	roadmapSummary,
 	dueDate,
+	members,
 	className,
 	style,
 }: {
@@ -448,6 +509,13 @@ export function ProjectCard({
 	progressColor: string;
 	roadmapSummary: ProjectRoadmapSummary | null;
 	dueDate: string | null;
+	/**
+	 * Optional avatar stack in the footer. The dashboard omits it — every
+	 * project there is yours, so the faces add nothing — while the team's
+	 * Projects tab passes that team's curated members, which is the one thing
+	 * that differs between two projects in that list.
+	 */
+	members?: ProjectCardMember[];
 	className?: string;
 	style?: CSSProperties;
 }) {
@@ -536,14 +604,21 @@ export function ProjectCard({
 			</div>
 
 			<div className="border-t border-slate-200 pt-4">
-				<div className="flex flex-col items-end gap-1">
-					<Link
-						to="/project/$projectId/roadmap"
-						params={{ projectId }}
-						className="whitespace-nowrap text-[12px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900 sm:text-[14px]"
-					>
-						VIEW PROJECT -&gt;
-					</Link>
+				<div className="flex items-end justify-between gap-2">
+					{members && members.length > 0 ? (
+						<ProjectCardAvatars members={members} />
+					) : (
+						<span />
+					)}
+					<div className="flex flex-col items-end gap-1">
+						<Link
+							to="/project/$projectId/roadmap"
+							params={{ projectId }}
+							className="whitespace-nowrap text-[12px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900 sm:text-[14px]"
+						>
+							VIEW PROJECT -&gt;
+						</Link>
+					</div>
 				</div>
 			</div>
 		</div>

@@ -2,7 +2,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Plus, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
+import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { groupByWorkspace } from "@/lib/workspaceScope";
 import type { Project } from "@/services/project.service";
 import {
 	listMyTeams,
@@ -70,7 +74,23 @@ export function SidebarContent() {
 		enabled: Boolean(user?.id),
 		staleTime: 30 * 1000,
 	});
-	const teams = (teamsQuery.data as Team[] | undefined) ?? [];
+	const allTeams = (teamsQuery.data as Team[] | undefined) ?? [];
+
+	// Scope both lists to the workspace that is open. Work reached through
+	// project access rather than membership — a consultant inside a client's
+	// project — lands in "Shared with you" instead of disappearing.
+	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const myWorkspaceIds = useMemo(
+		() => workspaces.map((item) => item.id),
+		[workspaces],
+	);
+	const teamGroups = useMemo(
+		() =>
+			groupByWorkspace(allTeams, currentWorkspace?.id ?? null, myWorkspaceIds),
+		[allTeams, currentWorkspace?.id, myWorkspaceIds],
+	);
+	const teams = teamGroups.current;
+
 	const workspaceDefaults = (() => {
 		const settings = profile?.settings;
 		if (!settings || typeof settings !== "object") return null;
@@ -88,17 +108,24 @@ export function SidebarContent() {
 		null;
 	const preferredProjectId = workspaceDefaults?.default_project_id ?? null;
 
+	const projectGroups = useMemo(
+		() =>
+			groupByWorkspace(projects, currentWorkspace?.id ?? null, myWorkspaceIds),
+		[projects, currentWorkspace?.id, myWorkspaceIds],
+	);
+
 	const orderedProjects = useMemo(() => {
-		if (!preferredProjectId) return projects;
-		const preferred = projects.find(
+		const scoped = projectGroups.current;
+		if (!preferredProjectId) return scoped;
+		const preferred = scoped.find(
 			(project) => project.id === preferredProjectId,
 		);
-		if (!preferred) return projects;
+		if (!preferred) return scoped;
 		return [
 			preferred,
-			...projects.filter((project) => project.id !== preferred.id),
+			...scoped.filter((project) => project.id !== preferred.id),
 		];
-	}, [projects, preferredProjectId]);
+	}, [projectGroups, preferredProjectId]);
 
 	const activeTeamId = (() => {
 		const match =
@@ -155,6 +182,11 @@ export function SidebarContent() {
 		saveOpenTeam(preferred);
 	}, [activeTeamId, openTeamId, preferredTeamId, teams]);
 
+	const [inviteOpen, setInviteOpen] = useState(false);
+	const canInviteToWorkspace =
+		currentWorkspace?.my_role === "owner" ||
+		currentWorkspace?.my_role === "admin";
+
 	const toggleTeamExpanded = useCallback(
 		(teamId: string, currentlyExpanded: boolean) => {
 			const next = currentlyExpanded ? null : teamId;
@@ -170,6 +202,8 @@ export function SidebarContent() {
 
 	return (
 		<>
+			<WorkspaceSwitcher />
+
 			<nav
 				data-tour="sidebar-nav"
 				className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4"
@@ -228,6 +262,26 @@ export function SidebarContent() {
 							})}
 						</div>
 					)}
+
+					{teamGroups.shared.length > 0 && (
+						<div className="mt-4">
+							<SidebarSectionHeader>Shared with you</SidebarSectionHeader>
+							<div className="mt-1 space-y-0.5">
+								{teamGroups.shared.map((t) => {
+									const expanded = t.id === openTeamId;
+									return (
+										<TeamSidebarGroup
+											key={t.id}
+											team={t}
+											isExpanded={expanded}
+											onToggle={() => toggleTeamExpanded(t.id, expanded)}
+											currentPath={currentPath}
+										/>
+									);
+								})}
+							</div>
+						</div>
+					)}
 				</div>
 
 				<div className="mt-6">
@@ -269,20 +323,50 @@ export function SidebarContent() {
 							))}
 						</div>
 					)}
+
+					{projectGroups.shared.length > 0 && (
+						<div className="mt-4">
+							<SidebarSectionHeader>Shared with you</SidebarSectionHeader>
+							<div className="mt-1 space-y-0.5">
+								{projectGroups.shared.map((p) => (
+									<ProjectSidebarLink
+										key={p.id}
+										project={p}
+										currentPath={currentPath}
+									/>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 			</nav>
 
 			<div className="border-t border-sidebar-border p-3">
 				<button
 					type="button"
-					disabled
-					title="Invite flow coming soon"
+					disabled={!canInviteToWorkspace}
+					title={
+						canInviteToWorkspace
+							? undefined
+							: currentWorkspace
+								? "Ask a workspace admin to invite people"
+								: "Create a workspace first"
+					}
+					onClick={() => setInviteOpen(true)}
 					className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					<UserPlus className="h-5 w-5" />
 					Invite people
 				</button>
 			</div>
+
+			{currentWorkspace && (
+				<WorkspaceInviteDialog
+					workspaceId={currentWorkspace.id}
+					open={inviteOpen}
+					onClose={() => setInviteOpen(false)}
+				/>
+			)}
 		</>
 	);
 }

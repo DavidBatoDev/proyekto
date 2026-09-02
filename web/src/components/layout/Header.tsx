@@ -23,6 +23,7 @@ const Header = () => {
 		"/profile",
 		"/notifications",
 		"/settings",
+		"/workspace",
 		"/unsubscribe",
 		"/invites",
 		"/engagements",

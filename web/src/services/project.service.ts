@@ -15,6 +15,12 @@ export interface CreateProjectData {
 	 * created. Omit (or set undefined) for "no team — attach later".
 	 */
 	primary_team_id?: string;
+	/**
+	 * Which workspace the project belongs to. Omit to let the backend use the
+	 * caller's default workspace — that fallback is the guaranteed path, so
+	 * sending nothing is always safe.
+	 */
+	workspace_id?: string;
 }
 
 export interface CreateProjectFromRoadmapData {
@@ -33,6 +39,12 @@ export interface Project {
 	currency?: string;
 	banner_url?: string;
 	owner_id: string;
+	/**
+	 * Organizational home. Null for a guest's project before conversion, or
+	 * after its workspace was deleted. Never an authorization source — project
+	 * access alone decides what a viewer can do here.
+	 */
+	workspace_id?: string | null;
 	owner?: {
 		id: string;
 		display_name?: string;
