@@ -22,6 +22,25 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Pin androidx.browser for @capgo/capacitor-social-login.
+    //
+    // The plugin's Apple provider declares androidx.browser:browser:1.9.0 while
+    // its Google provider pulls androidbrowserhelper:2.5.0, which pins
+    // {strictly 1.4.0}. With Apple disabled (capacitor.config.ts — we only ship
+    // Google) that 1.9.0 stays on the COMPILE classpath as a compileOnly dep, so
+    // compile and runtime disagree and the build dies with "Cannot find a version
+    // of androidx.browser:browser that satisfies the version constraints".
+    //
+    // Enabling Apple is not the escape hatch: 1.9.0 requires AGP 8.9.1 and
+    // compileSdk 36, and this project is on AGP 8.7.2 / compileSdk 35. So force
+    // the version androidbrowserhelper actually wants. Revisit when AGP is
+    // upgraded.
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.browser:browser:1.4.0'
+        }
+    }
 }
 
 task clean(type: Delete) {
