@@ -160,7 +160,7 @@ export function WorkspaceInviteCard({
 								type="button"
 								onClick={() => respond("accepted")}
 								disabled={respondMutation.isPending}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
+								className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:opacity-50"
 							>
 								{respondMutation.isPending ? (
 									<Loader2 className="h-4 w-4 animate-spin" />

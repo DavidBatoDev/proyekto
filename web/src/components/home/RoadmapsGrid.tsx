@@ -196,7 +196,7 @@ export function RoadmapsGrid() {
 						Post your project vision to trigger consultant matching and
 						automatically generate your roadmap.
 					</p>
-					<RoadmapStartTrigger className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+					<RoadmapStartTrigger className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
 						<Plus className="h-4 w-4" />
 						Create roadmap
 					</RoadmapStartTrigger>
@@ -314,7 +314,7 @@ export function RoadmapsGrid() {
 													roadmapId: template.id,
 												}}
 												onClick={(event) => event.stopPropagation()}
-												className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-slate-700"
+												className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-primary px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
 											>
 												Open roadmap
 												<ArrowRight className="h-3.5 w-3.5 shrink-0" />

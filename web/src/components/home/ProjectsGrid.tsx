@@ -365,7 +365,7 @@ function InviteCard({
 		<button
 			type="button"
 			onClick={() => openProjectInviteModal(invite.id)}
-			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg ${
+			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-primary bg-primary p-4 text-left text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-lg ${
 				className ?? ""
 			}`}
 			style={style}
@@ -380,7 +380,7 @@ function InviteCard({
 					<h3 className="mb-2 line-clamp-2 text-[18px] font-semibold tracking-tight text-white">
 						{invite.project?.title || "Project invitation"}
 					</h3>
-					<p className="mb-1 text-[13px] text-slate-300">
+					<p className="mb-1 text-[13px] text-primary-foreground/80">
 						Invited by{" "}
 						<span className="font-semibold text-white">
 							{invite.inviter?.display_name || "Team lead"}
@@ -389,7 +389,7 @@ function InviteCard({
 				</div>
 
 				<div className="rounded-lg border border-white/15 bg-white/10 px-3 py-2">
-					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-300">
+					<p className="text-[12px] font-semibold uppercase tracking-wide text-primary-foreground/80">
 						Next Step
 					</p>
 					<p className="mt-1 text-[13px] text-white">
@@ -397,8 +397,8 @@ function InviteCard({
 					</p>
 				</div>
 
-				<div className="flex items-center gap-2 text-[12px] text-slate-300">
-					<Inbox className="h-4 w-4 text-slate-300" />
+				<div className="flex items-center gap-2 text-[12px] text-primary-foreground/80">
+					<Inbox className="h-4 w-4 text-primary-foreground/80" />
 					<span>Sent {formatInviteSentLabel(invite.created_at)}</span>
 				</div>
 			</div>
@@ -436,7 +436,7 @@ function ProjectsEmptyState({
 			<Link
 				to="/project/new"
 				search={{ roadmapId: undefined }}
-				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+				className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
 			>
 				<Plus className="h-4 w-4" />
 				Create project

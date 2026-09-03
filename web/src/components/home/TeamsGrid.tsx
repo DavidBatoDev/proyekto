@@ -296,7 +296,7 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 	return (
 		<Link
 			to="/teams/me/invites"
-			className="group flex items-center gap-3 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md"
+			className="group flex items-center gap-3 rounded-xl border border-primary bg-primary px-4 py-3 text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md"
 		>
 			<div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
 				<span
@@ -314,7 +314,7 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 						Pending invite
 					</span>
 				</div>
-				<p className="mt-0.5 truncate text-[12px] text-slate-300">
+				<p className="mt-0.5 truncate text-[12px] text-primary-foreground/80">
 					{inviterName} invited you ·{" "}
 					{invite.position
 						? `${invite.position} (${invite.role})`
@@ -348,7 +348,7 @@ function TeamsEmptyState({ className }: { className?: string }) {
 			<Link
 				to="/w/$workspaceSlug/teams"
 				params={{ workspaceSlug }}
-				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+				className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
 			>
 				<Plus className="h-4 w-4" />
 				Create team
