@@ -86,7 +86,7 @@ function WelcomePage() {
 	if (!profile) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-				<div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
+				<div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
 			</div>
 		);
 	}
@@ -349,7 +349,7 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 					Considering becoming a consultant?{" "}
 					<a
 						href="/marketplace/consultant"
-						className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
+						className="font-semibold text-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
 					>
 						Apply to lead →
 					</a>
@@ -452,7 +452,9 @@ function DeckShell({
 			<div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-10">
 				{stepper}
 				<div className="relative mt-12 flex-1">{children}</div>
-				<p className="mt-8 text-center text-xs text-slate-500">{footer}</p>
+				<p className="mt-8 text-center text-xs text-muted-foreground">
+					{footer}
+				</p>
 			</div>
 		</div>
 	);
@@ -476,18 +478,18 @@ function Stepper({
 					<div
 						key={n}
 						className={`h-1.5 flex-1 rounded-full transition-colors ${
-							n <= current ? "bg-slate-900" : "bg-slate-200"
+							n <= current ? "bg-primary" : "bg-muted"
 						}`}
 					/>
 				))}
-				<span className="ml-3 shrink-0 text-xs font-semibold text-slate-500">
+				<span className="ml-3 shrink-0 text-xs font-semibold text-muted-foreground">
 					{current} of {total}
 				</span>
 			</div>
 			<button
 				type="button"
 				onClick={onClose}
-				className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+				className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 				aria-label="Close"
 			>
 				<X className="h-4 w-4" />
@@ -526,13 +528,13 @@ function SlideOneCF({
 			transition={slideTransition}
 			className="text-center"
 		>
-			<div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+			<div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-(--app-shadow-sm)">
 				<Sparkles className="h-6 w-6 text-cyan-600" />
 			</div>
-			<h1 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+			<h1 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 				Welcome to Proyekto, {firstName}.
 			</h1>
-			<p className="mx-auto mt-3 max-w-md text-balance text-sm text-slate-600 sm:text-base">
+			<p className="mx-auto mt-3 max-w-md text-balance text-sm text-muted-foreground sm:text-base">
 				Let's get you set up — should take a minute.
 			</p>
 			<div className="mt-10 flex justify-center">
@@ -540,7 +542,7 @@ function SlideOneCF({
 					variant="contained"
 					colorScheme="primary"
 					onClick={onNext}
-					className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
+					className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
 				>
 					Get started
 					<ArrowRight className="ml-2 h-4 w-4" />
@@ -591,10 +593,10 @@ function SlideTwoCF({
 			exit="exit"
 			transition={slideTransition}
 		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 				What you can do here
 			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-muted-foreground sm:text-base">
 				Three things Proyekto does well — so you don't have to juggle five
 				tools.
 			</p>
@@ -605,16 +607,16 @@ function SlideTwoCF({
 					return (
 						<article
 							key={cap.title}
-							className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
+							className="flex gap-4 rounded-2xl border border-border bg-card p-5 shadow-(--app-shadow-sm)"
 						>
-							<span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+							<span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-muted text-foreground">
 								<Icon className="h-5 w-5" />
 							</span>
 							<div>
-								<h3 className="text-base font-semibold text-slate-900">
+								<h3 className="text-base font-semibold text-foreground">
 									{cap.title}
 								</h3>
-								<p className="mt-1 text-sm leading-relaxed text-slate-600">
+								<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
 									{cap.description}
 								</p>
 							</div>
@@ -666,10 +668,10 @@ function SlideThreeCF({
 			exit="exit"
 			transition={slideTransition}
 		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 				Create your workspace
 			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-muted-foreground sm:text-base">
 				Your workspace is where your teams, projects, and billing live. Name it
 				after your company — you can change it anytime.
 			</p>
@@ -677,7 +679,7 @@ function SlideThreeCF({
 			<div className="mx-auto mt-8 max-w-md">
 				<label
 					htmlFor="workspace-title"
-					className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
+					className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
 				>
 					Workspace name
 				</label>
@@ -689,7 +691,7 @@ function SlideThreeCF({
 					maxLength={120}
 					disabled={submitting}
 					placeholder="Acme Inc."
-					className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
+					className="w-full rounded-xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-60"
 				/>
 				{workspaceLoadFailed && (
 					<p className="mt-2 text-xs text-amber-700">
@@ -709,7 +711,7 @@ function SlideThreeCF({
 						<button
 							type="button"
 							onClick={onSkip}
-							className="text-sm font-semibold text-slate-500 transition-colors hover:text-slate-900"
+							className="text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
 						>
 							Skip for now
 						</button>
@@ -753,10 +755,10 @@ function SlideFourCF({
 			exit="exit"
 			transition={slideTransition}
 		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 				Invite people to your workspace
 			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-muted-foreground sm:text-base">
 				They'll join your workspace as members and can be added to its teams and
 				projects. You can skip and invite them anytime.
 			</p>
@@ -765,7 +767,7 @@ function SlideFourCF({
 				{invites.map((row) => (
 					<div
 						key={row.id}
-						className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)] sm:flex-nowrap"
+						className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3 shadow-(--app-shadow-sm) sm:flex-nowrap"
 					>
 						<input
 							type="email"
@@ -774,7 +776,7 @@ function SlideFourCF({
 								updateInviteRow(row.id, { email: e.target.value })
 							}
 							placeholder="teammate@company.com"
-							className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+							className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
 						/>
 						<RoleToggle
 							role={row.role}
@@ -783,7 +785,7 @@ function SlideFourCF({
 						<button
 							type="button"
 							onClick={() => removeInviteRow(row.id)}
-							className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+							className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 							aria-label="Remove invite row"
 						>
 							<Trash2 className="h-4 w-4" />
@@ -794,7 +796,7 @@ function SlideFourCF({
 				<button
 					type="button"
 					onClick={addInviteRow}
-					className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+					className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
 				>
 					<Plus className="h-4 w-4" />
 					Add another
@@ -805,7 +807,7 @@ function SlideFourCF({
 				<button
 					type="button"
 					onClick={onBack}
-					className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
+					className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary"
 				>
 					<ArrowLeft className="h-4 w-4" />
 					Back
@@ -815,7 +817,7 @@ function SlideFourCF({
 						type="button"
 						onClick={onSkip}
 						disabled={submittingInvites}
-						className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+						className="rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						Skip for now
 					</button>
@@ -824,7 +826,7 @@ function SlideFourCF({
 						colorScheme="primary"
 						onClick={onFinish}
 						disabled={submittingInvites}
-						className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
+						className="rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 disabled:opacity-60"
 					>
 						{submittingInvites
 							? "Sending…"
@@ -870,10 +872,10 @@ function SlideTheme({
 			exit="exit"
 			transition={slideTransition}
 		>
-			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+			<h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
 				Make it yours
 			</h1>
-			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+			<p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-muted-foreground sm:text-base">
 				Pick a look for your workspace — you can change it anytime.
 			</p>
 
@@ -893,7 +895,7 @@ function SlideTheme({
 								borderColor: selected ? t.primary : t.border,
 								boxShadow: selected ? `0 0 0 2px ${t.primary}` : undefined,
 							}}
-							className="rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20"
+							className="rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
 						>
 							{/* Mini window mock, painted in the preset's own colors. */}
 							<div
@@ -957,7 +959,7 @@ function SlideTheme({
 				})}
 			</div>
 
-			<p className="mx-auto mt-5 max-w-lg text-center text-xs text-slate-500">
+			<p className="mx-auto mt-5 max-w-lg text-center text-xs text-muted-foreground">
 				You can fine-tune colors later in Settings → Appearance.
 			</p>
 
@@ -976,7 +978,7 @@ function RoleToggle({
 	onChange: (role: InviteRole) => void;
 }) {
 	return (
-		<div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
+		<div className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5 text-xs font-semibold">
 			{(["member", "admin"] as InviteRole[]).map((r) => (
 				<button
 					key={r}
@@ -984,8 +986,8 @@ function RoleToggle({
 					onClick={() => onChange(r)}
 					className={`rounded-md px-3 py-1.5 transition-colors ${
 						role === r
-							? "bg-white text-slate-900 shadow-sm"
-							: "text-slate-500 hover:text-slate-700"
+							? "bg-card text-foreground shadow-sm"
+							: "text-muted-foreground hover:text-foreground"
 					}`}
 				>
 					{r === "member" ? "Member" : "Admin"}
@@ -1016,7 +1018,7 @@ function NavRow({
 			<button
 				type="button"
 				onClick={onBack}
-				className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
+				className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary"
 			>
 				<ArrowLeft className="h-4 w-4" />
 				Back
@@ -1027,7 +1029,7 @@ function NavRow({
 				colorScheme="primary"
 				onClick={onNext}
 				disabled={nextDisabled}
-				className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
+				className="rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 disabled:opacity-60"
 			>
 				{nextLabel}
 				<ArrowRight className="ml-2 h-4 w-4" />
@@ -1053,27 +1055,29 @@ function CloseConfirmModal({
 }) {
 	return (
 		<ModalPortal>
-			<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-				<div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_24px_48px_rgba(15,23,42,0.25)]">
-					<div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-						<CheckCircle2 className="h-5 w-5 text-slate-700" />
+			<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm">
+				<div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
+					<div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted">
+						<CheckCircle2 className="h-5 w-5 text-foreground" />
 					</div>
-					<h2 className="mt-4 text-lg font-semibold text-slate-900">{title}</h2>
-					<p className="mt-2 text-sm leading-relaxed text-slate-600">
+					<h2 className="mt-4 text-lg font-semibold text-foreground">
+						{title}
+					</h2>
+					<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
 						{description}
 					</p>
 					<div className="mt-5 flex justify-end gap-2">
 						<button
 							type="button"
 							onClick={onCancel}
-							className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
+							className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary"
 						>
 							Stay
 						</button>
 						<button
 							type="button"
 							onClick={onConfirm}
-							className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+							className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
 						>
 							{confirmLabel}
 						</button>
