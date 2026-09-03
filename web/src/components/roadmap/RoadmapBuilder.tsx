@@ -12,7 +12,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/layout/Header";
 import { featureFlags } from "@/config/featureFlags";
-import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
+import {
+	invalidateDashboardRoadmaps,
+	invalidateProjectLinkedRoadmap,
+} from "@/hooks/dashboardInvalidation";
 import { getOrCreateGuestUser } from "@/lib/guestAuth";
 import {
 	buildFallbackRoadmapMetadata,
@@ -992,6 +995,7 @@ export function RoadmapBuilder({
 			// The new roadmap must show on the dashboard ROADMAPS preview when
 			// the user navigates back within the query's staleTime.
 			void invalidateDashboardRoadmaps(queryClient);
+			void invalidateProjectLinkedRoadmap(queryClient, projectId);
 			await navigate({
 				to: "/project/$projectId/roadmap/$roadmapId",
 				params: { projectId, roadmapId: roadmap.id },

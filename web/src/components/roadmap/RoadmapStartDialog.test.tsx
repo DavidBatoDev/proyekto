@@ -24,8 +24,13 @@ vi.mock("@/lib/roadmapCreationFlow", () => ({
 	DEFAULT_ROADMAP_CATEGORY: "Web Development",
 }));
 
+const { invalidateProjectLinkedRoadmap } = vi.hoisted(() => ({
+	invalidateProjectLinkedRoadmap: vi.fn(),
+}));
+
 vi.mock("@/hooks/dashboardInvalidation", () => ({
 	invalidateDashboardRoadmaps: vi.fn(),
+	invalidateProjectLinkedRoadmap,
 }));
 
 vi.mock("@/stores/authStore", () => ({ useUser: () => ({ id: "user-1" }) }));
@@ -35,13 +40,13 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-function renderDialog(onClose = vi.fn()) {
+function renderDialog(onClose = vi.fn(), projectId?: string) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
 	render(
 		<QueryClientProvider client={client}>
-			<RoadmapStartDialog open onClose={onClose} />
+			<RoadmapStartDialog open onClose={onClose} projectId={projectId} />
 		</QueryClientProvider>,
 	);
 	return onClose;
@@ -114,6 +119,63 @@ describe("RoadmapStartDialog", () => {
 		expect(args.prompt).toBe("");
 		expect(args.openMetadataModal).toBe(true);
 		expect(args.projectId).toBe("n");
+	});
+
+	describe("opened from a project", () => {
+		it("sends the AI route to the project's builder", () => {
+			renderDialog(vi.fn(), "proj-1");
+
+			fireEvent.click(
+				screen.getByRole("button", {
+					name: /start a roadmap with the help of ai/i,
+				}),
+			);
+
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/project/$projectId/roadmap/create",
+				params: { projectId: "proj-1" },
+				search: { draftId: undefined },
+			});
+		});
+
+		it("carries the project into the template gallery", () => {
+			renderDialog(vi.fn(), "proj-1");
+
+			fireEvent.click(
+				screen.getByRole("button", { name: /browse popular roadmaps/i }),
+			);
+
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/roadmap-templates",
+				search: { projectId: "proj-1" },
+			});
+			expect(createRoadmapFromMetadata).not.toHaveBeenCalled();
+		});
+
+		it("creates the blank roadmap on the project and refreshes its link", async () => {
+			createRoadmapFromMetadata.mockResolvedValue({ id: "roadmap-9" });
+			renderDialog(vi.fn(), "proj-1");
+
+			fireEvent.click(
+				screen.getByRole("button", { name: /start the roadmap immediately/i }),
+			);
+
+			await waitFor(() => {
+				expect(navigate).toHaveBeenCalledWith({
+					to: "/project/$projectId/roadmap/$roadmapId",
+					params: { projectId: "proj-1", roadmapId: "roadmap-9" },
+				});
+			});
+			expect(createRoadmapFromMetadata.mock.calls[0][0].projectId).toBe(
+				"proj-1",
+			);
+			// The project shell reads ["project", "linked-roadmap", id] with a
+			// 60s staleTime; without this it would not know the roadmap exists.
+			expect(invalidateProjectLinkedRoadmap).toHaveBeenCalledWith(
+				expect.anything(),
+				"proj-1",
+			);
+		});
 	});
 
 	it("keeps the dialog open and explains itself when creation fails", async () => {

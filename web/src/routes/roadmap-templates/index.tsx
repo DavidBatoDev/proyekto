@@ -461,6 +461,7 @@ export function RoadmapTemplateCatalogPage() {
 										<Link
 											to="/roadmap-templates/$slug"
 											params={{ slug: template.slug }}
+											search={(prev) => prev}
 											onClick={(event) => event.stopPropagation()}
 											className="inline-flex shrink-0 items-center gap-1 rounded-full bg-foreground px-3 py-1 text-xs font-bold text-background transition-opacity hover:opacity-85"
 										>

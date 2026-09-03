@@ -9,7 +9,11 @@ import {
 } from "@/api";
 import { TemplateCoverImage } from "@/components/roadmap/templates/TemplateCoverImage";
 import { TemplateRoadmapFlow } from "@/components/roadmap/templates/TemplateRoadmapFlow";
-import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
+import {
+	invalidateDashboardRoadmaps,
+	invalidateProjectLinkedRoadmap,
+} from "@/hooks/dashboardInvalidation";
+import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { projectService } from "@/services/project.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -26,10 +30,14 @@ function today() {
 
 function RoadmapTemplateDetailPage() {
 	const { slug } = Route.useParams();
+	// Inherited from the /roadmap-templates layout: the project the author
+	// came from. Seeds the "Attach to project" picker so a template chosen
+	// from a project's roadmap tab lands on that project, not as a standalone.
+	const { projectId: requestedProjectId } = Route.useSearch();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-	const [projectId, setProjectId] = useState("");
+	const [projectId, setProjectId] = useState(requestedProjectId ?? "");
 	const [startDate, setStartDate] = useState(today());
 	const [error, setError] = useState<string | null>(null);
 	const idempotencyKeyRef = useRef(crypto.randomUUID());
@@ -42,6 +50,29 @@ function RoadmapTemplateDetailPage() {
 		queryFn: () => projectService.listRoadmapLinkCandidates(),
 		enabled: isAuthenticated,
 	});
+	// The candidate list is "owned projects with an empty roadmap". A project
+	// that has no roadmap at all - exactly the one whose roadmap tab sent us
+	// here - is not in it, so it is pinned as its own option, named from the
+	// project row. The RPC itself accepts either shape.
+	const requestedProjectQuery = useProjectDetailQuery(
+		isAuthenticated ? (requestedProjectId ?? "") : "",
+	);
+	const projectOptions = (() => {
+		const candidates = projectsQuery.data ?? [];
+		if (
+			!requestedProjectId ||
+			candidates.some((project) => project.id === requestedProjectId)
+		) {
+			return candidates;
+		}
+		return [
+			{
+				id: requestedProjectId,
+				title: requestedProjectQuery.data?.title ?? "This project",
+			},
+			...candidates,
+		];
+	})();
 	useEffect(() => {
 		if (!templateQuery.data) return;
 		void recordRoadmapTemplateView(templateQuery.data.id).catch(
@@ -56,13 +87,15 @@ function RoadmapTemplateDetailPage() {
 				start_date?: string;
 			} | null;
 			if (intent?.slug === slug) {
-				setProjectId(intent.project_id ?? "");
+				// The URL wins: the intent is only the anon -> login round-trip's
+				// memory, and it was written from the same URL.
+				setProjectId(requestedProjectId ?? intent.project_id ?? "");
 				if (intent.start_date) setStartDate(intent.start_date);
 			}
 		} catch {
 			localStorage.removeItem("proyekto_template_intent");
 		}
-	}, [templateQuery.data, slug]);
+	}, [templateQuery.data, slug, requestedProjectId]);
 
 	const instantiateMutation = useMutation({
 		mutationFn: async () => {
@@ -79,6 +112,9 @@ function RoadmapTemplateDetailPage() {
 			localStorage.removeItem("proyekto_template_intent");
 			// Instantiated roadmaps appear in the dashboard ROADMAPS preview.
 			void invalidateDashboardRoadmaps(queryClient);
+			// ...and, when attached, the project shell must learn it has a
+			// roadmap now, or its sidebar keeps the empty-state links.
+			void invalidateProjectLinkedRoadmap(queryClient, result.project_id);
 			void navigate({
 				to: "/project/$projectId/roadmap/$roadmapId",
 				params: {
@@ -105,7 +141,11 @@ function RoadmapTemplateDetailPage() {
 			);
 			void navigate({
 				to: "/auth/login",
-				search: { redirect: `/roadmap-templates/${slug}` },
+				search: {
+					redirect: requestedProjectId
+						? `/roadmap-templates/${slug}?projectId=${encodeURIComponent(requestedProjectId)}`
+						: `/roadmap-templates/${slug}`,
+				},
 			});
 			return;
 		}
@@ -138,6 +178,7 @@ function RoadmapTemplateDetailPage() {
 			<div className="relative mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
 				<Link
 					to="/roadmap-templates"
+					search={(prev) => prev}
 					className="text-sm font-semibold text-primary"
 				>
 					← Template marketplace
@@ -257,7 +298,7 @@ function RoadmapTemplateDetailPage() {
 									className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal text-foreground disabled:opacity-60"
 								>
 									<option value="">Standalone roadmap</option>
-									{(projectsQuery.data ?? []).map((project) => (
+									{projectOptions.map((project) => (
 										<option key={project.id} value={project.id}>
 											{project.title}
 										</option>

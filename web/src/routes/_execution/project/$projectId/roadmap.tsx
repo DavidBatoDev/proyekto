@@ -1,19 +1,14 @@
 import {
 	createFileRoute,
-	Link,
 	Outlet,
 	useChildMatches,
 	useNavigate,
 } from "@tanstack/react-router";
-import { ExternalLink, Map } from "lucide-react";
+import { Map, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-	AppEmptyState,
-	AppSectionHeader,
-	AppSurfaceCard,
-} from "@/components/common/AppPrimitives";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
+import { RoadmapStartTrigger } from "@/components/roadmap/RoadmapStartDialog";
 import { RoadmapPageSkeleton } from "@/components/roadmap/views/RoadmapPageSkeleton";
 import {
 	useInvalidateProjectQueries,
@@ -122,41 +117,50 @@ function RoadmapPageBody() {
 		return <RoadmapPageSkeleton />;
 	}
 
+	// One door, not a page of options. The three ways to start (AI, blank,
+	// template) are a question the start dialog already asks, and asking it
+	// here as a second row of cards would be answering it twice. The page
+	// itself only has to say "nothing here yet" and hand over.
 	return (
 		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-8 md:py-8">
-				<AppSurfaceCard strong className="mb-6 p-6">
-					<AppSectionHeader
-						kicker="Planning"
-						title="Roadmap"
-						subtitle="View and manage this project's roadmap, milestones, and epics."
-					/>
-				</AppSurfaceCard>
+			<div className="mx-auto flex min-h-full w-full max-w-4xl items-center justify-center px-5 py-10 md:px-8">
+				<section
+					aria-labelledby="roadmap-empty-title"
+					className="flex w-full max-w-lg flex-col items-center rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center shadow-sm"
+				>
+					<span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+						<Map className="h-6 w-6" aria-hidden="true" />
+					</span>
+					<h2
+						id="roadmap-empty-title"
+						className="mt-5 text-xl font-semibold tracking-tight text-foreground"
+					>
+						No roadmap yet
+					</h2>
+					<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+						Plan this project's milestones, epics, and features. Start from
+						scratch, describe it to the AI, or pick a template — every route
+						ends on this project's canvas.
+					</p>
 
-				<AppEmptyState
-					icon={Map}
-					title="No roadmap linked"
-					description="This project doesn't have a roadmap yet. Create a new roadmap to start planning milestones, epics, and features."
-					className="app-surface-card-strong border-dashed py-16"
-					action={
-						<div className="flex items-center justify-center gap-3">
-							<Link
-								to="/project/$projectId/roadmap/create"
-								params={{ projectId }}
-								className="app-cta inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-							>
-								<ExternalLink className="w-4 h-4" />
-								Create a Roadmap
-							</Link>
-							<button
-								onClick={() => setIsLinkModalOpen(true)}
-								className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-							>
-								Link Existing Roadmap
-							</button>
-						</div>
-					}
-				/>
+					<RoadmapStartTrigger
+						projectId={projectId}
+						className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						Create a roadmap
+					</RoadmapStartTrigger>
+
+					{/* Attaching an existing roadmap is real, but rare - a text link
+					    under the primary action, not a peer button competing with it. */}
+					<button
+						type="button"
+						onClick={() => setIsLinkModalOpen(true)}
+						className="mt-4 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+					>
+						Link an existing roadmap instead
+					</button>
+				</section>
 			</div>
 
 			<LinkRoadmapModal

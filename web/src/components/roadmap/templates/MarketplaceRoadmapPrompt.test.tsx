@@ -17,6 +17,7 @@ const { createRoadmapIntakeDraft, navigate } = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => navigate,
+	useSearch: () => ({}),
 }));
 
 vi.mock("@/lib/roadmapIntakeDraft", () => ({

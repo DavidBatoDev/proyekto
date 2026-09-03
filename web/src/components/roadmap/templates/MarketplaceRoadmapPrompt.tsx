@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Loader2, Send, Sparkles } from "lucide-react";
 import { useId, useState } from "react";
 import { createRoadmapIntakeDraft } from "@/lib/roadmapIntakeDraft";
@@ -9,11 +9,16 @@ interface SubmitMarketplacePromptOptions {
 		params: { projectId: string };
 		search: { draftId: string };
 	}) => void | Promise<void>;
+	/**
+	 * The project the roadmap should attach to, when the author arrived from
+	 * one (`/roadmap-templates?projectId=`). `"n"` - no project.
+	 */
+	projectId?: string;
 }
 
 export async function submitMarketplaceRoadmapPrompt(
 	prompt: string,
-	{ navigate }: SubmitMarketplacePromptOptions,
+	{ navigate, projectId = "n" }: SubmitMarketplacePromptOptions,
 ): Promise<void> {
 	const normalizedPrompt = prompt.trim();
 	if (!normalizedPrompt) return;
@@ -21,18 +26,23 @@ export async function submitMarketplaceRoadmapPrompt(
 	const draftId = createRoadmapIntakeDraft({
 		prompt: normalizedPrompt,
 		source: "marketplace",
-		projectId: "n",
+		projectId,
 	});
 
 	await navigate({
 		to: "/project/$projectId/roadmap/create",
-		params: { projectId: "n" },
+		params: { projectId },
 		search: { draftId },
 	});
 }
 
 export function MarketplaceRoadmapPrompt() {
 	const navigate = useNavigate();
+	// strict: false - the prompt renders under /roadmap-templates/, whose layout
+	// validates `projectId`; reading loosely keeps the component free of the
+	// route object so it stays renderable in isolation.
+	const search = useSearch({ strict: false }) as { projectId?: string };
+	const projectId = search?.projectId ?? "n";
 	const promptId = useId();
 	const [prompt, setPrompt] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,7 +55,7 @@ export function MarketplaceRoadmapPrompt() {
 		setIsSubmitting(true);
 
 		try {
-			await submitMarketplaceRoadmapPrompt(prompt, { navigate });
+			await submitMarketplaceRoadmapPrompt(prompt, { navigate, projectId });
 		} catch (submitError) {
 			console.error(
 				"Failed to start a roadmap from the marketplace:",

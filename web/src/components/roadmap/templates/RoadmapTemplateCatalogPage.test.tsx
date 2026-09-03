@@ -27,6 +27,7 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@tanstack/react-router", () => ({
 	createFileRoute: () => (options: unknown) => options,
 	useNavigate: () => vi.fn(),
+	useSearch: () => ({}),
 	Link: ({
 		children,
 		to,

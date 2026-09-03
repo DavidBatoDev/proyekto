@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { projectKeys } from "@/queries/project";
 import { teamKeys } from "@/queries/teams";
 
 /**
@@ -50,5 +51,24 @@ export function invalidateTeamEverywhere(
 export function invalidateDashboardRoadmaps(queryClient: QueryClient) {
 	return queryClient.invalidateQueries({
 		queryKey: ["dashboard", "roadmaps-preview"],
+	});
+}
+
+/**
+ * The project → roadmap link (["project", "linked-roadmap", projectId]), read
+ * by the project layout, overview, timeline, work-items and the roadmap tab's
+ * empty state. Every door that creates a roadmap *for* a project must call
+ * this, or the layout keeps `linkedRoadmapId = null` for the query's 60s
+ * staleTime and the sidebar does not know the roadmap exists yet.
+ *
+ * `"n"` is the no-project sentinel: nothing to invalidate.
+ */
+export function invalidateProjectLinkedRoadmap(
+	queryClient: QueryClient,
+	projectId: string | null | undefined,
+) {
+	if (!projectId || projectId === "n") return Promise.resolve();
+	return queryClient.invalidateQueries({
+		queryKey: projectKeys.linkedRoadmap(projectId),
 	});
 }

@@ -3,7 +3,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
-import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
+import {
+	invalidateDashboardRoadmaps,
+	invalidateProjectLinkedRoadmap,
+} from "@/hooks/dashboardInvalidation";
 import {
 	createRoadmapFromMetadata,
 	DEFAULT_ROADMAP_CATEGORY,
@@ -54,7 +57,11 @@ export function RoadmapStartDialog({
 			open={open}
 			onClose={onClose}
 			title="How do you want to start?"
-			description="Every route ends at the same canvas — pick the one that matches how much you already know."
+			description={
+				projectId === "n"
+					? "Every route ends at the same canvas — pick the one that matches how much you already know."
+					: "Every route ends on this project's canvas — pick the one that matches how much you already know."
+			}
 			size="lg"
 			busy={isCreating}
 		>
@@ -122,6 +129,7 @@ export function RoadmapStartOptions({
 			});
 
 			void invalidateDashboardRoadmaps(queryClient);
+			void invalidateProjectLinkedRoadmap(queryClient, projectId);
 			await navigate({
 				to: "/project/$projectId/roadmap/$roadmapId",
 				params: { projectId, roadmapId: roadmap.id },
@@ -169,7 +177,14 @@ export function RoadmapStartOptions({
 					disabled={isCreating}
 					onClick={() => {
 						onBeforeNavigate?.();
-						void navigate({ to: "/roadmap-templates" });
+						// The gallery is outside the project shell, so the project has
+						// to travel in the URL - otherwise the template lands as a
+						// standalone roadmap and the author is back where they started.
+						void navigate(
+							projectId === "n"
+								? { to: "/roadmap-templates" }
+								: { to: "/roadmap-templates", search: { projectId } },
+						);
 					}}
 				/>
 			</div>
