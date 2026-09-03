@@ -142,6 +142,14 @@ export function RoadmapsGrid() {
 			})),
 		[roadmaps],
 	);
+	// Nothing to show, nothing to render. Same rule as TeamsGrid: an empty
+	// section is a heading, a subtitle and a prompt taking a screenful to say
+	// "no". Creating a roadmap is still one click away on the welcome card
+	// above (DashboardCreateActions), which is where a reader with no roadmaps
+	// is looking anyway. The error panel is kept — "we could not load this" is
+	// worth saying out loud, unlike "you have none".
+	if (!loading && !isUnavailable && templates.length === 0) return null;
+
 	const hasMoreRoadmaps = templates.length > INITIAL_VISIBLE_ROADMAPS;
 	const visibleTemplates = showAllRoadmaps
 		? templates
@@ -161,6 +169,11 @@ export function RoadmapsGrid() {
 						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							MY ROADMAPS
 						</h2>
+						{templates.length > 0 && (
+							<span className="text-sm font-semibold text-muted-foreground">
+								{templates.length}
+							</span>
+						)}
 					</div>
 					<RoadmapStartTrigger className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm">
 						<Plus className="h-3.5 w-3.5" />
@@ -186,20 +199,6 @@ export function RoadmapsGrid() {
 						After consultant matching starts, your roadmap appears here with
 						milestones and execution phases.
 					</p>
-				</div>
-			) : templates.length === 0 ? (
-				<div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center shadow-sm">
-					<p className="mb-2 font-semibold text-slate-900">
-						Your first roadmap is taking shape
-					</p>
-					<p className="text-sm text-slate-600">
-						Post your project vision to trigger consultant matching and
-						automatically generate your roadmap.
-					</p>
-					<RoadmapStartTrigger className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
-						<Plus className="h-4 w-4" />
-						Create roadmap
-					</RoadmapStartTrigger>
 				</div>
 			) : (
 				<>

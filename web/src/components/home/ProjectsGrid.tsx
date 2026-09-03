@@ -224,6 +224,13 @@ export function ProjectsGrid() {
 					<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 						PROJECTS
 					</h2>
+					{/* The count belongs beside the thing it counts, not in a stat tile
+					    three sections up that only scrolled you back down here. */}
+					{primaryCards.length > 0 && (
+						<span className="text-sm font-semibold text-muted-foreground">
+							{primaryCards.length}
+						</span>
+					)}
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
 					Every project you own, share, or have been invited to.

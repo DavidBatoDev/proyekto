@@ -1,67 +1,20 @@
 /**
  * Hand-built illustrations for the marketplace capability cards.
  *
- * Deliberately not library glyphs. A line icon from a set says "document" or
- * "check"; these are small flat scenes that say what the capability *is* — a
- * plan being drawn, work being accepted, a scope change being weighed. They
- * share one grammar so five of them read as a family rather than a grab bag:
- *
- *   • a muted "sheet" as the base surface
- *   • content bars in muted-foreground, at low opacity
- *   • one primary-coloured block carrying the emphasis
- *   • a filled primary badge in the top-right holding the verb
- *
- * Everything is theme tokens, so they invert correctly in dark mode, and every
- * shape is flat — no gradients, no shadows, nothing to go muddy at 40px.
+ * Small flat scenes that say what the capability *is* — a plan being drawn,
+ * work being accepted, a scope change being weighed. The shared grammar (the
+ * sheet, the badge, why these are not library glyphs) lives in
+ * `common/illustrationPrimitives.tsx`.
  */
+
+import {
+	Badge,
+	Sheet,
+	ILLUSTRATION_SVG_PROPS as SVG_PROPS,
+} from "@/components/common/illustrationPrimitives";
 
 interface CapabilityIconProps {
 	className?: string;
-}
-
-const SVG_PROPS = {
-	viewBox: "0 0 48 48",
-	fill: "none",
-	xmlns: "http://www.w3.org/2000/svg",
-	"aria-hidden": true,
-	focusable: false,
-} as const;
-
-/** The shared base: a sheet with a soft edge. */
-function Sheet({ x = 6, y = 8, w = 28, h = 32 }) {
-	return (
-		<>
-			<rect x={x} y={y} width={w} height={h} rx="3" className="fill-muted" />
-			<rect
-				x={x}
-				y={y}
-				width={w}
-				height={h}
-				rx="3"
-				className="stroke-border"
-				strokeWidth="1"
-			/>
-		</>
-	);
-}
-
-/** The badge that carries each card's verb. */
-function Badge({
-	cx = 36,
-	cy = 15,
-	children,
-}: {
-	cx?: number;
-	cy?: number;
-	children: React.ReactNode;
-}) {
-	return (
-		<>
-			<circle cx={cx} cy={cy} r="9" className="fill-background" />
-			<circle cx={cx} cy={cy} r="7.5" className="fill-primary" />
-			{children}
-		</>
-	);
 }
 
 /** A roadmap being drawn: a spine with work branching off it. */

@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { FolderOpen, ShieldCheck, Video } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
 import {
 	getRoadmapsPreview,
@@ -8,17 +7,8 @@ import {
 } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { TourDemoBanner } from "@/components/tour/TourDemoBanner";
-import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
-import {
-	useTourDemo,
-	useTourDemoActive,
-} from "@/lib/tours/demo/TourDemoContext";
-import { groupByWorkspace } from "@/lib/workspaceScope";
-import {
-	MEETING_TYPE_LABELS,
-	type Meeting,
-	meetingsService,
-} from "@/services/meetings.service";
+import { useTourDemo } from "@/lib/tours/demo/TourDemoContext";
+import { type Meeting, meetingsService } from "@/services/meetings.service";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -40,40 +30,11 @@ type ActivityItem = {
 
 type UpcomingMeeting = Meeting & { projectTitle: string | null };
 
-function formatDateLabel(value: string): string {
-	return new Date(value).toLocaleDateString(undefined, {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-}
-
 function formatMeetingTime(value: string): string {
 	return new Date(value).toLocaleTimeString(undefined, {
 		hour: "numeric",
 		minute: "2-digit",
 	});
-}
-
-function formatTaskStatus(status: string): string {
-	switch (status) {
-		case "todo":
-			return "To Do";
-		case "in_progress":
-			return "In Progress";
-		case "in_review":
-			return "In Review";
-		case "blocked":
-			return "Blocked";
-		default:
-			return "Open";
-	}
-}
-
-function getInitials(name: string): string {
-	const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-	if (parts.length === 0) return "?";
-	return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
 function getActivityStatusPriority(status: string): number {
@@ -112,15 +73,6 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const dashboardSummaryQuery = useQuery({
-		queryKey: ["dashboard", "summary", user?.id ?? "anonymous"] as const,
-		queryFn: () => projectService.getDashboardSummary(),
-		enabled: Boolean(user?.id),
-		staleTime: 30_000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-		retry: 1,
-	});
 	const meetingsQuery = useQuery({
 		queryKey: [
 			"dashboard",
@@ -138,43 +90,11 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	// Same demo swap as the grids: the stat counters below are derived from this
-	// array, so fixtures make the numbers on the welcome card non-zero during a
-	// tour replay instead of spotlighting three zeroes.
-	const isDemo = useTourDemoActive();
+	// Same demo swap as the grids: fixtures stand in for the real rows during a
+	// tour replay, so the meeting and activity panels have something to show.
 	const projects = useTourDemo<Project[]>(
 		"projects",
 		(projectsQuery.data as Project[] | undefined) ?? [],
-	);
-	const isProjectsLoading = !isDemo && projectsQuery.isPending;
-	const isMilestonesLoading = timelineQuery.isPending;
-	const isMeetingsLoading = meetingsQuery.isPending;
-
-	// Counters follow the workspace that is open, so the tiles agree with the
-	// lists below them. `projects` stays unscoped for the title lookup further
-	// down — a timeline entry for a project in another workspace should still
-	// render with its name rather than as an unlabelled row.
-	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
-	const scopedProjects = useMemo(() => {
-		const grouped = groupByWorkspace(
-			projects,
-			currentWorkspace?.id ?? null,
-			workspaces.map((item) => item.id),
-		);
-		return [...grouped.current, ...grouped.shared];
-	}, [projects, currentWorkspace?.id, workspaces]);
-
-	const projectActiveCount = useMemo(
-		() => scopedProjects.length,
-		[scopedProjects],
-	);
-
-	const clientPendingProjectsCount = useMemo(
-		() =>
-			scopedProjects.filter(
-				(project) => String(project.status || "").toLowerCase() === "bidding",
-			).length,
-		[scopedProjects],
 	);
 
 	const projectTitleById = useMemo(() => {
@@ -258,385 +178,101 @@ export function DashboardWidgets({
 			),
 		);
 
-		return flattened
-			.sort((a, b) => {
-				const assignedDiff =
-					Number(b.isAssignedToCurrentUser) - Number(a.isAssignedToCurrentUser);
-				if (assignedDiff !== 0) return assignedDiff;
+		return flattened.sort((a, b) => {
+			const assignedDiff =
+				Number(b.isAssignedToCurrentUser) - Number(a.isAssignedToCurrentUser);
+			if (assignedDiff !== 0) return assignedDiff;
 
-				const statusDiff =
-					getActivityStatusPriority(b.taskStatus) -
-					getActivityStatusPriority(a.taskStatus);
-				if (statusDiff !== 0) return statusDiff;
+			const statusDiff =
+				getActivityStatusPriority(b.taskStatus) -
+				getActivityStatusPriority(a.taskStatus);
+			if (statusDiff !== 0) return statusDiff;
 
-				const aDue = a.dueDate
-					? new Date(a.dueDate).getTime()
-					: Number.POSITIVE_INFINITY;
-				const bDue = b.dueDate
-					? new Date(b.dueDate).getTime()
-					: Number.POSITIVE_INFINITY;
-				if (aDue !== bDue) return aDue - bDue;
+			const aDue = a.dueDate
+				? new Date(a.dueDate).getTime()
+				: Number.POSITIVE_INFINITY;
+			const bDue = b.dueDate
+				? new Date(b.dueDate).getTime()
+				: Number.POSITIVE_INFINITY;
+			if (aDue !== bDue) return aDue - bDue;
 
-				const aUpdated = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-				const bUpdated = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-				if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+			const aUpdated = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+			const bUpdated = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+			if (aUpdated !== bUpdated) return bUpdated - aUpdated;
 
-				return a.id.localeCompare(b.id);
-			})
-			.slice(0, 5);
+			return a.id.localeCompare(b.id);
+		});
 	}, [timelineQuery.data, user?.id, projectTitleById]);
 
-	const primaryMetricValue = projectActiveCount;
-	const secondaryMetricValue = clientPendingProjectsCount;
-	const secondaryMetricLoading = isProjectsLoading;
-	const invoiceMetricValue =
-		dashboardSummaryQuery.data?.invoices.total_amount ?? 0;
-	const invoiceMetricLoading = dashboardSummaryQuery.isPending;
-	const invoiceMetricCount =
-		dashboardSummaryQuery.data?.invoices.total_count ?? 0;
-	const activityLoading = isMilestonesLoading;
-
-	const navigate = useNavigate();
-	const workspaceDefaults = (() => {
-		const settings = profile?.settings;
-		if (!settings || typeof settings !== "object") return null;
-		const raw = (settings as Record<string, unknown>).workspace_defaults;
-		if (!raw || typeof raw !== "object") return null;
-		return raw as { default_project_id?: string | null };
-	})();
-	const preferredProjectId = workspaceDefaults?.default_project_id ?? null;
-	const preferredProject = preferredProjectId
-		? (projects.find((project) => project.id === preferredProjectId) ?? null)
-		: null;
-	const invoiceTargetProject = preferredProject ?? projects[0] ?? null;
+	const assignedToMeCount = activityItems.filter(
+		(item) => item.isAssignedToCurrentUser,
+	).length;
+	const nextMeeting = upcomingMeetings[0] ?? null;
 
 	const greetingName =
 		profile?.display_name ||
 		profile?.first_name ||
 		(profile?.email ? profile.email.split("@")[0] : "User");
 
-	const scrollToProjects = () => {
-		const projectsSection =
-			document.querySelector('[data-tutorial="projects-grid"]') ??
-			document.getElementById("my-projects") ??
-			document.querySelector('[data-roadmaps-section="my-roadmaps-section"]') ??
-			document.getElementById("my-roadmaps-section") ??
-			document.querySelector('[data-tutorial="projects-grid"]');
-		if (projectsSection instanceof HTMLElement) {
-			projectsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-		}
-	};
-
-	const scrollToAttention = () => {
-		const attentionSection = document.querySelector(
-			'[data-dashboard-section="needs-your-attention"]',
-		);
-		if (attentionSection instanceof HTMLElement) {
-			attentionSection.scrollIntoView({ behavior: "smooth", block: "start" });
-		}
-	};
-
-	const openFirstProjectInvoices = () => {
-		if (!invoiceTargetProject?.id) return;
-		navigate({
-			to: "/marketplace/finance/invoices",
-			search: { projectId: invoiceTargetProject.id },
-		});
-	};
-
 	return (
 		<div data-tour-demo-root className="space-y-4 app-slide-up sm:space-y-6">
 			<TourDemoBanner />
 			{leadContent}
 
-			<section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-				<div className="space-y-6 min-w-0">
-					<div
-						data-tour="dashboard-welcome"
-						className="app-surface-card-strong p-5 sm:p-8"
-					>
-						<div className="mb-4 flex flex-col items-start gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-							<div className="min-w-0">
-								<h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[22px]">
-									Welcome back, {greetingName}
-								</h2>
-								<p className="mt-1 text-sm text-slate-600">
-									Here is a quick view of your project portfolio and upcoming
-									activity.
-								</p>
-							</div>
-							<DashboardCreateActions />
-						</div>
-
-						<div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
-							<button
-								type="button"
-								onClick={scrollToProjects}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md sm:p-6"
-							>
-								<span
-									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
-									{"->"}
-								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-									<FolderOpen className="w-4 h-4 text-muted-foreground" />
-									ACTIVE PROJECTS
-								</p>
-								<p className="relative z-10 text-2xl font-semibold text-card-foreground sm:text-4xl">
-									{isProjectsLoading ? "..." : primaryMetricValue}
-								</p>
-							</button>
-							<button
-								type="button"
-								onClick={scrollToAttention}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md sm:p-6"
-							>
-								<span
-									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
-									{"->"}
-								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-									<ShieldCheck className="w-4 h-4 text-muted-foreground" />
-									PENDING PROJECTS
-								</p>
-								<p className="relative z-10 text-2xl font-semibold text-card-foreground sm:text-4xl">
-									{secondaryMetricLoading ? "..." : secondaryMetricValue}
-								</p>
-							</button>
-							<button
-								type="button"
-								onClick={openFirstProjectInvoices}
-								disabled={!invoiceTargetProject}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-(--app-border-strong) hover:bg-muted hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 sm:p-6"
-							>
-								<span
-									className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-600 opacity-25 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span
-									className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-600 opacity-12 blur-3xl dark:hidden"
-									aria-hidden="true"
-								/>
-								<span className="absolute top-4 right-4 text-muted-foreground transition-colors duration-200 group-hover:text-foreground">
-									{"->"}
-								</span>
-								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-									<ShieldCheck className="w-4 h-4 text-muted-foreground" />
-									INVOICES
-								</p>
-								<p className="relative z-10 text-xl font-semibold text-card-foreground sm:text-3xl">
-									{invoiceMetricLoading
-										? "..."
-										: invoiceMetricValue.toLocaleString(undefined, {
-												maximumFractionDigits: 2,
-											})}
-								</p>
-								<p className="relative z-10 mt-1 text-xs text-muted-foreground">
-									{invoiceMetricLoading
-										? "Loading..."
-										: `${invoiceMetricCount} invoice${invoiceMetricCount === 1 ? "" : "s"}`}
-								</p>
-							</button>
-						</div>
+			<div
+				data-tour="dashboard-welcome"
+				className="app-surface-card-strong p-5 sm:p-8"
+			>
+				<div className="mb-4 flex flex-col items-start gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+					<div className="min-w-0">
+						<h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[22px]">
+							Welcome back, {greetingName}
+						</h2>
+						<p className="mt-1 text-sm text-slate-600">
+							Here is a quick view of your project portfolio and upcoming
+							activity.
+						</p>
 					</div>
+					<DashboardCreateActions />
+				</div>
 
-					{children ? (
-						<div className="space-y-6 sm:space-y-8">{children}</div>
+				{/*
+				 * What the three stat tiles used to be.
+				 *
+				 * They were ACTIVE PROJECTS, PENDING PROJECTS and INVOICES. The
+				 * first two only scrolled the page to a section already visible
+				 * below, and the counts now sit in those sections' own headers,
+				 * next to the things they count. Invoices lived in
+				 * /marketplace/finance and read $0 for nearly everyone, and
+				 * "pending" meant status='bidding' — both marketplace states on an
+				 * execution page. What is left is the only question the top of a
+				 * dashboard should answer: what should I do now.
+				 */}
+				<p className="text-sm text-slate-600">
+					{assignedToMeCount > 0 ? (
+						<Link
+							to="/work-items"
+							className="font-semibold text-foreground hover:underline"
+						>
+							{assignedToMeCount} task{assignedToMeCount === 1 ? "" : "s"}{" "}
+							assigned to you
+						</Link>
+					) : (
+						<span>Nothing assigned to you right now</span>
+					)}
+					{nextMeeting ? (
+						<>
+							{" · "}
+							Next: {nextMeeting.title} at{" "}
+							{formatMeetingTime(nextMeeting.scheduled_at)}
+						</>
 					) : null}
-				</div>
+				</p>
+			</div>
 
-				<div className="xl:sticky xl:top-24 self-start space-y-4 min-w-0">
-					<div className="app-surface-card p-6">
-						<div className="mb-3 flex items-start justify-between gap-2">
-							<div>
-								<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
-									Upcoming Meetings
-								</h3>
-								<p className="mt-1 text-xs text-slate-600">
-									Stay ahead of scheduled calls across your projects.
-								</p>
-							</div>
-							<button
-								type="button"
-								onClick={() => navigate({ to: "/meetings" })}
-								className="shrink-0 text-xs font-medium text-primary hover:underline"
-							>
-								View all
-							</button>
-						</div>
-
-						{isMeetingsLoading ? (
-							<p className="text-sm text-slate-600">Loading meetings...</p>
-						) : upcomingMeetings.length === 0 ? (
-							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-								<p className="mb-1 text-sm font-semibold text-slate-900">
-									No upcoming meetings
-								</p>
-								<p className="text-xs text-slate-600">
-									Meetings scheduled across your projects will appear here.
-								</p>
-							</div>
-						) : (
-							<div className="space-y-2.5">
-								{upcomingMeetings.map((meeting, index) => {
-									const isNext = index === 0;
-									const typeLabel =
-										MEETING_TYPE_LABELS[meeting.type] ?? "Meeting";
-									const canJoin =
-										meeting.video_provider !== "none" &&
-										Boolean(meeting.meeting_url);
-									const scheduled = new Date(meeting.scheduled_at);
-
-									return (
-										<div
-											key={meeting.id}
-											className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${
-												isNext
-													? "border-primary/30 bg-primary/5"
-													: "border-slate-200 bg-white hover:bg-slate-50"
-											}`}
-										>
-											<div
-												className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg ${
-													isNext
-														? "bg-primary text-white"
-														: "bg-slate-100 text-slate-700"
-												}`}
-											>
-												<span className="text-[10px] font-medium uppercase leading-none">
-													{scheduled.toLocaleDateString(undefined, {
-														month: "short",
-													})}
-												</span>
-												<span className="text-base font-bold leading-tight">
-													{scheduled.toLocaleDateString(undefined, {
-														day: "numeric",
-													})}
-												</span>
-											</div>
-
-											<div className="min-w-0 flex-1">
-												<div className="flex items-center justify-between gap-2">
-													<p className="truncate text-[14px] font-semibold text-slate-900">
-														{meeting.title}
-													</p>
-													{canJoin ? (
-														<a
-															href={meeting.meeting_url ?? undefined}
-															target="_blank"
-															rel="noopener noreferrer"
-															onClick={(e) => e.stopPropagation()}
-															className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-primary/90"
-														>
-															<Video className="h-3 w-3" />
-															Join
-														</a>
-													) : null}
-												</div>
-												<p className="mt-0.5 text-xs text-slate-600">
-													{formatMeetingTime(meeting.scheduled_at)}
-													{meeting.projectTitle
-														? ` · ${meeting.projectTitle}`
-														: ""}
-												</p>
-												<span className="mt-1.5 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-													{typeLabel}
-												</span>
-											</div>
-										</div>
-									);
-								})}
-							</div>
-						)}
-					</div>
-
-					<div
-						data-dashboard-section="needs-your-attention"
-						className="app-surface-card p-6 scroll-mt-6"
-					>
-						<div className="mb-3">
-							<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
-								Activity
-							</h3>
-							<p className="mt-1 text-xs text-slate-600">
-								Track open roadmap tasks that need review and coordination.
-							</p>
-						</div>
-
-						{activityLoading ? (
-							<p className="text-sm text-slate-600">Loading activity...</p>
-						) : activityItems.length === 0 ? (
-							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-								<p className="mb-1 text-sm font-semibold text-slate-900">
-									No activity right now
-								</p>
-								<p className="text-xs text-slate-600">
-									Open tasks will appear here when roadmap execution starts.
-								</p>
-							</div>
-						) : (
-							<div className="space-y-2">
-								{activityItems.map((item) => (
-									<div
-										key={item.id}
-										className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-shadow hover:shadow-sm"
-									>
-										<div className="flex items-start gap-2.5 min-w-0">
-											<div className="shrink-0 mt-0.5">
-												{item.assigneeAvatarUrl ? (
-													<img
-														src={item.assigneeAvatarUrl}
-														alt={item.assigneeName}
-														className="h-6 w-6 rounded-full object-cover"
-													/>
-												) : (
-													<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-														{getInitials(item.assigneeName)}
-													</span>
-												)}
-											</div>
-
-											<div className="min-w-0 flex-1">
-												<div className="flex items-center justify-between gap-2">
-													<p className="truncate text-[13px] font-semibold text-slate-900">
-														{item.taskTitle}
-													</p>
-													<span className="whitespace-nowrap text-[10px] text-slate-500">
-														{formatTaskStatus(item.taskStatus)}
-													</span>
-												</div>
-												<p className="truncate text-[11px] text-slate-600">
-													{item.projectTitle} · {item.assigneeName}
-												</p>
-											</div>
-
-											<div className="shrink-0 whitespace-nowrap pl-1 text-[10px] text-slate-500">
-												{item.dueDate
-													? formatDateLabel(item.dueDate)
-													: item.roadmapName}
-											</div>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-				</div>
-			</section>
+			{children ? (
+				<div className="space-y-6 sm:space-y-8">{children}</div>
+			) : null}
 		</div>
 	);
 }

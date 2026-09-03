@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowRight, Mail, Plus, User, Users } from "lucide-react";
+import { ArrowRight, Mail, User } from "lucide-react";
 import { useMemo } from "react";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
@@ -92,6 +92,13 @@ export function TeamsGrid() {
 		...recentTeams.map<TeamsCard>((team) => ({ kind: "team", team })),
 	].slice(0, 3);
 
+	// A team is the last thing anyone sets up, so an account without one gets
+	// nothing here rather than a third "nothing yet" panel. Creating a team is
+	// still offered from the Get-started card and the /teams page. The loading
+	// pass stays visible so the section does not appear late and shove the page
+	// down under the reader.
+	if (!isLoading && cards.length === 0) return null;
+
 	return (
 		<div
 			id="my-teams"
@@ -105,6 +112,9 @@ export function TeamsGrid() {
 						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							TEAMS
 						</h2>
+						<span className="text-sm font-semibold text-muted-foreground">
+							{cards.length}
+						</span>
 					</div>
 					<p className="mt-1 text-xs text-slate-600">
 						Reusable groups of people you can attach to any project.
@@ -127,8 +137,6 @@ export function TeamsGrid() {
 						<TeamRowSkeleton />
 						<TeamRowSkeleton />
 					</>
-				) : cards.length === 0 ? (
-					<TeamsEmptyState />
 				) : (
 					cards.map((card) =>
 						card.kind === "invite" ? (
@@ -326,34 +334,6 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 				Open invite -&gt;
 			</span>
 		</Link>
-	);
-}
-
-function TeamsEmptyState({ className }: { className?: string }) {
-	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
-	return (
-		<div
-			className={`rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm ${className ?? ""}`}
-		>
-			<div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-				<Users className="h-5 w-5 text-slate-600" />
-			</div>
-			<h4 className="mb-1 text-base font-semibold text-slate-900">
-				No teams yet
-			</h4>
-			<p className="mx-auto mb-4 max-w-md text-sm text-slate-600">
-				Create a team to group the people you collaborate with, then attach the
-				team to any project.
-			</p>
-			<Link
-				to="/w/$workspaceSlug/teams"
-				params={{ workspaceSlug }}
-				className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-			>
-				<Plus className="h-4 w-4" />
-				Create team
-			</Link>
-		</div>
 	);
 }
 

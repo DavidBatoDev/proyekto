@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoadmapsGrid } from "./RoadmapsGrid";
@@ -95,17 +95,17 @@ describe("RoadmapsGrid", () => {
 		expect(screen.getByRole("button", { name: /new roadmap/i })).toBeTruthy();
 	});
 
-	it("retains the empty-state creation action", async () => {
+	it("renders nothing at all when there are no roadmaps", async () => {
 		getRoadmapsPreview.mockResolvedValue([]);
 
-		renderGrid();
+		const { container } = renderGrid();
 
-		expect(
-			await screen.findByText("Your first roadmap is taking shape"),
-		).toBeTruthy();
-		expect(
-			screen.getByRole("button", { name: /^create roadmap$/i }),
-		).toBeTruthy();
-		expect(screen.getByRole("button", { name: /new roadmap/i })).toBeTruthy();
+		// An empty section is a heading, a subtitle and a prompt spending a
+		// screenful to say "no". Creating a roadmap stays available on the welcome
+		// card above.
+		await waitFor(() => {
+			expect(screen.queryByText("MY ROADMAPS")).toBeNull();
+		});
+		expect(container.textContent).toBe("");
 	});
 });

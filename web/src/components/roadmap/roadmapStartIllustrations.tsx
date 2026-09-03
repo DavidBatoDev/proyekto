@@ -1,70 +1,21 @@
 /**
  * Illustrations for the three ways to start a roadmap.
  *
- * Same grammar as the marketplace capability cards
- * (`components/marketplace/home/CapabilityIcons.tsx`), so the two sets read as
- * one family: a muted sheet as the base surface, content bars in
- * muted-foreground at low opacity, one primary-coloured block carrying the
- * emphasis, and a filled primary badge in the top-right holding the verb.
+ * Same grammar as every other illustration set — see
+ * `common/illustrationPrimitives.tsx`, which owns the sheet and the badge.
  *
  * Deliberately not library glyphs. A `Sparkles` from the icon set says
- * "magic"; this says "a roadmap being drafted for you". Everything is theme
- * tokens, so they invert in dark mode, and every shape is flat — nothing to go
- * muddy when they render at 96px.
- *
- * The `Sheet` and `Badge` helpers are copied rather than imported: the
- * marketplace module keeps them private, and a roadmap component reaching into
- * `marketplace/home` for two rectangles is a worse dependency than twenty
- * duplicated lines. If a third set appears, lift them somewhere shared.
+ * "magic"; this says "a roadmap being drafted for you".
  */
+
+import {
+	Badge,
+	Sheet,
+	ILLUSTRATION_SVG_PROPS as SVG_PROPS,
+} from "@/components/common/illustrationPrimitives";
 
 interface RoadmapStartIllustrationProps {
 	className?: string;
-}
-
-const SVG_PROPS = {
-	viewBox: "0 0 48 48",
-	fill: "none",
-	xmlns: "http://www.w3.org/2000/svg",
-	"aria-hidden": true,
-	focusable: false,
-} as const;
-
-/** The shared base: a sheet with a soft edge. */
-function Sheet({ x = 6, y = 8, w = 28, h = 32 }) {
-	return (
-		<>
-			<rect x={x} y={y} width={w} height={h} rx="3" className="fill-muted" />
-			<rect
-				x={x}
-				y={y}
-				width={w}
-				height={h}
-				rx="3"
-				className="stroke-border"
-				strokeWidth="1"
-			/>
-		</>
-	);
-}
-
-/** The badge that carries each card's verb. */
-function Badge({
-	cx = 36,
-	cy = 15,
-	children,
-}: {
-	cx?: number;
-	cy?: number;
-	children: React.ReactNode;
-}) {
-	return (
-		<>
-			<circle cx={cx} cy={cy} r="9" className="fill-background" />
-			<circle cx={cx} cy={cy} r="7.5" className="fill-primary" />
-			{children}
-		</>
-	);
 }
 
 /**

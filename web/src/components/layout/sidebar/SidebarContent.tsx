@@ -20,7 +20,11 @@ import {
 	isExecutionNavItemActive,
 } from "./executionNavigation";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
-import { SidebarEmptyState, StackedPapersIcon } from "./SidebarEmptyState";
+import {
+	ProjectsEmptyIllustration,
+	SidebarEmptyState,
+	TeamsEmptyIllustration,
+} from "./SidebarEmptyState";
 import { SidebarNavLink, SidebarSectionHeader } from "./SidebarPrimitives";
 import { TeamSidebarGroup } from "./TeamSidebarGroup";
 
@@ -243,7 +247,7 @@ export function SidebarContent() {
 						<NavSkeleton />
 					) : teams.length === 0 ? (
 						<SidebarEmptyState
-							icon={<StackedPapersIcon />}
+							icon={<TeamsEmptyIllustration />}
 							label="No teams yet"
 							ctaLabel="Add your first team"
 							ctaTo={toWorkspacePath("/teams", workspaceSlug)}
@@ -311,7 +315,7 @@ export function SidebarContent() {
 						<NavSkeleton />
 					) : projects.length === 0 ? (
 						<SidebarEmptyState
-							icon={<StackedPapersIcon />}
+							icon={<ProjectsEmptyIllustration />}
 							label="No projects yet"
 							ctaLabel="Add your first project"
 							ctaTo="/project/new"

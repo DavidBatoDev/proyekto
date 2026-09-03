@@ -47,16 +47,60 @@ export function RoadmapStartDialog({
 	onClose,
 	projectId = "n",
 }: RoadmapStartDialogProps) {
+	const [isCreating, setIsCreating] = useState(false);
+
+	return (
+		<AppDialog
+			open={open}
+			onClose={onClose}
+			title="How do you want to start?"
+			description="Every route ends at the same canvas — pick the one that matches how much you already know."
+			size="lg"
+			busy={isCreating}
+		>
+			<RoadmapStartOptions
+				projectId={projectId}
+				onBeforeNavigate={onClose}
+				onBusyChange={setIsCreating}
+			/>
+		</AppDialog>
+	);
+}
+
+/**
+ * The three routes as a row of cards, without the dialog around them.
+ *
+ * Rendered inside `RoadmapStartDialog` when a "Create roadmap" button is
+ * pressed, and inline on the dashboard when the account has nothing on it yet
+ * — a new account should meet the three doors directly rather than a page of
+ * empty sections with the doors hidden behind a button.
+ */
+export function RoadmapStartOptions({
+	projectId = "n",
+	onBeforeNavigate,
+	onBusyChange,
+}: {
+	/** `"n"` — the sentinel for a roadmap that belongs to no project yet. */
+	projectId?: string;
+	/** Runs before any navigation — closes the dialog when there is one. */
+	onBeforeNavigate?: () => void;
+	onBusyChange?: (busy: boolean) => void;
+}) {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const user = useUser();
 	const [isCreating, setIsCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	const setBusy = (busy: boolean) => {
+		setIsCreating(busy);
+		onBusyChange?.(busy);
+	};
+
 	const handleStartBlank = async () => {
 		if (isCreating) return;
 		setError(null);
-		setIsCreating(true);
+		setBusy(true);
 
 		try {
 			const roadmap = await createRoadmapFromMetadata({
@@ -85,19 +129,12 @@ export function RoadmapStartDialog({
 		} catch (createError) {
 			console.error("Failed to start a blank roadmap:", createError);
 			setError("We could not create the roadmap. Please try again.");
-			setIsCreating(false);
+			setBusy(false);
 		}
 	};
 
 	return (
-		<AppDialog
-			open={open}
-			onClose={onClose}
-			title="How do you want to start?"
-			description="Every route ends at the same canvas — pick the one that matches how much you already know."
-			size="lg"
-			busy={isCreating}
-		>
+		<>
 			<div className="grid gap-3 sm:grid-cols-3">
 				<StartCard
 					label="Start a roadmap with the help of AI"
@@ -105,7 +142,7 @@ export function RoadmapStartDialog({
 					illustration={<AiRoadmapIllustration className="h-24 w-24" />}
 					disabled={isCreating}
 					onClick={() => {
-						onClose();
+						onBeforeNavigate?.();
 						void navigate({
 							to: "/project/$projectId/roadmap/create",
 							params: { projectId },
@@ -131,7 +168,7 @@ export function RoadmapStartDialog({
 					illustration={<TemplateRoadmapIllustration className="h-24 w-24" />}
 					disabled={isCreating}
 					onClick={() => {
-						onClose();
+						onBeforeNavigate?.();
 						void navigate({ to: "/roadmap-templates" });
 					}}
 				/>
@@ -142,7 +179,7 @@ export function RoadmapStartDialog({
 					{error}
 				</p>
 			)}
-		</AppDialog>
+		</>
 	);
 }
 
