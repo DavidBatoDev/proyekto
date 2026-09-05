@@ -68,6 +68,7 @@ import type {
 import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service';
 import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
+import { TaskAssigneeNotifierService } from './task-assignee-notifier.service';
 
 type Severity = 'error' | 'warning';
 
@@ -204,7 +205,10 @@ type FlatNodeSnapshot = {
   description?: string;
   status?: string;
   priority?: string;
+  /** Primary assignee — always `assigneeIds[0]`; kept for older consumers. */
   assigneeId?: string;
+  /** Every assignee of a task, primary first. */
+  assigneeIds?: string[];
   tags?: string[];
   color?: string;
   isDeliverable?: boolean;
@@ -302,6 +306,17 @@ const MILESTONE_STATUS = [
 ];
 const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 
+/**
+ * Lenient uuid shape (8-4-4-4-12 hex). Assignee ids only need to be
+ * well-formed for the RPC's `::uuid` cast; version/variant nibbles are not
+ * enforced so fixture-style ids round-trip like real ones.
+ */
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The two ways an operation can touch task assignment. */
+const ASSIGNEE_PATCH_KEYS: readonly string[] = ['assignee_id', 'assignee_ids'];
+
 @Injectable()
 export class RoadmapAiService {
   private readonly logger = new Logger(RoadmapAiService.name);
@@ -328,6 +343,7 @@ export class RoadmapAiService {
     private readonly previewStore: RoadmapAiPreviewStoreService,
     private readonly realtime: RealtimePublisher,
     private readonly audit: AuditService,
+    private readonly assigneeNotifier: TaskAssigneeNotifierService,
   ) {}
 
   async preview(
@@ -1075,6 +1091,9 @@ export class RoadmapAiService {
       status: locator.task.status,
       priority: locator.task.priority,
       due_date: locator.task.due_date,
+      // Ids only: this builder works from the normalized state, which keeps
+      // no profiles.
+      ...this.describeTaskAssignees(locator.task, {}),
       parent_id: this.requireNodeId(locator.feature.id, 'feature'),
     };
   }
@@ -1229,7 +1248,14 @@ export class RoadmapAiService {
         const featureId = feature.id;
         for (const task of feature.roadmap_tasks ?? []) {
           if (tasks.length >= limit) break;
-          if (!task.id || task.assignee_id !== userId) continue;
+          if (!task.id) continue;
+          // Match against the full set — a co-assignee counts — and return
+          // that set so the agent never has to re-read a task to see who else
+          // is on it.
+          const taskAssigneeIds = this.readTaskAssigneeIds(
+            task as unknown as Record<string, unknown>,
+          );
+          if (!taskAssigneeIds.includes(userId)) continue;
           if (statusMode === 'open' && !this.isOpenTaskStatus(task.status))
             continue;
           tasks.push({
@@ -1237,6 +1263,8 @@ export class RoadmapAiService {
             type: 'task',
             title: task.title ?? 'Untitled task',
             status: task.status,
+            assignee_id: taskAssigneeIds[0],
+            assignee_ids: taskAssigneeIds,
             feature_id: featureId,
             feature_title: feature.title ?? 'Untitled feature',
             epic_id: epicId,
@@ -1350,12 +1378,11 @@ export class RoadmapAiService {
             }
           }
 
-          const taskAssigneeId =
-            typeof task.assignee_id === 'string' &&
-            task.assignee_id.trim().length > 0
-              ? task.assignee_id.trim()
-              : undefined;
-          if (assigneeId && taskAssigneeId !== assigneeId) continue;
+          // Match against the full set — a co-assignee counts.
+          const taskAssigneeIds = this.readTaskAssigneeIds(
+            task as unknown as Record<string, unknown>,
+          );
+          if (assigneeId && !taskAssigneeIds.includes(assigneeId)) continue;
 
           if (keyword) {
             const searchableText = [task.title, featureTitle, epicTitle]
@@ -1373,7 +1400,8 @@ export class RoadmapAiService {
             title: task.title ?? 'Untitled task',
             status: task.status,
             priority: task.priority,
-            assignee_id: taskAssigneeId,
+            assignee_id: taskAssigneeIds[0],
+            assignee_ids: taskAssigneeIds,
             feature_id: featureId,
             feature_title: featureTitle,
             epic_id: epicId,
@@ -1524,6 +1552,10 @@ export class RoadmapAiService {
       status: locator.task.status,
       priority: locator.task.priority,
       due_date: locator.task.due_date,
+      ...this.describeTaskAssignees(
+        locator.task,
+        full as Record<string, unknown>,
+      ),
       parent_id: this.requireNodeId(locator.feature.id, 'feature'),
     };
     this.logRoadmapAiHandlerTiming({
@@ -1633,19 +1665,25 @@ export class RoadmapAiService {
       const response = {
         children: (locator.feature.roadmap_tasks ?? [])
           .slice(0, limit)
-          .flatMap((task) =>
-            task.id
-              ? [
-                  {
-                    id: task.id,
-                    type: 'task' as const,
-                    title: task.title ?? 'Untitled task',
-                    status: task.status,
-                    parent_id: parentId,
-                  },
-                ]
-              : [],
-          ),
+          .flatMap((task) => {
+            if (!task.id) return [];
+            // Task children carry their assignee set (primary first) like
+            // every other task-list read.
+            const taskAssigneeIds = this.readTaskAssigneeIds(
+              task as unknown as Record<string, unknown>,
+            );
+            return [
+              {
+                id: task.id,
+                type: 'task' as const,
+                title: task.title ?? 'Untitled task',
+                status: task.status,
+                assignee_id: taskAssigneeIds[0],
+                assignee_ids: taskAssigneeIds,
+                parent_id: parentId,
+              },
+            ];
+          }),
       };
       this.logRoadmapAiHandlerTiming({
         event: 'roadmap_ai_context_node_children_timing',
@@ -1705,6 +1743,13 @@ export class RoadmapAiService {
 
     const authzStartedAt = Date.now();
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
+    // Capability parity with direct task writes: (un)assigning needs
+    // roadmap.assign on top of roadmap.edit (project-linked roadmaps only).
+    const currentProjectId =
+      this.readString(current as Record<string, unknown>, 'project_id') ?? null;
+    if (currentProjectId && this.operationsTouchAssignment(operations)) {
+      await this.assertCanAssignRoadmap(roadmapId, userId);
+    }
     const authzMs = Date.now() - authzStartedAt;
 
     // Replay guard runs *after* authorization so the idempotency store can
@@ -1855,6 +1900,8 @@ export class RoadmapAiService {
       // STALE_REVISION if a concurrent writer bumped updated_at in the window
       // between the authorization read and this write (closes the TOCTOU).
       expectedUpdatedAt: dto.revision_token ? currentRevisionToken : undefined,
+      // Recorded as roadmap_task_assignees.assigned_by for new join rows.
+      actorId: userId,
     });
     const upsertMs = Date.now() - upsertStartedAt;
     // Server-originated edit — notify collaborators (no acting canvas client).
@@ -1866,6 +1913,16 @@ export class RoadmapAiService {
         `roadmap_id=${roadmapId}`,
       ].join(' '),
     );
+
+    // Newly assigned users hear about it, exactly as after a direct task
+    // write. Awaited, but incapable of failing the (already applied) commit.
+    await this.notifyNewlyAssignedTaskMembers({
+      roadmapId,
+      before: base,
+      after: candidate,
+      actorId: userId,
+      projectId: currentProjectId,
+    });
 
     let persistedReloadMs = 0;
     let candidateSnapshotRecord: Record<string, unknown>;
@@ -2158,6 +2215,9 @@ export class RoadmapAiService {
       ownerId: current.owner_id,
       fullState: rollbackState,
       createIfMissing: false,
+      // Recorded as roadmap_task_assignees.assigned_by for join rows the
+      // restore re-creates.
+      actorId: userId,
     });
     this.realtime.publishRoadmapChange(roadmapId, userId);
 
@@ -2257,6 +2317,9 @@ export class RoadmapAiService {
       ownerId: current.owner_id,
       fullState: replayState,
       createIfMissing: false,
+      // Recorded as roadmap_task_assignees.assigned_by for join rows the
+      // re-apply re-creates.
+      actorId: userId,
     });
     this.realtime.publishRoadmapChange(roadmapId, userId);
 
@@ -3363,13 +3426,24 @@ export class RoadmapAiService {
       return;
     }
 
+    // `data.assignee_ids` (deduped) else `[data.assignee_id]` else [].
+    const assigneeIds = this.resolveAssigneePatch(
+      operation.data ?? {},
+      `${path}/data`,
+      issues,
+    );
+    if (assigneeIds === 'invalid') {
+      return;
+    }
+
     const task: FullRoadmapTaskDto = {
       id: assignedId,
       title,
       description: this.readString(operation.data, 'description'),
       status: this.readString(operation.data, 'status') ?? 'todo',
       priority: this.readString(operation.data, 'priority') ?? 'medium',
-      assignee_id: this.readUuid(operation.data, 'assignee_id'),
+      assignee_id: assigneeIds?.[0],
+      assignee_ids: assigneeIds ?? [],
       due_date: this.readString(operation.data, 'due_date'),
       position: 0,
     };
@@ -3457,9 +3531,24 @@ export class RoadmapAiService {
       }
     }
 
+    // Assignment is validated and normalized (precedence + mirror rule) rather
+    // than copied verbatim; the allow-list above already limits it to tasks.
+    const assigneeIds = this.resolveAssigneePatch(
+      operation.patch,
+      `${path}/patch`,
+      issues,
+    );
+    if (assigneeIds === 'invalid') {
+      return;
+    }
+
     const target = this.getMutableNode(locator);
     for (const key of patchKeys) {
+      if (ASSIGNEE_PATCH_KEYS.includes(key)) continue;
       (target as Record<string, unknown>)[key] = operation.patch[key];
+    }
+    if (assigneeIds) {
+      this.writeTaskAssignees(target, assigneeIds);
     }
   }
 
@@ -3996,6 +4085,8 @@ export class RoadmapAiService {
           } else {
             pushDuplicate(task.id, 'task', `${taskPath}/id`);
           }
+          // Mirror rule is normalized, not validated (see the helper).
+          this.normalizeTaskAssigneeState(task);
           if (task.status && !TASK_STATUS.includes(task.status)) {
             issues.push(
               this.issue(
@@ -4136,12 +4227,25 @@ export class RoadmapAiService {
         });
       }
 
-      if (prevNode.assigneeId !== nextNode.assigneeId) {
+      // Ordered comparison: a co-assignee added, removed, or promoted to
+      // primary is a change even when `assignee_id` itself did not move.
+      const prevAssignees = prevNode.assigneeIds ?? [];
+      const nextAssignees = nextNode.assigneeIds ?? [];
+      if (
+        prevAssignees.length !== nextAssignees.length ||
+        prevAssignees.some((assignee, i) => assignee !== nextAssignees[i])
+      ) {
         changes.push({
           type: 'ASSIGNEE_CHANGED',
           node: { type: nextNode.type, id, title: nextNode.title },
-          from: { assignee_id: prevNode.assigneeId },
-          to: { assignee_id: nextNode.assigneeId },
+          from: {
+            assignee_id: prevAssignees[0] ?? null,
+            assignee_ids: prevAssignees,
+          },
+          to: {
+            assignee_id: nextAssignees[0] ?? null,
+            assignee_ids: nextAssignees,
+          },
         });
       }
 
@@ -4285,6 +4389,9 @@ export class RoadmapAiService {
         for (const task of feature.roadmap_tasks ?? []) {
           const taskId = task.id;
           if (!taskId) continue;
+          const assigneeIds = this.readTaskAssigneeIds(
+            task as unknown as Record<string, unknown>,
+          );
           map.set(taskId, {
             id: taskId,
             type: 'task',
@@ -4294,7 +4401,8 @@ export class RoadmapAiService {
             description: task.description,
             status: task.status,
             priority: task.priority,
-            assigneeId: task.assignee_id,
+            assigneeId: assigneeIds[0],
+            assigneeIds,
             dueDate: task.due_date,
             dependencies: this.readDependencies(
               task as unknown as Record<string, unknown>,
@@ -4404,6 +4512,7 @@ export class RoadmapAiService {
           'status',
           'priority',
           'assignee_id',
+          'assignee_ids',
           'due_date',
         ];
       case 'milestone':
@@ -4548,6 +4657,352 @@ export class RoadmapAiService {
       message,
       node_ref: nodeRef,
     };
+  }
+
+  // ─── Task assignees ────────────────────────────────────────────────────────
+  // `assignee_ids` is the canonical FULL set (first = primary); `assignee_id`
+  // is the legacy scalar that always mirrors `assignee_ids[0]`. The helpers
+  // below are the only places that derive one from the other.
+
+  /**
+   * Canonical assignee set of a raw task record, primary first: the persisted
+   * join rows (`assignees[]` as `{ id }`, `{ assignee_id }` or `{ profile }`),
+   * else an explicit `assignee_ids`, else the legacy scalar, else []. Ids are
+   * deduped preserving order. The scalar is unioned in and rotated to the
+   * front whenever the set did not come from an explicit `assignee_ids` — that
+   * keeps `[0]` equal to the stored column, and keeps the assignee of a task
+   * the pre-2026-09 RPC wrote (column set, no join row) from being dropped.
+   */
+  private readTaskAssigneeIds(raw: Record<string, unknown>): string[] {
+    const joinRows = this.readArray(raw, 'assignees');
+    const fromRows = joinRows
+      ?.map(
+        (row) =>
+          this.readString(row, 'id') ??
+          this.readString(row, 'assignee_id') ??
+          this.readString(this.readObject(row, 'profile') ?? {}, 'id'),
+      )
+      .filter((id): id is string => typeof id === 'string');
+    const explicit = Array.isArray(raw.assignee_ids)
+      ? raw.assignee_ids.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        )
+      : undefined;
+    const base = fromRows ?? explicit ?? [];
+    const scalar = this.readString(raw, 'assignee_id');
+    const ordered =
+      scalar && explicit === undefined
+        ? [scalar, ...base.filter((id) => id !== scalar)]
+        : base;
+    return this.dedupeAssigneeIds(ordered);
+  }
+
+  /**
+   * Well-formed ids only, lowercased BEFORE deduping: uuids are
+   * case-insensitive, so `['A', 'a']` is one assignee, not two — and the
+   * lowercase form is what the database and the notifier compare against.
+   */
+  private dedupeAssigneeIds(ids: string[]): string[] {
+    return [
+      ...new Set(
+        ids.filter((id) => UUID_SHAPE.test(id)).map((id) => id.toLowerCase()),
+      ),
+    ];
+  }
+
+  /**
+   * Reads an assignment from an `update_node` patch or `add_task` data with the
+   * canonical precedence: `assignee_ids` (array of user ids; deduped, order
+   * kept, `[]` unassigns everyone) wins when present as an array; else
+   * `assignee_id` (one id, or null / '' to unassign); ids are lowercased on
+   * both branches. Returns `undefined` when
+   * the source does not touch assignment, or `'invalid'` — after pushing an
+   * issue — when a value has the wrong shape. The `"me"` sentinel is resolved
+   * by the agent before anything reaches here; it is not accepted.
+   */
+  private resolveAssigneePatch(
+    source: Record<string, unknown>,
+    basePath: string,
+    issues: RoadmapValidationIssueDto[],
+  ): string[] | undefined | 'invalid' {
+    const hasOwn = (key: string): boolean =>
+      Object.prototype.hasOwnProperty.call(source, key) as boolean;
+    if (hasOwn('assignee_ids') && source.assignee_ids != null) {
+      const value = source.assignee_ids;
+      if (
+        !Array.isArray(value) ||
+        !value.every(
+          (item) => typeof item === 'string' && UUID_SHAPE.test(item),
+        )
+      ) {
+        issues.push(
+          this.issue(
+            'INVALID_FIELD_VALUE',
+            'error',
+            `${basePath}/assignee_ids`,
+            'assignee_ids must be an array of user ids (uuid strings); [] unassigns everyone',
+          ),
+        );
+        return 'invalid';
+      }
+      return this.dedupeAssigneeIds(value as string[]);
+    }
+    if (hasOwn('assignee_id')) {
+      const value = source.assignee_id;
+      if (value === null || value === undefined || value === '') return [];
+      if (typeof value !== 'string' || !UUID_SHAPE.test(value)) {
+        issues.push(
+          this.issue(
+            'INVALID_FIELD_VALUE',
+            'error',
+            `${basePath}/assignee_id`,
+            'assignee_id must be a user id (uuid string) or null',
+          ),
+        );
+        return 'invalid';
+      }
+      return this.dedupeAssigneeIds([value]);
+    }
+    return undefined;
+  }
+
+  /** Mirror rule: both fields are always written together. */
+  private writeTaskAssignees(
+    target: Record<string, unknown>,
+    assigneeIds: string[],
+  ): void {
+    target.assignee_ids = assigneeIds;
+    target.assignee_id = assigneeIds[0];
+  }
+
+  /**
+   * Enforces the mirror rule on a task about to be persisted: `assignee_ids`
+   * deduped to well-formed ids and `assignee_id` equal to its first element.
+   * Normalizes rather than fails — the RPC applies the same rules — so a
+   * malformed set can never reach the database or the semantic diff.
+   */
+  private normalizeTaskAssigneeState(task: FullRoadmapTaskDto): void {
+    this.writeTaskAssignees(
+      task as unknown as Record<string, unknown>,
+      this.readTaskAssigneeIds(task as unknown as Record<string, unknown>),
+    );
+  }
+
+  private operationsTouchAssignment(
+    operations: RoadmapAiOperationDto[],
+  ): boolean {
+    return operations.some((operation) => {
+      const source =
+        operation.op === 'add_task'
+          ? operation.data
+          : operation.op === 'update_node'
+            ? operation.patch
+            : undefined;
+      if (!source || typeof source !== 'object') return false;
+      const hasOwn = (key: string): boolean =>
+        Object.prototype.hasOwnProperty.call(source, key) as boolean;
+      // `assignee_ids: null` means "assignment unchanged" (only [] unassigns),
+      // so it must trigger neither the assign capability check nor the
+      // notifier; `assignee_id: null` is a real unassign, so for the scalar
+      // the key's presence is enough.
+      return (
+        hasOwn('assignee_id') ||
+        (hasOwn('assignee_ids') && source.assignee_ids != null)
+      );
+    });
+  }
+
+  /**
+   * `roadmap.assign` is a distinct capability from `roadmap.edit` (a per-member
+   * override can withhold it), so a commit that (un)assigns anyone asserts it
+   * too — the same rule TasksService applies to direct task writes. Only
+   * called for project-linked roadmaps; a personal roadmap has no permission
+   * set and its owner check already passed.
+   */
+  private async assertCanAssignRoadmap(roadmapId: string, userId: string) {
+    try {
+      await this.roadmapAuthz.assertRoadmapPermission(
+        roadmapId,
+        userId,
+        'roadmap.assign',
+      );
+    } catch {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions to assign roadmap tasks.',
+      });
+    }
+  }
+
+  /**
+   * Notification parity with the direct task write path: after a successful
+   * commit, every task whose assignee set GAINED ids notifies the newly
+   * assigned users. Awaited — never a detached promise, which Cloud Run can
+   * freeze after the response — but a notification failure can never fail a
+   * commit whose roadmap write already succeeded.
+   */
+  private async notifyNewlyAssignedTaskMembers(params: {
+    roadmapId: string;
+    before: FullRoadmapState;
+    after: FullRoadmapState;
+    actorId: string;
+    projectId: string | null;
+  }): Promise<void> {
+    const gained = this.collectNewlyAssignedTasks(params.before, params.after);
+    if (gained.length === 0) return;
+    try {
+      for (const entry of gained) {
+        await this.assigneeNotifier.notifyNewlyAssigned({
+          task: {
+            id: entry.taskId,
+            title: entry.title ?? null,
+            feature_id: entry.featureId,
+          },
+          assigneeIds: entry.assigneeIds,
+          actorId: params.actorId,
+          projectId: params.projectId,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_assignee_notify_failed',
+          `roadmap_id=${params.roadmapId}`,
+          `tasks=${gained.length}`,
+          `error=${error instanceof Error ? error.message : String(error)}`,
+        ].join(' '),
+      );
+    }
+  }
+
+  private collectNewlyAssignedTasks(
+    before: FullRoadmapState,
+    after: FullRoadmapState,
+  ): Array<{
+    taskId: string;
+    title?: string;
+    featureId: string | null;
+    assigneeIds: string[];
+  }> {
+    const previous = new Map<string, Set<string>>();
+    for (const epic of before.roadmap_epics ?? []) {
+      for (const feature of epic.roadmap_features ?? []) {
+        for (const task of feature.roadmap_tasks ?? []) {
+          if (!task.id) continue;
+          previous.set(
+            task.id,
+            new Set(
+              this.readTaskAssigneeIds(
+                task as unknown as Record<string, unknown>,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    const result: Array<{
+      taskId: string;
+      title?: string;
+      featureId: string | null;
+      assigneeIds: string[];
+    }> = [];
+    for (const epic of after.roadmap_epics ?? []) {
+      for (const feature of epic.roadmap_features ?? []) {
+        for (const task of feature.roadmap_tasks ?? []) {
+          if (!task.id) continue;
+          const wasAssigned = previous.get(task.id);
+          const gained = this.readTaskAssigneeIds(
+            task as unknown as Record<string, unknown>,
+          ).filter((id) => !wasAssigned?.has(id));
+          if (gained.length === 0) continue;
+          result.push({
+            taskId: task.id,
+            title: task.title,
+            featureId: feature.id ?? null,
+            assigneeIds: gained,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
+  /** The assignee fields of a node-details response, names where known. */
+  private describeTaskAssignees(
+    task: FullRoadmapTaskDto,
+    rawFull: Record<string, unknown>,
+  ): Pick<
+    RoadmapAiContextNodeResponseDto,
+    'assignee_id' | 'assignee_ids' | 'assignees'
+  > {
+    const assigneeIds = this.readTaskAssigneeIds(
+      task as unknown as Record<string, unknown>,
+    );
+    const known = new Map(
+      (task.id
+        ? (this.collectTaskAssigneeProfiles(rawFull).get(task.id) ?? [])
+        : []
+      ).map((profile) => [profile.id, profile] as const),
+    );
+    return {
+      assignee_id: assigneeIds[0],
+      assignee_ids: assigneeIds,
+      assignees: assigneeIds.map((id) => known.get(id) ?? { id }),
+    };
+  }
+
+  /**
+   * task id -> assignee profiles from the raw findFull record (the normalized
+   * state keeps only ids). Tolerates every embed shape flattenAssignees emits.
+   */
+  private collectTaskAssigneeProfiles(
+    raw: Record<string, unknown>,
+  ): Map<string, Array<{ id: string; display_name?: string }>> {
+    const map = new Map<string, Array<{ id: string; display_name?: string }>>();
+    const epics =
+      this.readArray(raw, 'roadmap_epics') ??
+      this.readArray(raw, 'epics') ??
+      [];
+    for (const epic of epics) {
+      const features =
+        this.readArray(epic, 'roadmap_features') ??
+        this.readArray(epic, 'features') ??
+        [];
+      for (const feature of features) {
+        const tasks =
+          this.readArray(feature, 'roadmap_tasks') ??
+          this.readArray(feature, 'tasks') ??
+          [];
+        for (const task of tasks) {
+          const taskId = this.readString(task, 'id');
+          if (!taskId) continue;
+          const profiles: Array<{ id: string; display_name?: string }> = [];
+          for (const row of this.readArray(task, 'assignees') ?? []) {
+            const profile = this.readObject(row, 'profile') ?? row;
+            const id =
+              this.readString(profile, 'id') ??
+              this.readString(row, 'assignee_id');
+            if (!id) continue;
+            const fullName = [
+              this.readString(profile, 'first_name'),
+              this.readString(profile, 'last_name'),
+            ]
+              .filter((part) => part && part.trim().length > 0)
+              .join(' ')
+              .trim();
+            const displayName =
+              this.readString(profile, 'display_name') ??
+              (fullName.length > 0 ? fullName : undefined) ??
+              this.readString(profile, 'email');
+            profiles.push(
+              displayName ? { id, display_name: displayName } : { id },
+            );
+          }
+          map.set(taskId, profiles);
+        }
+      }
+    }
+    return map;
   }
 
   private readString(
@@ -4740,13 +5195,18 @@ export class RoadmapAiService {
     raw: Record<string, unknown>,
     taskIndex: number,
   ): FullRoadmapTaskDto {
+    // Join rows (`assignees[]`) win, then an explicit `assignee_ids`, then
+    // the legacy scalar — see readTaskAssigneeIds. Both fields are always
+    // written so the RPC's set reconciliation is a no-op for untouched tasks.
+    const assigneeIds = this.readTaskAssigneeIds(raw);
     return {
       id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled task',
       description: this.readString(raw, 'description'),
       status: this.readString(raw, 'status') ?? 'todo',
       priority: this.readString(raw, 'priority') ?? 'medium',
-      assignee_id: this.readString(raw, 'assignee_id'),
+      assignee_id: assigneeIds[0],
+      assignee_ids: assigneeIds,
       due_date: this.readString(raw, 'due_date'),
       position: this.readNumber(raw, 'position') ?? taskIndex,
     };

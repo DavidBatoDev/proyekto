@@ -1,7 +1,6 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
-import { NotificationsService } from '../../../shared/notifications/notifications.service';
 import type { ITasksRepository } from '../repositories/tasks.repository.interface';
 import {
   CreateTaskDto,
@@ -19,6 +18,7 @@ import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { FeatureStatusSyncService } from './derive-feature-status';
+import { TaskAssigneeNotifierService } from './task-assignee-notifier.service';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
 
@@ -38,7 +38,7 @@ export class TasksService {
     @Inject(TASKS_REPOSITORY) private readonly repo: ITasksRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
-    private readonly notifications: NotificationsService,
+    private readonly assigneeNotifier: TaskAssigneeNotifierService,
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
     private readonly featureStatusSync: FeatureStatusSyncService,
@@ -460,49 +460,21 @@ export class TasksService {
       (assigneeId) => assigneeId && assigneeId !== actorId,
     );
     if (!recipients.length) return;
-
-    const title =
-      typeof task?.title === 'string' && task.title.trim().length > 0
-        ? task.title.trim()
-        : 'Untitled task';
-
-    let projectId: string | null = null;
-    const featureId =
-      typeof task?.feature_id === 'string' ? task.feature_id : null;
-    if (featureId) {
-      const { data, error } = await this.db
-        .from('roadmap_features')
-        .select(
-          'epic:roadmap_epics!roadmap_features_epic_id_fkey(roadmap:roadmaps!roadmap_epics_roadmap_id_fkey(project_id))',
-        )
-        .eq('id', featureId)
-        .maybeSingle();
-      if (!error) {
-        const row = (data ?? null) as {
-          epic: {
-            roadmap: { project_id: string | null } | null;
-          } | null;
-        } | null;
-        projectId = row?.epic?.roadmap?.project_id ?? null;
-      }
-    }
-
-    for (const assigneeId of recipients) {
-      await this.notifications.createNotification({
-        user_id: assigneeId,
-        project_id: projectId ?? undefined,
-        type_name: 'task_assigned',
-        actor_id: actorId,
-        content: {
-          task_id: task?.id ?? null,
-          task_title: title,
-          message: `You were assigned to "${title}".`,
-        },
-        link_url:
-          projectId && task?.id
-            ? `/project/${projectId}/roadmap?taskId=${task.id}`
-            : undefined,
-      });
-    }
+    // Shared with the AI commit path — see TaskAssigneeNotifierService.
+    const source = (task ?? {}) as {
+      id?: unknown;
+      title?: unknown;
+      feature_id?: unknown;
+    };
+    await this.assigneeNotifier.notifyNewlyAssigned({
+      task: {
+        id: typeof source.id === 'string' ? source.id : null,
+        title: typeof source.title === 'string' ? source.title : null,
+        feature_id:
+          typeof source.feature_id === 'string' ? source.feature_id : null,
+      },
+      assigneeIds: recipients,
+      actorId,
+    });
   }
 }

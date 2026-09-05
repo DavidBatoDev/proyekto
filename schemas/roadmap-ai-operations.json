@@ -68,6 +68,7 @@
       "status",
       "priority",
       "assignee_id",
+      "assignee_ids",
       "due_date"
     ],
     "milestone": [

@@ -34,6 +34,7 @@ const TASK_FIELDS = [
   'position',
   'due_date',
   'assignee_id',
+  'assignee_ids',
 ];
 
 const INDEX_SEGMENT = '(?:\\d+|-)';

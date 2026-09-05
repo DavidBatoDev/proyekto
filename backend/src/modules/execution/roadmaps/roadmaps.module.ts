@@ -79,6 +79,7 @@ import { RoadmapMentionInviteService } from './services/roadmap-mention-invite.s
 import { RoadmapActivityService } from './services/roadmap-activity.service';
 import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
 import { FeatureStatusSyncService } from './services/derive-feature-status';
+import { TaskAssigneeNotifierService } from './services/task-assignee-notifier.service';
 
 @Module({
   // WorkspacesModule imports only SupabaseModule + NotificationsModule (and
@@ -146,6 +147,7 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
       useClass: RoadmapNotesRepositorySupabase,
     },
     FeatureStatusSyncService,
+    TaskAssigneeNotifierService,
   ],
   exports: [
     RoadmapAuthorizationService,

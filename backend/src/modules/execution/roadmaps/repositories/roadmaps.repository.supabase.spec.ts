@@ -335,3 +335,88 @@ describe('RoadmapsRepositorySupabase listAccessibleRoadmapsLight', () => {
     ]);
   });
 });
+
+describe('RoadmapsRepositorySupabase findFull task assignees', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const ANA = '0f7be23f-3b57-4cf4-a269-a98d2164a45a';
+  const BEN = '8d1c2b3a-4e5f-4a6b-9c7d-0e1f2a3b4c5d';
+
+  const build = (row: Record<string, unknown>) => {
+    const single = jest.fn().mockResolvedValue({ data: row, error: null });
+    const eq = jest.fn().mockReturnValue({ single });
+    const select = jest.fn().mockReturnValue({ eq });
+    const from = jest.fn().mockReturnValue({ select });
+    return { repo: new RoadmapsRepositorySupabase({ from } as never), select };
+  };
+
+  const roadmapRow = (assignees: unknown[]) => ({
+    id: ROADMAP_ID,
+    epics: [
+      {
+        id: 'epic-1',
+        position: 0,
+        features: [
+          {
+            id: 'feature-1',
+            position: 0,
+            assignees: [],
+            tasks: [{ id: 'task-1', position: 0, assignee_id: BEN, assignees }],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('lean select still embeds the assignee ids and flattens them to { id }, primary first', async () => {
+    const { repo, select } = build(
+      roadmapRow([{ assignee_id: ANA }, { assignee_id: BEN }]),
+    );
+
+    const result = await repo.findFull(ROADMAP_ID, undefined, {
+      includeTaskAssigneeProfile: false,
+    });
+
+    const selectString = select.mock.calls[0][0] as string;
+    expect(selectString).toContain(
+      'tasks:roadmap_tasks(*, assignees:roadmap_task_assignees(assignee_id))',
+    );
+    expect(selectString).not.toContain(
+      'assignee:profiles!roadmap_tasks_assignee_id_fkey',
+    );
+    expect(result.epics[0].features[0].tasks[0].assignees).toEqual([
+      { id: BEN },
+      { id: ANA },
+    ]);
+  });
+
+  it('full select flattens the profile embeds and puts the stored primary first', async () => {
+    const { repo, select } = build(
+      roadmapRow([
+        { profile: { id: ANA, display_name: 'Ana' } },
+        { profile: { id: BEN, display_name: 'Ben' } },
+      ]),
+    );
+
+    const result = await repo.findFull(ROADMAP_ID);
+
+    expect(select.mock.calls[0][0]).toContain(
+      'assignees:roadmap_task_assignees(profile:profiles!assignee_id(',
+    );
+    expect(result.epics[0].features[0].tasks[0].assignees).toEqual([
+      { id: BEN, display_name: 'Ben' },
+      { id: ANA, display_name: 'Ana' },
+    ]);
+  });
+
+  it('leaves the order alone when the column is not part of the set', async () => {
+    const { repo } = build(roadmapRow([{ assignee_id: ANA }]));
+
+    const result = await repo.findFull(ROADMAP_ID, undefined, {
+      includeTaskAssigneeProfile: false,
+    });
+
+    expect(result.epics[0].features[0].tasks[0].assignees).toEqual([
+      { id: ANA },
+    ]);
+  });
+});

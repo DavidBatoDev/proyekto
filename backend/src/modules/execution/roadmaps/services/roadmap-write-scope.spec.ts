@@ -52,6 +52,9 @@ describe('roadmap write services reuse the resolved authz scope', () => {
   }
 
   const notifications = () => ({ createNotification: jest.fn() });
+  const assigneeNotifier = () => ({
+    notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined),
+  });
 
   /**
    * Build the REAL write-effects seam over a fake realtime publisher and a
@@ -246,7 +249,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         repo as never,
         authz as never,
         {} as never,
-        notifications() as never,
+        assigneeNotifier() as never,
         effects,
         activity,
         {

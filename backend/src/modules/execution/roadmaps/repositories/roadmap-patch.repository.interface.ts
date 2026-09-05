@@ -13,5 +13,11 @@ export interface IRoadmapPatchRepository {
      * read-then-write race in the AI commit path.
      */
     expectedUpdatedAt?: string;
+    /**
+     * The user performing the write. Recorded as
+     * `roadmap_task_assignees.assigned_by` for every join row the RPC creates;
+     * the RPC falls back to the roadmap owner when omitted.
+     */
+    actorId?: string;
   }): Promise<Date | null>;
 }

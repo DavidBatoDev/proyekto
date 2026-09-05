@@ -52,12 +52,52 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
 
   // Join embeds arrive as `[{ profile: {...} }]`; flatten to a plain profile
-  // array so the API contract exposes `assignees: [{...}]`.
-  private flattenAssignees(row: any): any[] {
-    const raw = Array.isArray(row?.assignees) ? row.assignees : [];
-    return raw
-      .map((entry: any) => entry?.profile)
-      .filter((p: any) => p && typeof p.id === 'string');
+  // array so the API contract exposes `assignees: [{...}]`. The lean task
+  // select (`includeTaskAssigneeProfile: false`) embeds id-only rows
+  // (`[{ assignee_id }]`), which flatten to `{ id }` so every consumer can read
+  // the assignee set the same way regardless of which select produced it.
+  private flattenAssignees(row: unknown): Array<Record<string, unknown>> {
+    const raw = this.asRecord(row)?.assignees;
+    if (!Array.isArray(raw)) return [];
+    const result: Array<Record<string, unknown>> = [];
+    for (const entry of raw as unknown[]) {
+      const record = this.asRecord(entry);
+      if (!record) continue;
+      const profile = this.asRecord(record.profile);
+      if (profile && typeof profile.id === 'string') {
+        result.push(profile);
+      } else if (typeof record.assignee_id === 'string') {
+        result.push({ id: record.assignee_id });
+      } else if (typeof record.id === 'string') {
+        result.push(record);
+      }
+    }
+    return result;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  // The legacy `roadmap_tasks.assignee_id` column is the primary assignee
+  // (first join row by assigned_at). PostgREST gives no ordering guarantee on
+  // the embed, so put the stored primary first: `assignees[0]` then always
+  // agrees with `assignee_id`, and an unrelated full-roadmap write can never
+  // flip which co-assignee is primary.
+  private orderPrimaryFirst(
+    assignees: Array<Record<string, unknown>>,
+    primaryId: unknown,
+  ): Array<Record<string, unknown>> {
+    if (typeof primaryId !== 'string' || assignees.length < 2) return assignees;
+    const index = assignees.findIndex((a) => a.id === primaryId);
+    if (index <= 0) return assignees;
+    return [
+      assignees[index],
+      ...assignees.slice(0, index),
+      ...assignees.slice(index + 1),
+    ];
   }
 
   private sortByPosition<T extends { position?: number }>(items: T[]): T[] {
@@ -83,7 +123,10 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
           Array.isArray(feature?.tasks) ? feature.tasks : [],
         ).map((task: any) => ({
           ...task,
-          assignees: this.flattenAssignees(task),
+          assignees: this.orderPrimaryFirst(
+            this.flattenAssignees(task),
+            this.asRecord(task)?.assignee_id,
+          ),
         })),
       }));
 
@@ -369,7 +412,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       options?.includeTaskAssigneeProfile !== false;
     const taskSelect = includeTaskAssigneeProfile
       ? `tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`
-      : 'tasks:roadmap_tasks(*)';
+      : // Lean shape (AI commit): no profile joins, but the assignee id set is
+        // still needed so a commit can carry the full set back through the RPC.
+        'tasks:roadmap_tasks(*, assignees:roadmap_task_assignees(assignee_id))';
     const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`;
 
     // Widened to `string` so Supabase skips literal-type parsing of this

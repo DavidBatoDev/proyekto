@@ -119,7 +119,18 @@
             "minimum": 0
           },
           "patch": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "assignee_ids": {
+                "description": "Task only. The FULL replacement set of assignee user ids (deduped, first = primary). [] unassigns everyone; omit the key (or send null) to leave assignment unchanged. Takes precedence over assignee_id when both are present.",
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "assignee_id": {
+                "description": "Task only. Legacy single assignee (mirrors assignee_ids[0]); null unassigns. Prefer assignee_ids.",
+                "type": ["string", "null"]
+              }
+            }
           },
           "status": {
             "type": "string"
@@ -131,7 +142,14 @@
             "type": "object"
           },
           "data": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "assignee_ids": {
+                "description": "add_task only. Initial assignee user ids (deduped, first = primary); omit (or null) for no assignees; assignee_id remains accepted as a single-id alias.",
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
           },
           "targets": {
             "type": "array",

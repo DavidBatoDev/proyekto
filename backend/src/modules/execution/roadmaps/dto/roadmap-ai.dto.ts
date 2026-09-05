@@ -254,7 +254,10 @@ export type RoadmapValidationIssueCode =
   | 'HIERARCHY_VIOLATION'
   | 'PROGRESS_MISMATCH'
   | 'STALE_REVISION'
-  | 'OUT_OF_SCOPE_MUTATION';
+  | 'OUT_OF_SCOPE_MUTATION'
+  // A field the allow-list accepts carries a value of the wrong shape (e.g. a
+  // task `assignee_ids` patch that is not an array of user ids).
+  | 'INVALID_FIELD_VALUE';
 
 export class RoadmapValidationIssueDto {
   @IsEnum([
@@ -269,6 +272,7 @@ export class RoadmapValidationIssueDto {
     'PROGRESS_MISMATCH',
     'STALE_REVISION',
     'OUT_OF_SCOPE_MUTATION',
+    'INVALID_FIELD_VALUE',
   ])
   code: RoadmapValidationIssueCode;
 
@@ -698,6 +702,15 @@ export class RoadmapAiContextSearchResponseDto {
   matches: RoadmapAiContextSearchMatchDto[];
 }
 
+export class RoadmapAiContextNodeAssigneeDto {
+  @IsUUID()
+  id: string;
+
+  @IsOptional()
+  @IsString()
+  display_name?: string;
+}
+
 export class RoadmapAiContextNodeResponseDto {
   @IsUUID()
   id: string;
@@ -739,6 +752,23 @@ export class RoadmapAiContextNodeResponseDto {
   @IsOptional()
   @IsString()
   target_date?: string;
+
+  // Task only: primary assignee (`assignee_ids[0]`), the full ordered id set,
+  // and the same set with display names where the profile is known.
+  @IsOptional()
+  @IsUUID()
+  assignee_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextNodeAssigneeDto)
+  assignees?: RoadmapAiContextNodeAssigneeDto[];
 
   @IsOptional()
   @IsUUID()
@@ -790,6 +820,18 @@ export class RoadmapAiContextChildDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  // Task children only: the primary assignee (the stored
+  // roadmap_tasks.assignee_id) and every assignee of the task, primary first.
+  // Absent on epic and feature children.
+  @IsOptional()
+  @IsUUID()
+  assignee_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
 
   @IsOptional()
   @IsUUID()
@@ -914,6 +956,17 @@ export class RoadmapAiContextAssignedTaskDto {
   @IsString()
   status?: string;
 
+  // The primary assignee (the stored roadmap_tasks.assignee_id) and every
+  // assignee of the task, primary first — the caller is always one of them.
+  @IsOptional()
+  @IsUUID()
+  assignee_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
+
   @IsOptional()
   @IsUUID()
   feature_id?: string;
@@ -1003,9 +1056,16 @@ export class RoadmapAiContextFilteredTaskDto {
   @IsString()
   priority?: string;
 
+  // Primary assignee (mirrors `assignee_ids[0]`); kept for older consumers.
   @IsOptional()
   @IsUUID()
   assignee_id?: string;
+
+  // Every assignee of the task, primary first.
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
 
   @IsOptional()
   @IsUUID()

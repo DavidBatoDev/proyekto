@@ -23,6 +23,7 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
     fullState: FullRoadmapState;
     createIfMissing?: boolean;
     expectedUpdatedAt?: string;
+    actorId?: string;
   }): Promise<Date | null> {
     const {
       roadmapId,
@@ -30,6 +31,7 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
       fullState,
       createIfMissing = false,
       expectedUpdatedAt,
+      actorId,
     } = params;
 
     const { data, error } = await this.db.rpc('upsert_full_roadmap', {
@@ -38,6 +40,15 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
       p_full_state: fullState,
       p_create_if_missing: createIfMissing,
       p_expected_updated_at: expectedUpdatedAt ?? null,
+      // `p_actor_id` is recorded as roadmap_task_assignees.assigned_by; the
+      // RPC (migration 20260906090000, 6-arg signature) defaults it to NULL
+      // and falls back to the owner. The key is omitted only by a caller
+      // with no actor — every in-repo caller passes `actorId` — so that
+      // migration MUST be applied to the target project before this build
+      // deploys: PostgREST resolves the RPC by the named arguments it
+      // receives, and a call carrying `p_actor_id` against the pre-migration
+      // 5-arg function fails.
+      ...(actorId !== undefined ? { p_actor_id: actorId } : {}),
     });
 
     if (!error) return data ? new Date(data as string) : null;

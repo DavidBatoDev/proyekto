@@ -24,6 +24,7 @@ describe('RoadmapAiService search scoring', () => {
       {} as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     ) as unknown as {
       tokenizeSearchQuery: (query: string) => string[];
       normalizeSearchText: (value: string) => string;
@@ -243,6 +244,7 @@ describe('RoadmapAiService actor + assignee context', () => {
       previewStore as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     return { service, roadmapsRepo, from, previewStore };
@@ -439,6 +441,7 @@ describe('RoadmapAiService context timing logs', () => {
       } as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     return service;
@@ -588,6 +591,7 @@ describe('RoadmapAiService context search lookup', () => {
       previewStore as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     return { service, roadmapsRepo, previewStore };
@@ -858,6 +862,7 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
       previewStore as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
     return { service, previewStore, roadmapsRepo, patchRepo };
   };
@@ -1043,6 +1048,7 @@ describe('RoadmapAiService commit attribution', () => {
       previewStore as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       audit as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
     const warn = jest
       .spyOn((service as any).logger, 'warn')
@@ -1281,6 +1287,7 @@ describe('RoadmapAiService preview durability', () => {
       previewStore as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const preview = await service.preview(
@@ -1309,6 +1316,7 @@ describe('RoadmapAiService authz cache hardening', () => {
       {} as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     ) as unknown as {
       authzDecisionCache: Map<string, { expiresAtMs: number; allowed: true }>;
       buildAuthzDecisionCacheKey: (roadmapId: string, userId: string) => string;
@@ -1397,6 +1405,7 @@ describe('RoadmapAiService operation semantics parity', () => {
       {} as never,
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
   it('validates task status enums consistently', () => {
@@ -1694,5 +1703,751 @@ describe('RoadmapAiService operation semantics parity', () => {
     for (const task of tasks) {
       expect(task.assignee_id).toBe(assignee);
     }
+  });
+});
+
+describe('RoadmapAiService task assignees', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const EPIC_ID = 'dad5697a-8962-4f80-8bc3-8a964edd8e56';
+  const FEATURE_ID = '60bcab3f-3989-448d-9c84-3261cf38685b';
+  const TASK_ID = '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1';
+  const ANA = '0f7be23f-3b57-4cf4-a269-a98d2164a45a';
+  const BEN = '8d1c2b3a-4e5f-4a6b-9c7d-0e1f2a3b4c5d';
+  const CID = '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f';
+
+  type Internals = {
+    applyOperations: (
+      state: any,
+      operations: any[],
+    ) => { issues: Array<{ code: string; path: string }> };
+    normalizeFullRoadmapState: (raw: Record<string, unknown>) => any;
+    computeSemanticDiff: (
+      base: any,
+      candidate: any,
+    ) => {
+      changes: Array<{
+        type: string;
+        node: { id: string };
+        from?: Record<string, unknown>;
+        to?: Record<string, unknown>;
+      }>;
+    };
+    validateState: (state: any) => Array<{ code: string }>;
+  };
+
+  const createService = () =>
+    new RoadmapAiService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
+      { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+    ) as unknown as Internals;
+
+  const stateWithTask = (task: Record<string, unknown>) => ({
+    id: ROADMAP_ID,
+    name: 'Roadmap',
+    status: 'active',
+    roadmap_epics: [
+      {
+        id: EPIC_ID,
+        title: 'Epic',
+        status: 'in_progress',
+        roadmap_features: [
+          {
+            id: FEATURE_ID,
+            title: 'Feature',
+            roadmap_tasks: [
+              { id: TASK_ID, title: 'Task', status: 'todo', ...task },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const taskOf = (state: any) =>
+    state.roadmap_epics[0].roadmap_features[0].roadmap_tasks[0];
+  const update = (patch: Record<string, unknown>) => ({
+    op: 'update_node',
+    node_id: TASK_ID,
+    patch,
+  });
+
+  it('derives assignee_ids from the join rows (any embed shape), primary first, and mirrors assignee_id', () => {
+    const state = createService().normalizeFullRoadmapState({
+      id: ROADMAP_ID,
+      name: 'Roadmap',
+      epics: [
+        {
+          id: EPIC_ID,
+          title: 'Epic',
+          features: [
+            {
+              id: FEATURE_ID,
+              title: 'Feature',
+              tasks: [
+                {
+                  id: TASK_ID,
+                  title: 'Task',
+                  assignee_id: BEN,
+                  assignees: [
+                    { id: ANA },
+                    { assignee_id: BEN },
+                    { profile: { id: CID } },
+                    { id: ANA },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(taskOf(state).assignee_ids).toEqual([BEN, ANA, CID]);
+    expect(taskOf(state).assignee_id).toBe(BEN);
+  });
+
+  it('keeps a column-only assignee (row written before the join table existed) instead of dropping it', () => {
+    const state = createService().normalizeFullRoadmapState(
+      stateWithTask({ assignee_id: ANA, assignees: [] }),
+    );
+
+    expect(taskOf(state).assignee_ids).toEqual([ANA]);
+    expect(taskOf(state).assignee_id).toBe(ANA);
+  });
+
+  it('assignee_ids patch replaces the set (deduped, order kept) and mirrors assignee_id', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_ids: [BEN, CID, BEN] }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([BEN, CID]);
+    expect(taskOf(state).assignee_id).toBe(BEN);
+  });
+
+  it('assignee_id alone becomes [id]', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_id: BEN }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([BEN]);
+    expect(taskOf(state).assignee_id).toBe(BEN);
+  });
+
+  it('assignee_id alone is stored lowercased, like the array branch', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_id: BEN.toUpperCase() }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([BEN]);
+    expect(taskOf(state).assignee_id).toBe(BEN);
+  });
+
+  it('add_task lowercases a scalar assignee_id', () => {
+    const service = createService();
+    const state = stateWithTask({});
+
+    const result = service.applyOperations(state, [
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_upper',
+        data: { title: 'Upper', assignee_id: CID.toUpperCase() },
+      },
+    ]);
+
+    expect(result.issues).toEqual([]);
+    const tasks = state.roadmap_epics[0].roadmap_features[0]
+      .roadmap_tasks as any[];
+    expect(tasks.find((task: any) => task.title === 'Upper')).toMatchObject({
+      assignee_ids: [CID],
+      assignee_id: CID,
+    });
+  });
+
+  it('assignee_id: null unassigns everyone', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA, BEN] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_id: null }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([]);
+    expect(taskOf(state).assignee_id).toBeUndefined();
+  });
+
+  it('assignee_ids: null means "assignment unchanged"; only [] unassigns', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA, BEN] });
+
+    const untouched = service.applyOperations(state, [
+      update({ title: 'Renamed', assignee_ids: null }),
+    ]);
+    expect(untouched.issues).toEqual([]);
+    expect(taskOf(state).title).toBe('Renamed');
+    expect(taskOf(state).assignee_ids).toEqual([ANA, BEN]);
+    expect(taskOf(state).assignee_id).toBe(ANA);
+
+    const cleared = service.applyOperations(state, [
+      update({ assignee_ids: [] }),
+    ]);
+    expect(cleared.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([]);
+    expect(taskOf(state).assignee_id).toBeUndefined();
+  });
+
+  it('add_task treats data.assignee_ids: null as absent and falls back to assignee_id', () => {
+    const service = createService();
+    const state = stateWithTask({});
+
+    const result = service.applyOperations(state, [
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_null_set',
+        data: { title: 'Null set', assignee_ids: null, assignee_id: BEN },
+      },
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_null_only',
+        data: { title: 'Null only', assignee_ids: null },
+      },
+    ]);
+
+    expect(result.issues).toEqual([]);
+    const tasks = state.roadmap_epics[0].roadmap_features[0]
+      .roadmap_tasks as any[];
+    const byTitle = (title: string): any =>
+      tasks.find((task: any) => task.title === title);
+    expect(byTitle('Null set')).toMatchObject({
+      assignee_ids: [BEN],
+      assignee_id: BEN,
+    });
+    expect(byTitle('Null only').assignee_ids).toEqual([]);
+    expect(byTitle('Null only').assignee_id).toBeUndefined();
+  });
+
+  it('dedupes assignee_ids case-insensitively and stores lowercase ids', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_ids: [BEN.toUpperCase(), BEN, CID] }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([BEN, CID]);
+    expect(taskOf(state).assignee_id).toBe(BEN);
+  });
+
+  it('assignee_ids wins over assignee_id when both are present', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const result = service.applyOperations(state, [
+      update({ assignee_ids: [CID], assignee_id: BEN }),
+    ]);
+
+    expect(result.issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([CID]);
+    expect(taskOf(state).assignee_id).toBe(CID);
+  });
+
+  it('rejects a malformed assignee patch with INVALID_FIELD_VALUE and leaves the task untouched', () => {
+    const service = createService();
+    const state = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const notIds = service.applyOperations(state, [
+      update({ assignee_ids: ['ana'] }),
+    ]);
+    expect(notIds.issues).toEqual([
+      expect.objectContaining({
+        code: 'INVALID_FIELD_VALUE',
+        path: '/operations/0/patch/assignee_ids',
+      }),
+    ]);
+
+    const notArray = service.applyOperations(state, [
+      update({ assignee_ids: BEN }),
+    ]);
+    expect(notArray.issues[0].code).toBe('INVALID_FIELD_VALUE');
+
+    const badScalar = service.applyOperations(state, [
+      update({ assignee_id: 'Ben' }),
+    ]);
+    expect(badScalar.issues).toEqual([
+      expect.objectContaining({
+        code: 'INVALID_FIELD_VALUE',
+        path: '/operations/0/patch/assignee_id',
+      }),
+    ]);
+
+    expect(taskOf(state).assignee_ids).toEqual([ANA]);
+    expect(taskOf(state).assignee_id).toBe(ANA);
+  });
+
+  it('add_task accepts assignee_ids (deduped) and mirrors the primary; assignee_id alone still works', () => {
+    const service = createService();
+    const state = stateWithTask({});
+
+    const result = service.applyOperations(state, [
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_a',
+        data: { title: 'With set', assignee_ids: [ANA, BEN, ANA] },
+      },
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_b',
+        data: { title: 'With scalar', assignee_id: CID },
+      },
+      {
+        op: 'add_task',
+        parent_id: FEATURE_ID,
+        temp_id: 'task_c',
+        data: { title: 'Unassigned' },
+      },
+    ]);
+
+    expect(result.issues).toEqual([]);
+    const tasks = state.roadmap_epics[0].roadmap_features[0]
+      .roadmap_tasks as any[];
+    const byTitle = (title: string): any =>
+      tasks.find((task: any) => task.title === title);
+    expect(byTitle('With set')).toMatchObject({
+      assignee_ids: [ANA, BEN],
+      assignee_id: ANA,
+    });
+    expect(byTitle('With scalar')).toMatchObject({
+      assignee_ids: [CID],
+      assignee_id: CID,
+    });
+    expect(byTitle('Unassigned').assignee_ids).toEqual([]);
+    expect(byTitle('Unassigned').assignee_id).toBeUndefined();
+  });
+
+  it('rejects assignee_ids on a feature as OUT_OF_SCOPE_MUTATION', () => {
+    const service = createService();
+    const state = stateWithTask({});
+
+    const result = service.applyOperations(state, [
+      {
+        op: 'update_node',
+        node_id: FEATURE_ID,
+        patch: { assignee_ids: [ANA] },
+      },
+    ]);
+
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: 'OUT_OF_SCOPE_MUTATION',
+        path: '/operations/0/patch/assignee_ids',
+      }),
+    ]);
+  });
+
+  it('emits ASSIGNEE_CHANGED for a co-assignee-only change and stays silent when the ordered set is unchanged', () => {
+    const service = createService();
+    const base = stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] });
+
+    const same = service.computeSemanticDiff(
+      base,
+      stateWithTask({ assignee_id: ANA, assignee_ids: [ANA] }),
+    );
+    expect(
+      same.changes.filter((change) => change.type === 'ASSIGNEE_CHANGED'),
+    ).toEqual([]);
+
+    const grown = service.computeSemanticDiff(
+      base,
+      stateWithTask({ assignee_id: ANA, assignee_ids: [ANA, BEN] }),
+    );
+    expect(grown.changes).toEqual([
+      {
+        type: 'ASSIGNEE_CHANGED',
+        node: { type: 'task', id: TASK_ID, title: 'Task' },
+        from: { assignee_id: ANA, assignee_ids: [ANA] },
+        to: { assignee_id: ANA, assignee_ids: [ANA, BEN] },
+      },
+    ]);
+  });
+
+  it('validateState normalizes the set (precedence, dedupe, mirror) instead of failing', () => {
+    const service = createService();
+    const state = stateWithTask({
+      assignee_id: BEN,
+      assignee_ids: [ANA, ANA, 'junk'],
+    });
+
+    const issues = service.validateState(state);
+
+    expect(issues).toEqual([]);
+    expect(taskOf(state).assignee_ids).toEqual([ANA]);
+    expect(taskOf(state).assignee_id).toBe(ANA);
+  });
+});
+
+describe('RoadmapAiService commit assignment side effects', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const PROJECT_ID = '0c3d0b8e-6f1e-4b0f-9b1e-2b7f0a3c9d11';
+  const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
+  const EPIC_ID = 'dad5697a-8962-4f80-8bc3-8a964edd8e56';
+  const FEATURE_ID = '60bcab3f-3989-448d-9c84-3261cf38685b';
+  const TASK_ID = '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1';
+  const ANA = '0f7be23f-3b57-4cf4-a269-a98d2164a45a';
+  const BEN = '8d1c2b3a-4e5f-4a6b-9c7d-0e1f2a3b4c5d';
+  const REVISION_TOKEN = '2026-04-02T11:00:00.000Z';
+
+  const createCommitService = () => {
+    const insert = jest.fn().mockResolvedValue({ error: null });
+    const db = { from: jest.fn(() => ({ insert })) };
+    const previewStore = {
+      getChangeTimeline: jest.fn().mockResolvedValue(null),
+      setChangeTimeline: jest.fn().mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmapAndNodeTypes: jest
+        .fn()
+        .mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmap: jest.fn().mockResolvedValue(undefined),
+      readCommitIdempotency: jest.fn().mockResolvedValue(null),
+      writeCommitIdempotency: jest.fn().mockResolvedValue(undefined),
+    };
+    const roadmapsRepo = {
+      findById: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        owner_id: USER_ID,
+        project_id: PROJECT_ID,
+        updated_at: REVISION_TOKEN,
+      }),
+      findUpdatedAt: jest.fn().mockResolvedValue(REVISION_TOKEN),
+      // Lean shape: id-only join rows, exactly what the commit path reads.
+      findFull: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        name: 'Q2 SaaS Platform Development',
+        epics: [
+          {
+            id: EPIC_ID,
+            title: 'Epic',
+            features: [
+              {
+                id: FEATURE_ID,
+                title: 'Feature',
+                tasks: [
+                  {
+                    id: TASK_ID,
+                    title: 'Task',
+                    status: 'todo',
+                    assignee_id: ANA,
+                    assignees: [{ id: ANA }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    };
+    const patchRepo = {
+      upsertFullRoadmap: jest.fn().mockResolvedValue(undefined),
+    };
+    const authz = { assertRoadmapPermission: jest.fn().mockResolvedValue({}) };
+    const notifier = {
+      notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new RoadmapAiService(
+      db as never,
+      roadmapsRepo as never,
+      patchRepo as never,
+      authz as never,
+      previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
+      { log: jest.fn() } as never,
+      notifier as never,
+    );
+    const warn = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    return { service, patchRepo, authz, notifier, warn };
+  };
+
+  const commit = (service: RoadmapAiService, patch: Record<string, unknown>) =>
+    service.commit(
+      ROADMAP_ID,
+      {
+        revision_token: REVISION_TOKEN,
+        include_roadmap: false,
+        operations: [{ op: 'update_node', node_id: TASK_ID, patch }],
+      } as any,
+      USER_ID,
+    );
+
+  it('asserts roadmap.assign, passes the actor to the RPC, and notifies only the newly assigned', async () => {
+    const { service, patchRepo, authz, notifier } = createCommitService();
+
+    const result = await commit(service, { assignee_ids: [ANA, BEN] });
+
+    expect(authz.assertRoadmapPermission).toHaveBeenCalledWith(
+      ROADMAP_ID,
+      USER_ID,
+      'roadmap.assign',
+    );
+    expect(patchRepo.upsertFullRoadmap).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: USER_ID }),
+    );
+    const committedTask =
+      patchRepo.upsertFullRoadmap.mock.calls[0][0].fullState.roadmap_epics[0]
+        .roadmap_features[0].roadmap_tasks[0];
+    expect(committedTask).toMatchObject({
+      assignee_ids: [ANA, BEN],
+      assignee_id: ANA,
+    });
+    expect(notifier.notifyNewlyAssigned).toHaveBeenCalledTimes(1);
+    expect(notifier.notifyNewlyAssigned).toHaveBeenCalledWith({
+      task: { id: TASK_ID, title: 'Task', feature_id: FEATURE_ID },
+      assigneeIds: [BEN],
+      actorId: USER_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(result.semantic_diff.changes).toEqual([
+      expect.objectContaining({
+        type: 'ASSIGNEE_CHANGED',
+        to: { assignee_id: ANA, assignee_ids: [ANA, BEN] },
+      }),
+    ]);
+  });
+
+  it('skips the assign check and notifications when no operation touches assignment', async () => {
+    const { service, authz, notifier } = createCommitService();
+
+    await commit(service, { title: 'Renamed' });
+
+    expect(authz.assertRoadmapPermission).not.toHaveBeenCalledWith(
+      ROADMAP_ID,
+      USER_ID,
+      'roadmap.assign',
+    );
+    expect(notifier.notifyNewlyAssigned).not.toHaveBeenCalled();
+  });
+
+  it('treats assignee_ids: null as "assignment unchanged": no assign check, no notification', async () => {
+    const { service, patchRepo, authz, notifier } = createCommitService();
+
+    await commit(service, { title: 'Renamed', assignee_ids: null });
+
+    expect(authz.assertRoadmapPermission).not.toHaveBeenCalledWith(
+      ROADMAP_ID,
+      USER_ID,
+      'roadmap.assign',
+    );
+    expect(notifier.notifyNewlyAssigned).not.toHaveBeenCalled();
+    const committedTask =
+      patchRepo.upsertFullRoadmap.mock.calls[0][0].fullState.roadmap_epics[0]
+        .roadmap_features[0].roadmap_tasks[0];
+    expect(committedTask).toMatchObject({
+      title: 'Renamed',
+      assignee_ids: [ANA],
+      assignee_id: ANA,
+    });
+  });
+
+  it('treats assignee_id: null as an unassign that still asserts roadmap.assign', async () => {
+    const { service, patchRepo, authz, notifier } = createCommitService();
+
+    await commit(service, { assignee_id: null });
+
+    expect(authz.assertRoadmapPermission).toHaveBeenCalledWith(
+      ROADMAP_ID,
+      USER_ID,
+      'roadmap.assign',
+    );
+    expect(notifier.notifyNewlyAssigned).not.toHaveBeenCalled();
+    const committedTask =
+      patchRepo.upsertFullRoadmap.mock.calls[0][0].fullState.roadmap_epics[0]
+        .roadmap_features[0].roadmap_tasks[0];
+    expect(committedTask.assignee_ids).toEqual([]);
+    expect(committedTask.assignee_id).toBeUndefined();
+  });
+
+  it('does not notify when the set only shrinks', async () => {
+    const { service, notifier } = createCommitService();
+
+    await commit(service, { assignee_ids: [] });
+
+    expect(notifier.notifyNewlyAssigned).not.toHaveBeenCalled();
+  });
+
+  it('maps a missing roadmap.assign capability to 403 before writing', async () => {
+    const { service, patchRepo, authz } = createCommitService();
+    authz.assertRoadmapPermission.mockImplementation(
+      (_roadmapId: string, _userId: string, permission: string) =>
+        permission === 'roadmap.assign'
+          ? Promise.reject(new Error('missing roadmap.assign'))
+          : Promise.resolve({}),
+    );
+
+    await expect(commit(service, { assignee_id: BEN })).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(patchRepo.upsertFullRoadmap).not.toHaveBeenCalled();
+  });
+
+  it('keeps the commit successful when notification delivery fails', async () => {
+    const { service, notifier, warn } = createCommitService();
+    notifier.notifyNewlyAssigned.mockRejectedValueOnce(
+      new Error('notifications down'),
+    );
+
+    const result = await commit(service, { assignee_ids: [ANA, BEN] });
+
+    expect(result.change_id).toEqual(expect.any(String));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('event=roadmap_ai_commit_assignee_notify_failed'),
+    );
+  });
+});
+
+describe('RoadmapAiService context reads expose the full assignee set', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
+  const ANA = '0f7be23f-3b57-4cf4-a269-a98d2164a45a';
+  const EPIC_ID = 'dad5697a-8962-4f80-8bc3-8a964edd8e56';
+  const FEATURE_ID = '60bcab3f-3989-448d-9c84-3261cf38685b';
+  const TASK_ID = '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1';
+
+  const createService = () => {
+    const roadmapsRepo = {
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: ROADMAP_ID, owner_id: USER_ID }),
+      findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T11:00:00.000Z'),
+      findFull: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        name: 'Roadmap',
+        epics: [
+          {
+            id: EPIC_ID,
+            title: 'Epic',
+            features: [
+              {
+                id: FEATURE_ID,
+                title: 'Feature',
+                tasks: [
+                  {
+                    id: TASK_ID,
+                    title: 'Shared task',
+                    status: 'in_progress',
+                    assignee_id: ANA,
+                    assignees: [
+                      { id: ANA, display_name: 'Ana' },
+                      { id: USER_ID, first_name: 'Sam', last_name: 'Lee' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    };
+    const service = new RoadmapAiService(
+      {} as never,
+      roadmapsRepo as never,
+      {} as never,
+      { assertRoadmapPermission: jest.fn() } as never,
+      { getPreview: jest.fn().mockResolvedValue(null) } as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
+      { log: jest.fn() } as never,
+      { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+    );
+    return { service };
+  };
+
+  it('tasks-assigned-to-me matches a co-assignee, not just the primary, and returns the set', async () => {
+    const { service } = createService();
+    const result = await service.getContextTasksAssignedToMe(
+      ROADMAP_ID,
+      {},
+      USER_ID,
+    );
+    expect(result.tasks).toEqual([
+      expect.objectContaining({
+        id: TASK_ID,
+        assignee_id: ANA,
+        assignee_ids: [ANA, USER_ID],
+      }),
+    ]);
+  });
+
+  it('feature children carry each task assignee set, primary first', async () => {
+    const { service } = createService();
+    const result = await service.getContextNodeChildren(
+      ROADMAP_ID,
+      FEATURE_ID,
+      {},
+      USER_ID,
+    );
+    expect(result.children).toEqual([
+      expect.objectContaining({
+        id: TASK_ID,
+        type: 'task',
+        parent_id: FEATURE_ID,
+        assignee_id: ANA,
+        assignee_ids: [ANA, USER_ID],
+      }),
+    ]);
+  });
+
+  it('filtered tasks match assignee_id against the set and return assignee_ids', async () => {
+    const { service } = createService();
+    const result = await service.getContextTasksFiltered(
+      ROADMAP_ID,
+      { assignee_id: USER_ID },
+      USER_ID,
+    );
+    expect(result.tasks).toEqual([
+      expect.objectContaining({
+        id: TASK_ID,
+        assignee_id: ANA,
+        assignee_ids: [ANA, USER_ID],
+      }),
+    ]);
+  });
+
+  it('node details return assignee_ids and named assignees', async () => {
+    const { service } = createService();
+    const result = await service.getContextNodeDetails(
+      ROADMAP_ID,
+      TASK_ID,
+      USER_ID,
+    );
+    expect(result).toMatchObject({
+      id: TASK_ID,
+      assignee_id: ANA,
+      assignee_ids: [ANA, USER_ID],
+      assignees: [
+        { id: ANA, display_name: 'Ana' },
+        { id: USER_ID, display_name: 'Sam Lee' },
+      ],
+    });
   });
 });

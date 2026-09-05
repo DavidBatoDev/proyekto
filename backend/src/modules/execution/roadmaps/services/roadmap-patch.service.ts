@@ -99,6 +99,8 @@ export class RoadmapPatchService {
       ownerId: upsertOwnerId,
       fullState: normalizedState,
       createIfMissing: true,
+      // Recorded as roadmap_task_assignees.assigned_by for new join rows.
+      actorId: userId,
     });
 
     this.realtime.publishRoadmapChange(roadmapId, userId);
@@ -150,10 +152,12 @@ export class RoadmapPatchService {
     const currentState = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!currentState) throw new NotFoundException('Roadmap not found');
 
+    const normalizedCurrentState = this.normalizeFullRoadmapState(currentState);
     const patchedState = this.patchProcessor.apply(
-      this.normalizeFullRoadmapState(currentState),
+      normalizedCurrentState,
       operations,
     );
+    this.dropSupersededAssigneeSets(normalizedCurrentState, patchedState);
 
     const beforeCounts = this.summarizeRoadmapState(currentState);
     const afterCounts = this.summarizeRoadmapState(patchedState);
@@ -168,6 +172,8 @@ export class RoadmapPatchService {
       ownerId: upsertOwnerId,
       fullState: normalizedPatchedState,
       createIfMissing: false,
+      // Recorded as roadmap_task_assignees.assigned_by for new join rows.
+      actorId: userId,
     });
 
     this.logger.log(
@@ -210,6 +216,57 @@ export class RoadmapPatchService {
       0,
     );
     return { epics, features, tasks };
+  }
+
+  /**
+   * The state handed to the JSON patch is normalized, so every task already
+   * carries `assignee_ids` (the stored set) next to its scalar — and the
+   * post-patch normalization lets that set win over the scalar. A legacy
+   * single-assignee client patches `/assignee_id` alone, so without this step
+   * its change would be silently discarded. Mirror the RPC's changed-scalar
+   * rule instead: when a task's scalar changed and its set did not, the scalar
+   * is the caller's intent — drop the stale set so the task is sent
+   * scalar-only and the RPC reconciles the join table to [new] (or {} for
+   * null). An unchanged scalar keeps the set (co-assignees survive an edit
+   * that re-sends the scalar), and a task whose set was patched keeps it too:
+   * explicit wins. Keyed by task id rather than by patch path so array
+   * insertions/removals earlier in the same patch cannot shift the target.
+   */
+  private dropSupersededAssigneeSets(
+    before: FullRoadmapState,
+    after: FullRoadmapState,
+  ): void {
+    const priorById = new Map<string, FullRoadmapTaskDto>();
+    for (const task of this.listTasks(before)) {
+      if (task.id) priorById.set(task.id, task);
+    }
+    for (const task of this.listTasks(after)) {
+      const prior = task.id ? priorById.get(task.id) : undefined;
+      if (!prior) continue;
+      const scalarChanged =
+        (task.assignee_id ?? null) !== (prior.assignee_id ?? null);
+      const setChanged = !this.sameIdList(
+        task.assignee_ids,
+        prior.assignee_ids,
+      );
+      if (scalarChanged && !setChanged) delete task.assignee_ids;
+    }
+  }
+
+  private listTasks(state: FullRoadmapState): FullRoadmapTaskDto[] {
+    return (state.roadmap_epics ?? []).flatMap((epic) =>
+      (epic.roadmap_features ?? []).flatMap(
+        (feature) => feature.roadmap_tasks ?? [],
+      ),
+    );
+  }
+
+  private sameIdList(left: unknown, right: unknown): boolean {
+    if (!Array.isArray(left) || !Array.isArray(right)) return left === right;
+    return (
+      left.length === right.length &&
+      left.every((id, index) => id === right[index])
+    );
   }
 
   private normalizeFullRoadmapState(state: FullRoadmapState): FullRoadmapState {
@@ -282,15 +339,65 @@ export class RoadmapPatchService {
     task: FullRoadmapTaskDto,
     taskIndex: number,
   ): FullRoadmapTaskDto {
+    const assigneeIds = this.readTaskAssigneeIds(task);
     return {
       id: task.id ?? randomUUID(),
       title: task.title,
       description: task.description,
       status: task.status ?? 'todo',
       priority: task.priority ?? 'medium',
-      assignee_id: task.assignee_id,
+      // Scalar-only caller (neither `assignees` nor `assignee_ids`): the scalar
+      // passes through unchanged and NO `assignee_ids` key is sent, so the
+      // RPC's changed-scalar branch decides whether the join table moves.
+      ...(assigneeIds === undefined
+        ? { assignee_id: task.assignee_id }
+        : { assignee_id: assigneeIds[0], assignee_ids: assigneeIds }),
       due_date: task.due_date,
       position: task.position ?? taskIndex,
     };
+  }
+
+  /**
+   * Canonical assignee set of a task on the legacy JSON-patch / createFull
+   * path, primary first: the persisted join rows (`assignees[]`, as returned by
+   * findFull), else an explicit `assignee_ids` — or `undefined` when the task
+   * carries neither array. That is a scalar-only caller (a stale web bundle
+   * POSTing /roadmaps/full, a raw single-assignee client) whose `assignee_id`
+   * is passed through untouched so the RPC's changed-scalar branch decides
+   * whether the join table moves. When a set IS derived, the scalar is unioned
+   * in (and rotated to the front) so a row written by the pre-2026-09 RPC —
+   * column set, no join row — keeps its assignee, and the state carries
+   * `assignee_ids` equal to the stored set: the RPC's reconciliation is then a
+   * no-op for edits that never touched assignment.
+   */
+  private readTaskAssigneeIds(task: FullRoadmapTaskDto): string[] | undefined {
+    const joinRows = (task as { assignees?: unknown }).assignees;
+    const fromRows = Array.isArray(joinRows)
+      ? joinRows
+          .map((row: unknown) => {
+            if (!row || typeof row !== 'object') return undefined;
+            const record = row as Record<string, unknown>;
+            const profile = record.profile as
+              | Record<string, unknown>
+              | undefined;
+            const candidate = record.id ?? record.assignee_id ?? profile?.id;
+            return typeof candidate === 'string' ? candidate : undefined;
+          })
+          .filter((id): id is string => typeof id === 'string')
+      : undefined;
+    const explicit = Array.isArray(task.assignee_ids)
+      ? task.assignee_ids.filter((id) => typeof id === 'string' && id)
+      : undefined;
+    if (fromRows === undefined && explicit === undefined) return undefined;
+    const base = fromRows ?? explicit ?? [];
+    const scalar =
+      typeof task.assignee_id === 'string' && task.assignee_id
+        ? task.assignee_id
+        : undefined;
+    const ordered =
+      scalar && explicit === undefined
+        ? [scalar, ...base.filter((id) => id !== scalar)]
+        : base;
+    return [...new Set(ordered)];
   }
 }

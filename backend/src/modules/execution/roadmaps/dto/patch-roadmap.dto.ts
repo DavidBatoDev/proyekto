@@ -68,6 +68,13 @@ export class FullRoadmapTaskDto {
   @IsUUID()
   assignee_id?: string;
 
+  // Canonical FULL replacement set of assignee user ids (first = primary);
+  // `assignee_id` is the legacy scalar alias and always mirrors `[0]`.
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
+
   @IsOptional()
   @IsDateString()
   due_date?: string;
