@@ -17,6 +17,7 @@ import {
 	AiAgentServiceError,
 	aiAgentService,
 	getAgentErrorCode,
+	isAgentNetworkError,
 	isAgentTimeoutError,
 	isAiAgentServiceError,
 	parseAgentErrorBody,
@@ -70,6 +71,15 @@ describe("agent service timeout detection", () => {
 	it("does not flag unrelated errors as timeout", () => {
 		const error = new Error("validation failed");
 		expect(isAgentTimeoutError(error)).toBe(false);
+	});
+
+	it("keeps a blocked or offline request apart from a timeout", () => {
+		// A CORS-blocked preflight (the mobile shells before the agent
+		// allowlisted them) or lost connectivity: the agent was never reached.
+		const error = new Error("Network Error");
+		expect(isAgentTimeoutError(error)).toBe(false);
+		expect(isAgentNetworkError(error)).toBe(true);
+		expect(isAgentNetworkError(new Error("validation failed"))).toBe(false);
 	});
 });
 

@@ -560,8 +560,27 @@ function safeStringify(value: unknown): string | undefined {
 	}
 }
 
+/**
+ * The request never reached the agent: a CORS-blocked preflight, DNS failure
+ * or lost connectivity. Axios reports these as `ERR_NETWORK` / "Network
+ * Error" with no response. Distinct from a timeout, which means the agent
+ * was reached but did not answer in time.
+ */
+export function isAgentNetworkError(error: unknown): boolean {
+	const networkPattern = /(err_network|network error)/i;
+	if (isAxiosError(error)) {
+		if (error.response) return false;
+		if (error.code && networkPattern.test(error.code)) return true;
+		return !!error.message && networkPattern.test(error.message);
+	}
+	if (error instanceof Error) {
+		return networkPattern.test(error.message);
+	}
+	return false;
+}
+
 export function isAgentTimeoutError(error: unknown): boolean {
-	const timeoutPattern = /(timeout|aborted|econnaborted|network error)/i;
+	const timeoutPattern = /(timeout|aborted|econnaborted)/i;
 	if (error instanceof AiAgentServiceError) {
 		return timeoutPattern.test(error.message);
 	}
@@ -733,7 +752,10 @@ export const aiAgentService = {
 			const isPlanDecision =
 				typeof payload.message === "string" &&
 				payload.message.startsWith("__plan_decision__");
-			if (isPlanDecision && isAgentTimeoutError(error)) {
+			if (
+				isPlanDecision &&
+				(isAgentTimeoutError(error) || isAgentNetworkError(error))
+			) {
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 				try {
 					return await post();

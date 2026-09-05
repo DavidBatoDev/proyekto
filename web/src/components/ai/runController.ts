@@ -9,6 +9,7 @@ import {
 	type AgentTraceEventsResponse,
 	aiAgentService,
 	getAgentErrorCode,
+	isAgentNetworkError,
 	isAgentTimeoutError,
 	isAiAgentServiceError,
 	type RunCommitView,
@@ -80,6 +81,8 @@ export const RUN_TIMED_OUT_MESSAGE =
 	"Proyekto has been working on this for a long time. Resume to keep going, or stop the run.";
 export const AGENT_TIMEOUT_MESSAGE =
 	"AI response is taking longer than expected. Please wait or retry.";
+export const AGENT_UNREACHABLE_MESSAGE =
+	"Could not reach the AI service. Check your connection and retry.";
 export const FAILED_FALLBACK_MESSAGE =
 	"I couldn't complete that request. Please try again.";
 export const STOPPED_MESSAGE = "Stopped.";
@@ -1028,28 +1031,32 @@ export class AiRunController {
 	private failSend(ctx: ThreadContext, error: unknown): void {
 		const threadId = ctx.threadId;
 		const timeoutError = isAgentTimeoutError(error);
+		const networkError = !timeoutError && isAgentNetworkError(error);
 		const readableError =
 			error instanceof Error
 				? error.message
 				: "Failed to reach AI agent service.";
 		const userFacingMessage = timeoutError
 			? AGENT_TIMEOUT_MESSAGE
-			: readableError;
-		if (timeoutError) {
-			console.warn("[AiRunController] send_message_timeout", {
-				thread_id: threadId,
-				error: readableError,
-			});
-		} else {
-			console.warn("[AiRunController] send_failed", {
-				thread_id: threadId,
-				error: readableError,
-			});
-		}
+			: networkError
+				? AGENT_UNREACHABLE_MESSAGE
+				: readableError;
+		console.warn(
+			timeoutError
+				? "[AiRunController] send_message_timeout"
+				: networkError
+					? "[AiRunController] send_unreachable"
+					: "[AiRunController] send_failed",
+			{ thread_id: threadId, error: readableError },
+		);
 		this.appendMessage(threadId, {
 			id: newId(),
 			role: "assistant",
-			content: timeoutError ? AGENT_TIMEOUT_MESSAGE : FAILED_FALLBACK_MESSAGE,
+			content: timeoutError
+				? AGENT_TIMEOUT_MESSAGE
+				: networkError
+					? AGENT_UNREACHABLE_MESSAGE
+					: FAILED_FALLBACK_MESSAGE,
 			timestamp: nowIso(),
 			parseMode: "agent_error",
 		});
