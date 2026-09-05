@@ -18,11 +18,11 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { TaskGlyph } from "@/components/common/NodeGlyph";
 import {
 	SemanticBadge,
 	TaskStatusBadge,
 } from "@/components/common/SemanticBadge";
-import { TaskGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import { useRunningTaskId } from "@/components/team-time/useActiveTimer";
 import { useToast } from "@/contexts/ToastContext";

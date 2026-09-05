@@ -1,20 +1,31 @@
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-	ChevronDown,
+	CalendarClock,
+	FolderKanban,
 	LayoutDashboard,
+	ListChecks,
 	Maximize2,
 	Minimize2,
-	Paperclip,
-	Send,
+	Sparkles,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { BrandMark } from "@/components/brand/BrandMark";
+import { type ReactNode, useCallback, useMemo } from "react";
 import {
-	Badge,
-	Sheet,
-	ILLUSTRATION_SVG_PROPS as SVG_PROPS,
-} from "@/components/common/illustrationPrimitives";
+	AiAssistantIntro,
+	AiAssistantWordmark,
+	type AiQuickPrompt,
+} from "@/components/ai/AiAssistantIdentity";
+import { AiAssistantPanel } from "@/components/ai/AiAssistantPanel";
+import type { RunHooks } from "@/components/ai/runController";
+import type { AiSessionScope } from "@/components/ai/scope";
+import { BrandMark } from "@/components/brand/BrandMark";
+import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
+import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { projectKeys } from "@/queries/project";
+import type { RunCommitView } from "@/services/ai-agent.service";
 
 /**
  * The dashboard's assistant, in its two shapes.
@@ -27,27 +38,123 @@ import { useIsMobile } from "@/hooks/useIsMobile";
  * slot), so it holds the full height of the window and scrolls its own thread
  * while the dashboard scrolls past it.
  *
- * `DashboardAiFullscreen` is the same assistant given the whole page: a
- * centred composer on an empty field with the logomark watermarked behind it.
- * The sidebar stays, so you are still in the app rather than in a modal you
- * have to escape from.
+ * `DashboardAiFullscreen` is the same assistant given the whole page: the
+ * thread and a centred composer on an open field with the logomark
+ * watermarked behind it. The sidebar stays, so you are still in the app rather
+ * than in a modal you have to escape from.
+ *
+ * Both are the shared AI kit (`components/ai`) in WORKSPACE scope: one session
+ * per workspace, so the assistant can read and edit any roadmap the user can
+ * reach, and @-mentions pull projects, roadmaps, nodes and teams into the turn.
+ * Both shapes are mounted at once (the rail stays under the overlay so the
+ * circular reveal lands back on a page that never went away) and they share
+ * the thread, the draft and the run: a send started in the rail is visible in
+ * fullscreen and cannot be sent twice. While the overlay is open the rail is
+ * `inert` and hidden from assistive tech, so there is exactly one interactive
+ * "Proyekto assistant" on the page at a time.
+ *
+ * Nothing here touches `roadmapStore`: the dashboard renders MANY roadmaps
+ * and the store is a singleton for one. Commits refresh through query
+ * invalidation only (`invalidateAfterDashboardCommits`).
  *
  * Both wear the product's own logomark and are called Proyekto: it is the
  * product answering, not a third-party bot bolted into the corner.
- *
- * UI ONLY. Nothing here talks to the agent: the thread menu does not open, the
- * attachment button does not pick a file, and Send stays disabled. It is
- * deliberately not faking a reply — a canned answer would be a lie about a
- * feature that does not exist, and would have to be unpicked when the real
- * session lands. Expanding and collapsing are the only things that work.
  */
 
-const NOT_CONNECTED =
-	"Not connected yet — this is the panel, not the assistant.";
+const RAIL_ARIA_LABEL = "Proyekto assistant";
+const FULLSCREEN_ARIA_LABEL = "Proyekto assistant, full screen";
+const COMPOSER_PLACEHOLDER = "Ask Proyekto...";
+const COMPOSER_ARIA_LABEL = "Ask Proyekto";
+const UNAVAILABLE_HINT = "Choose a workspace to start";
+const INTRO_TITLE = "Ask Proyekto about your projects and roadmaps";
+const INTRO_SUBTITLE = "Pick a question or ask your own.";
+
+/**
+ * The questions on the intro cards. Each is sent verbatim as the first turn,
+ * so the label IS the prompt: what you click is what the assistant is asked.
+ * They lean on the workspace-scope tools (my tasks, the overview,
+ * cross-roadmap search), not on anything a fresh account would lack.
+ */
+const DASHBOARD_QUICK_PROMPTS: readonly AiQuickPrompt[] = [
+	{ prompt: "What are my assigned tasks?", icon: ListChecks },
+	{ prompt: "What should I work on today?", icon: Sparkles },
+	{ prompt: "What is overdue across my projects?", icon: CalendarClock },
+	{ prompt: "Summarize my projects and roadmaps", icon: FolderKanban },
+];
+
+// ─── Scope + commits ───────────────────────────────────────────────────────
+
+/**
+ * The workspace under `/w/<slug>/` is the session's scope. Null while the
+ * workspace list is loading (no hint yet — a hint that flashes on every
+ * reload teaches people to ignore it) or when the user belongs to none (then
+ * the hint is the honest state).
+ */
+function useDashboardAiScope(): {
+	scope: AiSessionScope | null;
+	unavailableHint: string | undefined;
+} {
+	const { workspace, isLoading } = useCurrentWorkspace();
+	const workspaceId = workspace?.id;
+	const slug = workspace?.slug;
+	const scope = useMemo<AiSessionScope | null>(
+		() =>
+			workspaceId && slug ? { kind: "workspace", workspaceId, slug } : null,
+		[workspaceId, slug],
+	);
+	return { scope, unavailableHint: isLoading ? undefined : UNAVAILABLE_HINT };
+}
+
+/**
+ * What a committed edit changes on this page: the roadmap preview cards, the
+ * project cards (a roadmap summary rides on each), the header search's full
+ * index, and the detail cache of every roadmap the run wrote to — so the next
+ * visit to that roadmap does not open on the pre-edit tree.
+ */
+export function invalidateAfterDashboardCommits(
+	queryClient: QueryClient,
+	commits: readonly RunCommitView[],
+): void {
+	void invalidateDashboardRoadmaps(queryClient);
+	void invalidateDashboardProjects(queryClient);
+	void queryClient.invalidateQueries({ queryKey: projectKeys.allRoadmapsFull });
+	const seen = new Set<string>();
+	for (const commit of commits) {
+		if (!commit.roadmap_id || seen.has(commit.roadmap_id)) continue;
+		seen.add(commit.roadmap_id);
+		void queryClient.invalidateQueries({
+			queryKey: projectKeys.roadmapFull(commit.roadmap_id),
+		});
+	}
+}
+
+function useDashboardCommits(): NonNullable<RunHooks["onCommits"]> {
+	const queryClient = useQueryClient();
+	return useCallback(
+		(commits) => invalidateAfterDashboardCommits(queryClient, commits),
+		[queryClient],
+	);
+}
+
+/**
+ * `?assistant=full` is owned by the dashboard route (it is what Back
+ * collapses). Read here rather than threaded through a prop so the route's
+ * `rail` slot stays a one-liner; the rail only ever mounts on that route.
+ */
+function useIsAssistantFullscreen(): boolean {
+	return useSearch({
+		from: "/w/$workspaceSlug/dashboard",
+		select: (search) => search.assistant === "full",
+	});
+}
 
 // ─── Rail ──────────────────────────────────────────────────────────────────
 
 export function DashboardAiRail({ onExpand }: { onExpand: () => void }) {
+	const { scope, unavailableHint } = useDashboardAiScope();
+	const onCommits = useDashboardCommits();
+	const isFullscreenOpen = useIsAssistantFullscreen();
+
 	return (
 		<aside
 			// No exit animation. The circular reveal already carries the whole
@@ -60,25 +167,42 @@ export function DashboardAiRail({ onExpand }: { onExpand: () => void }) {
 			// Hidden below xl, where the page is already narrow enough without
 			// giving 360px to a panel.
 			className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[360px] shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur xl:flex"
-			aria-label="Proyekto assistant"
+			// The overlay is drawn on top of a rail that never unmounts. `inert`
+			// takes it out of the tab order and the click path; `aria-hidden`
+			// takes it out of the accessibility tree, so the only "Proyekto
+			// assistant" a screen reader (or Playwright's strict mode) can find is
+			// the one you can actually use.
+			inert={isFullscreenOpen || undefined}
+			aria-hidden={isFullscreenOpen || undefined}
 		>
-			<AssistantHeader
-				actionLabel="Expand assistant"
-				actionTitle="Expand to full screen"
-				onAction={onExpand}
-				actionIcon={<Maximize2 className="h-3.5 w-3.5" />}
+			<AiAssistantPanel
+				scope={scope}
+				variant="rail"
+				ariaLabel={RAIL_ARIA_LABEL}
+				title={<AiAssistantWordmark />}
+				headerActions={
+					<IconButton
+						label="Expand assistant"
+						title="Expand to full screen"
+						onClick={onExpand}
+					>
+						<Maximize2 className="h-3.5 w-3.5" />
+					</IconButton>
+				}
+				emptyState={(context) => (
+					<AiAssistantIntro
+						title={INTRO_TITLE}
+						subtitle={INTRO_SUBTITLE}
+						prompts={DASHBOARD_QUICK_PROMPTS}
+						onAsk={context.send}
+						disabled={context.disabled}
+					/>
+				)}
+				placeholder={COMPOSER_PLACEHOLDER}
+				composerAriaLabel={COMPOSER_ARIA_LABEL}
+				unavailableHint={unavailableHint}
+				onCommits={onCommits}
 			/>
-
-			<div className="thin-scrollbar relative flex-1 space-y-3 overflow-y-auto px-3 py-4">
-				<AssistantIntro />
-			</div>
-
-			<footer className="border-t border-sidebar-border px-3 py-3">
-				<p className="mb-2 text-[11px] text-muted-foreground">
-					{NOT_CONNECTED}
-				</p>
-				<AssistantComposer />
-			</footer>
 		</aside>
 	);
 }
@@ -182,50 +306,66 @@ function AssistantFullscreenBody({
 	compact?: boolean;
 }) {
 	const reducedMotion = useReducedMotion();
+	const { scope, unavailableHint } = useDashboardAiScope();
+	const onCommits = useDashboardCommits();
 
 	return (
 		<>
-			<AssistantHeader
-				actionLabel="Exit full screen"
-				actionTitle="Back to the dashboard"
-				onAction={onCollapse}
-				actionIcon={<Minimize2 className="h-3.5 w-3.5" />}
-			/>
+			{/* The mark is watermarked behind the thread and pulled slightly
+			    above centre, so it reads as the page's own surface rather than
+			    as a picture sitting under a box. */}
+			{/* Decorative, and a 420px bitmap: it is the most expensive thing
+			    on this surface to composite, so the phones doing the sliding
+			    do not draw it. */}
+			{!compact && (
+				<BrandMark
+					variant="logomark"
+					ariaLabel=""
+					className="pointer-events-none absolute top-1/2 left-1/2 h-[420px] -translate-x-1/2 -translate-y-[60%] opacity-[0.04]"
+				/>
+			)}
 
-			<div className="relative flex flex-1 items-center justify-center overflow-hidden px-4 pb-24">
-				{/* The mark is watermarked behind the composer and pulled slightly
-				    above centre, so it reads as the page's own surface rather than
-				    as a picture sitting under a box. */}
-				{/* Decorative, and a 420px bitmap: it is the most expensive thing
-				    on this surface to composite, so the phones doing the sliding
-				    do not draw it. */}
-				{!compact && (
-					<BrandMark
-						variant="logomark"
-						ariaLabel=""
-						className="pointer-events-none absolute top-1/2 left-1/2 h-[420px] -translate-x-1/2 -translate-y-[60%] opacity-[0.04]"
-					/>
+			{/* `relative` so the panel paints above the (positioned) watermark. */}
+			<AiAssistantPanel
+				scope={scope}
+				variant="fullscreen"
+				ariaLabel={FULLSCREEN_ARIA_LABEL}
+				className="relative"
+				title={<AiAssistantWordmark />}
+				headerActions={
+					<IconButton
+						label="Exit full screen"
+						title="Back to the dashboard"
+						onClick={onCollapse}
+					>
+						<Minimize2 className="h-3.5 w-3.5" />
+					</IconButton>
+				}
+				emptyState={(context) => (
+					// The same greeting the rail shows, above the field rather than
+					// filling the space where a thread will go — an empty page with
+					// only an input on it says nothing about what to type into it.
+					// It fades in once the reveal has cleared the composer.
+					<motion.div
+						initial={reducedMotion || compact ? false : { opacity: 0, y: 12 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.28, duration: 0.3, ease: "easeOut" }}
+					>
+						<AiAssistantIntro
+							title={INTRO_TITLE}
+							subtitle={INTRO_SUBTITLE}
+							prompts={DASHBOARD_QUICK_PROMPTS}
+							className="mb-4"
+							onAsk={context.send}
+							disabled={context.disabled}
+						/>
+					</motion.div>
 				)}
-
-				<motion.div
-					initial={reducedMotion || compact ? false : { opacity: 0, y: 12 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ delay: 0.28, duration: 0.3, ease: "easeOut" }}
-					className="relative w-full max-w-2xl"
-				>
-					{/* The same greeting the rail shows, above the field rather than
-					    filling the space where a thread will go — an empty page with
-					    only an input on it says nothing about what to type into it. */}
-					<AssistantIntro className="mb-6" />
-
-					<div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-						<AssistantComposer stacked />
-					</div>
-					<p className="mt-3 text-center text-xs text-muted-foreground">
-						{NOT_CONNECTED}
-					</p>
-				</motion.div>
-			</div>
+				placeholder={COMPOSER_PLACEHOLDER}
+				composerAriaLabel={COMPOSER_ARIA_LABEL}
+				unavailableHint={unavailableHint}
+				onCommits={onCommits}
+			/>
 		</>
 	);
 }
@@ -309,64 +449,6 @@ function SwitcherTab({
 
 // ─── Shared pieces ─────────────────────────────────────────────────────────
 
-/**
- * The header bar, identical in both shapes.
- *
- * One component rather than two copies of the same row: the rail and the
- * fullscreen view sit at the same top edge, and the moment their padding is
- * written out twice the lockup lands a few pixels off between them. Only the
- * trailing button differs — expand in one, collapse in the other.
- */
-function AssistantHeader({
-	actionLabel,
-	actionTitle,
-	onAction,
-	actionIcon,
-}: {
-	actionLabel: string;
-	actionTitle: string;
-	onAction: () => void;
-	actionIcon: ReactNode;
-}) {
-	return (
-		<div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
-			<AssistantWordmark />
-			{/* Identity on the left, controls on the right, in both shapes. */}
-			<div className="flex items-center gap-1">
-				<ThreadMenuButton />
-				<IconButton label={actionLabel} title={actionTitle} onClick={onAction}>
-					{actionIcon}
-				</IconButton>
-			</div>
-		</div>
-	);
-}
-
-function AssistantWordmark() {
-	return (
-		<div className="flex min-w-0 items-center gap-2">
-			<BrandMark variant="logomark" className="h-4 shrink-0" ariaLabel="" />
-			<span className="text-xs font-semibold text-sidebar-foreground">
-				Proyekto
-			</span>
-		</div>
-	);
-}
-
-function ThreadMenuButton() {
-	return (
-		<button
-			type="button"
-			disabled
-			title="Threads arrive with the assistant"
-			className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 text-xs text-sidebar-foreground hover:bg-sidebar-accent disabled:cursor-not-allowed disabled:opacity-60"
-		>
-			<span className="max-w-[140px] truncate">New chat</span>
-			<ChevronDown size={12} />
-		</button>
-	);
-}
-
 function IconButton({
 	label,
 	title,
@@ -388,140 +470,5 @@ function IconButton({
 		>
 			{children}
 		</button>
-	);
-}
-
-/**
- * `className` carries the layout: the rail centres this in the empty thread
- * area (`h-full`), the fullscreen view stacks it directly above the composer.
- */
-function AssistantIntro({ className = "h-full" }: { className?: string }) {
-	return (
-		<div
-			className={`flex flex-col items-center justify-center px-4 text-center ${className}`}
-		>
-			<AskIllustration className="mb-3 h-20 w-20" />
-			<p className="text-sm font-medium text-sidebar-foreground">
-				Ask Proyekto about your projects and roadmaps
-			</p>
-			<p className="mt-1 text-xs text-muted-foreground">
-				Example: "what should I work on today?"
-			</p>
-		</div>
-	);
-}
-
-/**
- * The composer, in one row (rail) or with the controls under the field
- * (fullscreen, where the field is wide enough that buttons beside it would
- * strand them at the far edge).
- */
-function AssistantComposer({ stacked = false }: { stacked?: boolean }) {
-	const [input, setInput] = useState("");
-
-	const field = (
-		<textarea
-			value={input}
-			onChange={(event) => setInput(event.target.value)}
-			rows={stacked ? 2 : 1}
-			placeholder="Ask Proyekto..."
-			aria-label="Ask Proyekto"
-			className={
-				stacked
-					? "no-scrollbar max-h-60 min-h-12 w-full resize-none overflow-y-auto bg-transparent text-[15px] outline-none placeholder:text-muted-foreground [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-					: "no-scrollbar max-h-40 min-h-10 flex-1 resize-none overflow-y-auto rounded-xl border border-sidebar-border bg-sidebar px-3 py-2 text-sm [-ms-overflow-style:none] [scrollbar-width:none] focus:border-sidebar-ring focus:outline-none focus:ring-2 focus:ring-sidebar-ring/30 [&::-webkit-scrollbar]:hidden"
-			}
-		/>
-	);
-
-	const attach = (
-		<button
-			type="button"
-			disabled
-			title="Attachments arrive with the assistant"
-			aria-label="Add attachment"
-			className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			<Paperclip className="h-4 w-4" />
-		</button>
-	);
-
-	const send = (
-		<button
-			type="button"
-			disabled
-			title="The assistant is not connected yet"
-			aria-label="Send message"
-			className="ai-gradient-bg inline-flex h-10 w-10 items-center justify-center rounded-xl text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			<Send className="h-4 w-4" />
-		</button>
-	);
-
-	if (!stacked) {
-		return (
-			<div className="flex items-end gap-2">
-				{attach}
-				{field}
-				{send}
-			</div>
-		);
-	}
-
-	return (
-		<>
-			{field}
-			<div className="mt-2 flex items-center justify-end gap-2">
-				{attach}
-				{send}
-			</div>
-		</>
-	);
-}
-
-/**
- * A conversation waiting to happen: two message bubbles on the sheet, with the
- * sparkle badge. Same grammar as every other illustration in the app
- * (`common/illustrationPrimitives.tsx`) — a `Bot` glyph from the icon set says
- * "robot", which is neither what this is nor what it is called.
- */
-function AskIllustration({ className }: { className?: string }) {
-	return (
-		<svg {...SVG_PROPS} className={className}>
-			<Sheet y={10} h={28} />
-			<rect
-				x="10.5"
-				y="16"
-				width="14"
-				height="5"
-				rx="2.5"
-				className="fill-muted-foreground"
-				opacity="0.25"
-			/>
-			<rect
-				x="15.5"
-				y="23.5"
-				width="14"
-				height="5"
-				rx="2.5"
-				className="fill-primary"
-				opacity="0.9"
-			/>
-			<rect
-				x="10.5"
-				y="31"
-				width="9"
-				height="4"
-				rx="2"
-				className="fill-muted-foreground"
-				opacity="0.18"
-			/>
-			<Badge cy={17}>
-				<path
-					d="M36 12.8c0.5 2.6 1.6 3.7 4.2 4.2-2.6 0.5-3.7 1.6-4.2 4.2-0.5-2.6-1.6-3.7-4.2-4.2 2.6-0.5 3.7-1.6 4.2-4.2Z"
-					className="fill-primary-foreground"
-				/>
-			</Badge>
-		</svg>
 	);
 }

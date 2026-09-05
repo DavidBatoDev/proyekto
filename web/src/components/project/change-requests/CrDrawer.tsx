@@ -2,13 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, CalendarClock } from "lucide-react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { Avatar } from "@/components/common/Avatar";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import {
 	CHANGE_REQUEST_STATUS_LABEL,
 	changeRequestReference,
 	crLinkSegments,
 	timelineImpact,
 } from "@/components/project/delivery/changeRequestModel";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import type { ChangeRequest } from "@/services/delivery.service";
 import type { ProfileSummary } from "@/services/teams.service";
 import { CrButton, CrStatusDot } from "./CrPrimitives";

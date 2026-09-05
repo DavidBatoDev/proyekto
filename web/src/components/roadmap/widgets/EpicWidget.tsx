@@ -10,6 +10,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { type DragEvent, memo, useEffect, useRef, useState } from "react";
+import { EpicGlyph } from "@/components/common/NodeGlyph";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import { useToast } from "@/hooks/useToast";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
@@ -21,7 +22,6 @@ import {
 } from "../collaboration/EditingPresenceBadge";
 import { CommentPreviewPopover } from "../shared/CommentPreviewPopover";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
-import { EpicGlyph } from "../shared/NodeGlyph";
 import {
 	type CanvasNodeProps,
 	Handle,

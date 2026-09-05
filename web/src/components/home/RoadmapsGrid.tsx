@@ -11,16 +11,18 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
-import { deleteRoadmap, getRoadmapsPreview } from "@/api";
+import { deleteRoadmap } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
 import { RoadmapStartTrigger } from "@/components/roadmap/RoadmapStartDialog";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
+import { roadmapsPreviewQueryOptions } from "@/hooks/useRoadmapsPreviewQuery";
 import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
+import { useUser } from "@/stores/authStore";
 
 // Dashboard shows this many roadmap cards before the "View more" toggle reveals
 // the rest with a staggered slide-up.
@@ -106,14 +108,8 @@ export function RoadmapsGrid() {
 		}
 	};
 
-	const roadmapsQuery = useQuery({
-		queryKey: ["dashboard", "roadmaps-preview"],
-		queryFn: () => getRoadmapsPreview(),
-		staleTime: 30 * 1000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-		retry: 1,
-	});
+	const user = useUser();
+	const roadmapsQuery = useQuery(roadmapsPreviewQueryOptions(user?.id));
 	const isDemo = useTourDemoActive();
 	// See TeamsGrid: fixtures replace the query result before the card mapping,
 	// and the loading/error states are suppressed so a skeleton or an error

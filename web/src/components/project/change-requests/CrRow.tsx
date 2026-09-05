@@ -11,6 +11,7 @@ import {
 import { useRef, useState } from "react";
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { Avatar } from "@/components/common/Avatar";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import {
 	canDecide as canDecideRequest,
 	canMarkApplied,
@@ -23,7 +24,6 @@ import {
 	changeRequestReference,
 	crLinkSegments,
 } from "@/components/project/delivery/changeRequestModel";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import type { ChangeRequest } from "@/services/delivery.service";
 import type { ProfileSummary } from "@/services/teams.service";
 import { CrDays, CrIconButton, CrStatusDot } from "./CrPrimitives";

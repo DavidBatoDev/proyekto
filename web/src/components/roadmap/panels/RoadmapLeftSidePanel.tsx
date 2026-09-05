@@ -30,8 +30,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { EpicGlyph, FeatureGlyph } from "@/components/common/NodeGlyph";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
-import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { TaskListItem } from "../widgets/TaskListItem";

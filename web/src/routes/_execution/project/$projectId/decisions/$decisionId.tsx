@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { AppTabs } from "@/components/common/AppTabs";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import {
 	DecisionButton,
@@ -40,7 +41,6 @@ import {
 import { FinalizeDecisionModal } from "@/components/project/delivery/FinalizeDecisionModal";
 import { ActivityFeed } from "@/components/project/logs/ActivityFeed";
 import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import {
 	useDecisionCategoriesQuery,

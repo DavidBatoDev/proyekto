@@ -10,6 +10,8 @@ import {
 	Send,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RoadmapAiClarifierCard } from "@/components/ai/AiClarifierCard";
+import { buildClarifierDisplayLabel } from "@/components/ai/AiClarifierCard.logic";
 import Header from "@/components/layout/Header";
 import { featureFlags } from "@/config/featureFlags";
 import {
@@ -44,8 +46,6 @@ import {
 import type { AgentClarifierAnswerEntry } from "@/services/roadmap-agent.service";
 import { uploadService } from "@/services/upload.service";
 import { useIsLoading, useUser } from "@/stores/authStore";
-import { RoadmapAiClarifierCard } from "./ai/RoadmapAiClarifierCard";
-import { buildClarifierDisplayLabel } from "./ai/RoadmapAiClarifierCard.logic";
 import {
 	buildTurnFromAnswers,
 	INTAKE_SLOT_CHIPS,

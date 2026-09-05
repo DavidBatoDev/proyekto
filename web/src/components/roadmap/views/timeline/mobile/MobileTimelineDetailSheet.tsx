@@ -2,7 +2,7 @@ import { ArrowUpRight, CalendarOff, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { DateField } from "@/components/common/DateField";
-import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
+import { EpicGlyph, FeatureGlyph } from "@/components/common/NodeGlyph";
 import {
 	fmtEpicDateRange,
 	getInclusiveDays,

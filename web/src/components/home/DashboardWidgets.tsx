@@ -1,12 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
-import {
-	getRoadmapsPreview,
-	type RoadmapPreview,
-} from "@/api/endpoints/roadmap";
+import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { TourDemoBanner } from "@/components/tour/TourDemoBanner";
+import { roadmapsPreviewQueryOptions } from "@/hooks/useRoadmapsPreviewQuery";
 import { useTourDemo } from "@/lib/tours/demo/TourDemoContext";
 import { type Meeting, meetingsService } from "@/services/meetings.service";
 import { type Project, projectService } from "@/services/project.service";
@@ -65,14 +63,7 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
-	const timelineQuery = useQuery({
-		queryKey: ["dashboard", "roadmaps-preview"],
-		queryFn: () => getRoadmapsPreview(),
-		staleTime: 30_000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-		retry: 1,
-	});
+	const timelineQuery = useQuery(roadmapsPreviewQueryOptions(user?.id));
 	const meetingsQuery = useQuery({
 		queryKey: [
 			"dashboard",

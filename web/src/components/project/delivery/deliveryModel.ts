@@ -5,10 +5,10 @@ import {
 import type { Deliverable, DeliverableLink } from "@/services/delivery.service";
 import type { StatusTone } from "./DeliveryPrimitives";
 
+export type { RoadmapNodeKind } from "@/components/common/NodeGlyph";
 // Re-exported so the many existing `from "./deliveryModel"` imports of these two
 // keep working; both now live in the neutral roadmap-links module.
 export type { LinkSegment } from "@/components/project/roadmap-links/linkTrail";
-export type { RoadmapNodeKind } from "@/components/roadmap/shared/NodeGlyph";
 
 /**
  * Presentation rules for deliverables, kept out of the components so they are

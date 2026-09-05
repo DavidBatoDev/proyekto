@@ -271,7 +271,7 @@ export function ListEmpty({ children }: { children: ReactNode }) {
  * Risks call sites are untouched — and because the old home meant this shared
  * file imported `RoadmapNodeKind` from the Deliverables model.
  */
-export { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
+export { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 
 /**
  * The blank slate for a whole page.

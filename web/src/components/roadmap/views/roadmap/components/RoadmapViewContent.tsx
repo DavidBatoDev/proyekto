@@ -1420,7 +1420,6 @@ export function RoadmapViewContent({
 									<RoadmapAiAssistantPanel
 										projectId={projectId}
 										roadmapId={roadmap.id}
-										roadmapSnapshot={roadmap}
 										isVisible={isAiChatPanelOpen}
 										initialMessage={initialAiMessage}
 										onInitialMessageConsumed={handleInitialAiMessageConsumed}

@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRoadmapsPreview } from "@/api/endpoints/roadmap";
 import {
 	useTourDemo,
 	useTourDemoActive,
@@ -13,6 +12,7 @@ import {
 } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 import { dashboardProjectsQueryOptions } from "./useDashboardProjectsQuery";
+import { roadmapsPreviewQueryOptions } from "./useRoadmapsPreviewQuery";
 
 /**
  * Does this account have anything on it yet?
@@ -40,14 +40,7 @@ export function useDashboardContent() {
 		...dashboardProjectsQueryOptions(user?.id),
 		retry: 1,
 	});
-	const roadmapsQuery = useQuery({
-		queryKey: ["dashboard", "roadmaps-preview"],
-		queryFn: () => getRoadmapsPreview(),
-		staleTime: 30_000,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-		retry: 1,
-	});
+	const roadmapsQuery = useQuery(roadmapsPreviewQueryOptions(user?.id));
 	const teamsQuery = useQuery({
 		queryKey: ["teams", "mine", user?.id ?? "anonymous"] as const,
 		queryFn: listMyTeams,

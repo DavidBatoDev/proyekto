@@ -966,14 +966,17 @@ html[data-ui-theme="dark"] {
 }
 
 .ai-gradient-text {
-  background-image: linear-gradient(90deg, rgb(37, 99, 235), rgb(67, 56, 202));
+  background-image: linear-gradient(90deg, var(--primary), var(--primary-dark));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 .ai-gradient-bg {
-  background-image: linear-gradient(135deg, rgb(37, 99, 235), rgb(67, 56, 202));
+  /* Theme tokens, not frozen hex: the old blue-600 -> indigo-700 pair ignored
+     the dark palette (where --primary brightens to blue-500) and dragged an
+     indigo the theme does not own into every AI surface. */
+  background-image: linear-gradient(135deg, var(--primary), var(--primary-dark));
 }
 
 .ai-gradient-soft {

@@ -17,7 +17,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, ChevronDown, GripVertical } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
+import { EpicGlyph, FeatureGlyph } from "@/components/common/NodeGlyph";
 import { useToast } from "@/hooks/useToast";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import {

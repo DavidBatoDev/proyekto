@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, Gavel, Link2Off, Lock } from "lucide-react";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import { CategoryChip } from "@/components/project/delivery/CategoryChip";
 import { isOptimisticId } from "@/components/project/delivery/decisionCache";
 import {
@@ -8,7 +9,6 @@ import {
 	decisionReference,
 	selectedOption,
 } from "@/components/project/delivery/decisionModel";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import type { Decision } from "@/services/delivery.service";
 import {
 	DecisionButton,

@@ -1,0 +1,283 @@
+import type { FC } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type {
+	AgentClarifierAnswerEntry,
+	AgentClarifierCard,
+} from "@/services/ai-agent.service";
+import type { ClarifierCardLike } from "./AiClarifierCard.logic";
+import {
+	buildClarifierAnswers,
+	CUSTOM_SENTINEL,
+	findCatchAllOptionIndex,
+	isClarifierQuestionAnswered,
+	resolveClarifierQuestions,
+} from "./AiClarifierCard.logic";
+
+export interface AiClarifierCardProps {
+	card: ClarifierCardLike;
+	onSubmit: (answers: AgentClarifierAnswerEntry[]) => void;
+	disabled?: boolean;
+	/** Overrides the lane-derived badge for non-agent surfaces. */
+	badgeLabel?: string;
+}
+
+const laneLabel = (lane: AgentClarifierCard["lane"] | undefined): string => {
+	if (lane === "plan") return "Plan clarifier";
+	if (lane === "query") return "Resolve reference";
+	if (lane === "edit") return "Edit clarifier";
+	return "Clarifier";
+};
+
+export const AiClarifierCard: FC<AiClarifierCardProps> = ({
+	card,
+	onSubmit,
+	disabled,
+	badgeLabel,
+}) => {
+	const questions = useMemo(() => resolveClarifierQuestions(card), [card]);
+	const [currentIndex, setCurrentIndex] = useState<number>(0);
+	const [selections, setSelections] = useState<Record<string, string[]>>({});
+	const [customs, setCustoms] = useState<Record<string, string>>({});
+
+	// Reset pagination + drafts when a new card replaces this one (e.g. the
+	// agent asked a follow-up clarifier after the first answers).
+	useEffect(() => {
+		setCurrentIndex(0);
+		setSelections({});
+		setCustoms({});
+	}, [card.question_id]);
+
+	if (questions.length === 0) return null;
+
+	const boundedIndex = Math.min(currentIndex, questions.length - 1);
+	const currentQ = questions[boundedIndex];
+	const totalQuestions = questions.length;
+	const hasMultiple = totalQuestions > 1;
+	const isLast = boundedIndex === totalQuestions - 1;
+
+	const selected = selections[currentQ.id] ?? [];
+	const customText = customs[currentQ.id] ?? "";
+	const customSelected = selected.includes(CUSTOM_SENTINEL);
+
+	/**
+	 * The model is prone to inventing its own "Other — please specify" option.
+	 * When it does, that option becomes the free-text trigger and the card's own
+	 * row is suppressed, so the user sees one catch-all with a working text box
+	 * rather than two rows (or, previously, one that promised a box and had
+	 * none). This also overrides `allow_custom: false`, which the model
+	 * sometimes sets alongside its own catch-all — leaving no way to answer.
+	 */
+	const catchAllIndex = findCatchAllOptionIndex(currentQ);
+	const hasCatchAllOption = catchAllIndex !== -1;
+	const allowCustom = !hasCatchAllOption && currentQ.allow_custom !== false;
+
+	const currentAnswered = isClarifierQuestionAnswered(
+		currentQ,
+		selections,
+		customs,
+	);
+	const allAnswered = questions.every((q) =>
+		isClarifierQuestionAnswered(q, selections, customs),
+	);
+
+	const setValue = (value: string) => {
+		setSelections((prev) => {
+			const existing = prev[currentQ.id] ?? [];
+			if (currentQ.multi_select) {
+				const next = existing.includes(value)
+					? existing.filter((v) => v !== value)
+					: [...existing, value];
+				return { ...prev, [currentQ.id]: next };
+			}
+			return { ...prev, [currentQ.id]: [value] };
+		});
+	};
+
+	const setCurrentCustom = (value: string) => {
+		setCustoms((prev) => ({ ...prev, [currentQ.id]: value }));
+	};
+
+	const handleNext = () => {
+		if (!currentAnswered || disabled || isLast) return;
+		setCurrentIndex(boundedIndex + 1);
+	};
+
+	const handleBack = () => {
+		if (boundedIndex === 0 || disabled) return;
+		setCurrentIndex(boundedIndex - 1);
+	};
+
+	const handleSubmit = () => {
+		if (!allAnswered || disabled) return;
+		onSubmit(buildClarifierAnswers(questions, selections, customs));
+		setSelections({});
+		setCustoms({});
+		setCurrentIndex(0);
+	};
+
+	const inputType = currentQ.multi_select ? "checkbox" : "radio";
+	const groupName = `clarifier-${card.question_id}-${currentQ.id}`;
+
+	return (
+		<div
+			data-testid="clarifier-card"
+			className="ai-gradient-soft mt-2 rounded-lg border border-primary/30 p-3 text-card-foreground"
+		>
+			<div className="mb-2 flex items-center gap-2">
+				<span className="ai-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+					{badgeLabel ?? laneLabel(card.lane)}
+				</span>
+				{currentQ.header ? (
+					<span className="inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+						{currentQ.header}
+					</span>
+				) : null}
+				{hasMultiple ? (
+					<span className="text-xs font-medium text-primary">
+						Question {boundedIndex + 1} of {totalQuestions}
+					</span>
+				) : null}
+			</div>
+
+			<div
+				data-testid="clarifier-question"
+				data-question-id={currentQ.id}
+				data-multi-select={currentQ.multi_select}
+			>
+				<div className="mb-1 text-sm font-medium text-foreground">
+					{currentQ.question}
+				</div>
+				{currentQ.multi_select ? (
+					<div className="mb-2 text-xs text-muted-foreground">
+						Select all that apply
+					</div>
+				) : (
+					<div className="mb-2" />
+				)}
+
+				<div className="space-y-1.5">
+					{currentQ.options.map((option, idx) => {
+						const optionId = `clarifier-${currentQ.id}-opt-${idx}`;
+						// The model's own catch-all answers to the sentinel, not to its
+						// literal label — otherwise picking it submits the word "Other".
+						const isCatchAll = idx === catchAllIndex;
+						const optionValue = isCatchAll ? CUSTOM_SENTINEL : option.label;
+						return (
+							<div key={optionId}>
+								<label
+									htmlFor={optionId}
+									data-testid={
+										isCatchAll ? "clarifier-other" : "clarifier-option"
+									}
+									data-option-label={option.label}
+									className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-foreground hover:bg-primary/10"
+								>
+									<input
+										id={optionId}
+										type={inputType}
+										name={groupName}
+										value={optionValue}
+										checked={selected.includes(optionValue)}
+										onChange={() => setValue(optionValue)}
+										disabled={disabled}
+										className="mt-0.5"
+									/>
+									<span>
+										{option.label}
+										{option.description ? (
+											<span className="block text-xs text-muted-foreground">
+												{option.description}
+											</span>
+										) : null}
+									</span>
+								</label>
+								{isCatchAll && customSelected ? (
+									<textarea
+										data-testid="clarifier-other-input"
+										value={customText}
+										onChange={(event) => setCurrentCustom(event.target.value)}
+										disabled={disabled}
+										rows={2}
+										placeholder="Type your answer..."
+										className="mt-1.5 w-full rounded-md border border-input bg-card px-2 py-1 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+									/>
+								) : null}
+							</div>
+						);
+					})}
+
+					{allowCustom ? (
+						<div>
+							<label
+								htmlFor={`clarifier-${currentQ.id}-custom`}
+								data-testid="clarifier-other"
+								className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-foreground hover:bg-primary/10"
+							>
+								<input
+									id={`clarifier-${currentQ.id}-custom`}
+									type={inputType}
+									name={groupName}
+									value={CUSTOM_SENTINEL}
+									checked={customSelected}
+									onChange={() => setValue(CUSTOM_SENTINEL)}
+									disabled={disabled}
+									className="mt-0.5"
+								/>
+								<span>Other...</span>
+							</label>
+							{customSelected ? (
+								<textarea
+									data-testid="clarifier-other-input"
+									value={customText}
+									onChange={(event) => setCurrentCustom(event.target.value)}
+									disabled={disabled}
+									rows={2}
+									placeholder="Type your answer..."
+									className="mt-1.5 w-full rounded-md border border-input bg-card px-2 py-1 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+								/>
+							) : null}
+						</div>
+					) : null}
+				</div>
+			</div>
+
+			<div className="mt-3 flex items-center gap-2 border-t border-border pt-2">
+				{hasMultiple && boundedIndex > 0 ? (
+					<button
+						type="button"
+						data-testid="clarifier-back"
+						onClick={handleBack}
+						disabled={disabled}
+						className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						Back
+					</button>
+				) : null}
+				{!isLast ? (
+					<button
+						type="button"
+						data-testid="clarifier-next"
+						onClick={handleNext}
+						disabled={!currentAnswered || disabled}
+						className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						Next
+					</button>
+				) : (
+					<button
+						type="button"
+						data-testid="clarifier-submit"
+						onClick={handleSubmit}
+						disabled={!allAnswered || disabled}
+						className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{hasMultiple ? "Submit answers" : "Submit answer"}
+					</button>
+				)}
+			</div>
+		</div>
+	);
+};
+
+/** @deprecated Transitional alias for the roadmap intake flow; removed in PR5. */
+export { AiClarifierCard as RoadmapAiClarifierCard };

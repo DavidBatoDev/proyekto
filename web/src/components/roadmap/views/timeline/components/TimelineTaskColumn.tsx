@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, GripVertical, Plus } from "lucide-react";
-import { EpicGlyph, FeatureGlyph } from "@/components/roadmap/shared/NodeGlyph";
+import { EpicGlyph, FeatureGlyph } from "@/components/common/NodeGlyph";
 import {
 	ROW_H,
 	rowDisplayKey,

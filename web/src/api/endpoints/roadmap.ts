@@ -47,6 +47,11 @@ export interface RoadmapPreview extends Omit<Roadmap, "epics" | "milestones"> {
 	project?: {
 		id: string;
 		title: string;
+		/**
+		 * The project's workspace (the backend embeds it; roadmaps themselves
+		 * carry no workspace_id). Null/absent for an unhomed project.
+		 */
+		workspace_id?: string | null;
 	} | null;
 	milestones: Array<
 		Pick<

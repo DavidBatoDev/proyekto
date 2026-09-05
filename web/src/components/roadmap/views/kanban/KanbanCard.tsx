@@ -11,7 +11,7 @@ import {
 	EpicGlyph,
 	FeatureGlyph,
 	TaskGlyph,
-} from "@/components/roadmap/shared/NodeGlyph";
+} from "@/components/common/NodeGlyph";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { KanbanTaskContext } from "./types";
 

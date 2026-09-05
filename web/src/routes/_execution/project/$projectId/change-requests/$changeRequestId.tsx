@@ -14,6 +14,7 @@ import { useState } from "react";
 import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { AppTabs } from "@/components/common/AppTabs";
 import { Avatar } from "@/components/common/Avatar";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 import {
 	CrButton,
@@ -39,7 +40,6 @@ import {
 import { RecordAppliedModal } from "@/components/project/delivery/RecordAppliedModal";
 import { ActivityFeed } from "@/components/project/logs/ActivityFeed";
 import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import {
 	useChangeRequestMutations,

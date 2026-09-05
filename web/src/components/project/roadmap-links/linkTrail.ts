@@ -1,4 +1,4 @@
-import type { RoadmapNodeKind } from "@/components/roadmap/shared/NodeGlyph";
+import type { RoadmapNodeKind } from "@/components/common/NodeGlyph";
 
 /**
  * One level of an Epic → Feature → Task trail, keeping its kind so the UI can

@@ -8,7 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { RoadmapNodeGlyph } from "@/components/roadmap/shared/NodeGlyph";
+import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useAllRoadmapsFullQuery } from "@/hooks/useProjectQueries";
 import { isActiveConsultant } from "@/lib/auth-utils";

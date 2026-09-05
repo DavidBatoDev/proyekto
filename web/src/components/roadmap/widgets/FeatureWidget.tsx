@@ -26,6 +26,7 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { FeatureGlyph, TaskGlyph } from "@/components/common/NodeGlyph";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
 import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
@@ -48,7 +49,6 @@ import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
-import { FeatureGlyph, TaskGlyph } from "../shared/NodeGlyph";
 import {
 	type CanvasNodeProps,
 	Handle,

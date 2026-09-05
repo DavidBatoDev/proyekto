@@ -7,6 +7,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState } from "react";
+import { AiAssistantWordmark } from "@/components/ai/AiAssistantIdentity";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { Roadmap } from "@/types/roadmap";
 import { RoadmapAiAssistantPanel } from "../../../ai/RoadmapAiAssistantPanel";
@@ -151,17 +152,15 @@ export function MobileRoadmapView({
 							animate={{ y: 0 }}
 							exit={{ y: "100%" }}
 							transition={{ duration: 0.25, ease: "easeOut" }}
-							className="fixed inset-x-0 bottom-0 top-14 z-[60] flex flex-col overflow-hidden rounded-t-2xl bg-white"
+							className="fixed inset-x-0 bottom-0 top-14 z-[60] flex flex-col overflow-hidden rounded-t-2xl bg-card"
 						>
-							<div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
-								<span className="text-sm font-semibold text-slate-900">
-									AI Assistant
-								</span>
+							<div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 text-foreground">
+								<AiAssistantWordmark />
 								<button
 									type="button"
 									onClick={onToggleAiPanel}
 									aria-label="Close AI assistant"
-									className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+									className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
 								>
 									<X className="h-5 w-5" />
 								</button>
@@ -170,7 +169,6 @@ export function MobileRoadmapView({
 								<RoadmapAiAssistantPanel
 									projectId={projectId}
 									roadmapId={roadmap.id}
-									roadmapSnapshot={roadmap}
 									isVisible={isAiChatPanelOpen}
 									initialMessage={initialAiMessage}
 									onInitialMessageConsumed={onInitialAiMessageConsumed}

@@ -1,0 +1,417 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { AiActivityStep, AiActivityTimeline } from "./types";
+
+interface AiActivityTimelineProps {
+	timeline: AiActivityTimeline;
+	expanded: boolean;
+	onToggle: () => void;
+}
+
+const RUNNING_VISIBLE_STEP_COUNT = 3;
+
+export const toElapsedSeconds = (
+	timeline: AiActivityTimeline,
+	now: number,
+): number => {
+	if (
+		typeof timeline.elapsedMs === "number" &&
+		Number.isFinite(timeline.elapsedMs)
+	) {
+		return Math.max(1, Math.round(timeline.elapsedMs / 1000));
+	}
+	if (!timeline.startedAt) return 0;
+	const startedMs = Date.parse(timeline.startedAt);
+	if (!Number.isFinite(startedMs)) return 0;
+	const endMs = timeline.completedAt ? Date.parse(timeline.completedAt) : now;
+	if (!Number.isFinite(endMs)) return 0;
+	return Math.max(0, Math.round((endMs - startedMs) / 1000));
+};
+
+export const getVisibleTimelineSteps = (
+	steps: AiActivityStep[],
+	done: boolean,
+): AiActivityStep[] => {
+	if (done) return steps;
+	return steps.slice(-RUNNING_VISIBLE_STEP_COUNT);
+};
+
+// One row per tool call: a result consumes its nearest earlier unconsumed
+// requested row (matched by toolName), so an in-flight call shows its
+// requested spinner and a completed call shows only the outcome — the row
+// flips in place when the result event lands. Only named pairs collapse;
+// unnamed steps and every other event pass through untouched.
+export function collapseToolCallPairs(
+	steps: AiActivityStep[],
+): AiActivityStep[] {
+	const consumedSeqs = new Set<number>();
+	for (let i = 0; i < steps.length; i++) {
+		const step = steps[i];
+		if (step.event !== "tool_call_result" || !step.toolName) continue;
+		for (let j = i - 1; j >= 0; j--) {
+			const candidate = steps[j];
+			if (
+				candidate.event === "tool_call_requested" &&
+				candidate.toolName === step.toolName &&
+				!consumedSeqs.has(candidate.seq)
+			) {
+				consumedSeqs.add(candidate.seq);
+				break;
+			}
+		}
+	}
+	if (consumedSeqs.size === 0) return steps;
+	return steps.filter((step) => !consumedSeqs.has(step.seq));
+}
+
+// "Planning the next steps" (provider_attempt, one per model turn) is
+// redundant once the turn has real content — thought rows narrate the same
+// moments. Keep it only as the live trailing spinner between turns, or as
+// the sole row for no-tool turns so the timeline is never hollow (the reason
+// it stays visible in curated mode — see SHARED_HIDDEN_ACTIVITY_EVENTS in
+// aiProgress.ts).
+export function declutterProviderAttempts(
+	steps: AiActivityStep[],
+	done: boolean,
+): AiActivityStep[] {
+	const filtered = steps.filter((step, index) => {
+		if (step.event !== "provider_attempt") return true;
+		const hasLaterContent = steps
+			.slice(index + 1)
+			.some((later) => later.event !== "provider_attempt");
+		if (hasLaterContent) return false;
+		return !done && index === steps.length - 1;
+	});
+	if (filtered.length > 0) return filtered;
+	for (let i = steps.length - 1; i >= 0; i--) {
+		if (steps[i].event === "provider_attempt") return [steps[i]];
+	}
+	return filtered;
+}
+
+export const getTitleListOverflowCount = (
+	titleList: AiActivityTimeline["steps"][number]["titleList"] | undefined,
+): number => {
+	if (!titleList) return 0;
+	return Math.max(0, titleList.totalCount - titleList.shownCount);
+};
+
+export const getTimelineHeaderLabel = (
+	timeline: AiActivityTimeline,
+	seconds: number,
+): string => {
+	if (seconds > 0) {
+		if (timeline.done && seconds < 10) {
+			return "Worked in a while";
+		}
+		return `${timeline.done ? "Worked" : "Working"} for ${seconds} seconds`;
+	}
+	return timeline.done ? "Worked" : "Working...";
+};
+
+// Group consecutive steps with the same title into a single display entry.
+// This silently merges parallel tool calls so the timeline stays clean.
+// Thought steps are exempt: consecutive "Thinking" rows are distinct
+// narration lines, never parallel duplicates of one another.
+export function groupParallelSteps(steps: AiActivityStep[]): AiActivityStep[] {
+	const result: AiActivityStep[] = [];
+	let i = 0;
+	while (i < steps.length) {
+		const current = steps[i];
+		let j = i + 1;
+		while (
+			j < steps.length &&
+			steps[j].title === current.title &&
+			current.event !== "assistant_thought" &&
+			steps[j].event !== "assistant_thought"
+		) {
+			j++;
+		}
+		if (j - i === 1) {
+			result.push(current);
+		} else {
+			const group = steps.slice(i, j);
+			const worstStatus = group.reduce<AiActivityStep["status"]>((worst, s) => {
+				if (s.status === "error") return "error";
+				if (s.status === "running" && worst !== "error") return "running";
+				return worst;
+			}, current.status);
+			// Use last step's summary (result steps are more informative than request steps)
+			const lastSummary = group[group.length - 1].summary;
+			// Merge titleLists from all steps, deduplicating by value
+			const allItems = group
+				.flatMap((s) => s.titleList?.items ?? [])
+				.filter((item, idx, arr) => arr.indexOf(item) === idx);
+			const totalCount = group.reduce(
+				(sum, s) => sum + (s.titleList?.totalCount ?? 0),
+				0,
+			);
+			const hasMore = group.some((s) => s.titleList?.hasMore ?? false);
+			const mergedTitleList =
+				allItems.length > 0
+					? {
+							items: allItems,
+							shownCount: allItems.length,
+							totalCount,
+							hasMore,
+						}
+					: undefined;
+			// Patch the first number in the summary to match the real merged count
+			// e.g. "I found 1 matching roadmap item" → "I found 2 matching roadmap items"
+			const mergedCount = mergedTitleList?.items.length ?? 0;
+			const correctedSummary =
+				mergedCount > 0
+					? lastSummary.replace(/\b\d+\b/, String(mergedCount))
+					: lastSummary;
+			result.push({
+				...current,
+				status: worstStatus,
+				summary: correctedSummary,
+				titleList: mergedTitleList,
+			});
+		}
+		i = j;
+	}
+	return result;
+}
+
+const statusClassName: Record<string, string> = {
+	running: "text-muted-foreground",
+	success: "text-foreground",
+	error: "text-destructive",
+};
+
+export function AiActivityTimelineView({
+	timeline,
+	expanded,
+	onToggle,
+}: AiActivityTimelineProps) {
+	const [now, setNow] = useState(() => Date.now());
+	const [expandedStepSeq, setExpandedStepSeq] = useState<number | null>(null);
+	const previousDoneRef = useRef(timeline.done);
+
+	useEffect(() => {
+		if (timeline.done) return;
+		const handle = window.setInterval(() => {
+			setNow(Date.now());
+		}, 1000);
+		return () => window.clearInterval(handle);
+	}, [timeline.done]);
+
+	const seconds = useMemo(
+		() => toElapsedSeconds(timeline, now),
+		[timeline, now],
+	);
+	const workedLabel = useMemo(
+		() => getTimelineHeaderLabel(timeline, seconds),
+		[timeline, seconds],
+	);
+	const visibleSteps = useMemo(() => {
+		// Declutter on the FULL list before the running-mode window, so a
+		// requested row and its result never both occupy the last-3 slots.
+		const decluttered = declutterProviderAttempts(
+			collapseToolCallPairs(timeline.steps),
+			timeline.done,
+		);
+		return groupParallelSteps(
+			getVisibleTimelineSteps(decluttered, timeline.done),
+		);
+	}, [timeline]);
+
+	useEffect(() => {
+		if (visibleSteps.length === 0) {
+			setExpandedStepSeq(null);
+			return;
+		}
+		const newestSeq = visibleSteps[visibleSteps.length - 1].seq;
+		if (!timeline.done) {
+			// While running, always focus the latest row.
+			setExpandedStepSeq(newestSeq);
+			return;
+		}
+		setExpandedStepSeq((prev) =>
+			visibleSteps.some((step) => step.seq === prev) ? prev : null,
+		);
+	}, [visibleSteps, timeline.done]);
+
+	useEffect(() => {
+		if (!previousDoneRef.current && timeline.done) {
+			setExpandedStepSeq(null);
+		}
+		previousDoneRef.current = timeline.done;
+	}, [timeline.done]);
+
+	const toggleStep = (seq: number) => {
+		setExpandedStepSeq((prev) => (prev === seq ? null : seq));
+	};
+
+	return (
+		<div className="text-[11px] text-foreground">
+			<button
+				type="button"
+				className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+				onClick={onToggle}
+			>
+				<span className="inline-flex transition-transform duration-200 ease-out">
+					{expanded ? (
+						<ChevronDown className="h-3.5 w-3.5" />
+					) : (
+						<ChevronRight className="h-3.5 w-3.5" />
+					)}
+				</span>
+				<span>{workedLabel}</span>
+			</button>
+
+			<AnimatePresence initial={false}>
+				{expanded && (
+					<motion.div
+						key="timeline-steps"
+						initial={{ opacity: 0, height: 0, y: -4 }}
+						animate={{ opacity: 1, height: "auto", y: 0 }}
+						exit={{ opacity: 0, height: 0, y: -4 }}
+						transition={{ duration: 0.2, ease: "easeOut" }}
+						className="mt-2 overflow-hidden"
+					>
+						<div className="space-y-1.5">
+							{visibleSteps.length === 0 ? (
+								<p className="text-[11px] text-muted-foreground">
+									Gathering activity...
+								</p>
+							) : (
+								<AnimatePresence initial={false} mode="popLayout">
+									{visibleSteps.map((step) => {
+										const statusColor =
+											statusClassName[step.status] ?? statusClassName.running;
+										const isStepExpanded = expandedStepSeq === step.seq;
+										if (step.event === "assistant_thought") {
+											// Model-authored narration line: not expandable, no
+											// tool chip — reads as a thought between tool steps.
+											return (
+												<motion.div
+													layout
+													key={`${step.seq}-${step.event}`}
+													initial={{ opacity: 0, y: 6 }}
+													animate={{ opacity: 1, y: 0 }}
+													exit={{ opacity: 0, y: -6 }}
+													transition={{ duration: 0.18, ease: "easeOut" }}
+													className="flex items-start gap-1.5"
+												>
+													{/* pl matches the chevron (12px) + gap (6px) of the
+                              other rows so titles stay column-aligned. */}
+													<p className="min-w-0 flex-1 pl-[18px] text-[11px] italic leading-relaxed text-muted-foreground line-clamp-2">
+														{step.summary}
+													</p>
+													<span className="shrink-0 text-[10px] text-muted-foreground">
+														{new Date(step.ts).toLocaleTimeString([], {
+															hour: "numeric",
+															minute: "2-digit",
+															second: "2-digit",
+															hour12: true,
+														})}
+													</span>
+												</motion.div>
+											);
+										}
+										return (
+											<motion.div
+												layout
+												key={`${step.seq}-${step.event}`}
+												initial={{ opacity: 0, y: 6 }}
+												animate={{ opacity: 1, y: 0 }}
+												exit={{ opacity: 0, y: -6 }}
+												transition={{ duration: 0.18, ease: "easeOut" }}
+											>
+												<button
+													type="button"
+													className="w-full inline-flex items-center gap-1.5 text-left hover:text-foreground"
+													onClick={() => toggleStep(step.seq)}
+												>
+													<span className="inline-flex transition-transform duration-200 ease-out">
+														{isStepExpanded ? (
+															<ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+														) : (
+															<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+														)}
+													</span>
+													<p
+														className={`text-[11px] font-medium ${statusColor}`}
+													>
+														{step.title}
+													</p>
+													{step.toolName && (
+														<code className="shrink-0 rounded bg-muted px-1 py-px font-mono text-[9px] leading-4 text-muted-foreground">
+															{step.toolName}
+														</code>
+													)}
+													<span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+														{new Date(step.ts).toLocaleTimeString([], {
+															hour: "numeric",
+															minute: "2-digit",
+															second: "2-digit",
+															hour12: true,
+														})}
+													</span>
+												</button>
+												<AnimatePresence initial={false}>
+													{isStepExpanded && (
+														<motion.div
+															layout
+															initial={{ opacity: 0, height: 0, y: -2 }}
+															animate={{ opacity: 1, height: "auto", y: 0 }}
+															exit={{ opacity: 0, height: 0, y: -2 }}
+															transition={{ duration: 0.18, ease: "easeOut" }}
+															className="ml-4 mt-1 overflow-hidden border-l border-border pl-2"
+														>
+															<p className="text-[11px] leading-relaxed text-muted-foreground">
+																{step.summary}
+															</p>
+															{Array.isArray(step.titleList?.items) &&
+																step.titleList.items.length > 0 && (
+																	<div className="mt-1.5 max-h-36 overflow-y-auto pr-1 text-[10.5px] text-muted-foreground">
+																		<ul className="space-y-0.5">
+																			{step.titleList.items.map(
+																				(item, index) => (
+																					<li
+																						key={`${step.seq}-title-${index}`}
+																						className="flex gap-1"
+																					>
+																						<span className="text-muted-foreground">
+																							-
+																						</span>
+																						<span className="break-words">
+																							{item}
+																						</span>
+																					</li>
+																				),
+																			)}
+																		</ul>
+																		{getTitleListOverflowCount(step.titleList) >
+																			0 && (
+																			<p className="mt-1 text-[10px] text-muted-foreground">
+																				...and{" "}
+																				{getTitleListOverflowCount(
+																					step.titleList,
+																				)}{" "}
+																				more
+																			</p>
+																		)}
+																	</div>
+																)}
+														</motion.div>
+													)}
+												</AnimatePresence>
+											</motion.div>
+										);
+									})}
+								</AnimatePresence>
+							)}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+}
+
+export default AiActivityTimelineView;
