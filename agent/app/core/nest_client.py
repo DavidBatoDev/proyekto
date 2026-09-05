@@ -797,6 +797,30 @@ class NestRoadmapClient:
             trace_id=trace_id,
         )
 
+    async def roadmap_create(
+        self,
+        *,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /roadmaps as the user (CreateRoadmapDto)."""
+        return await self._post('/roadmaps', payload, auth_header, trace_id=trace_id)
+
+    async def roadmap_update(
+        self,
+        *,
+        roadmap_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /roadmaps/{id} as the user (UpdateRoadmapDto) — used to
+        attach a standalone roadmap to a project."""
+        return await self._mutate(
+            'PATCH', f'/roadmaps/{roadmap_id}', payload, auth_header, trace_id=trace_id
+        )
+
     async def ai_memories_relevant(
         self,
         roadmap_id: str,

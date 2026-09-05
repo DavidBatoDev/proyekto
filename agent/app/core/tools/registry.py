@@ -228,7 +228,17 @@ COMMENT_TOOL_NAMES = {
     'add_task_comments',
 }
 
-EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES
+# Mid-loop write tools that create a roadmap row or re-home one under a
+# project (plain REST, not roadmap operations). The backend enforces the
+# one-to-one project/roadmap rule.
+ROADMAP_ADMIN_TOOL_NAMES = {
+    'create_roadmap',
+    'attach_roadmap_to_project',
+}
+
+EXECUTABLE_TOOL_NAMES = (
+    CONTEXT_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES | ROADMAP_ADMIN_TOOL_NAMES
+)
 
 _UNASSIGN_ASSIGNEE_TOKENS = {
     'unassign',

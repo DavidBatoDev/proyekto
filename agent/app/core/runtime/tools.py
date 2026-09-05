@@ -33,6 +33,7 @@ from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES as _REGISTRY_MEMORY_TOOL_NAMES,
     PLANNING_TOOL_NAME,
+    ROADMAP_ADMIN_TOOL_NAMES as _REGISTRY_ROADMAP_ADMIN_TOOL_NAMES,
     get_context_tools,
     get_planning_tool,
 )
@@ -75,9 +76,17 @@ MEMORY_TOOL_NAMES = frozenset(_REGISTRY_MEMORY_TOOL_NAMES)
 # task comments, reads the per-task results, and continues its answer.
 COMMENT_TOOL_NAMES = frozenset(_REGISTRY_COMMENT_TOOL_NAMES)
 
+# Roadmap admin tools create a roadmap or attach a standalone one to a
+# project — non-terminal writes through plain backend REST.
+ROADMAP_ADMIN_TOOL_NAMES = frozenset(_REGISTRY_ROADMAP_ADMIN_TOOL_NAMES)
+CREATE_ROADMAP_TOOL_NAME = 'create_roadmap'
+ATTACH_ROADMAP_TOOL_NAME = 'attach_roadmap_to_project'
+
 # Everything the mid-loop dispatcher executes (results fed back, loop
 # continues).
-DISPATCHER_TOOL_NAMES = READ_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES
+DISPATCHER_TOOL_NAMES = (
+    READ_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES | ROADMAP_ADMIN_TOOL_NAMES
+)
 
 # Terminal tools end the turn. PLANNING_TOOL_NAME is the registry's schema-
 # bound name for the stage tool (== stage_edits once the registry constant is
@@ -480,7 +489,13 @@ def project_tools(scope: Any = None) -> list[dict[str, Any]]:
 
 
 def write_tools(scope: Any = None) -> list[dict[str, Any]]:
-    return [save_memory_tool(scope), forget_memory_tool(scope), add_task_comments_tool(scope)]
+    return [
+        save_memory_tool(scope),
+        forget_memory_tool(scope),
+        add_task_comments_tool(scope),
+        create_roadmap_tool(),
+        attach_roadmap_to_project_tool(scope),
+    ]
 
 
 def save_memory_tool(scope: Any = None) -> dict[str, Any]:
@@ -588,6 +603,68 @@ def add_task_comments_tool(scope: Any = None) -> dict[str, Any]:
                     'Roadmap the tasks belong to. Optional in a roadmap session '
                     '(defaults to the focus roadmap); required otherwise.'
                 ),
+            },
+        },
+    )
+
+
+def create_roadmap_tool() -> dict[str, Any]:
+    return _function_tool(
+        CREATE_ROADMAP_TOOL_NAME,
+        'Create a NEW, empty roadmap owned by the current user. Standalone by '
+        'default; pass project_id to attach it to a project that has no roadmap '
+        'yet (a project holds at most one roadmap, and a roadmap belongs to at '
+        'most one project — the backend refuses a second one). Only when the '
+        'user asked for a new roadmap. Afterwards call get_roadmap_overview on '
+        'the returned id before adding anything to it, then continue your '
+        'answer (propose or stage_edits into it, or reply).',
+        ['name'],
+        {
+            'name': {'type': 'string', 'minLength': 1, 'maxLength': 200},
+            'description': {'type': 'string', 'maxLength': 2000},
+            'category': {
+                'type': 'string',
+                'maxLength': 80,
+                'description': 'Short label such as "SaaS", "Education" or "Personal".',
+            },
+            'project_id': {
+                'type': 'string',
+                'description': (
+                    'Attach the new roadmap to this project (id from '
+                    'get_workspace_overview). Omit for a standalone roadmap.'
+                ),
+            },
+            'status': {
+                'type': 'string',
+                'enum': ['draft', 'active'],
+                'description': 'Defaults to draft.',
+            },
+        },
+    )
+
+
+def attach_roadmap_to_project_tool(scope: Any = None) -> dict[str, Any]:
+    required = ['project_id', 'roadmap_id'] if _scope_kind(scope) == 'workspace' else ['project_id']
+    return _function_tool(
+        ATTACH_ROADMAP_TOOL_NAME,
+        'Attach an existing STANDALONE roadmap (no project yet) that the user '
+        'owns to a project that has no roadmap yet. Projects and roadmaps are '
+        'one-to-one: a project already holding a roadmap cannot take another, '
+        'and a roadmap already linked to a project cannot be moved with this '
+        'tool. Only when the user asked to attach/link it. Continue your answer '
+        'after.',
+        required,
+        {
+            'roadmap_id': {
+                'type': 'string',
+                'description': (
+                    'The standalone roadmap to attach. Optional in a roadmap '
+                    'session (defaults to the focus roadmap); required otherwise.'
+                ),
+            },
+            'project_id': {
+                'type': 'string',
+                'description': 'The project to attach it to (id from get_workspace_overview).',
             },
         },
     )
@@ -748,7 +825,9 @@ def propose_tool(scope: Any = None, *, targets_required: bool | None = None) -> 
         'asked to apply it yet. The plan carries titles only — the user '
         'confirms, then the system materializes the concrete operations per '
         'target roadmap. Every target must be an existing roadmap; if the '
-        'work needs a new roadmap, say so in next_steps.',
+        'work needs a new roadmap, create it first with create_roadmap (mid-loop, '
+        'then get_roadmap_overview) and propose into it; a project can hold only '
+        'one roadmap, so say so in next_steps when the target project already has one.',
         required,
         {
             'summary': {

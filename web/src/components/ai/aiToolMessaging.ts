@@ -63,6 +63,9 @@ export const SUPPORTED_TRACE_TOOL_NAMES = [
 	"search_everything",
 	"list_my_tasks",
 	"list_project_members",
+	// Roadmap admin writes (mid-loop).
+	"create_roadmap",
+	"attach_roadmap_to_project",
 	"propose",
 ] as const;
 
@@ -821,6 +824,28 @@ const TOOL_MESSAGE_CATALOG: Record<
 			),
 		(ctx) =>
 			outcomeTitle(ctx, "Listed your tasks", "No tasks found", "tasks_count"),
+	),
+	create_roadmap: descriptor(
+		"Creating a roadmap",
+		"Created a roadmap",
+		(ctx) => {
+			const name = ctx.toolArgs?.name;
+			return typeof name === "string" && name.trim()
+				? `I am creating a roadmap called "${name.trim()}".`
+				: "I am creating a new roadmap.";
+		},
+		(ctx) => resultSummaryWithDefault(ctx, {}, "I created the roadmap."),
+	),
+	attach_roadmap_to_project: descriptor(
+		"Attaching a roadmap to a project",
+		"Attached the roadmap to the project",
+		() => "I am attaching the roadmap to the project.",
+		(ctx) =>
+			resultSummaryWithDefault(
+				ctx,
+				{},
+				"I attached the roadmap to the project.",
+			),
 	),
 	list_project_members: descriptor(
 		"Listing project members",

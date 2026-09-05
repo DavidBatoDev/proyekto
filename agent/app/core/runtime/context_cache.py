@@ -330,6 +330,23 @@ def invalidate_overview(session: AgentSession, roadmap_id: str | None) -> None:
     context.handle_map = {}
 
 
+def invalidate_workspace_overview(session: AgentSession) -> None:
+    """Drop the cached ``# Workspace overview`` payload (a roadmap was
+    created or attached this turn) so the next turn refetches it."""
+    session.metadata.workspace_context = None
+    session.metadata.workspace_context_fetched_at = None
+
+
+def invalidate_project_context(session: AgentSession, roadmap_id: str | None) -> None:
+    """Drop a loaded roadmap's cached project context (its project link
+    changed) so ``ensure_project_context`` refetches it."""
+    context = _resolve_context(session, roadmap_id)
+    if context is None:
+        return
+    context.project_context = None
+    context.project_context_fetched_at = None
+
+
 def refresh_focus_for_run(
     *,
     session: AgentSession,

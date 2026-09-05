@@ -305,8 +305,12 @@ authorization path).
 required otherwise). `search_knowledge` is exposed only when
 `AGENT_KNOWLEDGE_SEARCH_ENABLED` is on.
 
-**Non-terminal writes (3):** `save_memory`, `forget_memory` (`roadmap_id` required in
-workspace scope), `add_task_comments`.
+**Non-terminal writes (5):** `save_memory`, `forget_memory` (`roadmap_id` required in
+workspace scope), `add_task_comments`, `create_roadmap` (POST /api/roadmaps as the
+user; standalone or attached via `project_id`), `attach_roadmap_to_project` (PATCH
+/api/roadmaps/:id with `project_id`). Projects and roadmaps are one-to-one: the
+backend answers 409 `PROJECT_ALREADY_HAS_ROADMAP` for a second roadmap, and both
+tools drop the cached workspace overview so the next turn sees the new state.
 
 **Terminals:** `stage_edits` (the registry planning tool renamed; gains `roadmap_id`,
 drops `revision_operations` and the old dual-target/clarifier contract text, forces
