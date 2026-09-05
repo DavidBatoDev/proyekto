@@ -433,7 +433,17 @@ export function AiAssistantPanel({
 					</div>
 				</div>
 				<div className="relative flex min-h-0 flex-1 flex-col">
-					<div className="mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col">
+					{/* The scroller is the full width of the surface, not of the
+					    reading column, so its bar rides the edge of the window
+					    instead of cutting down the middle of the page beside the
+					    text. The 3xl measure moves inside it, onto the content. */}
+					<div
+						className={
+							threadIsEmpty
+								? "flex min-h-0 flex-1 flex-col"
+								: "thin-scrollbar relative min-h-0 flex-1 overflow-y-auto"
+						}
+					>
 						<AiThreadView
 							scope={scope}
 							threadId={activeThreadId}
@@ -444,15 +454,20 @@ export function AiAssistantPanel({
 							onSend={handleCardSend}
 							className={
 								threadIsEmpty
-									? "flex flex-1 flex-col justify-end px-4 pb-2"
-									: "thin-scrollbar relative flex-1 space-y-3 overflow-y-auto px-4 py-6"
+									? "mx-auto flex w-full max-w-3xl flex-1 flex-col justify-end px-4 pb-2"
+									: "relative mx-auto w-full max-w-3xl space-y-3 px-4 py-6"
 							}
 						/>
+					</div>
+					<div className="mx-auto w-full max-w-3xl">
 						<AiRunBanner run={run} onCancel={cancel} onResume={resume} />
 						<div className={classes.footer}>
 							{errorBanner}
 							{unavailable}
-							<div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+							{/* The card is the composer's box: it carries the border
+							    and, because the textarea is its descendant, the
+							    focus ring the field used to draw itself. */}
+							<div className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
 								{composer}
 							</div>
 						</div>

@@ -475,10 +475,20 @@ export function AiComposer({
 			</div>
 		) : null;
 
+	// `stacked` is the fullscreen assistant, where the host already wraps the
+	// composer in a bordered card. Drawing the field's own box inside that one
+	// is a box in a box; the card takes the border AND the focus ring (it can,
+	// via `focus-within` — the textarea is its descendant), and the field
+	// becomes the transparent inner region it always was in the other two
+	// variants' footers, where the box IS the field and has to keep its border.
 	const field = (
 		<div
 			ref={boxRef}
-			className="relative min-w-0 flex-1 rounded-xl border border-input bg-background transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30"
+			className={`relative min-w-0 flex-1 rounded-xl ${
+				stacked
+					? "bg-transparent"
+					: "border border-input bg-background transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30"
+			}`}
 		>
 			{pickerOpen && (
 				<AiMentionPicker
