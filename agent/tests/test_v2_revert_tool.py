@@ -132,6 +132,62 @@ class SelectRevertRangeRoadmapFilterTests(unittest.TestCase):
         self.assertEqual(revert.roadmap_ids_with_history(self._history()), ['alpha', 'beta'])
 
 
+def _run_in_context(args, change_history, extra_context):
+    client = _ScriptedClient([_revert_resp(args)])
+    return run_loop(
+        client=client,
+        messages=[{'role': 'system', 'content': 'sys'},
+                  {'role': 'user', 'content': 'undo that'}],
+        tools=[],
+        dispatcher=None,
+        session_context={'roadmap_id': ROADMAP, 'change_history': change_history, **extra_context},
+        handle_map={},
+        settings=get_settings(),
+        trace_id=None,
+    )
+
+
+class RevertRoadmapReferenceTests(unittest.TestCase):
+    """The model sometimes passes the roadmap's TITLE as `roadmap_id` ("Undo
+    that" once came out as roadmap_id="Supply Chain Resilience Program"). A
+    title of a loaded roadmap resolves to its id and an unrecognised name
+    falls back to the focus roadmap; only a real id with no history is an
+    unknown change."""
+
+    TITLE = 'Supply Chain Resilience Program'
+
+    def _history(self):
+        group = _cascade_group('chg-1')
+        group.roadmap_id = ROADMAP
+        return _history_dicts(group)
+
+    def test_roadmap_title_resolves_to_its_id(self) -> None:
+        result = _run_in_context(
+            {'roadmap_id': self.TITLE}, self._history(), {'roadmap_titles': {ROADMAP: self.TITLE}}
+        )
+        self.assertEqual(result.kind, 'revert')
+        self.assertEqual(result.batches[0].roadmap_id, ROADMAP)
+
+    def test_title_match_is_case_insensitive(self) -> None:
+        result = _run_in_context(
+            {'roadmap_id': self.TITLE.upper()}, self._history(), {'roadmap_titles': {ROADMAP: self.TITLE}}
+        )
+        self.assertEqual(result.kind, 'revert')
+
+    def test_unknown_name_falls_back_to_the_focus_roadmap(self) -> None:
+        result = _run_in_context(
+            {'roadmap_id': 'Some roadmap nobody loaded'}, self._history(), {'roadmap_titles': {ROADMAP: self.TITLE}}
+        )
+        self.assertEqual(result.kind, 'revert')
+        self.assertEqual(result.batches[0].roadmap_id, ROADMAP)
+
+    def test_a_real_id_with_no_history_is_still_an_unknown_change(self) -> None:
+        other = 'b8d0f0d4-2b7e-4a2c-9c46-0a5e2d9f0c11'
+        result = _run_in_context({'roadmap_id': other}, self._history(), {})
+        self.assertEqual(result.kind, 'chat')
+        self.assertEqual(result.termination_reason, 'revert_unknown_change')
+
+
 class RevertLoopTests(unittest.TestCase):
     def test_revert_last_change_stages_edit(self) -> None:
         result = _run({}, _history_dicts(_cascade_group('chg-1')))

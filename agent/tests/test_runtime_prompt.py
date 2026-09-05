@@ -20,6 +20,7 @@ from app.core.contracts.sessions import (
     RoadmapContext,
 )
 from app.core.runtime import prompt
+from app.core.tools.registry import get_context_tools
 
 FOCUS = '11111111-1111-1111-1111-111111111111'
 BETA = '22222222-2222-2222-2222-222222222222'
@@ -333,6 +334,83 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertTrue(verify.startswith('# Run\nPhase: verify.'))
         self.assertIn('never re-apply anything', verify)
         self.assertEqual(prompt.render_phase_tail('propose'), '')
+
+
+class MultiAssigneePromptTests(unittest.TestCase):
+    """The multi-assignee rules live in the STATIC prefix (system.md), never
+    in a per-turn block, so teaching the model about `assignee_ids` cannot
+    move the cache boundary."""
+
+    def test_static_prefix_teaches_the_full_assignee_set(self) -> None:
+        prefix = prompt.static_prefix()
+        self.assertIn('`patch.assignee_ids: [...]`', prefix)
+        self.assertIn(
+            '- task: title, description, status, priority, assignee_ids, assignee_id, due_date',
+            prefix,
+        )
+        self.assertIn('Never ask which ONE person to pick', prefix)
+        self.assertIn('Never stage `assignee_ids` or `assignee_id` on a non-task', prefix)
+        self.assertIn('`[]` = unassign everyone', prefix)
+        # Names exactly the MODEL-CALLABLE reads that return the set (each
+        # has a `_function_tool` spec in registry.get_context_tools()) and
+        # the one that does not.
+        self.assertIn(
+            '`get_node_details`, `get_tasks_by_parent`, `get_tasks_by_status`, '
+            '`get_overdue_tasks` and `get_tasks_assigned_to_me` return `assignee_ids`; '
+            '`search_tasks` does not include assignees',
+            prefix,
+        )
+        catalog = {spec['function']['name'] for spec in get_context_tools()}
+        for named in (
+            'get_node_details', 'get_tasks_by_parent', 'get_tasks_by_status',
+            'get_overdue_tasks', 'get_tasks_assigned_to_me', 'search_tasks',
+        ):
+            self.assertIn(named, catalog, named)
+        # `get_tasks_by_epic` / `get_tasks_by_feature` / `get_children` are
+        # dispatch-only handlers with no model-facing spec, so the assignee
+        # rule must never send the model after them.
+        assignee_rule = next(
+            line for line in prefix.splitlines() if '`patch.assignee_ids: [...]`' in line
+        )
+        for dispatch_only in ('get_tasks_by_epic', 'get_tasks_by_feature', 'get_children'):
+            self.assertNotIn(dispatch_only, catalog, dispatch_only)
+            self.assertNotIn(dispatch_only, assignee_rule, dispatch_only)
+
+    def test_execute_tail_stages_the_full_set_on_add_task(self) -> None:
+        tail = prompt.render_phase_tail(
+            'execute', roadmap_label='R1', roadmap_title='Beta', roadmap_id=BETA
+        )
+        self.assertIn('`data.assignee_ids`', tail)
+        self.assertIn('never pick just one', tail)
+        self.assertIn(
+            'name every label you could not match in the `stage_edits` '
+            '`assistant_message` so the user knows who was not assigned',
+            tail,
+        )
+
+    def test_pending_plan_outline_renders_assignee_labels(self) -> None:
+        session = _roadmap_session(with_beta=False)
+        session.metadata.pending_plan = PendingPlan(
+            summary='Add a billing epic',
+            goal='billing',
+            source_user_message='plan billing',
+            proposed_hierarchy=[{
+                'title': 'Billing v2',
+                'features': [{
+                    'title': 'Invoices',
+                    'tasks': [
+                        {'title': 'PDF export', 'assignee_labels': ['Ana', 'me', 'Ana']},
+                        {'title': 'CSV export', 'assignee_label': 'Ben'},
+                        {'title': 'Nobody yet'},
+                    ],
+                }],
+            }],
+        )
+        run = _run(session)
+        system = prompt.build_system_prompt(session, run, _context(session, run), 'investigate')
+        self.assertIn('    - Task: PDF export (assignees: Ana, me)\n', system)
+        self.assertIn('    - Task: CSV export (assignees: Ben)\n', system)
+        self.assertIn('    - Task: Nobody yet\n', system)
 
 
 class TurnContextTests(unittest.TestCase):

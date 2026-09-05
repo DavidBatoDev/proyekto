@@ -150,6 +150,20 @@ class ScopeRequirementTests(unittest.TestCase):
         self.assertIn('new roadmap', tools.propose_tool()['function']['description'])
         self.assertEqual(tools.propose_plan_tool(), tools.propose_tool(None))
 
+    def test_propose_task_schema_carries_assignee_labels(self) -> None:
+        params = tools.propose_tool(ROADMAP)['function']['parameters']
+        epic = params['properties']['proposed_hierarchy']['items']
+        task = epic['properties']['features']['items']['properties']['tasks']['items']
+        self.assertEqual(task['properties']['assignee_labels']['type'], 'array')
+        self.assertEqual(task['properties']['assignee_labels']['items'], {'type': 'string'})
+        # Legacy single label stays accepted.
+        self.assertEqual(task['properties']['assignee_label'], {'type': 'string'})
+        from app.core.contracts.sessions import ProposedTask
+
+        parsed = ProposedTask.model_validate({'title': 'T', 'assignee_labels': ['Ana', 'me']})
+        self.assertEqual(parsed.assignee_labels, ['Ana', 'me'])
+        self.assertIsNone(parsed.assignee_label)
+
     def test_write_tools_roadmap_id_per_scope(self) -> None:
         for spec_fn, base in (
             (tools.save_memory_tool, ['content']),

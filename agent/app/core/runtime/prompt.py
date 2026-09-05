@@ -994,8 +994,27 @@ def _pending_plan_outline(plan: dict[str, Any]) -> str:
                 task_title = str(task.get('title') or '').strip()
                 if not task_title:
                     continue
-                lines.append(f'    - Task: {task_title}')
+                labels = _task_assignee_labels(task)
+                assignees = f' (assignees: {", ".join(labels)})' if labels else ''
+                lines.append(f'    - Task: {task_title}{assignees}')
     return '\n'.join(lines)
+
+
+def _task_assignee_labels(task: dict[str, Any]) -> list[str]:
+    """`assignee_labels` (every assignee) falling back to the legacy
+    `assignee_label`; stripped, deduped, order preserved (first = primary)."""
+    raw = task.get('assignee_labels')
+    candidates: list[Any] = list(raw) if isinstance(raw, list) else []
+    if not candidates:
+        candidates = [task.get('assignee_label')]
+    labels: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        label = candidate.strip()
+        if label and label not in labels:
+            labels.append(label)
+    return labels
 
 
 def _roadmap_label(session: AgentSession, roadmap_id: Any) -> str | None:

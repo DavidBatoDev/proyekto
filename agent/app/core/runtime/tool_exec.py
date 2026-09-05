@@ -152,12 +152,15 @@ def interpret_plan_tool(
     return interpret_stage_edits(args, handle_map, actor_id, None)
 
 
+_ONLY_TASKS_ASSIGNABLE_HINT = (
+    'Only tasks can be assigned — epics, features and milestones have no '
+    'assignee. Assign the tasks underneath instead, and tell the user the '
+    'rest cannot be assigned.'
+)
+
 _PATCH_FIELD_HINTS = {
-    'assignee_id': (
-        'Only tasks can be assigned — epics, features and milestones have no '
-        'assignee. Assign the tasks underneath instead, and tell the user the '
-        'rest cannot be assigned.'
-    ),
+    'assignee_id': _ONLY_TASKS_ASSIGNABLE_HINT,
+    'assignee_ids': _ONLY_TASKS_ASSIGNABLE_HINT,
     'status': (
         'Feature status is derived from its child tasks and cannot be set '
         'directly. Set the status on the tasks instead.'
@@ -217,13 +220,18 @@ def _format_validation_error(error: dict[str, Any]) -> str:
 
 
 _SELF_ASSIGNEE_ALIASES = frozenset({'me', 'myself', 'self', 'current user', 'current_user'})
+# Wrong-key aliases the model emits, folded by KEY - never by value type:
+# the plural always means the set, so `assignees: null` lands on
+# `assignee_ids` (dropped downstream as "assignment unchanged") instead of
+# becoming an `assignee_id: null` that would unassign the task.
+_ASSIGNEE_ALIAS_KEYS: dict[str, str] = {'assignee': 'assignee_id', 'assignees': 'assignee_ids'}
 
 
 def _normalize_mutation_ops(
     args: dict[str, Any],
     actor_id: str | None = None,
 ) -> dict[str, Any]:
-    """Fix the shapes the model gets wrong on ``update_node``:
+    """Fix the shapes the model gets wrong on ``update_node`` / ``add_task``:
 
     1. Reparenting. The model emits a move as ``update_node ... new_parent_ref=
        <feature>`` but ``update_node`` can't reparent (the contract reports
@@ -233,9 +241,14 @@ def _normalize_mutation_ops(
        field changes on an existing node go in ``patch`` — ``data`` is not
        allowed on update_node, so the backend 400s. Fold ``data`` into
        ``patch``.
-    3. Assignment. "Assign X to me" comes out as ``patch.assignee`` (wrong
-       field) and/or the literal value ``"me"`` the model cannot resolve.
-       Rename to ``assignee_id`` and substitute the session actor's id.
+    3. Assignment. "Assign X to me" comes out as ``patch.assignee`` /
+       ``patch.assignees`` (wrong field) and/or the literal value ``"me"``
+       the model cannot resolve. Rename by key (``assignee`` ->
+       ``assignee_id``, ``assignees`` -> ``assignee_ids``, whatever the
+       value; a list under ``assignee_id`` is then promoted) and substitute the session
+       actor's id for the self aliases — inside ``assignee_ids`` elements
+       too, and in ``add_task`` ``data`` — dropping duplicates. "me" is an
+       agent-side concept: the backend never sees the sentinel.
 
     All produce a staged op the backend accepts.
     """
@@ -248,7 +261,13 @@ def _normalize_mutation_ops(
         if not isinstance(op, dict):
             continue
         _move_temp_refs_out_of_id_fields(op)
-        if op.get('op') != 'update_node':
+        op_name = op.get('op')
+        if op_name == 'add_task':
+            data = op.get('data')
+            if isinstance(data, dict):
+                _normalize_assignee_fields(data, actor_id)
+            continue
+        if op_name != 'update_node':
             continue
         if op.get('new_parent_id') or op.get('new_parent_ref'):
             op['op'] = 'move_node'
@@ -259,16 +278,50 @@ def _normalize_mutation_ops(
             op.pop('data', None)
         patch = op.get('patch')
         if isinstance(patch, dict):
-            if 'assignee' in patch and 'assignee_id' not in patch:
-                patch['assignee_id'] = patch.pop('assignee')
-            assignee = patch.get('assignee_id')
-            if (
-                actor_id
-                and isinstance(assignee, str)
-                and assignee.strip().lower() in _SELF_ASSIGNEE_ALIASES
-            ):
-                patch['assignee_id'] = actor_id
+            _normalize_assignee_fields(patch, actor_id)
     return args
+
+
+def _is_self_alias(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().lower() in _SELF_ASSIGNEE_ALIASES
+
+
+def _normalize_assignee_fields(fields: dict[str, Any], actor_id: str | None) -> None:
+    """Canonicalize the assignee keys of one ``patch`` / ``data`` dict in place.
+
+    ``assignee`` -> ``assignee_id`` and ``assignees`` -> ``assignee_ids``
+    regardless of value type (so ``assignees: None`` stays a null SET, which
+    the contract drops as unchanged); a list under ``assignee_id`` moves to
+    ``assignee_ids``; a bare string under ``assignee_ids`` is wrapped. Then
+    the self aliases become ``actor_id`` (scalar and every list element) and
+    the list is deduped, order preserved (first = primary).
+    """
+    for alias, target in _ASSIGNEE_ALIAS_KEYS.items():
+        if alias not in fields:
+            continue
+        fields.setdefault(target, fields.pop(alias))
+    if isinstance(fields.get('assignee_id'), list):
+        moved = fields.pop('assignee_id')
+        fields.setdefault('assignee_ids', moved)
+    if isinstance(fields.get('assignee_ids'), str):
+        fields['assignee_ids'] = [fields['assignee_ids']]
+    if actor_id and _is_self_alias(fields.get('assignee_id')):
+        fields['assignee_id'] = actor_id
+    ids = fields.get('assignee_ids')
+    if not isinstance(ids, list):
+        return
+    resolved: list[Any] = []
+    seen: set[str] = set()
+    for element in ids:
+        if actor_id and _is_self_alias(element):
+            element = actor_id
+        if isinstance(element, str):
+            key = element.strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+        resolved.append(element)
+    fields['assignee_ids'] = resolved
 
 
 def _move_temp_refs_out_of_id_fields(op: dict[str, Any]) -> None:

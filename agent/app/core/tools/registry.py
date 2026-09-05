@@ -276,18 +276,98 @@ _CREATE_OP_NODE_TYPES = {
 }
 
 
-def _normalize_assignee_value(value: Any) -> tuple[bool, str | None]:
+# One clause shared by every task-returning read tool so the model knows
+# where to find the FULL assignee set before computing a union / minus.
+_TASK_ASSIGNEE_FIELDS_CLAUSE = (
+    'Tasks carry `assignee_ids` (all assignees) and `assignee_id` (primary).'
+)
+
+
+def _is_unassign_token(value: str) -> bool:
+    canonical = ' '.join(re.sub(r'[^a-z0-9]+', ' ', value.lower()).split())
+    return canonical in _UNASSIGN_ASSIGNEE_TOKENS
+
+
+def _normalize_assignee_value(value: Any) -> tuple[bool, str | list[str] | None]:
+    """Normalize one assignee patch value.
+
+    Scalar (``assignee_id``): ``None`` or an unassign token -> ``None``; any
+    other string -> stripped (uuid-shaped values canonicalized).
+    List (``assignee_ids``): strip each element, drop empties / ``None`` /
+    unassign tokens, dedupe preserving order (first = primary); a list made
+    only of unassign tokens -> ``[]`` (unassign everyone).
+    ``(False, None)`` means the value is not one this normalizer handles and
+    is left untouched for the contract validators.
+    """
     if value is None:
         return True, None
+    if isinstance(value, list):
+        normalized_ids: list[str] = []
+        for element in value:
+            if element is None:
+                continue
+            if not isinstance(element, str):
+                return False, None
+            stripped = element.strip()
+            if not stripped or _is_unassign_token(stripped):
+                continue
+            canonical_id = normalize_uuid(stripped) or stripped
+            if canonical_id not in normalized_ids:
+                normalized_ids.append(canonical_id)
+        return True, normalized_ids
     if not isinstance(value, str):
         return False, None
     normalized = value.strip()
     if not normalized:
         return False, None
-    canonical = ' '.join(re.sub(r'[^a-z0-9]+', ' ', normalized.lower()).split())
-    if canonical in _UNASSIGN_ASSIGNEE_TOKENS:
+    if _is_unassign_token(normalized):
         return True, None
-    return True, normalized
+    return True, normalize_uuid(normalized) or normalized
+
+
+_ASSIGNEE_ALIAS_KEYS: tuple[str, ...] = ('assignee_id', 'assignee_ids', 'assignees')
+
+
+def _normalize_patch_assignee_fields(patch: dict[str, Any]) -> dict[str, Any]:
+    """Fold the assignee aliases into the canonical keys and normalize both.
+
+    ``assignees`` folds into ``assignee_ids``; a list under ``assignee_id``
+    moves to ``assignee_ids``; a bare string under ``assignee_ids`` is
+    wrapped; ``assignee_ids: null`` means "assignment unchanged" and is
+    dropped (only ``[]`` unassigns everyone). Each key then goes through
+    ``_normalize_assignee_value`` (unassign tokens, dedupe).
+    ``assignee_ids`` is the full replacement set and wins over ``assignee_id``
+    downstream, so both may coexist in the patch.
+    """
+    if 'assignees' in patch:
+        aliased = patch.pop('assignees')
+        if 'assignee_ids' not in patch:
+            patch['assignee_ids'] = (
+                aliased if isinstance(aliased, list) or aliased is None else [aliased]
+            )
+    if isinstance(patch.get('assignee_id'), list):
+        moved = patch.pop('assignee_id')
+        if 'assignee_ids' not in patch:
+            patch['assignee_ids'] = moved
+    if isinstance(patch.get('assignee_ids'), str):
+        patch['assignee_ids'] = [patch['assignee_ids']]
+    if 'assignee_ids' in patch:
+        if patch.get('assignee_ids') is None:
+            # null = "assignment unchanged" (key absent); only [] unassigns.
+            patch.pop('assignee_ids')
+        else:
+            is_valid_ids, normalized_ids = _normalize_assignee_value(
+                patch.get('assignee_ids')
+            )
+            if is_valid_ids:
+                patch['assignee_ids'] = normalized_ids
+    if 'assignee_id' in patch:
+        is_valid_assignee, normalized_assignee = _normalize_assignee_value(
+            patch.get('assignee_id')
+        )
+        if is_valid_assignee:
+            patch['assignee_id'] = normalized_assignee
+    return patch
 
 
 def _function_tool(
@@ -376,7 +456,10 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='search_tasks',
-            description='Search task nodes by keyword.',
+            description=(
+                'Search task nodes by keyword. Assignees are not included; '
+                'call get_node_details for the assignee set.'
+            ),
             required=['roadmap_id', 'query'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -386,7 +469,7 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='get_node_details',
-            description='Get full details for a roadmap node by ID.',
+            description='Get full details for a roadmap node by ID. ' + _TASK_ASSIGNEE_FIELDS_CLAUSE,
             required=['roadmap_id', 'node_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -513,7 +596,10 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='get_tasks_assigned_to_me',
-            description='Get roadmap tasks assigned to the authenticated actor in the current roadmap.',
+            description=(
+                'Get roadmap tasks assigned to the authenticated actor in the current roadmap '
+                '(as primary or co-assignee). ' + _TASK_ASSIGNEE_FIELDS_CLAUSE
+            ),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -523,7 +609,7 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='get_tasks_by_status',
-            description='List tasks in the roadmap filtered by status.',
+            description='List tasks in the roadmap filtered by status. ' + _TASK_ASSIGNEE_FIELDS_CLAUSE,
             required=['roadmap_id', 'status'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -535,7 +621,8 @@ def get_context_tools() -> list[dict[str, Any]]:
             name='get_tasks_by_parent',
             description=(
                 'List tasks under a parent epic or feature. '
-                'By default, completed tasks are excluded unless include_completed is true.'
+                'By default, completed tasks are excluded unless include_completed is true. '
+                + _TASK_ASSIGNEE_FIELDS_CLAUSE
             ),
             required=['roadmap_id', 'parent_id'],
             properties={
@@ -549,7 +636,10 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='get_overdue_tasks',
-            description='List overdue tasks (due_date before reference_date and not completed).',
+            description=(
+                'List overdue tasks (due_date before reference_date and not completed). '
+                + _TASK_ASSIGNEE_FIELDS_CLAUSE
+            ),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -678,6 +768,18 @@ def _derive_base_operation_properties() -> dict[str, Any]:
                 'type': ['string', 'null'],
                 'enum': [*ALL_STATUS_VALUES, None],
             },
+            'assignee_ids': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': (
+                    'Full set of user ids (task only). "me" allowed as an element. '
+                    '[] unassigns everyone; omit to leave the assignment unchanged.'
+                ),
+            },
+            'assignee_id': {
+                'type': ['string', 'null'],
+                'description': 'Legacy single assignee; prefer assignee_ids.',
+            },
         }
         properties['patch'] = patch_spec
     return properties
@@ -745,6 +847,15 @@ def _attach_create_data_shape(
             'description': 'ISO date (YYYY-MM-DD) the milestone is due.',
         }
         required.append('target_date')
+    if op_name == 'add_task':
+        data_properties['assignee_ids'] = {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description': (
+                'Initial assignees: user ids (first = primary). "me" allowed as an '
+                'element. Omit or [] for unassigned.'
+            ),
+        }
     properties['data'] = {
         'type': 'object',
         'required': required,
@@ -1032,6 +1143,10 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
             )
             if normalized_status is not None:
                 normalized_data['status'] = normalized_status
+            if op == 'add_task':
+                # Only tasks carry assignees; the same set normalization as
+                # `update_node` patches (aliases, tokens, dedupe).
+                normalized_data = _normalize_patch_assignee_fields(normalized_data)
             if normalized_data:
                 payload['data'] = normalized_data
         return payload
@@ -1057,6 +1172,8 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
         'tags',
         'is_deliverable',
         'assignee_id',
+        'assignee_ids',
+        'assignees',
         'due_date',
         'name',
         'settings',
@@ -1065,12 +1182,7 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
         if key in payload and key not in patch:
             patch[key] = payload.pop(key)
 
-    if 'assignee_id' in patch:
-        is_valid_assignee, normalized_assignee = _normalize_assignee_value(
-            patch.get('assignee_id')
-        )
-        if is_valid_assignee:
-            patch['assignee_id'] = normalized_assignee
+    patch = _normalize_patch_assignee_fields(patch)
 
     if patch:
         payload['patch'] = patch
@@ -1468,15 +1580,17 @@ def _normalize_single_item_helper_alias(payload: dict[str, Any]) -> dict[str, An
 
     if op == 'update_task_assignee':
         task_id = _str_arg('task_id', 'node_id')
-        has_assignee_id = 'assignee_id' in payload
-        is_valid_assignee, assignee_id = _normalize_assignee_value(payload.get('assignee_id'))
-        if task_id and has_assignee_id and is_valid_assignee:
+        assignee_patch = _normalize_patch_assignee_fields(
+            {key: payload.get(key) for key in _ASSIGNEE_ALIAS_KEYS if key in payload}
+        )
+        if task_id and assignee_patch:
             payload['op'] = 'update_node'
             payload['node_type'] = 'task'
             payload['node_id'] = task_id
-            payload['patch'] = {'assignee_id': assignee_id}
+            payload['patch'] = assignee_patch
             payload.pop('task_id', None)
-            payload.pop('assignee_id', None)
+            for key in _ASSIGNEE_ALIAS_KEYS:
+                payload.pop(key, None)
         return payload
 
     if op == 'update_titles':

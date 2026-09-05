@@ -776,6 +776,14 @@ def propose_tool(scope: Any = None, *, targets_required: bool | None = None) -> 
             'description': {'type': 'string'},
             'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
             'assignee_label': {'type': 'string'},
+            'assignee_labels': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': (
+                    'Every person to assign (member names, or "me"); a task can '
+                    'have several assignees. Prefer this over assignee_label.'
+                ),
+            },
         },
     }
     feature_schema = {
@@ -1007,8 +1015,10 @@ def revert_changes_tool(scope: Any = None) -> dict[str, Any]:
             'roadmap_id': {
                 'type': 'string',
                 'description': (
-                    'Roadmap whose changes to revert. Required when several '
-                    'roadmaps have recent changes; defaults to the focus roadmap.'
+                    'Roadmap whose changes to revert, as its roadmap id (uuid) — '
+                    'never its name. Omit it in a roadmap session (defaults to '
+                    'the focus roadmap); required only when several roadmaps '
+                    'have recent changes.'
                 ),
             },
         },

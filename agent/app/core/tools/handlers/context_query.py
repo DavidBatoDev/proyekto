@@ -1661,6 +1661,11 @@ class ContextQueryHandler(ToolHandlerBase):
                 payload = dict(item)
                 payload['due_date'] = due_date_value
                 payload['days_overdue'] = (reference_date - due_date).days
+                # The per-task details already fetched carry the assignee
+                # set; copy it so overdue rows match the other task reads.
+                for assignee_key in ('assignee_id', 'assignee_ids'):
+                    if assignee_key in detail:
+                        payload[assignee_key] = detail.get(assignee_key)
                 overdue.append(payload)
                 if len(overdue) >= limit:
                     break

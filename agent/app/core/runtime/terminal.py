@@ -28,6 +28,7 @@ from app.core.engine import progress
 from app.core.engine.loop import LoopResult
 from app.core.runtime import revert, tool_exec
 from app.core.runtime.handles import live_epic_titles as _live_epic_titles, validate_batch_roadmap
+from app.core.uuid_utils import is_uuid_like
 from app.core.runtime.tools import (
     ASK_USER_TOOL_NAME,
     PROPOSE_TOOL_NAME,
@@ -662,6 +663,20 @@ def normalize_ask_user_questions(arguments: dict[str, Any]) -> list[dict[str, An
 # -- revert_changes ------------------------------------------------------------
 
 
+def _resolve_revert_roadmap(value: str | None, ctx: TerminalContext) -> str | None:
+    """The roadmap a ``revert_changes`` call names: a uuid as-is, a loaded
+    roadmap's title (case-insensitive) as that roadmap's id, else ``None``."""
+    if not value:
+        return None
+    if is_uuid_like(value):
+        return value
+    wanted = value.casefold()
+    for candidate_id, title in ctx.roadmap_titles.items():
+        if isinstance(title, str) and title.strip().casefold() == wanted:
+            return candidate_id
+    return None
+
+
 def _handle_revert(tc: Any, ctx: TerminalContext) -> LoopResult | dict[str, dict[str, Any]]:
     """Deterministically undo a range of committed changes on one roadmap.
 
@@ -680,10 +695,18 @@ def _handle_revert(tc: Any, ctx: TerminalContext) -> LoopResult | dict[str, dict
         )
 
     raw_roadmap_id = tc.arguments.get('roadmap_id')
-    roadmap_id = (
+    requested_roadmap = (
         raw_roadmap_id.strip()
         if isinstance(raw_roadmap_id, str) and raw_roadmap_id.strip()
-        else (ctx.expected_roadmap_id or ctx.focus_roadmap_id)
+        else None
+    )
+    # The model sometimes passes the roadmap's TITLE here ("Supply Chain
+    # Resilience Program"). A title that names a loaded roadmap resolves to
+    # its id; anything else that is not uuid-shaped is ignored in favour of
+    # the focus roadmap — never used as a filter that silently matches no
+    # change and turns "undo that" into "I couldn't find that change".
+    roadmap_id = _resolve_revert_roadmap(requested_roadmap, ctx) or (
+        ctx.expected_roadmap_id or ctx.focus_roadmap_id
     )
     if not roadmap_id:
         candidates = revert.roadmap_ids_with_history(groups)

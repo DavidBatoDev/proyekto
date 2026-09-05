@@ -97,6 +97,131 @@ class CascadeDeleteRestoreTests(unittest.TestCase):
         self.assertEqual(epic1.get('position'), 0)
 
 
+class AssigneeSetRestoreTests(unittest.TestCase):
+    """Undo restores the FULL assignee set: snapshots carry the backend's
+    camelCase `assigneeIds` next to `assigneeId`, field diffs carry
+    `assignee_ids` next to `assignee_id` (mirror rule: id == ids[0])."""
+
+    def test_recreated_task_carries_its_assignee_set(self) -> None:
+        group = _group('chg-del-task', [
+            _removed('task-9', 'task', 'feat-1', 'Task 9',
+                     assigneeId='ana', assigneeIds=['ana', 'ben']),
+        ])
+        ops = build_inverse_operations([group])
+        task = _by_title(ops, 'add_task', 'Task 9')
+        self.assertEqual(task['data']['assignee_ids'], ['ana', 'ben'])
+        self.assertEqual(task['data']['assignee_id'], 'ana')
+        self.assertEqual(task['parent_id'], 'feat-1')
+
+    def test_recreated_unassigned_task_restores_the_empty_set(self) -> None:
+        group = _group('chg-del-task', [
+            _removed('task-9', 'task', 'feat-1', 'Task 9', assigneeId=None, assigneeIds=[]),
+        ])
+        ops = build_inverse_operations([group])
+        task = _by_title(ops, 'add_task', 'Task 9')
+        self.assertEqual(task['data']['assignee_ids'], [])
+        self.assertNotIn('assignee_id', task['data'])
+
+    def test_co_assignee_add_inverts_to_the_pre_range_set(self) -> None:
+        group = _group('chg-assign', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']},
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben', 'cid']}),
+        ])
+        ops = build_inverse_operations([group])
+        self.assertEqual(ops, [{
+            'op': 'update_node',
+            'node_id': 'task-1',
+            'patch': {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']},
+        }])
+
+    def test_first_assignment_inverts_to_unassign_everyone(self) -> None:
+        group = _group('chg-assign', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': None, 'assignee_ids': []},
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']}),
+        ])
+        ops = build_inverse_operations([group])
+        self.assertEqual(
+            ops[0]['patch'], {'assignee_id': None, 'assignee_ids': []}
+        )
+
+    def test_legacy_scalar_only_diff_is_promoted_to_the_set(self) -> None:
+        group = _group('chg-assign', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana'}, {'assignee_id': 'ben'}),
+        ])
+        ops = build_inverse_operations([group])
+        self.assertEqual(
+            ops[0]['patch'], {'assignee_ids': ['ana'], 'assignee_id': 'ana'}
+        )
+
+    def test_scalar_only_earliest_record_wins_over_a_later_array_record(self) -> None:
+        # The two keys are ONE logical field: the earliest pre-range record
+        # (a scalar-only legacy diff) sets both, promoted to the set, and the
+        # newer array-carrying record must not overwrite either of them.
+        older = _group('chg-1', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana'}, {'assignee_id': 'ben'}),
+        ])
+        newer = _group('chg-2', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ben', 'assignee_ids': ['ben']},
+                   {'assignee_id': 'ben', 'assignee_ids': ['ben', 'cid']}),
+        ])
+        ops = build_inverse_operations([newer, older])  # most-recent-first
+        self.assertEqual(ops, [{
+            'op': 'update_node',
+            'node_id': 'task-1',
+            'patch': {'assignee_ids': ['ana'], 'assignee_id': 'ana'},
+        }])
+
+    def test_scalar_null_earliest_record_restores_the_empty_set(self) -> None:
+        older = _group('chg-1', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': None}, {'assignee_id': 'ana'}),
+        ])
+        newer = _group('chg-2', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana']},
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']}),
+        ])
+        ops = build_inverse_operations([newer, older])
+        self.assertEqual(ops[0]['patch'], {'assignee_ids': [], 'assignee_id': None})
+
+    def test_array_earliest_record_is_not_overwritten_by_a_later_scalar(self) -> None:
+        older = _group('chg-1', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']},
+                   {'assignee_id': 'ben', 'assignee_ids': ['ben']}),
+        ])
+        newer = _group('chg-2', [
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ben'}, {'assignee_id': 'cid'}),
+        ])
+        ops = build_inverse_operations([newer, older])
+        self.assertEqual(
+            ops[0]['patch'], {'assignee_ids': ['ana', 'ben'], 'assignee_id': 'ana'}
+        )
+
+    def test_assignee_restore_keeps_other_earliest_field_values(self) -> None:
+        # The assignee logical field never disturbs the per-key rule for the
+        # other fields in the same range.
+        older = _group('chg-1', [
+            _field('task-1', 'task', 'TITLE_CHANGED', {'title': 'Old'}, {'title': 'Mid'}),
+            _field('task-1', 'task', 'ASSIGNEE_CHANGED',
+                   {'assignee_id': 'ana'}, {'assignee_id': 'ben'}),
+        ])
+        newer = _group('chg-2', [
+            _field('task-1', 'task', 'TITLE_CHANGED', {'title': 'Mid'}, {'title': 'New'}),
+        ])
+        ops = build_inverse_operations([newer, older])
+        self.assertEqual(
+            ops[0]['patch'],
+            {'title': 'Old', 'assignee_ids': ['ana'], 'assignee_id': 'ana'},
+        )
+
+
 class PartialSubtreeRestoreTests(unittest.TestCase):
     def test_feature_under_surviving_epic_uses_parent_id(self) -> None:
         # Only the feature + its task were deleted; epic-1 still exists.

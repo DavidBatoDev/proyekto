@@ -22,6 +22,7 @@ FEATURE_ID = '22222222-2222-4222-8222-222222222222'
 TASK_ID = '33333333-3333-4333-8333-333333333333'
 MILESTONE_ID = '44444444-4444-4444-8444-444444444444'
 JOSHUA_ID = '99999999-9999-4999-8999-999999999999'
+ANA_ID = '88888888-8888-4888-8888-888888888888'
 
 HANDLE_MAP = {
     'E1': {'id': EPIC_ID, 'type': 'epic', 'title': 'Discovery'},
@@ -138,6 +139,37 @@ class UpdateNodePatchFieldGuardTests(unittest.TestCase):
         )
         self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('feature', result.message)
+
+    def test_shared_contract_matrix_carries_assignee_ids_for_tasks_only(self):
+        self.assertIn('assignee_ids', UPDATE_NODE_PATCH_FIELDS['task'])
+        for node_type in ('epic', 'feature', 'milestone', 'roadmap'):
+            self.assertNotIn('assignee_ids', UPDATE_NODE_PATCH_FIELDS[node_type])
+
+    def test_assignee_ids_on_task_is_allowed(self):
+        result = tool_exec.interpret_plan_tool(
+            _stage([_update(TASK_ID, {'assignee_ids': [JOSHUA_ID, ANA_ID]}, node_type='task')]),
+            HANDLE_MAP,
+        )
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
+        self.assertEqual(result.operations[0].patch['assignee_ids'], [JOSHUA_ID, ANA_ID])
+
+    def test_assignee_ids_on_feature_is_rejected_with_the_hint(self):
+        result = tool_exec.interpret_plan_tool(
+            _stage([_update(FEATURE_ID, {'assignee_ids': [JOSHUA_ID]})]),
+            HANDLE_MAP,
+        )
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('"assignee_ids" cannot be set on a feature', result.message)
+        self.assertIn('Only tasks can be assigned', result.message)
+
+    def test_assignee_ids_on_epic_is_rejected_with_the_hint(self):
+        result = tool_exec.interpret_plan_tool(
+            _stage([_update(EPIC_ID, {'assignee_ids': [JOSHUA_ID, ANA_ID]})]),
+            HANDLE_MAP,
+        )
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('"assignee_ids" cannot be set on a epic', result.message)
+        self.assertIn('Only tasks can be assigned', result.message)
 
 
 class GuardFeedsBackIntoTheLoopTests(unittest.TestCase):

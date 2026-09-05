@@ -260,7 +260,10 @@ class ProposedTask(BaseModel):
     title: str
     description: str | None = None
     status: str | None = None
+    # Legacy single label; `assignee_labels` carries every assignee (first =
+    # primary). Materialize resolves labels to member ids -> `assignee_ids`.
     assignee_label: str | None = None
+    assignee_labels: list[str] | None = None
     target_feature_title: str | None = None
 
 

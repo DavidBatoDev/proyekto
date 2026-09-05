@@ -570,6 +570,180 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertIn('move destination conflict', str(ctx.exception))
 
 
+class MultiAssigneeParseTests(unittest.TestCase):
+    """`assignee_ids` (the FULL replacement set) through the registry
+    normalizer: aliases fold, scalars/lists promote, unassign tokens drop,
+    dedupe keeps order (first = primary). "me" survives here — resolving it
+    to the actor is tool_exec's job."""
+
+    TASK_ID = '123e4567-e89b-12d3-a456-426614174000'
+    ANA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    BEN = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
+    def _parse_patch(self, patch: dict) -> dict:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'assign',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'node_id': self.TASK_ID,
+                        'patch': patch,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        return dict(operations[0].patch or {})
+
+    def test_list_keeps_me_and_drops_unassign_tokens_and_empties(self) -> None:
+        patch = self._parse_patch({'assignee_ids': ['me', 'unassign', '', None, self.ANA]})
+        self.assertEqual(patch['assignee_ids'], ['me', self.ANA])
+
+    def test_list_of_only_unassign_tokens_becomes_the_empty_set(self) -> None:
+        patch = self._parse_patch({'assignee_ids': ['none', 'clear assignee']})
+        self.assertEqual(patch['assignee_ids'], [])
+
+    def test_null_assignee_ids_means_unchanged(self) -> None:
+        # null = key absent (assignment unchanged); only [] unassigns.
+        patch = self._parse_patch({'title': 'Renamed', 'assignee_ids': None})
+        self.assertEqual(patch, {'title': 'Renamed'})
+        self.assertEqual(self._parse_patch({'assignees': None}), {})
+
+    def test_dedupes_preserving_order_and_canonicalizes_uuids(self) -> None:
+        patch = self._parse_patch(
+            {'assignee_ids': [self.BEN, self.ANA.upper(), self.BEN, f' {self.ANA} ']}
+        )
+        self.assertEqual(patch['assignee_ids'], [self.BEN, self.ANA])
+
+    def test_assignees_alias_folds_into_assignee_ids(self) -> None:
+        patch = self._parse_patch({'assignees': [self.ANA, self.BEN]})
+        self.assertNotIn('assignees', patch)
+        self.assertEqual(patch['assignee_ids'], [self.ANA, self.BEN])
+
+    def test_scalar_assignees_alias_is_wrapped(self) -> None:
+        patch = self._parse_patch({'assignees': self.ANA})
+        self.assertEqual(patch['assignee_ids'], [self.ANA])
+
+    def test_list_under_assignee_id_promotes_to_assignee_ids(self) -> None:
+        patch = self._parse_patch({'assignee_id': [self.ANA, self.BEN]})
+        self.assertNotIn('assignee_id', patch)
+        self.assertEqual(patch['assignee_ids'], [self.ANA, self.BEN])
+
+    def test_string_under_assignee_ids_is_wrapped(self) -> None:
+        patch = self._parse_patch({'assignee_ids': self.ANA})
+        self.assertEqual(patch['assignee_ids'], [self.ANA])
+
+    def test_both_keys_survive_for_downstream_precedence(self) -> None:
+        patch = self._parse_patch({'assignee_ids': [self.ANA, self.BEN], 'assignee_id': 'null'})
+        self.assertEqual(patch['assignee_ids'], [self.ANA, self.BEN])
+        self.assertIsNone(patch['assignee_id'])
+
+    def test_scalar_assignee_id_is_still_normalized(self) -> None:
+        patch = self._parse_patch({'assignee_id': f' {self.ANA.upper()} '})
+        self.assertEqual(patch['assignee_id'], self.ANA)
+        self.assertNotIn('assignee_ids', patch)
+
+    def test_top_level_assignee_ids_alias_is_promoted_into_patch(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'assign',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'node_id': self.TASK_ID,
+                        'assignee_ids': [self.ANA],
+                    }
+                ],
+            }
+        )
+        self.assertEqual((operations[0].patch or {}).get('assignee_ids'), [self.ANA])
+
+    def test_update_task_assignee_alias_accepts_assignee_ids(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'assign',
+                'operations': [
+                    {
+                        'op': 'update_task_assignee',
+                        'task_id': self.TASK_ID,
+                        'assignee_ids': [self.ANA, 'unassign', self.BEN],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].op.value, 'update_node')
+        self.assertEqual(operations[0].node_type.value, 'task')
+        self.assertEqual(operations[0].node_id, self.TASK_ID)
+        self.assertEqual((operations[0].patch or {}).get('assignee_ids'), [self.ANA, self.BEN])
+
+    def test_add_task_data_gets_the_same_set_normalization(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create',
+                'operations': [
+                    {
+                        'op': 'add_task',
+                        'parent_id': '123e4567-e89b-12d3-a456-426614174111',
+                        'data': {
+                            'title': 'Ship it',
+                            'assignees': [self.BEN.upper(), 'unassign', self.BEN, 'me'],
+                        },
+                    },
+                    {
+                        'op': 'add_task',
+                        'parent_id': '123e4567-e89b-12d3-a456-426614174111',
+                        'data': {'title': 'Unchanged', 'assignee_ids': None},
+                    },
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 2)
+        self.assertEqual(operations[0].data['assignee_ids'], [self.BEN, 'me'])
+        self.assertNotIn('assignees', operations[0].data)
+        # null = assignment unchanged: the key is dropped, never sent as [].
+        self.assertNotIn('assignee_ids', operations[1].data)
+        self.assertEqual(operations[1].data['title'], 'Unchanged')
+
+    def test_llm_visible_add_task_data_documents_assignee_ids(self) -> None:
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items']['anyOf']
+        for branch in branches:
+            op_name = branch.get('properties', {}).get('op', {}).get('const')
+            data_props = branch['properties']['data'].get('properties') or {}
+            if op_name == 'add_task':
+                self.assertEqual(data_props['assignee_ids']['type'], 'array')
+                self.assertEqual(data_props['assignee_ids']['items'], {'type': 'string'})
+                self.assertIn('"me"', data_props['assignee_ids']['description'])
+            else:
+                self.assertNotIn('assignee_ids', data_props)
+
+    def test_llm_visible_patch_schema_documents_both_assignee_fields(self) -> None:
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items']['anyOf']
+        update_branches = [
+            branch
+            for branch in branches
+            if branch.get('properties', {}).get('op', {}).get('const') == 'update_node'
+        ]
+        self.assertTrue(update_branches)
+        for branch in update_branches:
+            patch_props = branch['properties']['patch'].get('properties') or {}
+            self.assertIn('status', patch_props)
+            # Not nullable: null means "unchanged" and is dropped, so the LLM
+            # is told to omit the key rather than send null.
+            self.assertEqual(patch_props['assignee_ids']['type'], 'array')
+            self.assertEqual(patch_props['assignee_ids']['items'], {'type': 'string'})
+            self.assertIn('"me"', patch_props['assignee_ids']['description'])
+            self.assertIn('[] unassigns everyone', patch_props['assignee_ids']['description'])
+            self.assertIn('omit to leave the assignment unchanged', patch_props['assignee_ids']['description'])
+            self.assertEqual(patch_props['assignee_id']['type'], ['string', 'null'])
+            self.assertIn('prefer assignee_ids', patch_props['assignee_id']['description'])
+
+
 class PlanToolStatusEnumSchemaTests(unittest.TestCase):
     """Locks in the status enum constraints on the planner's tool schema.
 

@@ -151,13 +151,31 @@ def deterministic_summary(session: AgentSession, run_state: Any) -> str:
 
 
 def _outcome_block(session: AgentSession, run_state: Any, report: VerifyReport) -> str:
-    lines = ['# Outcome']
+    lines = [
+        '# Outcome',
+        'Every commit listed as committed below HAS been applied to the live roadmap. '
+        'Report it as done; never say the change could not be made.',
+    ]
     for commit in run_state.commits:
         batch = runs.batch_by_id(run_state, commit.batch_id)
         label = _label(session, commit, batch)
+        source = str(getattr(batch, 'source', '') or '') if batch is not None else ''
         if commit.status == 'committed':
             summary = ', '.join(f'{k} {v}' for k, v in sorted(commit.impacted_summary.items()) if v)
-            lines.append(f'- {label}: committed ({summary or "no summary"})')
+            if source == 'revert':
+                # An undo: the model must say what was restored, not re-describe
+                # the user's request as something it could not do.
+                lines.append(
+                    f'- {label}: UNDO applied — the previous change on this roadmap was '
+                    f'reverted and its prior state restored (committed; {summary or "no summary"})'
+                )
+            else:
+                lines.append(f'- {label}: committed ({summary or "no summary"})')
+            diff = ', '.join(
+                f'{k} {v}' for k, v in sorted((commit.semantic_diff_summary or {}).items()) if v
+            )
+            if diff:
+                lines.append(f'  changes: {diff}')
             for item in commit.impacted_items[:25]:
                 lines.append(f'  - {item.impact} {item.node_type} "{item.title or item.node_id}"')
         else:
@@ -168,11 +186,52 @@ def _outcome_block(session: AgentSession, run_state: Any, report: VerifyReport) 
     return '\n'.join(lines)
 
 
+_IMPACT_VERB = {'created': 'removed', 'deleted': 'brought back', 'modified': 'restored'}
+
+
+def is_undo_run(run_state: Any) -> bool:
+    """True when every batch of the run came from ``revert_changes``."""
+    batches = list(getattr(run_state, 'batches', None) or [])
+    return bool(batches) and all(str(getattr(b, 'source', '') or '') == 'revert' for b in batches)
+
+
+def undo_summary(session: AgentSession, run_state: Any) -> str:
+    """The report for an undo run, written deterministically: an undo
+    confirmation must state exactly what was restored, and a paraphrasing
+    model has answered "I can't undo that" right after a verified revert
+    commit. Falls back to ``deterministic_summary`` when a commit failed."""
+    if any(c.status != 'committed' for c in run_state.commits) or not run_state.commits:
+        return deterministic_summary(session, run_state)
+    parts: list[str] = []
+    for commit in run_state.commits:
+        batch = runs.batch_by_id(run_state, commit.batch_id)
+        label = _label(session, commit, batch)
+        items = [
+            f'{_IMPACT_VERB.get(str(item.impact or ""), "restored")} {item.node_type} "{item.title or item.node_id}"'
+            for item in commit.impacted_items[:5]
+        ]
+        extra = len(commit.impacted_items) - len(items)
+        if extra > 0:
+            items.append(f'and {extra} more')
+        detail = f' — {"; ".join(items)}' if items else ''
+        parts.append(f'Undid the last change on {label}{detail}')
+    return '. '.join(parts) + '.'
+
+
 def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
     settings = ctx.settings
     report = deterministic_report(session, run_state)
     outcome = PhaseOutcome(kind='verified', assistant_message=report.summary)
-    if report.status != 'nothing_to_verify':
+    if report.status != 'nothing_to_verify' and is_undo_run(run_state):
+        # Undo runs get the deterministic confirmation; no model paraphrase.
+        report.summary = undo_summary(session, run_state)
+        outcome = PhaseOutcome(kind='verified', assistant_message=report.summary)
+        logger.info(
+            'verify model report skipped for an undo run trace_id=%s run_id=%s',
+            ctx.trace_id,
+            run_state.run_id,
+        )
+    elif report.status != 'nothing_to_verify':
         past_budget = getattr(ctx, 'past_soft_budget', None)
         if callable(past_budget) and past_budget():
             # The step already spent its soft budget (a long investigate or

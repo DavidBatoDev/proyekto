@@ -232,6 +232,54 @@ class FormatRecentAppliedChangesTests(unittest.TestCase):
         self.assertIn('status: todo → done', rendered)
         self.assertIn('Created epic "New epic"', rendered)
 
+    def test_renders_assignee_set_change_with_counts_and_ids(self) -> None:
+        changes = [
+            AppliedChange(
+                node_id='task-1',
+                node_type='task',
+                change_type='ASSIGNEE_CHANGED',
+                change_from={'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben']},
+                change_to={'assignee_id': 'ana', 'assignee_ids': ['ana', 'ben', 'cid']},
+                title='Ship it',
+            ),
+        ]
+        rendered = format_recent_applied_changes(changes)
+        assert rendered is not None
+        self.assertIn(
+            '1. Updated task "Ship it" assignees: 2 → 3 [ana, ben] → [ana, ben, cid] (id: task-1)',
+            rendered,
+        )
+
+    def test_renders_unassign_everyone(self) -> None:
+        changes = [
+            AppliedChange(
+                node_id='task-1',
+                node_type='task',
+                change_type='ASSIGNEE_CHANGED',
+                change_from={'assignee_id': 'ana', 'assignee_ids': ['ana']},
+                change_to={'assignee_id': None, 'assignee_ids': []},
+                title='Ship it',
+            ),
+        ]
+        rendered = format_recent_applied_changes(changes)
+        assert rendered is not None
+        self.assertIn('assignees: 1 → 0 [ana] → [none]', rendered)
+
+    def test_assignee_change_without_the_set_falls_back_to_the_scalar(self) -> None:
+        changes = [
+            AppliedChange(
+                node_id='task-1',
+                node_type='task',
+                change_type='ASSIGNEE_CHANGED',
+                change_from={'assignee_id': 'ana'},
+                change_to={'assignee_id': 'ben'},
+                title='Ship it',
+            ),
+        ]
+        rendered = format_recent_applied_changes(changes)
+        assert rendered is not None
+        self.assertIn('1. Updated task "Ship it" assignee: ana → ben (id: task-1)', rendered)
+
     def test_returns_none_for_empty(self) -> None:
         self.assertIsNone(format_recent_applied_changes([]))
         self.assertIsNone(format_recent_applied_changes(None))

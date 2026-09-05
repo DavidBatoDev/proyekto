@@ -37,6 +37,7 @@ _SNAPSHOT_TO_DATA: dict[str, str] = {
     'endDate': 'end_date',
     'dueDate': 'due_date',
     'assigneeId': 'assignee_id',
+    'assigneeIds': 'assignee_ids',
 }
 
 # Which `data` fields each create op accepts (mirrors the backend applyAdd*),
@@ -44,14 +45,20 @@ _SNAPSHOT_TO_DATA: dict[str, str] = {
 _DATA_FIELDS_BY_TYPE: dict[str, set[str]] = {
     'epic': {'title', 'description', 'status', 'priority', 'color', 'tags', 'start_date', 'end_date'},
     'feature': {'title', 'description', 'is_deliverable', 'start_date', 'end_date'},
-    'task': {'title', 'description', 'status', 'priority', 'assignee_id', 'due_date'},
+    'task': {
+        'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_ids', 'due_date',
+    },
 }
 
 # Field-change `from`/`to` keys (snake_case) that an update_node patch can carry.
 _PATCH_FIELDS: set[str] = {
-    'title', 'description', 'status', 'priority', 'assignee_id', 'tags', 'color',
-    'is_deliverable', 'start_date', 'end_date', 'due_date', 'dependencies',
+    'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_ids', 'tags',
+    'color', 'is_deliverable', 'start_date', 'end_date', 'due_date', 'dependencies',
 }
+
+# The two assignee keys are ONE logical field (mirror rule: assignee_id ==
+# assignee_ids[0]); observe() restores both from the earliest record.
+_ASSIGNEE_KEYS: tuple[str, ...] = ('assignee_id', 'assignee_ids')
 
 _TEMP_PREFIX: dict[str, str] = {'epic': 'epic', 'feature': 'feat', 'task': 'task'}
 _TYPE_ORDER: dict[str, int] = {'epic': 0, 'feature': 1, 'task': 2}
@@ -149,9 +156,33 @@ class _NodeAgg:
                 }
         else:
             # Field change — record the EARLIEST pre-range value per key.
+            # ASSIGNEE_CHANGED (or any record carrying an assignee key) sets
+            # BOTH assignee keys at once from its pre-range value — a
+            # scalar-only legacy record is promoted to the set — and no
+            # later record may overwrite either of them.
+            if change_type == 'ASSIGNEE_CHANGED' or any(
+                key in change_from for key in _ASSIGNEE_KEYS
+            ):
+                self._observe_assignee_restore(change_from)
             for key, value in change_from.items():
+                if key in _ASSIGNEE_KEYS:
+                    continue
                 if key not in self.field_restores:
                     self.field_restores[key] = value
+
+    def _observe_assignee_restore(self, change_from: dict[str, Any]) -> None:
+        if any(key in self.field_restores for key in _ASSIGNEE_KEYS):
+            return
+        primary = change_from.get('assignee_id')
+        if not (isinstance(primary, str) and primary):
+            primary = None
+        assignee_ids = change_from.get('assignee_ids')
+        if isinstance(assignee_ids, list):
+            restored_ids = list(assignee_ids)
+        else:
+            restored_ids = [primary] if primary else []
+        self.field_restores['assignee_ids'] = restored_ids
+        self.field_restores['assignee_id'] = primary
 
     @property
     def existed_before(self) -> bool:

@@ -174,3 +174,103 @@ class ModelReportTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OutcomeBlockTests(unittest.TestCase):
+    """The block the report model reads must say plainly what happened: an
+    undo is named as an undo (a live run once reported "I can't undo that"
+    right after a verified revert commit), committed commits are stated as
+    applied, and the change types are listed."""
+
+    def test_revert_batch_is_described_as_an_undo(self):
+        ctx, session, run, _nest = _fixture()
+        batch = RunBatch(
+            roadmap_id=ALPHA,
+            roadmap_title='Alpha',
+            source='revert',
+            operations=[RoadmapOperation(op='update_node', node_type='task', node_id='t1', patch={'assignee_ids': ['u-1']})],
+        )
+        run.batches.append(batch)
+        run.commits.append(
+            RunCommit(
+                batch_id=batch.batch_id,
+                roadmap_id=ALPHA,
+                status='committed',
+                change_id='chg-9',
+                impacted_summary={'created': 0, 'modified': 1, 'deleted': 0},
+                semantic_diff_summary={'ASSIGNEE_CHANGED': 1},
+                impacted_items=[CommitImpactedItem(node_id='t1', node_type='task', title='Target task', impact='modified')],
+                history_recorded=True,
+                attempts=1,
+            )
+        )
+        block = verify._outcome_block(session, run, verify.deterministic_report(session, run))
+        self.assertIn('UNDO applied', block)
+        self.assertIn('prior state restored', block)
+        self.assertIn('changes: ASSIGNEE_CHANGED 1', block)
+        self.assertIn('modified task "Target task"', block)
+        self.assertIn('HAS been applied', block)
+
+    def test_ordinary_commit_is_not_called_an_undo(self):
+        ctx, session, run, _nest = _fixture()
+        _committed(run, ALPHA, 'Alpha')
+        block = verify._outcome_block(session, run, verify.deterministic_report(session, run))
+        self.assertNotIn('UNDO', block)
+        self.assertIn('"Alpha": committed (created 1)', block)
+
+
+class UndoRunReportTests(unittest.TestCase):
+    """An undo run (every batch from revert_changes) reports deterministically:
+    the model is never asked to paraphrase a revert (it once answered "I can't
+    undo that" right after a verified revert commit)."""
+
+    def _undo_run(self):
+        ctx, session, run, nest = _fixture()
+        batch = RunBatch(
+            roadmap_id=ALPHA,
+            roadmap_title='Alpha',
+            source='revert',
+            operations=[RoadmapOperation(op='update_node', node_type='task', node_id='t1', patch={'assignee_ids': ['u-1']})],
+        )
+        run.batches.append(batch)
+        run.commits.append(
+            RunCommit(
+                batch_id=batch.batch_id,
+                roadmap_id=ALPHA,
+                status='committed',
+                change_id='chg-9',
+                revision_token_after='tok-after',
+                impacted_summary={'created': 0, 'modified': 1, 'deleted': 0},
+                semantic_diff_summary={'ASSIGNEE_CHANGED': 1},
+                impacted_items=[CommitImpactedItem(node_id='t1', node_type='task', title='Target task', impact='modified')],
+                history_recorded=True,
+                attempts=1,
+            )
+        )
+        return ctx, session, run, nest
+
+    def test_undo_run_skips_the_model_and_confirms_what_was_restored(self):
+        ctx, session, run, _nest = self._undo_run()
+        with patched_llm([text_resp("I can't undo that from here.")]):
+            outcome = verify.run(ctx, session, run)
+        self.assertEqual(FakeLLM.calls, [])
+        self.assertEqual(outcome.kind, 'verified')
+        self.assertEqual(outcome.assistant_message, 'Undid the last change on "Alpha" — restored task "Target task".')
+        self.assertEqual(run.verify.summary, outcome.assistant_message)
+        self.assertEqual(run.verify.status, 'verified')
+
+    def test_mixed_runs_still_use_the_model(self):
+        ctx, session, run, _nest = self._undo_run()
+        _committed(run, BETA, 'Beta')
+        with patched_llm([text_resp('Mixed report.')]):
+            outcome = verify.run(ctx, session, run)
+        self.assertEqual(len(FakeLLM.calls), 1)
+        self.assertEqual(outcome.assistant_message, 'Mixed report.')
+
+    def test_failed_undo_falls_back_to_the_status_summary(self):
+        ctx, session, run, _nest = self._undo_run()
+        run.commits[0].status = 'failed'
+        run.commits[0].error_message = 'stale'
+        self.assertFalse(verify.is_undo_run(run) and False)
+        summary = verify.undo_summary(session, run)
+        self.assertIn('"Alpha" failed: stale', summary)

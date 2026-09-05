@@ -179,6 +179,60 @@ class OperationContractsTests(unittest.TestCase):
         )
         self.assertIsNone(validation_error)
 
+    def test_update_node_allows_empty_assignee_ids_as_unassign_everyone(self) -> None:
+        operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_type='task',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+                patch={'assignee_ids': []},
+            )
+        ]
+        self.assertIsNone(validate_operation_contract(operations, is_uuid=self._is_uuid))
+
+    def test_update_node_bulk_targets_accept_an_assignee_ids_array(self) -> None:
+        operation = RoadmapOperation(
+            op='update_node',
+            targets=[
+                '123e4567-e89b-12d3-a456-426614174000',
+                '123e4567-e89b-12d3-a456-426614174001',
+                'task_assign_1',
+            ],
+            patch={
+                'assignee_ids': [
+                    '123e4567-e89b-12d3-a456-426614174222',
+                    '123e4567-e89b-12d3-a456-426614174333',
+                ]
+            },
+        )
+        self.assertEqual(operation.semantic_contract_issues(is_uuid=self._is_uuid), [])
+        self.assertIsNone(validate_operation_contract([operation], is_uuid=self._is_uuid))
+
+    def test_parse_plan_tool_bulk_targets_keep_the_assignee_ids_array(self) -> None:
+        target_ids = [f'{i:08x}-1111-1111-1111-111111111111' for i in range(5)]
+        ids = ['9cdd95e6-f0eb-411f-941d-647d3061e0f2', '33333333-3333-3333-3333-333333333333']
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'Assigning all tasks to Ana and Ben.',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'targets': target_ids,
+                        'patch': {'assignee_ids': [*ids, ids[0]]},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].targets, target_ids)
+        self.assertEqual(operations[0].patch, {'assignee_ids': ids})
+
+    def test_mutation_missing_guidance_mentions_the_full_set(self) -> None:
+        guidance = operation_validation_guidance('update_node.mutation_missing')
+        self.assertIn('assignee_ids', guidance)
+        self.assertIn('[]', guidance)
+
     def test_operation_validation_guidance_for_new_reasons(self) -> None:
         self.assertIn(
             'missing a status value',

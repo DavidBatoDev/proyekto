@@ -253,6 +253,17 @@ def _format_change_line(index: int, change: AppliedChange) -> str:
         new = _pick_str(change.change_to, 'priority') or '?'
         return f'{index}. Updated {node_label} "{title_hint}" priority: {old} → {new} {id_suffix}'
     if change_type == 'ASSIGNEE_CHANGED':
+        old_ids = _pick_id_list(change.change_from, 'assignee_ids')
+        new_ids = _pick_id_list(change.change_to, 'assignee_ids')
+        if old_ids is not None or new_ids is not None:
+            # Multi-assignee diff: count plus the ordered id sets (first = primary).
+            old_ids = old_ids or []
+            new_ids = new_ids or []
+            return (
+                f'{index}. Updated {node_label} "{title_hint}" assignees: '
+                f'{len(old_ids)} → {len(new_ids)} '
+                f'[{", ".join(old_ids) or "none"}] → [{", ".join(new_ids) or "none"}] {id_suffix}'
+            )
         old = _pick_str(change.change_from, 'assignee_id') or 'none'
         new = _pick_str(change.change_to, 'assignee_id') or 'none'
         return f'{index}. Updated {node_label} "{title_hint}" assignee: {old} → {new} {id_suffix}'
@@ -270,6 +281,19 @@ def _format_change_line(index: int, change: AppliedChange) -> str:
         return f'{index}. Updated deliverable flag on {node_label} "{title_hint}" {id_suffix}'
     # Unknown / future change types — still surface them so the LLM at least knows something changed.
     return f'{index}. {change_type} on {node_label} "{title_hint}" {id_suffix}'
+
+
+def _pick_id_list(source: dict[str, Any], key: str) -> list[str] | None:
+    """The string ids under ``key`` when it holds a list; ``None`` when the
+    key is absent or not a list (legacy single-assignee diffs)."""
+    value = source.get(key)
+    if not isinstance(value, list):
+        return None
+    return [
+        str(item).strip()
+        for item in value
+        if isinstance(item, (str, int)) and str(item).strip()
+    ]
 
 
 def _pick_str(source: dict[str, Any], key: str) -> str | None:

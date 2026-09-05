@@ -26,15 +26,6 @@ FEATURE_STATUS_SET = set(FEATURE_STATUS_VALUES)
 EPIC_PRIORITY_VALUES = ('critical', 'nice_to_have', 'low', 'medium', 'high')
 EPIC_PRIORITY_SET = set(EPIC_PRIORITY_VALUES)
 RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE = 0.8
-UNASSIGN_ASSIGNEE_TOKENS = {
-    'unassign',
-    'unassigned',
-    'none',
-    'null',
-    'no assignee',
-    'remove assignee',
-    'clear assignee',
-}
 
 class ToolHandlerBase:
     def __init__(
@@ -191,19 +182,6 @@ class ToolHandlerBase:
         normalized = re.sub(r'[\"\'`]+', ' ', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
         return normalized
-
-    def _normalize_assignee_update_input(self, value: Any) -> tuple[bool, str | None]:
-        if value is None:
-            return True, None
-        if not isinstance(value, str):
-            return False, None
-        normalized = value.strip()
-        if not normalized:
-            return False, None
-        canonical = ' '.join(re.sub(r'[^a-z0-9]+', ' ', normalized.lower()).split())
-        if canonical in UNASSIGN_ASSIGNEE_TOKENS:
-            return True, None
-        return True, normalized
 
     def _query_variants(self, label: str) -> list[str]:
         base = self._normalize_query_text(label)
@@ -1150,6 +1128,12 @@ class ToolHandlerBase:
                         'feature_status': feature_meta.get('status'),
                         'epic_id': epic_id,
                     }
+                    # The backend's children read returns the assignee set on
+                    # task rows; pass it through so the model can compute a
+                    # union / minus without a per-task details call.
+                    for assignee_key in ('assignee_id', 'assignee_ids'):
+                        if assignee_key in task:
+                            payload[assignee_key] = task.get(assignee_key)
                     tasks.append(payload)
                     if len(tasks) >= normalized_limit:
                         break
