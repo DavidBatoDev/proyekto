@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-09-01 · **Status:** current (all 15 sections written)
+> **Last updated:** 2026-09-05 · **Status:** current (all 15 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Talent,
@@ -30,9 +30,9 @@ site, so links are relative filesystem paths. Every page carries a
 | 00 | [Getting Started](./00-getting-started/README.md) | Setup, local development, environment variables | **current** |
 | 01 | [Product & Concepts](./01-product/README.md) | Personas, project lifecycle, roadmap model, glossary | **current** |
 | 02 | [Architecture](./02-architecture/README.md) | The six units, deploy topology, cross-service flows | **current** |
-| 03 | [Backend](./03-backend/README.md) | NestJS API — modules, guards, patterns, API reference | **current** |
-| 04 | [Web](./04-web/README.md) | React frontend — routing, state, services, roadmap canvas | **current** |
-| 05 | [Agent & Roadmap AI](./05-agent-ai/README.md) | The v2 loop, memory, the shared operations contract | **current** |
+| 03 | [Backend](./03-backend/README.md) | NestJS API — modules, guards, patterns, API reference, the AI context API | **current** |
+| 04 | [Web](./04-web/README.md) | React frontend — routing, state, services, roadmap canvas, the AI assistant kit | **current** |
+| 05 | [Agent & Roadmap AI](./05-agent-ai/README.md) | Runs & phases (the session-orchestrated run machine), memory, the shared operations contract | **current** |
 | 06 | [Realtime](./06-realtime/README.md) | Cloudflare Worker + Durable Objects | **current** |
 | 07 | [Data & Database](./07-data-and-db/README.md) | Schema, migrations, identity model, RLS | **current** |
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | **current** |

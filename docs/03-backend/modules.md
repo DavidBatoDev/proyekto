@@ -1,11 +1,12 @@
 # Modules
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
-The backend is **41 feature modules** under
+The backend is **42 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/) (counted from directories holding their own
-`*.module.ts`; three further nested modules — `projects/access-sync`, `projects/authorization`,
-and the global `realtime/realtime-publisher` — are not feature modules), each self-contained
+`*.module.ts` — 45 files, minus three nested modules that are not feature modules:
+`projects/access-sync`, `projects/authorization`, and the global
+`realtime/realtime-publisher`), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
 actual `.from('…')` calls — the identity domain uses **`user_*`** tables, with
@@ -30,11 +31,12 @@ group-level barrel modules.
 | Module | Purpose | Key tables |
 | --- | --- | --- |
 | `auth` | Auth + lane-free onboarding (`completed_at` only); provisions a **workspace then a personal project** for every user, in that order | `profiles` |
-| `workspaces` | The organizational/billing tier — workspaces, the member seat pool, invites, and the plan scaffold. **Never an authorization source.** Built, hosted dev only | `workspaces`, `workspace_members`, `workspace_subscriptions`, `workspace_invites` |
+| `workspaces` | The organizational/billing tier — workspaces, the member seat pool, invites, and the plan scaffold. **Never an authorization source** | `workspaces`, `workspace_members`, `workspace_subscriptions`, `workspace_invites` |
 | `users` | Own-account read/update | `profiles` |
 | `profile` | Full consultant/talent profile + all sub-entities | `profiles`, `user_*` |
 | `projects` | Projects, access/membership, invites, resources | `projects`, `project_access`, `project_invites`, `project_resource_*` |
-| `roadmaps` | Roadmap graph engine **+** roadmap AI | `roadmap_*`, `roadmap_ai_*`, comments/attachments |
+| `roadmaps` | Roadmap graph engine **+** roadmap AI: roadmap-keyed context reads, commit/discard/rollback, the durable change log, and AI threads in **two scopes** (`/roadmaps/:id/ai-sessions`, `/workspaces/:id/ai-sessions`) | `roadmap_*`, `roadmap_ai_*`, `roadmap_change_history`, comments/attachments |
+| `ai-context` | The **user-scoped** AI context family (`/api/ai/context/*`) the agent reads in workspace scope — overview, cross-roadmap search/tasks, knowledge search, @-reference resolution, project context, run/session change listing. Every denial is a 404 | *(reads across `roadmaps`, `roadmap_*`, `projects`, `teams`, `workspaces`, `roadmap_change_history` via three `ai_context_*` RPCs + batch `.in()` loads)* |
 | `roadmap-shares` | Public/tokenized share links + shared commenting | `roadmap_shares`, `roadmap_share_access` |
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
@@ -63,7 +65,7 @@ group-level barrel modules.
 | `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
 | `mcp` | First-party read + write MCP server, Personal Access Tokens, OAuth 2.1 authorization server | `mcp_personal_access_tokens`, `mcp_oauth_clients`, `mcp_oauth_grants` |
 
-> **⚠️ The table above lists 33 of the 41 modules.** Eight exist in source and are not yet
+> **⚠️ The table above lists 34 of the 42 modules.** Eight exist in source and are not yet
 > detailed here: `delivery`, `postings`, `profile-import`, `project-commerce`,
 > `service-offerings`, `survey`, `talent`, and `qa-fixtures`. Their existence is verified;
 > their purposes and tables are **unverified in this page** — read the source, not this table,
@@ -132,20 +134,57 @@ Imports `NotificationsModule`, `TeamsModule` (forwardRef), `ChatModule`.
 
 **`roadmaps`** — the biggest module: the roadmap graph (roadmaps → epics →
 features/milestones → tasks, with comments, assignees, dependencies, attachments)
-**and** the AI assistant (sessions, messages, memories, metadata/title generation,
-JSON-patch application). 9 controllers, ~15 services. Tables: `roadmap_epics`,
-`roadmap_features`, `roadmap_milestones`, `roadmap_tasks`, `roadmap_*_assignees`,
-`milestone_features`, `epic_comments`/`feature_comments`/`task_comments`,
-`task_attachments`, `task_dependencies`, `feature_dependencies`,
-`task_activity_log`, `roadmap_ai_sessions`,
-`roadmap_ai_messages`, `roadmap_ai_memories`. The patch repository persists the
-whole graph atomically via the RPC `upsert_full_roadmap` (no `.from()`).
+**and** the AI assistant (threads, messages, memories, metadata/title generation,
+commit/discard/rollback, JSON-patch application). 13 controllers, 22 services.
+Tables: `roadmap_epics`, `roadmap_features`, `roadmap_milestones`, `roadmap_tasks`,
+`roadmap_*_assignees`, `milestone_features`,
+`epic_comments`/`feature_comments`/`task_comments`, `task_attachments`,
+`task_dependencies`, `feature_dependencies`, `task_activity_log`,
+`roadmap_ai_sessions`, `roadmap_ai_messages`, `roadmap_ai_memories`,
+`roadmap_change_history`. The patch repository persists the whole graph atomically
+via the RPC `upsert_full_roadmap` (no `.from()`).
 `RoadmapAuthorizationService` gates every access in the service layer, walking
 child → roadmap → project: reads need **view** (owner or any `project_access` row,
 404 on denial), writes need **edit**, and (un)assignment needs the distinct
-`roadmap.assign` capability. See
+`roadmap.assign` capability. It also exposes the batched
+`filterViewableRoadmapIds(userId, ids)` (one `roadmaps` read + one `project_access`
+probe, chunked at 50, fail-closed) that `ai-context` uses for @-reference and
+change-list authorization. See
 [auth-and-guards.md](./auth-and-guards.md#roadmap-resource-authorization)
 and [Agent & Roadmap AI](../05-agent-ai/README.md).
+
+AI threads are **scoped**. `RoadmapAiSessionsService` takes an `AiSessionScope`
+(`{kind:'roadmap', roadmapId}` or `{kind:'workspace', workspaceId}`) as the first
+argument of every public method; two controllers hand it the same eight routes
+(list/create, get/patch/delete, `PUT …/agent-state`, list/append messages):
+`RoadmapAiSessionsController` at `roadmaps/:id/ai-sessions` and
+`WorkspaceAiSessionsController` at `workspaces/:id/ai-sessions` (the dashboard
+assistant). The scope check is the same predicate the RLS uses — roadmap view for
+roadmap threads, `WorkspacesService.isMember` for workspace threads — and every
+read pins both the target id column **and** the `scope` discriminator, so a roadmap
+thread can never be read through the workspace route or vice versa; denials are 404,
+never 403. This is why `RoadmapsModule` now imports `WorkspacesModule`. The commit
+path (`POST /roadmaps/:id/ai/commit`) accepts optional `session_id`/`run_id` for
+attribution and reports `history_recorded` — see
+[AI context API](./ai-context-api.md#commit-attribution).
+
+**`ai-context`** — the user-scoped half of the AI context surface
+([`ai-context.controller.ts`](../../backend/src/modules/execution/ai-context/ai-context.controller.ts),
+`@Controller('ai/context')`). Where `roadmaps/:id/ai/context/*` answers "what is in
+this roadmap", this module answers "what can this user reach across every roadmap,
+project, team and workspace" — the reads a workspace-scope agent session needs:
+`actor`, `overview` (laned `current | shared | other_workspace`, 15 s Redis cache),
+`roadmaps` (keyset-paged), `search`, `tasks`, `knowledge-search`, `resolve-refs`
+(the composer's @-mentions, batch-hydrated and fail-closed), the project-keyed
+`projects/:projectId{,/brief,/resources,/meetings,/members,/members/:memberId}`
+family, and `changes?run_id=|session_id=`. Four services
+(`AiContextService`, `AiContextRefsService`, `AiContextKnowledgeService`,
+`AiContextProjectService`) over one repository that wraps the three
+`ai_context_*` RPCs and the batch `.in()` loads. It imports `RoadmapsModule`,
+`ProjectsModule`, `WorkspacesModule`, `TeamsModule` and nothing imports it, so the
+`RoadmapsModule → ProjectsModule → WorkspacesModule` chain stays acyclic. Every
+read starts from an already-authorized set and **every denial is a 404**. Full
+page: [AI context API](./ai-context-api.md).
 
 **`roadmap-shares`** — tokenized public share links (`roadmap_shares`,
 `roadmap_share_access`) and commenting on shared epics/features.
@@ -241,6 +280,9 @@ screen, and rotating refresh tokens on durable per-connection grants
 - **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`, `workspaces`. `taxonomy` is repository-backed.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
+- **RPC reads**: `ai-context` reads through `ai_context_roadmap_counts`, `ai_context_search_nodes`,
+  `ai_context_list_tasks` (service-role-only EXECUTE) and `knowledge` through
+  `search_knowledge_chunks` / `search_knowledge_chunks_projects`.
 - **Global modules**: `SupabaseModule`, `RedisModule`, `R2Module`,
   `RealtimePublisherModule`, `AuditModule`, `KnowledgeModule`.
 

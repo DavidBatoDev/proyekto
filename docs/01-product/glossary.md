@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -37,7 +37,7 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Time log** | A billable record of work against a task (`task_time_logs`), rolled into invoices/payouts. |
 | **Payout / Invoice** | The live money paths — manual payouts of approved time, and generated project invoices. |
 | **Guest** | An anonymous user (a `profiles` row with `is_guest`) who can build a roadmap before signing up. |
-| **AI assistant** | The roadmap copilot — a conversational agent that plans and commits roadmap edits. |
+| **AI assistant** | The Proyekto assistant — a conversational agent that reads and edits roadmaps. It lives in two places: inside a roadmap, where it edits that roadmap directly, and on the workspace dashboard, where it works across every project, roadmap, and team you can access. Every message is a **run** (investigate -> propose -> execute -> verify). Edits that reach beyond the open roadmap, touch several roadmaps, or — from the dashboard — delete anything or exceed 15 operations come back as a **proposal** to confirm first, then commit one change per roadmap. `@`-mentions (projects, roadmaps, epics, features, tasks, milestones, teams) tell it what you mean without limiting what it may look at. |
 
 For the technical vocabulary (deployable units, service role, lean diff, room keys),
 see the [Architecture glossary](../02-architecture/README.md#glossary) and the

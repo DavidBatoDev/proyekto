@@ -1,6 +1,6 @@
 # Local Development
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The day-to-day commands for each package, the ports they run on, and the
 Windows/monorepo gotchas that trip people up.
@@ -28,8 +28,6 @@ Windows/monorepo gotchas that trip people up.
 | Command | Does |
 | --- | --- |
 | `npm run dev` | Sets `NODE_ENV=development`, loads `.env.development.local`, then starts Nest watch mode |
-| `npm run db:dev:check` / `db:dev:apply` | Check prod parity or apply repository migrations on hosted dev Supabase |
-| `npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` | Back up dev and mirror production's public schema into it |
 | `npm run build` | `nest build` |
 | `npm test` | Jest (config inline in `package.json`, `rootDir` is `src/`) |
 | `npx jest path/to/file.spec.ts` | Run a single spec |
@@ -53,6 +51,20 @@ node scripts/validate_agent_canary_matrix.mjs
 
 See [Runbooks → benchmarks & canary](../12-runbooks/benchmarks-and-canary.md).
 
+## Hosted dev database sync (repo root)
+
+There are no `npm run db:dev:*` scripts in any `package.json`; the entry point is
+[`scripts/sync_supabase_dev.mjs`](../../scripts/sync_supabase_dev.mjs), which hard-codes
+the dev ref and refuses every mutating target except it:
+
+```bash
+node scripts/sync_supabase_dev.mjs check     # normalized public-schema parity, prod vs dev
+node scripts/sync_supabase_dev.mjs apply     # pending repository migrations + safe seed -> dev
+node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl   # destructive baseline
+```
+
+Details and what "parity" means: [Data → migrations workflow](../07-data-and-db/migrations-workflow.md#the-dev-sync-script).
+
 ## Gotchas
 
 - **Shell is bash-on-Windows** — use forward slashes and `/dev/null`, not `NUL`.
@@ -62,7 +74,7 @@ See [Runbooks → benchmarks & canary](../12-runbooks/benchmarks-and-canary.md).
   `backend/src/` (or absolute).
 - **Don't `npm run lint` in `backend/` to verify** — it ESLint-`--fix`es all of
   `src/`. Use `npx eslint <files>` (no `--fix`) to check specific files.
-- **Supabase CLI runs from `backend/`** per SETUP conventions, though
+- **Supabase CLI runs from `backend/`** (see [setup.md](./setup.md#database-supabase)), though
   `supabase/migrations/` lives at the repo root.
 - Scripts auto-load `.env` in order: cwd → `scripts/.env` → repo root `.env` →
   `backend/.env` (or `agent/.env` for the agent runner). First value wins.

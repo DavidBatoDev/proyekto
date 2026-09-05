@@ -1,11 +1,12 @@
 # Web Architecture
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The web app is a **React 19 + Vite** single-page app, also packaged as the mobile app
 via Capacitor. Routing is file-based (TanStack Router), server state is TanStack
 Query, and a small amount of client state lives in Zustand. It talks to the backend
-for CRUD and to the agent directly for roadmap AI.
+for CRUD and to the agent directly for the AI assistant (in a roadmap, or across the
+open workspace from the dashboard — see [ai-assistant.md](./ai-assistant.md)).
 
 > The whole stack leans on the TanStack suite (Router / Query / Table) plus Zustand
 > for the few pieces of genuinely client-side state (auth, the roadmap canvas, UI
@@ -55,14 +56,14 @@ floating active timer, and `MigrationHandler` (guest→user data migration).
 component ─► useQuery/useMutation (TanStack Query)
                  │
                  ├─ apiClient (VITE_API_URL) ──► backend /api/*     (CRUD)
-                 └─ agentApiClient (VITE_AGENT_API_URL) ──► agent   (roadmap AI)
+                 └─ agentApiClient (VITE_AGENT_API_URL) ──► agent   (AI assistant runs)
         server state cached by React Query; client state in Zustand stores
 ```
 
 Two axios clients: `apiClient` for the backend (30 s timeout, Bearer/guest header
 injection, `{data}` unwrapped at call sites) and `agentApiClient` for the agent
-(180 s timeout for long reasoning turns). See
-[state-and-services.md](./state-and-services.md).
+(180 s timeout per run leg; a long run is several legs driven by the run controller).
+See [state-and-services.md](./state-and-services.md).
 
 ## Query client defaults
 

@@ -36,7 +36,7 @@ Commands (.claude/commands/): /review, /test, /ship, /plan-feature, /validate-id
 ## Supabase environments
 
 - Production is `byvbnkpiselvvulsvxgo`; hosted development is `vyiedlwasdwmjbztqznl`.
-- `npm run db:dev:check` from `backend/` verifies that normalized `public` schemas match.
-- `npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` is the backup-first, destructive schema-only baseline workflow. It may erase dev rows in rebuilt tables.
+- `node scripts/sync_supabase_dev.mjs check` (repo root) verifies that normalized `public` schemas match.
+- `node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl` is the backup-first, destructive schema-only baseline workflow. It may erase dev rows in rebuilt tables.
 - Schema parity does not mean environment cloning: production rows, Auth users/sessions, Storage objects, migration-history records, credentials, and dashboard/project configuration remain separate.
 - Never copy production rows or Auth users to dev as part of schema mirroring. Never use local `supabase db push` for production; use the Supabase MCP `apply_migration` workflow.

@@ -11,7 +11,7 @@ The contract lives at `schemas/roadmap-ai-operations.json` plus its JSON-Schema 
 
 1. **Schema first**: edit BOTH `schemas/roadmap-ai-operations.json` and `schemas/roadmap-ai-operations.schema.json` coherently.
 2. **Backend consumers**: operation validation and application logic in `backend/src/modules/roadmaps/` (roadmap-ai services + `patch/` JSON-patch machinery).
-3. **Agent consumers**: `agent/app/core/v2/tools_spec.py` + `tools_exec.py`; if the op's *semantics* change (not just shape), also update `agent/app/core/v2/prompts/system_v2.md`.
+3. **Agent consumers**: `agent/app/core/runtime/tools.py` + `tool_exec.py`; if the op's *semantics* change (not just shape), also update `agent/app/core/runtime/prompts/system.md`.
 4. **Web consumers**: optimistic UI handlers for the operation (roadmapStore / roadmap services).
 5. **Verify**:
    - `cd backend && npm run check:roadmap-ai-schema`

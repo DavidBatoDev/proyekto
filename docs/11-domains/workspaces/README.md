@@ -1,6 +1,6 @@
 # Workspaces
 
-> **Last updated:** 2026-09-03 · **Status:** shipped (in production since 2026-09-02; URL handles added 2026-09-03)
+> **Last updated:** 2026-09-05 · **Status:** current
 
 A **workspace** is the top-level organizational and billing boundary: it owns teams and
 projects, and `workspace_members` is the billable seat pool. It is deliberately **not** an
@@ -18,7 +18,10 @@ client's project has `project_access` there and no seat in that client's workspa
 > `20260902130000_drop_personal_workspace_compat.sql`, which removed the shim. The backfill was
 > re-run after the deploy to cover signups made during the window. Production after apply:
 > 29 workspaces (28 personal + 1 organization), no unhomed team or project, no guest holding a
-> seat. Code shipped in commits `edd59e03`..`672bd021` on `main`.
+> seat. Code shipped in commits `edd59e03`..`672bd021` on `main`. URL handles (`/w/<slug>/`)
+> followed on 2026-09-03. The workspace-scope AI-thread schema (`20260904090000`) was reported
+> applied to dev and prod on 2026-09-05 (not verifiable from the repo — confirm with
+> `list_migrations`); the consuming code is on `feat/ai-revamp`, not yet on `main`.
 
 ## The shape
 
@@ -232,9 +235,19 @@ All routes carry `SupabaseAuthGuard` at the controller. Base `/api/workspaces`.
 | POST | `/api/workspaces/:id/invites` | owner/admin |
 | GET | `/api/workspaces/:id/invites` | Any member |
 | DELETE | `/api/workspaces/:id/invites/:inviteId` | owner/admin |
+| GET | `/api/workspaces/:id/ai-sessions` | Any member — the caller's **own** assistant threads in this workspace (`?archived=`, `?limit=`) |
+| POST | `/api/workspaces/:id/ai-sessions` | Any member |
+| GET | `/api/workspaces/:id/ai-sessions/:sessionId` | The thread's owner |
+| PATCH | `/api/workspaces/:id/ai-sessions/:sessionId` | The thread's owner (title, archive, pin) |
+| PUT | `/api/workspaces/:id/ai-sessions/:sessionId/agent-state` | The thread's owner — written by the agent as the user (its durable memory snapshot) |
+| DELETE | `/api/workspaces/:id/ai-sessions/:sessionId` | The thread's owner |
+| GET | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner |
+| POST | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner (the web persists each turn; `metadata` is capped at 64 KB) |
 
 `me/invites` is declared **before** the `:id` routes so Nest's matcher does not read `me` as a
-workspace id.
+workspace id. The eight `ai-sessions` routes live in `RoadmapsModule`
+(`controllers/workspace-ai-sessions.controller.ts`), not in `WorkspacesModule`; see
+[AI assistant](#ai-assistant) for the scope rules.
 
 `POST /api/teams` (`CreateTeamDto`) and `POST /api/projects` (`CreateProjectDto`) accept an
 optional `workspace_id`; omitting it means "the caller's default workspace". It is **deliberately
@@ -265,6 +278,10 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
 - **Entering a workspace** — switching, creating, and accepting a workspace invite all go through
   `useEnterWorkspace`: remember the selection, reset the dashboard/teams caches (so the skeletons
   show instead of the previous workspace's rows), and navigate to `/w/<slug>/dashboard`.
+- **Assistant** — the dashboard carries the Proyekto assistant as a rail, expanded to a
+  full-screen overlay by `?assistant=full` on `/w/<slug>/dashboard` (the route owns the search
+  param, so it survives a refresh). Threads are bound to the open workspace; see
+  [AI assistant](#ai-assistant).
 - **Billing is a placeholder.** It renders the plan label and seats-used and nothing else — there
   is no payment processor, no checkout, and no enforcement anywhere in the product.
 - **Scoping** — `groupByWorkspace` (`web/src/lib/workspaceScope.ts`) splits teams and projects
@@ -272,7 +289,69 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   member of → **"Shared with you"**; in another workspace the viewer *does* belong to → hidden
   until they switch. With no workspace selected it falls back to one flat list, so an unresolved
   selection never reads as data loss. Consumed by `SidebarContent`, `ProjectsGrid`, `TeamsGrid`,
-  and `DashboardWidgets`.
+  and `DashboardWidgets`. The assistant's @-mention picker is the deliberate exception: it shows
+  the third group too, because the agent can act on it (below).
+
+## AI assistant
+
+The dashboard's **Proyekto assistant** runs in **workspace scope**: an AI thread is bound to
+the open workspace rather than to one roadmap, and the agent may read and edit any project,
+roadmap, or team the caller can reach — including work shared into the caller from outside
+the workspace. Consistent with everything above, **workspace membership is a discovery
+boundary for the agent, not an authorization one**: every read and every commit the agent
+makes goes to the backend as the user and passes the same per-roadmap / per-project checks
+as a click in the UI (`project_access`, `can_view_roadmap`). Membership decides only which
+workspace the thread belongs to and which **lane** an item is reported in.
+
+```text
+web dashboard  /w/<slug>/dashboard   (rail, or ?assistant=full)
+   |
+   |  threads:  /api/workspaces/:id/ai-sessions[...]           backend, member-only
+   |  runs:     POST /agent/sessions {scope:{kind:"workspace", workspace_id}}
+   v
+agent  -- GET  /api/workspaces/:id            403 | 404 -> 404 SESSION_SCOPE_NOT_FOUND
+       -- GET  /api/ai/context/overview?workspace_id=    projects, roadmaps, teams, laned
+       -- GET  /api/ai/context/{roadmaps,search,tasks,knowledge-search,changes}
+       -- POST /api/ai/context/resolve-refs              @-mentions, fail-closed per ref
+       -- GET  /api/roadmaps/:id/ai/context/*  +  POST /api/roadmaps/:id/ai/commit
+                                                  one commit per roadmap, as the user
+```
+
+| Lane | Meaning (`classifyAiContextLane`, `backend/src/modules/execution/ai-context/services/ai-context.service.ts`) |
+| --- | --- |
+| `current` | In the requested workspace (or, with no workspace requested, in any workspace the caller belongs to) |
+| `other_workspace` | In another workspace the caller belongs to |
+| `shared` | Unhomed, or in a workspace the caller is not a member of — reachable only through `project_access` |
+
+Nothing accessible is ever dropped. That is the one place the assistant differs from
+`groupByWorkspace`, which hides `other_workspace` items until the user switches: the
+composer's @-mention picker orders candidates `current -> shared -> other_workspace` and
+shows all three. A non-member `workspace_id` on `overview` is a **404**.
+
+**Threads.** `roadmap_ai_sessions` gained a nullable `roadmap_id`, a `workspace_id`
+(**`ON DELETE CASCADE`** — `SET NULL` would violate the one-of CHECK, and threads are
+private per-user scratch), and `scope` (`roadmap` | `workspace`) with a CHECK that exactly
+one of the two ids is set. `WorkspaceAiSessionsController` exposes the same eight routes
+and DTOs as the roadmap controller through the same `RoadmapAiSessionsService`, generalized
+on scope: a non-member gets **404** (never 403, matching `/w/<slug>` resolution), threads
+are private per user (`user_id` equality on every read), and the scope filter means a
+roadmap thread can never be read through the workspace route. Own-row `SELECT` RLS is
+restored on `roadmap_ai_sessions` and `roadmap_ai_messages` for `authenticated`
+(`user_id = auth.uid()` plus `can_view_roadmap` / `is_workspace_member` for whichever id is
+set); all writes stay service-role. Durable history is `roadmap_change_history`, which now
+carries the `session_id` and `run_id` that made each change.
+
+**What applies directly.** In workspace scope a single-roadmap batch with no deletes and at
+most `AGENT_DIRECT_EDIT_MAX_OPERATIONS=15` operations commits without confirmation; a
+delete, a larger batch, or a batch spanning several roadmaps becomes a proposal the user
+confirms, after which the agent commits **one change per roadmap** (its own revision token
+and idempotency key each) and verifies. In a roadmap thread the focus roadmap applies
+directly up to `AGENT_DIRECT_EDIT_MAX_OPERATIONS_FOCUS=90` operations, deletes included.
+Both are agent tunables (`agent/app/core/config.py`), not feature flags.
+
+**Not workspace-tier.** AI memories stay per roadmap (`roadmap_ai_memories.roadmap_id`).
+Web details: [Web → AI assistant](../../04-web/ai-assistant.md); the run machine:
+[Agent & Roadmap AI](../../05-agent-ai/README.md).
 
 ## Migrations
 
@@ -286,6 +365,7 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
 | `20260902090450_seed_prodigitality_workspace.sql` | One hand-reviewed organizational seed: creates "Prodigitality Workspace" from the Prodigitality Services Inc. team (14 members with team roles and join dates carried over; the team and its 17 attached projects homed there). Keyed on team name + owner email; a no-op wherever that team does not exist (hosted dev). Must run AFTER the backfill so the owner's unrelated teams and projects stay in his personal workspace |
 | `20260902090500_rename_personal_workspaces_to_personal_projects.sql` | The rename + compat view + wrapper function (expand) |
 | `20260902130000_drop_personal_workspace_compat.sql` | Drops the view and wrapper (**contract — hold until the new backend revision is live**) |
+| `20260904090000_ai_sessions_scope_and_context_rpcs.sql` | `roadmap_ai_sessions.workspace_id` (CASCADE) + `scope` with the one-of CHECK; own-row SELECT RLS on the two AI tables; `roadmap_change_history.session_id` / `run_id`; the three `ai_context_*` read RPCs behind the assistant's overview / search / tasks. Applied to hosted dev and production 2026-09-05 |
 
 ## Code locations
 

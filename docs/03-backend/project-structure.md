@@ -18,11 +18,11 @@ backend/
     main.ts               Nest bootstrap (middleware, prefix, pipe, filter, interceptors)
     tracing.ts            OpenTelemetry → Google Cloud Trace
     lambda.ts             orphaned Vercel/serverless adapter — NOT deployed
-    app.module.ts         root module: infra + 41 feature modules, Throttler
+    app.module.ts         root module: infra + 42 feature modules, Throttler
     app.controller.ts     GET / health ("status":"ok"), excluded from /api prefix
     config/               global infra providers (see below)
     common/               cross-cutting utilities (see below)
-    modules/              the 41 feature modules, grouped:
+    modules/              the 42 feature modules, grouped:
                             execution/  marketplace/  shared/
 ```
 

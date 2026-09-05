@@ -1,6 +1,6 @@
 # Environment Variables
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
@@ -35,12 +35,21 @@ Full table: [Backend → configuration](../03-backend/configuration.md#environme
 
 | Group | Vars |
 | --- | --- |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL_V2`, `OPENAI_V2_*` |
-| v2 loop | `AGENT_V2_MAX_TURNS`, `AGENT_V2_MAX_TOOL_CALLS`, `AGENT_ASYNC_AUTO_COMMIT_ENABLED` |
-| Backend link | `NEST_API_BASE_URL`, `NEST_TIMEOUT_SECONDS` |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL_V2`, `OPENAI_V2_*`, `OPENAI_MODEL_TIMEOUT_SECONDS` |
+| Loop engine | `AGENT_V2_MAX_TURNS`, `AGENT_V2_MAX_TOOL_CALLS` (per phase entry), `AGENT_EXECUTE_MAX_TURNS`, `AGENT_EXECUTE_MAX_TOOL_CALLS` |
+| Run budgets | `AGENT_RUN_STEP_BUDGET_SECONDS`, `AGENT_RUN_HARD_DEADLINE_SECONDS`, `AGENT_RUN_MAX_STEPS`, `AGENT_RUN_LOCK_TTL_SECONDS`, `AGENT_RUN_TRANSCRIPT_TTL_SECONDS` |
+| Checkpoint policy / limits | `AGENT_DIRECT_EDIT_MAX_OPERATIONS`, `AGENT_DIRECT_EDIT_MAX_OPERATIONS_FOCUS`, `AGENT_MAX_LOADED_ROADMAPS`, `AGENT_MAX_REFS_PER_MESSAGE` |
+| Backend link | `NEST_API_BASE_URL`, `NEST_TIMEOUT_SECONDS`; `AGENT_INTERNAL_TOKEN` (guards the briefs route only) |
 | Redis / sessions | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `SESSION_TTL_SECONDS`, `REDIS_SESSION_KEY_PREFIX` |
+| Trace / progress | `REDIS_TRACE_KEY_PREFIX`, `AGENT_TRACE_TTL_SECONDS`, `AGENT_TRACE_FLUSH_EVERY_EVENTS`, `AGENT_TRACE_FLUSH_INTERVAL_SECONDS`, `AGENT_PROGRESS_EVENTS_ENABLED`, `AGENT_PROGRESS_EVENTS_ALLOW_VERBOSE` |
+| Context / knowledge | `AGENT_PROJECT_CONTEXT_ENABLED`, `AGENT_KNOWLEDGE_SEARCH_ENABLED`, `AGENT_MEMORY_SEMANTIC_THRESHOLD`, `AGENT_CACHE_TTL_SECONDS`, `AGENT_RESOLVE_CACHE_TTL_SECONDS`, `AGENT_RESOLVE_PARALLEL_VARIANTS_ENABLED` |
 | Summarizer | `AGENT_SUMMARY_MODEL`, `AGENT_SUMMARY_TRIGGER_MESSAGES`, `_KEEP_MESSAGES`, `_MAX_CHARS` |
+| Briefs | `AGENT_BRIEF_MODEL`, `AGENT_BRIEF_MAX_OUTPUT_TOKENS` |
+| Logging | `AGENT_LOG_LEVEL`, `AGENT_LOG_FILE`, `AGENT_LOG_JSON`, `AGENT_LOG_COLOR`, `AGENT_LOG_TO_CONSOLE`, `AGENT_LOG_INCLUDE_CONTENT` |
 | Realtime (optional) | `REALTIME_WORKER_URL`, `REALTIME_PUBLISH_TOKEN`, `AGENT_REALTIME_TRACE_PUSH_ENABLED` |
+
+`AGENT_ASYNC_AUTO_COMMIT_ENABLED` no longer exists — commits are part of the run's
+`execute` phase (see [Agent → runs & phases](../05-agent-ai/runs-and-phases.md)).
 
 Full table: [Agent → setup & deploy](../05-agent-ai/setup-and-deploy.md#configuration).
 
@@ -77,11 +86,6 @@ an old `web/.env` from silently connecting local work to production.
 (`BACKEND_AUTHORIZE_URL`, `ALLOWED_ORIGINS`, `R2_PUBLIC_BASE_URL`) are in
 `wrangler.toml`. See [Realtime](../06-realtime/README.md).
 
-## Edge functions (Supabase)
-
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` — see the
-[Google OAuth email runbook](../12-runbooks/google-oauth-email.md).
-
 ## Developer machine (MCP tokens for Claude Code)
 
 `.mcp.json` at the repo root is **tracked** and holds no secrets — it references
@@ -112,6 +116,9 @@ run `/mcp` in an interactive Claude Code session to authorize them.
 | Backend / agent | GCP **Secret Manager** (`--set-secrets`) + plain `--set-env-vars` |
 | Web | `web/.env.production` (baked into `web-deploy.yml`; no runtime config on Cloudflare) |
 | Realtime | `wrangler secret put` + `wrangler.toml` vars |
-| Edge functions | Supabase project secrets |
+
+There are no Supabase edge functions (the four that existed were removed 2026-08-03);
+outbound email is the backend's `MailerService` using the `GMAIL_*` secrets above — see the
+[Google OAuth email runbook](../12-runbooks/google-oauth-email.md).
 
 See [Architecture → deploy topology](../02-architecture/deploy-topology.md).

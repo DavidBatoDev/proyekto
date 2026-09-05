@@ -35,9 +35,9 @@ Local context for the backend unit. Cross-cutting rules live in the root CLAUDE.
 
 The CLI is invoked from backend/ (npx supabase ...), but migrations live at repo-root supabase/. Read supabase/CLAUDE.md BEFORE touching migrations - prod apply does not go through the CLI.
 
-- `npm run db:dev:check` verifies normalized production/development `public` schema parity.
-- `npm run db:dev:apply` dry-runs and applies repository migrations plus the safe seed to hosted dev.
-- `npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` creates rollback artifacts and destructively aligns only dev's `public` schema. It does not copy production data, Auth users, or Storage.
+- `node scripts/sync_supabase_dev.mjs check` (repo root) verifies normalized production/development `public` schema parity.
+- `node scripts/sync_supabase_dev.mjs apply` dry-runs and applies repository migrations plus the safe seed to hosted dev.
+- `node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl` creates rollback artifacts and destructively aligns only dev's `public` schema. It does not copy production data, Auth users, or Storage. (There are no `npm run db:dev:*` scripts.)
 
 ## Testing rule
 

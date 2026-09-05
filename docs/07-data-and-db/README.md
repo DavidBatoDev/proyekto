@@ -1,6 +1,6 @@
 # Data & Database
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The Supabase Postgres 15 database — its current schema (generated from the live
 migrations, not stale dumps), how migrations are authored and applied, the identity
@@ -27,11 +27,11 @@ model, and the RLS/security posture. The schema is **migration-driven**:
 | **`upsert_full_roadmap`** | The RPC that atomically persists an entire roadmap tree; the AI-commit write path. |
 | **`SECURITY DEFINER`** | A SQL function that runs with its owner's rights — used for authorization helpers to avoid RLS recursion. |
 | **Dead table** | Dropped and never recreated (`payment_checkpoints`, `transactions`) but still referenced by vestigial code. |
-| **Workspace** | The top-level organizational and billing container (`workspaces`, `workspace_members`) — **never** an authorization source. Built, applied to hosted dev only; see [Domains → Workspaces](../11-domains/workspaces/README.md). |
+| **Workspace** | The top-level organizational and billing container (`workspaces`, `workspace_members`) — **never** an authorization source. In production since 2026-09-02; also the `scope` of a workspace AI thread (`roadmap_ai_sessions.workspace_id`); see [Domains → Workspaces](../11-domains/workspaces/README.md). |
 | **Personal project** | The project provisioned one-to-one for a user (`personal_projects`, renamed from `personal_workspaces`). |
 
 ## Code locations
 
-- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (330 files)
+- **Migrations:** [`supabase/migrations/`](../../supabase/migrations/) (335 files, latest `20260904090100`)
 - **Edge functions:** none — the 4 Deno functions were dead code and were removed 2026-08-03; email is [`backend/src/common/mail/`](../../backend/src/common/mail/)
 - **Repositories** (the only code that reads/writes tables): `backend/src/modules/**/repositories/`

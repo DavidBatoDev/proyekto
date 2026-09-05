@@ -31,8 +31,8 @@ A stale copy once silently reverted behavior in `upsert_full_roadmap`.
 
 | Target | How |
 |---|---|
-| Hosted dev (`vyiedlwasdwmjbztqznl`) | `cd backend && npm run db:dev:apply` (dry-run, explicit target, all migrations, safe seed) |
-| Exact prod -> dev baseline mirror | `cd backend && npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl` (backup-first, schema only) |
+| Hosted dev (`vyiedlwasdwmjbztqznl`) | `node scripts/sync_supabase_dev.mjs apply` from the repo root (dry-run, explicit target, all migrations, safe seed), or the Supabase MCP `apply_migration` tool |
+| Exact prod -> dev baseline mirror | `node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl` from the repo root (backup-first, schema only) |
 | Local Supabase stack | `cd backend && npx supabase db push --local` |
 | PROD (Singapore, ref byvbnkpiselvvulsvxgo) | Supabase MCP `apply_migration` ONLY. Never use local credentials with `db push`; the MCP path is the audited production workflow. |
 

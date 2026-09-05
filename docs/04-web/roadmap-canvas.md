@@ -1,6 +1,6 @@
 # Roadmap Canvas
 
-> **Last updated:** 2026-08-16 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The roadmap canvas is the most complex surface in the web app: a graph of
 epics → features → tasks, an AI assistant panel, a JSON editor, and several view
@@ -60,7 +60,7 @@ data via `useRoadmapFullLiveQuery`, and drives `useRoadmapStore`. The route
 | Hierarchy view | `views/roadmap/RoadmapView.tsx` (canvas shell) |
 | Nodes | `widgets/EpicWidget.tsx`, `widgets/FeatureWidget.tsx`, `widgets/SortableTaskList.tsx` |
 | Top bar | `views/RoadmapTopBar.tsx` (view toggle + sortable epic tabs) |
-| AI panel | `ai/RoadmapAiAssistantPanel.tsx` + `ai/useRoadmapAiAssistantSession.ts` |
+| AI panel | `ai/RoadmapAiAssistantPanel.tsx` (thin wrapper over the shared kit in `components/ai/`) + `ai/roadmapMentionCandidates.ts` |
 | JSON panel | `panels/JSONRoadmapSidePanel.tsx` (Monaco) |
 | Milestones / Gantt | `views/milestones/MilestonesView.tsx` |
 | Kanban | `views/kanban/*` (driven by `boardFilters`) |
@@ -100,8 +100,15 @@ structural/position changes (a memoized `layoutKey`), not on task-content edits.
 
 ## AI & JSON editing
 
-- The **AI panel** talks to the agent via `roadmap-agent.service.ts` (plan-mode
-  operations + trace events), with thread state in `roadmapAiThreadsStore`. See
+- The **AI panel** is the shared kit (`components/ai/`) bound to this one roadmap by
+  `ai/RoadmapAiAssistantPanel.tsx` — the only place the assistant touches
+  `roadmapStore`. It talks to the agent through `ai-agent.service.ts` as a *run*
+  (send, then `continue` until the agent reports done), and on each committed batch it
+  calls `applyAiCommitImpactedItems` for the instant canvas update, then a forced
+  `loadRoadmap`, but only while the store still holds this roadmap (a run may outlive
+  the page). Edits to the open roadmap apply directly (deletes included); edits that
+  reach another roadmap come back as a proposal first. Thread and run state live in
+  `aiThreadsStore` / `aiRunStore`. See [ai-assistant.md](./ai-assistant.md) and
   [Agent & Roadmap AI](../05-agent-ai/README.md).
 - The **JSON panel** is a Monaco editor over the full roadmap; Save validates and
   upserts through `POST /roadmaps/full`. See

@@ -1,10 +1,10 @@
 # Schema Overview
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **330 migration files** spanning
-2025-12-11 → 2026-09-02. This page is the current-state map: the domains, the main
+[`supabase/migrations/`](../../supabase/migrations/) — **335 migration files** spanning
+2025-12-11 → 2026-09-04. This page is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -15,10 +15,11 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 > linked to features. Authorization hangs off `project_access` — **never** off
 > workspace membership.
 
-> **⚠️ The workspace tables are not in production yet.** The seven `20260902…` migrations are
-> reported applied to hosted dev only (*unverified from the repository — confirm with
-> `list_migrations`*). Everything else on this page is live in production. See
-> [Domains → Workspaces](../11-domains/workspaces/README.md).
+> The workspace tier is live. The two newest migrations (`20260904090000`,
+> `20260904090100`) add a foreign key to `workspaces(id)` and are reported applied to
+> **both** hosted dev and production on 2026-09-05 through the MCP `apply_migration`
+> path (migration application state is not visible from the repository — confirm with
+> `list_migrations`). See [Domains → Workspaces](../11-domains/workspaces/README.md).
 
 ## Tables by domain
 
@@ -79,7 +80,10 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `task_comments`, `epic_comments`, `feature_comments`, `task_attachments`, `task_dependencies`, `task_activity_log` | Task/epic/feature extras |
 | `feature_dependencies` | Finish→Start (schema-ready SS/FF) edges between features — the Timeline's arrows. `roadmap_id` is denormalised; a trigger enforces acyclicity and same-roadmap endpoints |
 | `roadmap_shares` | Tokenized share config (`share_token`, `invited_emails` jsonb) |
-| `roadmap_ai_sessions`, `roadmap_ai_messages`, `roadmap_ai_memories` | AI copilot state |
+| `roadmap_ai_sessions` | AI threads in one of two **scopes** — `scope` ∈ (`roadmap`, `workspace`), a text CHECK. Exactly one target is set: `roadmap_id` (nullable since `20260904090000`, → `roadmaps` **CASCADE**) **xor** `workspace_id` (→ `workspaces` **CASCADE** — `SET NULL` would violate the one-of CHECK `roadmap_ai_sessions_scope_target_check`; threads are private per-user scratch, durable history lives in `roadmap_change_history`). `mode` CHECK is `chat`, `edit_plan`, `plan_proposal`. `metadata.agent_state` is the agent's durable memory snapshot. Service-role writes only, own-row SELECT |
+| `roadmap_ai_messages` | Thread messages (`seq`-ordered, → session **CASCADE**); `metadata` carries the composer's `refs` and run views. Own-row SELECT through the parent thread |
+| `roadmap_ai_memories` | Durable per-roadmap preferences shared across collaborators (`roadmap_id` NOT NULL, CASCADE) |
+| `roadmap_change_history` | The **durable** per-roadmap commit log — operations and the semantic diff, never snapshots: `change_id` UNIQUE, `actor_id`, `status` (`applied` / `discarded`), revision tokens before/after, `committed_at` / `discarded_at`, and since `20260904090000` the agent attribution `session_id` (→ `roadmap_ai_sessions` **SET NULL**, so history outlives the private thread) and `run_id` (uuid, **no FK** — runs live in Redis). Both are null for web/MCP commits |
 
 ### Teams & time
 
@@ -193,6 +197,9 @@ projects.id ◄─ project_access.project_id ─► profiles.id     (authorizati
 projects.id ─1:1─► roadmaps.project_id (enforced via a partial unique index, not a plain UNIQUE column)
 roadmaps.id ◄─ roadmap_epics ◄─ roadmap_features ◄─ roadmap_tasks
 roadmap_milestones ◄─ milestone_features ─► roadmap_features   (M:N)
+roadmaps.id ◄─ roadmap_ai_sessions.roadmap_id (CASCADE)  xor  workspaces.id ◄─ roadmap_ai_sessions.workspace_id (CASCADE)
+roadmap_ai_sessions.id ◄─ roadmap_ai_messages.session_id (CASCADE)
+roadmap_ai_sessions.id ◄─ roadmap_change_history.session_id (SET NULL) ; roadmaps.id ◄─ roadmap_change_history.roadmap_id
 roadmap_tasks ◄─ task_time_logs ─► payouts (payout_id)       (severable task/project/member FKs)
 teams.id ◄─ team_members ─► profiles ;  project_teams ─► projects
                 └─ project_team_members ──(trigger)──► project_access
@@ -201,11 +208,15 @@ meetings ─► meeting_series ;  meetings ◄─ meeting_participants
 
 ## Key RPCs
 
-Business logic that must be atomic lives in Postgres functions (SECURITY DEFINER):
+Business logic that must be atomic, and reads that must fuse across many rows in one
+pass, live in Postgres functions (`SECURITY DEFINER` unless noted):
 
 | RPC | Role |
 | --- | --- |
 | `upsert_full_roadmap(id, owner, full_state jsonb, create_if_missing)` | Atomically persists an entire roadmap tree from a JSON candidate — the **AI-commit write path** |
+| `ai_context_roadmap_counts(uuid[], p_now)`, `ai_context_search_nodes(uuid[], q, kinds, limit)`, `ai_context_list_tasks(uuid[], assignee, statuses, due_from, due_to, overdue_at, limit)` | Cross-roadmap counts / title search / task listing over a set of **pre-authorized** roadmap ids for `/api/ai/context/*`. `SECURITY INVOKER`; EXECUTE revoked from `PUBLIC`/`anon`/`authenticated` and granted to `service_role` only, so they can never widen what a JWT can read. Caps 50 (search) and 200 (tasks) |
+| `search_knowledge_chunks(p_project, …)`, `search_knowledge_chunks_projects(p_project_ids, …)` | Hybrid HNSW + websearch retrieval with reciprocal-rank fusion over `ai_knowledge_chunks` — single-project, and its multi-project twin (a separately **named** function, not an overload, so PostgREST resolution stays unambiguous). `SECURITY INVOKER`; `chat_message` chunks are filtered to the caller's `p_room_ids` |
+| `match_relevant_memories` | Top-k `roadmap_ai_memories` by embedding similarity (falls back to the chronological list when embeddings are off) |
 | `create_payout_and_mark_paid`, `void_payout_and_revert` | Payout lifecycle |
 | `sign_contract_and_flip` | Locks a contract, re-checks consultant enrollment, stamps a party, supersedes the prior live version, and derives signing status atomically; executable only by `service_role` |
 | `create_guest_user`, `get_guest_user_id`, `cleanup_old_guest_users` | Guest sessions |

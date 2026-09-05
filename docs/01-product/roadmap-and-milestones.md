@@ -1,6 +1,6 @@
 # Roadmap & Milestones
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The roadmap is Proyekto's planning core. It's **one data model with multiple
 views**: a structural hierarchy (Epic → Feature → Task) that you can look at as a
@@ -81,9 +81,17 @@ Progress rolls further up to milestones and the roadmap; Postgres progress funct
 
 - The web canvas renders the tree with an **in-house DOM+SVG engine** (custom layout) and
   supports optimistic epic/feature/task edits. See [Web → roadmap canvas](../04-web/roadmap-canvas.md).
-- The **AI assistant** can plan and apply edits conversationally; every AI commit is
-  persisted atomically through the `upsert_full_roadmap` RPC. See
-  [Agent & Roadmap AI](../05-agent-ai/README.md).
+- The **AI assistant** plans and applies edits conversationally. Inside the roadmap
+  page it applies edits to the open roadmap directly — deletes included, up to 90
+  operations in one batch — and then verifies what landed. From the workspace dashboard,
+  or whenever an edit touches another roadmap or several roadmaps at once, it first
+  shows a **proposal** to confirm and then commits **one change per roadmap** (on the
+  dashboard, a single-roadmap edit with no deletes and at most 15 operations still
+  applies directly). Every AI commit is persisted atomically through the
+  `upsert_full_roadmap` RPC and recorded in `roadmap_change_history` with the run that
+  made it. `@`-mentions point the assistant at specific items without limiting what it
+  may read. See [Agent & Roadmap AI](../05-agent-ai/README.md) and
+  [Web → AI assistant](../04-web/ai-assistant.md).
 - A roadmap can be **shared** read-only/commentable via a token, and used as a
   **template** to clone from. See [Feature Domains → roadmap sharing](../11-domains/README.md).
 

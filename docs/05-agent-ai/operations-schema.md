@@ -15,9 +15,11 @@ checker.**
 
 ## The envelope
 
-The model's terminal `plan_roadmap_operations` call carries an `assistant_message`
-plus an `operations[]` array (and optionally `revision_operations[]` when a plan is
-pending, and `clarifier_options[]`). Each entry in `operations` is one operation.
+The model's terminal `stage_edits` call (the wire name; the registry still exports the
+schema under the `PLANNING_TOOL_NAME` constant `plan_roadmap_operations`, which the
+schema gate reads) carries an `assistant_message`, a `roadmap_id`, and an `operations[]`
+array. Revisions to a pending proposal go through the separate `revise_proposal` tool
+(`revision_operations[]`). Each entry in `operations` is one operation.
 
 ## Operation vocabulary
 

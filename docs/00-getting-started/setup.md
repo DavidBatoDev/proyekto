@@ -1,6 +1,6 @@
 # Setup
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 Getting the Proyekto stack running locally. The three services you'll usually run are
 **web** (React), **backend** (NestJS), and **agent** (Python) — each installs and runs
@@ -80,11 +80,13 @@ npx supabase db push
 ```
 
 The hosted projects are development `vyiedlwasdwmjbztqznl` and production
-`byvbnkpiselvvulsvxgo`. Use `npm run db:dev:check` / `db:dev:apply` from
-`backend/` to validate or update development without changing the CLI's saved link;
-use the confirmed `db:dev:mirror` command for an exact production-schema baseline.
-For production, always use the Supabase MCP `apply_migration`, never local
-`db push`. See [Data → migrations workflow](../07-data-and-db/migrations-workflow.md).
+`byvbnkpiselvvulsvxgo`. To validate or update development without changing the CLI's
+saved link, run the repo-root script (there are no `npm run db:dev:*` aliases):
+`node scripts/sync_supabase_dev.mjs check` / `apply`, and
+`node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl` for
+an exact, destructive production-schema baseline. For production, always use the
+Supabase MCP `apply_migration`, never local `db push`. See
+[Data → migrations workflow](../07-data-and-db/migrations-workflow.md#the-dev-sync-script).
 
 ## Next
 

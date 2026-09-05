@@ -1,9 +1,9 @@
 # RLS & Security
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
-Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 91
-times across 40 migrations — essentially every domain table), but it is **not the
+Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 157
+times across 78 migrations — essentially every domain table), but it is **not the
 primary authorization gate**. The backend connects as the Supabase **service role**,
 which bypasses RLS, and enforces access in the TypeScript service layer. RLS is
 defense-in-depth for any direct/anon reads.
@@ -30,13 +30,13 @@ Policies and the service layer share these SQL helpers (all `SECURITY DEFINER`):
 | Function | Answers |
 | --- | --- |
 | `get_user_project_role(uid, project_id) → share_role` | Canonical project role |
-| `can_view_roadmap` / `can_edit_roadmap` / `can_access_roadmap` | Roadmap access |
+| `can_view_roadmap(uid, rmp)` / `can_edit_roadmap(uid, rmp)` | Roadmap access — the owner, or a role from `get_user_roadmap_effective_role` (which consults `roadmap_shares` first, so the SQL predicate is slightly **wider** than the backend's owner-or-`project_access` check). The older `can_access_roadmap` was **dropped** with `CASCADE` by `20260504000020` and must not be reintroduced |
 | `get_user_roadmap_effective_role(...)` | Roadmap role resolution |
 | `project_chat_is_member`, `project_chat_role`, `project_chat_can_dm` | Chat access and persona from `project_access` |
 | `is_admin()`, `is_project_member(project_id)` | Staff and project gates |
 | `is_active_consultant(uid)` | Verified consultant enrollment: `consultant_profiles.status = 'verified'` |
 | `is_active_talent(uid)` | Active public-pool enrollment: `talent_profiles.status = 'active'` |
-| `is_workspace_member`, `can_manage_workspace`, `is_workspace_owner` | Workspace standing — **organization surface only, never project access** (built, hosted dev only) |
+| `is_workspace_member(p_workspace_id, p_user_id)`, `can_manage_workspace`, `is_workspace_owner` | Workspace standing — **organization surface only, never project access**. Note the argument order differs from `can_view_roadmap(uid, rmp)` |
 
 Both enrollment predicates are `SECURITY DEFINER` with `search_path = public`.
 They deliberately avoid `profiles`: querying `profiles` from its own policy recurses,
@@ -73,10 +73,64 @@ contract and calls `is_active_consultant` inside the signing transaction before 
 party or flipping status, closing the gap between an application-layer enrollment check and
 the database write.
 
+## AI thread tables
+
+`roadmap_ai_sessions` and `roadmap_ai_messages` are the one place a CASCADE drop
+silently deleted policies. `20260416120000` created four policies per table over
+`can_access_roadmap` and granted DML to `authenticated`; `20260504000020` dropped
+`can_access_roadmap … CASCADE`, taking every dependent policy with it — so until
+2026-09 both tables had RLS **enabled with zero policies** (`authenticated` saw no
+rows) while `anon` and `authenticated` still held live INSERT/UPDATE/DELETE grants.
+[`20260904090000_ai_sessions_scope_and_context_rpcs.sql`](../../supabase/migrations/20260904090000_ai_sessions_scope_and_context_rpcs.sql)
+restores the intended posture:
+
+| Policy | Table | Rule |
+| --- | --- | --- |
+| `roadmap_ai_sessions_select` | `roadmap_ai_sessions` | `FOR SELECT TO authenticated`: `user_id = auth.uid()` **and** (`roadmap_id IS NULL OR can_view_roadmap(auth.uid(), roadmap_id)`) **and** (`workspace_id IS NULL OR is_workspace_member(workspace_id, auth.uid())`) — own row, and still allowed to see the thread's target |
+| `roadmap_ai_messages_select` | `roadmap_ai_messages` | `FOR SELECT TO authenticated`: `EXISTS` the parent session under the same predicate |
+| `roadmap_ai_sessions_service_role`, `roadmap_ai_messages_service_role` | both | `FOR ALL TO service_role USING (true) WITH CHECK (true)` — the house pattern |
+
+Alongside the policies the migration runs
+`REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER … FROM anon, authenticated`
+on both tables: there is **no write policy**, only the service-role backend writes
+(mirroring `roadmap_change_history`). The SELECT grant from `20260416120000` stays;
+the row filter is what gates visibility. Two consequences worth knowing:
+`roadmap_ai_messages.metadata` (the agent's `refs` and run views) is readable by the
+owner's JWT, and the `can_view_roadmap` predicate is a shade wider than the
+backend's own check (see the helper table). Nothing in `web/src` queries these tables
+directly, so the policies are defense-in-depth. The same migration re-adds the
+`mode` CHECK with `plan_proposal` — the DTO had shipped it for months against a
+`chat | edit_plan` constraint.
+
+## Service-role-only RPCs
+
+The three `ai_context_*` read functions (`ai_context_roadmap_counts`,
+`ai_context_search_nodes`, `ai_context_list_tasks`) are `SECURITY INVOKER` over a
+`uuid[]` of roadmap ids and carry
+`REVOKE ALL … FROM PUBLIC, anon, authenticated; GRANT EXECUTE … TO service_role`.
+Authorization is application-level: callers pass only ids that came out of
+`RoadmapAuthorizationService.filterViewableRoadmapIds` or the owner-union-`project_access`
+roadmap list, and withholding EXECUTE means a JWT can never use them as a lateral
+read path. See [Backend → AI context API](../03-backend/ai-context-api.md).
+
+`search_knowledge_chunks_projects` (and its single-project sibling) has **no**
+explicit revoke — Postgres's default EXECUTE-to-`PUBLIC` applies — but it is
+`SECURITY INVOKER` over `ai_knowledge_chunks`, which has RLS enabled with
+**intentionally no policies**, so a JWT caller gets zero rows and only the
+service-role backend (which enforces the accessible project set in
+`AiContextKnowledgeService`) gets results.
+
 ## Service-role write-only tables
 
 Some tables are written **only** by the backend (service role); their RLS SELECT
 policies are defense-in-depth allows, and there is no client write path:
+
+- `roadmap_ai_sessions`, `roadmap_ai_messages` — own-row SELECT only; see
+  [AI thread tables](#ai-thread-tables).
+- `roadmap_change_history` — member-read SELECT over `can_view_roadmap(auth.uid(), roadmap_id)`
+  plus a `service_role` policy, no DML path for `authenticated`
+  (`20260727090000`). Since `20260904090000` it also carries the agent-run
+  attribution `session_id` / `run_id`.
 
 - `consultant_profiles`, `talent_profiles` — owners may read their enrollment
   and admins may manage all rows, but authenticated callers get no direct INSERT or

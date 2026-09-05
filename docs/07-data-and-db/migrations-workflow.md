@@ -1,6 +1,6 @@
 # Migrations Workflow
 
-> **Last updated:** 2026-08-14 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 The database schema is **migration-driven**: every change is a timestamped SQL file
 in [`supabase/migrations/`](../../supabase/migrations/), and that folder is the
@@ -13,7 +13,7 @@ to author and apply them — including the Singapore-prod gotcha.
   a descriptive slug. Files apply in lexical (= chronological) order.
 - Early files use a real clock time (`20251211065452`); most later files pad the
   time to sequence intra-day steps (`120000`, `000010`, `000020`).
-- **252 files** today, 2025-12-11 → 2026-08-13.
+- **335 files** today, 2025-12-11 → 2026-09-04.
 
 ## Authoring style
 
@@ -40,27 +40,50 @@ Hosted environments use separate projects:
 
 | Environment | Project ref | Apply path |
 | --- | --- | --- |
-| Development | `vyiedlwasdwmjbztqznl` | Guarded repo script / Supabase CLI |
-| Production | `byvbnkpiselvvulsvxgo` | Supabase MCP `apply_migration` only |
+| Development | `vyiedlwasdwmjbztqznl` | Supabase MCP `apply_migration`, or the guarded repo script below |
+| Production | `byvbnkpiselvvulsvxgo` | Supabase MCP `apply_migration` **only** |
 
-From `backend/`, check exact production parity or bring development forward with
-repository migrations without changing the CLI's saved link:
+The audited path for both hosted projects is the Supabase MCP `apply_migration`
+tool: review the SQL, apply to dev, then to prod, then `list_migrations` and
+`get_advisors` on both.
+
+### Applied through MCP
+
+The two newest files were applied this way to hosted dev **and** production on
+2026-09-05 (reported by the operator; application state is not visible from the
+repository — confirm with `list_migrations`):
+
+| Migration | What it does |
+| --- | --- |
+| `20260904090000_ai_sessions_scope_and_context_rpcs.sql` | `roadmap_ai_sessions` scope/`workspace_id`, restored own-row RLS on the two AI tables, `roadmap_change_history.session_id`/`run_id`, the three `ai_context_*` RPCs |
+| `20260904090100_search_knowledge_chunks_projects.sql` | multi-project knowledge retrieval RPC |
+
+Both are `BEGIN; … COMMIT;` and re-runnable (`IF NOT EXISTS`, `DROP … IF EXISTS`,
+`CREATE OR REPLACE`). See [schema-overview.md](./schema-overview.md) and
+[rls-and-security.md](./rls-and-security.md) for the resulting state.
+
+### The dev-sync script
+
+> **⚠️ There are no `npm run db:dev:*` scripts.** No `package.json` in the repo
+> defines `db:dev:check`, `db:dev:apply`, or `db:dev:mirror` (older docs and
+> CLAUDE.md files named them; those references were removed on 2026-09-05). The
+> real entry point is the repo-root script.
+
+[`scripts/sync_supabase_dev.mjs`](../../scripts/sync_supabase_dev.mjs) has three
+modes and hard-codes the two refs (`PROD_REF`, `DEV_REF`); it refuses every
+mutating target except the development ref:
 
 ```bash
-npm run db:dev:check
-npm run db:dev:apply
+node scripts/sync_supabase_dev.mjs check     # normalized public-schema parity, prod vs dev
+node scripts/sync_supabase_dev.mjs apply     # pending repository migrations + safe seed -> dev
+node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl
 ```
 
 `apply` dry-runs and then applies all pending repository migrations plus the safe
 `supabase/seed.sql` to the explicit dev ref. It does not mutate production.
 
-For an exact, destructive production-schema baseline, use:
-
-```bash
-npm run db:dev:mirror -- --confirm-dev-ref=vyiedlwasdwmjbztqznl
-```
-
-`mirror` takes dev schema and data backups in the operating system's temporary
+`mirror` is the exact, destructive production-schema baseline. It takes dev schema
+and data backups in the operating system's temporary
 directory, generates a live `public`-schema delta from dev to prod, and applies it
 to dev in single-transaction passes. It verifies normalized schema dumps after
 each pass. It never copies production rows or auth users, but tables rebuilt to
@@ -87,17 +110,19 @@ The environments intentionally remain separate in every other respect:
 | Auth, networking, backups, secrets, and dashboard settings | Separate per project |
 | Supabase-managed PostgreSQL patch build | May differ while Supabase rolls out updates |
 
-Do not describe `db:dev:mirror` as a full database clone. It is a `public`-schema
+Do not describe `mirror` as a full database clone. It is a `public`-schema
 baseline operation. Copying production data, Auth identities, Storage objects, or
 project configuration requires a separate, explicitly authorized workflow.
 
 The script requires `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_DB_PASSWORD`, and
-`SUPABASE_DEV_DB_PASSWORD` in the process environment or ignored `scripts/.env`.
-It refuses every mutating target except the development ref. Use URL-safe database
-passwords because schema diffs connect through Supabase pooler URLs.
+`SUPABASE_DEV_DB_PASSWORD` in the process environment or ignored `scripts/.env`
+(it shells out to `npx --yes supabase …`; `SUPABASE_POSTGRES_IMAGE` overrides the
+Postgres image `mirror` diffs against). Use URL-safe database passwords because
+schema diffs connect through Supabase pooler URLs.
 
-The Supabase CLI commands are run from `backend/` (per SETUP.md), though the
-migrations physically live at repo-root `supabase/`:
+The Supabase CLI commands are run from `backend/` (see the
+[setup guide](../00-getting-started/setup.md)), though the migrations physically
+live at repo-root `supabase/`:
 
 ```bash
 npx supabase link --project-ref <ref>

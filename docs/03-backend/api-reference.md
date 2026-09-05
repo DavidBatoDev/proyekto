@@ -107,13 +107,40 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 | --- | --- | --- | --- |
 | POST | /api/roadmaps/:id/ai/preview | Supabase | Generate an AI edit preview |
 | GET | /api/roadmaps/:id/ai/previews/:previewId | Supabase | Fetch a preview |
-| POST | /api/roadmaps/:id/ai/commit · /discard · /rollback | Supabase | Commit / discard / rollback |
+| POST | /api/roadmaps/:id/ai/commit · /discard · /rollback | Supabase | Commit / discard / rollback (commit accepts optional `session_id`/`run_id` for run attribution and returns `history_recorded` when `run_id` is sent) |
 | GET | /api/roadmaps/:id/ai/context/{summary,actor,members,resolve,search,features,tasks,nodes/…} | Supabase | Context reads (called by the agent) |
 | GET·POST·DELETE | /api/roadmaps/:id/ai/memories[/:memoryId] | Supabase | Durable roadmap memories |
 | GET·POST | /api/roadmaps/:id/ai-sessions | Supabase | List / create AI sessions |
 | GET·PATCH·DELETE | /api/roadmaps/:id/ai-sessions/:sessionId | Supabase | Get / update / delete session |
 | PUT | /api/roadmaps/:id/ai-sessions/:sessionId/agent-state | Supabase | Persist agent state snapshot |
 | GET·POST | /api/roadmaps/:id/ai-sessions/:sessionId/messages | Supabase | List / append messages |
+
+### workspace AI sessions · `workspaces/:id/ai-sessions`
+
+The dashboard assistant's threads (scope `workspace`). Same eight routes and DTOs as the roadmap sessions; every denial is a 404 (workspace non-member, or a roadmap thread addressed through this route).
+
+| Method | Path | Who | Notes |
+| --- | --- | --- | --- |
+| GET·POST | /api/workspaces/:id/ai-sessions | Supabase | List / create workspace-scoped AI sessions |
+| GET·PATCH·DELETE | /api/workspaces/:id/ai-sessions/:sessionId | Supabase | Get / update / delete session |
+| PUT | /api/workspaces/:id/ai-sessions/:sessionId/agent-state | Supabase | Persist agent state snapshot (64 KB cap) |
+| GET·POST | /api/workspaces/:id/ai-sessions/:sessionId/messages | Supabase | List / append messages (metadata capped at 64 KB) |
+
+### AI context · `ai/context` (user-scoped, called by the agent)
+
+Cross-roadmap reads over everything the caller can access; workspace ids only filter and classify (`current` / `shared` / `other_workspace`), they never authorize. Full reference: [ai-context-api.md](./ai-context-api.md).
+
+| Method | Path | Who | Notes |
+| --- | --- | --- | --- |
+| GET | /api/ai/context/actor | Supabase | `{actor_id, display_name}` |
+| GET | /api/ai/context/overview | Supabase | Projects / roadmaps (with counts) / teams, lanes; `?workspace_id=` (404 for non-members) |
+| GET | /api/ai/context/roadmaps | Supabase | Accessible roadmaps, keyset cursor; `?workspace_id=&project_id=` |
+| GET | /api/ai/context/search | Supabase | Cross-roadmap epic/feature/task/roadmap/project search; `?q=&kinds=&roadmap_ids=` |
+| GET | /api/ai/context/tasks | Supabase | Cross-roadmap tasks; `?assigned_to_me=&status=&overdue=&due_before=&due_after=` |
+| GET | /api/ai/context/knowledge-search | Supabase | Multi-project knowledge search; `?q=&project_ids=` |
+| POST | /api/ai/context/resolve-refs | Supabase | Batch-resolve @-mention refs (fail-closed per ref) |
+| GET | /api/ai/context/projects/:projectId[/brief · /resources · /meetings · /members · /members/:memberId] | Supabase | Project-keyed context pack |
+| GET | /api/ai/context/changes | Supabase | Run/session-attributed change history; `?run_id=` or `?session_id=` |
 
 > **Authorization & contract:** context reads require **view** access
 > (`assertCanViewRoadmap`); preview / commit / discard / rollback require **edit**
@@ -133,7 +160,7 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 
 ## workspaces · `workspaces`
 
-The organizational/billing tier. All `Supabase`. **Built, applied to hosted dev only.**
+The organizational/billing tier. All `Supabase`. In production since 2026-09-02; also the scope of the dashboard assistant's AI threads (see `workspaces/:id/ai-sessions` above).
 
 | Method | Path | Who |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Last updated:** 2026-08-09 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 Everything you need to clone Proyekto, install each package, and run the stack
 locally. The three services you'll usually run are **web**, **backend**, and
@@ -20,11 +20,11 @@ locally. The three services you'll usually run are **web**, **backend**, and
 ## The 60-second version
 
 ```bash
-# backend
-cd backend && cp .env.example .env && npm install && npm run dev   # :3001/api
-# web (new terminal)
-cd web && cp .env.example .env && npm install && npm run dev       # :3000
-# agent (optional, for roadmap AI)
+# backend (npm run dev loads .env.development.local)
+cd backend && cp .env.example .env.development.local && npm install && npm run dev   # :3001/api
+# web (new terminal; the dev server refuses any Supabase ref other than the dev project)
+cd web && cp .env.development.example .env.development.local && npm install && npm run dev  # :3000
+# agent (optional, for the AI assistant)
 cd agent && python -m venv venv && source venv/Scripts/activate \
   && pip install -r requirements.txt && cp .env.example .env && python run.py  # :8010
 ```

@@ -1,6 +1,6 @@
 # Feature Domains
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 One deep dive per user-facing feature domain — the companions to the
 [Architecture](../02-architecture/README.md) overview and the
@@ -22,7 +22,7 @@ vetting. See [Product → roles and capabilities](../01-product/personas.md).
 
 | Doc | What's in it |
 | --- | --- |
-| [workspaces/](./workspaces/README.md) | The Workspace tier — the top-level container for teams and projects, the seat pool, invites, and the billing scaffold. **Built, not yet in production** |
+| [workspaces/](./workspaces/README.md) | The Workspace tier — the top-level container for teams and projects, the seat pool, invites, the billing scaffold, and the scope of the dashboard AI assistant's threads. **In production since 2026-09-02** (workspace-scope AI threads: schema live, code on `feat/ai-revamp`) |
 
 ## Delivery lifecycle
 

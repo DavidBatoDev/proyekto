@@ -11,7 +11,7 @@ Local context for the database unit. Cross-cutting rules live in the root CLAUDE
 
 ## Applying migrations
 
-- Hosted dev (`vyiedlwasdwmjbztqznl`): use `cd backend && npm run db:dev:apply` for repository migrations and the safe seed. For an exact production-schema baseline, use the confirmed `db:dev:mirror` command documented in the migrations workflow.
+- Hosted dev (`vyiedlwasdwmjbztqznl`): use `node scripts/sync_supabase_dev.mjs apply` (repo root) for repository migrations and the safe seed, or the Supabase MCP `apply_migration` tool. For an exact production-schema baseline, use the confirmed `node scripts/sync_supabase_dev.mjs mirror --confirm-dev-ref=vyiedlwasdwmjbztqznl` documented in the migrations workflow.
 - PROD (Singapore, ref byvbnkpiselvvulsvxgo): apply via the Supabase MCP `apply_migration` tool only (auto-allowed - it hits prod directly with no confirmation step, so review the SQL before calling). Never use local credentials with `db push`; then confirm with `list_migrations` and check `get_advisors` for new lints.
 - `supabase db reset` is permission-denied entirely - if truly needed for a local db, the user runs it themselves.
 
@@ -20,7 +20,7 @@ Local context for the database unit. Cross-cutting rules live in the root CLAUDE
 - The parity target is the normalized live `public` schema, including tables, columns, constraints, indexes, functions, triggers, grants, RLS enablement, and policies.
 - Do not use migration-history equality as a substitute for catalog parity. The two hosted projects can have different migration records while producing the same live schema.
 - The mirror is schema-only. Production rows, Auth users/sessions, Storage buckets/objects, database passwords and API keys, and Supabase dashboard/project configuration stay separate.
-- Never copy production data or Auth identities into hosted dev as part of `db:dev:mirror`.
+- Never copy production data or Auth identities into hosted dev as part of the `mirror` sync.
 
 ## Storage caveat
 

@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-09-05 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -170,10 +170,10 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Fifty-one tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
-twenty-four read, twenty-seven write. The three chat writes register only while
+Fifty-two tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
+twenty-five read, twenty-seven write. The three chat writes register only while
 `MCP_CHAT_WRITE_ENABLED` is on, so a server with that flag unset advertises
-**forty-eight**. Each tool reuses an existing domain service that carries its own
+**forty-nine**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
@@ -186,8 +186,9 @@ service DTO).
 | `projects_list` | `projects:read` | — | Accessible projects, newest first |
 | `projects_get` | `projects:read` | `project_id` | Project + the caller's effective permissions |
 | `project_members_list` | `projects:read` | `project_id`, `limit?` | Members + share roles (needs `members.view`) |
-| `roadmaps_list` | `roadmaps:read` | `project_id?` | The project's roadmap, or roadmaps you own |
-| `roadmap_get_summary` | `roadmaps:read` | `roadmap_id` | Compact tree summary (counts, epics, features, milestones) |
+| `roadmaps_list` | `roadmaps:read` | `include_visual?` | **Every roadmap you can access** — owner union `project_access`, the same set the dashboard shows (`RoadmapsService.findAll`; it used to be owner-only) — with a portfolio visual by default |
+| `roadmap_get_by_project` | `roadmaps:read` | `project_id`, `include_visual?` | The project's single linked roadmap, or `roadmap: null` (split out of `roadmaps_list`) |
+| `roadmap_get_summary` | `roadmaps:read` | `roadmap_id`, `include_visual?` | Compact tree summary (counts, epics, features, milestones) |
 | `roadmap_get_node` | `roadmaps:read` | `roadmap_id`, `node_id`, `include_children?`, `children_limit?` | One node's detail, optionally with children |
 | `roadmap_search_nodes` | `roadmaps:read` | `roadmap_id`, `query`, `node_type?`, `limit?` | Matching nodes + resolved ids |
 | `roadmap_list_changes` | `roadmaps:read` | `roadmap_id`, `limit?`, `before?`, `include_operations?` | Committed changes newest-first from the durable log — who, when, what. `before` is a `committed_at` cursor; `include_operations` defaults **off** |
@@ -215,13 +216,21 @@ is **owner-only by construction**, at two layers: `RoadmapAiSessionsService`
 checks roadmap view access *and* filters every query on `user_id = caller`. It is
 therefore not a way to see what anyone else asked the planner.
 
+AI threads are scoped since `20260904090000`: a thread belongs to exactly one
+roadmap (the in-canvas assistant) **or** one workspace (the dashboard assistant).
+Both tools call the service with the scope object
+`{ kind: 'roadmap', roadmapId: roadmap_id }`, and the service pins every query on
+`scope = 'roadmap'` **and** `roadmap_id`, so the MCP surface exposes roadmap threads
+only — a workspace thread is unreachable here even for its owner. There is no
+workspace tool.
+
 Both tools project through explicit **whitelists**, built field by field — a
 rest-spread blacklist would auto-leak the next column anyone adds, and the thing
 withheld here is the most sensitive payload in the schema.
 
 | Row | Kept | Dropped |
 | --- | --- | --- |
-| session | `id`, `roadmap_id`, `title`, `mode`, `is_archived`, `is_pinned`, `last_message_at`, `message_count`, `created_at`, `updated_at` | `metadata` (holds `agent_state`: pending plans, full per-node snapshots, staged-edit validation traces, rolled-up summaries), `user_id`, `archived_at` / `pinned_at` |
+| session | `id`, `roadmap_id`, `workspace_id` (always null here), `scope` (always `roadmap` here), `title`, `mode`, `is_archived`, `is_pinned`, `last_message_at`, `message_count`, `created_at`, `updated_at` | `metadata` (holds `agent_state`: pending plans, full per-node snapshots, staged-edit validation traces, rolled-up summaries), `user_id`, `archived_at` / `pinned_at` |
 | message | `id`, `seq`, `role`, `content`, `intent_type`, `created_at` | `artifacts`, `activity_timeline`, `commit_lifecycle`, `metadata` (free-form jsonb the agent writes with **no** backend validator, including tool-call traces and operation payloads), `response_mode` / `parse_mode`, `tokens`, `session_id` |
 
 ### Write tools
@@ -396,7 +405,13 @@ is the durable half: `change_id` (UNIQUE — it doubles as the revert lookup
 index), `roadmap_id`, `project_id`, `actor_id`, `status`, the `operations` array,
 `operations_count` / `operations_hash`, `semantic_diff` /
 `semantic_change_count`, `temp_id_mapping`, the before/after revision tokens, and
-`committed_at` / `discarded_at` / `discarded_by`.
+`committed_at` / `discarded_at` / `discarded_by` — plus, since
+[`20260904090000_ai_sessions_scope_and_context_rpcs.sql`](../../supabase/migrations/20260904090000_ai_sessions_scope_and_context_rpcs.sql),
+the agent-run attribution `session_id` (→ `roadmap_ai_sessions`, `ON DELETE SET NULL`)
+and `run_id` (uuid, **no FK** — runs live in Redis). Both are null for web/MCP
+commits; `listChangeHistory` selects them, so `roadmap_list_changes` returns them
+unprojected. How a commit acquires them:
+[AI context API → commit attribution](./ai-context-api.md#commit-attribution).
 
 - It deliberately does **not** store the two full roadmap snapshots. They run
   ~320KB per commit, and replaying a month-old snapshot would blind-clobber
@@ -414,10 +429,14 @@ index), `roadmap_id`, `project_id`, `actor_id`, `status`, the `operations` array
   personal-roadmap owner via the `share_role` ladder. `can_view_roadmap` /
   `can_edit_roadmap` are defined in
   [`20260504000030_restore_roadmap_children_rls.sql`](../../supabase/migrations/20260504000030_restore_roadmap_children_rls.sql)
-  and referenced only, never redefined. Per the migration's own note, the older
-  `can_access_roadmap` helper that the `roadmap_ai_sessions` migration references
-  **no longer exists in the Singapore database** — it was superseded by that pair
-  and must not be reintroduced.
+  and referenced only, never redefined. The older `can_access_roadmap` helper was
+  dropped with `CASCADE` by `20260504000020`, which silently took the
+  `roadmap_ai_sessions` / `roadmap_ai_messages` policies of `20260416120000` with
+  it — until `20260904090000` **restored own-row SELECT** on both tables over
+  `can_view_roadmap` / `is_workspace_member` and revoked DML from
+  `anon`/`authenticated` (see
+  [RLS & Security → AI thread tables](../07-data-and-db/rls-and-security.md#ai-thread-tables)).
+  `can_access_roadmap` must not be reintroduced.
 - The migration is reported as applied to SG prod (`byvbnkpiselvvulsvxgo`) —
   *unverified*, since migration application state isn't visible from the repo.
 - **No backfill is possible** — Redis timelines are per-user and ephemeral, and
