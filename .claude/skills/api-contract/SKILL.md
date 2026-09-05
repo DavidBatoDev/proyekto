@@ -10,8 +10,8 @@ The contract lives at `schemas/roadmap-ai-operations.json` plus its JSON-Schema 
 ## Change checklist (in order)
 
 1. **Schema first**: edit BOTH `schemas/roadmap-ai-operations.json` and `schemas/roadmap-ai-operations.schema.json` coherently.
-2. **Backend consumers**: operation validation and application logic in `backend/src/modules/roadmaps/` (roadmap-ai services + `patch/` JSON-patch machinery).
-3. **Agent consumers**: `agent/app/core/runtime/tools.py` + `tool_exec.py`; if the op's *semantics* change (not just shape), also update `agent/app/core/runtime/prompts/system.md`.
+2. **Backend consumers**: operation validation and application logic in `backend/src/modules/execution/roadmaps/` - `services/roadmap-ai.service.ts` (the `allowedPatchFields` switch the checker parses, `applyUpdateNode` / `applyAddTask`, the semantic diff, `validateState`), `services/roadmap-patch.service.ts` + the `patch/` JSON-patch machinery, and `dto/roadmap-ai.dto.ts` for the unions.
+3. **Agent consumers**: `agent/app/core/tools/registry.py` (the planning-tool schema the checker spawns the agent to emit, the `patch.properties` overlays, the top-level patch aliases and assignee normalization), `agent/app/core/runtime/tools.py` + `tool_exec.py` (dispatch, the per-node-type patch guard and its hints, self-alias substitution), and `agent/app/core/runtime/operation_contracts.py` (semantic contract checks); if the op's *semantics* change (not just shape), also update `agent/app/core/runtime/prompts/system.md`.
 4. **Web consumers**: optimistic UI handlers for the operation (roadmapStore / roadmap services).
 5. **Verify**:
    - `cd backend && npm run check:roadmap-ai-schema`
@@ -24,3 +24,5 @@ The contract lives at `schemas/roadmap-ai-operations.json` plus its JSON-Schema 
 
 - The agent's Docker image is built from the REPO ROOT specifically so `schemas/` is copied in - never move or rename the directory.
 - `MAX_OPERATIONS_PER_REQUEST` (agent config.py) caps operation batches; large new op fan-outs may hit it.
+- The strict-mode gate in `scripts/check_roadmap_ai_schema.mjs` forbids `allOf`/`anyOf`/`oneOf`/`if`/`then`/`else` at `operations.items` and at each of its direct properties only, so documenting sub-fields as nested `properties` under `patch` / `data` (as `assignee_ids` is) is safe - keep `patch` and `data` themselves as plain `type: object`.
+- Rollout example: a field the backend must accept before the agent sends it (`assignee_ids`, 2026-09-06) deploys backend (with its migration applied) -> agent -> web.

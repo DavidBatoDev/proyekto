@@ -1,6 +1,6 @@
 # AI Context API
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 The user-scoped read surface the Python agent uses when a session is in **workspace
 scope**: what the caller can reach across every roadmap, project, team and workspace,
@@ -152,7 +152,7 @@ updated_at, project: { id, title, workspace_id } | null`.
 | `status` absent or `open` | `todo, in_progress, in_review, blocked` |
 | `status=all` | no status filter |
 | `status=<one>` | that status; a NULL status counts as `todo`, so it lands in `open` but never in `blocked` |
-| `assigned_to_me=true` | `roadmap_task_assignees` **or** the legacy `roadmap_tasks.assignee_id` — deliberately wider than the in-roadmap `tasks-assigned-to-me`, which reads only the legacy column |
+| `assigned_to_me=true` | `roadmap_task_assignees` **or** the legacy `roadmap_tasks.assignee_id`. The in-roadmap `tasks-assigned-to-me` matches the join-derived `assignee_ids` set too since the multi-assignee change (2026-09-06; before it, only the legacy column) |
 | `overdue=true` | `due_date < now` and not `done` |
 | `due_after` / `due_before` | inclusive bounds on `due_date` |
 

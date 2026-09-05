@@ -1,6 +1,6 @@
 # Migrations Workflow
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 The database schema is **migration-driven**: every change is a timestamped SQL file
 in [`supabase/migrations/`](../../supabase/migrations/), and that folder is the
@@ -13,7 +13,10 @@ to author and apply them — including the Singapore-prod gotcha.
   a descriptive slug. Files apply in lexical (= chronological) order.
 - Early files use a real clock time (`20251211065452`); most later files pad the
   time to sequence intra-day steps (`120000`, `000010`, `000020`).
-- **335 files** today, 2025-12-11 → 2026-09-04.
+- **335 tracked files** today, 2025-12-11 → 2026-09-04, before the pending
+  `20260906090000` file described under [Applying migrations](#applying-migrations)
+  (the working tree holds one more uncommitted file from a separate change - see
+  the note there).
 
 ## Authoring style
 
@@ -49,7 +52,7 @@ tool: review the SQL, apply to dev, then to prod, then `list_migrations` and
 
 ### Applied through MCP
 
-The two newest files were applied this way to hosted dev **and** production on
+The two 2026-09-04 files were applied this way to hosted dev **and** production on
 2026-09-05 (reported by the operator; application state is not visible from the
 repository — confirm with `list_migrations`):
 
@@ -61,6 +64,32 @@ repository — confirm with `list_migrations`):
 Both are `BEGIN; … COMMIT;` and re-runnable (`IF NOT EXISTS`, `DROP … IF EXISTS`,
 `CREATE OR REPLACE`). See [schema-overview.md](./schema-overview.md) and
 [rls-and-security.md](./rls-and-security.md) for the resulting state.
+
+### Pending through MCP
+
+`20260906090000_upsert_full_roadmap_task_assignees.sql` (the multi-assignee AI edit
+change, 2026-09-06) takes the same path - dev first, then prod - and must be applied
+**before** the backend that passes `p_actor_id` deploys (backend -> agent -> web).
+Treat it as unapplied until `list_migrations` on both refs says otherwise.
+
+> **Not part of this change:** the working tree also holds a second uncommitted
+> migration, `20260906120000_time_tracking_without_consultant.sql`, from another
+> in-flight change. It is not covered by the multi-assignee steps below and is
+> documented by its own change when that lands.
+
+| Step | What it does |
+| --- | --- |
+| `DROP FUNCTION IF EXISTS public.upsert_full_roadmap(uuid, uuid, jsonb, boolean, timestamptz)`, then `CREATE` the 6-arg version | Adds a trailing `p_actor_id uuid DEFAULT NULL`; a bare `CREATE OR REPLACE` would leave the 5-arg overload behind. Body copied from `20260809120000_restore_feature_status.sql` (latest-function-body rule); only the task loop changes. No migration has ever put a `GRANT`/`REVOKE` on this function, so there is nothing to re-apply |
+| Task loop | Reads a task's `assignee_ids` array (deduped, order kept), writes `roadmap_tasks.assignee_id` from its first element, and reconciles `roadmap_task_assignees` (`DELETE` what is not in the set, `INSERT ... ON CONFLICT DO NOTHING` with `assigned_by = COALESCE(p_actor_id, p_owner_id)`). A scalar-only `assignee_id` reconciles only when it differs from the stored column or the task is new |
+| Backfill (before the trigger exists) | Inserts the missing `roadmap_task_assignees` row for every task whose column names a user with no join row (74 production rows when authored) and sets a NULL column from the first join row where rows exist, so the "column = primary, join table = membership" invariant holds for pre-existing data. Idempotent |
+| `ai_context_list_tasks` rebuild | Same body as `20260904090000`, with the assignee aggregate ordered `(a.assignee_id = t.assignee_id) DESC, a.assigned_at, a.assignee_id` so the stored primary comes first |
+| `roadmap_task_assignees_touch_roadmap` | `AFTER INSERT OR DELETE` trigger on the join table (`SECURITY DEFINER`, `search_path = public, pg_temp`, mirroring `touch_roadmap_from_task_change`) that bumps `roadmaps.updated_at`; `EXECUTE` on `touch_roadmap_from_task_assignee_change()` is revoked from `PUBLIC`, `anon` and `authenticated` |
+
+Re-runnable: `DROP ... IF EXISTS` before both the function and the trigger,
+`CREATE OR REPLACE FUNCTION` for the trigger function and the rebuilt RPC, guarded
+inserts/updates for the backfill. Semantics are in
+[schema-overview.md](./schema-overview.md#key-rpcs) and
+[Agent -> operations schema](../05-agent-ai/operations-schema.md#task-assignees).
 
 ### The dev-sync script
 

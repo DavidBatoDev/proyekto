@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -76,8 +76,21 @@ clone; `DELETE /:id`; AI-suggest metadata/intake. `GET /templates/public` is `Pu
 `GET /user/:userId` returns only the caller's own roadmaps — the sole cross-user case
 is reading a **guest** profile's roadmaps during migration preview.
 
-**`roadmap-patch`** (base `roadmaps`) — `POST /roadmaps/full` (create tree),
-`PATCH /roadmaps/:id/json-patch`.
+**`roadmap-patch`** (base `roadmaps`) — `POST /roadmaps/full` (create or full-upsert
+the tree; what the JSON panel's Save calls) and `PATCH /roadmaps/:id/json-patch`. Task
+rows accept `assignee_ids` (the full assignee set, first = primary) next to the
+single-id alias `assignee_id`. A row sent with both keeps `assignee_ids` (explicit
+wins - the JSON panel therefore emits only `assignee_ids`); a row carrying only the
+scalar means `[X]` / `[]`, and the RPC reconciles the join table for it only when the
+value differs from the stored column. The JSON-patch route accepts a `replace` on a
+task's `/assignee_ids` (an array - the full set, `[]` clears) **and, since
+2026-09-06, a scalar `replace` on `/assignee_id` again** (one user id, or `null` to
+clear; it means `[X]` / `[]` for that task, the same as a scalar-only row). It
+re-sends the stored set on every task it did not touch, so an unrelated edit never
+drops a co-assignee. Both routes pass the acting user as `p_actor_id` (recorded as
+`assigned_by` on new join rows), as does every other caller of
+`upsert_full_roadmap`. See
+[Agent -> operations schema](../05-agent-ai/operations-schema.md#task-assignees).
 
 **`milestones`** (base `roadmaps`) — `GET/POST /roadmaps/:roadmapId/milestones`,
 `GET/PATCH/DELETE /roadmaps/milestones/:id`, `PATCH …/reorder`.
@@ -108,7 +121,7 @@ attachments, and dependencies CRUD under `/tasks/:taskId/…`.
 | POST | /api/roadmaps/:id/ai/preview | Supabase | Generate an AI edit preview |
 | GET | /api/roadmaps/:id/ai/previews/:previewId | Supabase | Fetch a preview |
 | POST | /api/roadmaps/:id/ai/commit · /discard · /rollback | Supabase | Commit / discard / rollback (commit accepts optional `session_id`/`run_id` for run attribution and returns `history_recorded` when `run_id` is sent) |
-| GET | /api/roadmaps/:id/ai/context/{summary,actor,members,resolve,search,features,tasks,nodes/…} | Supabase | Context reads (called by the agent) |
+| GET | /api/roadmaps/:id/ai/context/{summary,actor,members,resolve,search,features,tasks,tasks-assigned-to-me,nodes/…} | Supabase | Context reads (called by the agent). Task shapes carry `assignee_ids` (all assignees) next to `assignee_id` (primary); `tasks?assignee_id=` and `tasks-assigned-to-me` match against the full set; `nodes/:nodeId` on a task also returns `assignees` (id + display name) |
 | GET·POST·DELETE | /api/roadmaps/:id/ai/memories[/:memoryId] | Supabase | Durable roadmap memories |
 | GET·POST | /api/roadmaps/:id/ai-sessions | Supabase | List / create AI sessions |
 | GET·PATCH·DELETE | /api/roadmaps/:id/ai-sessions/:sessionId | Supabase | Get / update / delete session |
@@ -151,6 +164,15 @@ Cross-roadmap reads over everything the caller can access; workspace ids only fi
 > rollback of a **project-linked** roadmap append a `roadmap.committed` /
 > `roadmap.rolled_back` row to `project_activity_log` (personal roadmaps are skipped).
 > A context node reports a milestone's date as `target_date` and a task's as `due_date`.
+> Preview and commit accept task `assignee_ids` on `update_node` patches and
+> `add_task.data` (full replacement set; `assignee_id` remains a single-id alias and
+> loses to `assignee_ids` when both are sent; `[]` unassigns; `null` means the
+> assignment is unchanged; UUIDs only - the agent resolves `"me"` before calling).
+> Commit, discard and rollback each run `upsert_full_roadmap` with the caller as
+> `p_actor_id` (recorded as `assigned_by` on new join rows - the same rule as
+> `POST /roadmaps/full` and the JSON-patch route), and commit notifies newly assigned
+> users the way `PATCH /tasks/:id` does. See
+> [Agent -> operations schema](../05-agent-ai/operations-schema.md#task-assignees).
 
 ## roadmap-shares · `roadmap-shares`
 

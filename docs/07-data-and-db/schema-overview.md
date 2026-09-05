@@ -1,10 +1,14 @@
 # Schema Overview
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
 [`supabase/migrations/`](../../supabase/migrations/) — **335 migration files** spanning
-2025-12-11 → 2026-09-04. This page is the current-state map: the domains, the main
+2025-12-11 → 2026-09-04, before the pending `20260906090000` multi-assignee RPC rebuild
+(see [migrations-workflow.md](./migrations-workflow.md#pending-through-mcp); a second
+uncommitted file in the tree, `20260906120000_time_tracking_without_consultant.sql`,
+belongs to a separate in-flight change and is not part of it). This page
+is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
 migrations are authored and applied, see [migrations-workflow.md](./migrations-workflow.md).
@@ -76,7 +80,7 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `roadmaps` | One per project — `project_id` is nullable (since `20260210000001`, for guest/draft roadmaps with no project yet) and unique only when set, via the partial unique index `uq_roadmaps_project_id_linked` (`roadmap_status`) |
 | `roadmap_milestones`, `roadmap_epics`, `roadmap_features`, `roadmap_tasks` | The graph (feature status is **derived in app code**, not a column) |
 | `milestone_features` | M:N milestones ↔ features (delivery tracking) |
-| `roadmap_task_assignees`, `roadmap_feature_assignees` | Multi-assignee joins |
+| `roadmap_task_assignees`, `roadmap_feature_assignees` | Multi-assignee joins (PK `(task_id, assignee_id)` / `(feature_id, assignee_id)`, plus `assigned_at`, `assigned_by`). For tasks the column/join split is an enforced invariant since `20260906090000` - see [Task assignees: the mirror rule](#task-assignees-the-mirror-rule). Feature assignees are untouched by the AI edit path |
 | `task_comments`, `epic_comments`, `feature_comments`, `task_attachments`, `task_dependencies`, `task_activity_log` | Task/epic/feature extras |
 | `feature_dependencies` | Finish→Start (schema-ready SS/FF) edges between features — the Timeline's arrows. `roadmap_id` is denormalised; a trigger enforces acyclicity and same-roadmap endpoints |
 | `roadmap_shares` | Tokenized share config (`share_token`, `invited_emails` jsonb) |
@@ -84,6 +88,30 @@ Full detail in [identity-vetting-model.md](./identity-vetting-model.md).
 | `roadmap_ai_messages` | Thread messages (`seq`-ordered, → session **CASCADE**); `metadata` carries the composer's `refs` and run views. Own-row SELECT through the parent thread |
 | `roadmap_ai_memories` | Durable per-roadmap preferences shared across collaborators (`roadmap_id` NOT NULL, CASCADE) |
 | `roadmap_change_history` | The **durable** per-roadmap commit log — operations and the semantic diff, never snapshots: `change_id` UNIQUE, `actor_id`, `status` (`applied` / `discarded`), revision tokens before/after, `committed_at` / `discarded_at`, and since `20260904090000` the agent attribution `session_id` (→ `roadmap_ai_sessions` **SET NULL**, so history outlives the private thread) and `run_id` (uuid, **no FK** — runs live in Redis). Both are null for web/MCP commits |
+
+### Task assignees: the mirror rule
+
+Since `20260906090000_upsert_full_roadmap_task_assignees.sql` the split between the
+legacy column and the join table is an invariant every writer enforces, not a
+convention `TasksService` happens to follow:
+
+| Rule | Enforced how |
+| --- | --- |
+| **`roadmap_tasks.assignee_id` is the primary; the join table is membership only.** It records who is assigned and persists no ordering (`assigned_at` is when each row was added, nothing more) | `upsert_full_roadmap` writes the column from `assignee_ids[0]` (NULL for `[]`) and reconciles the join rows to the set; `TasksService` / MCP `task_assign` already did the same |
+| **Both SQL readers put the stored primary first**, so `assignee_ids[0]` (and `assignees[0]`) equals the column whichever route loaded the task | `ai_context_list_tasks` (rebuilt in the same migration from its `20260904090000` body) aggregates `ORDER BY (a.assignee_id = t.assignee_id) DESC, a.assigned_at, a.assignee_id`; the backend's `findFull` re-orders the PostgREST embed in `orderPrimaryFirst`, because the embed carries no ordering guarantee |
+| **One-time backfill** - runs before the trigger is created and is idempotent | Inserts a join row for every task whose column names a user with no matching row (74 rows in production when authored), then fills a NULL column from the first join row where rows exist, so no pre-existing task enters the new regime with a column/join mismatch |
+| **`roadmap_task_assignees_touch_roadmap`** (`AFTER INSERT OR DELETE`) bumps `roadmaps.updated_at` via task -> `roadmap_features.roadmap_id`, so a co-assignee-only change advances the `STALE_REVISION` guard | `touch_roadmap_from_task_assignee_change()` is `SECURITY DEFINER` with `search_path = public, pg_temp` (mirroring `touch_roadmap_from_task_change`) and has `EXECUTE` **revoked** from `PUBLIC`, `anon` and `authenticated` - only the trigger fires it |
+| **`assigned_by` is the acting user.** Every caller of the RPC passes `p_actor_id` - AI commit, discard, rollback, `POST /roadmaps/full`, the JSON-patch route | `COALESCE(p_actor_id, p_owner_id)` on each new join row (the owner fallback only covers a caller that sends none); existing rows keep their `assigned_at` / `assigned_by` |
+
+> **⚠️ Legacy snapshots are bounded, not converted.** Undo (`discard`) and redo
+> (`rollback`) replay the `stateBefore` / `stateAfter` snapshots of the Redis change
+> timeline (`roadmap:ai:timeline:<roadmap>:<user>`, 30-day TTL; `roadmap_change_history`
+> itself stores no state). Entries written **before** this deploy carry only the scalar
+> `assignee_id` per task, so replaying one takes the RPC's scalar branch: a task whose
+> primary differs from the stored column is reconciled to `[primary]` / `{}` (its
+> co-assignees are dropped), while a task whose primary is unchanged keeps its join rows
+> untouched. Entries written after the deploy carry `assignee_ids` and restore the whole
+> set; the exposure ends as the old entries age out of the TTL.
 
 ### Teams & time
 
@@ -213,8 +241,8 @@ pass, live in Postgres functions (`SECURITY DEFINER` unless noted):
 
 | RPC | Role |
 | --- | --- |
-| `upsert_full_roadmap(id, owner, full_state jsonb, create_if_missing)` | Atomically persists an entire roadmap tree from a JSON candidate — the **AI-commit write path** |
-| `ai_context_roadmap_counts(uuid[], p_now)`, `ai_context_search_nodes(uuid[], q, kinds, limit)`, `ai_context_list_tasks(uuid[], assignee, statuses, due_from, due_to, overdue_at, limit)` | Cross-roadmap counts / title search / task listing over a set of **pre-authorized** roadmap ids for `/api/ai/context/*`. `SECURITY INVOKER`; EXECUTE revoked from `PUBLIC`/`anon`/`authenticated` and granted to `service_role` only, so they can never widen what a JWT can read. Caps 50 (search) and 200 (tasks) |
+| `upsert_full_roadmap(id, owner, full_state jsonb, create_if_missing, expected_updated_at, actor_id)` | Atomically persists an entire roadmap tree from a JSON candidate — the **AI-commit write path** (also `POST /roadmaps/full` and the JSON-patch route). `SECURITY INVOKER`, called by the backend's service-role client; `expected_updated_at` is the opt-in `STALE_REVISION` guard. Task assignees since `20260906090000` (the trailing `actor_id` arrived with it; the 5-arg signature is dropped first so no overload survives): a task row carrying an `assignee_ids` array has its join rows reconciled to that deduped, order-preserving set (`[]` clears; surviving rows keep `assigned_at`; new rows get `assigned_by = COALESCE(actor_id, owner)`) and `roadmap_tasks.assignee_id` written from its first element. A row with only the scalar `assignee_id` - or whose `assignee_ids` is `null` / not an array, which the RPC treats as absent - reconciles the join table to `[new]` / `{}` only when the scalar differs from the stored column (a legacy single-assignee writer changing the assignment) or the task is new; an unchanged scalar leaves co-assignees alone. See [the mirror rule](#task-assignees-the-mirror-rule) |
+| `ai_context_roadmap_counts(uuid[], p_now)`, `ai_context_search_nodes(uuid[], q, kinds, limit)`, `ai_context_list_tasks(uuid[], assignee, statuses, due_from, due_to, overdue_at, limit)` | Cross-roadmap counts / title search / task listing over a set of **pre-authorized** roadmap ids for `/api/ai/context/*`. `SECURITY INVOKER`; EXECUTE revoked from `PUBLIC`/`anon`/`authenticated` and granted to `service_role` only, so they can never widen what a JWT can read. Caps 50 (search) and 200 (tasks). `ai_context_list_tasks` was rebuilt in `20260906090000` so its `assignee_ids` lists the stored primary first (`ORDER BY (a.assignee_id = t.assignee_id) DESC, a.assigned_at, a.assignee_id`) |
 | `search_knowledge_chunks(p_project, …)`, `search_knowledge_chunks_projects(p_project_ids, …)` | Hybrid HNSW + websearch retrieval with reciprocal-rank fusion over `ai_knowledge_chunks` — single-project, and its multi-project twin (a separately **named** function, not an overload, so PostgREST resolution stays unambiguous). `SECURITY INVOKER`; `chat_message` chunks are filtered to the caller's `p_room_ids` |
 | `match_relevant_memories` | Top-k `roadmap_ai_memories` by embedding similarity (falls back to the chronological list when embeddings are off) |
 | `create_payout_and_mark_paid`, `void_payout_and_revert` | Payout lifecycle |

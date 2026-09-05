@@ -1,6 +1,6 @@
 # JSON Dev-Mode Editing
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 Besides the AI assistant and the canvas, a roadmap can be edited **directly as JSON**
 — useful for bulk changes, scripting, and debugging. The roadmap top bar's `JSON`
@@ -76,6 +76,14 @@ roadmap_features[] → roadmap_tasks[]`.
 4. Top-level `id` must equal the current roadmap route id when editing an existing one.
 5. Use valid enums (roadmap/epic/task status, epic/task priority — see
    [schema-overview.md](../07-data-and-db/schema-overview.md)). Feature has no status.
+6. Task assignees: send `assignee_ids` (the full set, first = primary, `[]` clears);
+   `assignee_id` alone still means that one person, but it is ignored whenever
+   `assignee_ids` is present - which is why the panel's document carries **only**
+   `assignee_ids` (omitted for an unassigned task, so a hand-written `assignee_id`
+   still applies). A task row carrying only the scalar `assignee_id` reconciles the
+   join table only when the value differs from the stored column, so unrelated edits
+   through this path never drop co-assignees; the JSON-patch route re-sends the stored
+   set. See [operations-schema.md](./operations-schema.md#task-assignees).
 
 ## Troubleshooting
 
