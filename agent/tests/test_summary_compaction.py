@@ -6,7 +6,7 @@ import unittest
 
 from app.core.config import get_settings
 from app.core.contracts.sessions import AgentSession, Message
-from app.core.v2.summarizer import (
+from app.core.runtime.summarizer import (
     _message_fingerprint,
     apply_pending_compaction,
     should_schedule_compaction,

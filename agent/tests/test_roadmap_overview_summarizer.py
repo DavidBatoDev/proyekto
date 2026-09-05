@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from app.core.orchestration.context.roadmap_overview_summarizer import (
+from app.core.runtime.overview import (
     DEFAULT_MAX_EPICS,
     build_roadmap_overview_summary,
     format_overview_summary,
@@ -310,6 +310,81 @@ class BuildRoadmapOverviewSummaryTests(unittest.IsolatedAsyncioTestCase):
 
     def test_default_max_epics_constant(self) -> None:
         self.assertEqual(DEFAULT_MAX_EPICS, 25)
+
+    async def test_handle_prefix_is_forwarded_to_the_formatter(self) -> None:
+        client = AsyncMock()
+        client.context_summary.return_value = {
+            'title': 'Beta',
+            'epics': [_epic('Alpha', feature_count=1, features=[_feature('Login')])],
+        }
+        summary, _token, handle_map = await build_roadmap_overview_summary(
+            nest_client=client,
+            roadmap_id='roadmap-2',
+            auth_header='Bearer token',
+            handle_prefix='R2',
+        )
+        assert summary is not None
+        self.assertIn('R2.E1. Alpha', summary)
+        self.assertIn('R2.E1.F1 · Login', summary)
+        self.assertEqual(set(handle_map), {'R2.E1', 'R2.E1.F1'})
+        self.assertEqual(handle_map['R2.E1']['roadmap_id'], 'roadmap-2')
+
+
+class HandlePrefixTests(unittest.TestCase):
+    """Non-focus roadmaps render `R{n}.`-prefixed handles (`R2.E1`, `R2.E1.F2`,
+    `R2.M1`) so several outlines can share one prompt; every handle-map entry
+    carries the roadmap it belongs to."""
+
+    def _payload(self) -> dict:
+        return {
+            'title': 'Beta',
+            'status': 'active',
+            'epics': [
+                _epic('Alpha', feature_count=2, features=[_feature('Login'), _feature('Signup')]),
+                _epic('Gamma'),
+            ],
+            'milestones': [
+                {'id': 'ms-1', 'title': 'Launch', 'target_date': '2026-10-01'},
+            ],
+        }
+
+    def test_prefix_applies_to_every_handle_and_stamps_roadmap_id(self) -> None:
+        rendered, handle_map = format_overview_summary(
+            self._payload(), handle_prefix='R2', roadmap_id='roadmap-2'
+        )
+        assert rendered is not None
+        self.assertIn('R2.E1. Alpha', rendered)
+        self.assertIn('   R2.E1.F1 · Login', rendered)
+        self.assertIn('   R2.E1.F2 · Signup', rendered)
+        self.assertIn('R2.E2. Gamma', rendered)
+        self.assertIn('R2.M1. Launch -- due 2026-10-01', rendered)
+        self.assertEqual(
+            set(handle_map), {'R2.E1', 'R2.E1.F1', 'R2.E1.F2', 'R2.E2', 'R2.M1'}
+        )
+        self.assertNotIn('E1', handle_map)
+        for entry in handle_map.values():
+            self.assertEqual(entry['roadmap_id'], 'roadmap-2')
+        self.assertEqual(handle_map['R2.M1']['type'], 'milestone')
+
+    def test_focus_roadmap_keeps_bare_handles(self) -> None:
+        rendered, handle_map = format_overview_summary(
+            self._payload(), handle_prefix=None, roadmap_id='roadmap-1'
+        )
+        assert rendered is not None
+        self.assertIn('E1. Alpha', rendered)
+        self.assertIn('M1. Launch', rendered)
+        self.assertNotIn('R', ''.join(handle_map))
+        self.assertEqual(handle_map['E1']['roadmap_id'], 'roadmap-1')
+
+    def test_blank_prefix_and_missing_roadmap_id_are_ignored(self) -> None:
+        _rendered, handle_map = format_overview_summary(self._payload(), handle_prefix='  ')
+        self.assertIn('E1', handle_map)
+        self.assertNotIn('roadmap_id', handle_map['E1'])
+
+    def test_prefixed_and_bare_maps_never_collide(self) -> None:
+        _a, focus_map = format_overview_summary(self._payload(), roadmap_id='a')
+        _b, other_map = format_overview_summary(self._payload(), handle_prefix='R2', roadmap_id='b')
+        self.assertEqual(set(focus_map) & set(other_map), set())
 
 
 if __name__ == '__main__':  # pragma: no cover

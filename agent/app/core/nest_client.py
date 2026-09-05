@@ -9,13 +9,72 @@ from fastapi import HTTPException
 
 from app.core.config import get_settings
 from app.core.logging_utils import log_event
+from app.core.uuid_utils import normalize_uuid
 
 _GUEST_PREFIX = 'Guest '
 
+# Query keys each /ai/context list endpoint accepts (the backend's global
+# ValidationPipe runs with forbidNonWhitelisted, so an unknown key is a 400).
+_AI_CONTEXT_ROADMAPS_PARAMS = ('workspace_id', 'project_id', 'cursor', 'limit')
+_AI_CONTEXT_SEARCH_PARAMS = (
+    'q',
+    'kinds',
+    'workspace_id',
+    'project_id',
+    'roadmap_ids',
+    'limit',
+)
+_AI_CONTEXT_TASKS_PARAMS = (
+    'assigned_to_me',
+    'status',
+    'due_before',
+    'due_after',
+    'overdue',
+    'workspace_id',
+    'project_id',
+    'roadmap_ids',
+    'limit',
+)
+
+
+def _encode_query_value(value: Any) -> str | None:
+    """None/empty -> omitted; bool -> 'true'/'false'; list/tuple -> CSV of
+    the non-empty items (the backend DTOs @Transform CSV into arrays);
+    everything else -> str."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (list, tuple, set, frozenset)):
+        items = [str(item).strip() for item in value if item is not None and str(item).strip()]
+        if not items:
+            return None
+        return ','.join(items)
+    text = str(value).strip()
+    return text or None
+
+
+def _encode_query(pairs: list[tuple[str, Any]]) -> str:
+    """Build `?a=b&c=d` from ordered pairs, skipping empties. Returns '' when
+    nothing survives so callers can append it unconditionally."""
+    parts: list[str] = []
+    for key, value in pairs:
+        encoded = _encode_query_value(value)
+        if encoded is None:
+            continue
+        parts.append(f"{key}={quote_plus(encoded)}")
+    return f"?{'&'.join(parts)}" if parts else ''
+
+
+def _pick_params(params: dict[str, Any] | None, allowed: tuple[str, ...]) -> list[tuple[str, Any]]:
+    if not params:
+        return []
+    return [(key, params.get(key)) for key in allowed if key in params]
+
 
 def _apply_auth_header(headers: dict[str, str], auth_header: str | None) -> None:
-    """Translate the composite forward-auth value (see route_flows'
-    resolve_forward_auth) into the right outbound header: 'Guest <id>'
+    """Translate the composite forward-auth value (see
+    sessions_support/auth.py resolve_forward_auth) into the right outbound header: 'Guest <id>'
     becomes X-Guest-User-Id, anything else (a real bearer) passes through
     as Authorization. No-op when auth_header is falsy."""
     if not auth_header:
@@ -175,10 +234,28 @@ class NestRoadmapClient:
         payload: dict[str, Any],
         auth_header: str | None,
         trace_id: str | None = None,
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any]:
+        # Run-attributed commits carry the session/run ids so the backend can
+        # stamp roadmap_change_history and answer GET /ai/context/changes.
+        # Only added when given AND uuid-shaped: the commit DTO validates both
+        # with @IsUUID and would reject the whole commit otherwise (an older
+        # backend DTO would 400 on unknown keys too). The caller's dict is
+        # never mutated.
+        body = payload
+        session_uuid = normalize_uuid(session_id)
+        run_uuid = normalize_uuid(run_id)
+        if session_uuid or run_uuid:
+            body = dict(payload)
+            if session_uuid:
+                body['session_id'] = session_uuid
+            if run_uuid:
+                body['run_id'] = run_uuid
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/commit",
-            payload,
+            body,
             auth_header,
             trace_id=trace_id,
         )
@@ -751,6 +828,250 @@ class NestRoadmapClient:
             query_parts.append(f"limit={limit}")
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/knowledge-search?{'&'.join(query_parts)}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    # ------------------------------------------------------------------
+    # User-scoped AI context family (`/api/ai/context/*`). Every route is
+    # authorized per request as the forwarded user; every denial is a 404.
+    # ------------------------------------------------------------------
+
+    async def resolve_refs(
+        self,
+        refs: list[dict[str, Any]],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /ai/context/resolve-refs -> {refs: [ResolvedRef-shaped dicts]}.
+        Fail-closed per ref on the backend; the caller treats a transport or
+        4xx/5xx failure as every ref inaccessible (RESOLVE_FAILED)."""
+        return await self._post(
+            '/ai/context/resolve-refs',
+            {'refs': list(refs)},
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_actor(
+        self,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get('/ai/context/actor', auth_header, trace_id=trace_id)
+
+    async def ai_context_overview(
+        self,
+        workspace_id: str | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/ai/context/overview{_encode_query([('workspace_id', workspace_id)])}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_roadmaps(
+        self,
+        params: dict[str, Any] | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query = _encode_query(_pick_params(params, _AI_CONTEXT_ROADMAPS_PARAMS))
+        return await self._get(
+            f"/ai/context/roadmaps{query}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_search(
+        self,
+        params: dict[str, Any] | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query = _encode_query(_pick_params(params, _AI_CONTEXT_SEARCH_PARAMS))
+        return await self._get(
+            f"/ai/context/search{query}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_tasks(
+        self,
+        params: dict[str, Any] | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query = _encode_query(_pick_params(params, _AI_CONTEXT_TASKS_PARAMS))
+        return await self._get(
+            f"/ai/context/tasks{query}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_knowledge_search(
+        self,
+        q: str,
+        project_ids: list[str] | None,
+        sources: list[str] | None,
+        limit: int | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+        *,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query = _encode_query(
+            [
+                ('q', q),
+                ('project_ids', project_ids),
+                ('workspace_id', workspace_id),
+                ('sources', sources),
+                ('limit', limit),
+            ]
+        )
+        return await self._get(
+            f"/ai/context/knowledge-search{query}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    def _ai_context_project_path(self, project_id: str, suffix: str = '') -> str:
+        encoded_project_id = quote(project_id, safe='')
+        return f"/ai/context/projects/{encoded_project_id}{suffix}"
+
+    async def ai_context_project_context(
+        self,
+        project_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            self._ai_context_project_path(project_id),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_project_brief(
+        self,
+        project_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            self._ai_context_project_path(project_id, '/brief'),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_project_resources(
+        self,
+        project_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            self._ai_context_project_path(project_id, '/resources'),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_project_meetings(
+        self,
+        project_id: str,
+        window: str | None,
+        limit: int | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query = _encode_query([('window', window), ('limit', limit)])
+        return await self._get(
+            self._ai_context_project_path(project_id, f"/meetings{query}"),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_project_members(
+        self,
+        project_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            self._ai_context_project_path(project_id, '/members'),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_project_member_details(
+        self,
+        project_id: str,
+        member_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        encoded_member_id = quote(member_id, safe='')
+        return await self._get(
+            self._ai_context_project_path(project_id, f"/members/{encoded_member_id}"),
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_context_changes(
+        self,
+        auth_header: str | None,
+        trace_id: str | None = None,
+        *,
+        run_id: str | None = None,
+        session_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """GET /ai/context/changes?run_id=|session_id=&limit= — the
+        authoritative "which batches already landed" guard on resume."""
+        if not run_id and not session_id:
+            raise ValueError('ai_context_changes requires run_id or session_id')
+        query = _encode_query(
+            [('run_id', run_id), ('session_id', session_id), ('limit', limit)]
+        )
+        return await self._get(
+            f"/ai/context/changes{query}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Workspace scope
+    # ------------------------------------------------------------------
+
+    async def workspace_get(
+        self,
+        workspace_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /workspaces/{id}: 404 (missing) or 403 (not a member); the
+        session-create flow maps both to 404 SESSION_SCOPE_NOT_FOUND."""
+        encoded_workspace_id = quote(workspace_id, safe='')
+        return await self._get(
+            f"/workspaces/{encoded_workspace_id}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def put_workspace_session_agent_state(
+        self,
+        workspace_id: str,
+        session_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        encoded_workspace_id = quote(workspace_id, safe='')
+        encoded_session_id = quote(session_id, safe='')
+        return await self._put(
+            f"/workspaces/{encoded_workspace_id}/ai-sessions/{encoded_session_id}/agent-state",
+            payload,
             auth_header,
             trace_id=trace_id,
         )

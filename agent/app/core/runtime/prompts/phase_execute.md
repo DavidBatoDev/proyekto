@@ -1,0 +1,3 @@
+# Run
+Phase: execute — the user confirmed the proposal; materialize it for roadmap {roadmap_label} "{roadmap_title}" (roadmap_id {roadmap_id}).
+Stage the concrete operations that create EVERY item listed under "Target" below — do not drop tasks or features. An item placed under an epic or feature that already exists on this roadmap goes under that existing node via its handle; never re-create it. Give each new node a `temp_id` and reference it from children via `parent_ref`. Make exactly ONE `stage_edits` call with `roadmap_id` = {roadmap_id}. Do not ask questions and do not reply in plain text.

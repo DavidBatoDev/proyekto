@@ -8,8 +8,8 @@ import unittest
 
 from app.core.config import get_settings
 from app.core.contracts.sessions import AgentSession
-from app.core.v2.brain import _apply_semantic_memory_retrieval
-from app.core.v2.context import compact_state
+from app.core.runtime.phases.investigate import _apply_semantic_memory_retrieval
+from app.core.runtime.prompt import compact_state
 
 
 def _settings(**updates):
@@ -121,14 +121,16 @@ class _RelevantNest:
         return self.payload
 
 
-class _FakeService:
-    """Just enough of AgentService for _apply_semantic_memory_retrieval."""
+class _FakeContext:
+    """Just enough of StepContext for _apply_semantic_memory_retrieval."""
 
     def __init__(self, nest, settings):
-        self._nest_client = nest
-        self._settings = settings
+        self.nest_client = nest
+        self.settings = settings
+        self.auth_header = 'Bearer t'
+        self.trace_id = None
 
-    def _run_async_call(self, coro):
+    def run_async_call(self, coro):
         import asyncio
 
         return asyncio.run(coro)
@@ -137,30 +139,26 @@ class _FakeService:
 class RetrievalGateTests(unittest.TestCase):
     def test_at_or_below_threshold_skips_fetch(self) -> None:
         nest = _RelevantNest()
-        service = _FakeService(nest, _settings(agent_memory_semantic_threshold=15))
+        ctx = _FakeContext(nest, _settings(agent_memory_semantic_threshold=15))
         context = {'memory_notes': [_note(i) for i in range(15)]}
         _apply_semantic_memory_retrieval(
-            service=service,
+            ctx=ctx,
             session=_session(),
             session_context=context,
             user_message='what did we decide?',
-            auth_header='Bearer t',
-            trace_id=None,
         )
         self.assertEqual(nest.calls, [])
         self.assertNotIn('memory_notes_semantic', context)
 
     def test_above_threshold_fetches_and_sets_context(self) -> None:
         nest = _RelevantNest()
-        service = _FakeService(nest, _settings(agent_memory_semantic_threshold=15))
+        ctx = _FakeContext(nest, _settings(agent_memory_semantic_threshold=15))
         context = {'memory_notes': [_note(i) for i in range(16)]}
         _apply_semantic_memory_retrieval(
-            service=service,
+            ctx=ctx,
             session=_session(),
             session_context=context,
             user_message='x' * 900,
-            auth_header='Bearer t',
-            trace_id=None,
         )
         self.assertTrue(context.get('memory_notes_semantic'))
         self.assertEqual(len(context['relevant_memory_notes']), 1)
@@ -170,30 +168,26 @@ class RetrievalGateTests(unittest.TestCase):
 
     def test_fetch_failure_falls_back_to_inject_all(self) -> None:
         nest = _RelevantNest(error=RuntimeError('backend down'))
-        service = _FakeService(nest, _settings(agent_memory_semantic_threshold=1))
+        ctx = _FakeContext(nest, _settings(agent_memory_semantic_threshold=1))
         context = {'memory_notes': [_note(i) for i in range(5)]}
         _apply_semantic_memory_retrieval(
-            service=service,
+            ctx=ctx,
             session=_session(),
             session_context=context,
             user_message='hello there',
-            auth_header='Bearer t',
-            trace_id=None,
         )
         self.assertNotIn('memory_notes_semantic', context)
         self.assertNotIn('relevant_memory_notes', context)
 
     def test_empty_match_falls_back_to_inject_all(self) -> None:
         nest = _RelevantNest(payload={'memories': []})
-        service = _FakeService(nest, _settings(agent_memory_semantic_threshold=1))
+        ctx = _FakeContext(nest, _settings(agent_memory_semantic_threshold=1))
         context = {'memory_notes': [_note(i) for i in range(5)]}
         _apply_semantic_memory_retrieval(
-            service=service,
+            ctx=ctx,
             session=_session(),
             session_context=context,
             user_message='hello there',
-            auth_header='Bearer t',
-            trace_id=None,
         )
         self.assertNotIn('memory_notes_semantic', context)
 

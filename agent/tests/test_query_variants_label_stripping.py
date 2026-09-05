@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from app.core.config import get_settings
-from app.core.llm.context.handlers.base import ToolHandlerBase
+from app.core.tools.handlers.base import ToolHandlerBase
 
 
 def _make_handler() -> ToolHandlerBase:

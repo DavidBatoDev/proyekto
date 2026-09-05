@@ -1,7 +1,7 @@
 import unittest
 
 from app.core.contracts.sessions import AgentSession, AppliedChange
-from app.core.orchestration.context.applied_changes_log import (
+from app.core.memory.applied_changes_log import (
     MAX_APPLIED_CHANGES,
     format_recent_applied_changes,
     record_applied_changes_from_commit,
@@ -23,6 +23,35 @@ def _title_change(node_id: str, from_title: str, to_title: str) -> dict:
 
 
 class RecordAppliedChangesFromCommitTests(unittest.TestCase):
+    def test_stamps_focus_roadmap_by_default(self) -> None:
+        session = _session()
+        commit_result = {
+            'change_id': 'chg-1',
+            'semantic_diff': {'changes': [_title_change('epic-1', 'A', 'B')]},
+        }
+        record_applied_changes_from_commit(session, commit_result)
+        entry = session.metadata.recent_applied_changes[0]
+        group = session.metadata.change_history[0]
+        self.assertEqual(entry.roadmap_id, 'roadmap-1')
+        self.assertEqual(group.roadmap_id, 'roadmap-1')
+        self.assertIsNone(group.run_id)
+
+    def test_explicit_roadmap_id_and_run_id_are_recorded(self) -> None:
+        session = _session()
+        commit_result = {
+            'change_id': 'chg-2',
+            'semantic_diff': {'changes': [_title_change('epic-9', 'A', 'B')]},
+        }
+        record_applied_changes_from_commit(
+            session, commit_result, roadmap_id='roadmap-2', run_id='run-7'
+        )
+        entry = session.metadata.recent_applied_changes[0]
+        group = session.metadata.change_history[0]
+        self.assertEqual(entry.roadmap_id, 'roadmap-2')
+        self.assertEqual(group.roadmap_id, 'roadmap-2')
+        self.assertEqual(group.run_id, 'run-7')
+        self.assertEqual(group.changes[0].roadmap_id, 'roadmap-2')
+
     def test_records_title_change(self) -> None:
         session = _session()
         commit_result = {

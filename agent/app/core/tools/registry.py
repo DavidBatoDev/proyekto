@@ -16,13 +16,14 @@ from app.core.contracts.operations import (
 from app.core.uuid_utils import TEMP_REF_PATTERN, is_uuid_like, normalize_uuid
 
 
-# Handle scheme: E<n> / E<n>.F<m> — emitted by the roadmap overview summarizer
+# Handle scheme: E<n> / E<n>.F<m> / M<n>, optionally prefixed with R<k>. for a
+# non-focus roadmap (R2.E1) — emitted by the roadmap overview summarizer
 # and referenced by the planner in place of full UUIDs. This regex is a
 # cheap pre-filter; the actual substitution only happens when the value is a
 # key in the active handle_map, so a coincidental user-supplied string that
 # matches the shape but isn't in the map is left untouched (and will fail
 # normal UUID/temp_ref validation downstream, as intended).
-_HANDLE_TOKEN_PATTERN = re.compile(r'^(?:E\d+(?:\.F\d+)?|M\d+)$')
+_HANDLE_TOKEN_PATTERN = re.compile(r'^(?:R\d+\.)?(?:E\d+(?:\.F\d+)?|M\d+)$')
 
 # Set by the planning flow for the duration of a single planner turn. Scoped
 # to a ContextVar rather than threaded through every adapter/parser kwarg
@@ -192,7 +193,7 @@ CONTEXT_TOOL_NAMES = {
     'list_project_meetings',
     'get_member_details',
     # Exposed to the model only when AGENT_KNOWLEDGE_SEARCH_ENABLED (gated in
-    # tools_spec.build_tools); listed here so dispatch/parallel-read wiring is
+    # app/core/runtime/tools.py); listed here so dispatch/parallel-read wiring is
     # permanent and a call is handled even mid-rollout.
     'search_knowledge',
     'get_roadmap_summary',
@@ -1220,7 +1221,8 @@ def _is_non_empty_string(value: Any) -> bool:
 # identity validator this replaced (presence + XOR + targets entry
 # non-emptiness). Heavier semantic checks (UUID validity, status enum,
 # delta bounds, mutation payload, mark_status legality) are run later by
-# `apply_operation_contract_guard`, because downstream repair paths
+# `validate_operation_contract` (app/core/runtime/operation_contracts.py),
+# because downstream repair paths
 # (deictic parent hints, target-recovery autofix) need to see the raw
 # invalid operation to fix it up.
 _SEMANTIC_REASON_MESSAGES: dict[str, str] = {

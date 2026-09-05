@@ -1,8 +1,9 @@
 """Realtime push of AI-trace progress events (app/core/realtime_push.py).
 
 Covers: the dormant-unless-configured gate, the publish item shape, the
-never-raise send path, and the _capture_progress_event hook that mirrors
-each captured event to the user's realtime room.
+never-raise send path, and the trace-store capture hook
+(app.core.trace.store.capture, reached through log_event) that mirrors each
+captured event to the user's realtime room.
 """
 
 import unittest
@@ -12,7 +13,8 @@ from unittest import mock
 
 from app.core import logging_utils, realtime_push
 from app.core.logging_utils import log_event
-from app.core.v2 import progress as progress_mod
+from app.core.engine import progress as progress_mod
+from app.core.trace import store as trace_store
 
 
 def _push_settings(**overrides):
@@ -101,7 +103,13 @@ class SendTests(unittest.TestCase):
 
 
 class CaptureHookTests(unittest.TestCase):
-    """_capture_progress_event mirrors each event to the user's room."""
+    """trace.store.capture mirrors each event to the user's room."""
+
+    def setUp(self) -> None:
+        trace_store.reset_for_tests()
+
+    def tearDown(self) -> None:
+        trace_store.reset_for_tests()
 
     def _settings(self, push_enabled=True):
         return SimpleNamespace(
@@ -144,6 +152,11 @@ class CaptureHookTests(unittest.TestCase):
         self.assertEqual(envelope['session_id'], 'session-1')
         self.assertEqual(envelope['roadmap_id'], 'roadmap-1')
         self.assertFalse(envelope['done'])
+        # Run fields ride the envelope (None until the run reports them).
+        self.assertIn('run_id', envelope)
+        self.assertIn('phase', envelope)
+        self.assertIsNone(envelope['run_id'])
+        self.assertIsNone(envelope['phase'])
         events = envelope['events']
         self.assertEqual(len(events), 1)
         event = events[0]
@@ -153,6 +166,50 @@ class CaptureHookTests(unittest.TestCase):
         self.assertEqual(
             sorted(event['details'].keys()), ['text', 'thought_seq', 'turn']
         )
+
+    def test_envelope_carries_run_id_and_phase_once_the_run_reports_them(self):
+        settings = self._settings()
+        trace_id = str(uuid.uuid4())
+        published = []
+        with mock.patch.object(
+            logging_utils.realtime_push,
+            'publish_trace_event',
+            lambda s, user_id, envelope: published.append(envelope),
+        ):
+            log_event(
+                progress_mod.logger,
+                'phase_entered',
+                settings=settings,
+                trace_id=trace_id,
+                session_id='session-1',
+                actor_id='user-42',
+                run_id='run-7',
+                phase='execute',
+                commits_done=1,
+                commits_total=2,
+            )
+            log_event(
+                progress_mod.logger,
+                'commit_completed',
+                settings=settings,
+                trace_id=trace_id,
+                session_id='session-1',
+                actor_id='user-42',
+                roadmap_id='roadmap-2',
+                roadmap_title='Beta',
+                operations_count=4,
+                impacted_items=[],
+            )
+        self.assertEqual(len(published), 2)
+        first, second = published
+        self.assertEqual(first['run_id'], 'run-7')
+        self.assertEqual(first['phase'], 'execute')
+        self.assertEqual(first['events'][0]['details'], {'phase': 'execute', 'commits_done': 1, 'commits_total': 2})
+        self.assertEqual(second['run_id'], 'run-7')
+        self.assertEqual(second['phase'], 'execute')
+        self.assertEqual(second['events'][0]['title'], 'Changes committed')
+        self.assertEqual(second['events'][0]['details']['roadmap_title'], 'Beta')
+        self.assertEqual(second['next_seq'], 2)
 
     def test_no_publish_without_actor_id_or_with_flag_off(self):
         published = []

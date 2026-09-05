@@ -5,6 +5,7 @@ import time
 from datetime import datetime, UTC
 from time import perf_counter
 from typing import Any, Callable
+from uuid import uuid4
 
 from app.core.config import get_settings
 from app.core.contracts.sessions import AgentSession, Message
@@ -41,6 +42,17 @@ if ttl and ttl > 0 then
     redis.call('EXPIRE', KEYS[2], ttl)
 end
 return {'ok', tostring(new_version)}
+"""
+
+# Lua script: compare-and-delete for the per-session run lock. Only the
+# holder (whose token matches) can release; a lock that expired and was
+# re-acquired by another request is left alone. Returns 1 when deleted.
+# KEYS[1] = lock key, ARGV[1] = the holder's token
+_RELEASE_LOCK_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
 """
 
 
@@ -94,6 +106,116 @@ class SessionStore:
 
     def delete_summary_candidate(self, session_id: str) -> None:
         self._redis.delete(self._summary_candidate_key(session_id))
+
+    # ------------------------------------------------------------------
+    # Shared Redis client + generic side keys (run transcripts, cancel
+    # flags, trace store). Side keys hang off the session key so an
+    # operator can find everything a session owns under one prefix.
+    # ------------------------------------------------------------------
+
+    @property
+    def redis(self) -> Any:
+        """The underlying Upstash client (sync REST). Callers on the event
+        loop must go through `asyncio.to_thread` / `run_store_call`."""
+        return self._redis
+
+    @property
+    def key_prefix(self) -> str:
+        return self._key_prefix
+
+    def side_key(self, session_id: str, *parts: str) -> str:
+        """`{prefix}:{session_id}:{part}:{part}...`"""
+        return ':'.join([self._key(session_id), *parts])
+
+    def run_key(self, session_id: str, run_id: str, suffix: str) -> str:
+        """`{prefix}:{session_id}:run:{run_id}:{suffix}` — e.g. the paused
+        loop `transcript` or the `cancel` flag."""
+        return self.side_key(session_id, 'run', run_id, suffix)
+
+    def run_lock_key(self, session_id: str) -> str:
+        return self.side_key(session_id, 'run_lock')
+
+    def put_side_key(self, key: str, payload: Any, ttl_seconds: int) -> None:
+        """JSON-encode `payload` under `key` with a TTL (>0)."""
+        ttl = int(ttl_seconds)
+        if ttl <= 0:
+            raise ValueError('put_side_key requires a positive ttl_seconds')
+        try:
+            self._redis.set(key, json.dumps(payload, ensure_ascii=False), ex=ttl)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('put_side_key', str(exc)) from exc
+
+    def get_side_key(self, key: str) -> Any | None:
+        """Decoded JSON under `key`; None when missing or not valid JSON."""
+        try:
+            raw = self._redis.get(key)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('get_side_key', str(exc)) from exc
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode('utf-8')
+        try:
+            return json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def delete_side_key(self, key: str) -> None:
+        try:
+            self._redis.delete(key)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('delete_side_key', str(exc)) from exc
+
+    def exists(self, key: str) -> bool:
+        try:
+            result = self._redis.exists(key)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('exists', str(exc)) from exc
+        return _coerce_to_int(result) > 0
+
+    # ------------------------------------------------------------------
+    # Per-session run lock: one request advances a session's run at a time.
+    # SET NX EX with a random token; release is compare-and-delete so a
+    # holder whose lock expired never deletes the next holder's lock.
+    # ------------------------------------------------------------------
+
+    def acquire_run_lock(self, session_id: str, ttl_seconds: int) -> str | None:
+        """Returns the holder token, or None when another request holds the
+        lock. `ttl_seconds` must be >= the request timeout so a dead request
+        can never overlap a live one."""
+        ttl = int(ttl_seconds)
+        if ttl <= 0:
+            raise ValueError('acquire_run_lock requires a positive ttl_seconds')
+        token = uuid4().hex
+        try:
+            result = self._redis.set(self.run_lock_key(session_id), token, nx=True, ex=ttl)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('acquire_run_lock', str(exc)) from exc
+        if _set_nx_succeeded(result):
+            self._log_timing('session_store_run_lock_acquired', session_id=session_id)
+            return token
+        self._log_timing('session_store_run_lock_held', session_id=session_id)
+        return None
+
+    def release_run_lock(self, session_id: str, token: str | None) -> bool:
+        """Compare-and-delete. True when this token held the lock and it was
+        removed; False when the lock had expired or belongs to someone else."""
+        if not token:
+            return False
+        try:
+            result = self._redis.eval(
+                _RELEASE_LOCK_LUA,
+                keys=[self.run_lock_key(session_id)],
+                args=[token],
+            )
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('release_run_lock', str(exc)) from exc
+        released = _coerce_to_int(result) > 0
+        self._log_timing(
+            'session_store_run_lock_released' if released else 'session_store_run_lock_release_noop',
+            session_id=session_id,
+        )
+        return released
 
     def create(self, session: AgentSession) -> AgentSession:
         self._save(session)
@@ -298,6 +420,30 @@ def _coerce_to_str(value: Any) -> str:
         except UnicodeDecodeError:
             return ''
     return str(value)
+
+
+def _coerce_to_int(value: Any) -> int:
+    """Upstash returns integers as int, str, or bytes depending on the SDK
+    path (eval results come back as strings)."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    text = _coerce_to_str(value).strip()
+    try:
+        return int(text)
+    except ValueError:
+        return 0
+
+
+def _set_nx_succeeded(result: Any) -> bool:
+    """`SET ... NX` answers OK/True when set and nil/None/False when the key
+    already existed; normalize the SDK's variants."""
+    if result is None or result is False:
+        return False
+    if result is True:
+        return True
+    return _coerce_to_str(result).strip().upper() == 'OK'
 
 
 def _parse_cas_result(result: Any) -> tuple[str, str]:

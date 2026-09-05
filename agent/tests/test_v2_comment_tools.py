@@ -1,16 +1,19 @@
 """Comment tool: the loop continues after add_task_comments (non-terminal),
-the handler validates/dedupes ids and passes the backend's per-task results
-through verbatim, and the dispatcher classification includes the tool."""
+the handler validates/dedupes ids, posts through the roadmap the CALL names
+(the dispatcher writes the resolved roadmap onto args) and passes the
+backend's per-task results through verbatim, and the dispatcher
+classification includes the tool."""
 
 import json
 import unittest
-from types import SimpleNamespace
 
 from app.core.config import get_settings
-from app.core.llm.context.handlers.comment_tools import CommentToolHandler
-from app.core.v2 import tools_spec
-from app.core.v2.loop import run_loop
-from app.core.v2.openai_client import LLMResponse, ToolCall
+from app.core.tools.handlers.comment_tools import CommentToolHandler
+from app.core.runtime import tools as tools_spec
+from app.core.engine.loop import run_loop
+from app.core.engine.llm_client import LLMResponse, ToolCall
+
+_WORKSPACE = {'kind': 'workspace', 'workspace_id': 'ws-1'}
 
 
 def _tool_resp(name, args, content=None):
@@ -60,8 +63,13 @@ class ClassificationTests(unittest.TestCase):
         spec = tools_spec.add_task_comments_tool()
         params = spec['function']['parameters']
         self.assertEqual(sorted(params['required']), ['content', 'task_ids'])
+        self.assertIn('roadmap_id', params['properties'])
         self.assertEqual(params['properties']['task_ids']['maxItems'], 25)
         self.assertEqual(params['properties']['content']['maxLength'], 2000)
+
+    def test_roadmap_id_required_in_workspace_scope(self) -> None:
+        params = tools_spec.add_task_comments_tool(_WORKSPACE)['function']['parameters']
+        self.assertEqual(sorted(params['required']), ['content', 'roadmap_id', 'task_ids'])
 
 
 class LoopContinuationTests(unittest.TestCase):
@@ -90,7 +98,7 @@ class LoopContinuationTests(unittest.TestCase):
             messages=[{'role': 'system', 'content': 'sys'}, {'role': 'user', 'content': 'comment on them'}],
             tools=[],
             dispatcher=dispatcher,
-            session_context={'roadmap_id': 'rm1'},
+            session_context={'focus_roadmap_id': 'rm1'},
             handle_map={},
             settings=get_settings(),
             trace_id=None,
@@ -130,10 +138,10 @@ def _handler(nest):
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_posts_batch_and_passes_results_through(self) -> None:
         nest = _FakeNestClient()
-        context = {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
+        context = {'auth_header': 'Bearer t'}
         result = await _handler(nest).execute(
             'add_task_comments',
-            {'task_ids': ['t1', 't2'], 'content': 'Carried to August.'},
+            {'task_ids': ['t1', 't2'], 'content': 'Carried to August.', 'roadmap_id': 'rm1'},
             context,
         )
         self.assertEqual(result['posted'], 2)
@@ -143,12 +151,30 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(roadmap_id, 'rm1')
         self.assertEqual(payload, {'task_ids': ['t1', 't2'], 'content': 'Carried to August.'})
 
+    async def test_roadmap_id_comes_from_the_call_never_the_shared_context(self) -> None:
+        nest = _FakeNestClient()
+        context = {'roadmap_id': 'rm-stale', 'focus_roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
+        await _handler(nest).execute(
+            'add_task_comments',
+            {'task_ids': ['t1'], 'content': 'note', 'roadmap_id': 'rm-other'},
+            context,
+        )
+        self.assertEqual(nest.posted[0][0], 'rm-other')
+
+    async def test_missing_roadmap_is_comment_needs_roadmap(self) -> None:
+        nest = _FakeNestClient()
+        result = await _handler(nest).execute(
+            'add_task_comments', {'task_ids': ['t1'], 'content': 'note'}, {'auth_header': 'Bearer t'}
+        )
+        self.assertEqual(result['error']['code'], 'COMMENT_NEEDS_ROADMAP')
+        self.assertEqual(nest.posted, [])
+
     async def test_dedupes_ids_and_strips_content(self) -> None:
         nest = _FakeNestClient()
         await _handler(nest).execute(
             'add_task_comments',
-            {'task_ids': ['t1', 't1', ' t2 ', 't2'], 'content': '  note  '},
-            {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'},
+            {'task_ids': ['t1', 't1', ' t2 ', 't2'], 'content': '  note  ', 'roadmap_id': 'rm1'},
+            {'auth_header': 'Bearer t'},
         )
         _, payload = nest.posted[0]
         self.assertEqual(payload['task_ids'], ['t1', 't2'])
@@ -163,7 +189,7 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
             {'task_ids': ['', '   '], 'content': 'note'},
         ):
             result = await _handler(nest).execute(
-                'add_task_comments', bad_args, {'roadmap_id': 'rm1'}
+                'add_task_comments', {**bad_args, 'roadmap_id': 'rm1'}, {}
             )
             self.assertEqual(result['error']['code'], 'INVALID_TASK_IDS')
         self.assertEqual(nest.posted, [])
@@ -172,8 +198,8 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         nest = _FakeNestClient()
         result = await _handler(nest).execute(
             'add_task_comments',
-            {'task_ids': [f't{i}' for i in range(26)], 'content': 'note'},
-            {'roadmap_id': 'rm1'},
+            {'task_ids': [f't{i}' for i in range(26)], 'content': 'note', 'roadmap_id': 'rm1'},
+            {},
         )
         self.assertEqual(result['error']['code'], 'INVALID_TASK_IDS')
         self.assertEqual(nest.posted, [])
@@ -183,8 +209,8 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         for bad_content in ('', '   ', 'x' * 2001):
             result = await _handler(nest).execute(
                 'add_task_comments',
-                {'task_ids': ['t1'], 'content': bad_content},
-                {'roadmap_id': 'rm1'},
+                {'task_ids': ['t1'], 'content': bad_content, 'roadmap_id': 'rm1'},
+                {},
             )
             self.assertEqual(result['error']['code'], 'INVALID_COMMENT_CONTENT')
         self.assertEqual(nest.posted, [])

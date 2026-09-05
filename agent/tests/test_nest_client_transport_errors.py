@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from fastapi import HTTPException
 
-from app.api.routes.sessions_support.common import extract_upstream_error_details
+from app.api.routes.sessions_support.errors import extract_upstream_error_details
 from app.core.nest_client import NestRoadmapClient
 
 

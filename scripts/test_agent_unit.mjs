@@ -46,6 +46,9 @@ function runCommand(command, args, cwd) {
     shell: false,
     env: process.env,
     encoding: 'utf8',
+    // A verbose run (AGENT_LOG_LEVEL=DEBUG from agent/.env) can exceed
+    // spawnSync's 1 MB default and surface as ENOBUFS -> "Unable to run".
+    maxBuffer: 256 * 1024 * 1024,
   });
 }
 
@@ -77,7 +80,7 @@ function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help') || args.includes('-h')) {
     console.log('Usage: node scripts/test_agent_unit.mjs [unittest_module ...]');
-    console.log('Defaults: tests.test_v2_loop tests.test_v2_outcome tests.test_v2_brain ...');
+    console.log('Defaults: every tests/test_*.py module (discovered).');
     process.exit(0);
   }
   const testModules = args;

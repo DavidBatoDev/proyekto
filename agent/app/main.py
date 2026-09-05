@@ -5,10 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.briefs import router as briefs_router
 from app.api.routes.sessions import router as sessions_router
-from app.api.routes.sessions_support.runtime import configure_runtime_resolver
+from app.api.routes.sessions_support.runtime import (
+    build_runtime,
+    configure_runtime_resolver,
+)
 from app.core.config import get_settings
 from app.core.logging_utils import configure_logging
-from app.core.orchestration.agent_service import AgentService
+from app.core.runtime.service import RuntimeService
 from app.core.session_store import SessionStore
 
 settings = get_settings()
@@ -33,14 +36,14 @@ app.include_router(sessions_router)
 app.include_router(briefs_router)
 
 
-def _resolve_agent_runtime() -> tuple[SessionStore, AgentService]:
+def _resolve_agent_runtime() -> tuple[SessionStore, RuntimeService]:
     runtime = getattr(app.state, 'agent_runtime', None)
     if runtime is not None:
         return runtime
 
-    store = SessionStore()
-    service = AgentService(store)
-    runtime = (store, service)
+    # The session store, the trace store (same Redis client) and the runtime
+    # service are wired once per process.
+    runtime = build_runtime()
     app.state.agent_runtime = runtime
     return runtime
 

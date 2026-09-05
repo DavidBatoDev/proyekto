@@ -4,12 +4,70 @@ reference to a dead id and the commit fails with "Target node was not found"
 (notably right after a revert recreates nodes with fresh ids)."""
 
 import unittest
+from datetime import datetime, timezone
 
 from app.core.contracts.sessions import AgentSession, RecentResolvedTarget
-from app.core.orchestration.context.recent_targets_manager import (
+from app.core.memory.recent_targets import (
+    append_recent_resolved_target,
+    normalize_recent_target_node_type,
     prune_recent_targets_by_node_ids,
     record_recent_targets_from_preview,
 )
+from app.core.uuid_utils import is_uuid_like
+
+_NODE = '11111111-1111-1111-1111-111111111111'
+
+
+def _append(session, **kwargs):
+    append_recent_resolved_target(
+        session=session,
+        normalize_recent_target_node_type=normalize_recent_target_node_type,
+        is_uuid=lambda value: is_uuid_like(value or ''),
+        get_recent_resolved_targets=lambda s: list(s.metadata.recent_resolved_targets),
+        prune_recent_resolved_targets=lambda targets: targets,
+        utcnow=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        **kwargs,
+    )
+
+
+class AppendRecentTargetRoadmapTests(unittest.TestCase):
+    """Targets carry the roadmap they belong to (default: the focus roadmap)
+    so batch validation can reject an id staged against another roadmap."""
+
+    def test_defaults_to_focus_roadmap(self) -> None:
+        session = AgentSession(roadmap_id='focus-1')
+        _append(session, node_id=_NODE, node_type='epic', title='Growth')
+        self.assertEqual(session.metadata.recent_resolved_targets[0].roadmap_id, 'focus-1')
+
+    def test_explicit_roadmap_id_wins(self) -> None:
+        session = AgentSession(roadmap_id='focus-1')
+        _append(session, node_id=_NODE, node_type='epic', roadmap_id='other-2')
+        self.assertEqual(session.metadata.recent_resolved_targets[0].roadmap_id, 'other-2')
+
+    def test_workspace_scope_without_roadmap_leaves_it_unset(self) -> None:
+        session = AgentSession(scope={'kind': 'workspace', 'workspace_id': 'ws-1'})
+        _append(session, node_id=_NODE, node_type='task')
+        self.assertIsNone(session.metadata.recent_resolved_targets[0].roadmap_id)
+
+    def test_preview_records_forward_the_roadmap(self) -> None:
+        session = AgentSession(roadmap_id='focus-1')
+        seen: list[dict] = []
+
+        def _capture(**kwargs):
+            seen.append(kwargs)
+
+        record_recent_targets_from_preview(
+            session=session,
+            preview_result={
+                'semantic_diff': {
+                    'changes': [{'type': 'NODE_ADDED', 'node': {'type': 'feature', 'id': _NODE}}]
+                }
+            },
+            source='commit_semantic_diff',
+            append_recent_resolved_target=_capture,
+            roadmap_id='beta-9',
+        )
+        self.assertEqual(seen[0]['roadmap_id'], 'beta-9')
 
 
 def _fake_append(*, session, node_id, node_type, title=None, label=None, source='context_tool', **_):

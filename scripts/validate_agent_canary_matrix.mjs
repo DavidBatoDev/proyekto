@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-// v2 canary. The roadmap-AI agent now has a single brain (the v2 single-loop
-// in agent/app/core/v2) with no feature-flag matrix, so this validates the v2
-// loop plus the shared contract surface it depends on. Defaults only — no env
-// overrides. Exits non-zero on any failure (CI gate).
+// Agent canary. The roadmap-AI agent has a single brain (the loop engine in
+// agent/app/core/engine driven by agent/app/core/runtime) with no feature-flag
+// matrix, so this validates the loop, the terminal mapping, the end-to-end
+// orchestrator path and the execute phase, plus the shared contract surface
+// and the Redis-backed trace store they depend on. Defaults
+// only — no env overrides. Exits non-zero on any failure (CI gate).
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -18,13 +20,15 @@ const scriptDir = path.dirname(scriptFile);
 loadEnvFiles();
 
 const canaryModules = [
-  "tests.test_v2_loop",
-  "tests.test_v2_outcome",
-  "tests.test_v2_brain",
+  "tests.test_engine_loop",
+  "tests.test_runtime_terminal",
+  "tests.test_runtime_orchestrator_e2e",
+  "tests.test_runtime_execute",
   "tests.test_operation_contracts",
   "tests.test_tool_registry_schema_snapshot",
   "tests.test_edit_resolver",
   "tests.test_session_store_cas",
+  "tests.test_trace_store",
 ];
 
 function loadEnvFiles() {
@@ -95,7 +99,7 @@ function main() {
   }
 
   console.log(`Using Python: ${py}`);
-  console.log("\n=== v2-canary ===");
+  console.log("\n=== agent-canary ===");
   const result = spawnSync(py, pythonArgs(py, canaryModules), {
     cwd: agentDir,
     env: process.env,
@@ -107,10 +111,10 @@ function main() {
   if (result.stderr) process.stderr.write(result.stderr);
 
   if ((result.status ?? 1) === 0) {
-    console.log("\nv2 canary validation passed.");
+    console.log("\nAgent canary validation passed.");
     process.exit(0);
   }
-  console.error("\nv2 canary validation failed.");
+  console.error("\nAgent canary validation failed.");
   process.exit(1);
 }
 

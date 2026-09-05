@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from app.api.routes.sessions_support.route_flows import resolve_forward_auth
+from app.api.routes.sessions_support.auth import resolve_forward_auth
 from app.core.nest_client import _apply_auth_header
 
 

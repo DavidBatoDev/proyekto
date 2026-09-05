@@ -13,9 +13,9 @@ import unittest
 
 from app.core.config import get_settings
 from app.core.tools.registry import UPDATE_NODE_PATCH_FIELDS
-from app.core.v2 import tools_exec
-from app.core.v2.loop import run_loop
-from app.core.v2.openai_client import LLMResponse, ToolCall
+from app.core.runtime import tool_exec
+from app.core.engine.loop import run_loop
+from app.core.engine.llm_client import LLMResponse, ToolCall
 
 EPIC_ID = '11111111-1111-4111-8111-111111111111'
 FEATURE_ID = '22222222-2222-4222-8222-222222222222'
@@ -56,11 +56,11 @@ class UpdateNodePatchFieldGuardTests(unittest.TestCase):
         self.assertNotIn('status', UPDATE_NODE_PATCH_FIELDS['feature'])
 
     def test_assignee_on_feature_is_rejected(self):
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(FEATURE_ID, {'assignee_id': JOSHUA_ID})]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolError)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('assignee_id', result.message)
         self.assertIn('feature', result.message)
         # Actionable: names the legal fields and what to do instead.
@@ -68,55 +68,55 @@ class UpdateNodePatchFieldGuardTests(unittest.TestCase):
         self.assertIn('is_deliverable', result.message)
 
     def test_assignee_on_epic_is_rejected(self):
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(EPIC_ID, {'assignee_id': JOSHUA_ID})]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolError)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('epic', result.message)
 
     def test_status_on_feature_is_rejected(self):
         """Second drift of the same class: the backend used to allow
         feature.status even though the column does not exist."""
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(FEATURE_ID, {'status': 'in_progress'})]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolError)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('derived from its child tasks', result.message)
 
     def test_live_type_wins_over_declared_node_type(self):
         """The model mislabelling a feature as a task must not buy it past the
         guard — the outline is the authority on what a node is."""
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(FEATURE_ID, {'assignee_id': JOSHUA_ID}, node_type='task')]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolError)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('feature', result.message)
 
     def test_assignee_on_task_is_allowed(self):
         """Tasks are not in the outline, so the id is unknown; the declared
         node_type carries it and assignee_id is legal for a task."""
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(TASK_ID, {'assignee_id': JOSHUA_ID}, node_type='task')]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolParsed)
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
         self.assertEqual(len(result.operations), 1)
         self.assertEqual(result.operations[0].patch['assignee_id'], JOSHUA_ID)
 
     def test_unknown_target_is_left_to_the_backend(self):
         """An id absent from the outline with no declared type is unverifiable
         here — pass it through rather than guessing and blocking a valid edit."""
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update(TASK_ID, {'assignee_id': JOSHUA_ID})]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolParsed)
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
 
     def test_legal_patches_still_pass(self):
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage(
                 [
                     _update(EPIC_ID, {'title': 'Discovery v2', 'priority': 'high'}),
@@ -126,17 +126,17 @@ class UpdateNodePatchFieldGuardTests(unittest.TestCase):
             ),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolParsed)
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
         self.assertEqual(len(result.operations), 3)
 
     def test_handle_targets_are_resolved_before_the_check(self):
         """Handles (E1.F1) expand to ids during parse; the guard must still see
         the resolved feature, not an unrecognised handle string."""
-        result = tools_exec.interpret_plan_tool(
+        result = tool_exec.interpret_plan_tool(
             _stage([_update('E1.F1', {'assignee_id': JOSHUA_ID})]),
             HANDLE_MAP,
         )
-        self.assertIsInstance(result, tools_exec.PlanToolError)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
         self.assertIn('feature', result.message)
 
 
@@ -166,13 +166,13 @@ class GuardFeedsBackIntoTheLoopTests(unittest.TestCase):
             messages=messages,
             tools=[],
             dispatcher=None,
-            session_context={},
+            session_context={'roadmap_id': 'rm1'},
             handle_map=HANDLE_MAP,
             settings=get_settings(),
             trace_id=None,
         )
 
-        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(result.kind, 'batches')
         self.assertEqual(len(result.operations), 1)
         self.assertIn('cannot be assigned', result.assistant_message)
         self.assertEqual(client.call_count, 2)

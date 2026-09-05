@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from app.api.routes.sessions_support.auto_commit import (
+from app.core.runtime.phases.execute import (
     _refresh_recent_resolved_target_titles,
 )
 from app.core.contracts.operations import RoadmapOperation

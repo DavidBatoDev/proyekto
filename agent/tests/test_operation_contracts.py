@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.orchestration.shared.operation_contracts import (
+from app.core.runtime.operation_contracts import (
     operation_validation_guidance,
     validate_operation_contract,
 )

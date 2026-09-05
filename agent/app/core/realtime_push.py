@@ -7,7 +7,13 @@ events through the same seq-deduped path as polling, so a dropped publish only
 costs latency — polling remains the authoritative cursor.
 
 Runs on a daemon thread with a bounded queue because progress events are
-captured inside ``log_event`` on worker threads with no event loop.
+captured inside ``log_event`` (``app.core.trace.store.capture``) on worker
+threads with no event loop.
+
+``build_trace_envelope`` is the one place the pushed payload shape lives:
+``{trace_id, session_id, roadmap_id, run_id, phase, events:[one event],
+next_seq, done, started_at, completed_at}`` — a one-event slice of the
+polling response, so the web merges both through the same seq-deduped path.
 """
 
 from __future__ import annotations
@@ -48,6 +54,28 @@ def publish_trace_event(
         pass
     except Exception:  # noqa: BLE001 — publishing must never break the loop
         logger.debug('realtime push enqueue failed', exc_info=True)
+
+
+def build_trace_envelope(meta: Any, event_payload: dict[str, Any]) -> dict[str, Any]:
+    """One-event envelope for the user's room.
+
+    ``meta`` is the trace's metadata (``app.core.trace.store.TraceMeta`` or
+    anything with the same attributes); ``event_payload`` is the already
+    serialized event (structured details, as the web's ``detail=structured``
+    poll would return it).
+    """
+    return {
+        'trace_id': getattr(meta, 'trace_id', None),
+        'session_id': getattr(meta, 'session_id', None),
+        'roadmap_id': getattr(meta, 'roadmap_id', None),
+        'run_id': getattr(meta, 'run_id', None),
+        'phase': getattr(meta, 'phase', None),
+        'events': [event_payload],
+        'next_seq': event_payload.get('seq'),
+        'done': bool(getattr(meta, 'done', False)),
+        'started_at': getattr(meta, 'started_at', None),
+        'completed_at': getattr(meta, 'completed_at', None),
+    }
 
 
 def _build_item(

@@ -1,10 +1,26 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AGENT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _clamp_int(value: int, low: int, high: int) -> int:
+    if value < low:
+        return low
+    if value > high:
+        return high
+    return value
+
+
+def _clamp_float(value: float, low: float, high: float) -> float:
+    if value < low:
+        return low
+    if value > high:
+        return high
+    return value
 
 
 class Settings(BaseSettings):
@@ -65,16 +81,6 @@ class Settings(BaseSettings):
     # default would suggest.
     max_chat_history_messages: int = Field(default=30, alias='MAX_CHAT_HISTORY_MESSAGES')
 
-    # False = commit synchronously inside the message turn. This keeps the
-    # roadmap overview + handle-map fresh for the NEXT turn (so a follow-up
-    # rename/delete targets the just-committed node correctly) and clears
-    # staged ops before the next edit. True backgrounds the commit for a
-    # faster response but races subsequent turns against stale state.
-    agent_async_auto_commit_enabled: bool = Field(
-        default=False,
-        alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
-    )
-
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
     agent_log_json: bool = Field(default=False, alias='AGENT_LOG_JSON')
     agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
@@ -124,9 +130,12 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
-    # v2 single-loop agent (app/core/v2) — the only roadmap-AI brain.
-    # AgentService.plan_message routes to the lean hand-rolled tool-calling
-    # loop. The whole loop runs on ONE model (no separate classifier).
+    # Loop engine (app/core/engine) + runtime (app/core/runtime): the only
+    # roadmap-AI brain. runtime.orchestrator.step drives the phases
+    # (investigate -> propose -> execute -> verify); every model-facing
+    # phase runs the same hand-rolled tool-calling loop on ONE model (no
+    # separate classifier). The AGENT_V2_* / OPENAI_V2_* env names are kept
+    # for deploy compatibility.
     # ------------------------------------------------------------------
     # Single knob for the v2 loop's model id. Set to whatever GPT-5 variant
     # the org exposes (e.g. 'gpt-5', 'gpt-5.4', 'gpt-5.4-mini').
@@ -172,7 +181,7 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
-    # Conversation compaction (app/core/v2/summarizer.py). When a session
+    # Conversation compaction (app/core/runtime/summarizer.py). When a session
     # exceeds TRIGGER messages, the oldest turns beyond KEEP are folded into
     # a rolling summary (computed post-turn on SUMMARY_MODEL, applied at the
     # next turn start) and truncated from Redis. The summary rides the
@@ -191,6 +200,187 @@ class Settings(BaseSettings):
         default=4000,
         alias='AGENT_SUMMARY_MAX_CHARS',
     )
+
+    # ------------------------------------------------------------------
+    # Run orchestration (session-orchestrated phases: investigate ->
+    # propose -> execute -> verify). Every knob below is a clamped number,
+    # never an on/off switch — the run machine is always on.
+    #
+    # Time budget invariant: STEP_BUDGET is the SOFT budget (the loop stops
+    # starting new model turns past it); HARD_DEADLINE is the per-request
+    # ceiling, under the web's 180s axios timeout and Cloud Run's 300s.
+    # BATCH_RESERVE = OPENAI_MODEL_TIMEOUT_SECONDS + 3 * NEST_TIMEOUT_SECONDS
+    # (one uninterruptible model call plus refresh/preview/commit); execute
+    # starts a batch only when elapsed + BATCH_RESERVE <= HARD_DEADLINE.
+    # ------------------------------------------------------------------
+    agent_run_step_budget_seconds: float = Field(
+        default=90.0,
+        alias='AGENT_RUN_STEP_BUDGET_SECONDS',
+    )
+    agent_run_hard_deadline_seconds: float = Field(
+        default=165.0,
+        alias='AGENT_RUN_HARD_DEADLINE_SECONDS',
+    )
+    # HTTP requests (message + continues) one run may consume. 8 x ~180s
+    # bounds a run at ~24 minutes; the web caps polling at 30.
+    agent_run_max_steps: int = Field(default=8, alias='AGENT_RUN_MAX_STEPS')
+    # Per-session run lock (SET NX EX). >= the Cloud Run request timeout so a
+    # dead request can never overlap a live one.
+    agent_run_lock_ttl_seconds: int = Field(
+        default=300,
+        alias='AGENT_RUN_LOCK_TTL_SECONDS',
+    )
+    # Paused loop transcripts (investigate / materialize) live this long as
+    # Redis side keys; a missing transcript restarts the read-only phase.
+    agent_run_transcript_ttl_seconds: int = Field(
+        default=900,
+        alias='AGENT_RUN_TRANSCRIPT_TTL_SECONDS',
+    )
+    # Checkpoint policy (D4). Workspace scope: a single-roadmap, delete-free
+    # batch up to this many ops executes without confirmation.
+    agent_direct_edit_max_operations: int = Field(
+        default=15,
+        alias='AGENT_DIRECT_EDIT_MAX_OPERATIONS',
+    )
+    # Roadmap scope: a batch targeting the FOCUS roadmap executes immediately
+    # up to this many ops, deletes included (today's in-roadmap behaviour).
+    agent_direct_edit_max_operations_focus: int = Field(
+        default=90,
+        alias='AGENT_DIRECT_EDIT_MAX_OPERATIONS_FOCUS',
+    )
+    # Materialize mini loop (titles -> operations per proposal target).
+    agent_execute_max_turns: int = Field(default=4, alias='AGENT_EXECUTE_MAX_TURNS')
+    agent_execute_max_tool_calls: int = Field(
+        default=10,
+        alias='AGENT_EXECUTE_MAX_TOOL_CALLS',
+    )
+    # Context-cache LRU size (never evicts the run's focus roadmaps); at most
+    # (this - 1) referenced roadmaps auto-load on step 1.
+    agent_max_loaded_roadmaps: int = Field(default=6, alias='AGENT_MAX_LOADED_ROADMAPS')
+    # @-references accepted per message (the backend resolver takes 1..25).
+    agent_max_refs_per_message: int = Field(default=20, alias='AGENT_MAX_REFS_PER_MESSAGE')
+    # Per-call OpenAI client timeout (was hardcoded 90 in openai_client.py).
+    openai_model_timeout_seconds: float = Field(
+        default=90.0,
+        alias='OPENAI_MODEL_TIMEOUT_SECONDS',
+    )
+
+    # ------------------------------------------------------------------
+    # Redis-backed trace store (app/core/trace/store.py). Keys
+    # `{prefix}:{trace_id}` (hash) + `{prefix}:{trace_id}:events` (list);
+    # both re-EXPIRE on every flush so an active trace never ages out.
+    # ------------------------------------------------------------------
+    redis_trace_key_prefix: str = Field(
+        default='roadmap:ai:trace',
+        alias='REDIS_TRACE_KEY_PREFIX',
+    )
+    agent_trace_ttl_seconds: int = Field(default=900, alias='AGENT_TRACE_TTL_SECONDS')
+    # Flush the per-process event buffer every N events or every INTERVAL
+    # seconds, whichever comes first (one Upstash pipeline per flush).
+    agent_trace_flush_every_events: int = Field(
+        default=5,
+        alias='AGENT_TRACE_FLUSH_EVERY_EVENTS',
+    )
+    agent_trace_flush_interval_seconds: float = Field(
+        default=0.5,
+        alias='AGENT_TRACE_FLUSH_INTERVAL_SECONDS',
+    )
+
+    @field_validator('agent_run_step_budget_seconds')
+    @classmethod
+    def normalize_agent_run_step_budget_seconds(cls, value: float) -> float:
+        return _clamp_float(value, 10.0, 280.0)
+
+    @field_validator('agent_run_hard_deadline_seconds')
+    @classmethod
+    def normalize_agent_run_hard_deadline_seconds(cls, value: float) -> float:
+        # Under Cloud Run's 300s request timeout with room for the final
+        # persist + trace flush.
+        return _clamp_float(value, 30.0, 280.0)
+
+    @field_validator('agent_run_max_steps')
+    @classmethod
+    def normalize_agent_run_max_steps(cls, value: int) -> int:
+        return _clamp_int(value, 1, 32)
+
+    @field_validator('agent_run_lock_ttl_seconds')
+    @classmethod
+    def normalize_agent_run_lock_ttl_seconds(cls, value: int) -> int:
+        return _clamp_int(value, 60, 3600)
+
+    @field_validator('agent_run_transcript_ttl_seconds')
+    @classmethod
+    def normalize_agent_run_transcript_ttl_seconds(cls, value: int) -> int:
+        return _clamp_int(value, 60, 14400)
+
+    @field_validator(
+        'agent_direct_edit_max_operations',
+        'agent_direct_edit_max_operations_focus',
+    )
+    @classmethod
+    def normalize_agent_direct_edit_max_operations(cls, value: int) -> int:
+        return _clamp_int(value, 0, 200)
+
+    @field_validator('agent_execute_max_turns')
+    @classmethod
+    def normalize_agent_execute_max_turns(cls, value: int) -> int:
+        return _clamp_int(value, 1, 16)
+
+    @field_validator('agent_execute_max_tool_calls')
+    @classmethod
+    def normalize_agent_execute_max_tool_calls(cls, value: int) -> int:
+        return _clamp_int(value, 1, 60)
+
+    @field_validator('agent_max_loaded_roadmaps')
+    @classmethod
+    def normalize_agent_max_loaded_roadmaps(cls, value: int) -> int:
+        return _clamp_int(value, 1, 20)
+
+    @field_validator('agent_max_refs_per_message')
+    @classmethod
+    def normalize_agent_max_refs_per_message(cls, value: int) -> int:
+        # The backend resolver accepts at most 25 refs per call.
+        return _clamp_int(value, 0, 25)
+
+    @field_validator('openai_model_timeout_seconds')
+    @classmethod
+    def normalize_openai_model_timeout_seconds(cls, value: float) -> float:
+        return _clamp_float(value, 5.0, 280.0)
+
+    @field_validator('redis_trace_key_prefix')
+    @classmethod
+    def normalize_redis_trace_key_prefix(cls, value: str) -> str:
+        normalized = (value or '').strip().rstrip(':')
+        return normalized or 'roadmap:ai:trace'
+
+    @field_validator('agent_trace_ttl_seconds')
+    @classmethod
+    def normalize_agent_trace_ttl_seconds(cls, value: int) -> int:
+        return _clamp_int(value, 60, 86400)
+
+    @field_validator('agent_trace_flush_every_events')
+    @classmethod
+    def normalize_agent_trace_flush_every_events(cls, value: int) -> int:
+        return _clamp_int(value, 1, 100)
+
+    @field_validator('agent_trace_flush_interval_seconds')
+    @classmethod
+    def normalize_agent_trace_flush_interval_seconds(cls, value: float) -> float:
+        return _clamp_float(value, 0.05, 10.0)
+
+    @model_validator(mode='after')
+    def normalize_run_budget_order(self) -> 'Settings':
+        # The hard deadline is a ceiling on the soft budget: a step budget
+        # above it would let the loop start a turn it can never finish.
+        if self.agent_run_hard_deadline_seconds < self.agent_run_step_budget_seconds:
+            self.agent_run_hard_deadline_seconds = self.agent_run_step_budget_seconds
+        return self
+
+    @property
+    def agent_run_batch_reserve_seconds(self) -> float:
+        """Seconds execute must have left before starting a batch: one
+        uninterruptible model call plus refresh/preview/commit."""
+        return self.openai_model_timeout_seconds + 3 * self.nest_timeout_seconds
 
     @field_validator('agent_memory_semantic_threshold')
     @classmethod

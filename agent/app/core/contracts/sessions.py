@@ -2,9 +2,25 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.contracts.operations import RoadmapOperation
+
+# `SessionScope` and `CommitImpactedItem` are DEFINED in contracts/runs.py (the
+# leaf module: RunState needs both, and this module needs RunState) and
+# re-exported here so `from app.core.contracts.sessions import SessionScope`
+# keeps working. The run models are re-exported for the same reason.
+from app.core.contracts.runs import (  # noqa: F401 — re-exports
+    CommitImpactedItem,
+    ContextRef,
+    ResolvedRef,
+    RunCommitView,
+    RunState,
+    RunSummary,
+    RunView,
+    ScopeKind,
+    SessionScope,
+)
 
 
 def _utcnow() -> datetime:
@@ -53,14 +69,6 @@ RecentResolvedTargetSource = Literal[
 ]
 
 
-class CommitImpactedItem(BaseModel):
-    node_id: str
-    node_type: Literal['roadmap', 'epic', 'feature', 'task', 'milestone']
-    title: str | None = None
-    change_type: str | None = None
-    impact: Literal['created', 'modified', 'deleted'] = 'modified'
-
-
 class CommitSummary(BaseModel):
     """Lightweight result of a synchronous auto-commit, surfaced on the
     message response so the web can render the "Committed changes"
@@ -91,24 +99,6 @@ class ResolverCandidate(BaseModel):
     matched_fields: list[str] | None = None
 
 
-class PendingContextResolution(BaseModel):
-    kind: Literal['features_of_epic', 'tasks_of_feature', 'my_tasks']
-    resolution_id: str
-    label: str
-    node_type: Literal['epic', 'feature', 'task'] | None = None
-    option_choices: list[int] | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
-
-
-class PendingEditResolvedReferences(BaseModel):
-    epic_id: str | None = None
-    epic_label: str | None = None
-    feature_id: str | None = None
-    feature_label: str | None = None
-    parent_id: str | None = None
-    parent_label: str | None = None
-
-
 class RecentResolvedTarget(BaseModel):
     node_id: str
     node_type: RecentResolvedTargetType
@@ -116,6 +106,10 @@ class RecentResolvedTarget(BaseModel):
     label: str | None = None
     source: RecentResolvedTargetSource = 'context_tool'
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Roadmap the node belongs to. None on entries recorded before sessions
+    # could load several roadmaps; batch validation lets those pass (the
+    # backend rejects cross-roadmap ids at preview/commit).
+    roadmap_id: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -140,6 +134,8 @@ class AppliedChange(BaseModel):
     # be dropped instead of leaving the prompt's "recent changes" section
     # misrepresenting roadmap state.
     change_id: str | None = None
+    # Roadmap the change was committed to (None on pre-multi-roadmap entries).
+    roadmap_id: str | None = None
 
 
 class ChangeGroup(BaseModel):
@@ -159,98 +155,19 @@ class ChangeGroup(BaseModel):
     committed_at: datetime = Field(default_factory=_utcnow)
     summary: str = ''
     changes: list[AppliedChange] = Field(default_factory=list)
-
-
-class PendingEditContext(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    intent_family: Literal[
-        'rename_node',
-        'create_epic',
-        'create_feature',
-        'create_task',
-        'move_node',
-        'update_node',
-        'delete_node',
-        'mark_status',
-        'shift_dates',
-        'roadmap_edit_clarifier',
-    ]
-    required_fields: list[str] = Field(default_factory=list)
-    resolved_references: PendingEditResolvedReferences = Field(
-        default_factory=PendingEditResolvedReferences
-    )
-    confirmation_mode: Literal['awaiting_clarification', 'draft_ready'] = (
-        'awaiting_clarification'
-    )
-    source_user_message: str
-    default_title: str | None = None
-    awaiting_field: Literal['rename_title', 'target_label', 'parent', 'title'] | None = None
-    target_hint: str | None = None
-    last_clarifier_reason: str | None = None
-    last_followup_kind: str | None = None
-    resolver_hints: dict[str, Any] | None = None
-    last_planner_stop_reason: str | None = None
-    last_planner_needs_more_info: bool | None = None
-    last_planner_draft_action: str | None = None
-    last_tool_plan_summary: list[dict[str, Any]] = Field(default_factory=list)
-    last_guard_reason: str | None = None
-    last_retry_blocked_reason: str | None = None
-    last_retry_blocked_intent_family: str | None = None
-    # Set when an edit-lane clarifier was emitted with a ClarifierCard. The
-    # pre-dispatcher uses this to verify that an incoming `__clarifier_answer__`
-    # sentinel is routed to the correct pending context.
-    pending_clarifier_question_id: str | None = None
-    staging_validation_errors: list[dict[str, Any]] = Field(
-        default_factory=list,
-        alias='preview_validation_errors',
-    )
-    awaiting_staging_fix: bool = Field(
-        default=False,
-        alias='awaiting_preview_fix',
-    )
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
-
-    @field_validator('intent_family', mode='before')
-    @classmethod
-    def _normalize_intent_family(cls, value: Any) -> str:
-        normalized = str(value or '').strip().lower()
-        alias_map = {
-            'rename': 'rename_node',
-            'rename_item': 'rename_node',
-            'rename_task': 'rename_node',
-            'rename_feature': 'rename_node',
-            'rename_epic': 'rename_node',
-            'move': 'move_node',
-            'move_item': 'move_node',
-            'update': 'update_node',
-            'delete': 'delete_node',
-            'mark': 'mark_status',
-            'shift': 'shift_dates',
-        }
-        canonical = {
-            'rename_node',
-            'create_epic',
-            'create_feature',
-            'create_task',
-            'move_node',
-            'update_node',
-            'delete_node',
-            'mark_status',
-            'shift_dates',
-            'roadmap_edit_clarifier',
-        }
-        mapped = alias_map.get(normalized, normalized)
-        if mapped in canonical:
-            return mapped
-        return 'roadmap_edit_clarifier'
+    # Roadmap the commit landed on and the run that produced it, so the
+    # prompt's "# Recent changes" block groups by roadmap and revert can be
+    # filtered per roadmap. None on pre-multi-roadmap groups.
+    roadmap_id: str | None = None
+    run_id: str | None = None
 
 
 class ActorContext(BaseModel):
     actor_id: str
     display_name: str | None = None
-    roadmap_role: Literal['owner', 'editor']
+    # Role on the focus roadmap. None in workspace scope (the actor comes from
+    # GET /api/ai/context/actor, which carries no roadmap role).
+    roadmap_role: Literal['owner', 'editor'] | None = None
     locale: str | None = None
     timezone: str | None = None
     actor_context_source: str = 'backend_context_actor'
@@ -360,12 +277,42 @@ class ProposedEpic(BaseModel):
     features: list[ProposedFeature] = Field(default_factory=list)
 
 
+PendingPlanKind = Literal['plan', 'edits']
+
+
+class PlanTarget(BaseModel):
+    """One roadmap a pending proposal applies to.
+
+    `kind='plan'` targets carry `proposed_hierarchy` (titles only; execute
+    materializes them into operations). `kind='edits'` targets carry concrete
+    `operations` (a stage_edits batch that tripped the checkpoint policy).
+    `committed` flips when that target's commit lands, so confirming again
+    after a partial failure resumes only the remaining targets.
+    """
+
+    roadmap_id: str
+    roadmap_title: str | None = None
+    project_id: str | None = None
+    proposed_hierarchy: list[ProposedEpic] = Field(default_factory=list)
+    operations: list[RoadmapOperation] | None = None
+    # Human lines for the proposal card ("Delete epic 'X' and 4 tasks").
+    summary_lines: list[str] = Field(default_factory=list)
+    operations_count: int = 0
+    contains_delete: bool = False
+    committed: bool = False
+    # Staleness anchors captured from the target's RoadmapContext when the
+    # proposal was recorded (`is_plan_stale` compares per target).
+    base_revision: int | None = None
+    revision_token: str | None = None
+    overview_hash: str | None = None
+
+
 class PendingPlan(BaseModel):
     """A strategic plan proposed to the user, awaiting confirmation.
 
-    Mirrors `PendingEditContext` in shape: persisted in `SessionMetadata` across
-    turns so that a later `confirm_action` can reference the structured proposal
-    and convert it into concrete operations via the edit lane.
+    Persisted in `SessionMetadata` across turns so that a later confirm can
+    reference the structured proposal and convert it into concrete operations
+    (the execute phase materializes it per target roadmap).
 
     The plan carries no node ids — only titles. The confirm bridge resolves
     existing titles → ids (via the edit lane's resolver) or issues creates.
@@ -375,6 +322,15 @@ class PendingPlan(BaseModel):
 
     plan_id: str = Field(default_factory=lambda: str(uuid4()))
     planning_turn_id: str | None = None
+    # 'plan' = a strategic proposal (titles, materialized on confirm);
+    # 'edits' = concrete operations that tripped the checkpoint policy.
+    kind: PendingPlanKind = 'plan'
+    # One entry per roadmap the proposal touches. `proposed_hierarchy` below
+    # mirrors `targets[0].proposed_hierarchy` for the legacy single-roadmap
+    # card; empty targets = the legacy focus-roadmap-only plan.
+    targets: list[PlanTarget] = Field(default_factory=list)
+    # Run that recorded the proposal (confirm resumes it or seeds a new one).
+    run_id: str | None = None
     summary: str = ''
     goal: str = ''
     rationale: str | None = None
@@ -405,22 +361,62 @@ class PendingPlan(BaseModel):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
-class SessionMetadata(BaseModel):
+class RoadmapContext(BaseModel):
+    """Per-roadmap context cache, keyed by roadmap id in
+    ``SessionMetadata.roadmaps``. The focus roadmap has ``handle_prefix=None``
+    (bare ``E1`` / ``E1.F2`` / ``M1`` handles); every other loaded roadmap
+    gets an ``R{n}`` prefix (``R2.E1``) that is never reused in a session.
+    ``handle_map`` keys are already prefixed and each entry carries the
+    ``roadmap_id`` it belongs to. Excluded from the durable snapshot (a
+    cache: refetched on the next turn)."""
+
     model_config = ConfigDict(extra='allow')
-    pending_context_resolution: PendingContextResolution | None = None
-    pending_edit_context: PendingEditContext | None = None
+
+    roadmap_id: str
+    title: str | None = None
+    project_id: str | None = None
+    workspace_id: str | None = None
+    handle_prefix: str | None = None
+    overview_summary: str | None = None
+    overview_fetched_at: datetime | None = None
+    handle_map: dict[str, dict[str, str]] = Field(default_factory=dict)
+    revision_token: str | None = None
+    base_revision: int | None = None
+    memory_notes: list[dict[str, Any]] | None = None
+    memory_notes_fetched_at: datetime | None = None
+    project_context: dict[str, Any] | None = None
+    project_context_fetched_at: datetime | None = None
+    role: Literal['owner', 'editor'] | None = None
+    loaded_at: datetime = Field(default_factory=_utcnow)
+    last_used_at: datetime = Field(default_factory=_utcnow)
+
+    @property
+    def is_focus(self) -> bool:
+        return self.handle_prefix is None
+
+
+class SessionMetadata(BaseModel):
+    # extra='allow' keeps Redis documents and agent-state snapshots written
+    # before a field was removed (the singular roadmap caches, the v1 pending
+    # models) loading cleanly; the stale keys are simply carried along.
+    model_config = ConfigDict(extra='allow')
+    # Per-roadmap context caches (see RoadmapContext), keyed by roadmap id.
+    # The focus roadmap (roadmap scope) has handle_prefix=None; every other
+    # loaded roadmap gets an R{n} prefix. Excluded from the durable snapshot.
+    roadmaps: dict[str, RoadmapContext] = Field(default_factory=dict)
+    # Next `R{n}` handle prefix to hand out; monotonic within a session.
+    next_handle_prefix_index: int = 1
+    # Workspace-scope overview cache (GET /api/ai/context/overview); TTL via
+    # AGENT_CACHE_TTL_SECONDS. Excluded from the durable snapshot.
+    workspace_context: dict[str, Any] | None = None
+    workspace_context_fetched_at: datetime | None = None
+    # The active run (None between runs) and the last few finished ones.
+    run: RunState | None = None
+    run_history: list[RunSummary] = Field(default_factory=list)
     pending_plan: PendingPlan | None = None
     recent_resolved_targets: list[RecentResolvedTarget] = Field(default_factory=list)
     actor_context: ActorContext | None = None
     applied_change_ids: list[str] = Field(default_factory=list)
-    roadmap_overview_summary: str | None = None
-    roadmap_overview_summary_fetched_at: datetime | None = None
-    # Maps each rendered handle (e.g. "E1", "E1.F2") in
-    # ``roadmap_overview_summary`` to the underlying node: ``{"id", "type",
-    # "title"}``. Used by the op-emission path to expand planner-emitted
-    # handles back to real UUIDs before dispatch. Invalidated together with
-    # ``roadmap_overview_summary`` on auto-commit.
-    roadmap_handle_map: dict[str, dict[str, str]] = Field(default_factory=dict)
     recent_applied_changes: list[AppliedChange] = Field(default_factory=list)
     # Per-commit change groups (most recent first), for point-in-time revert.
     # Each commit appends one group; capped at MAX_CHANGE_GROUPS. Rides the
@@ -428,19 +424,25 @@ class SessionMetadata(BaseModel):
     # cap) so revert survives Redis expiry.
     change_history: list[ChangeGroup] = Field(default_factory=list)
     # Rolling summary of turns folded out of `session.messages` by the
-    # compaction pass (see app/core/v2/summarizer.py). Rides the durable
+    # compaction pass (see app/core/runtime/summarizer.py). Rides the durable
     # agent-state snapshot so it survives Redis expiry.
     conversation_summary: str | None = None
     conversation_summary_folded_count: int = 0
-    # Cache of the roadmap's long-term memory notes (roadmap_ai_memories) —
-    # refetched on TTL like the overview; EXCLUDED from the durable snapshot.
-    memory_notes: list[dict[str, Any]] | None = None
-    memory_notes_fetched_at: datetime | None = None
-    # Compact context for the project linked to this roadmap. This is a
-    # short-lived Redis-session cache only; the durable snapshot deliberately
-    # excludes it so access and project data are revalidated after rehydrate.
-    project_context: dict[str, Any] | None = None
-    project_context_fetched_at: datetime | None = None
+
+
+def _derive_scope_from_legacy_roadmap_id(data: Any) -> Any:
+    """Shared `mode='before'` hook: a payload without `scope` but with the
+    legacy `roadmap_id` gets `scope={kind:'roadmap', roadmap_id}`. Keeps
+    `AgentSession(roadmap_id=...)` fixtures, pre-scope Redis documents and
+    the one-release legacy create body all loading."""
+    if not isinstance(data, dict):
+        return data
+    if data.get('scope') is not None:
+        return data
+    roadmap_id = data.get('roadmap_id')
+    if isinstance(roadmap_id, str) and roadmap_id.strip():
+        return {**data, 'scope': {'kind': 'roadmap', 'roadmap_id': roadmap_id.strip()}}
+    return data
 
 
 class AgentSession(BaseModel):
@@ -450,10 +452,23 @@ class AgentSession(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
-    roadmap_id: str
+    # What the session is focused on. Derived from the legacy `roadmap_id`
+    # when a payload (fixture, old Redis document) predates scopes.
+    scope: SessionScope
+    # Legacy mirror of `scope.roadmap_id` (None in workspace scope). Always
+    # re-derived from `scope`; never authoritative on its own.
+    roadmap_id: str | None = None
+    # Who created the session, from the forwarded auth: the actor id, or
+    # "Guest <id>". Messages/continue/cancel/trace reads 404 on a mismatch.
+    # None only on sessions created before ownership was recorded.
+    owner_key: str | None = None
     base_revision: int | None = None
+    # Legacy mirror of the focus roadmap's revision token (kept on
+    # CreateSessionResponse); the per-roadmap value lives in
+    # metadata.roadmaps[rid].revision_token. Staged operations live in
+    # metadata.run.batches — there is no session-level staged list.
     revision_token: str | None = None
-    operations: list[RoadmapOperation] = Field(default_factory=list)
+    # Bumped once per batch staged in a step (response compat).
     staged_operations_version: int = 0
     # Storage-level optimistic-lock version; bumped by SessionStore.save_cas on
     # every successful write. Independent of `staged_operations_version`.
@@ -464,6 +479,20 @@ class AgentSession(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
+    @model_validator(mode='before')
+    @classmethod
+    def _derive_scope(cls, data: Any) -> Any:
+        return _derive_scope_from_legacy_roadmap_id(data)
+
+    @model_validator(mode='after')
+    def _mirror_legacy_roadmap_id(self) -> 'AgentSession':
+        self.roadmap_id = self.scope.roadmap_id
+        return self
+
+    @property
+    def focus_roadmap_id(self) -> str | None:
+        return self.scope.focus_roadmap_id
+
 
 class CreateSessionRequest(BaseModel):
     # Optional — when supplied (e.g. by the backend after inserting a
@@ -471,7 +500,10 @@ class CreateSessionRequest(BaseModel):
     # the DB row id and the agent session id are the same value. When omitted,
     # the agent generates a uuid as before.
     session_id: str | None = None
-    roadmap_id: str
+    # Exactly one of `scope` / legacy `roadmap_id` (one release; derives a
+    # roadmap scope). Both are tolerated only when they agree.
+    scope: SessionScope | None = None
+    roadmap_id: str | None = None
     base_revision: int | None = None
     revision_token: str | None = None
     metadata: dict[str, Any] | None = None
@@ -482,25 +514,79 @@ class CreateSessionRequest(BaseModel):
     # transient working state (staged operations, resolver caches).
     seed_messages: list[Message] | None = None
 
+    @field_validator('roadmap_id', mode='before')
+    @classmethod
+    def _blank_roadmap_id_to_none(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode='after')
+    def _require_exactly_one_scope_source(self) -> 'CreateSessionRequest':
+        if self.scope is None and self.roadmap_id is None:
+            raise ValueError('scope or roadmap_id is required')
+        if (
+            self.scope is not None
+            and self.roadmap_id is not None
+            and (self.scope.kind != 'roadmap' or self.scope.roadmap_id != self.roadmap_id)
+        ):
+            raise ValueError('scope and roadmap_id disagree; send exactly one of them')
+        return self
+
+    @property
+    def resolved_scope(self) -> SessionScope:
+        if self.scope is not None:
+            return self.scope
+        return SessionScope(kind='roadmap', roadmap_id=self.roadmap_id)
+
 
 class CreateSessionResponse(BaseModel):
     session_id: str
-    roadmap_id: str
+    scope: SessionScope
+    # Legacy mirror of scope.roadmap_id (None in workspace scope).
+    roadmap_id: str | None = None
     base_revision: int | None = None
     revision_token: str | None = None
     created_at: datetime
 
+    @model_validator(mode='before')
+    @classmethod
+    def _derive_scope(cls, data: Any) -> Any:
+        return _derive_scope_from_legacy_roadmap_id(data)
+
+    @model_validator(mode='after')
+    def _mirror_legacy_roadmap_id(self) -> 'CreateSessionResponse':
+        self.roadmap_id = self.scope.roadmap_id
+        return self
+
+
+MessageCapability = Literal['continue']
+MAX_MESSAGE_REFS = 20
+
 
 class MessageRequest(BaseModel):
     message: str
+    # @-references from the composer; a hint, never a restriction.
+    refs: list[ContextRef] = Field(default_factory=list, max_length=MAX_MESSAGE_REFS)
+    # Absent "continue" = a legacy client that expects one synchronous
+    # response (one release); present = the web drives POST .../continue
+    # while `run.next == 'continue'`.
+    capabilities: list[MessageCapability] = Field(default_factory=list)
+
+    @property
+    def supports_continue(self) -> bool:
+        return 'continue' in self.capabilities
 
 
 class MessageResponse(BaseModel):
     session_id: str
     assistant_message: str
+    # Today's values plus 'run_step' (next='continue', no assistant text yet)
+    # and 'run_report' (the verify report closed the run).
     parse_mode: str
     intent_type: IntentType
     response_mode: ResponseMode
+    # Legacy: operations committed to the FOCUS roadmap in this step.
     operations: list[RoadmapOperation]
     staged_operations_version: int
     staged_operations_count: int
@@ -510,7 +596,12 @@ class MessageResponse(BaseModel):
     fallback_used: bool = False
     provider_error_code: str | None = None
     debug_trace_id: str | None = None
+    # Legacy: the focus roadmap's commit in this step.
     commit_summary: CommitSummary | None = None
+    # Cumulative for the run; `operations` present ONLY on commits made in
+    # this step.
+    commits: list[RunCommitView] = Field(default_factory=list)
+    run: RunView | None = None
 
 
 class TraceEvent(BaseModel):
@@ -527,6 +618,10 @@ class TraceEventsResponse(BaseModel):
     trace_id: str
     session_id: str | None = None
     roadmap_id: str | None = None
+    # Run the trace segment belongs to and the phase it was in at the last
+    # flush (None on traces recorded before runs existed).
+    run_id: str | None = None
+    phase: str | None = None
     events: list[TraceEvent] = Field(default_factory=list)
     next_seq: int
     done: bool = False

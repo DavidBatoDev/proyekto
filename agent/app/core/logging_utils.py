@@ -12,6 +12,8 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.core import realtime_push
+from app.core.trace import store as trace_store
+from app.core.trace.store import PROGRESS_EVENT_ALLOWLIST, TraceEvent
 from app.core.trace_context import get_trace_fields
 
 _KEY_PRIORITY = (
@@ -54,8 +56,6 @@ _CONTENT_KEYS = {
 _LIFECYCLE_TRACE_TTL_SECONDS = 15 * 60
 _MAX_TOOL_CALLS_PER_TRACE = 20
 _TRACE_LOCK = threading.Lock()
-_PROGRESS_EVENT_TRACE_TTL_SECONDS = 15 * 60
-_MAX_PROGRESS_EVENTS_PER_TRACE = 250
 _MAX_PROGRESS_DETAIL_DEPTH = 4
 _MAX_PROGRESS_LIST_ITEMS = 50
 _MAX_PROGRESS_TEXT_LENGTH = 500
@@ -79,62 +79,13 @@ class _LifecycleTrace:
 
 
 _LIFECYCLE_TRACES: dict[str, _LifecycleTrace] = {}
-_PROGRESS_EVENT_LOCK = threading.Lock()
 
-_PROGRESS_EVENT_ALLOWLIST = {
-    'message_received',
-    'actor_context_loaded',
-    'intent_classified',
-    'route_selected',
-    'provider_attempt',
-    'provider_success',
-    'provider_failure',
-    'tool_call_requested',
-    'tool_call_result',
-    'planner_summary',
-    'plan_generated',
-    'session_staged_state',
-    'message_completed',
-    'auto_commit_async_completed',
-    'auto_commit_async_failed',
-    # Throttled chunks of streamed assistant text (details.text) — the web
-    # accumulates them in seq order into a live typing preview.
-    'assistant_delta',
-    # Sanitized reasoning-summary parts (details.text) — the "thought" lines
-    # rendered between tool steps in the web activity timeline.
-    'assistant_thought',
-}
-
-
-@dataclass
-class _ProgressTraceEvent:
-    seq: int
-    ts: str
-    event: str
-    title: str
-    status: str
-    summary: str
-    details: dict[str, Any] | None = None
-
-
-@dataclass
-class _ProgressTrace:
-    trace_id: str
-    created_monotonic: float
-    last_seen_monotonic: float
-    next_seq: int = 1
-    session_id: str | None = None
-    roadmap_id: str | None = None
-    # Supabase user id (bound trace-context actor_id) — the `user:{id}`
-    # realtime room that receives pushed copies of this trace's events.
-    user_id: str | None = None
-    started_at: str | None = None
-    completed_at: str | None = None
-    done: bool = False
-    events: list[_ProgressTraceEvent] = field(default_factory=list)
-
-
-_PROGRESS_TRACES: dict[str, _ProgressTrace] = {}
+# Progress-trace storage lives in app/core/trace/store.py (Redis-backed with a
+# per-process active buffer). The allowlist and event shape are re-exported
+# here because the presentation helpers below (title/status/summary/detail
+# picking) are what the store renders with.
+_PROGRESS_EVENT_ALLOWLIST = PROGRESS_EVENT_ALLOWLIST
+_ProgressTraceEvent = TraceEvent
 
 
 @dataclass(frozen=True)
@@ -217,7 +168,9 @@ def log_event(
         'event': event,
         **_sanitize(data, include_content=cfg.agent_log_include_content),
     }
-    _capture_progress_event(payload, settings=cfg)
+    # Enqueue-only on the calling thread; the trace store flushes to Redis
+    # from worker threads (never inline on the event loop).
+    trace_store.capture(payload, cfg)
     if cfg.agent_log_json:
         logger.log(level, json.dumps(payload, ensure_ascii=True, default=str))
         return
@@ -237,54 +190,19 @@ def get_progress_trace_events(
     detail: str = 'verbose',
     settings: Settings | None = None,
 ) -> dict[str, Any] | None:
-    cfg = settings or get_settings()
-    if not cfg.agent_progress_events_enabled:
-        return None
+    """Compatibility wrapper over ``trace.store.read`` (same semantics).
 
-    normalized_after_seq = max(0, int(after_seq))
-    normalized_limit = max(1, min(int(limit), 200))
-    normalized_detail = _normalize_progress_detail_mode(detail)
-    verbose_allowed = bool(cfg.agent_progress_events_allow_verbose)
-    include_verbose_details = normalized_detail == 'verbose' and verbose_allowed
-
-    now = time.monotonic()
-    with _PROGRESS_EVENT_LOCK:
-        _evict_expired_progress_traces(now)
-        trace = _PROGRESS_TRACES.get(trace_id)
-        if trace is None:
-            return None
-        if trace.session_id is not None and trace.session_id != session_id:
-            return None
-
-        filtered_events = [
-            event for event in trace.events if event.seq > normalized_after_seq
-        ][:normalized_limit]
-        events_payload = [
-            _serialize_progress_trace_event(
-                event,
-                include_verbose_details=include_verbose_details,
-            )
-            for event in filtered_events
-        ]
-        next_seq = (
-            filtered_events[-1].seq
-            if filtered_events
-            else normalized_after_seq
-        )
-        response: dict[str, Any] = {
-            'trace_id': trace.trace_id,
-            'session_id': trace.session_id,
-            'roadmap_id': trace.roadmap_id,
-            'events': events_payload,
-            'next_seq': next_seq,
-            'done': trace.done,
-            'started_at': trace.started_at,
-            'completed_at': trace.completed_at,
-        }
-        elapsed_ms = _compute_progress_elapsed_ms(trace)
-        if elapsed_ms is not None:
-            response['elapsed_ms'] = elapsed_ms
-        return response
+    Synchronous; may read Redis when this process does not hold the trace —
+    route handlers call it through ``run_store_call``.
+    """
+    return trace_store.read(
+        session_id=session_id,
+        trace_id=trace_id,
+        after_seq=after_seq,
+        limit=limit,
+        detail=detail,
+        settings=settings or get_settings(),
+    )
 
 
 def _sanitize_result_title(value: Any) -> str | None:
@@ -349,116 +267,8 @@ def summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _capture_progress_event(payload: dict[str, Any], *, settings: Settings) -> None:
-    if not settings.agent_progress_events_enabled:
-        return
-
-    trace_id = _text_or_none(payload.get('trace_id'))
-    if trace_id is None:
-        return
-
-    event = str(payload.get('event') or '').strip().lower()
-    if event not in _PROGRESS_EVENT_ALLOWLIST:
-        return
-
-    details = _build_progress_event_details(payload)
-    now = time.monotonic()
-    publish_user_id: str | None = None
-    publish_envelope: dict[str, Any] | None = None
-    with _PROGRESS_EVENT_LOCK:
-        _evict_expired_progress_traces(now)
-        trace = _PROGRESS_TRACES.get(trace_id)
-        if trace is None:
-            trace = _ProgressTrace(
-                trace_id=trace_id,
-                created_monotonic=now,
-                last_seen_monotonic=now,
-            )
-            _PROGRESS_TRACES[trace_id] = trace
-        trace.last_seen_monotonic = now
-        _apply_progress_trace_metadata(trace, payload)
-
-        progress_event = _ProgressTraceEvent(
-            seq=trace.next_seq,
-            ts=str(payload.get('ts') or datetime.now(timezone.utc).isoformat()),
-            event=event,
-            title=_progress_event_title(event),
-            status=_progress_event_status(event, payload),
-            summary=_progress_event_summary(event, payload),
-            details=details,
-        )
-        trace.next_seq += 1
-        trace.events.append(progress_event)
-        if len(trace.events) > _MAX_PROGRESS_EVENTS_PER_TRACE:
-            trace.events = trace.events[-_MAX_PROGRESS_EVENTS_PER_TRACE:]
-        _update_progress_trace_completion(trace, event, payload)
-
-        # Realtime push: mirror this event to the user's realtime room so the
-        # web sees it without waiting for the next poll. Structured details
-        # match the web's `detail=structured` polling; the enqueue happens
-        # outside the lock.
-        if trace.user_id is not None and getattr(
-            settings, 'agent_realtime_trace_push_enabled', False
-        ):
-            publish_user_id = trace.user_id
-            publish_envelope = {
-                'trace_id': trace.trace_id,
-                'session_id': trace.session_id,
-                'roadmap_id': trace.roadmap_id,
-                'events': [
-                    _serialize_progress_trace_event(
-                        progress_event, include_verbose_details=False
-                    )
-                ],
-                'next_seq': progress_event.seq,
-                'done': trace.done,
-                'started_at': trace.started_at,
-                'completed_at': trace.completed_at,
-            }
-    if publish_envelope is not None:
-        realtime_push.publish_trace_event(settings, publish_user_id, publish_envelope)
-
-
-def _evict_expired_progress_traces(now: float) -> None:
-    expired: list[str] = []
-    for trace_id, trace in _PROGRESS_TRACES.items():
-        if now - trace.last_seen_monotonic > _PROGRESS_EVENT_TRACE_TTL_SECONDS:
-            expired.append(trace_id)
-    for trace_id in expired:
-        _PROGRESS_TRACES.pop(trace_id, None)
-
-
-def _apply_progress_trace_metadata(trace: _ProgressTrace, payload: dict[str, Any]) -> None:
-    trace.session_id = _text_or_none(payload.get('session_id')) or trace.session_id
-    trace.roadmap_id = _text_or_none(payload.get('roadmap_id')) or trace.roadmap_id
-    trace.user_id = _text_or_none(payload.get('actor_id')) or trace.user_id
-    payload_ts = _text_or_none(payload.get('ts'))
-    if trace.started_at is None and payload_ts is not None:
-        trace.started_at = payload_ts
-    if str(payload.get('event') or '').strip().lower() == 'message_received' and payload_ts is not None:
-        trace.started_at = payload_ts
-
-
-def _update_progress_trace_completion(
-    trace: _ProgressTrace,
-    event: str,
-    payload: dict[str, Any],
-) -> None:
-    payload_ts = _text_or_none(payload.get('ts'))
-    if event == 'message_completed':
-        if payload_ts is not None:
-            trace.completed_at = payload_ts
-        auto_commit_async_enqueued = payload.get('auto_commit_async_enqueued')
-        trace.done = not bool(auto_commit_async_enqueued)
-        return
-    if event in {'auto_commit_async_completed', 'auto_commit_async_failed'}:
-        if payload_ts is not None:
-            trace.completed_at = payload_ts
-        trace.done = True
-
-
 def _serialize_progress_trace_event(
-    event: _ProgressTraceEvent,
+    event: TraceEvent,
     *,
     include_verbose_details: bool,
 ) -> dict[str, Any]:
@@ -530,20 +340,92 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'error_code',
             ),
         )
-    if event in {'auto_commit_async_completed', 'auto_commit_async_failed'}:
+    if event == 'run_started':
+        return _pick_progress_detail_fields(
+            details,
+            ('run_id', 'phase', 'step', 'scope_kind', 'refs_count'),
+        )
+    if event == 'phase_entered':
+        return _pick_progress_detail_fields(
+            details,
+            ('phase', 'step', 'commits_done', 'commits_total'),
+        )
+    if event == 'phase_completed':
+        return _pick_progress_detail_fields(details, ('phase', 'step', 'outcome'))
+    if event == 'run_step_completed':
         return _pick_progress_detail_fields(
             details,
             (
-                'auto_commit_ms',
+                'run_id',
+                'phase',
+                'step',
+                'run_next',
+                'run_status',
+                'checkpoint',
                 'elapsed_ms',
-                'staged_operations_count',
+            ),
+        )
+    if event == 'run_checkpoint':
+        return _pick_progress_detail_fields(
+            details,
+            ('run_id', 'phase', 'checkpoint', 'plan_id'),
+        )
+    if event == 'refs_resolved':
+        return _pick_progress_detail_fields(
+            details,
+            (
+                'refs_total',
+                'refs_accessible',
+                'refs_inaccessible',
+                'loaded_roadmap_ids',
+            ),
+        )
+    if event == 'commit_started':
+        return _pick_progress_detail_fields(
+            details,
+            ('roadmap_id', 'roadmap_title', 'batch_id', 'operations_count', 'attempt'),
+        )
+    if event == 'commit_completed':
+        return _pick_progress_detail_fields(
+            details,
+            (
+                'roadmap_id',
+                'roadmap_title',
+                'batch_id',
+                'change_id',
+                'operations_count',
+                'commit_ms',
                 'impacted_item_count',
                 'impacted_summary',
                 'impacted_items',
-                'auto_commit_error_code',
-                'auto_commit_error_message',
-                'auto_commit_error_upstream_status',
-                'auto_commit_invalid_operation',
+                'history_recorded',
+            ),
+        )
+    if event == 'commit_failed':
+        return _pick_progress_detail_fields(
+            details,
+            (
+                'roadmap_id',
+                'roadmap_title',
+                'batch_id',
+                'error_code',
+                'error_message',
+                'upstream_status',
+                'invalid_operation',
+                'attempt',
+                'impacted_items',
+            ),
+        )
+    if event == 'verify_completed':
+        return _pick_progress_detail_fields(
+            details,
+            (
+                'status',
+                'summary_text',
+                'checks',
+                'follow_up_plan_id',
+                'commits_total',
+                'commits_committed',
             ),
         )
     if event == 'intent_classified':
@@ -580,10 +462,12 @@ def _pick_progress_detail_fields(
 
 
 def _build_progress_event_details(payload: dict[str, Any]) -> dict[str, Any] | None:
+    # owner_key is trace metadata (the session owner's forwarded identity),
+    # consumed by the trace store — never rendered as event detail.
     details = {
         key: value
         for key, value in payload.items()
-        if key not in {'event', 'trace_id'}
+        if key not in {'event', 'trace_id', 'owner_key'}
     }
     if not details:
         return None
@@ -639,16 +523,26 @@ def _progress_event_title(event: str) -> str:
         'plan_generated': 'Plan generated',
         'session_staged_state': 'Session staged',
         'message_completed': 'Message completed',
-        'auto_commit_async_completed': 'Auto-commit completed',
-        'auto_commit_async_failed': 'Auto-commit failed',
         'assistant_delta': 'Assistant writing',
         'assistant_thought': 'Thinking',
+        # Run lifecycle (hidden in the web timeline).
+        'run_started': 'Run started',
+        'phase_entered': 'Phase started',
+        'phase_completed': 'Phase completed',
+        'run_step_completed': 'Step completed',
+        'run_checkpoint': 'Waiting for input',
+        'refs_resolved': 'References resolved',
+        # Curated rows.
+        'commit_started': 'Committing changes',
+        'commit_completed': 'Changes committed',
+        'commit_failed': 'Commit failed',
+        'verify_completed': 'Verification completed',
     }
     return titles.get(event, event.replace('_', ' '))
 
 
 def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
-    if event in {'provider_failure', 'auto_commit_async_failed'}:
+    if event in {'provider_failure', 'commit_failed'}:
         return 'error'
     if event == 'tool_call_result' and payload.get('tool_error_code'):
         return 'error'
@@ -656,14 +550,20 @@ def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
         if payload.get('error_code') or payload.get('provider_error_code'):
             return 'error'
         return 'success'
+    if event == 'verify_completed':
+        return 'error' if str(payload.get('status') or '').lower() == 'failed' else 'success'
     if event in {
         'provider_success',
         'tool_call_result',
         'planner_summary',
         'plan_generated',
         'session_staged_state',
-        'auto_commit_async_completed',
         'assistant_thought',
+        'phase_completed',
+        'run_step_completed',
+        'run_checkpoint',
+        'refs_resolved',
+        'commit_completed',
     }:
         return 'success'
     return 'running'
@@ -775,17 +675,92 @@ def _progress_event_summary(event: str, payload: dict[str, Any]) -> str:
         if elapsed_ms is not None:
             return f'Completed response in {elapsed_ms} ms.'
         return 'Completed assistant response.'
-    if event == 'auto_commit_async_completed':
-        auto_commit_ms = payload.get('auto_commit_ms')
-        if auto_commit_ms is not None:
-            return f'Auto-commit completed in {auto_commit_ms} ms.'
-        return 'Auto-commit completed.'
-    if event == 'auto_commit_async_failed':
-        error_code = payload.get('auto_commit_error_code')
+    if event == 'run_started':
+        phase = payload.get('phase')
+        return f'Started run ({phase}).' if phase else 'Started run.'
+    if event == 'phase_entered':
+        phase = payload.get('phase') or 'next'
+        commits_done = payload.get('commits_done')
+        commits_total = payload.get('commits_total')
+        if commits_total is not None and commits_done is not None:
+            return f'Entered {phase} phase ({commits_done}/{commits_total} commits).'
+        return f'Entered {phase} phase.'
+    if event == 'phase_completed':
+        phase = payload.get('phase') or 'current'
+        outcome = payload.get('outcome')
+        if outcome:
+            return f'Completed {phase} phase ({outcome}).'
+        return f'Completed {phase} phase.'
+    if event == 'run_step_completed':
+        step = payload.get('step')
+        run_next = payload.get('run_next')
+        if step is not None and run_next:
+            return f'Step {step} completed ({run_next}).'
+        if run_next:
+            return f'Step completed ({run_next}).'
+        return 'Step completed.'
+    if event == 'run_checkpoint':
+        checkpoint = payload.get('checkpoint')
+        if checkpoint:
+            return f'Waiting for the user ({checkpoint}).'
+        return 'Waiting for the user.'
+    if event == 'refs_resolved':
+        total = payload.get('refs_total')
+        accessible = payload.get('refs_accessible')
+        if total is not None and accessible is not None:
+            return f'Resolved {accessible}/{total} referenced items.'
+        if total is not None:
+            return f'Resolved {total} referenced items.'
+        return 'Resolved referenced items.'
+    if event == 'commit_started':
+        title = _progress_roadmap_label(payload)
+        operations_count = payload.get('operations_count')
+        if operations_count is not None:
+            return f'Committing {operations_count} operations to {title}.'
+        return f'Committing changes to {title}.'
+    if event == 'commit_completed':
+        title = _progress_roadmap_label(payload)
+        operations_count = payload.get('operations_count')
+        impacted_summary = payload.get('impacted_summary')
+        suffix = ''
+        if isinstance(impacted_summary, dict):
+            compact = ', '.join(
+                f'{key}={value}'
+                for key, value in sorted(impacted_summary.items())
+                if value is not None
+            )
+            if compact:
+                suffix = f' ({compact})'
+        if operations_count is not None:
+            return f'Committed {operations_count} operations to {title}{suffix}.'
+        return f'Committed changes to {title}{suffix}.'
+    if event == 'commit_failed':
+        title = _progress_roadmap_label(payload)
+        error_code = payload.get('error_code')
         if error_code:
-            return f'Auto-commit failed with {error_code}.'
-        return 'Auto-commit failed.'
+            return f'Commit to {title} failed with {error_code}.'
+        return f'Commit to {title} failed.'
+    if event == 'verify_completed':
+        summary_text = payload.get('summary_text')
+        if isinstance(summary_text, str):
+            normalized = ' '.join(summary_text.split())
+            if normalized:
+                return normalized
+        status = payload.get('status')
+        if status:
+            return f'Verification {str(status).replace("_", " ")}.'
+        return 'Verification completed.'
     return event.replace('_', ' ')
+
+
+def _progress_roadmap_label(payload: dict[str, Any]) -> str:
+    title = payload.get('roadmap_title')
+    if isinstance(title, str) and title.strip():
+        return f'"{" ".join(title.split())[:120]}"'
+    roadmap_id = payload.get('roadmap_id')
+    if isinstance(roadmap_id, str) and roadmap_id.strip():
+        return f'roadmap {roadmap_id.strip()}'
+    return 'the roadmap'
 
 
 def _progress_message_preview(value: Any) -> str:
@@ -800,23 +775,6 @@ def _progress_message_preview(value: Any) -> str:
         compact = ' '.join(value.split())
         return f'"{compact[:120]}"'
     return 'message'
-
-
-def _compute_progress_elapsed_ms(trace: _ProgressTrace) -> int | None:
-    if trace.started_at is None:
-        return None
-    end_ts = trace.completed_at
-    if end_ts is None:
-        if trace.done:
-            end_ts = trace.started_at
-        else:
-            return None
-    try:
-        start_dt = datetime.fromisoformat(trace.started_at.replace('Z', '+00:00'))
-        end_dt = datetime.fromisoformat(end_ts.replace('Z', '+00:00'))
-    except ValueError:
-        return None
-    return max(0, int((end_dt - start_dt).total_seconds() * 1000))
 
 
 def _sanitize(value: Any, *, include_content: bool) -> Any:

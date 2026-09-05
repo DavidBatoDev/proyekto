@@ -7,9 +7,10 @@ import unittest
 
 from app.core.config import get_settings
 from app.core.contracts.sessions import AppliedChange, ChangeGroup
-from app.core.v2 import tools_spec
-from app.core.v2.loop import run_loop
-from app.core.v2.openai_client import LLMResponse, ToolCall
+from app.core.runtime import revert
+from app.core.runtime import tools as tools_spec
+from app.core.engine.loop import run_loop
+from app.core.engine.llm_client import LLMResponse, ToolCall
 
 ROADMAP = 'roadmap-root'
 
@@ -84,12 +85,60 @@ class ClassificationTests(unittest.TestCase):
         names = {t['function']['name'] for t in tools_spec.build_tools()}
         self.assertIn('revert_changes', names)
 
+    def test_revert_schema_accepts_roadmap_id(self) -> None:
+        spec = tools_spec.revert_changes_tool()
+        props = spec['function']['parameters']['properties']
+        self.assertIn('change_id', props)
+        self.assertIn('roadmap_id', props)
+        self.assertEqual(spec['function']['parameters']['required'], [])
+
+
+class SelectRevertRangeRoadmapFilterTests(unittest.TestCase):
+    """A revert is one commit on one roadmap: the range is picked from that
+    roadmap's history only. Groups recorded before roadmaps were tracked
+    (roadmap_id=None) stay revertible from any scope."""
+
+    def _history(self):
+        alpha_new = _cascade_group('alpha-2')
+        alpha_new.roadmap_id = 'alpha'
+        beta = _cascade_group('beta-1')
+        beta.roadmap_id = 'beta'
+        alpha_old = _cascade_group('alpha-1')
+        alpha_old.roadmap_id = 'alpha'
+        legacy = _cascade_group('legacy-0')
+        return [alpha_new, beta, alpha_old, legacy]
+
+    def test_latest_is_scoped_to_the_roadmap(self) -> None:
+        selected = revert.select_revert_range(self._history(), None, roadmap_id='beta')
+        self.assertEqual([g.change_id for g in selected], ['beta-1'])
+
+    def test_change_id_range_skips_other_roadmaps(self) -> None:
+        selected = revert.select_revert_range(self._history(), 'alpha-1', roadmap_id='alpha')
+        self.assertEqual([g.change_id for g in selected], ['alpha-2', 'alpha-1'])
+
+    def test_legacy_groups_without_roadmap_stay_in_every_scope(self) -> None:
+        selected = revert.select_revert_range(self._history(), 'legacy-0', roadmap_id='beta')
+        self.assertEqual([g.change_id for g in selected], ['beta-1', 'legacy-0'])
+
+    def test_no_roadmap_filter_keeps_the_whole_history(self) -> None:
+        selected = revert.select_revert_range(self._history(), 'alpha-1')
+        self.assertEqual([g.change_id for g in selected], ['alpha-2', 'beta-1', 'alpha-1'])
+
+    def test_unknown_roadmap_yields_empty(self) -> None:
+        history = [g for g in self._history() if g.roadmap_id]
+        self.assertEqual(revert.select_revert_range(history, None, roadmap_id='gamma'), [])
+
+    def test_roadmap_ids_with_history_are_most_recent_first(self) -> None:
+        self.assertEqual(revert.roadmap_ids_with_history(self._history()), ['alpha', 'beta'])
+
 
 class RevertLoopTests(unittest.TestCase):
     def test_revert_last_change_stages_edit(self) -> None:
         result = _run({}, _history_dicts(_cascade_group('chg-1')))
-        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(result.kind, 'revert')
         self.assertEqual(result.terminal_tool, 'revert_changes')
+        self.assertEqual([b.source for b in result.batches], ['revert'])
+        self.assertEqual(result.batches[0].roadmap_id, ROADMAP)
         op_names = [getattr(o.op, 'value', str(o.op)) for o in result.operations]
         self.assertEqual(op_names.count('add_epic'), 1)
         self.assertEqual(op_names.count('add_feature'), 1)
@@ -99,7 +148,7 @@ class RevertLoopTests(unittest.TestCase):
         # Two delete groups; revert back to the older one undoes both.
         history = _history_dicts(_cascade_group('chg-2'), _cascade_group('chg-1'))
         result = _run({'change_id': 'chg-1'}, history)
-        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(result.kind, 'revert')
         # Both groups deleted the same ids → net one tree recreated (deduped).
         op_names = [getattr(o.op, 'value', str(o.op)) for o in result.operations]
         self.assertEqual(op_names.count('add_epic'), 1)

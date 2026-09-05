@@ -1,16 +1,18 @@
 """Memory tools: the loop continues after save_memory (non-terminal), the
-handler maps save/forget to nest_client calls and marks the notes cache
-dirty, and the dispatcher classification includes both tools."""
+handler maps save/forget to nest_client calls for the roadmap the CALL names
+(the dispatcher writes the resolved roadmap onto args) and marks the notes
+cache dirty, and the dispatcher classification includes both tools."""
 
 import json
 import unittest
-from types import SimpleNamespace
 
 from app.core.config import get_settings
-from app.core.llm.context.handlers.memory_tools import MemoryToolHandler
-from app.core.v2 import tools_spec
-from app.core.v2.loop import run_loop
-from app.core.v2.openai_client import LLMResponse, ToolCall
+from app.core.tools.handlers.memory_tools import MemoryToolHandler
+from app.core.runtime import tools as tools_spec
+from app.core.engine.loop import run_loop
+from app.core.engine.llm_client import LLMResponse, ToolCall
+
+_WORKSPACE = {'kind': 'workspace', 'workspace_id': 'ws-1'}
 
 
 def _tool_resp(name, args, content=None):
@@ -58,6 +60,15 @@ class ClassificationTests(unittest.TestCase):
         self.assertIn('save_memory', names)
         self.assertIn('forget_memory', names)
 
+    def test_roadmap_id_required_only_in_workspace_scope(self) -> None:
+        roadmap_scope = tools_spec.save_memory_tool()['function']['parameters']
+        workspace_scope = tools_spec.save_memory_tool(_WORKSPACE)['function']['parameters']
+        self.assertEqual(roadmap_scope['required'], ['content'])
+        self.assertIn('roadmap_id', roadmap_scope['properties'])
+        self.assertEqual(sorted(workspace_scope['required']), ['content', 'roadmap_id'])
+        forget = tools_spec.forget_memory_tool(_WORKSPACE)['function']['parameters']
+        self.assertEqual(sorted(forget['required']), ['memory_id', 'roadmap_id'])
+
 
 class LoopContinuationTests(unittest.TestCase):
     def test_loop_continues_after_save_memory(self) -> None:
@@ -73,7 +84,7 @@ class LoopContinuationTests(unittest.TestCase):
             messages=[{'role': 'system', 'content': 'sys'}, {'role': 'user', 'content': 'remember it'}],
             tools=[],
             dispatcher=dispatcher,
-            session_context={'roadmap_id': 'rm1'},
+            session_context={'focus_roadmap_id': 'rm1'},
             handle_map={},
             settings=get_settings(),
             trace_id=None,
@@ -111,28 +122,52 @@ def _handler(nest):
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_save_memory_creates_and_marks_dirty(self) -> None:
         nest = _FakeNestClient()
-        context = {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
+        context = {'focus_roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
         result = await _handler(nest).execute(
-            'save_memory', {'content': 'Quarterly epic names'}, context
+            'save_memory', {'content': 'Quarterly epic names', 'roadmap_id': 'rm1'}, context
         )
         self.assertTrue(result['saved'])
         self.assertEqual(result['memory']['id'], 'mem-1')
         self.assertTrue(context.get('memory_notes_dirty'))
+        self.assertEqual(nest.created[0][0], 'rm1')
         self.assertEqual(nest.created[0][1]['source'], 'user_request')
+
+    async def test_roadmap_id_comes_from_the_call_never_the_shared_context(self) -> None:
+        nest = _FakeNestClient()
+        # A stale/legacy `roadmap_id` on the shared dict must not leak into a
+        # call that names another roadmap (execute_many runs calls in parallel).
+        context = {'roadmap_id': 'rm-stale', 'focus_roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
+        await _handler(nest).execute(
+            'save_memory', {'content': 'Quarterly epic names', 'roadmap_id': 'rm-other'}, context
+        )
+        self.assertEqual(nest.created[0][0], 'rm-other')
 
     async def test_forget_memory_deletes_and_marks_dirty(self) -> None:
         nest = _FakeNestClient()
-        context = {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'}
+        context = {'auth_header': 'Bearer t'}
         result = await _handler(nest).execute(
-            'forget_memory', {'memory_id': 'mem-9'}, context
+            'forget_memory', {'memory_id': 'mem-9', 'roadmap_id': 'rm1'}, context
         )
         self.assertTrue(result['forgotten'])
         self.assertEqual(nest.deleted, [('rm1', 'mem-9')])
         self.assertTrue(context.get('memory_notes_dirty'))
 
+    async def test_missing_roadmap_is_memory_needs_roadmap(self) -> None:
+        nest = _FakeNestClient()
+        for tool, args in (
+            ('save_memory', {'content': 'Quarterly epic names'}),
+            ('forget_memory', {'memory_id': 'mem-9'}),
+        ):
+            result = await _handler(nest).execute(tool, args, {'auth_header': 'Bearer t'})
+            self.assertEqual(result['error']['code'], 'MEMORY_NEEDS_ROADMAP')
+        self.assertEqual(nest.created, [])
+        self.assertEqual(nest.deleted, [])
+
     async def test_save_memory_rejects_short_content(self) -> None:
         nest = _FakeNestClient()
-        result = await _handler(nest).execute('save_memory', {'content': 'x'}, {'roadmap_id': 'rm1'})
+        result = await _handler(nest).execute(
+            'save_memory', {'content': 'x', 'roadmap_id': 'rm1'}, {}
+        )
         self.assertEqual(result['error']['code'], 'INVALID_MEMORY_CONTENT')
         self.assertEqual(nest.created, [])
 
@@ -140,8 +175,8 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         nest = _FakeNestClient()
         result = await _handler(nest).execute(
             'save_memory',
-            {'content': 'Quarterly epic names', 'scope': 'bogus', 'category': 42},
-            {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'},
+            {'content': 'Quarterly epic names', 'scope': 'bogus', 'category': 42, 'roadmap_id': 'rm1'},
+            {'auth_header': 'Bearer t'},
         )
         payload = nest.created[0][1]
         self.assertEqual(payload['scope'], 'roadmap')
@@ -156,8 +191,9 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
                 'content': 'Client prefers weekly demos',
                 'scope': 'project',
                 'category': 'decision',
+                'roadmap_id': 'rm1',
             },
-            {'roadmap_id': 'rm1', 'auth_header': 'Bearer t'},
+            {'auth_header': 'Bearer t'},
         )
         payload = nest.created[0][1]
         self.assertEqual(payload['scope'], 'project')

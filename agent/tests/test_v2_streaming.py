@@ -14,9 +14,9 @@ from unittest import mock
 
 from app.core.config import get_settings
 from app.core.logging_utils import get_progress_trace_events, log_event
-from app.core.v2 import progress as progress_mod
-from app.core.v2.openai_client import V2LLMClient
-from app.core.v2.progress import AssistantDeltaEmitter, ThoughtEmitter
+from app.core.engine import progress as progress_mod
+from app.core.engine.llm_client import LLMClient
+from app.core.engine.progress import AssistantDeltaEmitter, ThoughtEmitter
 
 
 def _delta_event(text):
@@ -92,7 +92,7 @@ def _client(
         openai_v2_streaming_enabled=streaming_enabled,
         openai_v2_reasoning_summary_enabled=reasoning_summary_enabled,
     )
-    client = V2LLMClient(settings)
+    client = LLMClient(settings)
     client._client = SimpleNamespace(responses=responses)
     return client
 

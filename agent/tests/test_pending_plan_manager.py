@@ -1,13 +1,39 @@
 import logging
 import unittest
+from datetime import datetime, timezone
 
-from app.core.contracts.sessions import AgentSession, PendingPlan
-from app.core.orchestration.context.pending_plan_manager import (
+from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.sessions import AgentSession, PendingPlan, RoadmapContext
+from app.core.memory.pending_plan_manager import (
     clear_pending_plan,
     format_pending_plan_section,
     is_plan_stale,
     record_pending_plan_from_planner_output,
 )
+
+
+def _load(
+    session: AgentSession,
+    roadmap_id: str,
+    *,
+    overview: str | None,
+    base_revision: int | None = None,
+    revision_token: str | None = None,
+    title: str | None = None,
+    handle_prefix: str | None = None,
+) -> RoadmapContext:
+    """Register a loaded RoadmapContext (what context_cache.load_roadmap does)."""
+    context = RoadmapContext(
+        roadmap_id=roadmap_id,
+        title=title,
+        handle_prefix=handle_prefix,
+        overview_summary=overview,
+        overview_fetched_at=datetime.now(timezone.utc).replace(tzinfo=None) if overview else None,
+        base_revision=base_revision,
+        revision_token=revision_token,
+    )
+    session.metadata.roadmaps[roadmap_id] = context
+    return context
 
 
 def _session(
@@ -16,7 +42,7 @@ def _session(
     overview: str | None = 'Roadmap "X" — 2 epics, 5 features, 12 tasks',
 ) -> AgentSession:
     session = AgentSession(roadmap_id='roadmap-1', base_revision=base_revision)
-    session.metadata.roadmap_overview_summary = overview
+    _load(session, 'roadmap-1', overview=overview, base_revision=base_revision)
     return session
 
 
@@ -180,7 +206,7 @@ class StalenessTests(unittest.TestCase):
 
     def test_plan_is_fresh_when_revision_and_hash_match(self) -> None:
         session = AgentSession(roadmap_id='r', base_revision=5)
-        session.metadata.roadmap_overview_summary = 'stable overview'
+        _load(session, 'r', overview='stable overview', base_revision=5)
         plan = self._plan(
             base_revision=5,
             roadmap_overview_hash=None,  # compare only on revision then
@@ -194,8 +220,25 @@ class StalenessTests(unittest.TestCase):
 
     def test_plan_is_stale_when_overview_hash_differs(self) -> None:
         session = AgentSession(roadmap_id='r', base_revision=5)
-        session.metadata.roadmap_overview_summary = 'different overview now'
+        _load(session, 'r', overview='different overview now', base_revision=5)
         plan = self._plan(base_revision=5, roadmap_overview_hash='abc123')
+        self.assertTrue(is_plan_stale(session, plan))
+
+    def test_multi_target_plan_compares_each_target_roadmap(self) -> None:
+        session = AgentSession(roadmap_id='r', base_revision=5)
+        _load(session, 'r', overview='alpha outline', base_revision=5)
+        _load(session, 'beta', overview='beta outline', base_revision=2, handle_prefix='R1')
+        plan = self._plan(
+            base_revision=5,
+            roadmap_overview_hash=None,
+            targets=[
+                {'roadmap_id': 'r', 'base_revision': 5},
+                {'roadmap_id': 'beta', 'base_revision': 2},
+            ],
+        )
+        self.assertFalse(is_plan_stale(session, plan))
+        # Beta moved on: the plan is stale even though the focus is fresh.
+        session.metadata.roadmaps['beta'].base_revision = 3
         self.assertTrue(is_plan_stale(session, plan))
 
 
@@ -290,7 +333,7 @@ class RecordNeedsAnswerEnvelopeTests(unittest.TestCase):
 
     def test_second_needs_answer_preserves_accumulated_answers(self) -> None:
         from app.core.contracts.sessions import PendingPlanAnswer
-        from app.core.orchestration.context.pending_plan_manager import append_plan_answer
+        from app.core.memory.pending_plan_manager import append_plan_answer
 
         session = _session()
         # Turn 1: record the first question.
@@ -496,6 +539,122 @@ class MultiQuestionClarifierTests(unittest.TestCase):
         )
 
 
+class EditsProposalTests(unittest.TestCase):
+    """`kind='edits'` proposals carry concrete operations per target (a
+    stage_edits batch that tripped the checkpoint policy) — a delete-only or
+    update-only batch legitimately has an empty hierarchy."""
+
+    def setUp(self) -> None:
+        self._logger = logging.getLogger('test.pending_plan_manager.edits')
+
+    def _record(self, session, payload):
+        return record_pending_plan_from_planner_output(
+            session,
+            payload=payload,
+            user_message='delete the growth epic',
+            trace_id='trace-1',
+            logger=self._logger,
+            settings=None,
+        )
+
+    def test_delete_only_edits_proposal_is_recorded_with_empty_hierarchy(self) -> None:
+        session = _session(base_revision=4, overview='Roadmap outline')
+        session.metadata.roadmaps['roadmap-1'].title = 'Alpha'
+        session.metadata.roadmaps['roadmap-1'].revision_token = 'tok-1'
+        delete_op = RoadmapOperation(
+            op='delete_node', node_id='11111111-1111-1111-1111-111111111111'
+        )
+        plan = self._record(
+            session,
+            {
+                'kind': 'edits',
+                'summary': 'Delete the Growth epic',
+                'goal': 'delete the growth epic',
+                'run_id': 'run-1',
+                'targets': [
+                    {
+                        'roadmap_id': 'roadmap-1',
+                        'operations': [delete_op.model_dump(mode='json', exclude_none=True)],
+                        'summary_lines': ['Delete epic "Growth" and its 4 tasks'],
+                    }
+                ],
+            },
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertIs(session.metadata.pending_plan, plan)
+        self.assertEqual(plan.kind, 'edits')
+        self.assertEqual(plan.status, 'proposed')
+        self.assertEqual(plan.proposed_hierarchy, [])
+        self.assertEqual(plan.run_id, 'run-1')
+        target = plan.targets[0]
+        self.assertEqual(target.operations_count, 1)
+        self.assertTrue(target.contains_delete)
+        self.assertEqual(target.roadmap_title, 'Alpha')
+        # Anchors come from the target's RoadmapContext.
+        self.assertEqual(target.base_revision, 4)
+        self.assertEqual(target.revision_token, 'tok-1')
+        self.assertIsNotNone(target.overview_hash)
+        self.assertEqual(plan.base_revision, 4)
+        self.assertEqual(plan.revision_token, 'tok-1')
+
+    def test_edits_proposal_without_operations_is_rejected(self) -> None:
+        session = _session()
+        plan = self._record(
+            session,
+            {
+                'kind': 'edits',
+                'summary': 'nothing',
+                'goal': 'nothing',
+                'targets': [{'roadmap_id': 'roadmap-1', 'operations': []}],
+            },
+        )
+        self.assertIsNone(plan)
+        self.assertIsNone(session.metadata.pending_plan)
+
+    def test_plan_kind_still_rejects_empty_hierarchy(self) -> None:
+        session = _session()
+        plan = self._record(
+            session,
+            {
+                'kind': 'plan',
+                'summary': 's',
+                'goal': 'g',
+                'targets': [{'roadmap_id': 'roadmap-1', 'proposed_hierarchy': []}],
+            },
+        )
+        self.assertIsNone(plan)
+
+    def test_targets_first_hierarchy_mirrors_into_legacy_card(self) -> None:
+        session = _session(base_revision=2)
+        _load(session, 'beta', overview='Beta outline', base_revision=9, handle_prefix='R1', title='Beta')
+        plan = self._record(
+            session,
+            {
+                'summary': 'Two roadmaps',
+                'goal': 'g',
+                'targets': [
+                    {
+                        'roadmap_id': 'beta',
+                        'proposed_hierarchy': [{'title': 'Billing', 'features': []}],
+                    },
+                    {
+                        'roadmap_id': 'roadmap-1',
+                        'proposed_hierarchy': [{'title': 'Search', 'features': []}],
+                    },
+                ],
+            },
+        )
+        assert plan is not None
+        self.assertEqual(plan.kind, 'plan')
+        self.assertEqual([epic.title for epic in plan.proposed_hierarchy], ['Billing'])
+        # The plan-level anchor is the FIRST target's roadmap, each target its own.
+        self.assertEqual(plan.base_revision, 9)
+        self.assertEqual(plan.targets[0].base_revision, 9)
+        self.assertEqual(plan.targets[0].roadmap_title, 'Beta')
+        self.assertEqual(plan.targets[1].base_revision, 2)
+
+
 class TerminalEnvelopeRejectionsTests(unittest.TestCase):
     def setUp(self) -> None:
         self._logger = logging.getLogger('test.pending_plan_manager.terminal')
@@ -534,7 +693,7 @@ class TerminalEnvelopeRejectionsTests(unittest.TestCase):
 
     def test_plan_ready_after_clarifier_preserves_prior_answers(self) -> None:
         from app.core.contracts.sessions import PendingPlanAnswer
-        from app.core.orchestration.context.pending_plan_manager import append_plan_answer
+        from app.core.memory.pending_plan_manager import append_plan_answer
 
         session = _session()
         # Seed clarifier state.

@@ -5,7 +5,7 @@ move inverses, multi-group net cancellation, and range selection."""
 import unittest
 
 from app.core.contracts.sessions import AppliedChange, ChangeGroup
-from app.core.v2.revert import build_inverse_operations, select_revert_range
+from app.core.runtime.revert import build_inverse_operations, select_revert_range
 
 ROADMAP = 'roadmap-root'
 

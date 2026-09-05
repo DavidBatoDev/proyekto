@@ -5,7 +5,8 @@ import unittest
 from types import SimpleNamespace
 
 from app.core import logging_utils
-from app.core.v2 import progress
+from app.core.engine import progress
+from app.core.trace import store as trace_store
 
 
 class _TTYStringIO(io.StringIO):
@@ -28,7 +29,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         handler.setFormatter(logging.Formatter('%(message)s'))
         self.logger.addHandler(handler)
         logging_utils._LIFECYCLE_TRACES.clear()
-        logging_utils._PROGRESS_TRACES.clear()
+        trace_store.reset_for_tests()
         self.settings_pretty = SimpleNamespace(
             agent_log_json=False,
             agent_log_color='auto',
@@ -378,7 +379,7 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         handler.setFormatter(logging.Formatter('%(message)s'))
         self.logger.addHandler(handler)
         logging_utils._LIFECYCLE_TRACES.clear()
-        logging_utils._PROGRESS_TRACES.clear()
+        trace_store.reset_for_tests()
         self.settings = SimpleNamespace(
             agent_log_json=False,
             agent_log_color='off',
@@ -413,14 +414,15 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         )
         logging_utils.log_event(
             self.logger,
-            'message_completed',
+            'run_step_completed',
             settings=self.settings,
             trace_id=trace_id,
             session_id=session_id,
             roadmap_id='roadmap-progress-seq',
-            response_mode='edit_plan',
-            elapsed_ms=2000,
-            auto_commit_async_enqueued=True,
+            run_id='run-1',
+            phase='execute',
+            run_next='continue',
+            step=1,
         )
 
         first = logging_utils.get_progress_trace_events(
@@ -436,15 +438,19 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         self.assertEqual([event['seq'] for event in first['events']], [1, 2, 3])
         self.assertEqual(first['next_seq'], 3)
         self.assertFalse(first['done'])
+        self.assertEqual(first['run_id'], 'run-1')
+        self.assertEqual(first['phase'], 'execute')
 
         logging_utils.log_event(
             self.logger,
-            'auto_commit_async_completed',
+            'commit_completed',
             settings=self.settings,
             trace_id=trace_id,
             session_id=session_id,
             roadmap_id='roadmap-progress-seq',
-            auto_commit_ms=5104,
+            roadmap_title='Checkout',
+            commit_ms=5104,
+            operations_count=2,
             impacted_item_count=2,
             impacted_summary={'created': 1, 'modified': 1, 'deleted': 0},
             impacted_items=[
@@ -464,6 +470,18 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
                 },
             ],
         )
+        logging_utils.log_event(
+            self.logger,
+            'run_step_completed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-seq',
+            run_id='run-1',
+            phase='verify',
+            run_next='done',
+            step=2,
+        )
 
         second = logging_utils.get_progress_trace_events(
             session_id=session_id,
@@ -475,10 +493,14 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         )
         self.assertIsNotNone(second)
         assert second is not None
-        self.assertEqual([event['seq'] for event in second['events']], [4])
+        self.assertEqual([event['seq'] for event in second['events']], [4, 5])
         self.assertTrue(second['done'])
+        self.assertEqual(second['phase'], 'verify')
         self.assertIsInstance(second.get('elapsed_ms'), int)
-        details = second['events'][0].get('details')
+        commit_event = second['events'][0]
+        self.assertEqual(commit_event['title'], 'Changes committed')
+        self.assertEqual(commit_event['status'], 'success')
+        details = commit_event.get('details')
         self.assertIsInstance(details, dict)
         assert isinstance(details, dict)
         self.assertEqual(details.get('impacted_item_count'), 2)
@@ -531,30 +553,6 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
                 'revision_operations_count': 0,
             },
         )
-
-    def test_progress_trace_ttl_eviction(self) -> None:
-        trace_id = 'trace-progress-ttl'
-        session_id = 'session-progress-ttl'
-        logging_utils.log_event(
-            self.logger,
-            'message_received',
-            settings=self.settings,
-            trace_id=trace_id,
-            session_id=session_id,
-            roadmap_id='roadmap-progress-ttl',
-            message='hello',
-        )
-        trace = logging_utils._PROGRESS_TRACES[trace_id]
-        trace.last_seen_monotonic = (
-            trace.last_seen_monotonic - logging_utils._PROGRESS_EVENT_TRACE_TTL_SECONDS - 1.0
-        )
-
-        fetched = logging_utils.get_progress_trace_events(
-            session_id=session_id,
-            trace_id=trace_id,
-            settings=self.settings,
-        )
-        self.assertIsNone(fetched)
 
     def test_structured_detail_mode_redacts_verbose_fields(self) -> None:
         trace_id = 'trace-progress-structured'
@@ -642,22 +640,26 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         self.assertEqual(summary.get('item_titles_total_count'), 60)
         self.assertTrue(summary.get('item_titles_has_more'))
 
-    def test_structured_auto_commit_failed_exposes_invalid_operation_snapshot(self) -> None:
-        trace_id = 'trace-progress-auto-commit-invalid'
-        session_id = 'session-progress-auto-commit-invalid'
+    def test_structured_commit_failed_exposes_invalid_operation_snapshot(self) -> None:
+        trace_id = 'trace-progress-commit-invalid'
+        session_id = 'session-progress-commit-invalid'
         logging_utils.log_event(
             self.logger,
-            'auto_commit_async_failed',
+            'commit_failed',
             settings=self.settings,
             trace_id=trace_id,
             session_id=session_id,
-            roadmap_id='roadmap-progress-auto-commit-invalid',
-            auto_commit_error_message='Commit has validation errors and cannot be applied',
-            auto_commit_error_upstream_status=400,
-            auto_commit_invalid_operation={
+            roadmap_id='roadmap-progress-commit-invalid',
+            roadmap_title='Payments',
+            batch_id='batch-1',
+            error_code='VALIDATION_FAILED',
+            error_message='Commit has validation errors and cannot be applied',
+            upstream_status=400,
+            invalid_operation={
                 'index': 0,
                 'reason': 'mark_status.status_invalid',
             },
+            auth_header='Bearer secret',
         )
 
         structured = logging_utils.get_progress_trace_events(
@@ -668,23 +670,32 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         )
         self.assertIsNotNone(structured)
         assert structured is not None
-        details = structured['events'][0].get('details')
+        event = structured['events'][0]
+        self.assertEqual(event['title'], 'Commit failed')
+        self.assertEqual(event['status'], 'error')
+        self.assertEqual(event['summary'], 'Commit to "Payments" failed with VALIDATION_FAILED.')
+        details = event.get('details')
         self.assertIsInstance(details, dict)
         assert isinstance(details, dict)
-        self.assertEqual(details.get('auto_commit_error_upstream_status'), 400)
-        self.assertIsInstance(details.get('auto_commit_invalid_operation'), dict)
+        self.assertEqual(details.get('roadmap_id'), 'roadmap-progress-commit-invalid')
+        self.assertEqual(details.get('upstream_status'), 400)
+        self.assertIsInstance(details.get('invalid_operation'), dict)
+        self.assertNotIn('auth_header', details)
 
-    def test_structured_auto_commit_completed_exposes_impacted_items(self) -> None:
-        trace_id = 'trace-progress-auto-commit-completed'
-        session_id = 'session-progress-auto-commit-completed'
+    def test_structured_commit_completed_exposes_impacted_items(self) -> None:
+        trace_id = 'trace-progress-commit-completed'
+        session_id = 'session-progress-commit-completed'
         logging_utils.log_event(
             self.logger,
-            'auto_commit_async_completed',
+            'commit_completed',
             settings=self.settings,
             trace_id=trace_id,
             session_id=session_id,
-            roadmap_id='roadmap-progress-auto-commit-completed',
-            auto_commit_ms=1240,
+            roadmap_id='roadmap-progress-commit-completed',
+            roadmap_title='Alpha',
+            change_id='change-1',
+            commit_ms=1240,
+            operations_count=1,
             impacted_item_count=1,
             impacted_summary={'created': 1, 'modified': 0, 'deleted': 0},
             impacted_items=[
@@ -696,6 +707,7 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
                     'change_type': 'NODE_ADDED',
                 }
             ],
+            history_recorded=True,
         )
 
         structured = logging_utils.get_progress_trace_events(
@@ -706,12 +718,96 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         )
         self.assertIsNotNone(structured)
         assert structured is not None
-        details = structured['events'][0].get('details')
+        event = structured['events'][0]
+        self.assertEqual(event['title'], 'Changes committed')
+        self.assertEqual(event['status'], 'success')
+        details = event.get('details')
         self.assertIsInstance(details, dict)
         assert isinstance(details, dict)
+        self.assertEqual(details.get('roadmap_title'), 'Alpha')
+        self.assertEqual(details.get('change_id'), 'change-1')
         self.assertEqual(details.get('impacted_item_count'), 1)
         self.assertIsInstance(details.get('impacted_summary'), dict)
         self.assertIsInstance(details.get('impacted_items'), list)
+        self.assertTrue(details.get('history_recorded'))
+
+    def test_run_lifecycle_events_have_titles_status_and_structured_details(self) -> None:
+        trace_id = 'trace-progress-run-lifecycle'
+        session_id = 'session-progress-run-lifecycle'
+        emitted = [
+            ('run_started', {'run_id': 'run-1', 'phase': 'investigate', 'step': 1, 'scope_kind': 'workspace'}),
+            ('refs_resolved', {'refs_total': 3, 'refs_accessible': 2, 'refs_inaccessible': 1}),
+            ('phase_entered', {'phase': 'execute', 'commits_done': 0, 'commits_total': 2}),
+            ('commit_started', {'roadmap_id': 'r1', 'roadmap_title': 'Alpha', 'operations_count': 4}),
+            ('phase_completed', {'phase': 'execute', 'outcome': 'executed'}),
+            ('verify_completed', {'status': 'partial', 'summary_text': 'Committed Alpha; Beta failed.'}),
+            ('run_checkpoint', {'checkpoint': 'proposal', 'plan_id': 'plan-1'}),
+            ('run_step_completed', {'run_id': 'run-1', 'run_next': 'await_user', 'step': 1}),
+        ]
+        for event_name, fields in emitted:
+            logging_utils.log_event(
+                self.logger,
+                event_name,
+                settings=self.settings,
+                trace_id=trace_id,
+                session_id=session_id,
+                **fields,
+            )
+
+        structured = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(structured)
+        assert structured is not None
+        by_name = {event['event']: event for event in structured['events']}
+        self.assertEqual(len(by_name), len(emitted))
+        self.assertEqual(by_name['run_started']['title'], 'Run started')
+        self.assertEqual(by_name['run_started']['status'], 'running')
+        self.assertEqual(by_name['run_started']['summary'], 'Started run (investigate).')
+        self.assertEqual(by_name['refs_resolved']['summary'], 'Resolved 2/3 referenced items.')
+        self.assertEqual(by_name['refs_resolved']['status'], 'success')
+        self.assertEqual(by_name['phase_entered']['title'], 'Phase started')
+        self.assertEqual(by_name['phase_entered']['summary'], 'Entered execute phase (0/2 commits).')
+        self.assertEqual(
+            by_name['phase_entered']['details'],
+            {'phase': 'execute', 'commits_done': 0, 'commits_total': 2},
+        )
+        self.assertEqual(by_name['commit_started']['title'], 'Committing changes')
+        self.assertEqual(by_name['commit_started']['status'], 'running')
+        self.assertEqual(by_name['commit_started']['summary'], 'Committing 4 operations to "Alpha".')
+        self.assertEqual(by_name['phase_completed']['summary'], 'Completed execute phase (executed).')
+        self.assertEqual(by_name['verify_completed']['title'], 'Verification completed')
+        self.assertEqual(by_name['verify_completed']['status'], 'success')
+        self.assertEqual(by_name['verify_completed']['summary'], 'Committed Alpha; Beta failed.')
+        self.assertEqual(by_name['run_checkpoint']['title'], 'Waiting for input')
+        self.assertEqual(by_name['run_checkpoint']['summary'], 'Waiting for the user (proposal).')
+        self.assertEqual(by_name['run_step_completed']['summary'], 'Step 1 completed (await_user).')
+        self.assertTrue(structured['done'])
+        self.assertEqual(structured['run_id'], 'run-1')
+        self.assertEqual(structured['phase'], 'execute')
+
+    def test_verify_completed_failed_status_is_an_error_row(self) -> None:
+        trace_id = 'trace-progress-verify-failed'
+        logging_utils.log_event(
+            self.logger,
+            'verify_completed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id='s1',
+            status='failed',
+        )
+        served = logging_utils.get_progress_trace_events(
+            session_id='s1',
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        assert served is not None
+        self.assertEqual(served['events'][0]['status'], 'error')
+        self.assertEqual(served['events'][0]['summary'], 'Verification failed.')
 
 
 if __name__ == '__main__':
