@@ -33,6 +33,14 @@ describe('RoadmapsService', () => {
 
   it('checks project roadmap permissions before creating a linked roadmap', async () => {
     repo.create.mockResolvedValueOnce({ id: 'roadmap-2' });
+    // The vacancy check: the project has no roadmap yet.
+    supabase.from.mockReturnValueOnce({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+    });
 
     await service.create(
       { name: 'Linked', project_id: 'project-1' } as any,

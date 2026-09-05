@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Inject,
@@ -170,6 +171,7 @@ export class RoadmapsService {
         userId,
         'roadmap.edit',
       );
+      await this.assertProjectHasNoRoadmap(dto.project_id);
     }
     return this.repo.create(dto, userId);
   }
@@ -177,6 +179,29 @@ export class RoadmapsService {
   async update(id: string, dto: UpdateRoadmapDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Roadmap not found');
+
+    // Re-homing a roadmap under a project is a link, not a plain field edit:
+    // the caller must be allowed to edit that project's roadmap, the project
+    // must not have one yet (one-to-one), and an already-linked roadmap is
+    // moved only through the replace-for-project flow.
+    const targetProjectId =
+      typeof dto.project_id === 'string' &&
+      dto.project_id !== existing.project_id
+        ? dto.project_id
+        : null;
+    if (targetProjectId) {
+      if (existing.project_id) {
+        throw new BadRequestException(
+          'Roadmap is already linked to a project.',
+        );
+      }
+      await this.roadmapAuthz.assertProjectRoadmapPermission(
+        targetProjectId,
+        userId,
+        'roadmap.edit',
+      );
+      await this.assertProjectHasNoRoadmap(targetProjectId);
+    }
 
     if (existing.project_id) {
       await this.roadmapAuthz.assertRoadmapPermission(
@@ -194,6 +219,29 @@ export class RoadmapsService {
         label: 'modify this roadmap',
       });
     return this.repo.update(id, dto);
+  }
+
+  /**
+   * A project holds at most one linked roadmap (`uq_roadmaps_project_id_linked`).
+   * Checked up front so callers get a 409 they can act on instead of the
+   * unique-violation 500 the insert would otherwise surface.
+   */
+  private async assertProjectHasNoRoadmap(projectId: string): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('roadmaps')
+      .select('id, name')
+      .eq('project_id', projectId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) {
+      throw new ConflictException({
+        code: 'PROJECT_ALREADY_HAS_ROADMAP',
+        message: `This project already has a roadmap (${String(
+          (data as { name?: string }).name ?? 'untitled',
+        )}). A project holds exactly one roadmap.`,
+        roadmap_id: (data as { id: string }).id,
+      });
+    }
   }
 
   async remove(id: string, userId: string) {
