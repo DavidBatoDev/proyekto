@@ -967,6 +967,275 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
   });
 });
 
+describe('RoadmapAiService commit attribution', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const PROJECT_ID = '0c3d0b8e-6f1e-4b0f-9b1e-2b7f0a3c9d11';
+  const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
+  const SESSION_ID = '8e1b2f5c-3d4a-4e6f-9a7b-1c2d3e4f5a6b';
+  const RUN_ID = '3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9';
+  const REVISION_TOKEN = '2026-04-02T11:00:00.000Z';
+  const IDEMPOTENCY_KEY = 'run-batch-1';
+
+  type DbOptions = {
+    session?: { id: string; scope?: string } | null;
+    insertError?: string;
+    insertHangs?: boolean;
+  };
+
+  const createDb = (options: DbOptions) => {
+    const insert = jest.fn().mockImplementation(() =>
+      options.insertHangs
+        ? new Promise<never>(() => undefined)
+        : Promise.resolve({
+            error: options.insertError
+              ? { message: options.insertError }
+              : null,
+          }),
+    );
+    const maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: options.session ?? null, error: null });
+    const eqUser = jest.fn().mockReturnValue({ maybeSingle });
+    const eqId = jest.fn().mockReturnValue({ eq: eqUser });
+    const select = jest.fn().mockReturnValue({ eq: eqId });
+    const from = jest.fn((table: string) =>
+      table === 'roadmap_ai_sessions' ? { select } : { insert },
+    );
+    return { from, insert, select, eqId, eqUser, maybeSingle };
+  };
+
+  const createService = (dbOptions: DbOptions = {}) => {
+    const db = createDb(dbOptions);
+    const previewStore = {
+      getChangeTimeline: jest.fn().mockResolvedValue(null),
+      setChangeTimeline: jest.fn().mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmapAndNodeTypes: jest
+        .fn()
+        .mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmap: jest.fn().mockResolvedValue(undefined),
+      readCommitIdempotency: jest.fn().mockResolvedValue(null),
+      writeCommitIdempotency: jest.fn().mockResolvedValue(undefined),
+    };
+    const roadmapsRepo = {
+      findById: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        owner_id: USER_ID,
+        project_id: PROJECT_ID,
+        updated_at: REVISION_TOKEN,
+      }),
+      findUpdatedAt: jest.fn().mockResolvedValue(REVISION_TOKEN),
+      findFull: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        name: 'Q2 SaaS Platform Development',
+        roadmap_epics: [],
+      }),
+    };
+    const patchRepo = {
+      upsertFullRoadmap: jest.fn().mockResolvedValue(undefined),
+    };
+    const audit = { log: jest.fn() };
+
+    const service = new RoadmapAiService(
+      db as never,
+      roadmapsRepo as never,
+      patchRepo as never,
+      { assertRoadmapPermission: jest.fn() } as never,
+      previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
+      audit as never,
+    );
+    const warn = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    return { service, db, previewStore, audit, warn };
+  };
+
+  const commit = (service: RoadmapAiService, dto: Record<string, unknown>) =>
+    service.commit(
+      ROADMAP_ID,
+      {
+        revision_token: REVISION_TOKEN,
+        operations: [
+          { op: 'add_epic', data: { title: 'Platform Foundation' } },
+        ],
+        ...dto,
+      } as any,
+      USER_ID,
+    );
+
+  it('stamps session_id and run_id on the history row and the audit entry', async () => {
+    const { service, db, audit } = createService({
+      session: { id: SESSION_ID, scope: 'workspace' },
+    });
+
+    const result = await commit(service, {
+      session_id: SESSION_ID,
+      run_id: RUN_ID,
+      idempotency_key: IDEMPOTENCY_KEY,
+    });
+
+    expect(db.from).toHaveBeenCalledWith('roadmap_ai_sessions');
+    expect(db.eqId).toHaveBeenCalledWith('id', SESSION_ID);
+    expect(db.eqUser).toHaveBeenCalledWith('user_id', USER_ID);
+    expect(db.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        change_id: result.change_id,
+        session_id: SESSION_ID,
+        run_id: RUN_ID,
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'roadmap.committed',
+        metadata: expect.objectContaining({
+          change_id: result.change_id,
+          ai_session_id: SESSION_ID,
+          ai_run_id: RUN_ID,
+          ai_scope: 'workspace',
+        }),
+      }),
+    );
+    expect(result.history_recorded).toBe(true);
+  });
+
+  it('stores a trimmed 24h replay record after the history write when a run is attached', async () => {
+    const { service, db, previewStore } = createService({
+      session: { id: SESSION_ID, scope: 'roadmap' },
+    });
+
+    const result = await commit(service, {
+      session_id: SESSION_ID,
+      run_id: RUN_ID,
+      idempotency_key: IDEMPOTENCY_KEY,
+    });
+
+    expect(previewStore.writeCommitIdempotency).toHaveBeenCalledTimes(1);
+    const [roadmapId, userId, key, hash, record, ttl] =
+      previewStore.writeCommitIdempotency.mock.calls[0];
+    expect([roadmapId, userId, key]).toEqual([
+      ROADMAP_ID,
+      USER_ID,
+      IDEMPOTENCY_KEY,
+    ]);
+    expect(hash).toEqual(expect.any(String));
+    expect(ttl).toBe(86_400);
+    expect(record).toEqual({
+      change_id: result.change_id,
+      committed_at: result.committed_at,
+      revision_token: REVISION_TOKEN,
+      semantic_diff: result.semantic_diff,
+      operation_results: result.operation_results,
+      temp_id_mapping: expect.any(Object),
+      timeline: result.timeline,
+      history_recorded: true,
+    });
+    expect(record).not.toHaveProperty('candidate_snapshot');
+    expect(record).not.toHaveProperty('roadmap');
+    expect(db.insert.mock.invocationCallOrder[0]).toBeLessThan(
+      previewStore.writeCommitIdempotency.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('keeps the commit successful and reports history_recorded=false when the history insert fails', async () => {
+    const { service, previewStore, audit, warn } = createService({
+      session: { id: SESSION_ID, scope: 'roadmap' },
+      insertError: 'insert failed',
+    });
+
+    const result = await commit(service, {
+      session_id: SESSION_ID,
+      run_id: RUN_ID,
+      idempotency_key: IDEMPOTENCY_KEY,
+    });
+
+    expect(result.change_id).toEqual(expect.any(String));
+    expect(result.revision_token).toBe(REVISION_TOKEN);
+    expect(result.history_recorded).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('event=roadmap_change_history_write_failed'),
+    );
+    expect(previewStore.writeCommitIdempotency.mock.calls[0][4]).toMatchObject({
+      history_recorded: false,
+    });
+    expect(audit.log).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait for the history write and omits history_recorded without run_id', async () => {
+    const { service, db, previewStore } = createService({
+      session: { id: SESSION_ID, scope: 'roadmap' },
+      insertHangs: true,
+    });
+
+    const result = await commit(service, {
+      session_id: SESSION_ID,
+      idempotency_key: IDEMPOTENCY_KEY,
+    });
+
+    expect(result).not.toHaveProperty('history_recorded');
+    expect(db.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ session_id: SESSION_ID }),
+    );
+    expect(db.insert.mock.calls[0][0]).not.toHaveProperty('run_id');
+    expect(previewStore.writeCommitIdempotency).toHaveBeenCalledTimes(1);
+    const call = previewStore.writeCommitIdempotency.mock.calls[0];
+    expect(call).toHaveLength(5);
+    expect(call[4]).toMatchObject({
+      change_id: result.change_id,
+      candidate_snapshot: expect.objectContaining({ id: ROADMAP_ID }),
+    });
+    expect(call[4]).not.toHaveProperty('history_recorded');
+  });
+
+  it('drops a session the caller does not own with a warning and still commits', async () => {
+    const { service, db, audit, warn } = createService({ session: null });
+
+    const result = await commit(service, {
+      session_id: SESSION_ID,
+      run_id: RUN_ID,
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('event=roadmap_ai_commit_session_mismatch'),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`session_id=${SESSION_ID}`),
+    );
+    expect(db.insert.mock.calls[0][0]).not.toHaveProperty('session_id');
+    expect(db.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ run_id: RUN_ID }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_session_id: null,
+          ai_run_id: RUN_ID,
+          ai_scope: null,
+        }),
+      }),
+    );
+    expect(result.history_recorded).toBe(true);
+  });
+
+  it('skips the session lookup entirely when no session_id is supplied', async () => {
+    const { service, db, audit } = createService();
+
+    await commit(service, {});
+
+    expect(db.from).not.toHaveBeenCalledWith('roadmap_ai_sessions');
+    expect(db.insert.mock.calls[0][0]).not.toHaveProperty('session_id');
+    expect(db.insert.mock.calls[0][0]).not.toHaveProperty('run_id');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_session_id: null,
+          ai_run_id: null,
+          ai_scope: null,
+        }),
+      }),
+    );
+  });
+});
+
 describe('RoadmapAiService preview durability', () => {
   const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
   const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';

@@ -219,6 +219,18 @@ export class RoadmapAiCommitDto {
   @IsString()
   @MaxLength(100)
   idempotency_key?: string;
+
+  /** Agent-run attribution, observability only: the `roadmap_ai_sessions` row
+   * the commit came from and the run inside it. Both land on the
+   * `roadmap_change_history` row and the `roadmap.committed` audit entry. A
+   * session the caller does not own is dropped with a warning, never a 4xx. */
+  @IsOptional()
+  @IsUUID()
+  session_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  run_id?: string;
 }
 
 export class RoadmapAiRollbackDto {
@@ -442,7 +454,38 @@ export class RoadmapAiCommitResponseDto {
   @ValidateNested({ each: true })
   @Type(() => RoadmapAiOperationResolutionDto)
   operation_results?: RoadmapAiOperationResolutionDto[];
+
+  /** Present only when the request carried `run_id`: whether the durable
+   * `roadmap_change_history` row was written before this response was sent
+   * (the agent's verify phase reads it back by run). Absent for every other
+   * commit, whose history write stays fire-and-forget. */
+  @IsOptional()
+  @IsBoolean()
+  history_recorded?: boolean;
 }
+
+/** Replay record kept for a run-attributed commit (`run_id` supplied). It
+ * drops `candidate_snapshot` and `roadmap` (hundreds of KB per commit) so it
+ * can live 24h in Redis for the agent's retry window; an idempotent replay of
+ * such a commit returns this shape instead of the full response. */
+export type RoadmapAiCommitTrimmedReplayRecord = Pick<
+  RoadmapAiCommitResponseDto,
+  | 'change_id'
+  | 'committed_at'
+  | 'revision_token'
+  | 'semantic_diff'
+  | 'operation_results'
+  | 'timeline'
+> & {
+  temp_id_mapping: Record<string, string>;
+  history_recorded: boolean;
+};
+
+/** Whatever the idempotency store holds for a commit key: the full response
+ * for a plain commit, the trimmed record for a run-attributed one. */
+export type RoadmapAiCommitReplayRecord =
+  | RoadmapAiCommitResponseDto
+  | RoadmapAiCommitTrimmedReplayRecord;
 
 export class RoadmapAiRollbackResponseDto {
   @IsUUID()

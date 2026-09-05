@@ -32,6 +32,21 @@ describe('RedisCacheInvalidationService', () => {
     ]);
   });
 
+  it('drops the dashboard key and every AI context overview variant for the user', async () => {
+    const service = new RedisCacheInvalidationService(
+      cache as any,
+      cloudflarePurge as any,
+    );
+    await service.invalidateDashboardCacheForUser('user-1');
+
+    expect(cache.del).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.projectsDashboardByUser('user-1'),
+    );
+    expect(cache.clearIndex).toHaveBeenCalledWith(
+      REDIS_CACHE_KEYS.aiContextOverviewIndexByUser('user-1'),
+    );
+  });
+
   it('invalidates all dashboard cache entries via index clear', async () => {
     const service = new RedisCacheInvalidationService(
       cache as any,

@@ -27,7 +27,7 @@ function depsWith(scopes: string[], services: Partial<McpToolDeps['s']> = {}) {
         searchContextNodes: jest.fn(),
         listChangeHistory: jest.fn(() => Promise.resolve([])),
       },
-      roadmaps: { findByProjectId: jest.fn(), findByUser: jest.fn() },
+      roadmaps: { findByProjectId: jest.fn(), findAll: jest.fn() },
       maxPageSize: 100,
       ...services,
     },
@@ -164,7 +164,7 @@ describe('MCP roadmap_get_by_project', () => {
     const findByProjectId = jest.fn();
     const { server, handlers } = captureServer();
     const deps = depsWith(['projects:read'], {
-      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+      roadmaps: { findByProjectId, findAll: jest.fn() } as any,
     });
     registerRoadmapTools(server, deps);
 
@@ -182,7 +182,7 @@ describe('MCP roadmap_get_by_project', () => {
     const findByProjectId = jest.fn(() => Promise.resolve(roadmap));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
-      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+      roadmaps: { findByProjectId, findAll: jest.fn() } as any,
     });
     registerRoadmapTools(server, deps);
 
@@ -197,7 +197,7 @@ describe('MCP roadmap_get_by_project', () => {
     const findByProjectId = jest.fn(() => Promise.resolve(null));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
-      roadmaps: { findByProjectId, findByUser: jest.fn() } as any,
+      roadmaps: { findByProjectId, findAll: jest.fn() } as any,
     });
     registerRoadmapTools(server, deps);
 
@@ -213,7 +213,7 @@ describe('MCP roadmap_get_by_project', () => {
     const deps = depsWith(['roadmaps:read'], {
       roadmaps: {
         findByProjectId: jest.fn(() => Promise.resolve(roadmap)),
-        findByUser: jest.fn(),
+        findAll: jest.fn(),
       } as any,
     });
     registerRoadmapTools(server, deps);
@@ -235,7 +235,7 @@ describe('MCP roadmap_get_by_project', () => {
     const deps = depsWith(['roadmaps:read'], {
       roadmaps: {
         findByProjectId: jest.fn(() => Promise.resolve(roadmap)),
-        findByUser: jest.fn(),
+        findAll: jest.fn(),
       } as any,
     });
     registerRoadmapTools(server, deps);
@@ -261,18 +261,20 @@ describe('MCP roadmaps_list', () => {
     );
   });
 
-  it('lists the roadmaps the caller owns', async () => {
+  it('lists the roadmaps the caller can access (owned or shared)', async () => {
     const roadmaps = [{ id: 'r1' }, { id: 'r2' }];
-    const findByUser = jest.fn(() => Promise.resolve(roadmaps));
+    const findAll = jest.fn(() => Promise.resolve(roadmaps));
     const { server, handlers } = captureServer();
     const deps = depsWith(['roadmaps:read'], {
-      roadmaps: { findByProjectId: jest.fn(), findByUser } as any,
+      roadmaps: { findByProjectId: jest.fn(), findAll } as any,
     });
     registerRoadmapTools(server, deps);
 
     const res = await handlers.roadmaps_list({});
 
-    expect(findByUser).toHaveBeenCalledWith('user-1', 'user-1');
+    // findAll is the owner UNION project_access read; the owner-only
+    // findByUser would hide roadmaps shared through a project.
+    expect(findAll).toHaveBeenCalledWith('user-1');
     expect(payload(res)).toEqual({ roadmaps });
   });
 });

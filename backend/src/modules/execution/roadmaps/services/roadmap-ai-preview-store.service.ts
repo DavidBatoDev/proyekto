@@ -1,4 +1,8 @@
-import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Redis } from '@upstash/redis';
 import { UPSTASH_REDIS_CLIENT } from '../../../../config/redis.tokens';
 
@@ -44,7 +48,13 @@ export class RoadmapAiPreviewStoreService {
    * never read back this response) and carries the operations hash so a key
    * reused with different operations is rejected rather than silently replayed.
    * Both methods swallow Redis unavailability — idempotency is a safety net,
-   * not a hard dependency. */
+   * not a hard dependency.
+   *
+   * The stored shape is the caller's: `RoadmapAiService.commit` writes the full
+   * response for a plain commit (600s) and a trimmed record without the
+   * snapshot for a run-attributed one (24h, see
+   * `RoadmapAiCommitTrimmedReplayRecord`). The read path hands back whatever
+   * was stored, so `T` must be the union the caller can receive. */
   async readCommitIdempotency<T extends object>(
     roadmapId: string,
     userId: string,

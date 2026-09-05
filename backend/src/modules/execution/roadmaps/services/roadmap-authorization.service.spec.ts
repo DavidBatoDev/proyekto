@@ -228,4 +228,206 @@ describe('RoadmapAuthorizationService', () => {
       );
     });
   });
+
+  describe('filterViewableRoadmapIds', () => {
+    type BulkRow = {
+      id: string;
+      name: string;
+      project_id: string | null;
+      owner_id: string | null;
+    };
+
+    /**
+     * Bulk-read stub: `.in()` terminates both chains (roadmaps: select -> in;
+     * project_access: select -> eq -> in) and answers from the fixtures,
+     * recording every call so chunking and scoping can be asserted.
+     */
+    function buildBulkDb(fixtures: {
+      roadmaps: BulkRow[];
+      projectAccess?: Array<{ project_id: string }> | 'error';
+    }) {
+      const inCalls: Array<{
+        table: string;
+        column: string;
+        values: string[];
+      }> = [];
+      const eqCalls: Array<{ table: string; column: string; value: unknown }> =
+        [];
+      const db = {
+        from(table: string) {
+          const builder = {
+            select: () => builder,
+            eq: (column: string, value: unknown) => {
+              eqCalls.push({ table, column, value });
+              return builder;
+            },
+            in: (column: string, values: string[]) => {
+              inCalls.push({ table, column, values });
+              const wanted = new Set(values);
+              if (table === 'roadmaps') {
+                return Promise.resolve({
+                  data: fixtures.roadmaps.filter((row) => wanted.has(row.id)),
+                  error: null,
+                });
+              }
+              if (fixtures.projectAccess === 'error') {
+                return Promise.resolve({
+                  data: null,
+                  error: { message: 'probe failed' },
+                });
+              }
+              return Promise.resolve({
+                data: (fixtures.projectAccess ?? []).filter((row) =>
+                  wanted.has(row.project_id),
+                ),
+                error: null,
+              });
+            },
+          };
+          return builder;
+        },
+      };
+      const service = new RoadmapAuthorizationService(db as never, {} as never);
+      return { service, inCalls, eqCalls };
+    }
+
+    it('admits a personal roadmap only for its owner', async () => {
+      const { service, inCalls } = buildBulkDb({
+        roadmaps: [
+          { id: 'rm-mine', name: 'Mine', project_id: null, owner_id: userId },
+          {
+            id: 'rm-theirs',
+            name: 'Theirs',
+            project_id: null,
+            owner_id: 'another-user',
+          },
+        ],
+      });
+
+      const result = await service.filterViewableRoadmapIds(userId, [
+        'rm-mine',
+        'rm-theirs',
+      ]);
+
+      expect([...result.entries()]).toEqual([
+        ['rm-mine', { projectId: null, ownerId: userId, name: 'Mine' }],
+      ]);
+      // Nothing to probe: personal roadmaps have no project.
+      expect(inCalls.filter((c) => c.table === 'project_access')).toHaveLength(
+        0,
+      );
+    });
+
+    it('admits a project roadmap through a project_access row', async () => {
+      const { service, inCalls, eqCalls } = buildBulkDb({
+        roadmaps: [
+          {
+            id: 'rm-shared',
+            name: 'Shared',
+            project_id: projectId,
+            owner_id: 'another-user',
+          },
+          {
+            id: 'rm-private',
+            name: 'Private',
+            project_id: 'proj-2',
+            owner_id: 'another-user',
+          },
+        ],
+        projectAccess: [{ project_id: projectId }],
+      });
+
+      const result = await service.filterViewableRoadmapIds(userId, [
+        'rm-shared',
+        'rm-private',
+      ]);
+
+      expect([...result.keys()]).toEqual(['rm-shared']);
+      expect(result.get('rm-shared')).toEqual({
+        projectId,
+        ownerId: 'another-user',
+        name: 'Shared',
+      });
+      // One meta read + one probe, and the probe is scoped to the caller.
+      expect(inCalls.map((c) => [c.table, c.column])).toEqual([
+        ['roadmaps', 'id'],
+        ['project_access', 'project_id'],
+      ]);
+      expect(eqCalls).toEqual([
+        { table: 'project_access', column: 'user_id', value: userId },
+      ]);
+    });
+
+    it('fails closed to owner-only matches when the probe errors', async () => {
+      const { service } = buildBulkDb({
+        roadmaps: [
+          {
+            id: 'rm-mine',
+            name: 'Mine',
+            project_id: projectId,
+            owner_id: userId,
+          },
+          {
+            id: 'rm-shared',
+            name: 'Shared',
+            project_id: projectId,
+            owner_id: 'another-user',
+          },
+        ],
+        projectAccess: 'error',
+      });
+
+      const result = await service.filterViewableRoadmapIds(userId, [
+        'rm-mine',
+        'rm-shared',
+      ]);
+
+      expect([...result.keys()]).toEqual(['rm-mine']);
+    });
+
+    it('chunks both .in() filters at 50 ids', async () => {
+      const ids = Array.from({ length: 120 }, (_, i) => `rm-${i}`);
+      const { service, inCalls } = buildBulkDb({
+        roadmaps: ids.map((id, i) => ({
+          id,
+          name: id,
+          project_id: `proj-${i}`,
+          owner_id: 'another-user',
+        })),
+        projectAccess: ids.map((_, i) => ({ project_id: `proj-${i}` })),
+      });
+
+      const result = await service.filterViewableRoadmapIds(userId, ids);
+
+      expect(result.size).toBe(120);
+      const sizes = (table: string) =>
+        inCalls.filter((c) => c.table === table).map((c) => c.values.length);
+      expect(sizes('roadmaps')).toEqual([50, 50, 20]);
+      expect(sizes('project_access')).toEqual([50, 50, 20]);
+    });
+
+    it('dedupes the input and skips the database for an empty set', async () => {
+      const { service, inCalls } = buildBulkDb({
+        roadmaps: [
+          { id: 'rm-mine', name: 'Mine', project_id: null, owner_id: userId },
+        ],
+      });
+
+      await expect(
+        service.filterViewableRoadmapIds(userId, []),
+      ).resolves.toEqual(new Map());
+      expect(inCalls).toHaveLength(0);
+
+      const result = await service.filterViewableRoadmapIds(userId, [
+        'rm-mine',
+        'rm-mine',
+        'rm-mine',
+      ]);
+
+      expect(result.size).toBe(1);
+      expect(inCalls).toEqual([
+        { table: 'roadmaps', column: 'id', values: ['rm-mine'] },
+      ]);
+    });
+  });
 });

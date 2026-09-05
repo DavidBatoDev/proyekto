@@ -146,12 +146,192 @@ export class RoadmapAiProjectContextService {
     const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
     if (!roadmap.projectId) return this.emptyProjectContext();
 
-    const projectId = roadmap.projectId;
+    return this.readProjectContextForProject(
+      roadmap.projectId,
+      roadmap.ownerId,
+    );
+  }
+
+  async getProjectBrief(
+    roadmapId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectBriefResponseDto | RoadmapAiNoProjectResponseDto> {
+    void _traceId;
+    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
+    if (!roadmap.projectId) return this.noProject();
+
+    return this.readBriefForProject(roadmap.projectId);
+  }
+
+  async getProjectResources(
+    roadmapId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<
+    RoadmapAiProjectResourcesResponseDto | RoadmapAiNoProjectResponseDto
+  > {
+    void _traceId;
+    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
+    if (!roadmap.projectId) return this.noProject();
+
+    return this.readResourcesForProject(roadmap.projectId);
+  }
+
+  async getProjectMeetings(
+    roadmapId: string,
+    userId: string,
+    queryDto: RoadmapAiProjectMeetingsQueryDto = {},
+    _traceId?: string,
+  ): Promise<
+    RoadmapAiProjectMeetingsResponseDto | RoadmapAiNoProjectResponseDto
+  > {
+    void _traceId;
+    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
+    if (!roadmap.projectId) return this.noProject();
+
+    return this.readMeetingsForProject(roadmap.projectId, queryDto);
+  }
+
+  async getMemberDetails(
+    roadmapId: string,
+    memberId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<
+    RoadmapAiProjectMemberDetailsResponseDto | RoadmapAiNoProjectResponseDto
+  > {
+    void _traceId;
+    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
+    if (!roadmap.projectId) return this.noProject();
+
+    return this.readMemberDetailsForProject(
+      roadmap.projectId,
+      roadmap.ownerId,
+      memberId,
+    );
+  }
+
+  /**
+   * Project-keyed twins of the roadmap-keyed readers above, for the
+   * `/ai/context/projects/:projectId` family: same payloads, but the caller
+   * holds a project id (workspace-scoped sessions have no focus roadmap).
+   * Authorization is owner-or-any-`project_access`-row, 404 otherwise - the
+   * new family never answers 403, so it cannot leak project existence.
+   */
+  async getProjectContextForProject(
+    projectId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectContextDto> {
+    void _traceId;
+    const project = await this.getAccessibleProject(projectId, userId);
+    return this.readProjectContextForProject(projectId, project.ownerId);
+  }
+
+  async getProjectBriefForProject(
+    projectId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectBriefResponseDto> {
+    void _traceId;
+    await this.getAccessibleProject(projectId, userId);
+    return this.readBriefForProject(projectId);
+  }
+
+  async getProjectResourcesForProject(
+    projectId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectResourcesResponseDto> {
+    void _traceId;
+    await this.getAccessibleProject(projectId, userId);
+    return this.readResourcesForProject(projectId);
+  }
+
+  async getProjectMeetingsForProject(
+    projectId: string,
+    userId: string,
+    queryDto: RoadmapAiProjectMeetingsQueryDto = {},
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectMeetingsResponseDto> {
+    void _traceId;
+    await this.getAccessibleProject(projectId, userId);
+    return this.readMeetingsForProject(projectId, queryDto);
+  }
+
+  async getMemberDetailsForProject(
+    projectId: string,
+    memberId: string,
+    userId: string,
+    _traceId?: string,
+  ): Promise<RoadmapAiProjectMemberDetailsResponseDto> {
+    void _traceId;
+    const project = await this.getAccessibleProject(projectId, userId);
+    return this.readMemberDetailsForProject(
+      projectId,
+      project.ownerId,
+      memberId,
+    );
+  }
+
+  private async getAccessibleRoadmap(
+    roadmapId: string,
+    userId: string,
+  ): Promise<RoadmapContextMeta> {
+    const roadmap = this.asRecord(
+      await this.roadmapsRepo.findById(roadmapId, userId),
+    );
+    if (!roadmap) throw new NotFoundException('Roadmap not found');
+    return {
+      projectId: this.readTrimmedString(roadmap.project_id),
+      ownerId: this.readTrimmedString(roadmap.owner_id),
+    };
+  }
+
+  /**
+   * Owner or any `project_access` row, else 404. Resolved together with the
+   * project owner so the readers can apply the same owner-first / owner
+   * fallback the roadmap-keyed path gets from `roadmaps.owner_id`.
+   */
+  private async getAccessibleProject(
+    projectId: string,
+    userId: string,
+  ): Promise<RoadmapContextMeta> {
+    const [permissions, ownerId] = await Promise.all([
+      this.projectAuth.resolvePermissions(userId, projectId),
+      this.readProjectOwnerId(projectId),
+    ]);
+    if (!permissions && ownerId !== userId) {
+      throw new NotFoundException('Project not found');
+    }
+    return { projectId, ownerId };
+  }
+
+  private async readProjectOwnerId(projectId: string): Promise<string | null> {
+    const { data, error } = await this.db
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .maybeSingle();
+    this.throwOnQueryError(error);
+    return this.readTrimmedString(this.asRecord(data)?.owner_id);
+  }
+
+  /**
+   * Compact context pack for an already-authorized project. `ownerId` is the
+   * roadmap owner on the roadmap-keyed path and the project owner on the
+   * project-keyed one; either way that user is listed first among members.
+   */
+  private async readProjectContextForProject(
+    projectId: string,
+    ownerId: string | null,
+  ): Promise<RoadmapAiProjectContextDto> {
     const [project, brief, members, teams, resources, meetings] =
       await Promise.all([
         this.readProject(projectId),
         this.readLatestBrief(projectId),
-        this.readCompactMembers(projectId, roadmap.ownerId),
+        this.readCompactMembers(projectId, ownerId),
         this.readAttachedTeamNames(projectId),
         this.readResourceSummary(projectId),
         this.readMeetingSummary(projectId),
@@ -178,40 +358,25 @@ export class RoadmapAiProjectContextService {
     };
   }
 
-  async getProjectBrief(
-    roadmapId: string,
-    userId: string,
-    _traceId?: string,
-  ): Promise<RoadmapAiProjectBriefResponseDto | RoadmapAiNoProjectResponseDto> {
-    void _traceId;
-    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
-    if (!roadmap.projectId) return this.noProject();
-
-    const brief = await this.readLatestBrief(roadmap.projectId);
+  private async readBriefForProject(
+    projectId: string,
+  ): Promise<RoadmapAiProjectBriefResponseDto> {
+    const brief = await this.readLatestBrief(projectId);
     const projectSummary = htmlToText(
       brief.projectSummary,
       FULL_BRIEF_MAX_CHARS,
     );
 
     return {
-      project_id: roadmap.projectId,
+      project_id: projectId,
       project_summary: projectSummary || null,
       custom_fields: brief.customFields,
     };
   }
 
-  async getProjectResources(
-    roadmapId: string,
-    userId: string,
-    _traceId?: string,
-  ): Promise<
-    RoadmapAiProjectResourcesResponseDto | RoadmapAiNoProjectResponseDto
-  > {
-    void _traceId;
-    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
-    if (!roadmap.projectId) return this.noProject();
-
-    const projectId = roadmap.projectId;
+  private async readResourcesForProject(
+    projectId: string,
+  ): Promise<RoadmapAiProjectResourcesResponseDto> {
     const [foldersResult, linksResult] = await Promise.all([
       this.db
         .from('project_resource_folders')
@@ -275,19 +440,10 @@ export class RoadmapAiProjectContextService {
     return { project_id: projectId, folders, links };
   }
 
-  async getProjectMeetings(
-    roadmapId: string,
-    userId: string,
-    queryDto: RoadmapAiProjectMeetingsQueryDto = {},
-    _traceId?: string,
-  ): Promise<
-    RoadmapAiProjectMeetingsResponseDto | RoadmapAiNoProjectResponseDto
-  > {
-    void _traceId;
-    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
-    if (!roadmap.projectId) return this.noProject();
-
-    const projectId = roadmap.projectId;
+  private async readMeetingsForProject(
+    projectId: string,
+    queryDto: RoadmapAiProjectMeetingsQueryDto,
+  ): Promise<RoadmapAiProjectMeetingsResponseDto> {
     const window = queryDto.window ?? 'upcoming';
     const limit = Math.min(
       Math.max(queryDto.limit ?? MEETING_DEFAULT_LIMIT, 1),
@@ -336,19 +492,11 @@ export class RoadmapAiProjectContextService {
     return { project_id: projectId, window, meetings };
   }
 
-  async getMemberDetails(
-    roadmapId: string,
+  private async readMemberDetailsForProject(
+    projectId: string,
+    ownerId: string | null,
     memberId: string,
-    userId: string,
-    _traceId?: string,
-  ): Promise<
-    RoadmapAiProjectMemberDetailsResponseDto | RoadmapAiNoProjectResponseDto
-  > {
-    void _traceId;
-    const roadmap = await this.getAccessibleRoadmap(roadmapId, userId);
-    if (!roadmap.projectId) return this.noProject();
-
-    const projectId = roadmap.projectId;
+  ): Promise<RoadmapAiProjectMemberDetailsResponseDto> {
     const { data: accessData, error: accessError } = await this.db
       .from('project_access')
       .select('user_id, role, capabilities')
@@ -358,7 +506,7 @@ export class RoadmapAiProjectContextService {
     this.throwOnQueryError(accessError);
 
     const access = this.asRecord(accessData);
-    if (!access && roadmap.ownerId !== memberId) {
+    if (!access && ownerId !== memberId) {
       throw new NotFoundException('Project member not found');
     }
 
@@ -415,24 +563,10 @@ export class RoadmapAiProjectContextService {
         skills,
         role:
           this.readTrimmedString(access?.role) ??
-          (roadmap.ownerId === memberId ? 'roadmap_owner' : null),
+          (ownerId === memberId ? 'roadmap_owner' : null),
         capabilities: this.normalizeCapabilities(access?.capabilities),
         teams,
       },
-    };
-  }
-
-  private async getAccessibleRoadmap(
-    roadmapId: string,
-    userId: string,
-  ): Promise<RoadmapContextMeta> {
-    const roadmap = this.asRecord(
-      await this.roadmapsRepo.findById(roadmapId, userId),
-    );
-    if (!roadmap) throw new NotFoundException('Roadmap not found');
-    return {
-      projectId: this.readTrimmedString(roadmap.project_id),
-      ownerId: this.readTrimmedString(roadmap.owner_id),
     };
   }
 

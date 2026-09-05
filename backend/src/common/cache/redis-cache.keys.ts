@@ -39,6 +39,15 @@ export const REDIS_CACHE_KEYS = {
     `cache:v1:marketplace:talent:${queryHash}`,
   marketplaceTalentIndex: 'cache:v1:index:marketplace:talent',
   talentProfile: (userId: string) => `cache:v1:talent:profile:${userId}`,
+  /**
+   * `GET /api/ai/context/overview`, one entry per (user, requested workspace).
+   * Every variant is also recorded in the per-user index so a dashboard
+   * invalidation can drop them all without enumerating workspaces.
+   */
+  aiContextOverviewByUser: (userId: string, workspaceId: string | null) =>
+    `cache:v1:ai:context:overview:user:${userId}:ws:${workspaceId ?? 'none'}`,
+  aiContextOverviewIndexByUser: (userId: string) =>
+    `cache:v1:index:ai:context:overview:user:${userId}`,
 } as const;
 
 type MarketplaceQueryShape = {

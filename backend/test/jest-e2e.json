@@ -5,5 +5,8 @@
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^htmlparser2$": "<rootDir>/../node_modules/htmlparser2/dist/commonjs/index.js"
   }
 }

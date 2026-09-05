@@ -28,6 +28,7 @@ import { ApplicationsModule } from './modules/marketplace/applications/applicati
 import { UploadsModule } from './modules/shared/uploads/uploads.module';
 import { GuestsModule } from './modules/shared/guests/guests.module';
 import { RoadmapsModule } from './modules/execution/roadmaps/roadmaps.module';
+import { AiContextModule } from './modules/execution/ai-context/ai-context.module';
 import { RoadmapTemplatesModule } from './modules/marketplace/roadmap-templates/roadmap-templates.module';
 import { RoadmapSharesModule } from './modules/execution/roadmap-shares/roadmap-shares.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace/marketplace.module';
@@ -94,6 +95,7 @@ import { AppController } from './app.controller';
     UploadsModule,
     GuestsModule,
     RoadmapsModule,
+    AiContextModule,
     RoadmapTemplatesModule,
     RoadmapSharesModule,
     MarketplaceModule,

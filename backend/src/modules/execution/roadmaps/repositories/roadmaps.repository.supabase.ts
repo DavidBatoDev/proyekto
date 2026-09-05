@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import {
+  AccessibleRoadmapLightRecord,
   FindFullRoadmapOptions,
   IRoadmapsRepository,
   RoadmapContextSearchCandidateRecord,
@@ -11,6 +12,9 @@ import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 
 const ASSIGNEE_PROFILE_COLS =
   'id, display_name, avatar_url, email, first_name, last_name';
+
+const ACCESSIBLE_ROADMAP_LIGHT_SELECT =
+  'id, name, description, status, project_id, owner_id, updated_at, project:projects(id, title, workspace_id)';
 
 /**
  * Counts a roadmap's direct children (epics, milestones, features) — the
@@ -95,7 +99,12 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     };
   }
 
-  private async getAccessibleProjectIds(userId: string): Promise<string[]> {
+  /**
+   * Projects the user owns or holds a `project_access` row on. Public (on the
+   * interface) so the AI context family intersects caller-supplied project ids
+   * against the same predicate `findAll`/`findPreviews` use.
+   */
+  async getAccessibleProjectIds(userId: string): Promise<string[]> {
     const [
       { data: principalProjects, error: principalError },
       { data: memberProjects, error: memberError },
@@ -202,6 +211,96 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         new Date(b.created_at || 0).getTime() -
         new Date(a.created_at || 0).getTime(),
     );
+  }
+
+  /**
+   * `findAll` with the light select: the same owner-or-project-member union
+   * (and the same unchunked `.in()` over the caller's project ids), but only
+   * the columns the AI context family lists and attributes roadmaps by.
+   * Deduped, newest `updated_at` first across both blocks.
+   */
+  async listAccessibleRoadmapsLight(
+    userId: string,
+  ): Promise<AccessibleRoadmapLightRecord[]> {
+    const accessibleProjectIds = await this.getAccessibleProjectIds(userId);
+
+    const { data: ownedRoadmaps, error: ownedError } = await this.db
+      .from('roadmaps')
+      .select(ACCESSIBLE_ROADMAP_LIGHT_SELECT)
+      .eq('owner_id', userId)
+      .order('updated_at', { ascending: false });
+    if (ownedError) throw new Error(ownedError.message);
+
+    let sharedRoadmaps: unknown[] = [];
+    if (accessibleProjectIds.length > 0) {
+      const { data, error } = await this.db
+        .from('roadmaps')
+        .select(ACCESSIBLE_ROADMAP_LIGHT_SELECT)
+        .in('project_id', accessibleProjectIds)
+        .neq('owner_id', userId)
+        .order('updated_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      sharedRoadmaps = (data ?? []) as unknown[];
+    }
+
+    const merged: unknown[] = [
+      ...((ownedRoadmaps ?? []) as unknown[]),
+      ...sharedRoadmaps,
+    ];
+    const deduped = new Map<string, AccessibleRoadmapLightRecord>();
+    for (const raw of merged) {
+      const record = this.toAccessibleRoadmapLight(raw);
+      if (record) deduped.set(record.id, record);
+    }
+
+    // Each block is ordered server-side, but concatenating them does not
+    // merge-sort (the trap findPreviews documents) - re-sort the merged set.
+    return [...deduped.values()].sort(
+      (a, b) =>
+        new Date(b.updated_at ?? 0).getTime() -
+        new Date(a.updated_at ?? 0).getTime(),
+    );
+  }
+
+  private toAccessibleRoadmapLight(
+    raw: unknown,
+  ): AccessibleRoadmapLightRecord | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const row = raw as Record<string, unknown>;
+    const id = typeof row.id === 'string' ? row.id : null;
+    if (!id) return null;
+
+    // PostgREST types a to-one embed as an object, but the generated client
+    // widens it to a possible array - normalize both shapes.
+    const embedded: unknown = Array.isArray(row.project)
+      ? (row.project as unknown[])[0]
+      : row.project;
+    const project =
+      embedded && typeof embedded === 'object'
+        ? (embedded as Record<string, unknown>)
+        : null;
+    const projectId = typeof project?.id === 'string' ? project.id : null;
+
+    return {
+      id,
+      name: typeof row.name === 'string' ? row.name : '',
+      description: typeof row.description === 'string' ? row.description : null,
+      status: typeof row.status === 'string' ? row.status : null,
+      project_id: typeof row.project_id === 'string' ? row.project_id : null,
+      owner_id: typeof row.owner_id === 'string' ? row.owner_id : null,
+      updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+      project:
+        project && projectId
+          ? {
+              id: projectId,
+              title: typeof project.title === 'string' ? project.title : null,
+              workspace_id:
+                typeof project.workspace_id === 'string'
+                  ? project.workspace_id
+                  : null,
+            }
+          : null,
+    };
   }
 
   async findByProjectId(

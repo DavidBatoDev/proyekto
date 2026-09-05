@@ -1036,6 +1036,15 @@ export class WorkspacesService {
   }
 
   /**
+   * Any standing at all, as a boolean. The AI context family gates
+   * workspace-scoped reads on this and answers 404 (never 403) when it is
+   * false, so the caller owns the error shape - unlike `assertCanRead`.
+   */
+  async isMember(workspaceId: string, userId: string): Promise<boolean> {
+    return (await this.findMembership(workspaceId, userId)) !== null;
+  }
+
+  /**
    * The caller's standing in this workspace, or null when they have none.
    *
    * Unlike teams, there is no owner_id column to consult: ownership lives in

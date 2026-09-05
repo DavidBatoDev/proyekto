@@ -7,16 +7,20 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
+import { WorkspacesService } from '../../workspaces/workspaces.service';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
-import type {
-  CreateRoadmapAiMessageDto,
-  CreateRoadmapAiSessionDto,
-  ListRoadmapAiMessagesQueryDto,
-  ListRoadmapAiSessionsQueryDto,
-  RoadmapAiMessageRow,
-  RoadmapAiSessionRow,
-  UpdateRoadmapAiSessionDto,
+import {
+  AI_SESSION_JSON_MAX_CHARS,
+  type AiSessionScope,
+  type AiSessionScopeKind,
+  type CreateRoadmapAiMessageDto,
+  type CreateRoadmapAiSessionDto,
+  type ListRoadmapAiMessagesQueryDto,
+  type ListRoadmapAiSessionsQueryDto,
+  type RoadmapAiMessageRow,
+  type RoadmapAiSessionRow,
+  type UpdateRoadmapAiSessionDto,
 } from '../dto/roadmap-ai-sessions.dto';
 import { RoadmapAiTitleGeneratorService } from './roadmap-ai-title-generator.service';
 
@@ -25,6 +29,23 @@ import { RoadmapAiTitleGeneratorService } from './roadmap-ai-title-generator.ser
 // cache miss occurs, so the cap also limits planner context size.
 const SEED_MESSAGE_LIMIT = 30;
 const DEFAULT_HISTORY_LIMIT = 50;
+
+/** The two scope columns of a session row, derived from an AiSessionScope.
+ * Exactly one id is set — the DB one-of CHECK enforces the same invariant. */
+interface SessionScopeColumns {
+  scope: AiSessionScopeKind;
+  roadmap_id: string | null;
+  workspace_id: string | null;
+}
+
+/** The row-level half of a scope: which id column to pin and to what. Kept as
+ * plain data (not a generic builder wrapper) because threading the Supabase
+ * builder type through a generic helper trips TS2589. */
+interface SessionScopeTarget {
+  kind: AiSessionScopeKind;
+  column: 'roadmap_id' | 'workspace_id';
+  id: string;
+}
 
 @Injectable()
 export class RoadmapAiSessionsService {
@@ -35,29 +56,60 @@ export class RoadmapAiSessionsService {
     @Inject(ROADMAPS_REPOSITORY)
     private readonly roadmapsRepo: IRoadmapsRepository,
     private readonly titleGenerator: RoadmapAiTitleGeneratorService,
+    private readonly workspaces: WorkspacesService,
   ) {}
 
-  // Gate backend access on the same predicate the RLS uses: the caller must
-  // be the roadmap owner, a project lead, or a project member. Using the
-  // roadmap repo's `findById(id, userId)` delegates to its `canAccessRoadmap`
-  // helper so authorization stays in a single place. Returns 404 on denial to
-  // avoid leaking existence (matches the private-per-user thread model).
-  private async assertCanAccessRoadmap(
-    roadmapId: string,
+  // Gate backend access on the same predicate the RLS uses. Roadmap scope:
+  // the caller must be the roadmap owner, a project lead, or a project member
+  // — the roadmap repo's `findById(id, userId)` delegates to its
+  // `canAccessRoadmap` helper so authorization stays in a single place.
+  // Workspace scope: any workspace membership at all (`is_workspace_member`
+  // is what the RLS consults). Both deny with 404 to avoid leaking existence
+  // (matches the private-per-user thread model).
+  private async assertCanAccessScope(
+    scope: AiSessionScope,
     userId: string,
   ): Promise<void> {
-    const roadmap = await this.roadmapsRepo.findById(roadmapId, userId);
-    if (!roadmap) {
-      throw new NotFoundException('Roadmap not found');
+    if (scope.kind === 'roadmap') {
+      const roadmap = await this.roadmapsRepo.findById(scope.roadmapId, userId);
+      if (!roadmap) {
+        throw new NotFoundException('Roadmap not found');
+      }
+      return;
+    }
+    const member = await this.workspaces.isMember(scope.workspaceId, userId);
+    if (!member) {
+      throw new NotFoundException('Workspace not found');
     }
   }
 
+  private scopeColumns(scope: AiSessionScope): SessionScopeColumns {
+    return scope.kind === 'roadmap'
+      ? { scope: 'roadmap', roadmap_id: scope.roadmapId, workspace_id: null }
+      : {
+          scope: 'workspace',
+          roadmap_id: null,
+          workspace_id: scope.workspaceId,
+        };
+  }
+
+  // Every read pins the route's target id AND the scope discriminator, so a
+  // roadmap thread can never be read through the workspace route (or vice
+  // versa) even when the caller owns it. The scope check above has already
+  // authorized the target; this is the row-level half.
+  private scopeTarget(scope: AiSessionScope): SessionScopeTarget {
+    return scope.kind === 'roadmap'
+      ? { kind: 'roadmap', column: 'roadmap_id', id: scope.roadmapId }
+      : { kind: 'workspace', column: 'workspace_id', id: scope.workspaceId };
+  }
+
   async list(
-    roadmapId: string,
+    scope: AiSessionScope,
     userId: string,
     query: ListRoadmapAiSessionsQueryDto,
   ): Promise<RoadmapAiSessionRow[]> {
-    await this.assertCanAccessRoadmap(roadmapId, userId);
+    await this.assertCanAccessScope(scope, userId);
+    const target = this.scopeTarget(scope);
 
     const wantArchived = query.archived === true;
     const limit = query.limit ?? 50;
@@ -68,7 +120,8 @@ export class RoadmapAiSessionsService {
     const { data, error } = await this.db
       .from('roadmap_ai_sessions')
       .select('*')
-      .eq('roadmap_id', roadmapId)
+      .eq(target.column, target.id)
+      .eq('scope', target.kind)
       .eq('user_id', userId)
       .eq('is_archived', wantArchived)
       .order('is_pinned', { ascending: false })
@@ -82,16 +135,16 @@ export class RoadmapAiSessionsService {
   }
 
   async create(
-    roadmapId: string,
+    scope: AiSessionScope,
     userId: string,
     dto: CreateRoadmapAiSessionDto,
   ): Promise<RoadmapAiSessionRow> {
-    await this.assertCanAccessRoadmap(roadmapId, userId);
+    await this.assertCanAccessScope(scope, userId);
 
     const { data, error } = await this.db
       .from('roadmap_ai_sessions')
       .insert({
-        roadmap_id: roadmapId,
+        ...this.scopeColumns(scope),
         user_id: userId,
         title: dto.title ?? null,
         mode: dto.mode ?? 'chat',
@@ -111,20 +164,23 @@ export class RoadmapAiSessionsService {
   }
 
   async getById(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
   ): Promise<RoadmapAiSessionRow> {
-    // Auth check by roadmap covers "can this user be seeing this roadmap at
-    // all"; the user_id equality below enforces private-per-user ownership.
-    // Cross-user reads return 404 (not 403) to avoid leaking existence.
-    await this.assertCanAccessRoadmap(roadmapId, userId);
+    // The scope check covers "can this user be seeing this roadmap/workspace
+    // at all"; the user_id equality below enforces private-per-user
+    // ownership. Cross-user and cross-route reads return 404 (not 403) to
+    // avoid leaking existence.
+    await this.assertCanAccessScope(scope, userId);
+    const target = this.scopeTarget(scope);
 
     const { data, error } = await this.db
       .from('roadmap_ai_sessions')
       .select('*')
       .eq('id', sessionId)
-      .eq('roadmap_id', roadmapId)
+      .eq(target.column, target.id)
+      .eq('scope', target.kind)
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -134,13 +190,13 @@ export class RoadmapAiSessionsService {
   }
 
   async update(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
     dto: UpdateRoadmapAiSessionDto,
   ): Promise<RoadmapAiSessionRow> {
     // Verify ownership before mutation.
-    await this.getById(roadmapId, sessionId, userId);
+    await this.getById(scope, sessionId, userId);
 
     // Build patch with only defined fields so we don't stomp unset columns.
     const patch: Record<string, unknown> = {};
@@ -149,7 +205,7 @@ export class RoadmapAiSessionsService {
     if (dto.is_pinned !== undefined) patch.is_pinned = dto.is_pinned;
 
     if (Object.keys(patch).length === 0) {
-      return this.getById(roadmapId, sessionId, userId);
+      return this.getById(scope, sessionId, userId);
     }
 
     const { data, error } = await this.db
@@ -169,15 +225,15 @@ export class RoadmapAiSessionsService {
    * fire-and-forget by the agent after turns that changed memory state;
    * replayed into the agent's Redis session on rehydration. */
   async updateAgentState(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
     agentState: Record<string, unknown>,
   ): Promise<void> {
-    const session = await this.getById(roadmapId, sessionId, userId);
+    const session = await this.getById(scope, sessionId, userId);
 
     const serialized = JSON.stringify(agentState);
-    if (serialized.length > 65_536) {
+    if (serialized.length > AI_SESSION_JSON_MAX_CHARS) {
       throw new BadRequestException({
         message: 'Agent state snapshot exceeds the 64KB limit',
         code: 'AGENT_STATE_TOO_LARGE',
@@ -199,11 +255,11 @@ export class RoadmapAiSessionsService {
   }
 
   async delete(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
   ): Promise<void> {
-    await this.getById(roadmapId, sessionId, userId);
+    await this.getById(scope, sessionId, userId);
 
     const { error } = await this.db
       .from('roadmap_ai_sessions')
@@ -215,12 +271,12 @@ export class RoadmapAiSessionsService {
   }
 
   async listMessages(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
     query: ListRoadmapAiMessagesQueryDto,
   ): Promise<RoadmapAiMessageRow[]> {
-    await this.getById(roadmapId, sessionId, userId);
+    await this.getById(scope, sessionId, userId);
 
     const limit = query.limit ?? DEFAULT_HISTORY_LIMIT;
 
@@ -257,7 +313,7 @@ export class RoadmapAiSessionsService {
   }
 
   async appendMessage(
-    roadmapId: string,
+    scope: AiSessionScope,
     sessionId: string,
     userId: string,
     dto: CreateRoadmapAiMessageDto,
@@ -265,7 +321,7 @@ export class RoadmapAiSessionsService {
     message: RoadmapAiMessageRow;
     seed_messages: { role: string; content: string }[];
   }> {
-    const session = await this.getById(roadmapId, sessionId, userId);
+    const session = await this.getById(scope, sessionId, userId);
 
     const { data, error } = await this.db
       .from('roadmap_ai_messages')
@@ -325,7 +381,11 @@ export class RoadmapAiSessionsService {
       .limit(SEED_MESSAGE_LIMIT);
 
     if (error) throw new Error(error.message);
-    const rows = (data ?? []) as { role: string; content: string; seq: number }[];
+    const rows = (data ?? []) as {
+      role: string;
+      content: string;
+      seq: number;
+    }[];
     return rows
       .sort((a, b) => a.seq - b.seq)
       .map(({ role, content }) => ({ role, content }));

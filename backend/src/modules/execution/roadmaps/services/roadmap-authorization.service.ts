@@ -58,6 +58,28 @@ export interface ProjectWriteContext {
   permissions: ProjectPermissions;
 }
 
+/** What `filterViewableRoadmapIds` resolves per viewable roadmap. */
+export interface ViewableRoadmapMeta {
+  /** null for a personal roadmap. */
+  projectId: string | null;
+  ownerId: string | null;
+  name: string;
+}
+
+/**
+ * PostgREST `.in()` filters travel in the URL; keep each chunk well under the
+ * length where a few hundred uuids start failing outright.
+ */
+const IN_FILTER_CHUNK_SIZE = 50;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 @Injectable()
 export class RoadmapAuthorizationService {
   constructor(
@@ -290,6 +312,93 @@ export class RoadmapAuthorizationService {
       if (id) allowed.add(id);
     }
     return Array.from(allowed);
+  }
+
+  /**
+   * Narrow a set of roadmap ids to those the user can VIEW, resolving the meta
+   * the AI context family attributes results by (project, owner, name).
+   *
+   * Same predicate as `canViewResolvedRoadmap` - owner match OR a
+   * `project_access` row on the roadmap's project - but batched: one
+   * `roadmaps` read plus one `project_access` probe regardless of how many
+   * ids come in (each `.in()` chunked at 50). Ids that do not resolve are
+   * simply absent from the map, so a caller can 404 per ref without leaking
+   * which ids exist. Fails closed like `filterUsersWhoCanViewRoadmap`: a
+   * probe error yields the owner-only matches, never a wider set.
+   */
+  async filterViewableRoadmapIds(
+    userId: string,
+    roadmapIds: string[],
+  ): Promise<Map<string, ViewableRoadmapMeta>> {
+    const viewable = new Map<string, ViewableRoadmapMeta>();
+    const unique = Array.from(new Set(roadmapIds.filter((id) => !!id)));
+    if (unique.length === 0) return viewable;
+
+    type RoadmapRow = {
+      id: string;
+      name: string;
+      project_id: string | null;
+      owner_id: string | null;
+    };
+    const rows: RoadmapRow[] = [];
+    for (const ids of chunk(unique, IN_FILTER_CHUNK_SIZE)) {
+      const { data, error } = await this.db
+        .from('roadmaps')
+        .select('id, name, project_id, owner_id')
+        .in('id', ids);
+      if (error) throw new Error(error.message);
+      for (const raw of data ?? []) {
+        const row = raw as Partial<RoadmapRow> | null;
+        if (!row?.id) continue;
+        rows.push({
+          id: String(row.id),
+          name: typeof row.name === 'string' ? row.name : '',
+          project_id: row.project_id ?? null,
+          owner_id: row.owner_id ?? null,
+        });
+      }
+    }
+
+    const toMeta = (row: RoadmapRow): ViewableRoadmapMeta => ({
+      projectId: row.project_id,
+      ownerId: row.owner_id,
+      name: row.name,
+    });
+
+    // The owner always qualifies, including on a personal roadmap that has no
+    // project to probe at all.
+    const candidateProjectIds = new Set<string>();
+    for (const row of rows) {
+      if (row.owner_id === userId) {
+        viewable.set(row.id, toMeta(row));
+      } else if (row.project_id) {
+        candidateProjectIds.add(row.project_id);
+      }
+    }
+    if (candidateProjectIds.size === 0) return viewable;
+
+    const memberProjectIds = new Set<string>();
+    for (const ids of chunk([...candidateProjectIds], IN_FILTER_CHUNK_SIZE)) {
+      const { data, error } = await this.db
+        .from('project_access')
+        .select('project_id')
+        .eq('user_id', userId)
+        .in('project_id', ids);
+      // Fail closed: a probe error must not turn into "everything is viewable".
+      if (error) return viewable;
+      for (const raw of data ?? []) {
+        const id = (raw as { project_id?: string | null }).project_id;
+        if (id) memberProjectIds.add(id);
+      }
+    }
+
+    for (const row of rows) {
+      if (viewable.has(row.id)) continue;
+      if (row.project_id && memberProjectIds.has(row.project_id)) {
+        viewable.set(row.id, toMeta(row));
+      }
+    }
+    return viewable;
   }
 
   /**

@@ -46,7 +46,7 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List roadmaps',
       description:
-        'List the roadmaps you own, with a compact portfolio visual by default. Set include_visual=false for JSON only.',
+        'List the roadmaps you can access (owned, or shared with you through a project), with a compact portfolio visual by default. Set include_visual=false for JSON only.',
       inputSchema: {
         include_visual: z.boolean().optional(),
       },
@@ -56,7 +56,9 @@ export function registerRoadmapTools(server: McpServer, deps: McpToolDeps) {
       runTool(
         async () => {
           requireScope(deps.caller, 'roadmaps:read');
-          const roadmaps = await deps.s.roadmaps.findByUser(uid, uid);
+          // Owner UNION project_access — the same set the web dashboard
+          // shows. `findByUser` is owner-only and would hide shared roadmaps.
+          const roadmaps = await deps.s.roadmaps.findAll(uid);
           return { roadmaps };
         },
         visualResult(

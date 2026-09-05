@@ -11,11 +11,33 @@ import {
   MaxLength,
   Min,
   MinLength,
+  Validate,
   ValidateNested,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
 
 export const AI_SESSION_MODES = ['chat', 'edit_plan', 'plan_proposal'] as const;
 export type RoadmapAiSessionMode = (typeof AI_SESSION_MODES)[number];
+
+export const AI_SESSION_SCOPE_KINDS = ['roadmap', 'workspace'] as const;
+export type AiSessionScopeKind = (typeof AI_SESSION_SCOPE_KINDS)[number];
+
+/**
+ * What an AI thread is attached to. Exactly one target: a roadmap thread is
+ * the in-canvas assistant (focus = that roadmap); a workspace thread is the
+ * dashboard assistant (focus = the workspace, free to reach anything the user
+ * can access). Mirrors the DB one-of CHECK on roadmap_ai_sessions
+ * (roadmap_id XOR workspace_id, discriminated by `scope`).
+ */
+export type AiSessionScope =
+  | { kind: 'roadmap'; roadmapId: string }
+  | { kind: 'workspace'; workspaceId: string };
+
+/** Serialized-JSON ceiling shared by the agent-state snapshot and per-message
+ * metadata. Both land in jsonb columns the agent replays on rehydration, so
+ * the cap keeps the Redis/HTTP payloads bounded. */
+export const AI_SESSION_JSON_MAX_CHARS = 65_536;
 
 export const AI_MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
 export type RoadmapAiMessageRole = (typeof AI_MESSAGE_ROLES)[number];
@@ -111,6 +133,32 @@ export class ListRoadmapAiMessagesQueryDto {
 // backend deploy — the agent response payload already matches web types.
 type JsonRecord = Record<string, unknown>;
 
+export const MESSAGE_METADATA_TOO_LARGE_CODE = 'MESSAGE_METADATA_TOO_LARGE';
+
+// `metadata` is free-form (refs, run views, ...) and the web writes it on
+// every turn, so it needs the same 64KB ceiling the agent-state snapshot has.
+// Runs inside the global ValidationPipe, so an oversized payload is a 400
+// whose message leads with the code for the agent/web to switch on.
+@ValidatorConstraint({ name: 'RoadmapAiMessageMetadataSize', async: false })
+class RoadmapAiMessageMetadataSizeConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    try {
+      const serialized = JSON.stringify(value);
+      return (
+        typeof serialized === 'string' &&
+        serialized.length <= AI_SESSION_JSON_MAX_CHARS
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  defaultMessage(): string {
+    return `${MESSAGE_METADATA_TOO_LARGE_CODE}: message metadata exceeds the 64KB limit`;
+  }
+}
+
 export class CreateRoadmapAiMessageDto {
   @IsIn([...AI_MESSAGE_ROLES])
   role: RoadmapAiMessageRole;
@@ -148,12 +196,17 @@ export class CreateRoadmapAiMessageDto {
   tokens?: number;
 
   @IsOptional()
+  @Validate(RoadmapAiMessageMetadataSizeConstraint)
   metadata?: JsonRecord;
 }
 
 export interface RoadmapAiSessionRow {
   id: string;
-  roadmap_id: string;
+  /** Set when scope === 'roadmap'; null for workspace threads. */
+  roadmap_id: string | null;
+  /** Set when scope === 'workspace'; null for roadmap threads. */
+  workspace_id: string | null;
+  scope: AiSessionScopeKind;
   user_id: string;
   title: string | null;
   mode: RoadmapAiSessionMode;

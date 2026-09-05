@@ -26,47 +26,57 @@ import {
 } from '../dto/roadmap-ai-sessions.dto';
 import { RoadmapAiSessionsService } from '../services/roadmap-ai-sessions.service';
 
-const roadmapScope = (roadmapId: string): AiSessionScope => ({
-  kind: 'roadmap',
-  roadmapId,
+const workspaceScope = (workspaceId: string): AiSessionScope => ({
+  kind: 'workspace',
+  workspaceId,
 });
 
 /**
- * Roadmap-scoped AI threads (the in-canvas assistant). The workspace twin is
- * `WorkspaceAiSessionsController`; both delegate to the same service with a
- * scope object, so a thread is only ever reachable through its own route.
+ * Workspace-scoped AI threads (the dashboard assistant). The same 8 routes,
+ * DTOs, and status codes as `RoadmapAiSessionsController`, keyed on a
+ * workspace instead of a roadmap. Lives in RoadmapsModule because the thread
+ * store and its service are shared; the service answers 404 (never 403) for a
+ * workspace the caller is not a member of, matching the AI context family.
  */
-@Controller('roadmaps/:id/ai-sessions')
+@Controller('workspaces/:id/ai-sessions')
 @UseGuards(SupabaseAuthGuard)
-export class RoadmapAiSessionsController {
+export class WorkspaceAiSessionsController {
   constructor(private readonly sessionsService: RoadmapAiSessionsService) {}
 
   @Get()
   list(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Query() query: ListRoadmapAiSessionsQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.sessionsService.list(roadmapScope(roadmapId), user.id, query);
+    return this.sessionsService.list(
+      workspaceScope(workspaceId),
+      user.id,
+      query,
+    );
   }
 
   @Post()
   create(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Body() dto: CreateRoadmapAiSessionDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.sessionsService.create(roadmapScope(roadmapId), user.id, dto);
+    return this.sessionsService.create(
+      workspaceScope(workspaceId),
+      user.id,
+      dto,
+    );
   }
 
   @Get(':sessionId')
   getOne(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessionsService.getById(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
     );
@@ -74,13 +84,13 @@ export class RoadmapAiSessionsController {
 
   @Patch(':sessionId')
   update(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @Body() dto: UpdateRoadmapAiSessionDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessionsService.update(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
       dto,
@@ -90,13 +100,13 @@ export class RoadmapAiSessionsController {
   @Put(':sessionId/agent-state')
   @HttpCode(HttpStatus.NO_CONTENT)
   async updateAgentState(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @Body() dto: UpdateRoadmapAiSessionAgentStateDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
     await this.sessionsService.updateAgentState(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
       dto.agent_state,
@@ -106,12 +116,12 @@ export class RoadmapAiSessionsController {
   @Delete(':sessionId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.sessionsService.delete(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
     );
@@ -119,13 +129,13 @@ export class RoadmapAiSessionsController {
 
   @Get(':sessionId/messages')
   listMessages(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @Query() query: ListRoadmapAiMessagesQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessionsService.listMessages(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
       query,
@@ -135,13 +145,13 @@ export class RoadmapAiSessionsController {
   @Post(':sessionId/messages')
   @HttpCode(HttpStatus.CREATED)
   appendMessage(
-    @Param('id') roadmapId: string,
+    @Param('id') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @Body() dto: CreateRoadmapAiMessageDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessionsService.appendMessage(
-      roadmapScope(roadmapId),
+      workspaceScope(workspaceId),
       sessionId,
       user.id,
       dto,

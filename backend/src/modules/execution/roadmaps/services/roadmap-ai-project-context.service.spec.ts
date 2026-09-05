@@ -62,6 +62,7 @@ function buildService(
   };
   const projectAuth = {
     assertRole: jest.fn().mockResolvedValue('owner'),
+    resolvePermissions: jest.fn().mockResolvedValue(null),
   };
   // Pass-through cache: the loader always runs, so these tests still assert on
   // the real query fan-out rather than on a memoized result.
@@ -440,6 +441,356 @@ describe('RoadmapAiProjectContextService', () => {
 
     await expect(
       service.getMemberDetails('roadmap-1', 'outsider-1', 'viewer-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+/**
+ * The project-keyed entry points serve the `/ai/context/projects/:id` family:
+ * they authorize on the project (owner or any project_access row, 404
+ * otherwise) and must return byte-identical payloads to the roadmap-keyed
+ * readers for the same project.
+ */
+describe('RoadmapAiProjectContextService project-keyed entry points', () => {
+  const ownerRow = () => query({ owner_id: 'owner-1' });
+  const memberPermissions = { roadmap: { view: true } };
+
+  it.each<
+    [string, (service: RoadmapAiProjectContextService) => Promise<unknown>]
+  >([
+    [
+      'getProjectContextForProject',
+      (service) => service.getProjectContextForProject('project-1', 'intruder'),
+    ],
+    [
+      'getProjectBriefForProject',
+      (service) => service.getProjectBriefForProject('project-1', 'intruder'),
+    ],
+    [
+      'getProjectResourcesForProject',
+      (service) =>
+        service.getProjectResourcesForProject('project-1', 'intruder'),
+    ],
+    [
+      'getProjectMeetingsForProject',
+      (service) =>
+        service.getProjectMeetingsForProject('project-1', 'intruder', {}),
+    ],
+    [
+      'getMemberDetailsForProject',
+      (service) =>
+        service.getMemberDetailsForProject('project-1', 'member-1', 'intruder'),
+    ],
+  ])(
+    '%s answers 404 for a non-member who is not the owner',
+    async (_name, call) => {
+      const { service, projectAuth, db } = buildService(null, {
+        projects: [ownerRow()],
+      });
+      projectAuth.resolvePermissions.mockResolvedValue(null);
+
+      const failure = await call(service).then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(NotFoundException);
+      expect((failure as Error).message).toBe('Project not found');
+      expect(projectAuth.resolvePermissions).toHaveBeenCalledWith(
+        'intruder',
+        'project-1',
+      );
+      // Only the owner probe ran - no project data was read.
+      expect(db.from).toHaveBeenCalledTimes(1);
+      expect(db.from).toHaveBeenCalledWith('projects');
+    },
+  );
+
+  it('admits the project owner even without a project_access row', async () => {
+    const { service, projectAuth } = buildService(null, {
+      projects: [ownerRow()],
+      project_briefs: [query(null)],
+    });
+    projectAuth.resolvePermissions.mockResolvedValue(null);
+
+    await expect(
+      service.getProjectBriefForProject('project-1', 'owner-1'),
+    ).resolves.toEqual({
+      project_id: 'project-1',
+      project_summary: null,
+      custom_fields: [],
+    });
+  });
+
+  it('getProjectContextForProject returns the same pack as the roadmap-keyed path', async () => {
+    const contextQueues = () => ({
+      projects: [
+        query({
+          id: 'project-1',
+          title: 'Apollo',
+          status: 'active',
+          duration: '3 months',
+        }),
+      ],
+      project_briefs: [
+        query({
+          version: 3,
+          project_summary: '<p>Build &amp; launch.</p>',
+          custom_fields: [{ key: 'Audience', value: 'Teams', position: 2 }],
+        }),
+      ],
+      project_access: [
+        query([
+          { user_id: 'member-1', role: 'editor', granted_at: '2026-01-02' },
+        ]),
+      ],
+      profiles: [
+        query([
+          { id: 'member-1', display_name: 'Morgan' },
+          { id: 'owner-1', display_name: 'Olivia' },
+        ]),
+      ],
+      project_teams: [
+        query([{ team_id: 'team-1', team: { id: 'team-1', name: 'Core' } }]),
+      ],
+      project_resource_links: [
+        query(null, { count: 2 }),
+        query([{ id: 'link-1', title: 'Architecture' }]),
+      ],
+      meetings: [
+        query(null, { count: 1 }),
+        query({
+          id: 'meeting-1',
+          title: 'Kickoff',
+          scheduled_at: '2026-08-01T00:00:00.000Z',
+        }),
+      ],
+    });
+    const roadmapKeyed = buildService(
+      { id: 'roadmap-1', owner_id: 'owner-1', project_id: 'project-1' },
+      contextQueues(),
+    );
+    const viaRoadmap = await roadmapKeyed.service.getProjectContext(
+      'roadmap-1',
+      'viewer-1',
+    );
+
+    const queues = contextQueues();
+    const projectKeyed = buildService(null, {
+      ...queues,
+      // The owner probe reads projects first, then the context reader does.
+      projects: [ownerRow(), ...queues.projects],
+    });
+    projectKeyed.projectAuth.resolvePermissions.mockResolvedValue(
+      memberPermissions,
+    );
+    const viaProject = await projectKeyed.service.getProjectContextForProject(
+      'project-1',
+      'viewer-1',
+    );
+
+    expect(viaProject).toEqual(viaRoadmap);
+    expect(viaProject.project?.title).toBe('Apollo');
+    expect(viaProject.members.map((member) => member.id)).toEqual([
+      'owner-1',
+      'member-1',
+    ]);
+    expect(projectKeyed.roadmapsRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('getProjectBriefForProject returns the same brief as the roadmap-keyed path', async () => {
+    const brief = () =>
+      query({
+        version: 1,
+        project_summary: '<p>Use &amp; support <strong>Postgres</strong>.</p>',
+        custom_fields: [{ key: 'Decision', value: 'Yes', position: 0 }],
+      });
+    const viaRoadmap = await buildService(
+      { owner_id: 'owner-1', project_id: 'project-1' },
+      { project_briefs: [brief()] },
+    ).service.getProjectBrief('roadmap-1', 'viewer-1');
+
+    const projectKeyed = buildService(null, {
+      projects: [ownerRow()],
+      project_briefs: [brief()],
+    });
+    projectKeyed.projectAuth.resolvePermissions.mockResolvedValue(
+      memberPermissions,
+    );
+    const viaProject = await projectKeyed.service.getProjectBriefForProject(
+      'project-1',
+      'viewer-1',
+    );
+
+    expect(viaProject).toEqual(viaRoadmap);
+    expect(viaProject).toMatchObject({
+      project_id: 'project-1',
+      project_summary: 'Use & support Postgres.',
+    });
+  });
+
+  it('getProjectResourcesForProject returns the same resources as the roadmap-keyed path', async () => {
+    const resourceQueues = () => ({
+      project_resource_folders: [
+        query([{ id: 'folder-1', name: 'Docs', position: 0 }]),
+      ],
+      project_resource_links: [
+        query([
+          {
+            id: 'link-1',
+            folder_id: 'folder-1',
+            title: 'Architecture',
+            url: 'https://example.com/arch',
+            description: '<p>Overview &amp; diagrams</p>',
+            position: 0,
+          },
+        ]),
+      ],
+    });
+    const viaRoadmap = await buildService(
+      { owner_id: 'owner-1', project_id: 'project-1' },
+      resourceQueues(),
+    ).service.getProjectResources('roadmap-1', 'viewer-1');
+
+    const projectKeyed = buildService(null, {
+      ...resourceQueues(),
+      projects: [ownerRow()],
+    });
+    projectKeyed.projectAuth.resolvePermissions.mockResolvedValue(
+      memberPermissions,
+    );
+    const viaProject = await projectKeyed.service.getProjectResourcesForProject(
+      'project-1',
+      'viewer-1',
+    );
+
+    expect(viaProject).toEqual(viaRoadmap);
+    expect(viaProject).toMatchObject({
+      project_id: 'project-1',
+      folders: [{ id: 'folder-1', name: 'Docs', position: 0 }],
+      links: [{ id: 'link-1', description: 'Overview & diagrams' }],
+    });
+  });
+
+  it('getProjectMeetingsForProject returns the same page as the roadmap-keyed path', async () => {
+    const meetingRow = {
+      id: 'meeting-1',
+      title: 'Kickoff',
+      description: null,
+      type: 'kickoff',
+      scheduled_at: '2026-09-01T00:00:00.000Z',
+      ends_at: null,
+      status: 'scheduled',
+      meeting_url: null,
+      participants: [
+        {
+          id: 'participant-host',
+          user_id: 'host-1',
+          guest_email: null,
+          guest_name: null,
+          role: 'host',
+          response: 'accepted',
+          profile: { display_name: 'Host' },
+        },
+      ],
+    };
+    const viaRoadmap = await buildService(
+      { owner_id: 'owner-1', project_id: 'project-1' },
+      { meetings: [query([meetingRow])] },
+    ).service.getProjectMeetings('roadmap-1', 'viewer-1', {
+      window: 'upcoming',
+      limit: 5,
+    });
+
+    const meetingsQuery = query([meetingRow]);
+    const projectKeyed = buildService(null, {
+      projects: [ownerRow()],
+      meetings: [meetingsQuery],
+    });
+    projectKeyed.projectAuth.resolvePermissions.mockResolvedValue(
+      memberPermissions,
+    );
+    const viaProject = await projectKeyed.service.getProjectMeetingsForProject(
+      'project-1',
+      'viewer-1',
+      { window: 'upcoming', limit: 5 },
+    );
+
+    expect(viaProject).toEqual(viaRoadmap);
+    expect(viaProject).toMatchObject({
+      project_id: 'project-1',
+      window: 'upcoming',
+      meetings: [{ id: 'meeting-1', participants: [{ user_id: 'host-1' }] }],
+    });
+    expect(meetingsQuery.gte).toHaveBeenCalledWith(
+      'scheduled_at',
+      expect.any(String),
+    );
+    expect(meetingsQuery.eq).toHaveBeenCalledWith('status', 'scheduled');
+    expect(meetingsQuery.limit).toHaveBeenCalledWith(5);
+  });
+
+  it('getMemberDetailsForProject returns the same member as the roadmap-keyed path', async () => {
+    const memberQueues = () => ({
+      project_access: [
+        query({
+          user_id: 'member-1',
+          role: 'editor',
+          capabilities: { roadmap_edit: true },
+        }),
+      ],
+      profiles: [
+        query({
+          id: 'member-1',
+          display_name: 'Morgan',
+          bio: '<p>Backend &amp; systems</p>',
+        }),
+      ],
+      user_skills: [query([{ skill: { name: 'TypeScript' } }])],
+      project_team_members: [query([{ team_id: 'team-a' }])],
+      teams: [query([{ id: 'team-a', name: 'Alpha' }])],
+    });
+    const viaRoadmap = await buildService(
+      { owner_id: 'owner-1', project_id: 'project-1' },
+      memberQueues(),
+    ).service.getMemberDetails('roadmap-1', 'member-1', 'viewer-1');
+
+    const projectKeyed = buildService(null, {
+      ...memberQueues(),
+      projects: [ownerRow()],
+    });
+    projectKeyed.projectAuth.resolvePermissions.mockResolvedValue(
+      memberPermissions,
+    );
+    const viaProject = await projectKeyed.service.getMemberDetailsForProject(
+      'project-1',
+      'member-1',
+      'viewer-1',
+    );
+
+    expect(viaProject).toEqual(viaRoadmap);
+    expect(viaProject).toEqual({
+      member: {
+        id: 'member-1',
+        display_name: 'Morgan',
+        bio: 'Backend & systems',
+        skills: ['TypeScript'],
+        role: 'editor',
+        capabilities: { roadmap_edit: true },
+        teams: ['Alpha'],
+      },
+    });
+  });
+
+  it('getMemberDetailsForProject hides non-members of the project as 404', async () => {
+    const { service, projectAuth } = buildService(null, {
+      projects: [ownerRow()],
+      project_access: [query(null)],
+    });
+    projectAuth.resolvePermissions.mockResolvedValue(memberPermissions);
+
+    await expect(
+      service.getMemberDetailsForProject('project-1', 'outsider-1', 'viewer-1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

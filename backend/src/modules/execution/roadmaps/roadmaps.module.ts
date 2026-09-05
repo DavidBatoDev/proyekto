@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../projects/projects.module';
+import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 
 // Controllers
@@ -15,6 +16,7 @@ import { RoadmapNotesController } from './controllers/roadmap-notes.controller';
 import { RoadmapPatchController } from './controllers/roadmap-patch.controller';
 import { RoadmapAiController } from './controllers/roadmap-ai.controller';
 import { RoadmapAiSessionsController } from './controllers/roadmap-ai-sessions.controller';
+import { WorkspaceAiSessionsController } from './controllers/workspace-ai-sessions.controller';
 
 // Services & tokens
 import {
@@ -79,7 +81,9 @@ import { RoadmapWriteEffects } from './services/roadmap-write-effects.service';
 import { FeatureStatusSyncService } from './services/derive-feature-status';
 
 @Module({
-  imports: [ProjectsModule, NotificationsModule],
+  // WorkspacesModule imports only SupabaseModule + NotificationsModule (and
+  // already sits under ProjectsModule), so there is no cycle to break here.
+  imports: [ProjectsModule, WorkspacesModule, NotificationsModule],
   controllers: [
     RoadmapsController,
     MilestonesController,
@@ -93,6 +97,7 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     RoadmapPatchController,
     RoadmapAiController,
     RoadmapAiSessionsController,
+    WorkspaceAiSessionsController,
   ],
   providers: [
     RoadmapsService,
@@ -144,6 +149,9 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
   ],
   exports: [
     RoadmapAuthorizationService,
+    // The accessible-roadmap readers (`getAccessibleProjectIds`,
+    // `listAccessibleRoadmapsLight`) consumed by the AI context module.
+    ROADMAPS_REPOSITORY,
     // Consumed by RoadmapSharesModule so share links authorize and log through
     // the same seam as every other roadmap write.
     RoadmapActivityService,
@@ -159,7 +167,8 @@ import { FeatureStatusSyncService } from './services/derive-feature-status';
     // Epic/feature comment writes (MCP `epic_comment_add` / `feature_comment_add`).
     EpicsService,
     FeaturesService,
-    // Owner-only AI thread reads (MCP `ai-sessions:read`).
+    // Owner-only AI thread reads (MCP `ai-sessions:read`); also the
+    // workspace-scoped thread CRUD behind `workspaces/:id/ai-sessions`.
     RoadmapAiSessionsService,
   ],
 })

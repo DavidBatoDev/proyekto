@@ -42,7 +42,11 @@ describe('phase0 commit flow (G4, G5, G8)', () => {
     await h.grantAccess(projectId, owner.id, 'owner');
     await h.grantAccess(projectId, nonEditor.id, 'viewer');
     roadmapId = await h.createRoadmap(owner.id, projectId);
-    g4RoadmapId = await h.createRoadmap(owner.id, projectId);
+    // A project holds at most one linked roadmap (uq_roadmaps_project_id_linked),
+    // so the G4 roadmap gets its own owner-granted project.
+    const g4ProjectId = await h.createProject(owner.id, 'itest g4 project');
+    await h.grantAccess(g4ProjectId, owner.id, 'owner');
+    g4RoadmapId = await h.createRoadmap(owner.id, g4ProjectId);
   });
 
   afterAll(async () => {

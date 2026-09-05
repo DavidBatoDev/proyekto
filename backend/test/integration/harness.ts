@@ -52,6 +52,15 @@ const realtimeStub = {
 const knowledgeOutboxStub = { enqueue: () => undefined } as unknown;
 
 type RoleName = 'viewer' | 'commenter' | 'editor' | 'admin' | 'owner';
+type WorkspaceRoleName = 'owner' | 'admin' | 'member';
+type TeamRoleName = 'admin' | 'member';
+
+/** Optional column overrides for `createTask` (all nullable in the schema). */
+interface TaskFields {
+  title?: string;
+  due_date?: string | null;
+  status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | null;
+}
 
 interface SeededUser {
   id: string;
@@ -240,10 +249,10 @@ export class Harness {
     return this.track('roadmaps', data.id as string);
   }
 
-  async createEpic(roadmapId: string): Promise<string> {
+  async createEpic(roadmapId: string, title = 'itest epic'): Promise<string> {
     const { data, error } = await this.admin
       .from('roadmap_epics')
-      .insert({ roadmap_id: roadmapId, title: 'itest epic', position: 0 })
+      .insert({ roadmap_id: roadmapId, title, position: 0 })
       .select('id')
       .single();
     if (error || !data) throw new Error(`createEpic failed: ${error?.message}`);
@@ -274,14 +283,118 @@ export class Harness {
     return this.track('roadmap_features', data.id as string);
   }
 
-  async createTask(featureId: string, position = 0): Promise<string> {
+  // `fields` lets a test pin a title, a due_date, or an explicit status
+  // (including NULL, which the column allows) without a second update.
+  async createTask(
+    featureId: string,
+    position = 0,
+    fields: TaskFields = {},
+  ): Promise<string> {
     const { data, error } = await this.admin
       .from('roadmap_tasks')
-      .insert({ feature_id: featureId, title: 'itest task', position })
+      .insert({
+        feature_id: featureId,
+        title: fields.title ?? 'itest task',
+        position,
+        ...(fields.due_date !== undefined ? { due_date: fields.due_date } : {}),
+        ...(fields.status !== undefined ? { status: fields.status } : {}),
+      })
       .select('id')
       .single();
     if (error || !data) throw new Error(`createTask failed: ${error?.message}`);
     return this.track('roadmap_tasks', data.id as string);
+  }
+
+  /**
+   * A workspace with `createdBy` seated as its owner (the same two rows
+   * WorkspacesService.createWorkspace writes). The slug is passed explicitly
+   * so the fixture is valid with or without the allocator trigger; `label`
+   * must be slug-safe (lowercase letters, digits, hyphens).
+   */
+  async createWorkspace(createdBy: string, label = 'ws'): Promise<string> {
+    const slug = `itest-${label}-${this.runId}`.toLowerCase();
+    const { data, error } = await this.admin
+      .from('workspaces')
+      .insert({
+        name: `itest workspace ${label} ${this.runId}`,
+        slug,
+        created_by: createdBy,
+      })
+      .select('id')
+      .single();
+    if (error || !data)
+      throw new Error(`createWorkspace failed: ${error?.message}`);
+    const id = this.track('workspaces', data.id as string);
+    await this.addWorkspaceMember(id, createdBy, 'owner');
+    return id;
+  }
+
+  async addWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    role: WorkspaceRoleName = 'member',
+  ): Promise<string> {
+    const { data, error } = await this.admin
+      .from('workspace_members')
+      .insert({ workspace_id: workspaceId, user_id: userId, role })
+      .select('id')
+      .single();
+    if (error || !data)
+      throw new Error(`addWorkspaceMember failed: ${error?.message}`);
+    return this.track('workspace_members', data.id as string);
+  }
+
+  /** Home (or un-home, with null) a project. The column is SET NULL on
+   * workspace deletion, so nothing extra to track. */
+  async setProjectWorkspace(
+    projectId: string,
+    workspaceId: string | null,
+  ): Promise<void> {
+    const { error } = await this.admin
+      .from('projects')
+      .update({ workspace_id: workspaceId })
+      .eq('id', projectId);
+    if (error) throw new Error(`setProjectWorkspace failed: ${error.message}`);
+  }
+
+  /**
+   * A team owned by `ownerId`, optionally homed in a workspace. The owner is
+   * deliberately NOT given a team_members row: `team_members_block_owner_delete`
+   * refuses to delete an owner's row, which would wedge LIFO cleanup, and
+   * every read path (TeamsService.listMyTeams, the refs resolver) already
+   * treats `teams.owner_id` as membership.
+   */
+  async createTeam(
+    ownerId: string,
+    workspaceId: string | null = null,
+    name = 'itest team',
+  ): Promise<string> {
+    const { data, error } = await this.admin
+      .from('teams')
+      .insert({
+        owner_id: ownerId,
+        name: `${name} ${this.runId}`,
+        workspace_id: workspaceId,
+      })
+      .select('id')
+      .single();
+    if (error || !data) throw new Error(`createTeam failed: ${error?.message}`);
+    return this.track('teams', data.id as string);
+  }
+
+  async addTeamMember(
+    teamId: string,
+    userId: string,
+    role: TeamRoleName = 'member',
+  ): Promise<string> {
+    const { data, error } = await this.admin
+      .from('team_members')
+      .insert({ team_id: teamId, user_id: userId, role })
+      .select('id')
+      .single();
+    if (error || !data)
+      throw new Error(`addTeamMember failed: ${error?.message}`);
+    return this.track('team_members', data.id as string);
   }
 
   async createDependency(

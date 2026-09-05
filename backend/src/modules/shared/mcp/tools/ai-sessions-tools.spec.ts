@@ -29,6 +29,8 @@ function depsWith(scopes: string[], aiSessions: Record<string, unknown> = {}) {
   } as unknown as McpToolDeps;
 }
 
+const roadmapScope = (roadmapId: string) => ({ kind: 'roadmap', roadmapId });
+
 function isError(res: any): boolean {
   return res?.isError === true;
 }
@@ -68,6 +70,8 @@ describe('MCP ai-sessions read tools', () => {
         {
           id: 's1',
           roadmap_id: 'r1',
+          workspace_id: null,
+          scope: 'roadmap',
           title: 'Plan Q3',
           mode: 'chat',
           is_archived: false,
@@ -105,6 +109,8 @@ describe('MCP ai-sessions read tools', () => {
     expect(session).toEqual({
       id: 's1',
       roadmap_id: 'r1',
+      workspace_id: null,
+      scope: 'roadmap',
       title: 'Plan Q3',
       mode: 'chat',
       is_archived: false,
@@ -185,12 +191,12 @@ describe('MCP ai-sessions read tools', () => {
     });
 
     expect(deps.s.aiSessions.list).toHaveBeenCalledWith(
-      'r1',
+      roadmapScope('r1'),
       'user-1',
       expect.objectContaining({ limit: 100 }),
     );
     expect(deps.s.aiSessions.listMessages).toHaveBeenCalledWith(
-      'r1',
+      roadmapScope('r1'),
       's1',
       'user-1',
       expect.objectContaining({ limit: 100 }),
@@ -239,10 +245,35 @@ describe('MCP ai-sessions read tools', () => {
     });
 
     expect(deps.s.aiSessions.listMessages).toHaveBeenCalledWith(
-      'r1',
+      roadmapScope('r1'),
       's1',
       'user-1',
       expect.objectContaining({ before_seq: 42 }),
     );
+  });
+
+  it('always addresses the service with a ROADMAP scope object (never a bare id, never workspace)', async () => {
+    const { server, handlers } = captureServer();
+    const deps = depsWith(['ai-sessions:read']);
+    registerAiSessionTools(server, deps);
+
+    await handlers.roadmap_ai_sessions_list({
+      roadmap_id: 'r1',
+      archived: true,
+    });
+    await handlers.roadmap_ai_session_messages({
+      roadmap_id: 'r1',
+      session_id: 's1',
+      after_seq: 3,
+    });
+
+    const listCall = (deps.s.aiSessions.list as jest.Mock).mock.calls[0];
+    const messagesCall = (deps.s.aiSessions.listMessages as jest.Mock).mock
+      .calls[0];
+    expect(listCall[0]).toEqual({ kind: 'roadmap', roadmapId: 'r1' });
+    expect(listCall[1]).toBe('user-1');
+    expect(listCall[2]).toEqual(expect.objectContaining({ archived: true }));
+    expect(messagesCall[0]).toEqual({ kind: 'roadmap', roadmapId: 'r1' });
+    expect(messagesCall.slice(1, 3)).toEqual(['s1', 'user-1']);
   });
 });

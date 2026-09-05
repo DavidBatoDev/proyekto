@@ -29,7 +29,9 @@ import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { AuditService } from '../../../shared/audit/audit.service';
 import type {
   RoadmapAiCommitDto,
+  RoadmapAiCommitReplayRecord,
   RoadmapAiCommitResponseDto,
+  RoadmapAiCommitTrimmedReplayRecord,
   RoadmapAiChangeTimelineEntryDto,
   RoadmapAiContextChildDto,
   RoadmapAiContextChildrenQueryDto,
@@ -178,10 +180,20 @@ export type RoadmapChangeHistoryEntry = {
   temp_id_mapping: Record<string, string>;
   committed_at: string;
   discarded_at: string | null;
+  /** Agent-run attribution; null for web/MCP commits and for rows that predate it. */
+  session_id?: string | null;
+  run_id?: string | null;
   operations?: RoadmapAiOperationDto[];
 };
 
+/** What a commit knows about the AI session it came from, for attribution only. */
+type CommitSessionAttribution = {
+  sessionId: string;
+  scope: 'roadmap' | 'workspace' | null;
+};
+
 const CHANGE_HISTORY_TABLE = 'roadmap_change_history';
+const AI_SESSIONS_TABLE = 'roadmap_ai_sessions';
 
 type FlatNodeSnapshot = {
   id: string;
@@ -246,6 +258,9 @@ const PREVIEW_TTL_MS = 1000 * 60 * 30;
 const RESOLUTION_TTL_SECONDS = 60 * 10;
 const CHANGE_TIMELINE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const CHANGE_TIMELINE_MAX_ENTRIES = 250;
+/** A run-attributed commit keeps its (trimmed) idempotency record for a day:
+ * the agent may resume a paused run and retry the same batch hours later. */
+const RUN_COMMIT_IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;
 const RESOLVE_LOOKUP_CACHE_TTL_SECONDS = 60 * 3;
 const RESOLVE_LOOKUP_CACHE_VERSION = 'v1';
 const AUTHZ_DECISION_CACHE_VERSION =
@@ -1700,7 +1715,7 @@ export class RoadmapAiService {
     // operations is a client bug and is rejected rather than silently replayed.
     if (idempotencyKey) {
       const replay =
-        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
+        await this.previewStore.readCommitIdempotency<RoadmapAiCommitReplayRecord>(
           roadmapId,
           userId,
           idempotencyKey,
@@ -1727,7 +1742,10 @@ export class RoadmapAiService {
             `change_id=${replay.response.change_id ?? 'unknown'}`,
           ].join(' '),
         );
-        return replay.response;
+        // A run-attributed commit stored the trimmed record (no snapshot or
+        // roadmap payload) and gets it back verbatim — the caller that sends
+        // run_id never reads those fields on a replay.
+        return replay.response as RoadmapAiCommitResponseDto;
       }
     }
     const currentRevisionToken = this.requireRevisionToken(current.updated_at);
@@ -1745,6 +1763,18 @@ export class RoadmapAiService {
         code: 'STALE_REVISION',
       });
     }
+
+    // Attribution only (change history + audit): a session the caller does not
+    // own is dropped, never rejected, so a bad session id cannot fail a commit
+    // whose operations are valid.
+    const sessionAttribution = dto.session_id
+      ? await this.resolveCommitSessionAttribution(
+          dto.session_id,
+          userId,
+          roadmapId,
+        )
+      : null;
+    const attributedRunId = dto.run_id ?? null;
 
     const repoLookupStartedAt = Date.now();
     const full = includeRoadmap
@@ -1976,22 +2006,12 @@ export class RoadmapAiService {
       response.roadmap = roadmapRecord;
     }
 
-    if (idempotencyKey) {
-      await this.previewStore.writeCommitIdempotency(
-        roadmapId,
-        userId,
-        idempotencyKey,
-        operationsHash,
-        response,
-      );
-    }
-
     const commitProjectId = (current.project_id as string | null) ?? null;
 
     // Durable change log. Unlike the audit call below this is NOT gated on
     // project_id — a personal roadmap gets a row with a null project, which is
     // the only durable record such a commit has ever had.
-    this.recordChangeHistory({
+    const historyWrite = this.recordChangeHistory({
       changeId,
       roadmapId,
       projectId: commitProjectId,
@@ -2004,7 +2024,61 @@ export class RoadmapAiService {
       revisionTokenBefore: currentRevisionToken,
       revisionTokenAfter,
       committedAt,
+      sessionId: sessionAttribution?.sessionId ?? null,
+      runId: attributedRunId,
     });
+    if (attributedRunId) {
+      // The agent's verify phase reads this row back by run on its next
+      // request, so the write is awaited and its outcome reported. A failure
+      // still never fails the commit — the roadmap is already updated.
+      const historyStartedAt = Date.now();
+      response.history_recorded = await historyWrite;
+      this.logger.log(
+        [
+          'event=roadmap_ai_commit_history_awaited',
+          `roadmap_id=${roadmapId}`,
+          `change_id=${changeId}`,
+          `run_id=${attributedRunId}`,
+          `history_recorded=${response.history_recorded}`,
+          `history_ms=${Date.now() - historyStartedAt}`,
+        ].join(' '),
+      );
+    } else {
+      void historyWrite;
+    }
+
+    // Written after the history outcome is known so a replay reports the same
+    // `history_recorded` the first attempt did.
+    if (idempotencyKey) {
+      if (attributedRunId) {
+        const replayRecord: RoadmapAiCommitTrimmedReplayRecord = {
+          change_id: changeId,
+          committed_at: committedAt,
+          revision_token: revisionTokenAfter,
+          semantic_diff: semanticDiff,
+          operation_results: applyResult.operationResults,
+          temp_id_mapping: tempIdMapping,
+          timeline,
+          history_recorded: response.history_recorded === true,
+        };
+        await this.previewStore.writeCommitIdempotency(
+          roadmapId,
+          userId,
+          idempotencyKey,
+          operationsHash,
+          replayRecord,
+          RUN_COMMIT_IDEMPOTENCY_TTL_SECONDS,
+        );
+      } else {
+        await this.previewStore.writeCommitIdempotency(
+          roadmapId,
+          userId,
+          idempotencyKey,
+          operationsHash,
+          response,
+        );
+      }
+    }
 
     // Durable audit trail for project-linked roadmaps (personal roadmaps have
     // no project to log against). Fire-and-forget — never blocks the response.
@@ -2022,6 +2096,9 @@ export class RoadmapAiService {
           revision_token_before: currentRevisionToken,
           revision_token_after: revisionTokenAfter,
           semantic_change_count: semanticDiffSummary.total_changes ?? 0,
+          ai_session_id: sessionAttribution?.sessionId ?? null,
+          ai_run_id: attributedRunId,
+          ai_scope: sessionAttribution?.scope ?? null,
         },
       });
     }
@@ -2325,16 +2402,65 @@ export class RoadmapAiService {
   }
 
   /**
-   * Persist one committed change to the durable log. Fire-and-forget with the
-   * same tolerate-failure discipline as `appendChangeToTimeline`: the history is
-   * an observability surface, so a write failure must never fail a commit that
-   * already succeeded.
+   * Resolve a commit's `session_id` to a session the caller owns, for change
+   * history and audit attribution. Anything but an owned row — missing,
+   * foreign, or a failed lookup — yields null with a warning: attribution is an
+   * observability surface and must never turn a valid commit into a 4xx.
+   */
+  private async resolveCommitSessionAttribution(
+    sessionId: string,
+    userId: string,
+    roadmapId: string,
+  ): Promise<CommitSessionAttribution | null> {
+    try {
+      const { data, error } = await this.db
+        .from(AI_SESSIONS_TABLE)
+        .select('id, scope')
+        .eq('id', sessionId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const row = (data ?? null) as { id?: unknown; scope?: unknown } | null;
+      if (!row || typeof row.id !== 'string') {
+        this.logger.warn(
+          [
+            'event=roadmap_ai_commit_session_mismatch',
+            `roadmap_id=${roadmapId}`,
+            `user_id=${userId}`,
+            `session_id=${sessionId}`,
+          ].join(' '),
+        );
+        return null;
+      }
+      const scope =
+        row.scope === 'roadmap' || row.scope === 'workspace' ? row.scope : null;
+      return { sessionId: row.id, scope };
+    } catch (error) {
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_session_lookup_failed',
+          `roadmap_id=${roadmapId}`,
+          `session_id=${sessionId}`,
+          `error=${(error as Error)?.message ?? 'unknown'}`,
+        ].join(' '),
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Persist one committed change to the durable log with the same
+   * tolerate-failure discipline as `appendChangeToTimeline`: the history is an
+   * observability surface, so a write failure must never fail a commit that
+   * already succeeded. Resolves `true` when the row landed and `false` when it
+   * did not; never rejects. Callers without a run attached drop the promise
+   * (fire-and-forget); run-attributed commits await it and report the result.
    *
    * Deliberately NOT wrapped in `if (projectId)` — the two AuditService call
    * sites are, which is why personal roadmaps have no durable record of any kind
    * today. Here they get a row with a null project_id.
    */
-  private recordChangeHistory(params: {
+  private async recordChangeHistory(params: {
     changeId: string;
     roadmapId: string;
     projectId: string | null;
@@ -2347,37 +2473,43 @@ export class RoadmapAiService {
     revisionTokenBefore: string;
     revisionTokenAfter: string;
     committedAt: string;
-  }): void {
-    void (async () => {
-      try {
-        const { error } = await this.db.from(CHANGE_HISTORY_TABLE).insert({
-          change_id: params.changeId,
-          roadmap_id: params.roadmapId,
-          project_id: params.projectId,
-          actor_id: params.actorId,
-          status: 'applied',
-          operations: params.operations,
-          operations_count: params.operations.length,
-          operations_hash: params.operationsHash,
-          semantic_diff: params.semanticDiff,
-          semantic_change_count: params.semanticChangeCount,
-          temp_id_mapping: params.tempIdMapping ?? {},
-          revision_token_before: params.revisionTokenBefore,
-          revision_token_after: params.revisionTokenAfter,
-          committed_at: params.committedAt,
-        });
-        if (error) throw new Error(error.message);
-      } catch (error) {
-        this.logger.warn(
-          [
-            'event=roadmap_change_history_write_failed',
-            `roadmap_id=${params.roadmapId}`,
-            `change_id=${params.changeId}`,
-            `error=${(error as Error)?.message ?? 'unknown'}`,
-          ].join(' '),
-        );
-      }
-    })();
+    sessionId?: string | null;
+    runId?: string | null;
+  }): Promise<boolean> {
+    try {
+      const { error } = await this.db.from(CHANGE_HISTORY_TABLE).insert({
+        change_id: params.changeId,
+        roadmap_id: params.roadmapId,
+        project_id: params.projectId,
+        actor_id: params.actorId,
+        status: 'applied',
+        operations: params.operations,
+        operations_count: params.operations.length,
+        operations_hash: params.operationsHash,
+        semantic_diff: params.semanticDiff,
+        semantic_change_count: params.semanticChangeCount,
+        temp_id_mapping: params.tempIdMapping ?? {},
+        revision_token_before: params.revisionTokenBefore,
+        revision_token_after: params.revisionTokenAfter,
+        committed_at: params.committedAt,
+        // Only stamped when attributed: a web/MCP commit keeps the exact
+        // payload it always wrote.
+        ...(params.sessionId ? { session_id: params.sessionId } : {}),
+        ...(params.runId ? { run_id: params.runId } : {}),
+      });
+      if (error) throw new Error(error.message);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        [
+          'event=roadmap_change_history_write_failed',
+          `roadmap_id=${params.roadmapId}`,
+          `change_id=${params.changeId}`,
+          `error=${(error as Error)?.message ?? 'unknown'}`,
+        ].join(' '),
+      );
+      return false;
+    }
   }
 
   /**
@@ -2449,6 +2581,8 @@ export class RoadmapAiService {
       'temp_id_mapping',
       'committed_at',
       'discarded_at',
+      'session_id',
+      'run_id',
     ];
     if (options.includeOperations) columns.push('operations');
 

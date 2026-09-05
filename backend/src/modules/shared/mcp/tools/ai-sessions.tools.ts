@@ -28,6 +28,11 @@ function projectSession(row: Record<string, unknown>) {
   return {
     id: row.id,
     roadmap_id: row.roadmap_id,
+    // Threads are roadmap- or workspace-scoped (exactly one target id is set).
+    // This tool only lists roadmap threads, so scope is always 'roadmap' and
+    // workspace_id null here; surfaced so the projection matches the row.
+    workspace_id: row.workspace_id,
+    scope: row.scope,
     title: row.title,
     mode: row.mode,
     is_archived: row.is_archived,
@@ -84,14 +89,26 @@ export function registerAiSessionTools(server: McpServer, deps: McpToolDeps) {
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ roadmap_id, archived, limit }) =>
+    async ({
+      roadmap_id,
+      archived,
+      limit,
+    }: {
+      roadmap_id: string;
+      archived?: boolean;
+      limit?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'ai-sessions:read');
-        const rows = await deps.s.aiSessions.list(roadmap_id, uid, {
-          archived,
-          // The service DTO caps at 100 regardless of our page ceiling.
-          limit: Math.min(clampLimit(limit, deps.s.maxPageSize, 25), 100),
-        });
+        const rows = await deps.s.aiSessions.list(
+          { kind: 'roadmap', roadmapId: roadmap_id },
+          uid,
+          {
+            archived,
+            // The service DTO caps at 100 regardless of our page ceiling.
+            limit: Math.min(clampLimit(limit, deps.s.maxPageSize, 25), 100),
+          },
+        );
         return {
           sessions: (rows as unknown as Record<string, unknown>[]).map(
             projectSession,
@@ -116,7 +133,19 @@ export function registerAiSessionTools(server: McpServer, deps: McpToolDeps) {
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ roadmap_id, session_id, before_seq, after_seq, limit }) =>
+    async ({
+      roadmap_id,
+      session_id,
+      before_seq,
+      after_seq,
+      limit,
+    }: {
+      roadmap_id: string;
+      session_id: string;
+      before_seq?: number;
+      after_seq?: number;
+      limit?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'ai-sessions:read');
         const pageSize = Math.min(
@@ -124,7 +153,7 @@ export function registerAiSessionTools(server: McpServer, deps: McpToolDeps) {
           200,
         );
         const rows = await deps.s.aiSessions.listMessages(
-          roadmap_id,
+          { kind: 'roadmap', roadmapId: roadmap_id },
           session_id,
           uid,
           { before_seq, after_seq, limit: pageSize },

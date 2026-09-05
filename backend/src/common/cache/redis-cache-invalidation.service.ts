@@ -93,11 +93,22 @@ export class RedisCacheInvalidationService {
 
   async invalidateDashboardCacheForUser(userId: string): Promise<void> {
     this.logger.log(
-      `cache_invalidate scope=dashboard_user user_id=${userId} key_count=1`,
+      `cache_invalidate scope=dashboard_user user_id=${userId} key_count=1 index_count=1`,
     );
-    await this.runBestEffort('redis_del_dashboard_user', () =>
-      this.cache.del(REDIS_CACHE_KEYS.projectsDashboardByUser(userId)),
-    );
+    await Promise.all([
+      this.runBestEffort('redis_del_dashboard_user', () =>
+        this.cache.del(REDIS_CACHE_KEYS.projectsDashboardByUser(userId)),
+      ),
+      // The AI context overview is keyed per (user, workspace) and derives from
+      // the same dashboard reads, so every variant goes through its per-user
+      // index. `invalidateAllDashboardCache` cannot enumerate users; there the
+      // 15s dashboard TTL bounds the staleness, as it does for projects.
+      this.runBestEffort('redis_clear_ai_context_overview_user', () =>
+        this.cache.clearIndex(
+          REDIS_CACHE_KEYS.aiContextOverviewIndexByUser(userId),
+        ),
+      ),
+    ]);
   }
 
   async invalidateAllDashboardCache(): Promise<void> {

@@ -104,7 +104,13 @@ describe('Durable roadmap change history (Phase 4a)', () => {
    * something this table introduced — reusing one roadmap here would test the
    * bug instead of the history.
    */
-  const freshRoadmap = () => h.createRoadmap(owner.id, projectId);
+  // A project holds at most one linked roadmap (uq_roadmaps_project_id_linked),
+  // so every fresh roadmap gets its own owner-granted project.
+  const freshRoadmap = async () => {
+    const freshProjectId = await h.createProject(owner.id, 'itest rch project');
+    await h.grantAccess(freshProjectId, owner.id, 'owner');
+    return h.createRoadmap(owner.id, freshProjectId);
+  };
 
   beforeAll(async () => {
     await h.boot();
@@ -219,11 +225,16 @@ describe('Durable roadmap change history (Phase 4a)', () => {
 
     // discard() previously logged nothing at all — the one mutating path with
     // no durable trail, and the exact path roadmap_revert_change calls.
+    const { data: revertRoadmap } = await h.admin
+      .from('roadmaps')
+      .select('project_id')
+      .eq('id', revertRoadmapId)
+      .single();
     const auditRow = await poll(async () => {
       const { data } = await h.admin
         .from('project_activity_log')
         .select('id, metadata')
-        .eq('project_id', projectId)
+        .eq('project_id', revertRoadmap?.project_id as string)
         .eq('action', 'roadmap.reverted')
         .eq('entity_id', revertRoadmapId)
         .limit(1);
