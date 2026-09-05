@@ -1,3 +1,4 @@
+import { getTaskAssigneeIds } from "@/lib/taskAssignees";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import type { KanbanTaskContext } from "./types";
 
@@ -93,8 +94,11 @@ export function applyFilters(
 		if (filters.epicId && row.epic.id !== filters.epicId) return false;
 		if (filters.featureId && row.feature.id !== filters.featureId) return false;
 		if (filters.assigneeIds.length) {
-			const aid = row.task.assignee_id ?? null;
-			if (!aid || !filters.assigneeIds.includes(aid)) return false;
+			// Match the full assignee set, not just the primary column.
+			const taskAssigneeIds = getTaskAssigneeIds(row.task);
+			if (!taskAssigneeIds.some((id) => filters.assigneeIds.includes(id))) {
+				return false;
+			}
 		}
 		return true;
 	});

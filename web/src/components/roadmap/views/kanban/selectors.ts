@@ -1,3 +1,4 @@
+import { getTaskAssigneeIds } from "@/lib/taskAssignees";
 import type { KanbanBoardFilters } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapMilestone } from "@/types/roadmap";
 import type { KanbanTaskContext } from "./types";
@@ -67,8 +68,12 @@ export function applyBoardFilters(
 			if (!milestoneId || !milestoneIds.includes(milestoneId)) return false;
 		}
 		if (assigneeIds.length) {
-			const assigneeId = row.task.assignee_id ?? null;
-			if (!assigneeId || !assigneeIds.includes(assigneeId)) return false;
+			// Match the full assignee set, not just the primary column, so a
+			// co-assignee's filter still surfaces the task.
+			const taskAssigneeIds = getTaskAssigneeIds(row.task);
+			if (!taskAssigneeIds.some((id) => assigneeIds.includes(id))) {
+				return false;
+			}
 		}
 		return true;
 	});

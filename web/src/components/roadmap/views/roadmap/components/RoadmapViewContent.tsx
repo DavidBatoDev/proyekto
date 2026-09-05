@@ -39,7 +39,6 @@ import {
 	RoadmapMetadataModal,
 	ShareRoadmapModal,
 } from "@/components/roadmap";
-import { ConfirmAssigneeOverwriteDialog } from "@/components/roadmap/widgets/ConfirmAssigneeOverwriteDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -59,6 +58,7 @@ import {
 	consumePendingRoadmapAiPrompt,
 	consumePendingRoadmapMetadataModal,
 } from "@/lib/roadmapPageHandoff";
+import { addTaskAssignee, getTaskAssigneeIds } from "@/lib/taskAssignees";
 import { findTaskById } from "@/routes/_execution/project/$projectId/work-items/workItemsOptimistic";
 import {
 	roadmapService,
@@ -75,12 +75,7 @@ import { TimelinePageIdentity } from "../../TimelinePageIdentity";
 import type { RoadmapPerformanceMode } from "../models/types";
 import { MobileRoadmapView } from "./MobileRoadmapView";
 import { PresentationHighlighter } from "./PresentationHighlighter";
-
-interface PendingAssignment {
-	taskId: string;
-	newAvatar: DockAvatar;
-	currentAssigneeName: string;
-}
+import { buildRoadmapJsonDocument } from "./roadmapJsonDocument";
 
 interface RoadmapViewContentProps {
 	roadmapId: string;
@@ -158,48 +153,6 @@ const resolveDeepLinkTarget = (
 	}
 	return null;
 };
-
-const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
-	id: roadmap.id,
-	name: roadmap.name,
-	description: roadmap.description,
-	project_id: roadmap.project_id ?? undefined,
-	status: roadmap.status,
-	start_date: roadmap.start_date,
-	end_date: roadmap.end_date,
-	settings: roadmap.settings,
-	roadmap_epics: (roadmap.epics ?? []).map((epic) => ({
-		id: epic.id,
-		title: epic.title,
-		description: epic.description,
-		status: epic.status,
-		priority: epic.priority,
-		position: epic.position,
-		color: epic.color,
-		start_date: epic.start_date,
-		end_date: epic.end_date,
-		tags: epic.tags,
-		roadmap_features: (epic.features ?? []).map((feature) => ({
-			id: feature.id,
-			title: feature.title,
-			description: feature.description,
-			position: feature.position,
-			is_deliverable: feature.is_deliverable,
-			start_date: feature.start_date,
-			end_date: feature.end_date,
-			roadmap_tasks: (feature.tasks ?? []).map((task) => ({
-				id: task.id,
-				title: task.title,
-				description: task.description ?? undefined,
-				status: task.status,
-				priority: task.priority,
-				assignee_id: task.assignee_id ?? undefined,
-				due_date: task.due_date,
-				position: task.position,
-			})),
-		})),
-	})),
-});
 
 export function RoadmapViewContent({
 	roadmapId,
@@ -851,9 +804,6 @@ export function RoadmapViewContent({
 
 	// Quick-assign dock state
 	const { recordAssignment } = useRecentAssignees(projectId);
-	const [pendingAssignment, setPendingAssignment] =
-		useState<PendingAssignment | null>(null);
-	const [isSavingAssignment, setIsSavingAssignment] = useState(false);
 	const [activeDragAvatar, setActiveDragAvatar] = useState<DockAvatar | null>(
 		null,
 	);
@@ -887,24 +837,21 @@ export function RoadmapViewContent({
 		return rectIntersection(args);
 	}, []);
 
+	// A dock drop ADDS the member to the task's assignee set (tasks can have
+	// several assignees); it never replaces whoever is already on it, and is
+	// a no-op when the member is already assigned.
 	const applyAssignment = useCallback(
 		async (taskId: string, avatar: DockAvatar) => {
 			const latestEpics = useRoadmapStore.getState().epics;
 			const currentTask = findTaskById(latestEpics, taskId);
 			if (!currentTask) return;
 
-			const profile = {
+			const nextTask: RoadmapTask | null = addTaskAssignee(currentTask, {
 				id: avatar.userId,
 				display_name: avatar.displayName,
 				avatar_url: avatar.avatarUrl ?? undefined,
-			};
-			const nextTask: RoadmapTask = {
-				...currentTask,
-				assignee_id: avatar.userId,
-				assignee: profile,
-				assignee_ids: [avatar.userId],
-				assignees: [profile],
-			};
+			});
+			if (!nextTask) return;
 
 			try {
 				await updateTask(nextTask);
@@ -1018,55 +965,29 @@ export function RoadmapViewContent({
 			const avatarUrl =
 				(activeData.avatarUrl as string | null | undefined) ?? null;
 			const taskId = overData.taskId as string | undefined;
-			const currentAssigneeId = overData.currentAssigneeId as
-				| string
-				| null
-				| undefined;
-			const currentAssigneeName =
-				(overData.currentAssigneeName as string | null | undefined) ?? null;
 
 			if (!userId || !displayName || !taskId) return;
-			if (currentAssigneeId === userId) return;
 
-			const avatar: DockAvatar = {
+			// Already on the task: nothing to write. The droppable carries the
+			// full set; fall back to the store when it is missing.
+			const droppableIds = overData.currentAssigneeIds;
+			const currentAssigneeIds = Array.isArray(droppableIds)
+				? (droppableIds as string[])
+				: (() => {
+						const task = findTaskById(useRoadmapStore.getState().epics, taskId);
+						return task ? getTaskAssigneeIds(task) : [];
+					})();
+			if (currentAssigneeIds.includes(userId)) return;
+
+			void applyAssignment(taskId, {
 				userId,
 				displayName,
 				avatarUrl,
 				isSelf: false,
-			};
-
-			if (!currentAssigneeId) {
-				void applyAssignment(taskId, avatar);
-				return;
-			}
-
-			setPendingAssignment({
-				taskId,
-				newAvatar: avatar,
-				currentAssigneeName: currentAssigneeName ?? "the current assignee",
 			});
 		},
 		[applyAssignment, handleTaskDragEnd],
 	);
-
-	const handleConfirmAssignment = useCallback(async () => {
-		if (!pendingAssignment) return;
-		setIsSavingAssignment(true);
-		try {
-			await applyAssignment(
-				pendingAssignment.taskId,
-				pendingAssignment.newAvatar,
-			);
-			setPendingAssignment(null);
-		} finally {
-			setIsSavingAssignment(false);
-		}
-	}, [applyAssignment, pendingAssignment]);
-
-	const handleCancelAssignment = useCallback(() => {
-		if (isSavingAssignment) return;
-		setPendingAssignment(null);
-	}, [isSavingAssignment]);
 
 	// Loading roadmap data
 	if (
@@ -1531,15 +1452,6 @@ export function RoadmapViewContent({
 						)}
 					</div>
 				)}
-
-				<ConfirmAssigneeOverwriteDialog
-					isOpen={pendingAssignment !== null}
-					isSaving={isSavingAssignment}
-					currentAssigneeName={pendingAssignment?.currentAssigneeName ?? null}
-					newAssigneeName={pendingAssignment?.newAvatar.displayName ?? null}
-					onCancel={handleCancelAssignment}
-					onConfirm={handleConfirmAssignment}
-				/>
 			</div>
 			<DragOverlay dropAnimation={null}>
 				{activeDragAvatar ? (

@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import { assigneeIdsFromPatch, withTaskAssignees } from "@/lib/taskAssignees";
 import {
 	epicService,
 	type FullRoadmap,
@@ -646,8 +647,13 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 					);
 				} else if (item.node_type === "task") {
 					if (taskExists(item.node_id)) continue;
-					const featureId = resolveParentId(opForItem(item));
+					const op = opForItem(item);
+					const featureId = resolveParentId(op);
 					if (!featureId || !featureExists(featureId)) continue;
+					// `data.assignee_ids` wins over the legacy `data.assignee_id`;
+					// the mirror rule keeps the primary column in step. Profiles
+					// for the ids fill in on the full reload.
+					const assigneeIds = assigneeIdsFromPatch(op?.data) ?? [];
 					const newTask: RoadmapTask = {
 						id: item.node_id,
 						feature_id: featureId,
@@ -656,6 +662,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 						priority: "medium",
 						position: 0,
 						board_order: 0,
+						assignee_ids: assigneeIds,
+						assignee_id: assigneeIds[0] ?? null,
 						created_at: now,
 						updated_at: now,
 					};
@@ -700,9 +708,27 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				"status",
 				"priority",
 				"assignee_id",
+				"assignee_ids",
 				"due_date",
 				"work_type",
 			];
+
+			// The assignee set the staged patches leave a task with, folding every
+			// update_node patch on the node in order (each one is a full
+			// replacement: `assignee_ids` wins, else `assignee_id` -> [X] / []).
+			// undefined = no staged patch touched assignment.
+			const assigneeIdsForItem = (
+				item: AgentCommitImpactedItem,
+			): string[] | undefined => {
+				let ids: string[] | undefined;
+				for (const op of operations) {
+					if (op.node_id !== item.node_id) continue;
+					if (op.op !== "update_node" || !op.patch) continue;
+					const next = assigneeIdsFromPatch(op.patch);
+					if (next) ids = next;
+				}
+				return ids;
+			};
 
 			const shiftDate = (value: unknown, days: number): unknown => {
 				if (typeof value !== "string" || !value) return value;
@@ -831,17 +857,23 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 					}
 				} else if (item.node_type === "task") {
 					let moving: RoadmapTask | null = null;
+					const nextAssigneeIds = assigneeIdsForItem(item);
 					epics = epics.map((e) => ({
 						...e,
 						features: (e.features ?? []).map((f) => ({
 							...f,
 							tasks: (f.tasks ?? []).map((t) => {
 								if (t.id !== item.node_id) return t;
-								const patched = patchForItem(
+								const raw = patchForItem(
 									item,
 									t as unknown as Record<string, unknown>,
 									TASK_KEYS,
 								) as unknown as RoadmapTask;
+								// Normalize assignment with the mirror rule so the
+								// primary, the set and the embedded profiles agree.
+								const patched = nextAssigneeIds
+									? withTaskAssignees(raw, nextAssigneeIds)
+									: raw;
 								moving = patched;
 								return patched;
 							}),

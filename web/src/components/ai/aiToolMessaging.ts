@@ -198,6 +198,53 @@ const listWithAnd = (parts: string[]): string => {
 	return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 };
 
+// Assignment arguments: `assignee_ids` (the full replacement set) wins over
+// the legacy scalar `assignee_id`; `[]` and `null` both mean "unassign".
+type AssignmentIntent =
+	| { kind: "clear"; plural: boolean }
+	| { kind: "assign"; count: number };
+
+const countAssigneeIds = (value: unknown): number =>
+	new Set(
+		toArrayValue(value)
+			.map((entry) => toStringValue(entry))
+			.filter((entry): entry is string => entry !== null),
+	).size;
+
+const readAssignmentIntent = (
+	args: Record<string, unknown> | null,
+): AssignmentIntent | null => {
+	if (!args) return null;
+	if (Array.isArray(args.assignee_ids)) {
+		const count = countAssigneeIds(args.assignee_ids);
+		return count === 0
+			? { kind: "clear", plural: true }
+			: { kind: "assign", count };
+	}
+	if (args.assignee_id === null) return { kind: "clear", plural: false };
+	if (toStringValue(args.assignee_id)) return { kind: "assign", count: 1 };
+	return null;
+};
+
+/** "clear assignees" / "assign to 3 teammates" — verb phrase form. */
+const describeAssignmentTarget = (
+	intent: AssignmentIntent | null,
+): string | null => {
+	if (!intent) return null;
+	if (intent.kind === "clear") {
+		return intent.plural ? "clear assignees" : "clear assignee";
+	}
+	return intent.count > 1
+		? `assign to ${intent.count} teammates`
+		: "assign to the selected teammate";
+};
+
+/** "the selected teammate" / "3 teammates" — object form for "assign X to …". */
+const describeAssignmentRecipients = (intent: AssignmentIntent): string =>
+	intent.kind === "assign" && intent.count > 1
+		? `${intent.count} teammates`
+		: "the selected teammate";
+
 const safeSelection = (
 	label: "roadmap item" | "epic" | "feature" | "task" | "parent",
 	idValue: unknown,
@@ -443,9 +490,7 @@ const getToolTargetPhrase = (
 			: "apply the requested status update";
 	}
 	if (toolName === "bulk_assign_tasks") {
-		if (toolArgs.assignee_id === null) return "clear assignee";
-		if (toStringValue(toolArgs.assignee_id))
-			return "assign to the selected teammate";
+		return describeAssignmentTarget(readAssignmentIntent(toolArgs));
 	}
 	return null;
 };
@@ -569,8 +614,14 @@ const describeBulkFilterScope = (
 		parts.push(`under ${parentId.replace("parent", parentType)}`);
 	}
 
-	const assignee = toStringValue(filters.assignee_id);
-	if (assignee) {
+	const assigneeCount = Array.isArray(filters.assignee_ids)
+		? countAssigneeIds(filters.assignee_ids)
+		: toStringValue(filters.assignee_id)
+			? 1
+			: 0;
+	if (assigneeCount > 1) {
+		parts.push(`assigned to any of ${assigneeCount} selected teammates`);
+	} else if (assigneeCount === 1) {
 		parts.push("assigned to the selected teammate");
 	}
 
@@ -608,10 +659,9 @@ const describeBulkUpdateTarget = (
 	if (priority) {
 		updates.push(`set priority to ${priority}`);
 	}
-	if (update.assignee_id === null) {
-		updates.push("clear assignee");
-	} else if (toStringValue(update.assignee_id)) {
-		updates.push("assign to the selected teammate");
+	const assignment = describeAssignmentTarget(readAssignmentIntent(update));
+	if (assignment) {
+		updates.push(assignment);
 	}
 	if (updates.length === 0) return "prepare the requested task updates";
 	return updates.join(", ");
@@ -1148,10 +1198,13 @@ const TOOL_MESSAGE_CATALOG: Record<
 		"Updating task assignee",
 		"Updated task assignee",
 		(ctx) => {
-			if (ctx.toolArgs?.assignee_id === null) {
-				return "I am removing the assignee from the selected task.";
+			const intent = readAssignmentIntent(ctx.toolArgs);
+			if (intent?.kind === "clear") {
+				return intent.plural
+					? "I am removing all assignees from the selected task."
+					: "I am removing the assignee from the selected task.";
 			}
-			return "I am assigning the selected task to the selected teammate.";
+			return `I am assigning the selected task to ${describeAssignmentRecipients(intent ?? { kind: "assign", count: 1 })}.`;
 		},
 		(ctx) =>
 			resultSummaryWithDefault(
@@ -1363,10 +1416,11 @@ const TOOL_MESSAGE_CATALOG: Record<
 			const total = toArrayValue(ctx.toolArgs?.task_ids).length;
 			const taskScope =
 				total > 0 ? `${total} selected tasks` : "selected tasks";
-			if (ctx.toolArgs?.assignee_id === null) {
+			const intent = readAssignmentIntent(ctx.toolArgs);
+			if (intent?.kind === "clear") {
 				return `I am unassigning ${taskScope}.`;
 			}
-			return `I am assigning ${taskScope} to the selected teammate.`;
+			return `I am assigning ${taskScope} to ${describeAssignmentRecipients(intent ?? { kind: "assign", count: 1 })}.`;
 		},
 		(ctx) =>
 			resultSummaryWithDefault(

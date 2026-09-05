@@ -341,7 +341,10 @@ export interface AgentPlanProposalTask {
 	title: string;
 	description?: string | null;
 	status?: string | null;
+	/** Legacy single label; `assignee_labels` wins when present. */
 	assignee_label?: string | null;
+	/** Every proposed assignee (display names), first = primary. */
+	assignee_labels?: string[] | null;
 	target_feature_title?: string | null;
 }
 

@@ -9,6 +9,8 @@ interface TreeRow {
 	title: string;
 	description?: string | null;
 	targetTitle?: string | null;
+	/** Proposed assignees (tasks only), display names in set order. */
+	assigneeLabels: string[];
 	/**
 	 * One bool per ancestor depth. true = draw a vertical rail (ancestor has more
 	 * siblings below), false = blank (ancestor was the last child at that depth).
@@ -16,6 +18,28 @@ interface TreeRow {
 	ancestorRails: boolean[];
 	isLast: boolean;
 }
+
+/**
+ * `assignee_labels` (the full set) wins over the legacy single
+ * `assignee_label`; blank entries are dropped.
+ */
+const resolveAssigneeLabels = (task: {
+	assignee_label?: string | null;
+	assignee_labels?: string[] | null;
+}): string[] => {
+	const list = (task.assignee_labels ?? [])
+		.map((label) => (typeof label === "string" ? label.trim() : ""))
+		.filter((label) => label.length > 0);
+	if (list.length > 0) return list;
+	const single = task.assignee_label?.trim();
+	return single ? [single] : [];
+};
+
+const listWithAnd = (parts: string[]): string => {
+	if (parts.length <= 1) return parts[0] ?? "";
+	if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+	return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+};
 
 const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 	const rows: TreeRow[] = [];
@@ -28,6 +52,7 @@ const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 			kind: "epic",
 			title: epic.title,
 			description: epic.description,
+			assigneeLabels: [],
 			ancestorRails: [],
 			isLast: epicIsLast,
 		});
@@ -42,6 +67,7 @@ const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 				title: feature.title,
 				description: feature.description,
 				targetTitle: feature.target_epic_title,
+				assigneeLabels: [],
 				ancestorRails: [!epicIsLast],
 				isLast: featureIsLast,
 			});
@@ -55,6 +81,7 @@ const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 					title: task.title,
 					description: task.description,
 					targetTitle: task.target_feature_title,
+					assigneeLabels: resolveAssigneeLabels(task),
 					ancestorRails: [!epicIsLast, !featureIsLast],
 					isLast: taskIsLast,
 				});
@@ -145,6 +172,17 @@ export const AiPlanProposalGraph: FC<AiPlanProposalGraphProps> = ({
 								{row.targetTitle ? (
 									<span className="text-xs text-muted-foreground">
 										under existing "{row.targetTitle}"
+									</span>
+								) : null}
+								{row.assigneeLabels.length > 0 ? (
+									<span
+										className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+										data-testid="ai-plan-task-assignees"
+									>
+										{row.assigneeLabels.length === 1
+											? "assigned to "
+											: `${row.assigneeLabels.length} assignees: `}
+										{listWithAnd(row.assigneeLabels)}
 									</span>
 								) : null}
 							</div>

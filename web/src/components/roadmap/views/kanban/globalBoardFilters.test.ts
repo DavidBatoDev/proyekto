@@ -36,6 +36,7 @@ function row(
 		epicId?: string;
 		featureId?: string;
 		assigneeId?: string | null;
+		assigneeIds?: string[];
 	} = {},
 ): KanbanTaskContext {
 	const {
@@ -43,6 +44,7 @@ function row(
 		epicId = "e1",
 		featureId = "f1",
 		assigneeId = null,
+		assigneeIds,
 	} = opts;
 	return {
 		task: {
@@ -50,6 +52,7 @@ function row(
 			title: taskId,
 			status: "todo",
 			assignee_id: assigneeId,
+			assignees: assigneeIds?.map((id) => ({ id })),
 		},
 		feature: { id: featureId, title: featureId },
 		epic: { id: epicId, title: epicId },
@@ -186,5 +189,27 @@ describe("applyFilters", () => {
 			assigneeIds: ["u1"],
 		});
 		expect(filtered.map((r) => r.task.id)).toEqual(["t3"]);
+	});
+
+	it("matches a co-assignee from the full set, not only the primary", () => {
+		const multi = [
+			row("t-multi", {
+				projectId: "p1",
+				assigneeId: "u1",
+				assigneeIds: ["u1", "u2"],
+			}),
+			row("t-solo", { projectId: "p1", assigneeId: "u1" }),
+			row("t-none", { projectId: "p1" }),
+		];
+		expect(
+			applyFilters(multi, { ...EMPTY_FILTERS, assigneeIds: ["u2"] }).map(
+				(r) => r.task.id,
+			),
+		).toEqual(["t-multi"]);
+		expect(
+			applyFilters(multi, { ...EMPTY_FILTERS, assigneeIds: ["u1"] }).map(
+				(r) => r.task.id,
+			),
+		).toEqual(["t-multi", "t-solo"]);
 	});
 });

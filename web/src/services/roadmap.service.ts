@@ -210,7 +210,10 @@ export interface UpsertFullRoadmapTaskDto {
 	status?: TaskStatus;
 	priority?: TaskPriority;
 	work_type?: TaskWorkType;
+	// Legacy primary; mirrors assignee_ids[0] when both are sent.
 	assignee_id?: string;
+	// Full assignee set (replaces). Omit to leave assignees untouched.
+	assignee_ids?: string[];
 	due_date?: string;
 	position?: number;
 }

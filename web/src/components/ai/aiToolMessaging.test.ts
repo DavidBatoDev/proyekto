@@ -112,6 +112,117 @@ describe("roadmap AI tool messaging catalog", () => {
 		expect(message.summary).toContain("unassigning 3 selected tasks");
 	});
 
+	it("narrates a multi-assignee set on bulk_assign_tasks without leaking ids", () => {
+		const message = buildCuratedToolRequestedMessage("bulk_assign_tasks", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "bulk_assign_tasks",
+				tool_args: {
+					task_ids: ["a", "b"],
+					assignee_ids: [
+						"55e431e2-e416-468c-a973-94d97280e97d",
+						"7d0b8f1e-5c2a-4c3b-9a1e-2f6d8c4b1a90",
+						"55e431e2-e416-468c-a973-94d97280e97d",
+					],
+				},
+			},
+		});
+
+		expect(message.summary).toContain(
+			"assigning 2 selected tasks to 2 teammates",
+		);
+		expect(containsUuidLikeText(message.summary)).toBe(false);
+	});
+
+	it("treats an empty assignee_ids set as clearing every assignee", () => {
+		const bulk = buildCuratedToolRequestedMessage("bulk_assign_tasks", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "bulk_assign_tasks",
+				tool_args: { task_ids: ["a"], assignee_ids: [] },
+			},
+		});
+		expect(bulk.summary).toContain("unassigning 1 selected tasks");
+
+		const single = buildCuratedToolRequestedMessage("update_task_assignee", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "update_task_assignee",
+				tool_args: { task_id: "t", assignee_ids: [] },
+			},
+		});
+		expect(single.summary).toContain(
+			"removing all assignees from the selected task",
+		);
+	});
+
+	it("narrates update_task_assignee with several teammates", () => {
+		const message = buildCuratedToolRequestedMessage("update_task_assignee", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "update_task_assignee",
+				tool_args: { task_id: "t", assignee_ids: ["u1", "u2", "u3"] },
+			},
+		});
+		expect(message.summary).toContain(
+			"assigning the selected task to 3 teammates",
+		);
+
+		const one = buildCuratedToolRequestedMessage("update_task_assignee", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "update_task_assignee",
+				tool_args: { task_id: "t", assignee_ids: ["u1"] },
+			},
+		});
+		expect(one.summary).toContain(
+			"assigning the selected task to the selected teammate",
+		);
+	});
+
+	it("narrates assignee_ids in bulk_update_tasks_by_filter update and filters", () => {
+		const message = buildCuratedToolRequestedMessage(
+			"bulk_update_tasks_by_filter",
+			{
+				status: "running",
+				summary: "",
+				details: {
+					tool_name: "bulk_update_tasks_by_filter",
+					tool_args: {
+						filters: { assignee_ids: ["u1", "u2"] },
+						update: { assignee_ids: ["u3", "u4"] },
+					},
+				},
+			},
+		);
+		expect(message.summary).toContain(
+			"assigned to any of 2 selected teammates",
+		);
+		expect(message.summary).toContain("assign to 2 teammates");
+
+		const clearing = buildCuratedToolRequestedMessage(
+			"bulk_update_tasks_by_filter",
+			{
+				status: "running",
+				summary: "",
+				details: {
+					tool_name: "bulk_update_tasks_by_filter",
+					tool_args: {
+						filters: { assignee_ids: ["u1"] },
+						update: { assignee_ids: [] },
+					},
+				},
+			},
+		);
+		expect(clearing.summary).toContain("assigned to the selected teammate");
+		expect(clearing.summary).toContain("clear assignees");
+	});
+
 	it("never leaks operation codes in curated plan result text", () => {
 		const message = buildCuratedToolResultMessage("plan_roadmap_operations", {
 			status: "success",

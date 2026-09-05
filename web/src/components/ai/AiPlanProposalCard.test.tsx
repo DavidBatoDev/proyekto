@@ -108,3 +108,42 @@ describe("AiPlanProposalCard targets", () => {
 		expect(screen.getByText("Proposed structure")).toBeTruthy();
 	});
 });
+
+describe("AiPlanProposalCard proposed task assignees", () => {
+	it("renders the full assignee_labels list, falling back to assignee_label", () => {
+		render(
+			<AiPlanProposalCard
+				plan={{
+					...legacyPlan,
+					proposed_hierarchy: [
+						{
+							title: "Onboarding",
+							features: [
+								{
+									title: "Welcome flow",
+									tasks: [
+										{
+											title: "Pair on the copy",
+											assignee_labels: ["Ana", "Ben", "Cid"],
+											// The legacy label loses to the list.
+											assignee_label: "Dan",
+										},
+										{ title: "Ship it", assignee_label: "Ana" },
+										{ title: "Nobody yet", assignee_labels: [] },
+									],
+								},
+							],
+						},
+					],
+				}}
+				onApply={vi.fn()}
+				onDiscard={vi.fn()}
+			/>,
+		);
+		const chips = screen.getAllByTestId("ai-plan-task-assignees");
+		expect(chips).toHaveLength(2);
+		expect(chips[0].textContent).toBe("3 assignees: Ana, Ben, and Cid");
+		expect(chips[1].textContent).toBe("assigned to Ana");
+		expect(screen.queryByText(/Dan/)).toBeNull();
+	});
+});

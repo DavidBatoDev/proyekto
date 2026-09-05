@@ -29,6 +29,10 @@ import { useToast } from "@/contexts/ToastContext";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { recordRecentAssignment } from "@/hooks/useRecentAssignees";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import {
+	getTaskAssigneeIds,
+	getTaskAssigneeProfiles,
+} from "@/lib/taskAssignees";
 import type { ProjectMember } from "@/services/project.service";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { AssigneeProfile, RoadmapTask, TaskStatus } from "@/types/roadmap";
@@ -50,21 +54,6 @@ const getMemberDisplayName = (member: ProjectMember): string => {
 	const full = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
 	if (full) return full;
 	return u.email ?? "Member";
-};
-
-const deriveTaskAssigneeIds = (task: RoadmapTask): string[] => {
-	if (task.assignee_ids?.length) return task.assignee_ids;
-	const embedded = (task.assignees ?? [])
-		.map((a) => a.id)
-		.filter((id): id is string => Boolean(id));
-	if (embedded.length) return embedded;
-	const primary = task.assignee_id ?? task.assignee?.id;
-	return primary ? [primary] : [];
-};
-
-const deriveTaskAssigneeProfiles = (task: RoadmapTask): AssigneeProfile[] => {
-	if (task.assignees?.length) return task.assignees;
-	return task.assignee ? [task.assignee] : [];
 };
 
 const resolveAssigneeName = (
@@ -244,12 +233,9 @@ export const TaskListItem = memo(
 			});
 		}, [assigneeSearch, members]);
 
-		const currentAssigneeIds = useMemo(
-			() => deriveTaskAssigneeIds(task),
-			[task],
-		);
+		const currentAssigneeIds = useMemo(() => getTaskAssigneeIds(task), [task]);
 		const currentAssigneeProfiles = useMemo(
-			() => deriveTaskAssigneeProfiles(task),
+			() => getTaskAssigneeProfiles(task),
 			[task],
 		);
 
@@ -328,8 +314,8 @@ export const TaskListItem = memo(
 			data: {
 				type: "task-assignee",
 				taskId: task.id,
-				currentAssigneeId: task.assignee_id ?? null,
-				currentAssigneeName: resolveAssigneeName(task.assignee),
+				// The full set: a dock drop ADDS to it (no-op when already in it).
+				currentAssigneeIds,
 			},
 		});
 		const isAssigneeDragOver =
