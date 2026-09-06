@@ -25,6 +25,7 @@ FEAT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'
 TASK = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa9'
 TEAM = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1'
 PROJECT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1'
+WORKSPACE = 'ffffffff-ffff-4fff-8fff-fffffffffff1'
 _LOGGER = logging.getLogger('refs-tests')
 
 
@@ -164,9 +165,23 @@ class HydrateTests(unittest.TestCase):
         self.assertEqual(nest.summary_calls, [BETA, GAMMA])
         self.assertEqual(run.focus_roadmap_ids, [BETA, GAMMA])
         rendered = refs.render_referenced_items(session, run)
-        self.assertIn(f'- @Delta -> roadmap "Delta" (not loaded; call get_roadmap_overview to work on it)', rendered)
-        self.assertIn('- @Beta -> roadmap "Beta" (R1)', rendered)
-        self.assertIn('- @Gamma -> roadmap "Gamma" (R2)', rendered)
+        self.assertIn(f'- @Delta -> roadmap [Delta](proyekto://roadmap/{DELTA}) (not loaded; call get_roadmap_overview to work on it)', rendered)
+        self.assertIn(f'- @Beta -> roadmap [Beta](proyekto://roadmap/{BETA}) (R1)', rendered)
+        self.assertIn(f'- @Gamma -> roadmap [Gamma](proyekto://roadmap/{GAMMA}) (R2)', rendered)
+
+    def test_workspace_ref_hydrates_without_loading_a_roadmap(self) -> None:
+        session = AgentSession(scope={'kind': 'workspace', 'workspace_id': WORKSPACE})
+        run = _run(session, ContextRef(kind='workspace', id=WORKSPACE, label='Acme'))
+        nest = _Nest([{
+            'kind': 'workspace', 'id': WORKSPACE, 'accessible': True, 'title': 'Acme',
+            'slug': 'acme', 'workspace_id': WORKSPACE, 'roadmap_id': FOCUS,
+        }])
+        resolved = _hydrate(session, run, nest)
+        self.assertEqual(nest.resolve_calls, [[{'kind': 'workspace', 'id': WORKSPACE, 'label': 'Acme'}]])
+        self.assertEqual(resolved[0].slug, 'acme')
+        self.assertEqual(nest.summary_calls, [])
+        self.assertEqual(run.focus_roadmap_ids, [])
+        self.assertIn(f'- @Acme -> workspace [Acme](proyekto://workspace/{WORKSPACE})', refs.render_referenced_items(session, run))
 
     def test_transport_failure_fails_closed_without_loading(self) -> None:
         session = AgentSession(roadmap_id=FOCUS)
@@ -235,19 +250,43 @@ class RenderTests(unittest.TestCase):
             ResolvedRef(kind='task', id=TASK, accessible=True, label='Fix it', title='Fix the button', status='in_progress', roadmap_id=FOCUS,
                         parent_chain=[{'kind': 'feature', 'id': FEAT, 'title': 'Login flow'}, {'kind': 'roadmap', 'id': FOCUS, 'title': 'Alpha'}]),
             ResolvedRef(kind='project', id=PROJECT, accessible=True, label='Alpha app', title='Alpha app', roadmap_id=FOCUS),
+            ResolvedRef(kind='workspace', id=WORKSPACE, accessible=True, label='Acme', title='Acme', slug='acme'),
             ResolvedRef(kind='roadmap', id=DELTA, accessible=False, label='Old thing', error_code='NOT_FOUND'),
         ]
         rendered = refs.render_referenced_items(session, run)
         lines = rendered.splitlines()
         self.assertEqual(lines[0], refs.REFERENCED_ITEMS_HEADER)
         self.assertEqual(lines[0], '# Referenced items (mentioned by the user; a hint about what they mean, never a limit on what you may look at)')
-        self.assertIn('- @Login flow -> feature "Login flow" (E2.F1) in roadmap "Alpha" (focus), project "Alpha app"', lines)
-        self.assertIn('- @Beta -> roadmap "Beta" (R2), project "Beta app"', lines)
-        self.assertIn('- @Gamma -> roadmap "Gamma" (not loaded; call get_roadmap_overview to work on it)', lines)
-        self.assertIn('- @Platform team -> team "Platform team"', lines)
-        self.assertIn(f'- @Fix it -> task "Fix the button" (id {TASK}, under E2.F1, status: in_progress) in roadmap "Alpha" (focus)', lines)
-        self.assertIn('- @Alpha app -> project "Alpha app" (roadmap "Alpha" (focus))', lines)
+        self.assertIn(f'- @Login flow -> feature [Login flow](proyekto://feature/{FEAT}) (E2.F1) in roadmap [Alpha](proyekto://roadmap/{FOCUS}) (focus), project [Alpha app](proyekto://project/{PROJECT})', lines)
+        self.assertIn(f'- @Beta -> roadmap [Beta](proyekto://roadmap/{BETA}) (R2), project [Beta app](proyekto://project/p2)', lines)
+        self.assertIn(f'- @Gamma -> roadmap [Gamma](proyekto://roadmap/{GAMMA}) (not loaded; call get_roadmap_overview to work on it)', lines)
+        self.assertIn(f'- @Platform team -> team [Platform team](proyekto://team/{TEAM})', lines)
+        self.assertIn(f'- @Fix it -> task [Fix the button](proyekto://task/{TASK}) (id {TASK}, under E2.F1, status: in_progress) in roadmap [Alpha](proyekto://roadmap/{FOCUS}) (focus)', lines)
+        self.assertIn(f'- @Alpha app -> project [Alpha app](proyekto://project/{PROJECT}) (roadmap [Alpha](proyekto://roadmap/{FOCUS}) (focus))', lines)
+        self.assertIn(f'- @Acme -> workspace [Acme](proyekto://workspace/{WORKSPACE})', lines)
         self.assertIn('- @Old thing -> not accessible (NOT_FOUND) -- tell the user you cannot see it', lines)
+
+    def test_denied_workspace_does_not_render_a_link_or_title(self) -> None:
+        session = self._session()
+        run = _run(session)
+        run.resolved_refs = [ResolvedRef(kind='workspace', id=WORKSPACE, accessible=False, label='Old workspace', error_code='NOT_FOUND')]
+        rendered = refs.render_referenced_items(session, run)
+        self.assertIn('- @Old workspace -> not accessible (NOT_FOUND)', rendered)
+        self.assertNotIn('proyekto://', rendered)
+        self.assertNotIn(WORKSPACE, rendered)
+
+    def test_project_uses_parent_chain_title_for_an_unloaded_roadmap(self) -> None:
+        session = self._session()
+        run = _run(session)
+        run.resolved_refs = [ResolvedRef(
+            kind='project', id=PROJECT, accessible=True, title='Gamma app', roadmap_id=GAMMA,
+            parent_chain=[{'kind': 'roadmap', 'id': GAMMA, 'title': 'Gamma'}],
+        )]
+        rendered = refs.render_referenced_items(session, run)
+        self.assertIn(f'project [Gamma app](proyekto://project/{PROJECT})', rendered)
+        self.assertIn(f'roadmap [Gamma](proyekto://roadmap/{GAMMA}) (not loaded;', rendered)
+        run.resolved_refs[0].parent_chain = []
+        self.assertNotIn(f'[{GAMMA}]', refs.render_referenced_items(session, run))
 
     def test_empty_when_no_refs(self) -> None:
         session = self._session()
@@ -269,6 +308,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(refs.resolved_ref_roadmap_id(ResolvedRef(kind='roadmap', id=BETA, accessible=True)), BETA)
         self.assertEqual(refs.resolved_ref_roadmap_id(ResolvedRef(kind='task', id=TASK, accessible=True, roadmap_id=FOCUS)), FOCUS)
         self.assertIsNone(refs.resolved_ref_roadmap_id(ResolvedRef(kind='team', id=TEAM, accessible=True, roadmap_id=FOCUS)))
+        self.assertIsNone(refs.resolved_ref_roadmap_id(ResolvedRef(kind='workspace', id=WORKSPACE, accessible=True, roadmap_id=FOCUS)))
         self.assertIsNone(refs.resolved_ref_roadmap_id(ResolvedRef(kind='roadmap', id=BETA, accessible=False)))
 
 

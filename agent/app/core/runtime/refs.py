@@ -23,6 +23,7 @@ from app.core.contracts.runs import ContextRef, ResolvedRef
 from app.core.contracts.sessions import AgentSession
 from app.core.logging_utils import log_event
 from app.core.runtime import context_cache
+from app.core.runtime.entity_links import entity_link
 from app.core.runtime.handles import handle_for_node_id
 from app.core.uuid_utils import is_uuid_like
 
@@ -62,12 +63,12 @@ def _failed_ref(ref: ContextRef, error_code: str = RESOLVE_FAILED) -> ResolvedRe
 
 def resolved_ref_roadmap_id(ref: ResolvedRef) -> str | None:
     """The roadmap a resolved ref points at: itself for a roadmap ref, its
-    ``roadmap_id`` for a node/project ref, nothing for a team."""
+    ``roadmap_id`` for a node/project ref, nothing for a team or workspace."""
     if not ref.accessible:
         return None
     if ref.kind == 'roadmap':
         return ref.id
-    if ref.kind == 'team':
+    if ref.kind in {'team', 'workspace'}:
         return None
     return ref.roadmap_id or None
 
@@ -266,11 +267,12 @@ def _chain_title(ref: ResolvedRef, kind: str) -> str | None:
 
 def _roadmap_descriptor(session: AgentSession, roadmap_id: str, fallback_title: str | None) -> str:
     context = session.metadata.roadmaps.get(roadmap_id)
-    title = (context.title if context is not None else None) or fallback_title or roadmap_id
+    title = (context.title if context is not None else None) or fallback_title
+    label = entity_link(title, 'roadmap', roadmap_id) if title else f'(id {roadmap_id})'
     if context is not None and context.overview_fetched_at is not None:
         marker = f'({context.handle_prefix})' if context.handle_prefix else '(focus)'
-        return f'roadmap "{title}" {marker}'
-    return f'roadmap "{title}" (not loaded; call get_roadmap_overview to work on it)'
+        return f'roadmap {label} {marker}'
+    return f'roadmap {label} (not loaded; call get_roadmap_overview to work on it)'
 
 
 def _render_ref_line(session: AgentSession, ref: ResolvedRef) -> str:
@@ -279,17 +281,18 @@ def _render_ref_line(session: AgentSession, ref: ResolvedRef) -> str:
         code = ref.error_code or 'NOT_FOUND'
         return f'- {mention} -> not accessible ({code}) -- tell the user you cannot see it'
     title = ref.title or ref.label or ref.id
-    project_title = _chain_title(ref, 'project')
-    project_suffix = f', project "{project_title}"' if project_title else ''
+    label = entity_link(title, ref.kind, ref.id)
+    project = next((entry for entry in ref.parent_chain or [] if entry.kind == 'project' and entry.title), None)
+    project_suffix = f', project {entity_link(project.title, "project", project.id)}' if project else ''
 
-    if ref.kind == 'team':
-        return f'- {mention} -> team "{title}"'
+    if ref.kind in {'team', 'workspace'}:
+        return f'- {mention} -> {ref.kind} {label}'
 
     if ref.kind == 'project':
         roadmap_id = ref.roadmap_id
         if roadmap_id:
-            return f'- {mention} -> project "{title}" ({_roadmap_descriptor(session, roadmap_id, None)})'
-        return f'- {mention} -> project "{title}" (no roadmap)'
+            return f'- {mention} -> project {label} ({_roadmap_descriptor(session, roadmap_id, _chain_title(ref, "roadmap"))})'
+        return f'- {mention} -> project {label} (no roadmap)'
 
     if ref.kind == 'roadmap':
         return f'- {mention} -> {_roadmap_descriptor(session, ref.id, title)}{project_suffix}'
@@ -315,4 +318,4 @@ def _render_ref_line(session: AgentSession, ref: ResolvedRef) -> str:
     if ref.kind == 'task':
         detail = f' (id {ref.id}, {detail[2:]}' if detail else f' (id {ref.id})'
     where = f' in {_roadmap_descriptor(session, roadmap_id, roadmap_title)}' if roadmap_id else ''
-    return f'- {mention} -> {ref.kind} "{title}"{detail}{where}{project_suffix}'
+    return f'- {mention} -> {ref.kind} {label}{detail}{where}{project_suffix}'

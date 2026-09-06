@@ -145,6 +145,8 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             retry_tool_calls_used=2,
             retry_duplicate_operation_deduped=True,
             retry_autostage_applied=True,
+            entity_links_kept=3,
+            entity_links_rejected=1,
         )
         return self.stream.getvalue()
 
@@ -155,6 +157,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('EVENT: TOOL_CALL_REQUESTED', output)
         self.assertIn('EVENT: TOOL_CALL_RESULT', output)
         self.assertIn('AI REQUEST: MY TASKS', output)
+        self.assertIn('links       kept=3 rejected=1', output)
         self.assertIn('trace_id     trace-1', output)
         self.assertIn('USER', output)
         self.assertIn('ROUTING', output)
@@ -742,7 +745,7 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
             ('phase_completed', {'phase': 'execute', 'outcome': 'executed'}),
             ('verify_completed', {'status': 'partial', 'summary_text': 'Committed Alpha; Beta failed.'}),
             ('run_checkpoint', {'checkpoint': 'proposal', 'plan_id': 'plan-1'}),
-            ('run_step_completed', {'run_id': 'run-1', 'run_next': 'await_user', 'step': 1}),
+            ('run_step_completed', {'run_id': 'run-1', 'run_next': 'await_user', 'step': 1, 'entity_links_kept': 3, 'entity_links_rejected': 1}),
         ]
         for event_name, fields in emitted:
             logging_utils.log_event(
@@ -785,6 +788,8 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         self.assertEqual(by_name['run_checkpoint']['title'], 'Waiting for input')
         self.assertEqual(by_name['run_checkpoint']['summary'], 'Waiting for the user (proposal).')
         self.assertEqual(by_name['run_step_completed']['summary'], 'Step 1 completed (await_user).')
+        self.assertEqual(by_name['run_step_completed']['details']['entity_links_kept'], 3)
+        self.assertEqual(by_name['run_step_completed']['details']['entity_links_rejected'], 1)
         self.assertTrue(structured['done'])
         self.assertEqual(structured['run_id'], 'run-1')
         self.assertEqual(structured['phase'], 'execute')

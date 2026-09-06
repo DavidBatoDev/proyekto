@@ -315,6 +315,8 @@ def _log_message_completed(
         # tokens_input: a healthy conversation should cache most of its input
         # after the first turn (runtime/prompt.py keeps the prefix stable).
         tokens_cached=result.tokens_cached if result else None,
+        entity_links_kept=result.entity_links_kept if result else 0,
+        entity_links_rejected=result.entity_links_rejected if result else 0,
         operations_count=len(result.operations) if result else 0,
         staged_changes_present=bool(result.staged_operations_count) if result else False,
         actor_present=actor is not None,

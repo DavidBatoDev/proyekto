@@ -217,6 +217,7 @@ def _compact_payload() -> dict:
         'project': {
             'id': 'project-1',
             'title': 'Apollo',
+            'workspace': {'id': 'workspace-1', 'name': 'Acme', 'slug': 'acme'},
             'status': 'active',
             'category': 'SaaS',
             'project_state': 'codebase',
@@ -282,7 +283,8 @@ class ProjectContextBlockTests(unittest.TestCase):
         self.assertLess(
             state.index('# Project context'), state.index('# Earlier conversation summary')
         )
-        self.assertIn('Project: Apollo', state)
+        self.assertIn('Project: [Apollo](proyekto://project/project-1)', state)
+        self.assertIn('Workspace: [Acme](proyekto://workspace/workspace-1)', state)
         self.assertIn('Person 15', state)
         self.assertNotIn('Person 16', state)
         self.assertIn('skill-14', state)
@@ -378,7 +380,7 @@ class ProjectContextBlockTests(unittest.TestCase):
             overview_fetched_at=_now(),
         )
         state = _state(session)
-        self.assertIn('# Project context\nRoadmap: "Alpha"\nProject: Apollo', state)
+        self.assertIn('# Project context\nRoadmap: "Alpha"\nProject: [Apollo](proyekto://project/project-1)', state)
 
 
 class ProjectToolRegistryTests(unittest.TestCase):

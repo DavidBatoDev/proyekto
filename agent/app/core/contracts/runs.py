@@ -39,7 +39,7 @@ RunPhase = Literal['investigate', 'propose', 'execute', 'verify']
 RunStatus = Literal['running', 'awaiting_user', 'done', 'failed', 'cancelled']
 RunNext = Literal['continue', 'await_user', 'done']
 CheckpointKind = Literal['clarifier', 'proposal']
-RefKind = Literal['project', 'roadmap', 'epic', 'feature', 'task', 'milestone', 'team']
+RefKind = Literal['project', 'roadmap', 'epic', 'feature', 'task', 'milestone', 'team', 'workspace']
 BatchSource = Literal['stage_edits', 'proposal', 'revert']
 CommitStatus = Literal['pending', 'committed', 'failed', 'skipped']
 VerifyStatus = Literal['verified', 'partial', 'failed', 'nothing_to_verify']
@@ -189,9 +189,18 @@ class ResolvedRef(BaseModel):
     roadmap_id: str | None = None
     project_id: str | None = None
     workspace_id: str | None = None
+    slug: str | None = None
     parent_chain: list[RefChainEntry] = Field(default_factory=list)
     # NOT_FOUND | FORBIDDEN | RESOLVE_FAILED | ... when accessible=False.
     error_code: str | None = None
+
+
+class EntitySeen(BaseModel):
+    """A typed entity title observed in this run's authorized context."""
+
+    kind: RefKind
+    id: str
+    title: str
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +371,9 @@ class RunState(BaseModel):
     raw_user_message: str = ''
     refs: list[ContextRef] = Field(default_factory=list)
     resolved_refs: list[ResolvedRef] = Field(default_factory=list)
+    # A bounded read cache: retained in Redis across continues, never in the
+    # durable memory snapshot or the public RunView.
+    entities_seen: list[EntitySeen] = Field(default_factory=list)
     # Scope roadmap + auto-loaded referenced roadmaps + roadmaps loaded by
     # tools during this run. Never evicted from the context cache mid-run.
     focus_roadmap_ids: list[str] = Field(default_factory=list)

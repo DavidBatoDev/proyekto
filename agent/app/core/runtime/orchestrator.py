@@ -33,7 +33,7 @@ from app.core.memory.actor_context import (
 )
 from app.core.memory.pending_plan_manager import clear_pending_plan
 from app.core.runtime import runs, staging, terminal
-from app.core.runtime.entity_links import expand_entity_links
+from app.core.runtime.entity_links import ground_entity_links
 from app.core.runtime.phases import execute, investigate, propose, verify
 from app.core.runtime.results import PhaseOutcome, StepResult
 from app.core.runtime.sentinels import RunInput
@@ -639,7 +639,8 @@ def _modes(ctx: StepContext, run: RunState, any_commit: bool) -> tuple[str, str,
 def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, started_at: float | None = None) -> StepResult:
     settings = ctx.settings
     segment_ended = run.status != 'running'
-    run.final_message = expand_entity_links(run.final_message or '', session, run)
+    links = ground_entity_links(run.final_message or '', session, run)
+    run.final_message = links.text
     assistant_message = '' if run.status == 'running' else (run.final_message or '')
 
     step_commit_ids = set(ctx.step_commit_batch_ids)
@@ -722,6 +723,8 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         run_status=run.status,
         checkpoint=run.checkpoint,
         elapsed_ms=elapsed_ms,
+        entity_links_kept=links.kept,
+        entity_links_rejected=len(links.rejected),
     )
 
     clarifier_card = run.clarifier if run.checkpoint == 'clarifier' else ctx.clarifier_card
@@ -746,6 +749,8 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         tokens_output=ctx.tokens['output'] or None,
         tokens_total=ctx.tokens['total'] or None,
         tokens_cached=ctx.tokens['cached'] or None,
+        entity_links_kept=links.kept,
+        entity_links_rejected=len(links.rejected),
         route_lane=route_lane,
         react_loop_turns=ctx.loop_turns or None,
         react_loop_budget=int(getattr(settings, 'agent_v2_max_turns', 8)),

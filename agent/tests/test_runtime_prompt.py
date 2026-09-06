@@ -25,6 +25,7 @@ from app.core.tools.registry import get_context_tools
 FOCUS = '11111111-1111-1111-1111-111111111111'
 BETA = '22222222-2222-2222-2222-222222222222'
 NODE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
+WORKSPACE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
 
 
 def _now():
@@ -39,7 +40,7 @@ def _roadmap_session(*, with_beta: bool = True) -> AgentSession:
         overview_summary='Roadmap: "Alpha"\nE1. Growth — 1 feature\n   E1.F1 · Login',
         overview_fetched_at=_now(),
         handle_map={'E1': {'id': 'epic-1', 'type': 'epic', 'title': 'Growth', 'roadmap_id': FOCUS}},
-        project_context={'project': {'id': 'p-1', 'title': 'Alpha app'}},
+        project_context={'project': {'id': 'p-1', 'title': 'Alpha app', 'workspace': {'id': 'ws-1', 'name': 'Acme', 'slug': 'acme'}}},
         project_context_fetched_at=_now(),
         memory_notes=[{'id': 'm-1', 'content': 'Name epics by quarter', 'source': 'user_request', 'scope': 'roadmap', 'category': 'preference'}],
     )
@@ -126,10 +127,10 @@ class BlockOrderTests(unittest.TestCase):
         self.assertIn(f'Focus roadmap: "Alpha" (id {FOCUS}; bare handles)', system)
         self.assertIn('## R1 — "Beta"', system)
         self.assertIn('R1.E1. Billing', system)
-        self.assertIn('# Project context\nRoadmap: "Alpha"\nProject: Alpha app', system)
+        self.assertIn('# Project context\nRoadmap: "Alpha"\nProject: [Alpha app](proyekto://project/p-1)\nWorkspace: [Acme](proyekto://workspace/ws-1)', system)
         self.assertIn('Target roadmap "Beta" (R1):', system)
         self.assertIn('    - Task: PDF export', system)
-        self.assertIn(f'- Login (feature) — id {NODE} — roadmap "Beta"', system)
+        self.assertIn(f'- [Login](proyekto://feature/{NODE}) (feature) — id {NODE} — roadmap [Beta](proyekto://roadmap/{BETA})', system)
         self.assertIn('Roadmap "Beta":', system)
         self.assertIn('Roadmap "Alpha":', system)
         self.assertIn('change_id: chg-2', system)
@@ -225,9 +226,9 @@ class CacheInvariantTests(unittest.TestCase):
 
 class WorkspaceScopeTests(unittest.TestCase):
     def _session(self) -> AgentSession:
-        session = AgentSession(scope={'kind': 'workspace', 'workspace_id': 'ws-1'})
+        session = AgentSession(scope={'kind': 'workspace', 'workspace_id': WORKSPACE})
         session.metadata.workspace_context = {
-            'workspace': {'id': 'ws-1', 'name': 'Acme'},
+            'workspace': {'id': WORKSPACE, 'name': 'Acme', 'slug': 'acme'},
             'projects': [
                 {'id': 'p-1', 'title': 'Alpha app', 'roadmap_id': FOCUS, 'lane': 'current'},
                 {'id': 'p-9', 'title': 'Elsewhere', 'lane': 'other_workspace'},
@@ -244,17 +245,17 @@ class WorkspaceScopeTests(unittest.TestCase):
     def test_scope_focus_overview_and_actor_blocks(self) -> None:
         session = self._session()
         system = prompt.build_system_prompt(session, None, _context(session), 'investigate')
-        self.assertIn('# Scope\nWorkspace: "Acme". No focus roadmap — load one with get_roadmap_overview before editing.', system)
+        self.assertIn(f'# Scope\nWorkspace: [Acme](proyekto://workspace/{WORKSPACE}) (id {WORKSPACE}). No focus roadmap — load one with get_roadmap_overview before editing.', system)
         self.assertIn('# Focus roadmap\n(none loaded)', system)
         overview = system[_pos(system, '# Workspace overview'):_pos(system, '# Actor')]
-        self.assertIn('Workspace: "Acme"', overview)
+        self.assertIn(f'Workspace: [Acme](proyekto://workspace/{WORKSPACE})', overview)
         self.assertIn('Projects (1; 1 more in other workspaces):', overview)
-        self.assertIn(f'- Alpha app (id p-1, roadmap "Alpha" (id {FOCUS}))', overview)
+        self.assertIn(f'- [Alpha app](proyekto://project/p-1) (id p-1, roadmap [Alpha](proyekto://roadmap/{FOCUS}) (id {FOCUS}))', overview)
         self.assertNotIn('Elsewhere', overview)
-        self.assertIn(f'- Alpha (id {FOCUS}; project "Alpha app"; 3 epics, 7 features, 20 tasks, 5 open, 1 overdue)', overview)
-        self.assertIn(f'- Shared one (id {BETA}; standalone, no project; shared with you)', overview)
+        self.assertIn(f'- [Alpha](proyekto://roadmap/{FOCUS}) (id {FOCUS}; project [Alpha app](proyekto://project/p-1); 3 epics, 7 features, 20 tasks, 5 open, 1 overdue)', overview)
+        self.assertIn(f'- [Shared one](proyekto://roadmap/{BETA}) (id {BETA}; standalone, no project; shared with you)', overview)
         self.assertIn('Projects and roadmaps are different objects', overview)
-        self.assertIn('- Platform (id t-1, 4 members)', overview)
+        self.assertIn('- [Platform](proyekto://team/t-1) (id t-1, 4 members)', overview)
         self.assertLessEqual(len(overview.strip().splitlines()), 40)
         self.assertIn('# Actor\nYou are assisting Ana (workspace member).', system)
 
@@ -272,9 +273,9 @@ class WorkspaceScopeTests(unittest.TestCase):
         ])
         system = prompt.build_system_prompt(session, None, _context(session), 'investigate')
         overview = system[_pos(system, '# Workspace overview'):_pos(system, '# Actor')]
-        self.assertIn('- Empty project (id p-2, no roadmap yet, yours)', overview)
-        self.assertIn('- Test Project (id r-solo; standalone, no project; status: draft; yours)', overview)
-        self.assertIn('- New Roadmap (id r-new; standalone, no project; status: draft; yours)', overview)
+        self.assertIn('- [Empty project](proyekto://project/p-2) (id p-2, no roadmap yet, yours)', overview)
+        self.assertIn('- [Test Project](proyekto://roadmap/r-solo) (id r-solo; standalone, no project; status: draft; yours)', overview)
+        self.assertIn('- [New Roadmap](proyekto://roadmap/r-new) (id r-new; standalone, no project; status: draft; yours)', overview)
         # The owner's standalone roadmaps are never described as shared.
         for line in overview.splitlines():
             if 'r-solo' in line or 'r-new' in line:
@@ -302,10 +303,32 @@ class WorkspaceScopeTests(unittest.TestCase):
         self.assertLessEqual(len(overview.strip().splitlines()), 40)
         self.assertIn('…and', overview)
 
+    def test_scope_without_cached_workspace_uses_plain_generic_label(self) -> None:
+        session = AgentSession(scope={'kind': 'workspace', 'workspace_id': WORKSPACE})
+        scope = prompt.scope_block(session)
+        self.assertIn('Workspace: "workspace". No focus roadmap', scope)
+        self.assertNotIn(WORKSPACE, scope)
+        self.assertNotIn('proyekto://', scope)
+
+    def test_workspace_links_escape_titles_and_preserve_the_cache_prefix(self) -> None:
+        session = self._session()
+        session.metadata.workspace_context['workspace']['name'] = 'Acme [delivery]'
+        first_run = _run(session, user_message='summarize')
+        second_run = _run(session, user_message='what else?')
+        second_run.resolved_refs = [
+            ResolvedRef(kind='workspace', id=WORKSPACE, accessible=True, title='Acme [delivery]', slug='acme')
+        ]
+        first = prompt.build_system_prompt(session, first_run, _context(session, first_run))
+        second = prompt.build_system_prompt(session, second_run, _context(session, second_run))
+        self.assertIn(f'[Acme \\[delivery\\]](proyekto://workspace/{WORKSPACE})', first)
+        self.assertEqual(prompt.prompt_prefix(first), prompt.prompt_prefix(second))
+        self.assertNotIn('\n# Referenced items', prompt.prompt_prefix(second))
+
 
 class MessagesAndPhaseTailTests(unittest.TestCase):
     def test_static_prefix_teaches_entity_links(self) -> None:
         prefix = prompt.static_prefix()
+        self.assertIn('# Entities', prefix)
         self.assertIn('# Entity links', prefix)
         self.assertIn('[Title](proyekto://<kind>/<id>)', prefix)
         self.assertIn('`E1`, `E1.F2`, `M1`, `R2`, `R2.E1`', prefix)
@@ -313,6 +336,18 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertIn('`search_tasks` matches carry ids', prefix)
         self.assertIn('Entity links are only for assistant reply text and final reports', prefix)
         self.assertIn('Never put entity links in any tool arguments', prefix)
+        for rule in (
+            'A workspace is the organisation container that holds projects and teams and has members',
+            'A team is a group of people inside a workspace, never a container of roadmaps',
+            'A project holds at most one roadmap',
+            'A workspace, a project and a team can share a name and are different objects',
+            'copy entity links verbatim where your context already shows them (`# Scope`, `# Workspace overview`, `# Project context`, `# Referenced items`, `# Recently resolved items`)',
+            "for an item a tool returned, build the link from that item's own id and title",
+            "Never attach a title to a different item's id",
+            'An item with no link in your context is named in plain text',
+            'Mismatched links are removed before the user sees them',
+        ):
+            self.assertIn(rule, prefix)
         for tool_text in (
             '`ask_user` questions or options',
             '`propose` summaries, next_steps or hierarchy titles',
@@ -351,6 +386,7 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertTrue(verify.startswith('# Run\nPhase: verify.'))
         self.assertIn('[Title](proyekto://<kind>/<id>)', verify)
         self.assertIn('ids from `# Outcome`', verify)
+        self.assertIn('Copy the links from `# Outcome` verbatim', verify)
         self.assertIn('Tool arguments, including `propose` summaries and next_steps, use plain titles', verify)
         self.assertIn('never re-apply anything', verify)
         self.assertEqual(prompt.render_phase_tail('propose'), '')
@@ -455,6 +491,7 @@ class TurnContextTests(unittest.TestCase):
         self.assertEqual(context['memory_notes_by_roadmap'][BETA][0]['id'], 'm-2')
         self.assertEqual(context['roadmap_role'], 'owner')
         self.assertNotIn('on_roadmap_loaded', context)
+        self.assertNotIn('entity_sink', context)
 
 
 if __name__ == '__main__':

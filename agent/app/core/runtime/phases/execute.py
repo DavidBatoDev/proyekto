@@ -49,6 +49,7 @@ from app.core.memory.recent_targets import prune_recent_targets_by_node_ids
 from app.core.runtime import context_cache, runs, terminal
 from app.core.runtime.handles import handle_map_for_roadmap, merged_handle_map, validate_batch_roadmap
 from app.core.runtime.phases.investigate import escalated_effort
+from app.core.runtime.entity_registry import make_entity_sink, register_workspace_overview
 from app.core.runtime.prompt import (
     _pending_plan_outline,
     build_messages,
@@ -450,6 +451,8 @@ def materialize(ctx: Any, session: AgentSession, run_state: Any, batch: RunBatch
     turn_context['on_roadmap_loaded'] = context_cache.make_on_roadmap_loaded(
         session=session, run=run_state, settings=settings, logger=ctx.logger, trace_id=ctx.trace_id
     )
+    register_workspace_overview(run_state, session.metadata.workspace_context, replace_existing=False)
+    turn_context['entity_sink'] = make_entity_sink(run_state)
     transcript = ctx.get_transcript(batch.materialize_transcript_key) if batch.materialize_transcript_key else None
     messages = build_messages(
         session,

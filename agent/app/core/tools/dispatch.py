@@ -329,6 +329,13 @@ class ToolDispatcher:
                 elapsed_ms=elapsed_ms,
             )
             outcome, error_code = _derive_invocation_outcome(result)
+            sink = session_context.get('entity_sink')
+            if callable(sink) and isinstance(result, dict) and not result.get('error'):
+                try:
+                    # Harvest before the loop truncates the tool result.
+                    sink(tool_name, result)
+                except Exception:  # noqa: BLE001 — grounding must not break a tool
+                    pass
             record_tool_invocation(
                 self._logger,
                 self._settings,

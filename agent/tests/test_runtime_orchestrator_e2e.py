@@ -23,6 +23,7 @@ from tests.runtime_fakes import (
     AUTH,
     BETA,
     OTHER_AUTH,
+    WORKSPACE,
     FakeLLM,
     FakeNest,
     MemoryStore,
@@ -82,9 +83,9 @@ class _Base(unittest.TestCase):
 class RoadmapScopeTests(_Base):
     def test_reply_entity_handles_expand_on_wire_and_in_persisted_history(self):
         store, nest, service = _bootstrap(roadmap_session())
-        with patched_llm([text_resp('[X](proyekto://epic/E1)')]):
+        with patched_llm([text_resp('[Alpha epic](proyekto://epic/E1)')]):
             _ctx, result = _send(service, 'sess-alpha', 'Which epics are in this roadmap?')
-        expected = f'[X](proyekto://epic/{ALPHA_EPIC})'
+        expected = f'[Alpha epic](proyekto://epic/{ALPHA_EPIC})'
         self.assertEqual(result.assistant_message, expected)
         self.assertEqual((result.run.status, result.run.next), ('done', 'done'))
         persisted = store.get('sess-alpha')
@@ -369,6 +370,33 @@ class RoadmapScopeTests(_Base):
 
 
 class WorkspaceScopeTests(_Base):
+    def test_workspace_link_is_grounded_and_borrowed_team_id_is_rejected(self):
+        team_id = 'f4004aa2-1111-4111-8111-111111111111'
+
+        class WorkspaceNest(FakeNest):
+            async def ai_context_overview(self, *args, **kwargs):
+                payload = await super().ai_context_overview(*args, **kwargs)
+                payload['teams'] = [{'id': team_id, 'name': 'Claude Maxxing'}]
+                return payload
+
+        store, _nest, service = _bootstrap(workspace_session(), nest=WorkspaceNest())
+        link = f'[Acme](proyekto://workspace/{WORKSPACE})'
+        with patched_llm([text_resp(f'{link}, not [Acme](proyekto://team/{team_id}).')]):
+            ctx, result = _send(service, 'sess-ws', 'Summarize my projects and roadmaps')
+        expected = f'{link}, not Acme.'
+        self.assertEqual(result.assistant_message, expected)
+        self.assertEqual(result.entity_links_kept, 1)
+        self.assertEqual(result.entity_links_rejected, 1)
+        self.assertEqual(store.get('sess-ws').messages[-1].content, expected)
+        self.assertEqual(store.get('sess-ws').metadata.run.final_message, expected)
+        self.assertTrue(any(e.kind == 'workspace' and e.id == WORKSPACE for e in result.run.entities_seen))
+        events = trace.store.read(trace_id=ctx.trace_id, session_id='sess-ws', settings=ctx.settings)
+        # The wire and lifecycle counters originate at the same finalization.
+        self.assertIsNotNone(events)
+        step_event = next(event for event in events['events'] if event['event'] == 'run_step_completed')
+        self.assertEqual(step_event['details']['entity_links_kept'], 1)
+        self.assertEqual(step_event['details']['entity_links_rejected'], 1)
+
     def test_sixteen_ops_become_edits_proposal_then_confirm_executes(self):
         store, nest, service = _bootstrap(workspace_session())
         with patched_llm([tool_resp('stage_edits', stage_args(add_epics(16), roadmap_id=ALPHA, message='Sixteen epics.'))]):

@@ -214,7 +214,7 @@ class FakeNest:
     async def workspace_get(self, workspace_id, auth_header, trace_id=None):
         if self.workspace_error is not None:
             raise self.workspace_error
-        return {'id': workspace_id, 'name': 'Acme'}
+        return {'id': workspace_id, 'name': 'Acme', 'slug': 'acme'}
 
     async def context_summary(self, *, roadmap_id, preview_id, auth_header, trace_id=None):
         self.summary_calls.append(roadmap_id)
@@ -251,7 +251,7 @@ class FakeNest:
 
     async def ai_context_overview(self, workspace_id, auth_header, trace_id=None):
         return {
-            'workspace': {'id': workspace_id, 'name': 'Acme'},
+            'workspace': {'id': workspace_id, 'name': 'Acme', 'slug': 'acme'},
             'projects': [{'id': 'project-alpha', 'title': 'Alpha app', 'lane': 'current'}],
             'roadmaps': [
                 {'id': rid, 'name': payload['title'], 'project_id': f'project-{payload["title"].lower()}', 'lane': 'current'}

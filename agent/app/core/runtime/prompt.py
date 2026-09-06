@@ -33,6 +33,7 @@ from typing import Any, Callable
 
 from app.core.contracts.sessions import AgentSession, RoadmapContext
 from app.core.runtime import scope as scope_helpers
+from app.core.runtime.entity_links import entity_link
 from app.core.runtime.handles import merged_handle_map
 from app.core.runtime.refs import render_referenced_items
 
@@ -311,10 +312,13 @@ def scope_block(session: AgentSession) -> str:
         ws = workspace.get('workspace')
         if isinstance(ws, dict):
             name = _clean(ws.get('name') or ws.get('title'))
-    label = name or scope.workspace_id or 'workspace'
+    label = (
+        f'{entity_link(name, "workspace", scope.workspace_id)} (id {scope.workspace_id})'
+        if name and scope.workspace_id else '"workspace"'
+    )
     return (
         '# Scope\n'
-        f'Workspace: "{label}". No focus roadmap — load one with '
+        f'Workspace: {label}. No focus roadmap — load one with '
         'get_roadmap_overview before editing. Items shared with the user outside '
         'this workspace are also in reach.'
     )
@@ -547,7 +551,9 @@ def _workspace_overview_block(payload: Any, actor_id: str | None = None) -> str:
     if isinstance(workspace, dict):
         name = _clean(workspace.get('name') or workspace.get('title'))
         if name:
-            lines.append(f'Workspace: "{name}"')
+            workspace_id = _clean(workspace.get('id'))
+            label = entity_link(name, 'workspace', workspace_id) if workspace_id else f'"{name}"'
+            lines.append(f'Workspace: {label}')
     lines.append(_WORKSPACE_OVERVIEW_LEGEND)
 
     def _lane(item: dict[str, Any]) -> str:
@@ -609,13 +615,17 @@ def _workspace_overview_block(payload: Any, actor_id: str | None = None) -> str:
         if roadmap_id:
             linked = roadmap_by_id.get(roadmap_id) or roadmap
             roadmap_name = _clean(linked.get('name') or linked.get('title')) if linked else None
-            bits.append(f'roadmap "{roadmap_name}" (id {roadmap_id})' if roadmap_name else f'roadmap {roadmap_id}')
+            bits.append(
+                f'roadmap {entity_link(roadmap_name, "roadmap", roadmap_id)} (id {roadmap_id})'
+                if roadmap_name else f'roadmap {roadmap_id}'
+            )
         else:
             bits.append('no roadmap yet')
         access = _access(item)
         if access:
             bits.append(access)
-        return f'- {title}' + (f' ({", ".join(bits)})' if bits else '')
+        label = entity_link(title, 'project', project_id) if project_id else title
+        return f'- {label}' + (f' ({", ".join(bits)})' if bits else '')
 
     def _render_roadmap(item: dict[str, Any]) -> str:
         title = _clean(item.get('name') or item.get('title')) or 'Untitled roadmap'
@@ -626,7 +636,10 @@ def _workspace_overview_block(payload: Any, actor_id: str | None = None) -> str:
         project_id = _clean(item.get('project_id'))
         if project_id:
             project_title = _clean(item.get('project_title')) or project_title_by_id.get(project_id)
-            bits.append(f'project "{project_title}"' if project_title else f'project {project_id}')
+            bits.append(
+                f'project {entity_link(project_title, "project", project_id)}'
+                if project_title else f'project {project_id}'
+            )
         else:
             bits.append('standalone, no project')
         counts = item.get('counts') if isinstance(item.get('counts'), dict) else item
@@ -643,7 +656,8 @@ def _workspace_overview_block(payload: Any, actor_id: str | None = None) -> str:
         access = _access(item)
         if access:
             bits.append(access)
-        return f'- {title}' + (f' ({"; ".join(bits)})' if bits else '')
+        label = entity_link(title, 'roadmap', roadmap_id) if roadmap_id else title
+        return f'- {label}' + (f' ({"; ".join(bits)})' if bits else '')
 
     def _render_team(item: dict[str, Any]) -> str:
         title = _clean(item.get('name') or item.get('title')) or 'Untitled team'
@@ -654,7 +668,8 @@ def _workspace_overview_block(payload: Any, actor_id: str | None = None) -> str:
         member_count = item.get('member_count')
         if isinstance(member_count, int) and not isinstance(member_count, bool):
             bits.append(f'{member_count} members')
-        return f'- {title}' + (f' ({", ".join(bits)})' if bits else '')
+        label = entity_link(title, 'team', team_id) if team_id else title
+        return f'- {label}' + (f' ({", ".join(bits)})' if bits else '')
 
     _section('Projects', projects, other_projects, _render_project)
     _section('Roadmaps', roadmaps, other_roadmaps, _render_roadmap)
@@ -800,7 +815,14 @@ def _project_context_block(value: Any) -> str:
         return ''
 
     title = _project_context_text(project.get('title'), 180) or '(untitled project)'
-    lines = ['# Project context', f'Project: {title}']
+    project_id = _clean(project.get('id'))
+    lines = ['# Project context', f'Project: {entity_link(title, "project", project_id) if project_id else title}']
+    workspace = project.get('workspace')
+    if isinstance(workspace, dict):
+        workspace_id = _clean(workspace.get('id'))
+        workspace_name = _project_context_text(workspace.get('name'), 180)
+        if workspace_id and workspace_name:
+            lines.append(f'Workspace: {entity_link(workspace_name, "workspace", workspace_id)}')
 
     attributes: list[str] = []
     for label, key in (
@@ -1108,10 +1130,13 @@ def _recent_targets(session_context: dict[str, Any], session: AgentSession | Non
         node_id = target.get('node_id')
         if not title or not node_id:
             continue
-        line = f'- {title} ({node_type}) — id {node_id}'
-        label = _roadmap_label(session, target.get('roadmap_id')) if session is not None else None
-        if label:
-            line += f' — {label}'
+        line = f'- {entity_link(title, node_type, node_id)} ({node_type}) — id {node_id}'
+        roadmap_id = _clean(target.get('roadmap_id'))
+        if session is not None and roadmap_id:
+            context = session.metadata.roadmaps.get(roadmap_id)
+            roadmap_title = _clean(context.title) if context is not None else None
+            label = entity_link(roadmap_title, 'roadmap', roadmap_id) if roadmap_title else roadmap_id
+            line += f' — roadmap {label}'
         lines.append(line)
     return '\n'.join(lines)
 

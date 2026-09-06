@@ -23,6 +23,7 @@ from app.core.engine.progress import AssistantDeltaEmitter, ThoughtEmitter
 from app.core.logging_utils import log_event
 from app.core.runtime import context_cache, refs as refs_module, terminal
 from app.core.runtime.handles import merged_handle_map
+from app.core.runtime.entity_registry import make_entity_sink, register_workspace_overview
 from app.core.runtime.prompt import build_messages
 from app.core.runtime.results import PhaseOutcome
 from app.core.runtime.tools import investigate_tools
@@ -233,7 +234,12 @@ def prepare_context(ctx: Any, session: AgentSession, run: Any) -> dict[str, Any]
         context_cache.ensure_memory_notes(session=session, **deps)
         context_cache.ensure_project_context(session=session, **deps)
     else:
+        previous_overview = session.metadata.workspace_context
         context_cache.ensure_workspace_overview(session=session, **deps)
+        register_workspace_overview(
+            run, session.metadata.workspace_context,
+            replace_existing=session.metadata.workspace_context is not previous_overview,
+        )
     if run.refs and not run.resolved_refs:
         refs_module.hydrate_refs(session=session, run=run, **deps)
     turn_context = ctx.service.build_turn_context(session, ctx.auth_header, ctx.trace_id, run=run)
@@ -243,6 +249,7 @@ def prepare_context(ctx: Any, session: AgentSession, run: Any) -> dict[str, Any]
     turn_context['on_roadmap_loaded'] = context_cache.make_on_roadmap_loaded(
         session=session, run=run, settings=ctx.settings, logger=ctx.logger, trace_id=ctx.trace_id
     )
+    turn_context['entity_sink'] = make_entity_sink(run)
     return turn_context
 
 

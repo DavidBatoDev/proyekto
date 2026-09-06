@@ -8,7 +8,7 @@ terminal that changed memory state, the snapshot is pushed fire-and-forget to
 the backend (roadmap_ai_sessions.metadata.agent_state, by scope) and replayed
 into CreateSessionRequest.metadata when the web rehydrates.
 
-Caches (roadmap contexts, workspace overview, actor context) are deliberately
+Caches (roadmap contexts, workspace overview, actor context, run.entities_seen) are deliberately
 excluded — they are refetched naturally on the next turn.
 """
 
@@ -56,6 +56,9 @@ def build_agent_state_snapshot(session: AgentSession) -> dict[str, Any] | None:
         exclude_none=True,
         include=set(_MEMORY_FIELDS),
     )
+    run_cache = metadata_dump.get('run')
+    if isinstance(run_cache, dict):
+        run_cache.pop('entities_seen', None)
     if not any(metadata_dump.get(field) for field in _MEMORY_FIELDS):
         return None
 

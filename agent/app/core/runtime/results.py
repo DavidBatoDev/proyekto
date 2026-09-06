@@ -76,6 +76,8 @@ class StepResult:
     # ordered so the static prefix stays byte-stable (runtime/prompt.py) and
     # this is the only signal that the ordering is paying off.
     tokens_cached: int | None = None
+    entity_links_kept: int = 0
+    entity_links_rejected: int = 0
     route_lane: str | None = None
     react_loop_turns: int | None = None
     react_loop_budget: int | None = None

@@ -51,6 +51,8 @@ _CONTENT_KEYS = {
     'content',
     'system_prompt',
     'planner_prompt',
+    'link_text',
+    'registered_title',
 }
 
 _LIFECYCLE_TRACE_TTL_SECONDS = 15 * 60
@@ -338,6 +340,8 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'provider_used',
                 'provider_error_code',
                 'error_code',
+                'entity_links_kept',
+                'entity_links_rejected',
             ),
         )
     if event == 'run_started':
@@ -363,6 +367,8 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'run_status',
                 'checkpoint',
                 'elapsed_ms',
+                'entity_links_kept',
+                'entity_links_rejected',
             ),
         )
     if event == 'run_checkpoint':
@@ -530,6 +536,7 @@ def _progress_event_title(event: str) -> str:
         'phase_entered': 'Phase started',
         'phase_completed': 'Phase completed',
         'run_step_completed': 'Step completed',
+        'entity_link_rejected': 'Entity link rejected',
         'run_checkpoint': 'Waiting for input',
         'refs_resolved': 'References resolved',
         # Curated rows.
@@ -978,6 +985,8 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'tokens_output': payload.get('tokens_output'),
                 'tokens_total': payload.get('tokens_total'),
                 'tokens_cached': payload.get('tokens_cached'),
+                'entity_links_kept': payload.get('entity_links_kept', 0),
+                'entity_links_rejected': payload.get('entity_links_rejected', 0),
             },
         }
         trace.routing['intent_type'] = payload.get('intent_type') or trace.routing.get('intent_type')
@@ -1047,6 +1056,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  validation  {trace.response.get("operation_validation_error")}',
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
             f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"))}',
+            f'  links       kept={trace.response.get("entity_links_kept", 0)} rejected={trace.response.get("entity_links_rejected", 0)}',
             '',
             'ASSISTANT',
             f'  {_format_message_summary(trace.assistant.get("assistant_message"))}',

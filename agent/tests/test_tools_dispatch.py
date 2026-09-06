@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import unittest
+from unittest.mock import Mock
 
 from app.core.config import get_settings
 from app.core.tools.dispatch import ToolDispatcher, resolve_call_roadmap_id
@@ -105,6 +106,33 @@ class ResolveCallRoadmapIdTests(unittest.TestCase):
 
 
 class DispatcherTests(unittest.TestCase):
+    def test_entity_sink_receives_success_before_loop_truncation(self) -> None:
+        sink = Mock()
+        result = _dispatcher(_Nest()).execute(
+            'list_roadmaps', {}, {'auth_header': 'Bearer t', 'entity_sink': sink}
+        )
+        sink.assert_called_once_with('list_roadmaps', result)
+        self.assertEqual(len(result['items']), 2)
+        self.assertIs(sink.call_args.args[1], result)
+
+    def test_entity_sink_does_not_receive_error_results(self) -> None:
+        sink = Mock()
+        dispatcher = _dispatcher(_Nest())
+        for name in ('not_a_tool', 'list_members'):
+            result = dispatcher.execute(name, {}, {'entity_sink': sink})
+            self.assertIn('error', result)
+        sink.assert_not_called()
+
+    def test_raising_entity_sink_does_not_change_the_result(self) -> None:
+        sink = Mock(side_effect=ValueError('bad harvest'))
+        dispatcher = _dispatcher(_Nest())
+        expected = dispatcher.execute('list_roadmaps', {}, {'auth_header': 'Bearer t'})
+        result = dispatcher.execute(
+            'list_roadmaps', {}, {'auth_header': 'Bearer t', 'entity_sink': sink}
+        )
+        self.assertEqual(result, expected)
+        sink.assert_called_once()
+
     def test_per_call_resolution_never_touches_the_shared_context(self) -> None:
         nest = _Nest()
         context = {'focus_roadmap_id': FOCUS, 'auth_header': 'Bearer t'}
