@@ -268,6 +268,7 @@ export function RoadmapPreviewCard({
 	};
 
 	const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (event.target !== event.currentTarget) return;
 		if (!canSelect || (event.key !== "Enter" && event.key !== " ")) return;
 		event.preventDefault();
 		selectCard();

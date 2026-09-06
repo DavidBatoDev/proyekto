@@ -71,41 +71,26 @@ export class RoadmapsService {
       );
     }
 
-    const { data: linked, error: linkError } = await this.supabase
-      .from('roadmaps')
-      .update({ project_id: projectId, updated_at: new Date().toISOString() })
-      .eq('id', replacementRoadmapId)
-      .is('project_id', null)
-      .eq('owner_id', userId)
-      .select()
-      .single();
-    if (linkError || !linked) {
-      throw new BadRequestException(
-        `Failed to link replacement roadmap: ${
-          linkError?.message ?? 'unknown error'
-        }`,
-      );
-    }
-
-    const { error: deleteError } = await this.supabase
-      .from('roadmaps')
-      .delete()
-      .eq('id', current.id);
-    if (deleteError) {
-      this.logger.error(
-        `Failed to delete old empty roadmap ${current.id} after linking replacement ${replacementRoadmapId}; attempting to unlink replacement. Cause: ${deleteError.message}`,
-      );
-      const { error: revertError } = await this.supabase
-        .from('roadmaps')
-        .update({ project_id: null })
-        .eq('id', replacementRoadmapId);
-      if (revertError) {
-        this.logger.error(
-          `Revert unlink of replacement ${replacementRoadmapId} also failed: ${revertError.message}. Manual cleanup required for project ${projectId}.`,
+    const { data: linked, error } = await this.supabase
+      .rpc('replace_project_roadmap', {
+        p_project_id: projectId,
+        p_current_roadmap_id: current.id,
+        p_replacement_roadmap_id: replacementRoadmapId,
+        p_user_id: userId,
+      })
+      .returns<Record<string, unknown>>();
+    if (error || !linked) {
+      if (error?.code === 'PT409' || error?.code === '23505') {
+        throw new ConflictException(
+          'A roadmap link changed while replacing it. Refresh and try again.',
         );
       }
+      if (error?.code === '22023') {
+        throw new BadRequestException(error.message);
+      }
+      this.logger.error(`Failed to replace project roadmap: ${error?.message}`);
       throw new BadRequestException(
-        'Could not delete the previous empty roadmap; please retry.',
+        'Could not replace the roadmap. Please refresh and try again.',
       );
     }
 
