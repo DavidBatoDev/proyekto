@@ -1,6 +1,22 @@
+# Long-context defaults for trusted Codex sessions in this repository.
+# These apply to every selected model; use GPT-5.6/GPT-6 models that support 1M context.
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+model_auto_compact_token_limit_scope = "total"
+
 [mcp_servers.supabase]
 url = "https://mcp.supabase.com/mcp?project_ref=byvbnkpiselvvulsvxgo"
 startup_timeout_sec = 120
+
+[mcp_servers.supabase.tools.apply_migration]
+approval_mode = "approve"
+
+[mcp_servers.supabase_dev]
+url = "https://mcp.supabase.com/mcp?project_ref=vyiedlwasdwmjbztqznl"
+startup_timeout_sec = 120
+
+[mcp_servers.supabase_dev.tools.apply_migration]
+approval_mode = "approve"
 
 [mcp_servers.cloudflare_api]
 url = "https://mcp.cloudflare.com/mcp"
