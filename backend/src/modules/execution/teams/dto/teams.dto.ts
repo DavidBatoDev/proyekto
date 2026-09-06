@@ -164,6 +164,12 @@ export class UpdateTeamDto {
   @IsBoolean()
   time_tracking_enabled?: boolean;
 
+  // Gates the team's whole money layer: per-member rates, payout cut-offs, and
+  // payouts. Defaults false in the DB — money is opt-in per team.
+  @IsOptional()
+  @IsBoolean()
+  compensation_enabled?: boolean;
+
   @IsOptional()
   @IsNumber()
   @Min(0)

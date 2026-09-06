@@ -14,6 +14,12 @@ const TABS: { key: StatusTab; label: string }[] = [
 ];
 
 /**
+ * "Paid" only exists as a status because a payout wrote it. A team with its
+ * money layer off can never reach it, so the tab would be permanently empty.
+ */
+const TABS_WITHOUT_MONEY = TABS.filter((t) => t.key !== "paid");
+
+/**
  * Status tabs for Team Logs. Replaces the old multi-select status chips: one
  * active status at a time, filtered server-side, with exact counts from the
  * summary (not capped by the 200-row list). "All" clears the status filter.
@@ -22,15 +28,24 @@ export function TeamLogsStatusTabs({
 	value,
 	onChange,
 	counts,
+	showPaid = true,
 }: {
 	value: StatusTab;
 	onChange: (next: StatusTab) => void;
 	counts?: LogStatusCounts;
+	/** False hides the Paid tab for teams whose money layer is off. */
+	showPaid?: boolean;
 }) {
+	const tabs = showPaid ? TABS : TABS_WITHOUT_MONEY;
 	const countFor = (key: StatusTab): number | null => {
 		if (!counts) return null;
 		if (key === "all")
-			return counts.pending + counts.approved + counts.paid + counts.rejected;
+			return (
+				counts.pending +
+				counts.approved +
+				(showPaid ? counts.paid : 0) +
+				counts.rejected
+			);
 		return counts[key];
 	};
 
@@ -40,7 +55,7 @@ export function TeamLogsStatusTabs({
 			aria-label="Filter logs by status"
 			className="flex flex-wrap items-center gap-1 border-b border-slate-200"
 		>
-			{TABS.map((tab) => {
+			{tabs.map((tab) => {
 				const active = value === tab.key;
 				const count = countFor(tab.key);
 				return (

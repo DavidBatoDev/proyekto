@@ -130,7 +130,8 @@ interface TeamApprovalsInboxProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (
+	/** Undefined when the team's money layer is off — pay actions disappear. */
+	onPayMember?: (
 		memberId: string,
 		logIds: string[],
 		currency: string,
@@ -329,7 +330,7 @@ export function TeamApprovalsInbox({
 								</div>
 							</div>
 
-							{approvedBuckets.length > 0 && (
+							{onPayMember && approvedBuckets.length > 0 && (
 								<button
 									type="button"
 									onClick={() => {
@@ -408,14 +409,14 @@ export function TeamApprovalsInbox({
 							tone="pay"
 							icon={<Wallet className="h-3.5 w-3.5" />}
 							label="Pay"
-							disabled={!canPaySelection}
+							disabled={!onPayMember || !canPaySelection}
 							title={
 								canPaySelection
 									? undefined
 									: "Select approved logs of a single member and currency to pay."
 							}
 							onClick={() => {
-								if (!canPaySelection) return;
+								if (!onPayMember || !canPaySelection) return;
 								onPayMember(
 									selectionInfo.singleMember as string,
 									Array.from(selected),
@@ -491,7 +492,8 @@ interface MemberDrilldownProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (
+	/** Undefined when the team's money layer is off — pay actions disappear. */
+	onPayMember?: (
 		memberId: string,
 		logIds: string[],
 		currency: string,
@@ -644,7 +646,8 @@ const DrilldownRow = memo(function DrilldownRow({
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (
+	/** Undefined when the team's money layer is off — pay actions disappear. */
+	onPayMember?: (
 		memberId: string,
 		logIds: string[],
 		currency: string,

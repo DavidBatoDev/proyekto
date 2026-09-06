@@ -39,6 +39,8 @@ interface TeamLogsPeriodFilterProps {
 	 * this set show a small dot in the calendar so you can see when you worked.
 	 */
 	workedDays?: Set<string>;
+	/** False hides the cut-off presets for teams whose money layer is off. */
+	showCutoffs?: boolean;
 	/**
 	 * Which edge to anchor the popover to. Use "right" when the trigger sits
 	 * near the right of the page so the wide popover opens leftward on-screen.
@@ -65,6 +67,7 @@ export function TeamLogsPeriodFilter({
 	onApplyCustomRange,
 	workedDays,
 	align = "left",
+	showCutoffs = true,
 }: TeamLogsPeriodFilterProps) {
 	const [open, setOpen] = useState(false);
 	const [mode, setMode] = useState<PopoverMode>("range");
@@ -187,18 +190,24 @@ export function TeamLogsPeriodFilter({
 			active: period.preset === "this_year",
 			onSelect: () => applyPreset("this_year"),
 		},
-		{
-			key: "current_cutoff",
-			label: "Current cut-off",
-			active: period.preset === "current_cutoff",
-			onSelect: () => applyPreset("current_cutoff"),
-		},
-		{
-			key: "cutoff",
-			label: "Cut-off…",
-			active: period.preset === "cutoff",
-			onSelect: () => setMode("cutoff"),
-		},
+		// Cut-off presets are payout concepts. A team with its money layer off
+		// has no cut-offs to filter by, so it gets calendar ranges only.
+		...(showCutoffs
+			? [
+					{
+						key: "current_cutoff",
+						label: "Current cut-off",
+						active: period.preset === "current_cutoff",
+						onSelect: () => applyPreset("current_cutoff"),
+					},
+					{
+						key: "cutoff",
+						label: "Cut-off…",
+						active: period.preset === "cutoff",
+						onSelect: () => setMode("cutoff"),
+					},
+				]
+			: []),
 		{
 			key: "all_time",
 			label: "All time",

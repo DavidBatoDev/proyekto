@@ -29,8 +29,10 @@ function newPeriodId(): string {
 /**
  * Owner-only editor for a team's payout cut-off schedule
  * (teams.pay_period_config). Mirrors the retroactive-days / default-currency
- * cards in settings/time.tsx: local draft + Save. A live preview shows the
- * concrete cut-off windows and their pay dates for the current month.
+ * sections in settings/time.tsx: local draft + Save, and the same divider-led
+ * section shell rather than a card of its own, so the settings page reads as
+ * one flat column. A live preview shows the concrete cut-off windows and their
+ * pay dates for the current month.
  */
 export function PayPeriodSettingsCard({
 	teamId,
@@ -99,23 +101,21 @@ export function PayPeriodSettingsCard({
 	const clampDay = (v: number) => Math.min(31, Math.max(1, Math.round(v) || 1));
 
 	return (
-		<div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-			<div className="flex items-start justify-between gap-2">
-				<div>
-					<p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-						Payout cut-offs
-					</p>
-					<p className="mt-1 text-xs text-slate-500">
-						Define your pay periods and when each is paid. Members and admins
-						pick these from the period filter (e.g. “Current cut-off”). Leave
-						as-is to use the default semi-monthly schedule.
-					</p>
-				</div>
+		<section>
+			<div>
+				<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+					Payout cut-offs
+				</p>
+				<p className="mt-1 max-w-xl text-xs text-muted-foreground">
+					Define your pay periods and when each is paid. Members and admins pick
+					these from the period filter (e.g. “Current cut-off”). Leave as-is to
+					use the default semi-monthly schedule.
+				</p>
 			</div>
 
 			<div className="mt-3 space-y-2">
 				{/* Header row (desktop) */}
-				<div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid">
+				<div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
 					<span>Label</span>
 					<span>Start day</span>
 					<span>End day</span>
@@ -126,7 +126,7 @@ export function PayPeriodSettingsCard({
 				{draft.map((row, i) => (
 					<div
 						key={row.id}
-						className="grid grid-cols-2 items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/60 p-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:border-0 sm:bg-transparent sm:p-1"
+						className="grid grid-cols-2 items-center gap-2 rounded-lg border border-border bg-muted/60 p-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:border-0 sm:bg-transparent sm:p-1"
 					>
 						<input
 							type="text"
@@ -134,7 +134,7 @@ export function PayPeriodSettingsCard({
 							disabled={!canManage}
 							onChange={(e) => updateRow(i, { label: e.target.value })}
 							placeholder="Label"
-							className="col-span-2 rounded-md border border-slate-300 px-2 py-1 text-sm sm:col-span-1"
+							className="col-span-2 rounded-md border border-border px-2 py-1 text-sm sm:col-span-1"
 						/>
 						<input
 							type="number"
@@ -143,14 +143,16 @@ export function PayPeriodSettingsCard({
 							value={row.start_day}
 							disabled={!canManage}
 							onChange={(e) =>
-								updateRow(i, { start_day: clampDay(Number(e.target.value)) })
+								updateRow(i, {
+									start_day: clampDay(Number(e.target.value)),
+								})
 							}
-							className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm tabular-nums"
+							className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
 							aria-label="Start day"
 						/>
 						<div className="flex items-center gap-1">
 							{row.end_day === "EOM" ? (
-								<span className="w-16 rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-center text-xs font-medium text-slate-500">
+								<span className="w-16 rounded-md border border-border bg-muted px-2 py-1 text-center text-xs font-medium text-muted-foreground">
 									EOM
 								</span>
 							) : (
@@ -161,13 +163,15 @@ export function PayPeriodSettingsCard({
 									value={row.end_day}
 									disabled={!canManage}
 									onChange={(e) =>
-										updateRow(i, { end_day: clampDay(Number(e.target.value)) })
+										updateRow(i, {
+											end_day: clampDay(Number(e.target.value)),
+										})
 									}
-									className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm tabular-nums"
+									className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
 									aria-label="End day"
 								/>
 							)}
-							<label className="flex items-center gap-1 text-[10px] text-slate-500">
+							<label className="flex items-center gap-1 text-[10px] text-muted-foreground">
 								<input
 									type="checkbox"
 									disabled={!canManage}
@@ -175,7 +179,7 @@ export function PayPeriodSettingsCard({
 									onChange={(e) =>
 										updateRow(i, { end_day: e.target.checked ? "EOM" : 15 })
 									}
-									className="h-3 w-3 rounded border-slate-300"
+									className="h-3 w-3 rounded border-border"
 								/>
 								EOM
 							</label>
@@ -189,7 +193,7 @@ export function PayPeriodSettingsCard({
 							onChange={(e) =>
 								updateRow(i, { pay_day: clampDay(Number(e.target.value)) })
 							}
-							className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm tabular-nums"
+							className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
 							aria-label="Pay day"
 						/>
 						<select
@@ -198,7 +202,7 @@ export function PayPeriodSettingsCard({
 							onChange={(e) =>
 								updateRow(i, { pay_month_offset: Number(e.target.value) })
 							}
-							className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+							className="rounded-md border border-border px-2 py-1 text-xs"
 							aria-label="Pay month"
 						>
 							<option value={0}>Same month</option>
@@ -209,7 +213,7 @@ export function PayPeriodSettingsCard({
 							type="button"
 							disabled={!canManage || draft.length <= 1}
 							onClick={() => removeRow(i)}
-							className="justify-self-end rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+							className="justify-self-end rounded-md p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
 							aria-label="Remove period"
 						>
 							<Trash2 className="h-3.5 w-3.5" />
@@ -223,7 +227,7 @@ export function PayPeriodSettingsCard({
 					type="button"
 					onClick={addRow}
 					disabled={draft.length >= 12}
-					className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+					className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
 				>
 					<Plus className="h-3.5 w-3.5" />
 					Add period
@@ -231,19 +235,19 @@ export function PayPeriodSettingsCard({
 			)}
 
 			{/* Live preview for the current month */}
-			<div className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-				<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+			<div className="mt-3 rounded-md border border-border bg-muted px-3 py-2">
+				<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 					This month
 				</p>
 				<ul className="mt-1 space-y-0.5">
 					{preview.map((p) => (
 						<li
 							key={p.id}
-							className="flex items-center justify-between gap-3 text-xs text-slate-600"
+							className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
 						>
-							<span className="font-medium text-slate-700">
+							<span className="font-medium text-foreground">
 								{p.label}{" "}
-								<span className="font-normal text-slate-400">
+								<span className="font-normal text-muted-foreground">
 									({p.dayRangeLabel})
 								</span>
 							</span>
@@ -261,21 +265,23 @@ export function PayPeriodSettingsCard({
 						type="button"
 						onClick={() => saveMutation.mutate(draft)}
 						disabled={saveMutation.isPending}
-						className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-60"
+						className="rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/90 disabled:opacity-60"
 					>
 						{saveMutation.isPending ? "Saving..." : "Save cut-offs"}
 					</button>
-					<button
-						type="button"
-						onClick={() => resetMutation.mutate()}
-						disabled={resetMutation.isPending}
-						className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-					>
-						<RotateCcw className="h-3.5 w-3.5" />
-						Reset to default
-					</button>
 				</div>
 			)}
-		</div>
+			<div className="mt-3 flex items-center gap-2">
+				<button
+					type="button"
+					onClick={() => resetMutation.mutate()}
+					disabled={!canManage || resetMutation.isPending}
+					className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
+				>
+					<RotateCcw className="h-3.5 w-3.5" />
+					Reset to default
+				</button>
+			</div>
+		</section>
 	);
 }

@@ -69,6 +69,12 @@ export interface Team {
 	billing_email?: string | null;
 	time_tracking_enabled: boolean;
 	/**
+	 * Gates the team's money layer: per-member rates, payout cut-offs and
+	 * payouts. False means the team tracks hours only, and the Manage Rates /
+	 * Payouts tabs and every fee figure stay hidden.
+	 */
+	compensation_enabled: boolean;
+	/**
 	 * Optional for the same reason `tags` is: query-cache entries persisted
 	 * before this shipped carry no `status`. Read sites use
 	 * `team.status ?? "active"`.
@@ -83,8 +89,14 @@ export interface Team {
 	// Team may leave these undefined.
 	members_count?: number;
 	members_preview?: Array<ProfileSummary | null>;
-	// The caller's own role / position within this team — drives the
-	// per-card "what am I here?" chip on /teams.
+	/**
+	 * The caller's own role / position within this team — drives the per-card
+	 * "what am I here?" chip on /teams.
+	 *
+	 * `viewer_role` is populated by getTeam as well as listMyTeams, and the
+	 * team Time settings toggle depends on that: it is how the page knows an
+	 * admin may flip time tracking. Do not trim it from the getTeam payload.
+	 */
 	viewer_role?: TeamRole | null;
 	viewer_position?: string | null;
 }
@@ -284,6 +296,7 @@ export interface UpdateTeamPatch {
 	tax_id?: string;
 	billing_email?: string;
 	time_tracking_enabled?: boolean;
+	compensation_enabled?: boolean;
 	retroactive_log_days?: number;
 	default_currency?: "USD" | "CAD" | "PHP";
 	pay_period_config?: PayPeriodConfig | null;

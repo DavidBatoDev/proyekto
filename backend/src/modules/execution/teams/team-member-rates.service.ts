@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -7,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { TeamsService } from './teams.service';
+import { type TeamRow, TeamsService } from './teams.service';
 import {
   CreateTeamMemberRateDto,
   UpdateTeamMemberRateDto,
@@ -32,6 +33,20 @@ export interface TeamMemberRateRow {
   overtime_requires_approval: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Rates are the entry point to the team's money layer, so they follow the same
+ * switch as cut-offs and payouts. Reads stay open — existing rate rows survive
+ * a team turning compensation off and reappear untouched when it comes back —
+ * but nothing new may be written while the layer is off.
+ */
+function assertCompensationEnabled(team: TeamRow): void {
+  if (!team.compensation_enabled) {
+    throw new ForbiddenException(
+      'Compensation is disabled for this team. Enable payouts in team settings to manage rates.',
+    );
+  }
 }
 
 @Injectable()
@@ -106,7 +121,7 @@ export class TeamMemberRatesService {
   ): Promise<TeamMemberRateRow[]> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    await this.teams.assertOwnerIsConsultant(team);
+    assertCompensationEnabled(team);
     await this.assertMemberExists(teamId, userId);
 
     const uniqueProjectIds = Array.from(new Set(dto.project_ids));
@@ -167,7 +182,7 @@ export class TeamMemberRatesService {
   ): Promise<TeamMemberRateRow> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    await this.teams.assertOwnerIsConsultant(team);
+    assertCompensationEnabled(team);
     const existing = await this.fetchOrThrow(teamId, userId, rateId);
 
     const patch: Record<string, unknown> = {};
@@ -235,7 +250,7 @@ export class TeamMemberRatesService {
   ): Promise<void> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    await this.teams.assertOwnerIsConsultant(team);
+    assertCompensationEnabled(team);
     await this.fetchOrThrow(teamId, userId, rateId);
     const { error } = await this.supabase
       .from('team_member_rates')

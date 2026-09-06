@@ -1,6 +1,6 @@
 # RLS & Security
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 Row-Level Security is **enabled broadly** (`ENABLE ROW LEVEL SECURITY` appears 157
 times across 78 migrations — essentially every domain table), but it is **not the
@@ -63,7 +63,6 @@ has been set to null.
 | --- | --- |
 | `tg_project_team_members_sync_shares` | Curating a team member fans out to a `project_access` row |
 | `tg_team_members_block_owner_delete` | You can't remove a team's owner |
-| `tg_team_member_rates_check_consultant` | Team-member rates require an active consultant owner |
 | `tg_project_teams_sync_primary` | Keeps a project's primary team consistent |
 | `trg_contracts_lock_parties` | Prevents consultant/client party changes after a contract reaches signed, active, ended, or cancelled; there is no service-role bypass |
 | `handle_new_user()` | Creates a `profiles` row when `auth.users` gains a row |

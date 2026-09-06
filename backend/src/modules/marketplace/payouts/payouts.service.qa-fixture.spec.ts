@@ -7,7 +7,11 @@ describe('PayoutsService QA fixture safety', () => {
     teamQuery.select = jest.fn(() => teamQuery);
     teamQuery.eq = jest.fn(() => teamQuery);
     teamQuery.maybeSingle = jest.fn().mockResolvedValue({
-      data: { owner_id: 'consultant-1', time_tracking_enabled: true },
+      data: {
+        owner_id: 'consultant-1',
+        time_tracking_enabled: true,
+        compensation_enabled: true,
+      },
       error: null,
     });
     const from = jest.fn(() => teamQuery);

@@ -1,6 +1,6 @@
 # Teams & Time
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 Delivery runs on **teams** — reusable groups of people that attach to projects — and
 **time logs** that capture billable work. The clever bit is *curation*: attaching a
@@ -33,8 +33,12 @@ the workspace grants nothing. See [Workspaces](../workspaces/README.md).
 out a `project_access` row — so their roadmap/chat access follows automatically. You
 don't grant access twice. See [Data → RLS & security](../../07-data-and-db/rls-and-security.md).
 
-Rate rules are guarded: a trigger requires a verified consultant for certain rate
-operations, and the team owner can't be removed.
+Rate rules are guarded at the service layer: setting a member's rate is owner-or-admin
+(`assertCanManageMembers`), and a trigger stops the team owner from being removed. Rates
+used to additionally require the team owner to hold a verified consultant enrollment —
+both that check and its `tg_team_member_rates_check_consultant` trigger were removed on
+2026-09-06, when time tracking was decoupled from consultant capability. `team_member_rates`
+has RLS enabled with no policies, so it is reachable only by the backend's service role.
 
 **Tags are labels, not permissions.** `teams.tags` is a freeform `text[]` (GIN-indexed,
 `NOT NULL DEFAULT '{}'`) that the API normalizes on write — trimmed, whitespace-collapsed,

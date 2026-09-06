@@ -103,8 +103,8 @@ function TeamTimeLayout() {
 							<p>
 								Time tracking lets members log time on tasks across this team's
 								projects, and lets owners and admins approve those logs and
-								manage rates. The owner can enable it from team settings; it
-								requires consultant verification.
+								manage rates. The team owner or a team admin can enable it from
+								team settings.
 							</p>
 							<Link
 								to="/w/$workspaceSlug/teams/$teamId/settings/time"
@@ -119,6 +119,8 @@ function TeamTimeLayout() {
 			</DashboardShell>
 		);
 	}
+
+	const paysMoney = team?.compensation_enabled === true;
 
 	const tabs: TabSpec[] = [];
 	if (isTeamMember) {
@@ -137,7 +139,10 @@ function TeamTimeLayout() {
 			icon: Clock,
 		});
 	}
-	if (isApprover) {
+	// Rates and Payouts are the team's money layer. compensation_enabled gates
+	// both together: a team that only tracks hours never sees either tab, and
+	// the matching backend gates refuse the calls behind them.
+	if (isApprover && paysMoney) {
 		tabs.push({
 			id: "manage-rates",
 			label: "Manage Rates",
@@ -145,7 +150,7 @@ function TeamTimeLayout() {
 			icon: Coins,
 		});
 	}
-	if (isApprover) {
+	if (isApprover && paysMoney) {
 		tabs.push({
 			id: "payouts",
 			label: "Payouts",
@@ -192,6 +197,50 @@ function TeamTimeLayout() {
 		// (the redirector at index.tsx will route /time to a tab).
 		return null;
 	})();
+
+	// The tabs above are hidden when the money layer is off, but the routes
+	// underneath are still reachable by URL (a bookmark, or a link from before
+	// the team switched it off). Answer here rather than letting the page mount
+	// and fail against the matching 403s.
+	const onMoneyRoute =
+		activeTabId === "payouts" || activeTabId === "manage-rates";
+	if (onMoneyRoute && !paysMoney) {
+		return (
+			<DashboardShell>
+				<div className="space-y-6 p-6">
+					<AppSectionHeader
+						title={`${team.name} — Time`}
+						subtitle="Payouts are turned off for this team."
+						rightSlot={
+							<Link
+								to="/w/$workspaceSlug/teams/$teamId/time/my-logs"
+								params={{ workspaceSlug, teamId }}
+								className="text-sm text-primary hover:underline"
+							>
+								Back to logs
+							</Link>
+						}
+					/>
+					<AppSurfaceCard>
+						<div className="space-y-3 p-6 text-sm text-muted-foreground">
+							<p>
+								This team tracks hours only — it has no member rates, cut-off
+								periods or payouts. The team owner can turn payouts on from time
+								settings.
+							</p>
+							<Link
+								to="/w/$workspaceSlug/teams/$teamId/settings/time"
+								params={{ workspaceSlug, teamId }}
+								className="inline-block rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+							>
+								Open settings
+							</Link>
+						</div>
+					</AppSurfaceCard>
+				</div>
+			</DashboardShell>
+		);
+	}
 
 	return (
 		<DashboardShell>

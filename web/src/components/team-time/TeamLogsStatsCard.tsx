@@ -79,6 +79,12 @@ interface TeamLogsStatsCardProps {
 	includePaidColumn?: boolean;
 	includeTrainingRate?: boolean;
 	rateLabel?: string;
+	/**
+	 * False for teams whose money layer is off: the rate chips and the whole
+	 * balance report drop away, leaving the hours summary. Fee figures on
+	 * historical logs are untouched in the data — they are simply not shown.
+	 */
+	showMoney?: boolean;
 }
 
 type SegKey = "pending" | "approved" | "paid" | "rejected";
@@ -230,6 +236,7 @@ export function TeamLogsStatsCard({
 	includePaidColumn = true,
 	includeTrainingRate = true,
 	rateLabel = "Work",
+	showMoney = true,
 }: TeamLogsStatsCardProps) {
 	const renderCurrencies =
 		stats.currencies.length > 0 ? stats.currencies : [fallbackCurrency];
@@ -245,10 +252,12 @@ export function TeamLogsStatsCard({
 		<div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 			{/* Rate header */}
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs sm:px-5">
-				<span className="inline-flex items-center gap-1.5 text-slate-400">
-					<Wallet className="h-3.5 w-3.5" />
-				</span>
-				{rate ? (
+				{showMoney && (
+					<span className="inline-flex items-center gap-1.5 text-slate-400">
+						<Wallet className="h-3.5 w-3.5" />
+					</span>
+				)}
+				{showMoney && rate ? (
 					<>
 						{rate.custom_id ? (
 							<span className="inline-flex items-center gap-1.5">
@@ -316,8 +325,8 @@ export function TeamLogsStatsCard({
 				</span>
 			</div>
 
-			{/* Balance report */}
-			{loading ? (
+			{/* Balance report — money only. */}
+			{!showMoney ? null : loading ? (
 				<div className="space-y-3 px-4 py-4 sm:px-5">
 					<div className="h-8 w-40 animate-pulse rounded bg-slate-100" />
 					<div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100" />

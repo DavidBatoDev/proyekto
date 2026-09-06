@@ -81,6 +81,7 @@ function MyLogsTab() {
 		queryFn: () => getTeam(teamId),
 	});
 	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+	const paysMoney = teamQuery.data?.compensation_enabled === true;
 
 	const period = useMemo(
 		() => resolveTeamLogPeriod(search, payPeriodConfig),
@@ -591,6 +592,7 @@ function MyLogsTab() {
 					{/* Rate + balance summary */}
 					<div className="mb-3">
 						<TeamLogsStatsCard
+							showMoney={paysMoney}
 							rate={activeRate}
 							stats={stats}
 							fallbackCurrency={activeRate?.currency || "USD"}
@@ -599,7 +601,7 @@ function MyLogsTab() {
 							onOpenHistory={
 								hasRateHistory ? () => setHistoryOpen(true) : undefined
 							}
-							includePaidColumn
+							includePaidColumn={paysMoney}
 							includeTrainingRate={false}
 							rateLabel="Rate"
 						/>
@@ -613,6 +615,7 @@ function MyLogsTab() {
 					{/* Date range filter (below the summary) */}
 					<div className="mb-4">
 						<TeamLogsPeriodFilter
+							showCutoffs={paysMoney}
 							period={period}
 							payPeriodConfig={payPeriodConfig}
 							onPresetChange={(preset) => updatePeriod(preset)}

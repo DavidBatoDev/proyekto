@@ -70,6 +70,8 @@ function TeamLogsRoute() {
 		queryFn: () => getTeam(teamId),
 	});
 	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+	// The team's money layer. Off means no fees, no Paid status, no paying.
+	const paysMoney = teamQuery.data?.compensation_enabled === true;
 
 	const period = useMemo(
 		() => resolveTeamLogPeriod(search, payPeriodConfig),
@@ -373,13 +375,14 @@ function TeamLogsRoute() {
 					currentUserId={user?.id ?? null}
 					busyLogIds={busyLogIds}
 					onReviewLogs={handleReviewLogs}
-					onPayMember={handlePayMember}
+					onPayMember={paysMoney ? handlePayMember : undefined}
 					onOpenTaskInRoadmap={handleOpenInRoadmap}
 					canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 				/>
 			) : (
 				<>
 					<TeamLogsStatsCard
+						showMoney={paysMoney}
 						rate={null}
 						stats={stats}
 						fallbackCurrency="USD"
@@ -387,6 +390,7 @@ function TeamLogsRoute() {
 					/>
 
 					<TeamLogsPeriodFilter
+						showCutoffs={paysMoney}
 						period={period}
 						payPeriodConfig={payPeriodConfig}
 						onPresetChange={(preset) => updatePeriod(preset)}
@@ -402,6 +406,7 @@ function TeamLogsRoute() {
 
 					<div className="space-y-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
 						<TeamLogsStatusTabs
+							showPaid={paysMoney}
 							value={activeStatus}
 							onChange={setActiveStatus}
 							counts={statusCounts}
@@ -464,7 +469,7 @@ function TeamLogsRoute() {
 						currentUserId={user?.id ?? null}
 						busyLogIds={busyLogIds}
 						onReviewLogs={handleReviewLogs}
-						onPayMember={handlePayMember}
+						onPayMember={paysMoney ? handlePayMember : undefined}
 						onOpenTaskInRoadmap={handleOpenInRoadmap}
 						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 					/>

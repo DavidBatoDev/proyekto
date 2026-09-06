@@ -569,16 +569,25 @@ export class PayoutsService {
   ): Promise<void> {
     const { data: team, error } = await this.supabase
       .from('teams')
-      .select('owner_id, time_tracking_enabled')
+      .select('owner_id, time_tracking_enabled, compensation_enabled')
       .eq('id', teamId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!team) throw new NotFoundException('Team not found.');
-    const t = team as { owner_id: string; time_tracking_enabled: boolean };
+    const t = team as {
+      owner_id: string;
+      time_tracking_enabled: boolean;
+      compensation_enabled: boolean;
+    };
     if (!t.time_tracking_enabled) {
       throw new ForbiddenException(
         'Time tracking is not enabled for this team.',
       );
+    }
+    // Payouts are part of the team's money layer. When that layer is off there
+    // is nothing to pay from: rates are hidden and new logs snapshot at zero.
+    if (!t.compensation_enabled) {
+      throw new ForbiddenException('Payouts are disabled for this team.');
     }
     if (t.owner_id === callerId) return;
 

@@ -2366,13 +2366,22 @@ export class TeamTimeService {
     const currency =
       rateRow?.currency ?? (await this.getProjectCurrency(projectId));
 
+    // With the money layer off the team may still hold stale rate rows from
+    // before it was disabled. Zero them here rather than at each call site:
+    // startLog, updateLog and createManualLog all snapshot through this one
+    // function, so this is the only place a fee can enter a log.
+    const paid = team.compensation_enabled;
+
     return {
       team_id: chosenTeamId,
       time_tracking_enabled: team.time_tracking_enabled,
-      rate_type:
-        (rateRow?.rate_type as 'hourly' | 'fixed' | undefined) ?? 'hourly',
-      hourly_rate: Number(rateRow?.hourly_rate ?? 0),
-      training_hourly_rate: Number(rateRow?.training_hourly_rate ?? 0),
+      rate_type: paid
+        ? ((rateRow?.rate_type as 'hourly' | 'fixed' | undefined) ?? 'hourly')
+        : 'hourly',
+      hourly_rate: paid ? Number(rateRow?.hourly_rate ?? 0) : 0,
+      training_hourly_rate: paid
+        ? Number(rateRow?.training_hourly_rate ?? 0)
+        : 0,
       currency,
       weekly_limit_hours:
         rateRow?.weekly_limit_hours === null ||
@@ -2457,11 +2466,14 @@ export class TeamTimeService {
     id: string;
     owner_id: string;
     time_tracking_enabled: boolean;
+    compensation_enabled: boolean;
     retroactive_log_days: number | null;
   }> {
     const { data, error } = await this.supabase
       .from('teams')
-      .select('id, owner_id, time_tracking_enabled, retroactive_log_days')
+      .select(
+        'id, owner_id, time_tracking_enabled, compensation_enabled, retroactive_log_days',
+      )
       .eq('id', teamId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -2470,6 +2482,7 @@ export class TeamTimeService {
       id: string;
       owner_id: string;
       time_tracking_enabled: boolean;
+      compensation_enabled: boolean;
       retroactive_log_days: number | null;
     };
   }

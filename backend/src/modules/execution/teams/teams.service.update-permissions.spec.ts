@@ -93,23 +93,26 @@ describe('TeamsService — updateTeam permissions', () => {
     ['billing_address', { billing_address: '1 Rogue Way' }],
     ['tax_id', { tax_id: 'ROGUE-1' }],
     ['billing_email', { billing_email: 'rogue@example.com' }],
-    // false, not true: enabling additionally runs assertOwnerIsConsultant, and
-    // this list is reused for the owner case below, where that gate would fire
-    // and turn a permission test into a capability test. The admin is refused
-    // either way — proven separately below.
-    ['time_tracking_enabled', { time_tracking_enabled: false }],
+    // Whether the team pays anyone at all — rates, cut-offs and payouts all
+    // hang off it, so it must never become admin-writable.
+    ['compensation_enabled', { compensation_enabled: true }],
     ['retroactive_log_days', { retroactive_log_days: 90 }],
     ['default_currency', { default_currency: 'PHP' }],
     ['pay_period_config', { pay_period_config: null }],
   ];
 
-  /** The team's identity — the Overview tab's surface. */
+  /**
+   * The team's identity — the Overview tab's surface — plus the time-tracking
+   * switch, which is operational rather than financial: it decides whether
+   * hours may be logged, never what they are worth.
+   */
   const SHARED_PATCHES: Array<[string, Record<string, unknown>]> = [
     ['name', { name: 'Renamed' }],
     ['description', { description: '<p>Our team</p>' }],
     ['avatar_url', { avatar_url: 'https://cdn.example.com/a.png' }],
     ['status', { status: 'paused' }],
     ['tags', { tags: ['design'] }],
+    ['time_tracking_enabled', { time_tracking_enabled: true }],
   ];
 
   describe('an admin', () => {
@@ -138,20 +141,12 @@ describe('TeamsService — updateTeam permissions', () => {
       ).rejects.toThrow(/billing_email/);
     });
 
-    it('is refused when enabling time tracking, before the consultant gate is consulted', async () => {
-      const { service } = build('admin');
-      const consultantGate = jest.spyOn(
-        service as any,
-        'assertOwnerIsConsultant',
-      );
-      await expect(
-        service.updateTeam('team-1', ADMIN, {
-          time_tracking_enabled: true,
-        } as any),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-      // The ownership check fires first, so an admin never even reaches the
-      // owner's consultant capability.
-      expect(consultantGate).not.toHaveBeenCalled();
+    it('may enable time tracking without anyone holding consultant capability', async () => {
+      const { service, captured } = build('admin');
+      await service.updateTeam('team-1', ADMIN, {
+        time_tracking_enabled: true,
+      } as any);
+      expect(captured.update).toMatchObject({ time_tracking_enabled: true });
     });
 
     it('rejects the whole patch when one field is owner-only, rather than applying the rest', async () => {

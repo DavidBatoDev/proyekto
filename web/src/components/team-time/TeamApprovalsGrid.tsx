@@ -7,7 +7,6 @@ import {
 import {
 	Check,
 	ClipboardCheck,
-	Coins,
 	ExternalLink,
 	Loader2,
 	MoreHorizontal,
@@ -254,14 +253,6 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 						logIds.forEach((id) => void onReviewLog(id, "approved")),
 					disabled: disableReview,
 					tone: "success",
-				},
-				{
-					id: "set-paid",
-					label: "Set paid",
-					icon: <Coins className="h-3.5 w-3.5" />,
-					onSelect: () => logIds.forEach((id) => void onReviewLog(id, "paid")),
-					disabled: disableReview,
-					tone: "info",
 				},
 				{
 					id: "set-rejected",

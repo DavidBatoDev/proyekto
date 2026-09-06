@@ -150,6 +150,7 @@ function ProjectTimePage() {
 		enabled: Boolean(primaryTeamId),
 	});
 	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
+	const paysMoney = teamQuery.data?.compensation_enabled === true;
 
 	// ─── Period ─────────────────────────────────────────────────────────────
 
@@ -593,7 +594,7 @@ function ProjectTimePage() {
 						title="Time logs"
 						subtitle="Time tracked on this project — approve it, and see what it costs."
 						rightSlot={
-							primaryTeamId && canViewTeamLogs ? (
+							primaryTeamId && canViewTeamLogs && paysMoney ? (
 								<a
 									href={`/teams/${primaryTeamId}/time/payouts`}
 									className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
@@ -641,7 +642,9 @@ function ProjectTimePage() {
 								currentUserId={user?.id ?? null}
 								busyLogIds={tab === "team" ? busyLogIds : myBusyLogIds}
 								onReviewLogs={tab === "team" ? handleReviewLogs : undefined}
-								onPayMember={tab === "team" ? handlePayMember : undefined}
+								onPayMember={
+									tab === "team" && paysMoney ? handlePayMember : undefined
+								}
 								onStopLog={
 									tab === "mine" ? () => activeTimer.stop() : undefined
 								}
@@ -659,6 +662,7 @@ function ProjectTimePage() {
 							<>
 								<div className="mb-3">
 									<TeamLogsStatsCard
+										showMoney={paysMoney}
 										rate={tab === "mine" ? activeRate : null}
 										stats={stats}
 										fallbackCurrency={
@@ -666,7 +670,7 @@ function ProjectTimePage() {
 											projectCurrency
 										}
 										loading={summaryQuery.isPending}
-										includePaidColumn
+										includePaidColumn={paysMoney}
 										includeTrainingRate={false}
 										rateLabel="Rate"
 									/>
@@ -680,6 +684,7 @@ function ProjectTimePage() {
 
 								<div className="mb-4">
 									<TeamLogsPeriodFilter
+										showCutoffs={paysMoney}
 										period={period}
 										payPeriodConfig={payPeriodConfig}
 										onPresetChange={(preset) => updatePeriod(preset)}
@@ -745,7 +750,7 @@ function ProjectTimePage() {
 										currentUserId={user?.id ?? null}
 										busyLogIds={busyLogIds}
 										onReviewLogs={handleReviewLogs}
-										onPayMember={handlePayMember}
+										onPayMember={paysMoney ? handlePayMember : undefined}
 										onOpenTaskInRoadmap={handleOpenInRoadmap}
 										canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 									/>

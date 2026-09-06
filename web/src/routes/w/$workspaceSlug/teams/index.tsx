@@ -45,7 +45,7 @@ function TeamsIndexPage() {
 				<AppSectionHeader
 					kicker="Teams"
 					title="Your teams"
-					subtitle="Reusable groups of people you can attach to any project. Rate / billing fields appear on team members when the team owner is consultant-verified."
+					subtitle="Reusable groups of people you can attach to any project. Rate / billing fields appear on team members once time tracking is enabled for the team."
 					rightSlot={
 						teams && teams.length > 0 ? (
 							<button

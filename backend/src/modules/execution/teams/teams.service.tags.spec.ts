@@ -116,15 +116,5 @@ describe('TeamsService — tags', () => {
       await service.updateTeam('team-1', OWNER, { tags: [] } as any);
       expect(captured.update.tags).toEqual([]);
     });
-
-    it('does not require consultant capability for a tags-only patch', async () => {
-      const { service } = build();
-      const assertConsultant = jest.spyOn(
-        service as any,
-        'assertOwnerIsConsultant',
-      );
-      await service.updateTeam('team-1', OWNER, { tags: ['design'] } as any);
-      expect(assertConsultant).not.toHaveBeenCalled();
-    });
   });
 });

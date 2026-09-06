@@ -19,8 +19,6 @@ import {
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
-import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
-import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
 import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
 import { sanitizeOptionalRichHtml } from '../../../common/rich-text/sanitize-rich-html';
@@ -112,6 +110,11 @@ export interface TeamRow {
   tax_id: string | null;
   billing_email: string | null;
   time_tracking_enabled: boolean;
+  /**
+   * Gates the team's whole money layer: per-member rates, payout cut-offs, and
+   * payouts. False (the DB default) means the team tracks hours only.
+   */
+  compensation_enabled: boolean;
   retroactive_log_days: number | null;
   default_currency: string;
   pay_period_config: PayPeriodConfigInput | null;
@@ -123,9 +126,15 @@ export interface TeamRow {
   // return a single TeamRow may leave these undefined.
   members_count?: number;
   members_preview?: Array<TeamMemberPreview | null>;
-  // The caller's own role + position within this team — drives the
-  // "what am I in this team?" chip on the team-list card. Undefined on
-  // endpoints other than listMyTeams.
+  /**
+   * The caller's own role + position within this team — drives the "what am I
+   * in this team?" chip on the team-list card.
+   *
+   * viewer_role is set by listMyTeams AND by getTeam; viewer_position only by
+   * listMyTeams. The web's Time settings page reads viewer_role off getTeam to
+   * decide whether an admin may flip time tracking, so dropping it from that
+   * payload would silently narrow the toggle back to owner-only.
+   */
   viewer_role?: 'owner' | 'admin' | 'member' | null;
   viewer_position?: string | null;
 }
@@ -136,7 +145,13 @@ type UpdateTeamField = keyof UpdateTeamDto;
 
 /**
  * Editable by the team owner AND by team admins: the team's identity, which is
- * what the Overview tab puts on screen.
+ * what the Overview tab puts on screen, plus the time-tracking switch.
+ *
+ * time_tracking_enabled sits here because it is an operational switch, not a
+ * money field: it decides whether members may log hours at all. Everything it
+ * unlocks that actually moves money — the payout window, the currency, the pay
+ * period — stays owner-only below, so an admin can turn tracking on without
+ * gaining any say over what the hours are worth.
  */
 const TEAM_SHARED_UPDATE_FIELDS = [
   'name',
@@ -144,6 +159,7 @@ const TEAM_SHARED_UPDATE_FIELDS = [
   'avatar_url',
   'status',
   'tags',
+  'time_tracking_enabled',
 ] as const satisfies readonly UpdateTeamField[];
 // Consumed only by the type-level check below — which is the whole reason it
 // exists. Referenced here so it does not read as dead code.
@@ -154,18 +170,19 @@ void TEAM_SHARED_UPDATE_FIELDS;
  *  - legal_name / billing_address / tax_id / billing_email are snapshotted onto
  *    signed contracts and invoices, so an admin must not be able to change who
  *    gets paid.
- *  - time_tracking_enabled is gated on assertOwnerIsConsultant, which checks
- *    the OWNER's consultant enrollment rather than the caller's — an admin
- *    flipping it on would be spending someone else's capability.
  *  - retroactive_log_days / default_currency / pay_period_config drive payout
  *    windows and amounts.
+ *  - compensation_enabled decides whether the team has a money layer at all
+ *    (rates, cut-offs, payouts). An admin turning it on would be committing the
+ *    team to paying people; an admin turning it off would hide the rate card
+ *    the owner set.
  */
 const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'legal_name',
   'billing_address',
   'tax_id',
   'billing_email',
-  'time_tracking_enabled',
+  'compensation_enabled',
   'retroactive_log_days',
   'default_currency',
   'pay_period_config',
@@ -540,12 +557,10 @@ export class TeamsService {
     }
 
     if (dto.time_tracking_enabled !== undefined) {
-      // Enabling time tracking requires the team owner to be a verified
-      // consultant. Disabling is always allowed (owner-only above).
-      if (dto.time_tracking_enabled === true) {
-        await this.assertOwnerIsConsultant(team);
-      }
       patch.time_tracking_enabled = dto.time_tracking_enabled;
+    }
+    if (dto.compensation_enabled !== undefined) {
+      patch.compensation_enabled = dto.compensation_enabled;
     }
     if (dto.retroactive_log_days !== undefined) {
       patch.retroactive_log_days = dto.retroactive_log_days;
@@ -1086,23 +1101,6 @@ export class TeamsService {
 
   async assertCanManageMembers(team: TeamRow, userId: string): Promise<void> {
     await this.assertCanManageTeam(team, userId, 'manage members');
-  }
-
-  // Public so the team-member-rates service can reuse the same gate.
-  async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
-    const isActive = await isActiveConsultantEnrollment(
-      this.supabase,
-      team.owner_id,
-    );
-    if (!isActive) {
-      throw new MissingPermissionException({
-        path: null,
-        requiredRole: 'consultant',
-        label: 'manage team rates',
-        message:
-          'Team owner must be an active consultant to set rate / billing fields.',
-      });
-    }
   }
 
   // ─── invites (email-based) ──────────────────────────────────────────────

@@ -17,7 +17,7 @@ import { useActiveTimer } from "./useActiveTimer";
 const TIMER_VISIBLE_PATH_PREFIXES = [
 	"/dashboard",
 	"/inbox",
-	"/command-center",
+	"/task-board",
 	"/teams",
 	"/project",
 	"/projects",
