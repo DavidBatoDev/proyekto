@@ -77,6 +77,11 @@ class RegistryTests(unittest.TestCase):
             ('attach_roadmap_to_project', {'attached': True, 'roadmap': {
                 'id': uid(0), 'name': 'Attached roadmap', 'project_id': uid(1),
             }}, {'roadmap': 'Attached roadmap'}),
+            ('create_project', {'created': True, 'project': {'id': uid(0), 'title': 'New project'},
+                'roadmap': {'id': uid(1), 'name': 'New project'}},
+             {'project': 'New project', 'roadmap': 'New project'}),
+            ('update_project', {'updated': True, 'project': {'id': uid(0), 'title': 'Renamed'}},
+             {'project': 'Renamed'}),
         ]
         for tool_name, payload, expected in fixtures:
             with self.subTest(tool_name=tool_name):

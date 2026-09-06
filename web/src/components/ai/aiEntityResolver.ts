@@ -137,3 +137,32 @@ export function useAiEntity(kind: AiMentionKind, id: string) {
 export function invalidateAiEntities(queryClient: QueryClient) {
 	return queryClient.invalidateQueries({ queryKey: aiEntityKeys.all });
 }
+
+/**
+ * Mid-loop admin writes that change an entity's title or existence without a
+ * commit (so `onCommits` never fires): a renamed project would otherwise keep
+ * its cached title on every chip for the 5-minute `staleTime`.
+ */
+export const ENTITY_MUTATING_TOOL_NAMES: ReadonlySet<string> = new Set([
+	"create_project",
+	"update_project",
+	"create_roadmap",
+	"attach_roadmap_to_project",
+]);
+
+/** True when a poll batch carries a successful result of an entity-mutating tool. */
+export function traceEventsTouchEntities(
+	events: readonly {
+		event: string;
+		status: string;
+		details?: Record<string, unknown>;
+	}[],
+): boolean {
+	return events.some(
+		(event) =>
+			event.event === "tool_call_result" &&
+			event.status !== "error" &&
+			typeof event.details?.tool_name === "string" &&
+			ENTITY_MUTATING_TOOL_NAMES.has(event.details.tool_name),
+	);
+}

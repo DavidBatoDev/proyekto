@@ -36,7 +36,7 @@ _KNOWN_TOOLS = frozenset({
     'get_tasks_assigned_to_me', 'search_nodes', 'search_tasks', 'get_node_details',
     'resolve_node_reference', 'get_children', 'get_children_from_resolution',
     'get_project_brief', 'list_project_resources', 'list_project_meetings',
-    'create_roadmap', 'attach_roadmap_to_project',
+    'create_roadmap', 'attach_roadmap_to_project', 'create_project', 'update_project',
 })
 _SKIP_KEYS = frozenset({'members', 'assignees', 'profiles', 'owner'})
 _SIDE_FIELDS = {

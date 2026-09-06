@@ -10,7 +10,7 @@ import {
 	Minimize2,
 	Sparkles,
 } from "lucide-react";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import {
 	AiAssistantIntro,
 	AiAssistantWordmark,
@@ -25,7 +25,10 @@ import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { projectKeys } from "@/queries/project";
-import type { RunCommitView } from "@/services/ai-agent.service";
+import type {
+	AgentTraceEvent,
+	RunCommitView,
+} from "@/services/ai-agent.service";
 
 /**
  * The dashboard's assistant, in its two shapes.
@@ -137,6 +140,69 @@ function useDashboardCommits(): NonNullable<RunHooks["onCommits"]> {
 }
 
 /**
+ * Mid-loop admin writes that change what the dashboard grids show without a
+ * commit: a run that only creates or renames a project (or creates/attaches a
+ * roadmap) never fires `onCommits`, so the lists would sit stale for their
+ * 30 s `staleTime`. Their `tool_call_result` trace events are the signal.
+ */
+export const DASHBOARD_REFRESHING_TOOL_NAMES: ReadonlySet<string> = new Set([
+	"create_project",
+	"update_project",
+	"create_roadmap",
+	"attach_roadmap_to_project",
+]);
+
+/**
+ * Refresh the dashboard lists once per new successful admin-tool result on a
+ * trace. `seqByTrace` is the per-trace high-water mark (the same pattern the
+ * roadmap panel uses for commits) so replayed poll batches never refresh
+ * twice. Returns true when it invalidated.
+ */
+export function invalidateAfterDashboardToolEvents(
+	queryClient: QueryClient,
+	traceId: string,
+	events: readonly AgentTraceEvent[],
+	seqByTrace: Record<string, number>,
+): boolean {
+	let latestSeq: number | null = null;
+	for (const event of events) {
+		if (event.event !== "tool_call_result" || event.status === "error") {
+			continue;
+		}
+		const toolName = event.details?.tool_name;
+		if (
+			typeof toolName !== "string" ||
+			!DASHBOARD_REFRESHING_TOOL_NAMES.has(toolName)
+		) {
+			continue;
+		}
+		if (latestSeq == null || event.seq > latestSeq) latestSeq = event.seq;
+	}
+	if (latestSeq == null) return false;
+	if (latestSeq <= (seqByTrace[traceId] ?? 0)) return false;
+	seqByTrace[traceId] = latestSeq;
+	void invalidateDashboardRoadmaps(queryClient);
+	void invalidateDashboardProjects(queryClient);
+	return true;
+}
+
+function useDashboardTraceEvents(): NonNullable<RunHooks["onTraceEvents"]> {
+	const queryClient = useQueryClient();
+	const seqByTraceRef = useRef<Record<string, number>>({});
+	return useCallback(
+		(traceId, events) => {
+			invalidateAfterDashboardToolEvents(
+				queryClient,
+				traceId,
+				events,
+				seqByTraceRef.current,
+			);
+		},
+		[queryClient],
+	);
+}
+
+/**
  * `?assistant=full` is owned by the dashboard route (it is what Back
  * collapses). Read here rather than threaded through a prop so the route's
  * `rail` slot stays a one-liner; the rail only ever mounts on that route.
@@ -153,6 +219,7 @@ function useIsAssistantFullscreen(): boolean {
 export function DashboardAiRail({ onExpand }: { onExpand: () => void }) {
 	const { scope, unavailableHint } = useDashboardAiScope();
 	const onCommits = useDashboardCommits();
+	const onTraceEvents = useDashboardTraceEvents();
 	const isFullscreenOpen = useIsAssistantFullscreen();
 
 	return (
@@ -202,6 +269,7 @@ export function DashboardAiRail({ onExpand }: { onExpand: () => void }) {
 				composerAriaLabel={COMPOSER_ARIA_LABEL}
 				unavailableHint={unavailableHint}
 				onCommits={onCommits}
+				onTraceEvents={onTraceEvents}
 			/>
 		</aside>
 	);
@@ -308,6 +376,7 @@ function AssistantFullscreenBody({
 	const reducedMotion = useReducedMotion();
 	const { scope, unavailableHint } = useDashboardAiScope();
 	const onCommits = useDashboardCommits();
+	const onTraceEvents = useDashboardTraceEvents();
 
 	return (
 		<>
@@ -365,6 +434,7 @@ function AssistantFullscreenBody({
 				composerAriaLabel={COMPOSER_ARIA_LABEL}
 				unavailableHint={unavailableHint}
 				onCommits={onCommits}
+				onTraceEvents={onTraceEvents}
 			/>
 		</>
 	);

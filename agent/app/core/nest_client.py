@@ -821,6 +821,32 @@ class NestRoadmapClient:
             'PATCH', f'/roadmaps/{roadmap_id}', payload, auth_header, trace_id=trace_id
         )
 
+    async def project_create(
+        self,
+        *,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /projects as the user (CreateProjectDto). The backend also
+        provisions the project's default roadmap and returns
+        ``{project, roadmap}``."""
+        return await self._post('/projects', payload, auth_header, trace_id=trace_id)
+
+    async def project_update(
+        self,
+        *,
+        project_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /projects/{id} as the user (UpdateProjectDto); owner-only
+        upstream, and only title/status/duration/currency persist."""
+        return await self._mutate(
+            'PATCH', f'/projects/{project_id}', payload, auth_header, trace_id=trace_id
+        )
+
     async def ai_memories_relevant(
         self,
         roadmap_id: str,

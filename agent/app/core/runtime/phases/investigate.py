@@ -409,8 +409,9 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
     # so the next turn refetches the authoritative list.
     if turn_context.get('memory_notes_dirty'):
         ctx.service.invalidate_memory_notes(session)
-    # create_roadmap / attach_roadmap_to_project ran this turn: the workspace
-    # overview (and an attached roadmap's project context) are stale.
+    # create_roadmap / attach_roadmap_to_project / create_project /
+    # update_project ran this turn: the workspace overview (and an attached
+    # roadmap's or renamed project's project context) are stale.
     if turn_context.get('workspace_overview_dirty'):
         context_cache.invalidate_workspace_overview(session)
     dirty_roadmaps = turn_context.get('roadmap_overviews_dirty')
@@ -419,6 +420,7 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
             if isinstance(dirty_roadmap_id, str) and dirty_roadmap_id:
                 context_cache.invalidate_overview(session, dirty_roadmap_id)
                 context_cache.invalidate_project_context(session, dirty_roadmap_id)
+    context_cache.invalidate_project_contexts_for_projects(session, turn_context.get('projects_dirty'))
 
     usage['turns'] = int(loop_result.turns or 0)
     usage['tool_calls'] = int(loop_result.tool_calls_used or 0)

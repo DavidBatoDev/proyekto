@@ -5,6 +5,7 @@ import {
 	aiEntityKeys,
 	createEntityBatcher,
 	invalidateAiEntities,
+	traceEventsTouchEntities,
 } from "./aiEntityResolver";
 import type { AiMentionKind } from "./aiMentions";
 
@@ -149,5 +150,33 @@ describe("entity query invalidation", () => {
 		expect(client.getQueryState(epicKey)?.isInvalidated).toBe(true);
 		expect(client.getQueryState(["other"])?.isInvalidated).toBe(false);
 		client.clear();
+	});
+});
+
+describe("traceEventsTouchEntities", () => {
+	const event = (name: string, status = "success") => ({
+		event: "tool_call_result",
+		status,
+		details: { tool_name: name },
+	});
+
+	it("is true only for a successful admin write", () => {
+		expect(traceEventsTouchEntities([event("update_project")])).toBe(true);
+		expect(traceEventsTouchEntities([event("create_roadmap")])).toBe(true);
+		expect(traceEventsTouchEntities([event("update_project", "error")])).toBe(
+			false,
+		);
+		expect(traceEventsTouchEntities([event("get_workspace_overview")])).toBe(
+			false,
+		);
+		expect(
+			traceEventsTouchEntities([
+				{
+					event: "tool_call_requested",
+					status: "running",
+					details: { tool_name: "update_project" },
+				},
+			]),
+		).toBe(false);
 	});
 });

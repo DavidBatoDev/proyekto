@@ -38,6 +38,30 @@ describe("roadmap AI tool messaging catalog", () => {
 		}
 	});
 
+	it("names the project being created from the tool arguments", () => {
+		const requested = buildCuratedToolRequestedMessage("create_project", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "create_project",
+				tool_args: { title: "  Launch site " },
+			},
+		});
+		expect(requested.usedFallback).toBe(false);
+		expect(requested.summary).toContain('"Launch site"');
+		const renamed = buildCuratedToolRequestedMessage("update_project", {
+			status: "running",
+			summary: "",
+			details: {
+				tool_name: "update_project",
+				tool_args: { project_id: "p-1", title: "Launch site v2" },
+			},
+		});
+		expect(renamed.summary).toContain(
+			'renaming the project to "Launch site v2"',
+		);
+	});
+
 	it("falls back gracefully for unknown tools", () => {
 		const requested = buildCuratedToolRequestedMessage("unknown_tool_name", {
 			status: "running",

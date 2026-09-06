@@ -42,7 +42,10 @@ class CatalogTests(unittest.TestCase):
             self.assertIn(name, names)
         for name in PROJECT_KEYED_TOOL_NAMES:
             self.assertIn(name, names)
-        for name in ('save_memory', 'forget_memory', 'add_task_comments'):
+        for name in (
+            'save_memory', 'forget_memory', 'add_task_comments',
+            'create_roadmap', 'attach_roadmap_to_project', 'create_project', 'update_project',
+        ):
             self.assertIn(name, names)
         self.assertEqual(names[-4:], ['stage_edits', 'propose', 'ask_user', 'revert_changes'])
         self.assertNotIn('revise_proposal', names)

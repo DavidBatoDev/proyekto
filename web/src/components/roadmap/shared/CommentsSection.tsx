@@ -22,6 +22,31 @@ interface CommentsSectionProps {
 	onHighlightConsumed?: () => void;
 }
 
+const sanitizeCommentHtml = (rawHtml: string) => {
+	const cleaned = cleanHTML(rawHtml);
+	return cleaned
+		.replace(/javascript\s*:/gi, "")
+		.replace(/<a\b([^>]*)>/gi, (match) => {
+			if (/target=/i.test(match)) return match;
+			return match.replace(">", ' target="_blank" rel="noopener noreferrer">');
+		});
+};
+
+function CommentBody({ content }: { content: string }) {
+	// React rewrites innerHTML when this object changes, clearing any text
+	// selection. Keep it stable across panel updates and comment refetches.
+	const markup = useMemo(
+		() => ({ __html: sanitizeCommentHtml(content) }),
+		[content],
+	);
+	return (
+		<div
+			className="select-text max-w-none wrap-break-word text-sm text-gray-700 [&_.mention]:rounded [&_.mention]:bg-primary/10 [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:font-semibold [&_.mention]:text-primary [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
+			dangerouslySetInnerHTML={markup}
+		/>
+	);
+}
+
 export const CommentsSection = ({
 	comments,
 	onAddComment,
@@ -67,19 +92,6 @@ export const CommentsSection = ({
 		}, 2000);
 		return () => clearTimeout(timer);
 	}, [highlightCommentId, isLoading, comments.length, onHighlightConsumed]);
-
-	const sanitizeCommentHtml = (rawHtml: string) => {
-		const cleaned = cleanHTML(rawHtml);
-		return cleaned
-			.replace(/javascript\s*:/gi, "")
-			.replace(/<a\b([^>]*)>/gi, (match) => {
-				if (/target=/i.test(match)) return match;
-				return match.replace(
-					">",
-					' target="_blank" rel="noopener noreferrer">',
-				);
-			});
-	};
 
 	const hasMeaningfulContent = (html: string) => {
 		const stripped = html
@@ -310,12 +322,7 @@ export const CommentsSection = ({
 									) : (
 										<>
 											<div className="border border-gray-300 rounded-xl bg-white px-4 py-3">
-												<div
-													className="max-w-none wrap-break-word text-sm text-gray-700 [&_.mention]:rounded [&_.mention]:bg-primary/10 [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:font-semibold [&_.mention]:text-primary [&_p]:my-0 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
-													dangerouslySetInnerHTML={{
-														__html: sanitizeCommentHtml(comment.content),
-													}}
-												/>
+												<CommentBody content={comment.content} />
 											</div>
 
 											{canManageComment(comment) &&

@@ -1,7 +1,7 @@
 """The mid-loop tool dispatcher.
 
-Routes every non-terminal tool call (roadmap reads, cross-scope reads, memory
-and comment writes) to its handler, resolving the roadmap each call targets
+Routes every non-terminal tool call (roadmap reads, cross-scope reads, memory,
+comment, roadmap-admin and project-admin writes) to its handler, resolving the roadmap each call targets
 PER CALL: the call's own ``roadmap_id`` wins, else the session's focus
 roadmap. Per-call state never lives on the shared ``session_context`` dict —
 ``execute_many`` runs calls concurrently on one event loop, so it is written
@@ -29,6 +29,7 @@ from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES,
     EXECUTABLE_TOOL_NAMES,
+    PROJECT_ADMIN_TOOL_NAMES,
     ROADMAP_ADMIN_TOOL_NAMES,
 )
 from app.core.uuid_utils import is_uuid_like
@@ -37,6 +38,7 @@ from .handlers.base import ToolHandlerBase
 from .handlers.comment_tools import CommentToolHandler
 from .handlers.context_query import ContextQueryHandler
 from .handlers.memory_tools import MemoryToolHandler
+from .handlers.project_admin_tools import ProjectAdminToolHandler
 from .handlers.roadmap_admin_tools import RoadmapAdminToolHandler
 from .handlers.workspace_query import (
     ROADMAP_OPTIONAL_TOOL_NAMES,
@@ -133,6 +135,7 @@ class ToolDispatcher:
         self._memory_handler = MemoryToolHandler(**shared)
         self._comment_handler = CommentToolHandler(**shared)
         self._roadmap_admin_handler = RoadmapAdminToolHandler(**shared)
+        self._project_admin_handler = ProjectAdminToolHandler(**shared)
         self._workspace_handler = WorkspaceQueryHandler(**shared)
         self._base_helper = ToolHandlerBase(**shared)
 
@@ -277,6 +280,9 @@ class ToolDispatcher:
                 return result
             if tool_name in ROADMAP_ADMIN_TOOL_NAMES:
                 result = await self._roadmap_admin_handler.execute(tool_name, args, session_context)
+                return result
+            if tool_name in PROJECT_ADMIN_TOOL_NAMES:
+                result = await self._project_admin_handler.execute(tool_name, args, session_context)
                 return result
             result = {
                 'error': {

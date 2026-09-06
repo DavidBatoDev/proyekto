@@ -93,6 +93,9 @@ export class ProjectsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateProjectDto,
   ) {
+    if (user.is_guest) {
+      throw new ForbiddenException('Sign in to create a project.');
+    }
     return this.projectsService.createProject(user.id, dto);
   }
 

@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-07 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -54,9 +54,9 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 | GET | /api/projects | Supabase | List user's projects |
 | GET | /api/projects/dashboard[/summary] | Supabase | Dashboard projects / summary |
 | GET | /api/projects/roadmap-link-candidates | Supabase | Linkable roadmaps |
-| POST | /api/projects | Supabase | Create project |
+| POST | /api/projects | Supabase | Create project (always provisions the default roadmap; blocks guests; the agent's `create_project` tool uses it) |
 | POST | /api/projects/from-roadmap | Supabase | Create from roadmap (blocks guests) |
-| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update / guarded delete (active finance records block) |
+| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update (owner-only; only title, status, duration, currency persist) / guarded delete (active finance records block) |
 | POST | /api/projects/:id/transfer-owner | Supabase | Transfer ownership |
 | * | /api/projects/:id/resources/{folders,links}… | Supabase | Resource folders/links CRUD + reorder |
 | POST | /api/projects/:id/members · /invites | Supabase | Add member / invite by email |

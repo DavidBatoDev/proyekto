@@ -114,13 +114,17 @@ vi.mock("@/stores/authStore", () => ({
 import { aiRunController } from "@/components/ai/runController";
 import { useThreadMessagesStore } from "@/components/ai/useAiThreadMessages";
 import { projectKeys } from "@/queries/project";
-import type { RunCommitView } from "@/services/ai-agent.service";
+import type {
+	AgentTraceEvent,
+	RunCommitView,
+} from "@/services/ai-agent.service";
 import { useAiRunStore } from "@/stores/aiRunStore";
 import { useAiThreadsStore } from "@/stores/aiThreadsStore";
 import {
 	DashboardAiFullscreen,
 	DashboardAiRail,
 	invalidateAfterDashboardCommits,
+	invalidateAfterDashboardToolEvents,
 } from "./DashboardAiPanel";
 
 const WORKSPACE = { id: "ws-1", slug: "acme" };
@@ -328,6 +332,86 @@ describe("invalidateAfterDashboardCommits", () => {
 			projectKeys.roadmapFull("rm-1"),
 			projectKeys.roadmapFull("rm-2"),
 		]);
+	});
+});
+
+describe("invalidateAfterDashboardToolEvents", () => {
+	const toolResult = (
+		seq: number,
+		toolName: string,
+		status: "success" | "error" = "success",
+	): AgentTraceEvent => ({
+		seq,
+		ts: "2026-09-07T00:00:00.000Z",
+		event: "tool_call_result",
+		title: "Tool result",
+		status,
+		summary: "",
+		details: { tool_name: toolName },
+	});
+
+	it("refreshes the projects and roadmap lists once per new admin-tool result", () => {
+		const client = new QueryClient();
+		const invalidate = vi
+			.spyOn(client, "invalidateQueries")
+			.mockResolvedValue(undefined);
+		const seqByTrace: Record<string, number> = {};
+
+		expect(
+			invalidateAfterDashboardToolEvents(
+				client,
+				"trace-1",
+				[
+					toolResult(3, "get_workspace_overview"),
+					toolResult(4, "create_project"),
+				],
+				seqByTrace,
+			),
+		).toBe(true);
+		expect(invalidate.mock.calls.map((call) => call[0]?.queryKey)).toEqual([
+			["dashboard", "roadmaps-preview"],
+			["dashboard", "projects"],
+		]);
+
+		// The same batch replayed by a later poll changes nothing.
+		expect(
+			invalidateAfterDashboardToolEvents(
+				client,
+				"trace-1",
+				[toolResult(4, "create_project")],
+				seqByTrace,
+			),
+		).toBe(false);
+		expect(invalidate).toHaveBeenCalledTimes(2);
+	});
+
+	it("ignores reads, failed tool calls, and other traces' marks", () => {
+		const client = new QueryClient();
+		const invalidate = vi
+			.spyOn(client, "invalidateQueries")
+			.mockResolvedValue(undefined);
+		const seqByTrace: Record<string, number> = { "trace-1": 9 };
+		expect(
+			invalidateAfterDashboardToolEvents(
+				client,
+				"trace-2",
+				[
+					toolResult(1, "search_everything"),
+					toolResult(2, "update_project", "error"),
+				],
+				seqByTrace,
+			),
+		).toBe(false);
+		expect(invalidate).not.toHaveBeenCalled();
+		expect(
+			invalidateAfterDashboardToolEvents(
+				client,
+				"trace-2",
+				[toolResult(5, "update_project")],
+				seqByTrace,
+			),
+		).toBe(true);
+		expect(seqByTrace).toEqual({ "trace-1": 9, "trace-2": 5 });
 	});
 });
 

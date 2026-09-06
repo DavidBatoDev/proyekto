@@ -63,9 +63,11 @@ export const SUPPORTED_TRACE_TOOL_NAMES = [
 	"search_everything",
 	"list_my_tasks",
 	"list_project_members",
-	// Roadmap admin writes (mid-loop).
+	// Roadmap and project admin writes (mid-loop).
 	"create_roadmap",
 	"attach_roadmap_to_project",
+	"create_project",
+	"update_project",
 	"propose",
 ] as const;
 
@@ -896,6 +898,38 @@ const TOOL_MESSAGE_CATALOG: Record<
 				{},
 				"I attached the roadmap to the project.",
 			),
+	),
+	create_project: descriptor(
+		"Creating a project",
+		"Created a project",
+		(ctx) => {
+			const title = ctx.toolArgs?.title;
+			return typeof title === "string" && title.trim()
+				? `I am creating a project called "${title.trim()}".`
+				: "I am creating a new project.";
+		},
+		(ctx) =>
+			resultSummaryWithDefault(
+				ctx,
+				{},
+				"I created the project and its roadmap.",
+			),
+	),
+	update_project: descriptor(
+		"Updating a project",
+		"Updated the project",
+		(ctx) => {
+			const title = ctx.toolArgs?.title;
+			if (typeof title === "string" && title.trim()) {
+				return `I am renaming the project to "${title.trim()}".`;
+			}
+			const status = ctx.toolArgs?.status;
+			if (typeof status === "string" && status.trim()) {
+				return `I am setting the project status to ${status.trim()}.`;
+			}
+			return "I am updating the project.";
+		},
+		(ctx) => resultSummaryWithDefault(ctx, {}, "I updated the project."),
 	),
 	list_project_members: descriptor(
 		"Listing project members",

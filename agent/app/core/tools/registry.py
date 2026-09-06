@@ -236,8 +236,20 @@ ROADMAP_ADMIN_TOOL_NAMES = {
     'attach_roadmap_to_project',
 }
 
+# Mid-loop write tools that create a project (the backend provisions its
+# default roadmap in the same call) or update a project's title, status or
+# duration (owner-only upstream). Plain REST, not roadmap operations.
+PROJECT_ADMIN_TOOL_NAMES = {
+    'create_project',
+    'update_project',
+}
+
 EXECUTABLE_TOOL_NAMES = (
-    CONTEXT_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES | ROADMAP_ADMIN_TOOL_NAMES
+    CONTEXT_TOOL_NAMES
+    | MEMORY_TOOL_NAMES
+    | COMMENT_TOOL_NAMES
+    | ROADMAP_ADMIN_TOOL_NAMES
+    | PROJECT_ADMIN_TOOL_NAMES
 )
 
 _UNASSIGN_ASSIGNEE_TOKENS = {

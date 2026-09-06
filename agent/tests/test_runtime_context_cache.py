@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from app.core.config import get_settings
 from app.core.contracts.runs import RunState
-from app.core.contracts.sessions import AgentSession
+from app.core.contracts.sessions import AgentSession, RoadmapContext
 from app.core.runtime import context_cache
 
 FOCUS = '11111111-1111-1111-1111-111111111111'
@@ -228,6 +228,42 @@ class OnRoadmapLoadedCallbackTests(unittest.TestCase):
         self.assertIsNone(callback('', {}))
         self.assertIsNone(callback(BETA, 'nope'))  # type: ignore[arg-type]
         self.assertEqual(session.metadata.roadmaps, {})
+
+
+class ProjectPackWorkspaceTests(unittest.TestCase):
+    def test_project_pack_workspace_object_sets_the_context_workspace(self) -> None:
+        nest = _Nest()
+
+        async def context_project(*, roadmap_id, auth_header, trace_id=None):
+            return {'project': {'id': 'project-1', 'title': 'Apollo', 'workspace': {'id': 'ws-9', 'name': 'Acme', 'slug': 'acme'}}}
+
+        nest.context_project = context_project
+        session = AgentSession(roadmap_id=FOCUS)
+        context_cache.ensure_project_context(session=session, **_deps(nest))
+        context = session.metadata.roadmaps[FOCUS]
+        self.assertEqual(context.project_id, 'project-1')
+        self.assertEqual(context.workspace_id, 'ws-9')
+
+    def test_invalidate_project_contexts_for_projects_clears_every_matching_roadmap(self) -> None:
+        nest = _Nest()
+        session = AgentSession(roadmap_id=FOCUS)
+        context_cache.ensure_project_context(session=session, **_deps(nest))
+        focus = session.metadata.roadmaps[FOCUS]
+        self.assertIsNotNone(focus.project_context)
+        session.metadata.roadmaps[BETA] = RoadmapContext(
+            roadmap_id=BETA, project_id=focus.project_id, project_context={'project': {'id': focus.project_id}},
+            project_context_fetched_at=datetime.now(timezone.utc),
+        )
+        session.metadata.roadmaps[GAMMA] = RoadmapContext(
+            roadmap_id=GAMMA, project_id='other', project_context={'project': {'id': 'other'}},
+            project_context_fetched_at=datetime.now(timezone.utc),
+        )
+        touched = context_cache.invalidate_project_contexts_for_projects(session, [focus.project_id])
+        self.assertEqual(sorted(touched), sorted([FOCUS, BETA]))
+        self.assertIsNone(session.metadata.roadmaps[FOCUS].project_context)
+        self.assertIsNone(session.metadata.roadmaps[BETA].project_context_fetched_at)
+        self.assertIsNotNone(session.metadata.roadmaps[GAMMA].project_context)
+        self.assertEqual(context_cache.invalidate_project_contexts_for_projects(session, None), [])
 
 
 class MemoryNotesTests(unittest.TestCase):

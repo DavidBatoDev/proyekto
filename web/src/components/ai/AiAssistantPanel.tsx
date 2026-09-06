@@ -20,7 +20,10 @@ import type { AiSendOptions } from "./AiMessage";
 import { AiRunBanner } from "./AiRunBanner";
 import { AiThreadMenuButton } from "./AiThreadMenuButton";
 import { AiThreadView } from "./AiThreadView";
-import { invalidateAiEntities } from "./aiEntityResolver";
+import {
+	invalidateAiEntities,
+	traceEventsTouchEntities,
+} from "./aiEntityResolver";
 import {
 	type AiMentionCandidate,
 	buildContextChips,
@@ -159,6 +162,15 @@ export function AiAssistantPanel({
 		},
 		[onCommits, queryClient],
 	);
+	const handleTraceEvents = useCallback<NonNullable<RunHooks["onTraceEvents"]>>(
+		(traceId, events) => {
+			onTraceEvents?.(traceId, events);
+			if (traceEventsTouchEntities(events)) {
+				void invalidateAiEntities(queryClient);
+			}
+		},
+		[onTraceEvents, queryClient],
+	);
 	const scopeKey = scope ? aiScopeKey(scope) : null;
 	const threads = useAiThreads(scope, { baseRevision });
 	const { activeThreadId, threadsList } = threads;
@@ -172,7 +184,7 @@ export function AiAssistantPanel({
 		rehydrateAgentSession: thread.rehydrateAgentSession,
 		baseRevision,
 		onCommits: handleCommits,
-		onTraceEvents,
+		onTraceEvents: handleTraceEvents,
 	});
 
 	// Drafts live in the threads store (the rail and fullscreen dashboard

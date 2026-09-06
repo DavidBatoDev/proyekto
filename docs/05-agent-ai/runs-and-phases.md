@@ -1,6 +1,6 @@
 # Runs & Phases
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-07 · **Status:** current
 
 Every user message to the Proyekto agent is a **run**: a server-side state machine the
 Python agent owns, persisted in the Redis session and the durable snapshot, that moves
@@ -282,7 +282,7 @@ module never edits). Counts below are from importing the builders.
 
 | Phase / loop | Tools |
 | --- | --- |
-| investigate (33 baseline; 35 with a pending plan + knowledge search) | 17 roadmap reads + 9 cross-scope reads (+ `search_knowledge`) + 3 non-terminal writes + terminals `stage_edits`, `propose`, (`revise_proposal` only while a proposal is pending), `ask_user`, `revert_changes` |
+| investigate (37 baseline; 39 with a pending plan + knowledge search) | 17 roadmap reads + 9 cross-scope reads (+ `search_knowledge`) + 7 non-terminal writes + terminals `stage_edits`, `propose`, (`revise_proposal` only while a proposal is pending), `ask_user`, `revert_changes` |
 | execute / materialize (18) | The 17 roadmap reads and `stage_edits`, all pinned to the target roadmap (`roadmap_id` enum of one value) |
 | execute / repair (1) | `stage_edits` pinned to the batch's roadmap |
 | verify (1) | `propose` with `targets` required |
@@ -305,12 +305,20 @@ authorization path).
 required otherwise). `search_knowledge` is exposed only when
 `AGENT_KNOWLEDGE_SEARCH_ENABLED` is on.
 
-**Non-terminal writes (5):** `save_memory`, `forget_memory` (`roadmap_id` required in
+**Non-terminal writes (7):** `save_memory`, `forget_memory` (`roadmap_id` required in
 workspace scope), `add_task_comments`, `create_roadmap` (POST /api/roadmaps as the
 user; standalone or attached via `project_id`), `attach_roadmap_to_project` (PATCH
-/api/roadmaps/:id with `project_id`). Projects and roadmaps are one-to-one: the
-backend answers 409 `PROJECT_ALREADY_HAS_ROADMAP` for a second roadmap, and both
-tools drop the cached workspace overview so the next turn sees the new state.
+/api/roadmaps/:id with `project_id`), `create_project` (POST /api/projects as the
+user; the backend provisions the project's default roadmap in the same call and the
+tool returns both ids; the project lands in the session workspace, else the focus
+roadmap's project workspace, else the tool answers `WORKSPACE_REQUIRED` so the model
+asks, with `use_default_workspace: true` meaning the backend default; guests are
+refused) and `update_project` (PATCH /api/projects/:id; owner-only; only title,
+status and duration persist, never the description). Projects and roadmaps are
+one-to-one: the backend answers 409 `PROJECT_ALREADY_HAS_ROADMAP` for a second
+roadmap. All four admin tools drop the cached workspace overview so the next turn
+sees the new state; `update_project` also drops the project pack of every loaded
+roadmap under that project. There is no delete tool.
 
 **Terminals:** `stage_edits` (the registry planning tool renamed; gains `roadmap_id`,
 drops `revision_operations` and the old dual-target/clarifier contract text, forces

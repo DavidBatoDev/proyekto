@@ -3,13 +3,13 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ArrowRight, Loader2, Plus, User, Users } from "lucide-react";
 import { useState } from "react";
 import {
-	AppEmptyState,
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { CreateTeamModal } from "@/components/team/CreateTeamModal";
+import { TeamsEmptyState } from "@/components/team/TeamsEmptyState";
 import { richTextToPlain } from "@/lib/richText";
 import { filterByWorkspace } from "@/lib/workspaceScope";
 import {
@@ -50,13 +50,14 @@ function TeamsIndexPage() {
 				<AppSectionHeader
 					kicker="Teams"
 					title="Your teams"
-					subtitle="Reusable groups of people you can attach to any project. Rate / billing fields appear on team members once time tracking is enabled for the team."
+					subtitle="Bring people together and manage your teams across projects."
+					className="[&_h2]:text-foreground [&_p]:text-muted-foreground"
 					rightSlot={
 						teams && teams.length > 0 ? (
 							<button
 								type="button"
 								onClick={() => setCreateOpen(true)}
-								className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+								className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
 							>
 								<Plus className="h-4 w-4" />
 								Create team
@@ -76,21 +77,7 @@ function TeamsIndexPage() {
 							{(error as Error).message}
 						</AppSurfaceCard>
 					) : !teams || teams.length === 0 ? (
-						<AppEmptyState
-							icon={Users}
-							title="No teams yet"
-							description="Create a team, add members, then attach the team to a project. Members of the team get curated into projects on a per-project basis."
-							action={
-								<button
-									type="button"
-									onClick={() => setCreateOpen(true)}
-									className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
-								>
-									<Plus className="h-4 w-4" />
-									Create team
-								</button>
-							}
-						/>
+						<TeamsEmptyState onCreate={() => setCreateOpen(true)} />
 					) : (
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{teams.map((team) => (

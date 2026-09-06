@@ -33,6 +33,7 @@ from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     MEMORY_TOOL_NAMES as _REGISTRY_MEMORY_TOOL_NAMES,
     PLANNING_TOOL_NAME,
+    PROJECT_ADMIN_TOOL_NAMES as _REGISTRY_PROJECT_ADMIN_TOOL_NAMES,
     ROADMAP_ADMIN_TOOL_NAMES as _REGISTRY_ROADMAP_ADMIN_TOOL_NAMES,
     get_context_tools,
     get_planning_tool,
@@ -82,10 +83,21 @@ ROADMAP_ADMIN_TOOL_NAMES = frozenset(_REGISTRY_ROADMAP_ADMIN_TOOL_NAMES)
 CREATE_ROADMAP_TOOL_NAME = 'create_roadmap'
 ATTACH_ROADMAP_TOOL_NAME = 'attach_roadmap_to_project'
 
+# Project admin tools create a project (with its default roadmap) or update
+# one — non-terminal writes through plain backend REST.
+PROJECT_ADMIN_TOOL_NAMES = frozenset(_REGISTRY_PROJECT_ADMIN_TOOL_NAMES)
+CREATE_PROJECT_TOOL_NAME = 'create_project'
+UPDATE_PROJECT_TOOL_NAME = 'update_project'
+PROJECT_STATUS_VALUES = ['draft', 'bidding', 'active', 'paused', 'completed', 'archived']
+
 # Everything the mid-loop dispatcher executes (results fed back, loop
 # continues).
 DISPATCHER_TOOL_NAMES = (
-    READ_TOOL_NAMES | MEMORY_TOOL_NAMES | COMMENT_TOOL_NAMES | ROADMAP_ADMIN_TOOL_NAMES
+    READ_TOOL_NAMES
+    | MEMORY_TOOL_NAMES
+    | COMMENT_TOOL_NAMES
+    | ROADMAP_ADMIN_TOOL_NAMES
+    | PROJECT_ADMIN_TOOL_NAMES
 )
 
 # Terminal tools end the turn. PLANNING_TOOL_NAME is the registry's schema-
@@ -495,6 +507,8 @@ def write_tools(scope: Any = None) -> list[dict[str, Any]]:
         add_task_comments_tool(scope),
         create_roadmap_tool(),
         attach_roadmap_to_project_tool(scope),
+        create_project_tool(),
+        update_project_tool(),
     ]
 
 
@@ -666,6 +680,74 @@ def attach_roadmap_to_project_tool(scope: Any = None) -> dict[str, Any]:
                 'type': 'string',
                 'description': 'The project to attach it to (id from get_workspace_overview).',
             },
+        },
+    )
+
+
+def create_project_tool() -> dict[str, Any]:
+    return _function_tool(
+        CREATE_PROJECT_TOOL_NAME,
+        'Create a NEW project owned by the current user. The backend always '
+        'creates the project\'s own empty roadmap named after it in the same '
+        'call — never call create_roadmap for it. Only when the user asked for a '
+        'new project. Guests cannot create projects. Afterwards call '
+        'get_roadmap_overview on the returned roadmap id before adding anything, '
+        'then continue your answer.',
+        ['title'],
+        {
+            'title': {'type': 'string', 'minLength': 1, 'maxLength': 200},
+            'description': {
+                'type': 'string',
+                'maxLength': 2000,
+                'description': (
+                    "Stored as the project's first brief; cannot be changed later by "
+                    'update_project.'
+                ),
+            },
+            'status': {
+                'type': 'string',
+                'enum': list(PROJECT_STATUS_VALUES),
+                'description': 'Defaults to draft.',
+            },
+            'duration': {
+                'type': 'string',
+                'description': 'Free text such as "3 months".',
+            },
+            'workspace_id': {
+                'type': 'string',
+                'description': (
+                    'Workspace the project belongs to. Omit in a workspace session or '
+                    'on a roadmap whose project has a workspace: it is inferred. '
+                    'Otherwise the tool returns WORKSPACE_REQUIRED: ask the user.'
+                ),
+            },
+            'use_default_workspace': {
+                'type': 'boolean',
+                'description': (
+                    'true only after the user chose their default/personal workspace; '
+                    'omit workspace_id then.'
+                ),
+            },
+        },
+    )
+
+
+def update_project_tool() -> dict[str, Any]:
+    return _function_tool(
+        UPDATE_PROJECT_TOOL_NAME,
+        'Rename a project or change its status/duration. Only the project OWNER '
+        'can do this (FORBIDDEN otherwise). The description/brief CANNOT be '
+        'changed with this tool — say so if asked. Pass at least one field. '
+        'Continue your answer after.',
+        ['project_id'],
+        {
+            'project_id': {
+                'type': 'string',
+                'description': 'The project to update (id from get_workspace_overview).',
+            },
+            'title': {'type': 'string', 'minLength': 1, 'maxLength': 200},
+            'status': {'type': 'string', 'enum': list(PROJECT_STATUS_VALUES)},
+            'duration': {'type': 'string', 'description': 'Free text such as "3 months".'},
         },
     )
 

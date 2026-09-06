@@ -46,6 +46,8 @@ interface RoadmapAiAssistantPanelProps {
 }
 
 const REFRESHING_TRACE_EVENTS = new Set(["commit_completed"]);
+/** Admin-tool results that change the project title shown on this page. */
+const PROJECT_REFRESHING_TOOL_NAMES = new Set(["update_project"]);
 
 const INTRO_TITLE = "Ask Proyekto about this roadmap";
 const INTRO_SUBTITLE = "Pick a question or ask your own.";
@@ -175,6 +177,29 @@ export function RoadmapAiAssistantPanel({
 
 	const onTraceEvents = useCallback<NonNullable<RunHooks["onTraceEvents"]>>(
 		(traceId, events) => {
+			// An update_project result: the project header on this page is stale.
+			const projectSeq = events
+				.filter(
+					(event) =>
+						event.event === "tool_call_result" &&
+						event.status !== "error" &&
+						PROJECT_REFRESHING_TOOL_NAMES.has(
+							String(event.details?.tool_name ?? ""),
+						),
+				)
+				.reduce<number | null>(
+					(max, event) => (max == null || event.seq > max ? event.seq : max),
+					null,
+				);
+			if (projectSeq != null && projectId !== NO_PROJECT_ROUTE_ID) {
+				const key = `${traceId}:project`;
+				if (projectSeq > (refreshSeqByTraceRef.current[key] ?? 0)) {
+					refreshSeqByTraceRef.current[key] = projectSeq;
+					void queryClient.invalidateQueries({
+						queryKey: projectKeys.detail(projectId),
+					});
+				}
+			}
 			const completionSeq = events
 				.filter((event) => {
 					if (!REFRESHING_TRACE_EVENTS.has(event.event)) return false;
@@ -204,7 +229,7 @@ export function RoadmapAiAssistantPanel({
 				);
 			});
 		},
-		[refreshRoadmap, roadmapId],
+		[projectId, queryClient, refreshRoadmap, roadmapId],
 	);
 
 	return (

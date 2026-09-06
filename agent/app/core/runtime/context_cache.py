@@ -347,6 +347,22 @@ def invalidate_project_context(session: AgentSession, roadmap_id: str | None) ->
     context.project_context_fetched_at = None
 
 
+def invalidate_project_contexts_for_projects(session: AgentSession, project_ids: Any) -> list[str]:
+    """Drop the cached project pack of every loaded roadmap whose project is in
+    ``project_ids`` (an ``update_project`` ran this turn: the title in the
+    ``# Project context`` block is stale). Returns the roadmap ids touched."""
+    wanted = {value for value in (project_ids or []) if isinstance(value, str) and value} if isinstance(project_ids, list) else set()
+    if not wanted:
+        return []
+    touched: list[str] = []
+    for roadmap_id, context in list(session.metadata.roadmaps.items()):
+        if context.project_id in wanted:
+            context.project_context = None
+            context.project_context_fetched_at = None
+            touched.append(roadmap_id)
+    return touched
+
+
 def refresh_focus_for_run(
     *,
     session: AgentSession,
@@ -595,6 +611,12 @@ def ensure_project_context(
         if project_id and not context.project_id:
             context.project_id = project_id
         workspace_id = _clean_str(project.get('workspace_id'))
+        workspace = project.get('workspace')
+        if not workspace_id and isinstance(workspace, dict):
+            # The pack names the workspace as {id, name, slug}; the summary
+            # payload carries no workspace at all, so this is where roadmap
+            # scope learns which workspace the focus project lives in.
+            workspace_id = _clean_str(workspace.get('id'))
         if workspace_id and not context.workspace_id:
             context.workspace_id = workspace_id
     log_event(
