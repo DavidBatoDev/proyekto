@@ -178,7 +178,7 @@ function TeamGeneralSettings() {
 	if (teamQuery.isLoading) {
 		return (
 			<TeamSettingsLayout teamId={teamId}>
-				<div className="flex h-64 items-center justify-center text-slate-500">
+				<div className="flex h-64 items-center justify-center text-muted-foreground">
 					<Loader2 className="mr-2 h-5 w-5 animate-spin" />
 					Loading team…
 				</div>
@@ -200,17 +200,17 @@ function TeamGeneralSettings() {
 			<div className="space-y-10">
 				<section className="space-y-3">
 					<div className="flex items-center gap-2">
-						<Settings className="h-5 w-5 text-slate-700" />
-						<h2 className="text-[30px] font-semibold leading-none text-slate-900">
+						<Settings className="h-5 w-5 text-foreground" />
+						<h2 className="text-[30px] font-semibold leading-none text-foreground">
 							General settings
 						</h2>
 					</div>
 
-					<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-						<div className="space-y-7 px-5 py-5">
-							<section className="border-b border-slate-200 pb-6">
+					<div className="border-t border-border pt-2">
+						<div className="space-y-7 py-5">
+							<section className="border-b border-border pb-6">
 								<div className="mb-2.5 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-slate-900">
+									<h3 className="text-[18px] font-semibold text-foreground">
 										Team photo
 									</h3>
 								</div>
@@ -242,36 +242,36 @@ function TeamGeneralSettings() {
 														disabled={
 															isUploadingAvatar || updateMutation.isPending
 														}
-														className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+														className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
 													>
 														<Trash2 className="h-4 w-4" />
 														Remove
 													</button>
 												)}
 											</div>
-											<p className="text-[12px] text-slate-500">
+											<p className="text-[12px] text-muted-foreground">
 												Drag &amp; drop or browse — PNG, JPG, WEBP, or GIF, up
 												to 5MB.
 											</p>
 										</div>
 									) : (
-										<p className="text-[13px] text-slate-500">
+										<p className="text-[13px] text-muted-foreground">
 											Only the team owner can change the team photo.
 										</p>
 									)}
 								</div>
 							</section>
 
-							<section className="border-b border-slate-200 pb-6">
+							<section className="border-b border-border pb-6">
 								<div className="mb-2.5 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-slate-900">
+									<h3 className="text-[18px] font-semibold text-foreground">
 										Team name
 									</h3>
 									{isOwner && !isEditingName && (
 										<button
 											type="button"
 											onClick={() => setIsEditingName(true)}
-											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
 										>
 											<Edit2 className="h-4 w-4" />
 											Edit
@@ -287,7 +287,7 @@ function TeamGeneralSettings() {
 											onChange={(e) => setNameDraft(e.target.value)}
 											placeholder="Team name"
 											disabled={updateMutation.isPending}
-											className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
+											className="w-full rounded-lg border border-border px-3 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
 										/>
 										<div className="flex items-center gap-2">
 											<button
@@ -310,7 +310,7 @@ function TeamGeneralSettings() {
 													setIsEditingName(false);
 												}}
 												disabled={updateMutation.isPending}
-												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+												className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
 											>
 												<X className="h-4 w-4" />
 												Cancel
@@ -318,7 +318,7 @@ function TeamGeneralSettings() {
 										</div>
 									</div>
 								) : (
-									<p className="text-[14px] leading-6 text-slate-700">
+									<p className="text-[14px] leading-6 text-foreground">
 										{team.name?.trim() || "No name set."}
 									</p>
 								)}
@@ -331,7 +331,7 @@ function TeamGeneralSettings() {
 							    place. */}
 							<section>
 								<div className="mb-2.5 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-slate-900">
+									<h3 className="text-[18px] font-semibold text-foreground">
 										Description
 									</h3>
 									{isOwner && (
@@ -339,7 +339,7 @@ function TeamGeneralSettings() {
 											to="/w/$workspaceSlug/teams/$teamId"
 											params={{ workspaceSlug, teamId }}
 											search={{ tab: undefined }}
-											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
 										>
 											<Edit2 className="h-4 w-4" />
 											Edit on Overview
@@ -348,27 +348,27 @@ function TeamGeneralSettings() {
 								</div>
 
 								{isRichTextEmpty(team.description ?? "") ? (
-									<p className="text-[13px] leading-6 text-slate-400">
+									<p className="text-[13px] leading-6 text-muted-foreground">
 										No description added yet.
 									</p>
 								) : (
 									<RichBody
 										value={team.description ?? ""}
-										className="text-[13px] leading-6 text-slate-600"
+										className="text-[13px] leading-6 text-muted-foreground"
 									/>
 								)}
 							</section>
 
 							<section>
 								<div className="mb-2.5 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-slate-900">
+									<h3 className="text-[18px] font-semibold text-foreground">
 										Labels
 									</h3>
 									{isOwner && !isEditingTags && (
 										<button
 											type="button"
 											onClick={() => setIsEditingTags(true)}
-											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
 										>
 											<Edit2 className="h-4 w-4" />
 											Edit
@@ -378,7 +378,7 @@ function TeamGeneralSettings() {
 
 								{isEditingTags ? (
 									<div className="space-y-3">
-										<p className="text-[13px] leading-6 text-slate-600">
+										<p className="text-[13px] leading-6 text-muted-foreground">
 											Freeform labels for your own organisation — they don't
 											affect who can see or do anything.
 										</p>
@@ -387,7 +387,7 @@ function TeamGeneralSettings() {
 											onChange={setTagsDraft}
 											disabled={updateMutation.isPending}
 											ariaLabel="Team labels"
-											inputClassName="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
+											inputClassName="w-full rounded-lg border border-border px-3 py-2.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
 										/>
 										<div className="flex items-center gap-2">
 											<button
@@ -410,7 +410,7 @@ function TeamGeneralSettings() {
 													setIsEditingTags(false);
 												}}
 												disabled={updateMutation.isPending}
-												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+												className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
 											>
 												<X className="h-4 w-4" />
 												Cancel
@@ -422,14 +422,14 @@ function TeamGeneralSettings() {
 										{(team.tags ?? []).map((tag) => (
 											<span
 												key={tag}
-												className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+												className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
 											>
 												{tag}
 											</span>
 										))}
 									</div>
 								) : (
-									<p className="text-[13px] leading-6 text-slate-400">
+									<p className="text-[13px] leading-6 text-muted-foreground">
 										No labels added yet.
 									</p>
 								)}
@@ -437,21 +437,21 @@ function TeamGeneralSettings() {
 
 							<section>
 								<div className="mb-1 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-slate-900">
+									<h3 className="text-[18px] font-semibold text-foreground">
 										Billing identity
 									</h3>
 									{isOwner && !isEditingBilling && (
 										<button
 											type="button"
 											onClick={() => setIsEditingBilling(true)}
-											className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
+											className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
 										>
 											<Edit2 className="h-4 w-4" />
 											Edit
 										</button>
 									)}
 								</div>
-								<p className="mb-3 text-[13px] leading-6 text-slate-500">
+								<p className="mb-3 text-[13px] leading-6 text-muted-foreground">
 									Used as the service-provider block on contracts and invoices
 									when a project bills through this team. Anything left blank
 									falls back to the consultant's own profile.
@@ -522,7 +522,7 @@ function TeamGeneralSettings() {
 													setIsEditingBilling(false);
 												}}
 												disabled={updateMutation.isPending}
-												className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+												className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
 											>
 												<X className="h-4 w-4" />
 												Cancel
@@ -557,10 +557,10 @@ function TeamGeneralSettings() {
 
 				{isOwner && !team.is_personal && (
 					<section className="space-y-3">
-						<h2 className="text-[30px] font-semibold leading-none text-slate-900">
+						<h2 className="text-[30px] font-semibold leading-none text-foreground">
 							Delete team
 						</h2>
-						<div className="overflow-hidden rounded-xl border border-red-200 bg-white">
+						<div className="overflow-hidden rounded-xl border border-red-200 bg-card">
 							<header className="flex items-center justify-between border-b border-red-100 bg-red-50 px-5 py-4">
 								<p className="text-sm text-red-700">
 									Permanently remove this team. Detach it from all projects
@@ -585,10 +585,10 @@ function TeamGeneralSettings() {
 
 				{isOwner && team.is_personal && (
 					<section className="space-y-3">
-						<h2 className="text-[30px] font-semibold leading-none text-slate-900">
+						<h2 className="text-[30px] font-semibold leading-none text-foreground">
 							Personal team
 						</h2>
-						<div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+						<div className="border-t border-border py-5 text-sm text-muted-foreground">
 							This is your personal team. It can't be deleted.
 						</div>
 					</section>
@@ -612,7 +612,7 @@ function TeamGeneralSettings() {
 				typeof document !== "undefined" &&
 				createPortal(
 					<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-						<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-red-200 bg-white shadow-2xl">
+						<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-red-200 bg-card shadow-2xl">
 							<div className="border-b border-red-100 bg-red-50 px-6 py-4">
 								<h3 className="text-[16px] font-semibold text-red-700">
 									Delete team
@@ -638,7 +638,7 @@ function TeamGeneralSettings() {
 										setIsDeleteOpen(false);
 										setDeleteText("");
 									}}
-									className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+									className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
 									disabled={deleteMutation.isPending}
 								>
 									Cancel
@@ -678,7 +678,7 @@ function BillingField({
 }) {
 	return (
 		<label className="block">
-			<span className="mb-1 block text-xs font-semibold text-slate-600">
+			<span className="mb-1 block text-xs font-semibold text-muted-foreground">
 				{label}
 			</span>
 			<input
@@ -687,7 +687,7 @@ function BillingField({
 				placeholder={placeholder}
 				disabled={disabled}
 				onChange={(e) => onChange(e.target.value)}
-				className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30 disabled:opacity-60"
+				className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-60"
 			/>
 		</label>
 	);
@@ -703,9 +703,11 @@ function BillingRow({
 }) {
 	return (
 		<div className="flex gap-3">
-			<dt className="w-36 shrink-0 text-slate-400">{label}</dt>
-			<dd className="text-slate-700">
-				{value?.trim() || <span className="text-slate-400">Not set</span>}
+			<dt className="w-36 shrink-0 text-muted-foreground">{label}</dt>
+			<dd className="text-foreground">
+				{value?.trim() || (
+					<span className="text-muted-foreground">Not set</span>
+				)}
 			</dd>
 		</div>
 	);

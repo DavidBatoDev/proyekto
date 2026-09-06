@@ -28,13 +28,13 @@ function TeamLogsSettings() {
 		<TeamSettingsLayout teamId={teamId} teamName={teamQuery.data?.name}>
 			<section className="space-y-3">
 				<div className="flex items-center gap-2">
-					<ClipboardList className="h-5 w-5 text-slate-700" />
-					<h2 className="text-[30px] font-semibold leading-none text-slate-900">
+					<ClipboardList className="h-5 w-5 text-muted-foreground" />
+					<h2 className="text-[30px] font-semibold leading-none text-foreground">
 						Activity logs
 					</h2>
 				</div>
-				<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-					<div className="px-5 py-10 text-center text-sm text-slate-500">
+				<div className="border-t border-border pt-2">
+					<div className="px-5 py-10 text-center text-sm text-muted-foreground">
 						Audit log of team membership changes, invites, and project
 						attachment events will appear here. Backed by the existing
 						project-level activity feed once we wire team-scoped filtering.

@@ -1,4 +1,5 @@
-import { Clock, House, Settings } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
+import { Clock, FolderKanban, House, Settings, Users } from "lucide-react";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { toWorkspacePath } from "@/lib/workspacePaths";
 import type { Team } from "@/services/teams.service";
@@ -19,6 +20,12 @@ export function TeamSidebarGroup({
 	/** Null only while the workspace list loads; links then stay bare and ride the redirect stubs. */
 	workspaceSlug: string | null;
 }) {
+	const selectedTab = useRouterState({
+		select: (state) => {
+			const tab = (state.location.search as Record<string, unknown>).tab;
+			return typeof tab === "string" ? tab : undefined;
+		},
+	});
 	const teamActive =
 		currentPath.startsWith(`/teams/${team.id}`) ||
 		currentPath.startsWith(`/team-onboarding/${team.id}`);
@@ -28,17 +35,35 @@ export function TeamSidebarGroup({
 			label: "Home",
 			icon: House,
 			to: toWorkspacePath(`/teams/${team.id}`, workspaceSlug),
-			active: currentPath === `/teams/${team.id}`,
+			search: undefined,
+			active:
+				currentPath === `/teams/${team.id}` &&
+				(selectedTab === undefined || selectedTab === "overview"),
 		},
-		// Time + rates only show once the team owner has enabled time
-		// tracking under settings (consultant-verified gate). Settings
-		// stays visible so the owner can flip the flag in the first place.
+		{
+			label: "Projects",
+			icon: FolderKanban,
+			to: toWorkspacePath(`/teams/${team.id}`, workspaceSlug),
+			search: { tab: "projects" },
+			active: currentPath === `/teams/${team.id}` && selectedTab === "projects",
+		},
+		{
+			label: "Members",
+			icon: Users,
+			to: toWorkspacePath(`/teams/${team.id}`, workspaceSlug),
+			search: { tab: "members" },
+			active: currentPath === `/teams/${team.id}` && selectedTab === "members",
+		},
+		// Time + rates only show once an owner or admin has enabled time
+		// tracking under settings. Settings stays visible so they can flip
+		// the flag in the first place.
 		...(team.time_tracking_enabled
 			? [
 					{
 						label: "Time",
 						icon: Clock,
 						to: toWorkspacePath(`/teams/${team.id}/time`, workspaceSlug),
+						search: undefined,
 						active: currentPath.startsWith(`/teams/${team.id}/time`),
 					},
 				]
@@ -47,6 +72,7 @@ export function TeamSidebarGroup({
 			label: "Settings",
 			icon: Settings,
 			to: toWorkspacePath(`/teams/${team.id}/settings`, workspaceSlug),
+			search: undefined,
 			active: currentPath.startsWith(`/teams/${team.id}/settings`),
 		},
 	];
@@ -74,6 +100,7 @@ export function TeamSidebarGroup({
 					icon={item.icon}
 					label={item.label}
 					active={item.active}
+					search={item.search}
 				/>
 			))}
 		</CollapsibleNavGroup>

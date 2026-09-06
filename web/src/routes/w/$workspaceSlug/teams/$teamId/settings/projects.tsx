@@ -135,7 +135,7 @@ function TeamProjectsSettings() {
 	if (teamQuery.isLoading) {
 		return (
 			<TeamSettingsLayout teamId={teamId}>
-				<div className="flex h-64 items-center justify-center text-slate-500">
+				<div className="flex h-64 items-center justify-center text-muted-foreground">
 					<Loader2 className="mr-2 h-5 w-5 animate-spin" />
 					Loading…
 				</div>
@@ -148,31 +148,31 @@ function TeamProjectsSettings() {
 			<div className="space-y-6">
 				<section className="space-y-3">
 					<div className="flex items-center gap-2">
-						<FolderKanban className="h-5 w-5 text-slate-700" />
-						<h2 className="text-[30px] font-semibold leading-none text-slate-900">
+						<FolderKanban className="h-5 w-5 text-foreground" />
+						<h2 className="text-[30px] font-semibold leading-none text-foreground">
 							Attached projects
 						</h2>
 					</div>
-					<p className="text-sm text-slate-600">
+					<p className="text-sm text-muted-foreground">
 						Projects this team is currently attached to. Detaching here is
 						equivalent to removing the team from each project's settings.
 					</p>
 				</section>
 
-				<div className="app-surface-card-strong overflow-hidden rounded-2xl">
-					<header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+				<div className="border-t border-border">
+					<header className="flex flex-col gap-3 border-b border-border py-4 sm:flex-row sm:items-center sm:justify-between">
 						<div className="relative w-full sm:max-w-xs">
-							<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+							<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 							<input
 								type="text"
 								value={filter}
 								onChange={(e) => setFilter(e.target.value)}
 								placeholder="Filter by project name"
-								className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
+								className="w-full rounded-lg border border-border bg-card py-2 pl-8 pr-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
 							/>
 						</div>
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-slate-500">
+							<span className="text-xs text-muted-foreground">
 								{selected.size} selected
 							</span>
 							<button
@@ -181,7 +181,7 @@ function TeamProjectsSettings() {
 								disabled={
 									!isOwner || selected.size === 0 || detachMutation.isPending
 								}
-								className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+								className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-card px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
 							>
 								<Unlink className="h-3.5 w-3.5" />
 								Detach selected
@@ -190,18 +190,18 @@ function TeamProjectsSettings() {
 					</header>
 
 					{projectsQuery.isLoading ? (
-						<div className="flex items-center justify-center py-10 text-slate-500">
+						<div className="flex items-center justify-center py-10 text-muted-foreground">
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 							Loading attachments…
 						</div>
 					) : attachments.length === 0 ? (
-						<div className="px-5 py-10 text-center text-sm text-slate-500">
+						<div className="px-5 py-10 text-center text-sm text-muted-foreground">
 							This team isn't attached to any projects yet.
 						</div>
 					) : (
 						<div className="overflow-x-auto">
-							<table className="min-w-full divide-y divide-slate-200 text-sm">
-								<thead className="bg-slate-50/60 text-left text-xs uppercase tracking-wide text-slate-500">
+							<table className="min-w-full divide-y divide-border text-sm">
+								<thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
 									<tr>
 										<th className="w-10 px-4 py-3">
 											<input
@@ -218,7 +218,7 @@ function TeamProjectsSettings() {
 										<th className="w-10 px-4 py-3" />
 									</tr>
 								</thead>
-								<tbody className="divide-y divide-slate-100">
+								<tbody className="divide-y divide-border">
 									{visible.map((row) => (
 										<TeamProjectRow
 											key={row.project_id}
@@ -234,7 +234,7 @@ function TeamProjectsSettings() {
 										<tr>
 											<td
 												colSpan={6}
-												className="px-4 py-8 text-center text-sm text-slate-500"
+												className="px-4 py-8 text-center text-sm text-muted-foreground"
 											>
 												No projects match "{filter}".
 											</td>
@@ -375,7 +375,7 @@ function TeamProjectRow({
 }) {
 	const projectId = row.project_id;
 	return (
-		<tr className="hover:bg-slate-50">
+		<tr className="hover:bg-muted">
 			<td className="px-4 py-3">
 				<input
 					type="checkbox"
@@ -386,18 +386,21 @@ function TeamProjectRow({
 				/>
 			</td>
 			<td className="px-4 py-3">
+				{/* /project/$projectId is a bare layout route with no index, so
+				    linking there renders an empty Outlet. Every other project link
+				    in the app targets /overview — this one was the outlier. */}
 				<Link
-					to="/project/$projectId"
+					to="/project/$projectId/overview"
 					params={{ projectId }}
-					className="font-medium text-slate-900 hover:text-slate-700 hover:underline"
+					className="font-medium text-foreground hover:text-primary hover:underline"
 				>
 					{row.project?.title || projectId}
 				</Link>
 			</td>
-			<td className="px-4 py-3 text-slate-600">
+			<td className="px-4 py-3 text-muted-foreground">
 				{row.is_primary ? "Yes" : "—"}
 			</td>
-			<td className="px-4 py-3 text-slate-600">
+			<td className="px-4 py-3 text-muted-foreground">
 				{new Date(row.attached_at).toLocaleDateString()}
 			</td>
 			<td className="px-4 py-3 text-right">
@@ -406,7 +409,7 @@ function TeamProjectRow({
 					onClick={onDetachOne}
 					disabled={!isOwner || pending}
 					title="Detach from this project"
-					className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+					className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
 				>
 					<Unlink className="h-3.5 w-3.5" />
 				</button>

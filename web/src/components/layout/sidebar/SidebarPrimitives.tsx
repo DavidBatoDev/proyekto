@@ -46,17 +46,20 @@ export function SidebarSubLink({
 	label,
 	active,
 	params,
+	search,
 }: {
 	to: string;
 	icon: React.ElementType;
 	label: string;
 	active: boolean;
 	params?: Record<string, string>;
+	search?: Record<string, unknown>;
 }) {
 	return (
 		<Link
 			to={to}
 			params={params}
+			search={search as never}
 			className={`flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
 				active
 					? "bg-sidebar-primary text-sidebar-primary-foreground"
