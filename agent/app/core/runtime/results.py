@@ -78,6 +78,9 @@ class StepResult:
     tokens_cached: int | None = None
     entity_links_kept: int = 0
     entity_links_rejected: int = 0
+    # Who wrote the reply of a run that reached verify (model | deterministic
+    # | rejected); None when the step did not settle a verify report.
+    verify_report_mode: str | None = None
     route_lane: str | None = None
     react_loop_turns: int | None = None
     react_loop_budget: int | None = None

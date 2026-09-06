@@ -389,6 +389,7 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertIn('Copy the links from `# Outcome` verbatim', verify)
         self.assertIn('Tool arguments, including `propose` summaries and next_steps, use plain titles', verify)
         self.assertIn('never re-apply anything', verify)
+        self.assertIn('`# Outcome` is the ground truth', verify)
         self.assertEqual(prompt.render_phase_tail('propose'), '')
 
 

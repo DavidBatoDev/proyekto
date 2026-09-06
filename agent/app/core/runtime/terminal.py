@@ -18,6 +18,7 @@ from the single-loop agent).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from uuid import uuid4
@@ -95,12 +96,21 @@ class TerminalContext:
     recent_targets: list[Any] = field(default_factory=list)
     roadmap_titles: dict[str, str | None] = field(default_factory=dict)
     roadmap_prefixes: dict[str, str | None] = field(default_factory=dict)
+    # The session's live roadmap contexts (by reference, never a copy): a
+    # roadmap the model opens mid-loop registers here after this context was
+    # built, and the batch it then stages must still carry the title.
+    live_roadmaps: Mapping[str, Any] = field(default_factory=dict)
     allowed: frozenset[str] = ALL_TERMINAL_KINDS
 
     def title_of(self, roadmap_id: str | None) -> str | None:
         if not roadmap_id:
             return None
-        return self.roadmap_titles.get(roadmap_id)
+        title = self.roadmap_titles.get(roadmap_id)
+        if title:
+            return title
+        live = self.live_roadmaps.get(roadmap_id) if self.live_roadmaps else None
+        live_title = getattr(live, 'title', None)
+        return live_title if isinstance(live_title, str) and live_title else None
 
     def live_epics_for(self, roadmap_id: str | None) -> frozenset[str]:
         if roadmap_id and roadmap_id in self.handle_maps_by_roadmap:
@@ -143,7 +153,11 @@ def _context_from_session(
     expected_roadmap_id: str | None = None,
 ) -> TerminalContext:
     session_context = session_context or {}
-    roadmaps = getattr(session.metadata, 'roadmaps', None) or {}
+    # Keep the session's own mapping (never `or {}`: an empty dict would be
+    # replaced by a fresh one and `title_of` would miss roadmaps loaded later).
+    roadmaps = getattr(session.metadata, 'roadmaps', None)
+    if roadmaps is None:
+        roadmaps = {}
     merged: dict[str, dict[str, Any]] = {}
     per_roadmap: dict[str, dict[str, dict[str, Any]]] = {}
     for roadmap_id, context in roadmaps.items():
@@ -177,6 +191,7 @@ def _context_from_session(
         recent_targets=list(session.metadata.recent_resolved_targets),
         roadmap_titles={rid: getattr(c, 'title', None) for rid, c in roadmaps.items()},
         roadmap_prefixes={rid: getattr(c, 'handle_prefix', None) for rid, c in roadmaps.items()},
+        live_roadmaps=roadmaps,
         allowed=allowed,
     )
 

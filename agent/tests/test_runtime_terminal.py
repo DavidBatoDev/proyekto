@@ -387,3 +387,15 @@ class StageEditsSchemaParityTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LiveTitleTests(unittest.TestCase):
+    def test_title_of_sees_a_roadmap_registered_after_the_context_was_built(self):
+        session = roadmap_session()
+        built = terminal._context_from_session(
+            session, None, settings=None, trace_id=None, actor_id=None, session_context=None,
+            allowed=terminal.ALL_TERMINAL_KINDS,
+        )
+        self.assertIsNone(built.title_of(BETA))
+        session.metadata.roadmaps[BETA] = RoadmapContext(roadmap_id=BETA, title='Beta', handle_prefix='R1')
+        self.assertEqual(built.title_of(BETA), 'Beta')

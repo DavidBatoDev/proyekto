@@ -328,6 +328,10 @@ class VerifyReport(BaseModel):
     summary: str = ''
     # A follow-up proposal the verify model call attached (never auto-fixed).
     follow_up_plan_id: str | None = None
+    # Who wrote `summary`: the verify model, the deterministic renderer, or the
+    # renderer after the model's text was rejected for contradicting the
+    # outcome (a refusal on top of a committed change).
+    report_mode: Literal['model', 'deterministic', 'rejected'] = 'deterministic'
 
 
 # ---------------------------------------------------------------------------
@@ -498,12 +502,15 @@ class RunCommitView(BaseModel):
         batch: RunBatch | None = None,
         *,
         project_id: str | None = None,
+        roadmap_title: str | None = None,
         include_operations: bool = False,
     ) -> 'RunCommitView':
         return cls(
             batch_id=commit.batch_id,
             roadmap_id=commit.roadmap_id,
-            roadmap_title=batch.roadmap_title if batch is not None else None,
+            # The batch title wins (it names the roadmap the model targeted);
+            # the session context fills it for a roadmap loaded mid-loop.
+            roadmap_title=(batch.roadmap_title if batch is not None else None) or roadmap_title,
             project_id=project_id,
             status=commit.status,
             change_id=commit.change_id,

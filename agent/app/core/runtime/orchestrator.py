@@ -751,6 +751,7 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         tokens_cached=ctx.tokens['cached'] or None,
         entity_links_kept=links.kept,
         entity_links_rejected=len(links.rejected),
+        verify_report_mode=(run.verify.report_mode if run.verify is not None and segment_ended else None),
         route_lane=route_lane,
         react_loop_turns=ctx.loop_turns or None,
         react_loop_budget=int(getattr(settings, 'agent_v2_max_turns', 8)),

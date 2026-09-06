@@ -274,3 +274,59 @@ class UndoRunReportTests(unittest.TestCase):
         self.assertFalse(verify.is_undo_run(run) and False)
         summary = verify.undo_summary(session, run)
         self.assertIn(f'[Alpha](proyekto://roadmap/{ALPHA}) failed: stale', summary)
+
+
+PRODUCTION_REFUSAL = (
+    "I can’t apply roadmap edits from this session right now. If you want, I can still list the "
+    "Yachatdac tasks that should be moved to in progress so you can confirm the exact set."
+)
+
+
+class ReportContradictionTests(unittest.TestCase):
+    """The verify model once refused after the commit had already landed
+    (production run 8c307c66): the report must never contradict the card."""
+
+    def test_refusal_after_a_commit_is_rejected_for_the_deterministic_summary(self):
+        ctx, session, run, _nest = _fixture()
+        _committed(run, ALPHA, 'Alpha')
+        with patched_llm([text_resp(PRODUCTION_REFUSAL)]):
+            with self.assertLogs('app.core.runtime.phases.verify', level='WARNING') as logs:
+                outcome = verify.run(ctx, session, run)
+        self.assertEqual(outcome.kind, 'verified')
+        self.assertIn(f'Committed 1 change to [Alpha](proyekto://roadmap/{ALPHA})', outcome.assistant_message)
+        self.assertNotIn("can’t", outcome.assistant_message)
+        self.assertEqual(run.verify.report_mode, 'rejected')
+        self.assertEqual(run.verify.summary, outcome.assistant_message)
+        self.assertTrue(any('verify_report_rejected' in line.lower() for line in logs.output))
+
+    def test_reasons(self):
+        ctx, session, run, _nest = _fixture()
+        _committed(run, ALPHA, 'Alpha')
+        self.assertEqual(verify.report_contradicts_outcome(PRODUCTION_REFUSAL, run), 'SESSION_EXCUSE')
+        self.assertEqual(verify.report_contradicts_outcome("I cannot make that change to the roadmap.", run), 'REFUSAL_AFTER_COMMIT')
+        self.assertEqual(verify.report_contradicts_outcome("I'm unable to update those tasks.", run), 'REFUSAL_AFTER_COMMIT')
+        self.assertEqual(verify.report_contradicts_outcome('No changes were made to Alpha.', run), 'DENIES_CHANGES')
+        self.assertIsNone(verify.report_contradicts_outcome('I moved 20 tasks in [Alpha](proyekto://roadmap/x) to in progress.', run))
+        self.assertIsNone(verify.report_contradicts_outcome("Done. You can't miss the new epic at the top.", run))
+
+    def test_honest_text_and_failed_runs_are_untouched(self):
+        ctx, session, run, _nest = _fixture()
+        _committed(run, ALPHA, 'Alpha')
+        with patched_llm([text_resp('I moved every Alpha task to in progress.')]):
+            outcome = verify.run(ctx, session, run)
+        self.assertEqual(outcome.assistant_message, 'I moved every Alpha task to in progress.')
+        self.assertEqual(run.verify.report_mode, 'model')
+        ctx, session, failed_run, _nest = _fixture()
+        _failed(failed_run, ALPHA, 'Alpha')
+        self.assertIsNone(verify.report_contradicts_outcome(PRODUCTION_REFUSAL, failed_run))
+        with patched_llm([text_resp("I couldn't apply the edit: the roadmap changed underneath me.")]):
+            outcome = verify.run(ctx, session, failed_run)
+        self.assertEqual(outcome.assistant_message, "I couldn't apply the edit: the roadmap changed underneath me.")
+        self.assertEqual(failed_run.verify.report_mode, 'model')
+
+    def test_deterministic_paths_report_their_mode(self):
+        ctx, session, run, _nest = _fixture()
+        _committed(run, ALPHA, 'Alpha')
+        with patched_llm([ProviderDown('down')]):
+            verify.run(ctx, session, run)
+        self.assertEqual(run.verify.report_mode, 'deterministic')

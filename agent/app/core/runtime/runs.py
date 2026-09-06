@@ -278,11 +278,15 @@ def checkpoint_decision(
 # ---------------------------------------------------------------------------
 
 
-def _project_id_for(session: AgentSession | None, roadmap_id: str) -> str | None:
+def _context_attribution(session: AgentSession | None, roadmap_id: str) -> tuple[str | None, str | None]:
+    """``(title, project_id)`` of a roadmap the session has loaded, for commit
+    views whose batch was staged before the roadmap's context existed."""
     if session is None:
-        return None
+        return None, None
     context = session.metadata.roadmaps.get(roadmap_id)
-    return context.project_id if context is not None else None
+    if context is None:
+        return None, None
+    return context.title, context.project_id
 
 
 def commit_views(
@@ -296,11 +300,13 @@ def commit_views(
     views: list[RunCommitView] = []
     for commit in run.commits:
         batch = batch_by_id(run, commit.batch_id)
+        title, project_id = _context_attribution(session, commit.roadmap_id)
         views.append(
             RunCommitView.from_commit(
                 commit,
                 batch,
-                project_id=_project_id_for(session, commit.roadmap_id),
+                project_id=project_id,
+                roadmap_title=title,
                 include_operations=commit.batch_id in step_ids,
             )
         )

@@ -593,7 +593,22 @@ async def _refresh_overview(ctx: Any, session: AgentSession, run_state: Any, roa
         payload = await ctx.nest_client.context_summary(
             roadmap_id=roadmap_id, preview_id=None, auth_header=ctx.auth_header, trace_id=ctx.trace_id
         )
-    except Exception:  # noqa: BLE001 — the commit's own token check is the guard
+    except Exception as exc:  # noqa: BLE001 — the commit's own token check is the guard
+        # The commit still proceeds (the backend rejects a stale token), but a
+        # roadmap that never registers has no title or project for its commit
+        # card, so the failure must be visible.
+        log_event(
+            logger,
+            'roadmap_overview_refresh_failed',
+            settings=ctx.settings,
+            level=logging.WARNING,
+            trace_id=ctx.trace_id,
+            session_id=session.session_id,
+            run_id=getattr(run_state, 'run_id', None),
+            roadmap_id=roadmap_id,
+            error_type=exc.__class__.__name__,
+            error=str(exc)[:300],
+        )
         return
     if isinstance(payload, dict) and not isinstance(payload.get('error'), dict):
         context_cache.register_roadmap_from_summary(
@@ -649,6 +664,11 @@ async def _network_sequence(ctx: Any, session: AgentSession, run_state: Any, bat
     context = session.metadata.roadmaps.get(rid)
     if context is None or context.overview_fetched_at is None:
         await _refresh_overview(ctx, session, run_state, rid)
+        context = session.metadata.roadmaps.get(rid)
+    if not batch.roadmap_title and context is not None and context.title:
+        # Staged before the roadmap was loaded: the card and the report need
+        # the title the refresh just fetched.
+        batch.roadmap_title = context.title
     token, base = _tokens_for(session, rid)
     _revision_before(run_state)[batch.batch_id] = token
 

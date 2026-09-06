@@ -7,6 +7,7 @@ provider failure degrades to a deterministic summary.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from app.core.contracts.runs import RunCommit, VerifyCheck, VerifyReport
@@ -225,6 +226,35 @@ def undo_summary(session: AgentSession, run_state: Any) -> str:
     return '. '.join(parts) + '.'
 
 
+_REFUSAL = r"(?:can(?:'|’)?t|cannot|can not|couldn(?:'|’)?t|could not|unable to|not able to|won(?:'|’)?t be able to|not (?:possible|allowed|permitted) to)"
+_EDIT_VERB = r"(?:apply|make|edit|update|change|commit|save|move|do|perform|carry out)"
+_REFUSAL_NEAR_VERB = re.compile(_REFUSAL + r"(?:\W+\w+){0,8}?\W+" + _EDIT_VERB, re.IGNORECASE)
+_SESSION_EXCUSE = re.compile(r"from this session", re.IGNORECASE)
+_NOTHING_CHANGED = re.compile(
+    r"(?:no changes? (?:were|was|has been|have been) (?:made|applied)|nothing (?:was|has been) (?:changed|applied|updated))",
+    re.IGNORECASE,
+)
+
+
+def report_contradicts_outcome(text: str, run_state: Any) -> str | None:
+    """Why the verify model's report must not stand, or ``None``.
+
+    Pure. Applies only when at least one commit is ``committed``: a report that
+    refuses to apply/edit/change, blames "this session", or claims nothing
+    changed contradicts an outcome the user can already see in the commit
+    card. Failed-only runs may say all of that truthfully."""
+    committed = any(getattr(c, 'status', None) == 'committed' for c in getattr(run_state, 'commits', []) or [])
+    if not committed or not text:
+        return None
+    if _SESSION_EXCUSE.search(text):
+        return 'SESSION_EXCUSE'
+    if _REFUSAL_NEAR_VERB.search(text):
+        return 'REFUSAL_AFTER_COMMIT'
+    if _NOTHING_CHANGED.search(text):
+        return 'DENIES_CHANGES'
+    return None
+
+
 def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
     settings = ctx.settings
     report = deterministic_report(session, run_state)
@@ -267,6 +297,7 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
         follow_up_plan_id=report.follow_up_plan_id,
         commits_total=len(run_state.commits),
         commits_committed=committed,
+        report_mode=report.report_mode,
     )
     return outcome
 
@@ -316,7 +347,25 @@ def _model_report(ctx: Any, session: AgentSession, run_state: Any, report: Verif
     usage['turns'] = int(usage.get('turns', 0) or 0) + int(result.turns or 0)
     usage['tool_calls'] = int(usage.get('tool_calls', 0) or 0) + int(result.tool_calls_used or 0)
     if result.kind == 'chat' and (result.assistant_message or '').strip():
-        report.summary = result.assistant_message.strip()
+        text = result.assistant_message.strip()
+        reason = report_contradicts_outcome(text, run_state)
+        if reason:
+            report.report_mode = 'rejected'
+            log_event(
+                logger,
+                'verify_report_rejected',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=ctx.trace_id,
+                session_id=session.session_id,
+                run_id=run_state.run_id,
+                phase='verify',
+                reason=reason,
+                model_text=text[:300],
+            )
+            return None
+        report.summary = text
+        report.report_mode = 'model'
         return PhaseOutcome(kind='verified', assistant_message=report.summary, loop=result)
     if result.kind == 'plan_proposal':
         recorded = propose_phase.record_plan_proposal(
@@ -326,6 +375,7 @@ def _model_report(ctx: Any, session: AgentSession, run_state: Any, report: Verif
             report.follow_up_plan_id = session.metadata.pending_plan.plan_id
             summary = (result.assistant_message or '').strip() or report.summary
             report.summary = summary
+            report.report_mode = 'model'
             return PhaseOutcome(
                 kind='verified',
                 assistant_message=summary,

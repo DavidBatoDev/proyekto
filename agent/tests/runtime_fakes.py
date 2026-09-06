@@ -166,6 +166,9 @@ def roadmap_summary(roadmap_id: str, title: str, *, token: str = 'tok-1', epics:
         'revision_token': token,
         'epic_count': len(epics),
         'epics': epics,
+        # The real summary carries `project_id` only; `project` stays for the
+        # tests that read a workspace id off it.
+        'project_id': f'project-{title.lower()}',
         'project': {'id': f'project-{title.lower()}', 'workspace_id': WORKSPACE},
     }
 

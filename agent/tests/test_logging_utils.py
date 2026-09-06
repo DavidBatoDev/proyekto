@@ -147,6 +147,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             retry_autostage_applied=True,
             entity_links_kept=3,
             entity_links_rejected=1,
+            verify_report_mode='rejected',
         )
         return self.stream.getvalue()
 
@@ -158,6 +159,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('EVENT: TOOL_CALL_RESULT', output)
         self.assertIn('AI REQUEST: MY TASKS', output)
         self.assertIn('links       kept=3 rejected=1', output)
+        self.assertIn('verify      report=rejected', output)
         self.assertIn('trace_id     trace-1', output)
         self.assertIn('USER', output)
         self.assertIn('ROUTING', output)

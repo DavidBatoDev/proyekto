@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.exceptions import HTTPException
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.runs import RunBatch
+from app.core.contracts.runs import RunBatch, RunCommit
 from datetime import datetime, timezone
 
 from app.core.contracts.sessions import PendingPlan, RecentResolvedTarget, RoadmapContext
@@ -560,3 +560,44 @@ class HelperTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CommitAttributionTests(unittest.TestCase):
+    """A batch staged before its roadmap was loaded still names the roadmap on
+    the commit card (production run 8c307c66 persisted `roadmap_title: null`,
+    `project_id: null`)."""
+
+    def test_batch_without_a_title_gets_it_from_the_refreshed_context(self):
+        ctx, session, run, _store, nest = _fixture()
+        session.metadata.roadmaps.pop(ALPHA, None)
+        batch = _add_batch(run, ALPHA, title=None)
+        outcome = execute.run(ctx, session, run)
+        self.assertEqual(outcome.kind, 'executed')
+        self.assertEqual(batch.roadmap_title, 'Alpha')
+        views = runs.commit_views(session, run)
+        self.assertEqual(views[0].roadmap_title, 'Alpha')
+        self.assertEqual(views[0].project_id, 'project-alpha')
+
+    def test_commit_views_fall_back_to_the_context_when_the_batch_has_no_title(self):
+        ctx, session, run, _store, _nest = _fixture()
+        session.metadata.roadmaps[ALPHA] = RoadmapContext(roadmap_id=ALPHA, title='Alpha', project_id='project-alpha')
+        batch = _add_batch(run, ALPHA, title=None)
+        run.commits.append(RunCommit(batch_id=batch.batch_id, roadmap_id=ALPHA, status='committed', change_id='c1'))
+        views = runs.commit_views(session, run)
+        self.assertEqual(views[0].roadmap_title, 'Alpha')
+        self.assertEqual(views[0].project_id, 'project-alpha')
+
+    def test_failed_refresh_is_logged_and_the_commit_still_proceeds(self):
+        ctx, session, run, _store, nest = _fixture()
+        session.metadata.roadmaps.pop(ALPHA, None)
+        _add_batch(run, ALPHA, title=None)
+
+        async def _boom(*, roadmap_id, preview_id, auth_header, trace_id=None):
+            raise RuntimeError('nest timeout')
+
+        nest.context_summary = _boom
+        with self.assertLogs('app.core.runtime.phases.execute', level='WARNING') as logs:
+            outcome = execute.run(ctx, session, run)
+        self.assertEqual(outcome.kind, 'executed')
+        self.assertEqual(run.commits[0].status, 'committed')
+        self.assertTrue(any('roadmap_overview_refresh_failed' in line.lower() for line in logs.output))

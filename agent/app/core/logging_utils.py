@@ -53,6 +53,7 @@ _CONTENT_KEYS = {
     'planner_prompt',
     'link_text',
     'registered_title',
+    'model_text',
 }
 
 _LIFECYCLE_TRACE_TTL_SECONDS = 15 * 60
@@ -537,6 +538,7 @@ def _progress_event_title(event: str) -> str:
         'phase_completed': 'Phase completed',
         'run_step_completed': 'Step completed',
         'entity_link_rejected': 'Entity link rejected',
+        'verify_report_rejected': 'Report rewritten from the outcome',
         'run_checkpoint': 'Waiting for input',
         'refs_resolved': 'References resolved',
         # Curated rows.
@@ -987,6 +989,7 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'tokens_cached': payload.get('tokens_cached'),
                 'entity_links_kept': payload.get('entity_links_kept', 0),
                 'entity_links_rejected': payload.get('entity_links_rejected', 0),
+                'verify_report_mode': payload.get('verify_report_mode'),
             },
         }
         trace.routing['intent_type'] = payload.get('intent_type') or trace.routing.get('intent_type')
@@ -1057,6 +1060,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
             f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"))}',
             f'  links       kept={trace.response.get("entity_links_kept", 0)} rejected={trace.response.get("entity_links_rejected", 0)}',
+            f'  verify      report={trace.response.get("verify_report_mode") or "-"}',
             '',
             'ASSISTANT',
             f'  {_format_message_summary(trace.assistant.get("assistant_message"))}',
