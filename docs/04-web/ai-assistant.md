@@ -1,6 +1,6 @@
 # AI Assistant
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-07 · **Status:** current
 
 The assistant is one shared kit under `web/src/components/ai/`, mounted on two
 surfaces: the roadmap page's side panel (scope = one roadmap) and the workspace
@@ -74,7 +74,7 @@ AiAssistantPanel  (variant: panel | rail | fullscreen)
 | `AiEntityChip.tsx`, `aiEntityLinks.ts`, `aiEntityResolver.ts` | Assistant reply entity chips, URI parsing, label matching, plain-text link stripping, batched hydration and entity query caching |
 | `aiProgress.ts` | Trace -> timeline normalizers, poll constants, `SHARED_HIDDEN_ACTIVITY_EVENTS`, commit-row describers |
 | `aiToolMessaging.ts` | Human copy for tool calls in the timeline |
-| `AiCommitCard.tsx` | One card per `RunCommitView` (roadmap title, status label, grouped impacted chips that deep-link with the `"n"` project sentinel) |
+| `AiCommitCard.tsx` | One card per `RunCommitView` (roadmap title, status label, grouped impacted chips that deep-link with the `"n"` project sentinel). A commit that carries no `roadmap_title` or `project_id` (staged before the agent loaded the roadmap, or persisted by an older agent) hydrates both through `useAiEntity("roadmap", id)`, so the card names the roadmap and links its real project |
 | `AiClarifierCard(.logic)`, `AiPlanProposalCard`, `AiPlanQuestionCard`, `AiPlanProposalGraph` | Checkpoint cards; answers travel back as the sentinel messages (`__clarifier_answer__`, `__plan_answers__`, `__plan_decision__`) |
 | `AiRunBanner.tsx` | "Investigating...", "Drafting a proposal...", "Applying changes (n/m roadmaps)...", "Verifying...", plus Stop / Resume |
 | `AiThreadList.tsx`, `AiThreadMenuButton.tsx`, `AiThreadView.tsx`, `AiMessage.tsx`, `AiMarkdown.tsx` | Presentation, on theme tokens |

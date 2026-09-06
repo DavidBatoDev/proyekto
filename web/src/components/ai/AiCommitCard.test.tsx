@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	createMemoryHistory,
 	createRootRoute,
@@ -9,8 +10,14 @@ import {
 } from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/services/ai-context.service", () => ({
+	aiContextService: { resolveRefs: vi.fn() },
+}));
+
 import type { RunCommitView } from "@/services/ai-agent.service";
+import { aiContextService } from "@/services/ai-context.service";
 import {
 	AiCommitCard,
 	getCommitStatusLabel,
@@ -20,7 +27,23 @@ import {
 import type { AiSessionScope } from "./scope";
 import type { AiChatMessage } from "./types";
 
-afterEach(cleanup);
+beforeEach(() => {
+	vi.mocked(aiContextService.resolveRefs).mockReset();
+	vi.mocked(aiContextService.resolveRefs).mockImplementation(async (refs) =>
+		refs.map((ref) => ({
+			...ref,
+			accessible: true,
+			title: "Resolved roadmap",
+			roadmap_id: ref.id,
+			project_id: "proj-resolved",
+		})),
+	);
+});
+
+afterEach(() => {
+	cleanup();
+	for (const client of clients.splice(0)) client.clear();
+});
 
 const workspaceScope: AiSessionScope = {
 	kind: "workspace",
@@ -59,8 +82,18 @@ const committed = (overrides: Partial<RunCommitView> = {}): RunCommitView => ({
  * build hrefs. A memory router with the roadmap route registered gives the
  * chips real, resolvable hrefs (params interpolated, search serialized).
  */
+const clients: QueryClient[] = [];
+
 async function renderWithRouter(ui: ReactNode) {
-	const rootRoute = createRootRoute({ component: () => ui });
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	clients.push(client);
+	const rootRoute = createRootRoute({
+		component: () => (
+			<QueryClientProvider client={client}>{ui}</QueryClientProvider>
+		),
+	});
 	const roadmapRoute = createRoute({
 		getParentRoute: () => rootRoute,
 		path: "/project/$projectId/roadmap/$roadmapId",
@@ -259,5 +292,55 @@ describe("toCommitCards", () => {
 
 	it("returns nothing for a plain assistant turn", () => {
 		expect(toCommitCards(baseMessage, roadmapScope)).toEqual([]);
+	});
+});
+
+describe("AiCommitCard attribution hydration", () => {
+	it("resolves a title and project the agent could not attach", async () => {
+		await renderWithRouter(
+			<AiCommitCard
+				commit={committed({ roadmap_title: null, project_id: null })}
+				scope={workspaceScope}
+			/>,
+		);
+		expect(await screen.findByText("Resolved roadmap")).toBeTruthy();
+		const hrefs = screen
+			.getAllByRole("link")
+			.map((link) => link.getAttribute("href") ?? "");
+		expect(hrefs.length).toBeGreaterThan(0);
+		for (const href of hrefs) {
+			expect(href.startsWith("/project/proj-resolved/roadmap/")).toBe(true);
+		}
+		expect(aiContextService.resolveRefs).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the fallbacks when the roadmap is not accessible", async () => {
+		vi.mocked(aiContextService.resolveRefs).mockImplementation(async (refs) =>
+			refs.map((ref) => ({
+				...ref,
+				accessible: false,
+				error_code: "NOT_FOUND",
+			})),
+		);
+		await renderWithRouter(
+			<AiCommitCard
+				commit={committed({ roadmap_title: null, project_id: null })}
+				scope={workspaceScope}
+			/>,
+		);
+		expect(screen.getByText("Roadmap")).toBeTruthy();
+		const href = screen.getAllByRole("link")[0].getAttribute("href") ?? "";
+		expect(href.startsWith("/project/n/roadmap/")).toBe(true);
+	});
+
+	it("never asks the resolver when the commit already carries both", async () => {
+		// Let any batch the previous test queued flush before counting calls.
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		vi.mocked(aiContextService.resolveRefs).mockClear();
+		await renderWithRouter(
+			<AiCommitCard commit={committed()} scope={workspaceScope} />,
+		);
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		expect(aiContextService.resolveRefs).not.toHaveBeenCalled();
 	});
 });

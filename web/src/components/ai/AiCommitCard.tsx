@@ -4,6 +4,7 @@ import type {
 	AgentCommitImpactedItem,
 	RunCommitView,
 } from "@/services/ai-agent.service";
+import { useAiEntity } from "./aiEntityResolver";
 import {
 	COMMIT_IMPACT_KIND_LABEL,
 	COMMIT_IMPACT_KIND_ORDER,
@@ -105,8 +106,9 @@ export const toCommitCards = (
 const resolveRoadmapLabel = (
 	commit: RunCommitView,
 	scope: AiSessionScope | null,
+	resolvedTitle: string | null,
 ): string => {
-	const title = commit.roadmap_title?.trim();
+	const title = commit.roadmap_title?.trim() || resolvedTitle?.trim();
 	if (title) return title;
 	if (scope?.kind === "roadmap" && commit.roadmap_id === scope.roadmapId) {
 		return "This roadmap";
@@ -117,10 +119,27 @@ const resolveRoadmapLabel = (
 export function AiCommitCard({ commit, scope, linkView }: AiCommitCardProps) {
 	const isFocusRoadmap =
 		scope?.kind === "roadmap" && commit.roadmap_id === scope.roadmapId;
+	// A commit the agent staged before it had loaded the roadmap (or one
+	// persisted by an older agent) carries no title or project. The resolver
+	// knows both, so the card never falls back to "Roadmap" and the `n`
+	// sentinel while the real project is one lookup away.
+	const needsAttribution =
+		commit.roadmap_id.length > 0 &&
+		(!commit.roadmap_title?.trim() || !commit.project_id);
+	const { data: roadmapEntity } = useAiEntity("roadmap", commit.roadmap_id, {
+		enabled: needsAttribution,
+	});
+	const resolved = roadmapEntity?.accessible ? roadmapEntity : undefined;
 	const projectId = toRouteProjectId(
-		commit.project_id ?? (isFocusRoadmap ? scope.projectId : null),
+		commit.project_id ??
+			resolved?.project_id ??
+			(isFocusRoadmap ? scope.projectId : null),
 	);
-	const roadmapLabel = resolveRoadmapLabel(commit, scope);
+	const roadmapLabel = resolveRoadmapLabel(
+		commit,
+		scope,
+		resolved?.title ?? null,
+	);
 	// Trace-shaped items carry titles; this step's `operations` backfill any
 	// node the agent only referenced by id (same merge as the old panel).
 	const impactedItems = mergeCommitImpactedItems(

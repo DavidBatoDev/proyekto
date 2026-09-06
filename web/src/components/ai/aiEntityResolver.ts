@@ -123,7 +123,11 @@ function loadForActor(actor: string, kind: AiMentionKind, id: string) {
 	return activeBatcher.batcher.load(kind, id);
 }
 
-export function useAiEntity(kind: AiMentionKind, id: string) {
+export function useAiEntity(
+	kind: AiMentionKind,
+	id: string,
+	options: { enabled?: boolean } = {},
+) {
 	const actor = actorKey(useUser()?.id);
 	return useQuery({
 		queryKey: [...aiEntityKeys.one(kind, id), actor],
@@ -131,6 +135,7 @@ export function useAiEntity(kind: AiMentionKind, id: string) {
 		staleTime: 5 * 60_000,
 		gcTime: 30 * 60_000,
 		retry: false,
+		enabled: options.enabled ?? true,
 	});
 }
 

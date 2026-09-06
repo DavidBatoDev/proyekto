@@ -271,7 +271,12 @@ Deterministic checks over `run.commits` - `all_batches_committed`, per commit
 (2 turns, tools = `propose` only) writes the user-facing report and may attach a
 follow-up proposal (`follow_up_plan_id`); it never re-applies anything. The model
 call is skipped when the step is already past its soft budget, and a provider
-failure falls back to the deterministic summary. Emits `verify_completed`.
+failure falls back to the deterministic summary. The model's text is validated against the
+outcome before it becomes the reply: when at least one commit is `committed` and the text
+refuses to apply/edit/change, blames "this session", or claims nothing changed,
+`report_contradicts_outcome` rejects it, the deterministic summary stands, and
+`verify_report_rejected` is logged (the `AI REQUEST` block prints `verify report=model |
+deterministic | rejected`). Emits `verify_completed` with `report_mode`.
 
 ## Tool catalog per phase
 
