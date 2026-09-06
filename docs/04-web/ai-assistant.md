@@ -71,7 +71,7 @@ AiAssistantPanel  (variant: panel | rail | fullscreen)
 | `useAiAssistantRun.ts` | React binding: `send` / `cancel` / `resume` over the controller, `useAiRunState` for the slice |
 | `useAiThreads.ts`, `useAiThreadMessages.ts` | Thread list + active thread; row hydration (`dbRowToClientMessage`), `persistTurnForScope`, `rehydrateAgentSessionForScope`, the exported `useThreadMessagesStore` |
 | `aiMentions.ts`, `AiComposer.tsx`, `AiMentionPicker.tsx`, `useAiMentionCandidates.ts` | Entity @-mentions (below) |
-| `AiEntityChip.tsx`, `aiEntityLinks.ts`, `aiEntityResolver.ts` | Assistant reply entity chips, URI parsing, plain-text link stripping, batched hydration and entity query caching |
+| `AiEntityChip.tsx`, `aiEntityLinks.ts`, `aiEntityResolver.ts` | Assistant reply entity chips, URI parsing, label matching, plain-text link stripping, batched hydration and entity query caching |
 | `aiProgress.ts` | Trace -> timeline normalizers, poll constants, `SHARED_HIDDEN_ACTIVITY_EVENTS`, commit-row describers |
 | `aiToolMessaging.ts` | Human copy for tool calls in the timeline |
 | `AiCommitCard.tsx` | One card per `RunCommitView` (roadmap title, status label, grouped impacted chips that deep-link with the `"n"` project sentinel) |
@@ -174,9 +174,14 @@ and the user is signed in (guests poll), refcounted per user so the two dashboar
 share one socket. Poll cursors are kept per trace id across sends, so a checkpoint answer
 never replays from `seq 0`; `beforeunload` tears every loop down. Run bookkeeping events
 (`run_started`, `phase_entered`, `phase_completed`, `run_step_completed`, `run_checkpoint`,
-`refs_resolved`) are hidden from the timeline — the banner reads `phase_entered` details
-live — while `commit_started` / `commit_completed` / `commit_failed` / `verify_completed`
+`refs_resolved`) are hidden from the timeline â€” the banner reads `phase_entered` details
+live â€” while `commit_started` / `commit_completed` / `commit_failed` / `verify_completed`
 render as curated rows. The retired `auto_commit_async_*` events are no longer emitted.
+
+The timeline header (`getTimelineHeaderLabel` in `AiActivityTimeline.tsx`) always
+shows `Worked for N seconds` or `Working for N seconds` when elapsed seconds are
+positive, including runs under ten seconds. At zero seconds it shows `Worked` when
+done and `Working...` while running.
 
 **Legacy responses.** A reply with `commit_summary` but no `commits` is folded into one
 synthesized commit (`batch_id: "legacy-commit-summary"`); an `edit_plan` reply with staged
@@ -192,16 +197,16 @@ the user means, **never a limit on what it may look at**.
 
 | Fact | Value |
 | --- | --- |
-| Kinds | `project`, `roadmap`, `epic`, `feature`, `task`, `milestone`, `team` |
+| Kinds | `workspace`, `project`, `roadmap`, `epic`, `feature`, `task`, `milestone`, `team`; workspace is supported for reply links and persisted spans, not offered as a composer candidate |
 | Trigger | `@` at the start or after whitespace; the query runs to the caret with no whitespace inside |
 | Picker | Grouped listbox (`AiMentionPicker`), group headers "This roadmap", "Projects", "Roadmaps", "Epics", "Features", "Tasks", "Milestones", "Teams"; loading row "Searching other roadmaps..." |
-| Group order | `primary` -> roadmap -> project -> epic -> feature -> task -> milestone -> team |
-| Caps | Per group 6 / 4 / 4 / 4 / 4 / 4 / 3 / 3 (bare `@` preview: primary 4, roadmap 3, project 3); `AI_MENTION_TOTAL_CAP = 16`; deduped on `kind:id`, primary rows win |
+| Group order | `primary` -> roadmap -> project -> epic -> feature -> task -> milestone -> team -> workspace |
+| Caps | Per group 6 / 4 / 4 / 4 / 4 / 4 / 3 / 3 / 0 (bare `@` preview: primary 4, roadmap 3, project 3); `AI_MENTION_TOTAL_CAP = 16`; deduped on `kind:id`, primary rows win. Workspace's cap is always zero |
 | Workspace ordering | Roadmaps and projects sort `current -> shared -> other_workspace`, computed by the kit from `project.workspace_id` (not `groupByWorkspace`, which drops other-workspace items the agent can act on); flat when no workspace is selected; unlinked roadmaps are `shared` |
 | Candidate sources | Enabled only while the picker is open: `useDashboardProjectsQuery`, `roadmapsPreviewQueryOptions(userId)`, `["teams","mine",uid]`; plus the `primary` list the roadmap wrapper builds from the loaded tree (`roadmapMentionCandidates.ts`) |
 | Keyboard | Enter sends, Shift+Enter newline; with the picker open ArrowUp / ArrowDown move, Enter / Tab insert, Escape closes; the textarea auto-grows to `AI_COMPOSER_MAX_HEIGHT_PX = 160` |
 | Wire cap | `MAX_AGENT_REFS = 20` (the agent's `AGENT_MAX_REFS_PER_MESSAGE`); `toAgentRefs` dedupes by `kind:id`, first label wins |
-| Persistence | Spans are stored as `roadmap_ai_messages.metadata.refs` (written by the web, read back untrusted); chips render through `renderEntityMentionContent` and deep-link via `resolveAiEntityDestination` (project -> `/project/$projectId/roadmap`, roadmap / nodes -> `/project/$projectId/roadmap/$roadmapId`, team -> the workspace teams page) |
+| Persistence | Spans are stored as `roadmap_ai_messages.metadata.refs` (written by the web, read back untrusted); `MENTION_KINDS` retains workspace spans on reload. Chips render through `renderEntityMentionContent` and deep-link via `resolveAiEntityDestination` (project -> `/project/$projectId/roadmap`, roadmap / nodes -> `/project/$projectId/roadmap/$roadmapId`, team -> the workspace teams page, workspace -> its dashboard) |
 
 Drafts (`draftInputByThread`, `draftPicksByThread`) live in `aiThreadsStore`, the single
 source of truth, because the rail and the full-screen overlay share a thread; only the
@@ -212,7 +217,8 @@ interactive panel writes.
 `AiMessage` passes the session `scope` into `AiMarkdown`. Its `a` override renders
 `[Title](proyekto://<kind>/<uuid>)` as one `AiEntityChip`; `aiMarkdownUrlTransform`
 preserves valid entity URIs and uses react-markdown's default transform for other
-URLs. Handles must already be expanded by the
+URLs. All eight entity kinds, including `workspace`, are accepted; handles must
+already be expanded and links grounded by the
 [agent](../05-agent-ai/runs-and-phases.md#entity-links-in-assistant-replies).
 Absolute HTTP(S) links open with `target="_blank"` and `rel="noopener noreferrer"`;
 relative links stay in the current tab. Bracket-tag rendering skips chips, and
@@ -223,13 +229,28 @@ so partial links do not expose their handle or UUID while the reply streams.
 
 | Component | Behaviour |
 | --- | --- |
-| `AiEntityChip` | A 12px `AiMentionKindIcon`, canonical title (link text while loading or inaccessible), and task assignee avatars; inline on `AI_MENTION_CHIP_TONE_CLASS.onSurface` theme tokens. Titles use the available container width with truncation, without a fixed character cap |
+| `AiEntityChip` | A 12px `AiMentionKindIcon` (`Building2` for workspace), matching canonical title or original link label, and task assignee avatars; inline on `AI_MENTION_CHIP_TONE_CLASS.onSurface` theme tokens. Titles use the available container width with truncation, without a fixed character cap |
 | Tooltip | Kind, humanized status, parent titles nearest-first joined with ` / `, and `Assigned to` followed by every returned assignee name plus any additional count; status is not painted inside the chip |
 | `AiEntityAvatars` | 16px circles with shared `displayNameOf` / `initialsOf` fallbacks. Up to three assignees show individually; more than three use two avatars plus a `+N` slot, so four assignees show two avatars and `+2`. The decorative stack is `aria-hidden`, keeping avatar names out of the link's accessible name; the tooltip carries the assignment summary |
-| Accessible link name | Explicit `aria-label` combines kind and canonical title with a space, such as `Task Drag Task` or `Team Platform`; assignee names remain in the tooltip description |
-| Destination | `resolveAiEntityDestination` and `AiRouteLink`: projects open their roadmap page; roadmaps and nodes use their roadmap route (`?nodeId=` for nodes); absent project IDs use `n`; teams link only in workspace scope |
+| Accessible link name | Explicit `aria-label` combines kind and displayed title with a space, such as `Task Drag Task`, `Team Platform` or `Workspace Acme`; assignee names remain in the tooltip description |
+| Destination | `resolveAiEntityDestination` and `AiRouteLink`: projects open their roadmap page; roadmaps and nodes use their roadmap route (`?nodeId=` for nodes); absent project IDs use `n`; teams link only in workspace scope. Workspaces link to `/w/$workspaceSlug/dashboard` using the resolved `slug`, falling back to the session slug only when its workspace ID matches; without either slug they stay plain |
 | Loading or inaccessible | Non-linked chip with the supplied title. An accessible entity without a destination also stays non-linked |
-| Test attributes | `data-entity-kind`, `data-entity-id`, `data-entity-state="loading\|linked\|plain"` |
+| Test attributes | `data-entity-kind`, `data-entity-id`, `data-entity-state="loading\|linked\|plain"`; a title disagreement also sets `data-entity-mismatch="true"` |
+
+The label policy also protects old persisted replies whose IDs were borrowed from
+another entity. `useCanonical` is true only when a resolved title exists and
+`entityLabelsMatch(canonical, label)` agrees. Otherwise the chip preserves the
+original link label, adds `Canonical: <resolved title>` to the tooltip and marks
+the mismatch; it does not silently replace a workspace's name with a team or
+roadmap title. The resolved destination remains unchanged.
+
+[`aiEntityLinks.ts`](../../web/src/components/ai/aiEntityLinks.ts) exports
+`normalizeEntityLabel` and `entityLabelsMatch`, mirroring the agent's title rules:
+NFKC, Unicode casefold, remove one leading parenthesized prefix, then drop
+non-alphanumeric characters. Empty labels never match. Equality passes, or
+containment either way when the shorter normalized label has at least 12 characters.
+`(Month 1) Supply network baseline` therefore agrees with `Supply network baseline`,
+while `Test` does not validate `Test Project`.
 
 [`aiEntityResolver.ts`](../../web/src/components/ai/aiEntityResolver.ts) queues lookups
 for 30 ms, deduplicates by `entityKey(kind, id)` within the current actor's queue,
@@ -254,7 +275,9 @@ Guests use the same backend path with their guest header. See
 [resolve-refs](../03-backend/ai-context-api.md#resolve-refs) for authorization, task
 assignee fields and the 60-request-per-minute quota per actor. An older backend without those fields
 still produces chips without avatars; persisted messages without entity links render
-as before. Clarifier cards, plan-question cards, proposal cards and proposal graphs
+as before. Deploy backend, then agent, then web: an old backend rejects batches with
+the new workspace kind, while an old web displays workspace links as bare text.
+Clarifier cards, plan-question cards, proposal cards and proposal graphs
 strip entity links from displayed text instead of hydrating chips. Questions, option
 labels, descriptions, roadmap names and hierarchy titles therefore remain readable
 even if the model puts a reply URI in structured content. Activity rows do not use
@@ -274,7 +297,7 @@ Both are among the seven stores listed in [state-and-services.md](./state-and-se
 | Module | Surface |
 | --- | --- |
 | `services/ai-agent.service.ts` | The canonical agent client and every `Agent*` wire type (`RunView`, `RunCommitView`, `AgentRunResponse`, `AgentPlanProposal` with `kind` / `targets`, ...). Methods: `createSession`, `sendMessage`, `continueRun`, `cancelRun`, `getTraceEvents`. Errors are `AiAgentServiceError` with `code` and, for 409s, the `run` body; the codes the kit switches on are `AUTH_REQUIRED`, `SESSION_NOT_FOUND`, `SESSION_SCOPE_NOT_FOUND`, `RUN_NOT_FOUND`, `RUN_NOT_CONTINUABLE`, `RUN_IN_PROGRESS`, `TRACE_EVENTS_NOT_FOUND`. Responses are **not** enveloped |
-| `services/ai-context.service.ts` | `resolveRefs([{kind, id}])` calls `POST /api/ai/context/resolve-refs` through `apiClient`, unwraps `{data: {refs}}`, and returns `AiResolvedEntity[]`; task refs have optional `assignees` and `assignee_count` |
+| `services/ai-context.service.ts` | `resolveRefs([{kind, id}])` calls `POST /api/ai/context/resolve-refs` through `apiClient`, unwraps `{data: {refs}}`, and returns `AiResolvedEntity[]`; task refs have optional `assignees` and `assignee_count`, workspace refs carry optional nullable `slug` |
 | `services/ai-sessions.service.ts` | Scope-first backend client over `aiSessionsBasePath(scope)`: `list`, `create`, `getById`, `update`, `delete`, `listMessages`, `appendMessage` (message `metadata` is capped at 64 KB server-side; the eighth backend route, `PUT .../agent-state`, is written by the agent). `AiSession` carries `scope`, `roadmap_id \| null`, `workspace_id \| null` |
 | `hooks/useAiSessions.ts` | `aiSessionKeys` keyed by the **scope key** (a roadmap thread and a workspace thread can never share a cache entry); `useAiSessionsList`, `useAiMessages`, `useCreateAiSession`, `useUpdateAiSession`, `useDeleteAiSession`, `useAppendAiMessage` |
 | `hooks/useRoadmapsPreviewQuery.ts` | `roadmapsPreviewQueryOptions(userId)` â€” the one definition of the `["dashboard","roadmaps-preview",uid]` query the picker and the dashboard grid share |

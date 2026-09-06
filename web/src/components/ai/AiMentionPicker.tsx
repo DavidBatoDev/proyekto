@@ -1,4 +1,5 @@
 import {
+	Building2,
 	FolderKanban,
 	Loader2,
 	type LucideIcon,
@@ -24,12 +25,13 @@ import type { AiMentionCandidate, AiMentionKind } from "./aiMentions";
  * the canvas rather than as a fresh icon vocabulary to learn.
  */
 const AI_MENTION_CONTAINER_ICONS: Record<
-	"project" | "roadmap" | "team",
+	"project" | "roadmap" | "team" | "workspace",
 	LucideIcon
 > = {
 	project: FolderKanban,
 	roadmap: MapIcon,
 	team: Users,
+	workspace: Building2,
 };
 
 const NODE_KINDS = new Set<string>(["epic", "feature", "task", "milestone"]);
@@ -76,6 +78,7 @@ export const AI_MENTION_GROUP_LABELS: Record<
 	task: "Tasks",
 	milestone: "Milestones",
 	team: "Teams",
+	workspace: "Workspaces",
 };
 
 export const AI_MENTION_LOADING_LABEL = "Searching other roadmaps...";

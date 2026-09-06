@@ -227,6 +227,7 @@ export const AI_MENTION_GROUP_ORDER: readonly AiMentionKind[] = [
 	"task",
 	"milestone",
 	"team",
+	"workspace",
 ];
 
 export const AI_MENTION_GROUP_CAPS: Readonly<
@@ -240,6 +241,7 @@ export const AI_MENTION_GROUP_CAPS: Readonly<
 	task: 4,
 	milestone: 3,
 	team: 3,
+	workspace: 0,
 };
 
 /** Caps for a bare `@` (no query): a short "what can I mention" preview. */
@@ -352,6 +354,7 @@ export function buildAiMentionCandidates({
 		task: 0,
 		milestone: 0,
 		team: 0,
+		workspace: 0,
 	};
 
 	const push = (
@@ -371,6 +374,7 @@ export function buildAiMentionCandidates({
 	// 1. Primary (focus roadmap + its nodes) — instant, wins the dedupe.
 	const focusRoadmapIds = new Set<string>();
 	for (const candidate of primary) {
+		if (candidate.kind === "workspace") continue;
 		if (candidate.kind === "roadmap") focusRoadmapIds.add(candidate.id);
 		else if (candidate.roadmapId) focusRoadmapIds.add(candidate.roadmapId);
 		if (!matches(candidate.label)) continue;
@@ -552,7 +556,8 @@ export interface AiEntityDestination {
  * open the roadmap (nodes deep-link via `nodeId`), the `"n"` sentinel standing
  * in for a missing project; teams link only in workspace scope (the slug is
  * known there). Returns null when the span cannot be linked (a node without
- * a roadmap id, a team in roadmap scope).
+ * a roadmap id, a team in roadmap scope). Workspaces use their own slug,
+ * falling back to the session slug only when it names the same workspace.
  */
 export function resolveAiEntityDestination(
 	ref: AiMentionPick,
@@ -591,6 +596,18 @@ export function resolveAiEntityDestination(
 				to: "/w/$workspaceSlug/teams/$teamId",
 				params: { workspaceSlug: scope.slug, teamId: ref.id },
 			};
+		case "workspace": {
+			const slug =
+				ref.slug ??
+				(scope?.kind === "workspace" && scope.workspaceId === ref.id
+					? scope.slug
+					: null);
+			if (!slug) return null;
+			return {
+				to: "/w/$workspaceSlug/dashboard",
+				params: { workspaceSlug: slug },
+			};
+		}
 		default:
 			return null;
 	}

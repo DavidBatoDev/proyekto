@@ -125,7 +125,8 @@ export type AgentContextRefKind =
 	| "feature"
 	| "task"
 	| "milestone"
-	| "team";
+	| "team"
+	| "workspace";
 
 export interface AgentContextRef {
 	kind: AgentContextRefKind;
@@ -146,6 +147,7 @@ export interface AgentResolvedRef {
 	accessible: boolean;
 	label?: string | null;
 	title?: string | null;
+	slug?: string | null;
 	status?: string | null;
 	roadmap_id?: string | null;
 	project_id?: string | null;

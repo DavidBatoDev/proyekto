@@ -102,9 +102,6 @@ export const getTimelineHeaderLabel = (
 	seconds: number,
 ): string => {
 	if (seconds > 0) {
-		if (timeline.done && seconds < 10) {
-			return "Worked in a while";
-		}
 		return `${timeline.done ? "Worked" : "Working"} for ${seconds} seconds`;
 	}
 	return timeline.done ? "Worked" : "Working...";

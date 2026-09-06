@@ -106,6 +106,7 @@ const MENTION_KINDS = new Set([
 	"task",
 	"milestone",
 	"team",
+	"workspace",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -141,6 +142,7 @@ function parsePersistedRefs(value: unknown): AiMentionSpan[] | undefined {
 			...(typeof entry.projectId === "string" || entry.projectId === null
 				? { projectId: entry.projectId as string | null }
 				: {}),
+			...(typeof entry.slug === "string" ? { slug: entry.slug } : {}),
 		});
 	}
 	return spans.length > 0 ? spans : undefined;

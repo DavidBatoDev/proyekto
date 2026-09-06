@@ -3,6 +3,8 @@ import {
 	aiMarkdownUrlTransform,
 	ENTITY_URI_SCHEME,
 	entityKey,
+	entityLabelsMatch,
+	normalizeEntityLabel,
 	parseEntityHref,
 	stripEntityLinks,
 } from "./aiEntityLinks";
@@ -24,6 +26,7 @@ describe("parseEntityHref", () => {
 		"task",
 		"milestone",
 		"team",
+		"workspace",
 	])("accepts a UUID for %s", (kind) => {
 		expect(parseEntityHref(`proyekto://${kind}/${ID}`)).toEqual({
 			kind,
@@ -39,7 +42,7 @@ describe("parseEntityHref", () => {
 		`https://task/${ID}`,
 		`javascript://task/${ID}`,
 		`proyekto:///${ID}`,
-		`proyekto://workspace/${ID}`,
+		`proyekto://person/${ID}`,
 		"proyekto://task/",
 		"proyekto://task/not-a-uuid",
 		`proyekto://task/${ID}/extra`,
@@ -53,6 +56,38 @@ describe("parseEntityHref", () => {
 		expect(ENTITY_URI_SCHEME).toBe("proyekto:");
 		expect(entityKey("task", ID)).toBe(`task:${ID}`);
 		expect(entityKey("task", ID)).not.toBe(entityKey("epic", ID));
+	});
+});
+
+describe("entity label grounding", () => {
+	it.each([
+		[" (Month 1) Supply network baseline!", "supplynetworkbaseline"],
+		["Ａｃｍｅ – Workspace", "acmeworkspace"],
+		["Straße ẞ", "strassess"],
+		["ΟΣ ος", "οσοσ"],
+		["ı I", "ıi"],
+		["Ꭰ ꭰ", "ᎠᎠ"],
+		["(First) (Second) Acme", "secondacme"],
+		["\u0085(Month 1) Acme", "acme"],
+		["\ufeff(Month 1) Acme", "month1acme"],
+	])("normalizes %s identically to the agent", (label, expected) => {
+		expect(normalizeEntityLabel(label)).toBe(expected);
+	});
+
+	it.each([
+		["Acme", "ＡＣＭＥ", true],
+		["(Month 1) Supply network baseline", "Supply network baseline", true],
+		["Supply network baseline", "Supply network baseline report", true],
+		["Test", "Test Project", false],
+		["abcdefghijk", "abcdefghijkl", false],
+		["abcdefghijkl", "abcdefghijklmnop", true],
+		["David's Workspace", "Claude Maxxing", false],
+		["", "", false],
+		["...", "!", false],
+		["𐐀𐐀𐐀𐐀𐐀𐐀", "𐐀𐐀𐐀𐐀𐐀𐐀X", false],
+	])("matches %s against %s: %s", (left, right, expected) => {
+		expect(entityLabelsMatch(left, right)).toBe(expected);
+		expect(entityLabelsMatch(right, left)).toBe(expected);
 	});
 });
 

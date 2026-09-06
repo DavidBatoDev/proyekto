@@ -159,6 +159,33 @@ describe("dbRowToClientMessage", () => {
 		]);
 	});
 
+	it("preserves workspace refs and string slugs while dropping invalid slug values", () => {
+		const workspaceRef = {
+			kind: "workspace",
+			id: "ws-1",
+			label: "Acme",
+			offset: -1,
+			length: 0,
+		};
+		const message = dbRowToClientMessage(
+			dbRow({
+				role: "user",
+				metadata: {
+					refs: [
+						{ ...workspaceRef, slug: "acme" },
+						{ ...workspaceRef, id: "ws-2", slug: null },
+						{ ...workspaceRef, id: "ws-3", slug: 123 },
+					],
+				},
+			}),
+		);
+		expect(message.refs).toEqual([
+			{ ...workspaceRef, slug: "acme" },
+			{ ...workspaceRef, id: "ws-2" },
+			{ ...workspaceRef, id: "ws-3" },
+		]);
+	});
+
 	it("maps system rows to the assistant role and keeps legacy card metadata", () => {
 		const message = dbRowToClientMessage(
 			dbRow({

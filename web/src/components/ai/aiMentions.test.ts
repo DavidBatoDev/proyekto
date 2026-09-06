@@ -312,6 +312,22 @@ describe("buildAiMentionCandidates", () => {
 		expect(seenOrder).toContain("team");
 	});
 
+	it.each(["", "work"])(
+		"keeps workspaces out of the picker, including primary candidates, for query %j",
+		(query) => {
+			const results = buildAiMentionCandidates({
+				query,
+				primary: [
+					{ kind: "workspace", id: "ws-1", label: "Workspace" },
+					{ kind: "roadmap", id: "rm-1", label: "Work roadmap" },
+				],
+				currentWorkspaceId: "ws-1",
+				myWorkspaceIds: ["ws-1"],
+			});
+			expect(results.map((candidate) => candidate.kind)).toEqual(["roadmap"]);
+		},
+	);
+
 	it("matches case-insensitively by substring", () => {
 		const results = buildAiMentionCandidates({
 			query: "ONBOARD",
@@ -711,6 +727,47 @@ describe("resolveAiEntityDestination", () => {
 		expect(
 			resolveAiEntityDestination({ kind: "epic", id: "e1", label: "E" }),
 		).toBeNull();
+	});
+
+	it("links a workspace by its own slug even from another scope", () => {
+		const pick: AiMentionPick = {
+			kind: "workspace",
+			id: "ws-other",
+			label: "Other",
+			slug: "other-studio",
+		};
+		for (const scope of [workspaceScope, roadmapScope, null]) {
+			expect(resolveAiEntityDestination(pick, scope)).toEqual({
+				to: "/w/$workspaceSlug/dashboard",
+				params: { workspaceSlug: "other-studio" },
+			});
+		}
+	});
+
+	it("falls back to the session slug only for that exact workspace id", () => {
+		const pick: AiMentionPick = {
+			kind: "workspace",
+			id: "ws-1",
+			label: "Acme",
+		};
+		expect(resolveAiEntityDestination(pick, workspaceScope)).toEqual({
+			to: "/w/$workspaceSlug/dashboard",
+			params: { workspaceSlug: "acme" },
+		});
+		expect(
+			resolveAiEntityDestination(
+				{ ...pick, slug: "canonical-slug" },
+				workspaceScope,
+			),
+		).toEqual({
+			to: "/w/$workspaceSlug/dashboard",
+			params: { workspaceSlug: "canonical-slug" },
+		});
+		expect(
+			resolveAiEntityDestination({ ...pick, id: "ws-other" }, workspaceScope),
+		).toBeNull();
+		expect(resolveAiEntityDestination(pick, roadmapScope)).toBeNull();
+		expect(resolveAiEntityDestination(pick, null)).toBeNull();
 	});
 
 	it("links teams only in workspace scope", () => {

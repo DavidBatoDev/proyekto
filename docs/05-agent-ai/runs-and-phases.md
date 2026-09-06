@@ -350,11 +350,15 @@ The web persists the mention spans on the user turn in
 ## Entity Links In Assistant Replies
 
 [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md) keeps the short
-confirmation rule under `# Style` and defines the wire format under `# Entity links`:
-`[Title](proyekto://<kind>/<id>)`. The supported kinds are `project`, `roadmap`, `epic`,
-`feature`, `task`, `milestone` and `team`. The link text is only the entity title;
+confirmation rule under `# Style`, defines the container hierarchy under `# Entities`,
+and defines the wire format under `# Entity links`: `[Title](proyekto://<kind>/<id>)`.
+The eight supported kinds are `workspace`, `project`, `roadmap`, `epic`, `feature`,
+`task`, `milestone` and `team`. A workspace holds projects and teams; a team is people,
+not a container of roadmaps. Identically named objects remain distinct by kind and ID.
+The link text is only the entity title;
 relationship words such as "in", "under" and "/" remain outside the link. The model
-uses IDs from tools and links only entities it knows about. This rule applies only
+copies supplied links verbatim, never attaching one item's title to another item's
+ID. An item without a supplied link stays plain text. This rule applies only
 to assistant reply text and final reports. The prompt requires plain titles in tool
 text fields and raw IDs or handles only in identifier fields; this includes
 `ask_user` questions and options, proposal summaries and hierarchy titles, edit
@@ -362,27 +366,89 @@ arguments, task comments and memory content.
 
 | ID source | Expansion before the reply leaves the agent |
 | --- | --- |
-| UUID from list, search or detail tools | Preserved |
+| UUID from list, search or detail tools | Kept only when the typed ID is known and its registered title matches the link text |
 | Outline handle `E1`, `E1.F2`, `M1`, `R2.E1` | Resolved through `merged_handle_map(session, run)` only when the stored type matches the link kind |
 | Roadmap prefix `R2` | Resolved to the loaded `RoadmapContext` with that prefix; only for kind `roadmap` |
 | Unknown handle, invalid ID or kind mismatch | Link removed; title preserved |
 | Empty link text | Link removed |
 
-The roadmap `# Scope` line includes the focus UUID:
-`Focus roadmap: "Alpha" (id <uuid>; bare handles)`. Task refs include `id <uuid>` in
-their `# Referenced items` parentheses because tasks have no outline handle.
-These additions keep the scope block session-stable and refs in the per-turn tail.
+The prompt pre-renders links through `entity_link`, which escapes Markdown in titles:
+
+| Prompt source | Link context |
+| --- | --- |
+| Workspace `# Scope` | `Workspace: [Acme](proyekto://workspace/<uuid>) (id <uuid>). No focus roadmap ...`; without a cached workspace name, the label is plain `"workspace"` |
+| `# Workspace overview` | A workspace link, then linked project, roadmap and team lines, including linked project/roadmap attribution. Existing raw-ID details and the 40-line cap remain |
+| `# Project context` (roadmap scope) | `Project: [Apollo](proyekto://project/<uuid>)` followed by `Workspace: [Acme](proyekto://workspace/<uuid>)` when the project is homed, so the in-roadmap assistant can name and link the container a roadmap lives in; the pack's `project.workspace` (`id`, `name`, `slug`) feeds the grounding lookup too |
+| `# Referenced items` | Linked accessible refs, including workspace refs; roadmap and project attribution links preserve the surrounding relationship text |
+| `# Recently resolved items` | Linked node titles and known roadmap titles, with raw node IDs still available for tool arguments |
+| Verify `# Outcome` | `- {impact} {node_type} [Title](proyekto://{node_type}/{node_id})` |
+
+The roadmap `# Scope` line still includes the focus UUID as
+`Focus roadmap: "Alpha" (id <uuid>; bare handles)`. Task refs keep `id <uuid>` in
+their parentheses because tasks have no outline handle. Workspace refs never
+auto-load a roadmap. Scope and overview links are session-stable; referenced items
+stay in the per-turn tail, after `# Actor`.
 
 [`runtime/entity_links.py`](../../agent/app/core/runtime/entity_links.py)
-`expand_entity_links` runs at the start of `orchestrator.finalize_step`, writing back
-to `run.final_message` before `assistant_message` and the history append are derived.
-The persisted assistant turn and the response therefore contain the same expanded
-links. Expansion is pure; it does not fetch entity data.
+`ground_entity_links` runs at the start of `orchestrator.finalize_step`, returning
+`GroundingResult{text, expanded, kept, rejected}`. It expands handles, validates every
+typed UUID and title, then writes the text back to `run.final_message` before the
+response and history are derived. A rejection leaves the unescaped link text in the
+prose. `expand_entity_links` remains a compatibility wrapper returning only `.text`.
+Grounding performs no network reads and does not mutate session or run state itself.
+
+[`runtime/entity_registry.py`](../../agent/app/core/runtime/entity_registry.py) owns
+`RunState.entities_seen`: UUID-only `EntitySeen{kind, id, title}` facts, deduped on
+`(kind, id)`, capped at `MAX_ENTITIES_SEEN = 600` in FIFO order. A later observation
+replaces the title in the same FIFO slot. `register_workspace_overview` seeds facts
+from the cached overview; the dispatcher's `entity_sink` harvests successful,
+untruncated tool results through the declarative `ENTITY_SHAPES` table. Members,
+assignees, profiles and owners are not harvested as entities. Unknown tools use a
+conservative typed walk limited to depth 4 and 200 entries; a sink failure does not
+change a tool's result.
+
+| Grounding source | When merged by `build_lookup` |
+| --- | --- |
+| Cached workspace overview, recent resolved targets, loaded `RoadmapContext` titles and handle maps | Existing context first |
+| Accessible resolved refs and their parent chains | Authorized reference context |
+| `entities_seen` | Fresh tool observations override older titles |
+| Batch roadmap titles and committed `impacted_items` | Last, so current-run renames validate against their resulting titles |
+
+The registry round-trips in Redis with the run so continuation steps retain it.
+`build_agent_state_snapshot` removes `run.entities_seen` before the durable snapshot
+size ladder and fingerprint; it is a cache, not durable conversation memory.
+
+Title matching is identical in Python (`normalize_title`, `titles_match`) and the
+web (`normalizeEntityLabel`, `entityLabelsMatch`): NFKC, casefold, strip one leading
+parenthesized prefix, then keep only alphanumeric characters. Empty normalized
+titles do not match. Otherwise equality passes; containment either way passes only
+when the shorter normalized title has at least 12 characters. Thus `(Month 1) Supply
+network baseline` matches `Supply network baseline`, but `Test` does not validate
+`Test Project`.
+
+| Rejection reason | Meaning |
+| --- | --- |
+| `UNKNOWN_ID` | The UUID is absent from the lookup, or the handle cannot resolve |
+| `KIND_MISMATCH` | The ID or handle exists under another entity kind |
+| `TITLE_MISMATCH` | The typed ID exists but its title does not match the visible link text |
+
+Each rejection logs `entity_link_rejected` with `run_id`, `kind`, `entity_id`,
+`reason`, `link_text` and `registered_title`. `StepResult`, `run_step_completed` and
+`message_completed` carry `entity_links_kept` / `entity_links_rejected`; the
+`AI REQUEST` lifecycle block prints the counts directly after `cache`:
+
+```text
+  links       kept=3 rejected=1
+```
+
+The persisted assistant turn and wire response contain the same grounded text.
+The real-reply corpus in `test_entity_links.py` rejects a workspace title on a
+team or roadmap ID while preserving valid replies.
 
 Verify's `# Outcome` includes each impacted item as
 `- {impact} {node_type} [Title](proyekto://{node_type}/{node_id})`, making the ID
-available to its report model. `phase_verify.md` asks for entity links in report text
-using those IDs, keeps proposal arguments plain, and retains the prohibition on
+available to its report model. `phase_verify.md` asks the model to copy those links
+verbatim in report text, keeps proposal arguments plain, and retains the prohibition on
 re-applying changes. Deterministic verify and undo reports link roadmap names and
 impacted items; automatic proposal summaries
 link roadmap names. Generated titles escape Markdown punctuation.
@@ -397,8 +463,11 @@ task comments and durable preferences even if a tool payload includes them.
 
 The [web kit](../04-web/ai-assistant.md#entity-chips-in-assistant-replies) resolves
 these links through [the context API](../03-backend/ai-context-api.md#resolve-refs).
-Deployment order is backend, agent, then web: older backends omit avatars, older web bundles display link
-titles with the unsupported href stripped, and older replies remain plain text.
+Deployment order is backend, agent, then web. An old agent never emits workspace
+links; an old web displays their titles with the unsupported href stripped. A new
+web against an old backend would receive a 400 for a batch containing the unknown
+`workspace` kind, so the backend must ship first. Older backends that omit assignee
+fields still produce chips without avatars; older plain-text replies stay unchanged.
 
 ## Prompt layout and the cache invariant
 
@@ -407,7 +476,7 @@ prompt as `STATIC_PREFIX + SCOPE_BLOCK + STATE_BLOCKS + TAIL`:
 
 | Part | Blocks | Changes when |
 | --- | --- | --- |
-| Static prefix | [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md), including `# Style` and `# Entity links` | Never (byte-identical across sessions) |
+| Static prefix | [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md), including `# Style`, `# Entities` and `# Entity links` | Never (byte-identical across sessions) |
 | Scope block | `# Scope` | Per session |
 | State blocks (fixed order) | `# Focus roadmap`, `# Loaded roadmaps`, `# Workspace overview`, `# Project context`, `# Earlier conversation summary`, `# Memory notes`, `# Pending proposal awaiting user confirmation`, `# Recently resolved items`, `# Recent changes`, `# Actor` | Only when cached state changes (a roadmap loads, a commit lands) |
 | Tail (always last) | `# Referenced items`, `# Relevant memories`, `# Run` (`phase_investigate.md` only on a resumed investigate; `phase_execute.md` and `phase_verify.md` always) | Every turn |
@@ -473,7 +542,7 @@ timeline decides what to show. Run-specific events and their `details`:
 | `run_started` | `run_id`, `phase`, `step`, `scope_kind`, `refs_count` | hidden |
 | `phase_entered` | `phase`, `step`, `commits_done`, `commits_total` | hidden (patches the banner phase / progress) |
 | `phase_completed` | `phase`, `step`, `outcome` | hidden |
-| `run_step_completed` | `run_id`, `phase`, `step`, `run_next`, `run_status`, `checkpoint`, `elapsed_ms` | hidden; sets `done` on the trace (`run_next != "continue"`) |
+| `run_step_completed` | `run_id`, `phase`, `step`, `run_next`, `run_status`, `checkpoint`, `elapsed_ms`, `entity_links_kept`, `entity_links_rejected` | hidden; sets `done` on the trace (`run_next != "continue"`) |
 | `run_checkpoint` | `run_id`, `phase`, `checkpoint`, `plan_id` | hidden |
 | `refs_resolved` | `refs_total`, `refs_accessible`, `refs_inaccessible`, `loaded_roadmap_ids` | hidden |
 | `checkpoint_policy` | `decision`, `reason`, `batches`, `operations` (verbose detail only; no structured picker) | log / verbose only |

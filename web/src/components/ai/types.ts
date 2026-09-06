@@ -96,6 +96,7 @@ export interface AiMentionPick {
 	/** Display-only (untrusted) deep-link hints; never sent to the agent. */
 	roadmapId?: string;
 	projectId?: string | null;
+	slug?: string;
 }
 
 /** A pick anchored in the message text; persisted in `metadata.refs`. */

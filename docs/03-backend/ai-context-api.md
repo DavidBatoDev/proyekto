@@ -73,7 +73,7 @@ All paths are under `/api`. Query params are listed with their DTO limits
 | GET | `/ai/context/tasks` | `assigned_to_me?`, `status?`, `due_before?` / `due_after?` (ISO 8601), `overdue?`, `workspace_id?`, `project_id?`, `roadmap_ids?` (≤50), `limit?` 1–200 (default 50) | `{ tasks[] }` |
 | GET | `/ai/context/knowledge-search` | `q` (≤500), `project_ids?` CSV (≤50), `workspace_id?`, `sources?` CSV, `limit?` 1–20 | `{ project_ids[], query, results[] }` |
 | POST | `/ai/context/resolve-refs` | body `{ refs: [{ kind, id, label? }] }`, 1–25 refs | **200** `{ refs: ResolvedRef[] }` |
-| GET | `/ai/context/projects/:projectId` | — | the project context pack (same shape as `roadmaps/:id/ai/context/project`) |
+| GET | `/ai/context/projects/:projectId` | — | the project context pack (same shape as `roadmaps/:id/ai/context/project`); `project.workspace` is `{id, name, slug}` or null for an unhomed project |
 | GET | `/ai/context/projects/:projectId/brief` | — | latest brief |
 | GET | `/ai/context/projects/:projectId/resources` | — | resource summary |
 | GET | `/ai/context/projects/:projectId/meetings` | `window?` ∈ `upcoming, recent, all`, `limit?` 1–50 | meeting summary |
@@ -181,18 +181,20 @@ activity_log, brief, file_chunk`. Each result carries its `project_id`.
 Hydrates the composer's @-mentions **once per run** through the agent and assistant
 reply chips through the browser's batched resolver
 ([`ai-context-refs.service.ts`](../../backend/src/modules/execution/ai-context/services/ai-context-refs.service.ts)).
-`kind` ∈ `project, roadmap, epic, feature, task, milestone, team`; `label` is
+`kind` ∈ `workspace, project, roadmap, epic, feature, task, milestone, team`; `label` is
 accepted for the wire shape and not used by the backend. Refs are deduped on
 `(kind, id)`, then: one batch `.in()` load per kind present (tasks embed
 `feature → epic`, since a task row carries no roadmap id), **one**
 `filterViewableRoadmapIds` over the union of every roadmap those rows hang off, one
-`getAccessibleProjectIds` if any project is involved, one `team_members` probe.
+`getAccessibleProjectIds` if any project is involved, one `team_members` probe and
+one `workspace_members` probe when those kinds are present.
 
 | Kind | Accessible when |
 | --- | --- |
 | `task`, `feature`, `epic`, `milestone`, `roadmap` | the (parent) roadmap is viewable: owner, or a `project_access` row on its project |
 | `project` | owner, or in `getAccessibleProjectIds` |
 | `team` | owner or member (mirrors `TeamsService.resolveViewerRole`) |
+| `workspace` | a `workspace_members` row for the caller; membership only, with owners represented by their membership row |
 
 The response envelope is `{data: {refs: ResolvedRef[]}}`. This endpoint accepts UUIDs;
 the agent expands outline handles such as `E1` and `R2` before replies reach the
@@ -209,6 +211,7 @@ browser. The supplied `label` does not replace the canonical entity title.
 | `kind`, `id`, `accessible` | Entity identity and whether the caller can view it |
 | `title?`, `status?` | Canonical title and nullable status for accessible refs |
 | `roadmap_id?`, `project_id?`, `workspace_id?` | Nullable attribution for routing |
+| `slug?` | Accessible workspace refs only: `string \| null`, used for `/w/<slug>/dashboard` |
 | `parent_chain?` | `{kind, id, title}[]`, nearest-first |
 | `assignees?` | Accessible tasks only: up to five `{id, display_name: string \| null, avatar_url: string \| null}` profiles |
 | `assignee_count?` | Accessible tasks only: unique assignees with profiles before the five-profile response cap |
@@ -216,16 +219,26 @@ browser. The supplied `label` does not replace the canonical entity title.
 
 `parent_chain` is **nearest-first**:
 task → feature → epic → roadmap → project → workspace; a roadmap ref's chain starts
-at its project; project and team chains hold only the workspace. Failure modes:
+at its project; project and team chains hold only the workspace. Workspace refs have
+an empty chain. Failure modes:
 
 | Situation | Result |
 | --- | --- |
-| Row missing, or its parent roadmap not viewable, or project/team not accessible | `{ accessible: false, error_code: 'NOT_FOUND' }` — **no title**, so a denied id never leaks whether it exists |
+| Row missing, or its parent roadmap not viewable, or project/team/workspace not accessible | `{ accessible: false, error_code: 'NOT_FOUND' }` — **no title or slug**, so a denied id never leaks whether it exists |
 | A query error while loading or authorizing a kind | every ref of that kind → `LOOKUP_FAILED` (fail-closed per kind) |
 | A failed project/workspace *title* lookup | the chain is shortened; the ref stays accessible (titles are decoration on an already-authorized ref) |
 
 The route never throws for an individual ref; the agent treats a transport-level
 failure of the whole call as every ref inaccessible.
+
+Workspace resolution uses `loadRefWorkspaces(ids)` to select `id, name, slug`
+through the existing chunked `loadByIds` helper, and
+`loadWorkspaceMembershipIds(userId, workspaceIds)` to read `workspace_members`
+with the caller's `user_id` and chunked workspace IDs. `resolveWorkspace` returns
+the canonical name and slug only after membership passes, with
+`workspace_id: id`, null `status` / `roadmap_id` / `project_id`, and `parent_chain: []`.
+A failed workspace load or membership probe denies every workspace ref in the
+batch with `LOOKUP_FAILED`; non-members receive `NOT_FOUND`, without title or slug.
 
 Task hydration embeds `roadmap_task_assignees` and their `profiles` in the existing
 chunked task load. It sorts the task row's stored `assignee_id` first, then remaining
@@ -264,6 +277,9 @@ title.
 Deploy backend, then agent, then web. The task fields are additive: older backends
 produce chips without avatars, the agent's `ResolvedRef` ignores unknown fields, and
 older web bundles show entity-link titles with the unsupported href stripped. The
+`workspace` kind requires the new backend DTO first: an old backend rejects an
+entire batch containing that kind with 400. An old agent emits no workspace links,
+and an old web renders workspace link text without an anchor. The
 reply carries only Markdown links; hydration remains client-side and uses no
 separate profile endpoint.
 
@@ -273,9 +289,9 @@ separate profile endpoint.
 | [`ai-context-throttler.guard.ts`](../../backend/src/modules/execution/ai-context/guards/ai-context-throttler.guard.ts) | Actor-keyed throttle tracker with IP fallback |
 | [`dto/ai-context.dto.ts`](../../backend/src/modules/execution/ai-context/dto/ai-context.dto.ts) | Request validation and resolved-ref fields |
 | [`ai-context-refs.service.ts`](../../backend/src/modules/execution/ai-context/services/ai-context-refs.service.ts) | Authorization, canonical fields, parent chains and assignee ordering |
-| [`ai-context.repository.supabase.ts`](../../backend/src/modules/execution/ai-context/repositories/ai-context.repository.supabase.ts) | Chunked entity reads and task assignment/profile embed |
+| [`ai-context.repository.supabase.ts`](../../backend/src/modules/execution/ai-context/repositories/ai-context.repository.supabase.ts) | Chunked entity reads, task assignment/profile embed, `loadRefWorkspaces` and `loadWorkspaceMembershipIds` |
 | [`ai-context.service.ts`](../../web/src/services/ai-context.service.ts) | Browser client and response envelope handling |
-| [`entity_links.py`](../../agent/app/core/runtime/entity_links.py) | Reply handle expansion before persistence and the wire response |
+| [`entity_links.py`](../../agent/app/core/runtime/entity_links.py) | Reply handle expansion and typed-ID/title grounding before persistence and the wire response |
 
 ### `projects/:projectId/*`
 

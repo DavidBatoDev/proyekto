@@ -1,6 +1,7 @@
 import { displayNameOf, initialsOf } from "@/components/common/Avatar";
 import type { AiEntityAssignee } from "@/services/ai-context.service";
 import { AiMentionKindIcon } from "./AiMentionPicker";
+import { entityLabelsMatch } from "./aiEntityLinks";
 import { useAiEntity } from "./aiEntityResolver";
 import {
 	AI_MENTION_CHIP_TONE_CLASS,
@@ -18,6 +19,7 @@ const KIND_LABEL: Record<AiMentionKind, string> = {
 	task: "Task",
 	milestone: "Milestone",
 	team: "Team",
+	workspace: "Workspace",
 };
 
 const AVATAR_CLASS =
@@ -90,7 +92,10 @@ export interface AiEntityChipProps {
 export function AiEntityChip({ kind, id, label, scope }: AiEntityChipProps) {
 	const { data, isPending } = useAiEntity(kind, id);
 	const entity = data?.accessible ? data : undefined;
-	const title = entity?.title ?? label;
+	const canonical = entity?.title;
+	const useCanonical = !!canonical && entityLabelsMatch(canonical, label);
+	const mismatch = !!canonical && !useCanonical;
+	const title = useCanonical ? canonical : label;
 	const destination = entity
 		? resolveAiEntityDestination(
 				{
@@ -99,6 +104,7 @@ export function AiEntityChip({ kind, id, label, scope }: AiEntityChipProps) {
 					label: title,
 					roadmapId: entity.roadmap_id ?? undefined,
 					projectId: entity.project_id ?? null,
+					slug: entity.slug ?? undefined,
 				},
 				scope,
 			)
@@ -119,11 +125,18 @@ export function AiEntityChip({ kind, id, label, scope }: AiEntityChipProps) {
 		? `Assigned to ${assignees.map(assigneeName).join(", ")}${additionalAssignees ? `, and ${additionalAssignees} more` : ""}`
 		: undefined;
 	const attributes = {
-		title: [KIND_LABEL[kind], status, chain, assignedTo]
+		title: [
+			KIND_LABEL[kind],
+			status,
+			chain,
+			assignedTo,
+			mismatch ? `Canonical: ${canonical}` : undefined,
+		]
 			.filter(Boolean)
 			.join(" · "),
 		"data-entity-kind": kind,
 		"data-entity-id": id,
+		"data-entity-mismatch": mismatch ? "true" : undefined,
 		"data-entity-state": isPending
 			? "loading"
 			: destination

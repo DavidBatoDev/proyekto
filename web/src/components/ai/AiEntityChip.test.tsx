@@ -84,7 +84,7 @@ function task(overrides: Partial<AiResolvedEntity> = {}): AiResolvedEntity {
 
 function renderChip({
 	kind = "task",
-	label = "Old task title",
+	label = "canonical task",
 	chipScope = scope,
 	repeats = 1,
 }: {
@@ -134,7 +134,7 @@ describe("AiEntityChip", () => {
 	it("shows a non-linked label while loading, then the canonical title", async () => {
 		const { container } = renderChip();
 		const loading = container.querySelector('[data-entity-state="loading"]');
-		expect(loading?.textContent).toBe("Old task title");
+		expect(loading?.textContent).toBe("canonical task");
 		expect(loading?.getAttribute("href")).toBeNull();
 		expect(loading?.getAttribute("data-entity-kind")).toBe("task");
 		expect(loading?.getAttribute("data-entity-id")).toBe(ID);
@@ -144,7 +144,100 @@ describe("AiEntityChip", () => {
 		expect(screen.getByRole("link").getAttribute("data-entity-state")).toBe(
 			"linked",
 		);
+		expect(screen.getByRole("link").hasAttribute("data-entity-mismatch")).toBe(
+			false,
+		);
 	});
+
+	it("keeps a mismatched label and exposes the canonical title only in the tooltip", async () => {
+		resolveRefs.mockResolvedValue([
+			task({ kind: "team", title: "Claude Maxxing" }),
+		]);
+		renderChip({
+			kind: "team",
+			label: "David's Workspace",
+			chipScope: {
+				kind: "workspace",
+				workspaceId: "ws",
+				slug: "studio",
+			},
+		});
+		const link = await screen.findByRole("link", {
+			name: "Team David's Workspace",
+		});
+		expect(link.textContent).toBe("David's Workspace");
+		expect(link.getAttribute("data-entity-mismatch")).toBe("true");
+		expect(link.getAttribute("title")).toContain("Canonical: Claude Maxxing");
+		expect(screen.queryByText("Claude Maxxing")).toBeNull();
+	});
+
+	it("uses the canonical title when a leading month prefix agrees", async () => {
+		resolveRefs.mockResolvedValue([
+			task({ title: "(Month 1) Supply network baseline" }),
+		]);
+		renderChip({ label: "Supply network baseline" });
+		const link = await screen.findByRole("link");
+		expect(link.textContent).toBe("(Month 1) Supply network baseline");
+		expect(link.hasAttribute("data-entity-mismatch")).toBe(false);
+	});
+
+	it("does not replace a short ambiguous label with a longer canonical title", async () => {
+		resolveRefs.mockResolvedValue([task({ title: "Test Project" })]);
+		renderChip({ label: "Test" });
+		const link = await screen.findByRole("link");
+		expect(link.textContent).toBe("Test");
+		expect(link.getAttribute("data-entity-mismatch")).toBe("true");
+	});
+
+	it("links a workspace using its returned slug", async () => {
+		resolveRefs.mockResolvedValue([
+			task({ kind: "workspace", title: "Acme", slug: "acme" }),
+		]);
+		renderChip({ kind: "workspace", label: "Acme" });
+		const link = await screen.findByRole("link", { name: "Workspace Acme" });
+		expect(link.getAttribute("href")).toBe("/w/acme/dashboard");
+		expect(link.querySelector("svg.lucide-building-2")).toBeTruthy();
+	});
+
+	it("uses the matching scope slug when an older workspace response lacks one", async () => {
+		resolveRefs.mockResolvedValue([task({ kind: "workspace", title: "Acme" })]);
+		renderChip({
+			kind: "workspace",
+			label: "Acme",
+			chipScope: { kind: "workspace", workspaceId: ID, slug: "acme" },
+		});
+		expect((await screen.findByRole("link")).getAttribute("href")).toBe(
+			"/w/acme/dashboard",
+		);
+	});
+
+	it.each([
+		scope,
+		{
+			kind: "workspace",
+			workspaceId: "other",
+			slug: "elsewhere",
+		} as AiSessionScope,
+		null,
+	])(
+		"leaves a workspace with no available matching slug plain (%j)",
+		async (chipScope) => {
+			resolveRefs.mockResolvedValue([
+				task({ kind: "workspace", title: "Acme", slug: null }),
+			]);
+			const { container } = renderChip({
+				kind: "workspace",
+				label: "Acme",
+				chipScope,
+			});
+			await waitFor(() =>
+				expect(
+					container.querySelector('[data-entity-state="plain"]'),
+				).toBeTruthy(),
+			);
+			expect(screen.queryByRole("link")).toBeNull();
+		},
+	);
 
 	it("renders the task glyph, destination, primary avatars, overflow and parent tooltip", async () => {
 		resolveRefs.mockResolvedValue([
@@ -247,16 +340,20 @@ describe("AiEntityChip", () => {
 				container.querySelector('[data-entity-state="plain"]'),
 			).toBeTruthy();
 		});
-		expect(screen.getByText("Old task title")).toBeTruthy();
+		expect(screen.getByText("canonical task")).toBeTruthy();
 		expect(screen.queryByRole("link")).toBeNull();
 		expect(container.querySelector("[href]")).toBeNull();
 	});
 
 	it("leaves an accessible team plain in roadmap scope", async () => {
 		resolveRefs.mockResolvedValue([task({ kind: "team", title: "Platform" })]);
-		const { container } = renderChip({ kind: "team" });
-		await screen.findByText("Platform");
-		expect(container.querySelector('[data-entity-state="plain"]')).toBeTruthy();
+		const { container } = renderChip({ kind: "team", label: "Platform" });
+		await waitFor(() => {
+			expect(
+				container.querySelector('[data-entity-state="plain"]'),
+			).toBeTruthy();
+		});
+		expect(screen.getByText("Platform")).toBeTruthy();
 		expect(screen.queryByRole("link")).toBeNull();
 	});
 
@@ -321,12 +418,12 @@ describe("AiEntityChip actor cache isolation", () => {
 			{ kind: "task", id: ID, accessible: false, error_code: "NOT_FOUND" },
 		]);
 		const { container } = renderChip();
-		await screen.findByText("Account A private task");
+		await screen.findByTitle(/Canonical: Account A private task/);
 		expect(screen.getByAltText("Private Person")).toBeTruthy();
 		act(() => useAuthStore.setState({ user: user("account-b") }));
-		expect(screen.queryByText("Account A private task")).toBeNull();
+		expect(screen.queryByTitle(/Account A private task/)).toBeNull();
 		expect(screen.queryByAltText("Private Person")).toBeNull();
-		expect(screen.getByText("Old task title")).toBeTruthy();
+		expect(screen.getByText("canonical task")).toBeTruthy();
 		expect(screen.queryByRole("link")).toBeNull();
 		await waitFor(() => {
 			expect(
@@ -351,7 +448,7 @@ describe("AiEntityChip actor cache isolation", () => {
 		expect(resolveRefs).toHaveBeenCalledExactlyOnceWith([
 			{ kind: "task", id: ID },
 		]);
-		expect(screen.getByText("Account B task")).toBeTruthy();
+		expect(screen.getByTitle(/Canonical: Account B task/)).toBeTruthy();
 	});
 
 	it("discards an in-flight old-account result after the new account has resolved", async () => {
@@ -367,12 +464,12 @@ describe("AiEntityChip actor cache isolation", () => {
 		const { client } = renderChip();
 		await waitFor(() => expect(resolveRefs).toHaveBeenCalledTimes(1));
 		act(() => useAuthStore.setState({ user: user("account-b") }));
-		await screen.findByText("Account B task");
+		await screen.findByTitle(/Canonical: Account B task/);
 		await act(async () => {
 			completeFirst([task({ title: "Late account A secret" })]);
 		});
-		expect(screen.queryByText("Late account A secret")).toBeNull();
-		expect(screen.getByText("Account B task")).toBeTruthy();
+		expect(screen.queryByTitle(/Late account A secret/)).toBeNull();
+		expect(screen.getByTitle(/Canonical: Account B task/)).toBeTruthy();
 		const cached = client.getQueriesData<AiResolvedEntity>({
 			queryKey: aiEntityKeys.one("task", ID),
 		});
@@ -387,20 +484,20 @@ describe("AiEntityChip actor cache isolation", () => {
 		resolveRefs.mockResolvedValueOnce([task({ title: "First guest task" })]);
 		resolveRefs.mockResolvedValueOnce([task({ title: "Second guest task" })]);
 		const { client, rerender } = renderChip();
-		await screen.findByText("First guest task");
+		await screen.findByTitle(/Canonical: First guest task/);
 		localStorage.setItem("proyekto_guest_session_id", "guest-secret-second");
 		rerender(
 			<QueryClientProvider client={client}>
 				<AiEntityChip
 					kind="task"
 					id={ID}
-					label="Old task title"
+					label="canonical task"
 					scope={scope}
 				/>
 			</QueryClientProvider>,
 		);
-		expect(screen.queryByText("First guest task")).toBeNull();
-		await screen.findByText("Second guest task");
+		expect(screen.queryByTitle(/First guest task/)).toBeNull();
+		await screen.findByTitle(/Canonical: Second guest task/);
 		expect(resolveRefs).toHaveBeenCalledTimes(2);
 		const queries = client
 			.getQueryCache()

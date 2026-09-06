@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	collapseToolCallPairs,
 	declutterProviderAttempts,
+	getTimelineHeaderLabel,
 	getTitleListOverflowCount,
 	getVisibleTimelineSteps,
 	groupParallelSteps,
@@ -21,6 +22,25 @@ const baseTimeline = (
 });
 
 describe("activity timeline elapsed seconds", () => {
+	it.each([1, 5, 9, 10])(
+		"shows elapsed seconds for completed runs lasting %i seconds",
+		(seconds) => {
+			expect(
+				getTimelineHeaderLabel(baseTimeline({ done: true }), seconds),
+			).toBe(`Worked for ${seconds} seconds`);
+		},
+	);
+
+	it("keeps running and unknown-duration header labels", () => {
+		expect(getTimelineHeaderLabel(baseTimeline(), 5)).toBe(
+			"Working for 5 seconds",
+		);
+		expect(getTimelineHeaderLabel(baseTimeline(), 0)).toBe("Working...");
+		expect(getTimelineHeaderLabel(baseTimeline({ done: true }), 0)).toBe(
+			"Worked",
+		);
+	});
+
 	it("uses elapsedMs when available", () => {
 		expect(
 			toElapsedSeconds(
