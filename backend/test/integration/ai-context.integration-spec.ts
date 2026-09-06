@@ -51,6 +51,7 @@ type ResolvedRef = {
   id: string;
   accessible: boolean;
   title?: string;
+  slug?: string | null;
   workspace_id?: string | null;
   project_id?: string | null;
   roadmap_id?: string | null;
@@ -517,6 +518,8 @@ describe('AI context family (/api/ai/context)', () => {
         { kind: 'feature', id: featureA },
         { kind: 'task', id: taskAssigned },
         { kind: 'team', id: teamT },
+        { kind: 'workspace', id: workspaceW },
+        { kind: 'workspace', id: workspaceW2 },
         { kind: 'project', id: projectC },
         { kind: 'roadmap', id: roadmapC },
         { kind: 'epic', id: epicC },
@@ -524,7 +527,7 @@ describe('AI context family (/api/ai/context)', () => {
         { kind: 'task', id: ghost },
       ]).expect(200);
       const refs = res.body.data.refs as ResolvedRef[];
-      expect(refs).toHaveLength(11);
+      expect(refs).toHaveLength(13);
       const byKey = new Map(refs.map((r) => [`${r.kind}:${r.id}`, r]));
 
       const task = byKey.get(`task:${taskAssigned}`)!;
@@ -569,6 +572,23 @@ describe('AI context family (/api/ai/context)', () => {
       });
       expect(byKey.get(`epic:${epicA}`)!.accessible).toBe(true);
       expect(byKey.get(`feature:${featureA}`)!.accessible).toBe(true);
+      for (const [workspaceId, label] of [
+        [workspaceW, 'w'],
+        [workspaceW2, 'w2'],
+      ]) {
+        expect(byKey.get(`workspace:${workspaceId}`)).toEqual({
+          kind: 'workspace',
+          id: workspaceId,
+          accessible: true,
+          title: `itest workspace ${label} ${h.runId}`,
+          slug: `itest-${label}-${h.runId}`.toLowerCase(),
+          status: null,
+          roadmap_id: null,
+          project_id: null,
+          workspace_id: workspaceId,
+          parent_chain: [],
+        });
+      }
 
       for (const key of [
         `project:${projectC}`,
@@ -595,9 +615,31 @@ describe('AI context family (/api/ai/context)', () => {
         { kind: 'project', id: projectB },
         { kind: 'roadmap', id: roadmapD },
         { kind: 'team', id: teamT },
+        { kind: 'workspace', id: workspaceW },
+        { kind: 'workspace', id: workspaceW2 },
       ]).expect(200);
       const refs = res.body.data.refs as ResolvedRef[];
-      expect(refs.map((r) => r.accessible)).toEqual([true, false, false, true]);
+      expect(refs.map((r) => r.accessible)).toEqual([
+        true,
+        false,
+        false,
+        true,
+        true,
+        false,
+      ]);
+      expect(refs[4]).toMatchObject({
+        kind: 'workspace',
+        id: workspaceW,
+        slug: `itest-w-${h.runId}`.toLowerCase(),
+      });
+      expect(refs[5]).toEqual({
+        kind: 'workspace',
+        id: workspaceW2,
+        accessible: false,
+        error_code: 'NOT_FOUND',
+      });
+      expect(refs[5]).not.toHaveProperty('title');
+      expect(refs[5]).not.toHaveProperty('slug');
     });
 
     it('validates the batch shape', async () => {

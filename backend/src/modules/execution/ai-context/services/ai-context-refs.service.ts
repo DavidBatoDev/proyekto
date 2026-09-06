@@ -25,6 +25,7 @@ import {
   type AiContextRefRoadmapRow,
   type AiContextRefTaskRow,
   type AiContextRefTeamRow,
+  type AiContextRefWorkspaceRow,
   type IAiContextRepository,
 } from '../repositories/ai-context.repository.interface';
 
@@ -38,6 +39,7 @@ type LoadedRows = {
   roadmap: Map<string, AiContextRefRoadmapRow>;
   project: Map<string, AiContextRefProjectRow>;
   team: Map<string, AiContextRefTeamRow>;
+  workspace: Map<string, AiContextRefWorkspaceRow>;
 };
 
 type ChainContext = {
@@ -74,7 +76,8 @@ function denied(
  * Hydrates the composer's @-references once per run: one batch load per kind
  * present, ONE `filterViewableRoadmapIds` over the union of roadmap ids
  * (including each referenced project's linked roadmap), one
- * `getAccessibleProjectIds`, one `team_members` probe. Fail-closed per kind -
+ * `getAccessibleProjectIds`, one `team_members` probe and one
+ * `workspace_members` probe. Fail-closed per kind -
  * a query error in a kind marks every ref of that kind inaccessible - and
  * per ref for a missing row or an unviewable parent. Never throws for a ref,
  * and never reveals whether a denied id exists (no title on a denial).
@@ -169,6 +172,19 @@ export class AiContextRefsService {
       }
     }
 
+    let memberWorkspaceIds = new Set<string>();
+    if (rows.workspace.size > 0) {
+      try {
+        memberWorkspaceIds = await this.repo.loadWorkspaceMembershipIds(
+          userId,
+          [...rows.workspace.keys()],
+        );
+      } catch (error) {
+        this.warn('workspace_membership', error);
+        failedKinds.add('workspace');
+      }
+    }
+
     const chain = await this.loadChainTitles(
       viewable,
       rows,
@@ -205,6 +221,12 @@ export class AiContextRefsService {
             userId,
             memberTeamIds,
             chain,
+          );
+        case 'workspace':
+          return this.resolveWorkspace(
+            ref,
+            rows.workspace.get(ref.id),
+            memberWorkspaceIds,
           );
         default:
           return denied(ref, 'NOT_FOUND');
@@ -247,6 +269,7 @@ export class AiContextRefsService {
       roadmap: new Map(),
       project: new Map(),
       team: new Map(),
+      workspace: new Map(),
     };
     const load = async <T extends { id: string }>(
       kind: AiContextRefKind,
@@ -272,6 +295,9 @@ export class AiContextRefsService {
       load('roadmap', rows.roadmap, (ids) => this.repo.loadRefRoadmaps(ids)),
       load('project', rows.project, (ids) => this.repo.loadRefProjects(ids)),
       load('team', rows.team, (ids) => this.repo.loadRefTeams(ids)),
+      load('workspace', rows.workspace, (ids) =>
+        this.repo.loadRefWorkspaces(ids),
+      ),
     ]);
     return rows;
   }
@@ -556,6 +582,28 @@ export class AiContextRefsService {
       project_id: null,
       workspace_id: row.workspace_id,
       parent_chain: parentChain,
+    };
+  }
+
+  private resolveWorkspace(
+    ref: AiContextRefDto,
+    row: AiContextRefWorkspaceRow | undefined,
+    memberWorkspaceIds: Set<string>,
+  ): AiContextResolvedRefDto {
+    if (!row || !memberWorkspaceIds.has(row.id)) {
+      return denied(ref, 'NOT_FOUND');
+    }
+    return {
+      kind: 'workspace',
+      id: row.id,
+      accessible: true,
+      title: row.name,
+      slug: row.slug,
+      status: null,
+      roadmap_id: null,
+      project_id: null,
+      workspace_id: row.id,
+      parent_chain: [],
     };
   }
 

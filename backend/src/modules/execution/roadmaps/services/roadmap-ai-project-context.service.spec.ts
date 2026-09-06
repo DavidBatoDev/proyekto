@@ -95,6 +95,41 @@ describe('RoadmapAiProjectContextService', () => {
     expect(roadmapsRepo.findById).toHaveBeenCalledWith('roadmap-1', 'intruder');
   });
 
+  it('names the project workspace with its slug when the project is homed', async () => {
+    const { service, db } = buildService(
+      { id: 'roadmap-1', owner_id: 'owner-1', project_id: 'project-1' },
+      {
+        projects: [
+          query({
+            id: 'project-1',
+            title: 'Apollo',
+            status: 'active',
+            duration: null,
+            workspace_id: 'workspace-1',
+          }),
+        ],
+        workspaces: [query({ id: 'workspace-1', name: 'Acme', slug: 'acme' })],
+        project_briefs: [query(null)],
+        project_access: [query([])],
+        profiles: [query([])],
+        project_teams: [query([])],
+        project_resource_links: [query(null, { count: 0 }), query([])],
+        meetings: [query(null, { count: 0 }), query(null)],
+      },
+    );
+
+    const result = await service.getProjectContext('roadmap-1', 'owner-1');
+
+    expect(result.project).toEqual({
+      id: 'project-1',
+      title: 'Apollo',
+      status: 'active',
+      duration: null,
+      workspace: { id: 'workspace-1', name: 'Acme', slug: 'acme' },
+    });
+    expect(db.from).toHaveBeenCalledWith('workspaces');
+  });
+
   it('returns a stable empty compact pack and NO_PROJECT for projectless roadmaps', async () => {
     const { service, db } = buildService({
       id: 'roadmap-1',
@@ -189,6 +224,7 @@ describe('RoadmapAiProjectContextService', () => {
         title: 'Apollo',
         status: 'active',
         duration: '3 months',
+        workspace: null,
       },
       brief_excerpt: 'Build & launch.',
       has_full_brief: true,
@@ -223,7 +259,7 @@ describe('RoadmapAiProjectContextService', () => {
     });
     expect(briefQuery.limit).toHaveBeenCalledWith(1);
     expect(projectQuery.select).toHaveBeenCalledWith(
-      'id, title, status, duration',
+      'id, title, status, duration, workspace_id',
     );
   });
 

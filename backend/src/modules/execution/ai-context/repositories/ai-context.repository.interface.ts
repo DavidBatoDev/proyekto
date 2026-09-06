@@ -145,6 +145,12 @@ export interface AiContextRefTeamRow {
   owner_id: string | null;
 }
 
+export interface AiContextRefWorkspaceRow {
+  id: string;
+  name: string;
+  slug: string | null;
+}
+
 export interface AiContextChainProjectRow {
   id: string;
   title: string;
@@ -194,10 +200,16 @@ export interface IAiContextRepository {
   loadRefRoadmaps(ids: string[]): Promise<AiContextRefRoadmapRow[]>;
   loadRefProjects(ids: string[]): Promise<AiContextRefProjectRow[]>;
   loadRefTeams(ids: string[]): Promise<AiContextRefTeamRow[]>;
+  loadRefWorkspaces(ids: string[]): Promise<AiContextRefWorkspaceRow[]>;
   /** Of `teamIds`, the ones `userId` is a member of. */
   loadTeamMembershipIds(
     userId: string,
     teamIds: string[],
+  ): Promise<Set<string>>;
+  /** Of `workspaceIds`, the ones `userId` is a member of (owners included). */
+  loadWorkspaceMembershipIds(
+    userId: string,
+    workspaceIds: string[],
   ): Promise<Set<string>>;
   loadChainProjects(
     ids: string[],

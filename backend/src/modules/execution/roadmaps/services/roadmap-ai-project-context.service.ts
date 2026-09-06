@@ -19,6 +19,7 @@ import type {
   RoadmapAiProjectResourceFolderDto,
   RoadmapAiProjectResourceLinkDto,
   RoadmapAiProjectResourcesResponseDto,
+  RoadmapAiProjectWorkspaceDto,
 } from '../dto/roadmap-ai-project-context.dto';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
@@ -575,7 +576,7 @@ export class RoadmapAiProjectContextService {
   ): Promise<RoadmapAiProjectDto | null> {
     const { data, error } = await this.db
       .from('projects')
-      .select('id, title, status, duration')
+      .select('id, title, status, duration, workspace_id')
       .eq('id', projectId)
       .maybeSingle();
     this.throwOnQueryError(error);
@@ -585,12 +586,39 @@ export class RoadmapAiProjectContextService {
     const title = this.readTrimmedString(row?.title);
     if (!row || !id || !title) return null;
 
+    const workspaceId = this.readTrimmedString(row.workspace_id);
     return {
       id,
       title: truncatePromptText(title, MEETING_TITLE_MAX_CHARS),
       status:
         this.truncatedString(row.status, SHORT_LABEL_MAX_CHARS) ?? 'draft',
       duration: this.truncatedString(row.duration, DISPLAY_NAME_MAX_CHARS),
+      workspace: workspaceId ? await this.readWorkspace(workspaceId) : null,
+    };
+  }
+
+  /**
+   * The project's workspace, so the roadmap assistant can name (and link) the
+   * container a roadmap lives in. Read errors degrade to null: the pack is
+   * advisory context, never a gate.
+   */
+  private async readWorkspace(
+    workspaceId: string,
+  ): Promise<RoadmapAiProjectWorkspaceDto | null> {
+    const { data, error } = await this.db
+      .from('workspaces')
+      .select('id, name, slug')
+      .eq('id', workspaceId)
+      .maybeSingle();
+    if (error) return null;
+    const row = this.asRecord(data);
+    const id = this.readTrimmedString(row?.id);
+    const name = this.readTrimmedString(row?.name);
+    if (!row || !id || !name) return null;
+    return {
+      id,
+      name: truncatePromptText(name, MEETING_TITLE_MAX_CHARS),
+      slug: this.readTrimmedString(row.slug) ?? null,
     };
   }
 

@@ -17,7 +17,9 @@ function buildService() {
     loadRefRoadmaps: jest.fn().mockResolvedValue([]),
     loadRefProjects: jest.fn().mockResolvedValue([]),
     loadRefTeams: jest.fn().mockResolvedValue([]),
+    loadRefWorkspaces: jest.fn().mockResolvedValue([]),
     loadTeamMembershipIds: jest.fn().mockResolvedValue(new Set<string>()),
+    loadWorkspaceMembershipIds: jest.fn().mockResolvedValue(new Set<string>()),
     loadChainProjects: jest.fn().mockResolvedValue(new Map()),
     loadWorkspaceNames: jest.fn().mockResolvedValue(new Map()),
     loadLinkedRoadmapIds: jest.fn().mockResolvedValue(new Map()),
@@ -438,6 +440,130 @@ describe('AiContextRefsService.resolve', () => {
     ]);
   });
 
+  it('resolves workspaces for members with their slug, and denies non-members without a title', async () => {
+    const { service, repo, roadmapAuth, roadmapsRepo } = buildService();
+    repo.loadRefWorkspaces.mockResolvedValue([
+      { id: 'ws-member', name: 'Studio', slug: 'studio' },
+      { id: 'ws-no-slug', name: 'Early workspace', slug: null },
+      { id: 'ws-outsider', name: 'Private', slug: 'private' },
+    ]);
+    repo.loadWorkspaceMembershipIds.mockResolvedValue(
+      new Set(['ws-member', 'ws-no-slug', 'ws-missing']),
+    );
+
+    const result = await service.resolve('user-1', {
+      refs: [
+        { kind: 'workspace', id: 'ws-member' },
+        { kind: 'workspace', id: 'ws-member', label: 'Duplicate' },
+        { kind: 'workspace', id: 'ws-no-slug' },
+        { kind: 'workspace', id: 'ws-outsider' },
+        { kind: 'workspace', id: 'ws-missing' },
+      ],
+    });
+
+    expect(repo.loadRefWorkspaces).toHaveBeenCalledTimes(1);
+    expect(repo.loadRefWorkspaces).toHaveBeenCalledWith([
+      'ws-member',
+      'ws-no-slug',
+      'ws-outsider',
+      'ws-missing',
+    ]);
+    expect(repo.loadWorkspaceMembershipIds).toHaveBeenCalledTimes(1);
+    expect(repo.loadWorkspaceMembershipIds).toHaveBeenCalledWith('user-1', [
+      'ws-member',
+      'ws-no-slug',
+      'ws-outsider',
+    ]);
+    expect(roadmapAuth.filterViewableRoadmapIds).not.toHaveBeenCalled();
+    expect(roadmapsRepo.getAccessibleProjectIds).not.toHaveBeenCalled();
+    expect(result.refs).toEqual([
+      {
+        kind: 'workspace',
+        id: 'ws-member',
+        accessible: true,
+        title: 'Studio',
+        slug: 'studio',
+        status: null,
+        roadmap_id: null,
+        project_id: null,
+        workspace_id: 'ws-member',
+        parent_chain: [],
+      },
+      {
+        kind: 'workspace',
+        id: 'ws-no-slug',
+        accessible: true,
+        title: 'Early workspace',
+        slug: null,
+        status: null,
+        roadmap_id: null,
+        project_id: null,
+        workspace_id: 'ws-no-slug',
+        parent_chain: [],
+      },
+      {
+        kind: 'workspace',
+        id: 'ws-outsider',
+        accessible: false,
+        error_code: 'NOT_FOUND',
+      },
+      {
+        kind: 'workspace',
+        id: 'ws-missing',
+        accessible: false,
+        error_code: 'NOT_FOUND',
+      },
+    ]);
+    for (const ref of result.refs.slice(2)) {
+      expect(ref).not.toHaveProperty('title');
+      expect(ref).not.toHaveProperty('slug');
+    }
+  });
+
+  it.each(['loadRefWorkspaces', 'loadWorkspaceMembershipIds'] as const)(
+    'fails workspace refs closed on %s errors while other kinds still resolve',
+    async (loader) => {
+      const { service, repo } = buildService();
+      repo.loadRefWorkspaces.mockResolvedValue([
+        { id: 'ws-1', name: 'Studio', slug: 'studio' },
+        { id: 'ws-2', name: 'Private', slug: 'private' },
+      ]);
+      repo.loadWorkspaceMembershipIds.mockResolvedValue(new Set(['ws-1']));
+      repo[loader].mockRejectedValue(new Error('workspace lookup unavailable'));
+      repo.loadRefTeams.mockResolvedValue([
+        { id: 'team-1', name: 'Core', workspace_id: null, owner_id: 'user-1' },
+      ]);
+
+      const result = await service.resolve('user-1', {
+        refs: [
+          { kind: 'workspace', id: 'ws-1' },
+          { kind: 'workspace', id: 'ws-2' },
+          { kind: 'team', id: 'team-1' },
+        ],
+      });
+
+      expect(result.refs.slice(0, 2)).toEqual([
+        {
+          kind: 'workspace',
+          id: 'ws-1',
+          accessible: false,
+          error_code: 'LOOKUP_FAILED',
+        },
+        {
+          kind: 'workspace',
+          id: 'ws-2',
+          accessible: false,
+          error_code: 'LOOKUP_FAILED',
+        },
+      ]);
+      expect(result.refs[2]).toMatchObject({
+        kind: 'team',
+        accessible: true,
+        title: 'Core',
+      });
+    },
+  );
+
   it('resolves projects through getAccessibleProjectIds or ownership, 404-style otherwise', async () => {
     const { service, repo, roadmapsRepo } = buildService();
     repo.loadRefProjects.mockResolvedValue([
@@ -716,7 +842,10 @@ describe('AiContextResolveRefsDto', () => {
     expect(await validate(badKind)).toHaveLength(1);
 
     const ok = plainToInstance(AiContextResolveRefsDto, {
-      refs: [{ kind: 'roadmap', id: uuid(1), label: 'Roadmap' }],
+      refs: [
+        { kind: 'roadmap', id: uuid(1), label: 'Roadmap' },
+        { kind: 'workspace', id: uuid(2), label: 'Workspace' },
+      ],
     });
     expect(await validate(ok)).toHaveLength(0);
   });

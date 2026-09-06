@@ -15,6 +15,7 @@ import type {
   AiContextRefRoadmapRow,
   AiContextRefTaskRow,
   AiContextRefTeamRow,
+  AiContextRefWorkspaceRow,
   AiContextSearchNodesParams,
   AiContextTaskRow,
   IAiContextRepository,
@@ -434,6 +435,21 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
     });
   }
 
+  async loadRefWorkspaces(ids: string[]): Promise<AiContextRefWorkspaceRow[]> {
+    const rows = await this.loadByIds('workspaces', 'id, name, slug', ids);
+    return rows.flatMap((raw) => {
+      const id = readString(raw.id);
+      if (!id) return [];
+      return [
+        {
+          id,
+          name: readString(raw.name) ?? '',
+          slug: readString(raw.slug),
+        },
+      ];
+    });
+  }
+
   async loadTeamMembershipIds(
     userId: string,
     teamIds: string[],
@@ -450,6 +466,28 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
       if (error) throw new Error(error.message);
       for (const row of (data ?? []) as Array<{ team_id?: unknown }>) {
         const id = readString(row.team_id);
+        if (id) member.add(id);
+      }
+    }
+    return member;
+  }
+
+  async loadWorkspaceMembershipIds(
+    userId: string,
+    workspaceIds: string[],
+  ): Promise<Set<string>> {
+    const member = new Set<string>();
+    const ids = uniqueIds(workspaceIds);
+    if (ids.length === 0) return member;
+    for (const batch of chunk(ids, IN_FILTER_CHUNK_SIZE)) {
+      const { data, error } = await this.db
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', userId)
+        .in('workspace_id', batch);
+      if (error) throw new Error(error.message);
+      for (const row of (data ?? []) as Array<{ workspace_id?: unknown }>) {
+        const id = readString(row.workspace_id);
         if (id) member.add(id);
       }
     }

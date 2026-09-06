@@ -84,6 +84,7 @@ export const AI_CONTEXT_REF_KINDS = [
   'task',
   'milestone',
   'team',
+  'workspace',
 ] as const;
 export type AiContextRefKind = (typeof AI_CONTEXT_REF_KINDS)[number];
 
@@ -449,6 +450,7 @@ export interface AiContextResolvedRefDto {
   id: string;
   accessible: boolean;
   title?: string;
+  slug?: string | null;
   status?: string | null;
   roadmap_id?: string | null;
   project_id?: string | null;

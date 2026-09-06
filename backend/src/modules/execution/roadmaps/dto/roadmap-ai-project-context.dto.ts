@@ -23,11 +23,19 @@ export class RoadmapAiProjectMeetingsQueryDto {
   limit?: number;
 }
 
+export interface RoadmapAiProjectWorkspaceDto {
+  id: string;
+  name: string;
+  slug: string | null;
+}
+
 export interface RoadmapAiProjectDto {
   id: string;
   title: string;
   status: string;
   duration: string | null;
+  /** The workspace the project belongs to; null for an unhomed project. */
+  workspace: RoadmapAiProjectWorkspaceDto | null;
 }
 
 export interface RoadmapAiProjectContextMemberDto {
