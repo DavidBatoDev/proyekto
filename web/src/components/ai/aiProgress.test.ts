@@ -65,8 +65,33 @@ describe("assistant progress timeline logic", () => {
 		);
 
 		expect(merged.map((step) => step.seq)).toEqual([3, 4]);
-		expect(merged[0].title).toBe("Planning the next steps");
 		expect(merged[1].title).toBe("Finding the right roadmap item");
+	});
+
+	it("varies model-step labels across requests and keeps each event stable", () => {
+		const events = Array.from({ length: 10 }, (_, index) => ({
+			seq: 3,
+			ts: `2026-04-12T07:15:0${index}.000Z`,
+			event: "provider_attempt",
+			title: "Provider attempt",
+			status: "running" as const,
+			summary: "",
+		}));
+		const titles = events.map((event) => {
+			const first = mergeTimelineSteps([], [event]);
+			expect(mergeTimelineSteps(first, [event])).toEqual(first);
+			expect(
+				normalizeTimelineForDisplay({
+					traceId: "trace",
+					done: true,
+					detailMode: "structured",
+					steps: first,
+				})?.steps[0].title,
+			).toBe(first[0].title);
+			expect(first[0].title.toLowerCase()).not.toContain("plan");
+			return first[0].title;
+		});
+		expect(new Set(titles).size).toBeGreaterThan(1);
 	});
 
 	it("keeps friendly_minimal fallback behavior when explicitly requested", () => {
@@ -124,7 +149,7 @@ describe("assistant progress timeline logic", () => {
 		);
 
 		expect(merged).toHaveLength(1);
-		expect(merged[0].title).toBe("Gearing up your plan");
+		expect(merged[0].title).toBe("Connecting the dots");
 		expect(merged[0].summary).toBe(
 			"I reviewed the roadmap context and prepared 3 safe updates for staging.",
 		);

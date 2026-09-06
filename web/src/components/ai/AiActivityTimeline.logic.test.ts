@@ -305,7 +305,7 @@ describe("provider attempt decluttering", () => {
 		seq,
 		ts: `2026-04-12T07:15:${String(seq).padStart(2, "0")}.000Z`,
 		event: "provider_attempt",
-		title: "Planning the next steps",
+		title: "Mulling it over",
 		status: "running",
 		summary: "planning",
 	});
@@ -378,7 +378,7 @@ describe("declutter pipeline composition", () => {
 			...overrides,
 		});
 		const steps = [
-			mk(1, "provider_attempt", "Planning the next steps", {
+			mk(1, "provider_attempt", "Mulling it over", {
 				status: "running",
 			}),
 			mk(2, "assistant_thought", "Thinking", {
@@ -391,7 +391,7 @@ describe("declutter pipeline composition", () => {
 			mk(4, "tool_call_result", "Listed tasks under a parent item", {
 				toolName: "get_tasks_by_parent",
 			}),
-			mk(5, "provider_attempt", "Planning the next steps", {
+			mk(5, "provider_attempt", "Mulling it over", {
 				status: "running",
 			}),
 			mk(6, "assistant_thought", "Thinking", {
@@ -404,10 +404,10 @@ describe("declutter pipeline composition", () => {
 			mk(8, "tool_call_result", "Found the right roadmap item", {
 				toolName: "resolve_node_reference",
 			}),
-			mk(9, "provider_attempt", "Planning the next steps", {
+			mk(9, "provider_attempt", "Mulling it over", {
 				status: "running",
 			}),
-			mk(10, "plan_generated", "Finalizing your change plan"),
+			mk(10, "plan_generated", "Putting it together"),
 			mk(11, "auto_commit_async_completed", "Applied your changes"),
 		];
 		const visible = groupParallelSteps(
@@ -422,7 +422,7 @@ describe("declutter pipeline composition", () => {
 			"Listed tasks under a parent item",
 			"Thinking",
 			"Found the right roadmap item",
-			"Finalizing your change plan",
+			"Putting it together",
 			"Applied your changes",
 		]);
 	});

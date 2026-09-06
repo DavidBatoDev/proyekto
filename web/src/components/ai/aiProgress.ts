@@ -87,13 +87,13 @@ export const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
 	"run_step_completed",
 	"run_checkpoint",
 	"refs_resolved",
-	// provider_attempt stays VISIBLE ("Planning the next steps"): requests
+	// provider_attempt stays VISIBLE ("Mulling it over"): requests
 	// that call no read tools (plan drafts, direct answers) would otherwise
 	// show an empty "Gathering activity..." timeline for the whole run.
 ]);
 
 const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
-	// Curated mode shows model turns as "Planning the next steps";
+	// Curated mode shows model turns as "Mulling it over";
 	// friendly_minimal keeps only tool steps.
 	"provider_attempt",
 ]);
@@ -548,6 +548,29 @@ const getRouteSummary = (rawStep: RawActivityStep): string => {
 	return "I selected the best available path to handle your request safely.";
 };
 
+const PROVIDER_ATTEMPT_TITLES = [
+	"Mulling it over",
+	"Connecting the dots",
+	"Taking a closer look",
+	"Piecing things together",
+	"Following the thread",
+	"Thinking it through",
+	"Sorting things out",
+	"Turning it over",
+	"A little pondering",
+	"Working through it",
+] as const;
+
+const getProviderAttemptTitle = (step: RawActivityStep): string => {
+	// Event identity keeps the choice stable across polling, rerenders, and
+	// history reloads, while timestamps give new requests different wording.
+	let hash = 0;
+	for (const char of `${step.ts}:${step.seq}`) {
+		hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
+	}
+	return PROVIDER_ATTEMPT_TITLES[hash % PROVIDER_ATTEMPT_TITLES.length];
+};
+
 const getProviderAttemptSummary = (rawStep: RawActivityStep): string => {
 	const details = toRecord(rawStep.details);
 	const phase =
@@ -555,12 +578,12 @@ const getProviderAttemptSummary = (rawStep: RawActivityStep): string => {
 			? details.phase.trim().toLowerCase()
 			: "";
 	if (phase === "edit_plan" || phase === "execute") {
-		return "I am planning the roadmap updates now and validating each step before execution.";
+		return "I am working through the roadmap updates and checking the details.";
 	}
 	if (phase === "chat" || phase === "verify") {
 		return "I am composing the response and checking it against your request context.";
 	}
-	return "I am working through the next planning step for your request.";
+	return "I am taking a closer look at your request.";
 };
 
 /** `details.roadmap_title` on the commit/verify events, when the agent sent one. */
@@ -629,7 +652,7 @@ export const normalizeActivityStep = (
 		return {
 			...baseStep,
 			status: "running",
-			title: "Planning the next steps",
+			title: getProviderAttemptTitle(rawStep),
 			summary: getProviderAttemptSummary(rawStep),
 		};
 	}
@@ -657,13 +680,13 @@ export const normalizeActivityStep = (
 			status: rawStep.status === "error" ? "error" : "success",
 			title:
 				presentationMode === "curated"
-					? "Gearing up your plan"
-					: "Planning summary",
+					? "Connecting the dots"
+					: "Request summary",
 			summary:
 				summaryText ||
 				(presentationMode === "curated"
-					? "I prepared a concise planning summary before applying your roadmap changes."
-					: "Prepared a planning summary."),
+					? "I pulled together the key details for your request."
+					: "Gathered the key details."),
 		};
 	}
 
@@ -741,13 +764,13 @@ export const normalizeActivityStep = (
 			...baseStep,
 			title:
 				presentationMode === "curated"
-					? "Finalizing your change plan"
+					? "Putting it together"
 					: "Preparing your roadmap changes",
 			summary:
 				presentationMode === "curated"
 					? operationsCount != null
 						? `I prepared ${operationsCount} roadmap changes and validated the plan before applying.`
-						: "I finalized your roadmap change plan and prepared it for application."
+						: "I pulled the roadmap changes together and they are ready to apply."
 					: operationsCount != null
 						? `Prepared ${operationsCount} changes.`
 						: "Prepared your roadmap changes.",

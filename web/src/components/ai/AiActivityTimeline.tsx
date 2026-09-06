@@ -65,7 +65,7 @@ export function collapseToolCallPairs(
 	return steps.filter((step) => !consumedSeqs.has(step.seq));
 }
 
-// "Planning the next steps" (provider_attempt, one per model turn) is
+// "Mulling it over" (provider_attempt, one per model turn) is
 // redundant once the turn has real content — thought rows narrate the same
 // moments. Keep it only as the live trailing spinner between turns, or as
 // the sole row for no-tool turns so the timeline is never hollow (the reason
