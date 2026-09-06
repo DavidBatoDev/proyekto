@@ -312,5 +312,7 @@ def _render_ref_line(session: AgentSession, ref: ResolvedRef) -> str:
             detail = f' (under {parent_handle})'
     if ref.status:
         detail = f'{detail[:-1]}, status: {ref.status})' if detail else f' (status: {ref.status})'
+    if ref.kind == 'task':
+        detail = f' (id {ref.id}, {detail[2:]}' if detail else f' (id {ref.id})'
     where = f' in {_roadmap_descriptor(session, roadmap_id, roadmap_title)}' if roadmap_id else ''
     return f'- {mention} -> {ref.kind} "{title}"{detail}{where}{project_suffix}'

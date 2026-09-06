@@ -33,6 +33,7 @@ from app.core.memory.actor_context import (
 )
 from app.core.memory.pending_plan_manager import clear_pending_plan
 from app.core.runtime import runs, staging, terminal
+from app.core.runtime.entity_links import expand_entity_links
 from app.core.runtime.phases import execute, investigate, propose, verify
 from app.core.runtime.results import PhaseOutcome, StepResult
 from app.core.runtime.sentinels import RunInput
@@ -638,6 +639,7 @@ def _modes(ctx: StepContext, run: RunState, any_commit: bool) -> tuple[str, str,
 def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, started_at: float | None = None) -> StepResult:
     settings = ctx.settings
     segment_ended = run.status != 'running'
+    run.final_message = expand_entity_links(run.final_message or '', session, run)
     assistant_message = '' if run.status == 'running' else (run.final_message or '')
 
     step_commit_ids = set(ctx.step_commit_batch_ids)

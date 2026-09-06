@@ -245,7 +245,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn('- @Beta -> roadmap "Beta" (R2), project "Beta app"', lines)
         self.assertIn('- @Gamma -> roadmap "Gamma" (not loaded; call get_roadmap_overview to work on it)', lines)
         self.assertIn('- @Platform team -> team "Platform team"', lines)
-        self.assertIn('- @Fix it -> task "Fix the button" (under E2.F1, status: in_progress) in roadmap "Alpha" (focus)', lines)
+        self.assertIn(f'- @Fix it -> task "Fix the button" (id {TASK}, under E2.F1, status: in_progress) in roadmap "Alpha" (focus)', lines)
         self.assertIn('- @Alpha app -> project "Alpha app" (roadmap "Alpha" (focus))', lines)
         self.assertIn('- @Old thing -> not accessible (NOT_FOUND) -- tell the user you cannot see it', lines)
 

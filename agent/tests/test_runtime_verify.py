@@ -83,7 +83,7 @@ class DeterministicReportTests(unittest.TestCase):
         self.assertEqual(names['revision_advanced'], 'pass')
         self.assertEqual(names['history_recorded'], 'pass')
         self.assertEqual(names['no_repairs_needed'], 'pass')
-        self.assertIn('Committed 1 change to "Alpha"', report.summary)
+        self.assertIn(f'Committed 1 change to [Alpha](proyekto://roadmap/{ALPHA})', report.summary)
 
     def test_partial_and_failed(self):
         _ctx, session, run, _nest = _fixture()
@@ -91,13 +91,13 @@ class DeterministicReportTests(unittest.TestCase):
         _failed(run, BETA, 'Beta')
         report = verify.deterministic_report(session, run)
         self.assertEqual(report.status, 'partial')
-        self.assertIn('"Beta" failed: stale', report.summary)
+        self.assertIn(f'[Beta](proyekto://roadmap/{BETA}) failed: stale', report.summary)
         failed_run = runs.new_run(session, trace_id='t', user_message='x')
         _failed(failed_run, ALPHA, 'Alpha')
         _failed(failed_run, BETA, 'Beta', status='skipped')
         report = verify.deterministic_report(session, failed_run)
         self.assertEqual(report.status, 'failed')
-        self.assertIn('"Beta" was skipped', report.summary)
+        self.assertIn(f'[Beta](proyekto://roadmap/{BETA}) was skipped', report.summary)
 
     def test_warnings_lower_diff_repairs_and_history(self):
         _ctx, session, run, _nest = _fixture()
@@ -148,8 +148,8 @@ class ModelReportTests(unittest.TestCase):
         with patched_llm([ProviderDown('down')]):
             outcome = verify.run(ctx, session, run)
         self.assertEqual(outcome.kind, 'verified')
-        self.assertIn('Committed 1 change to "Alpha"', outcome.assistant_message)
-        self.assertIn('"Beta" failed: stale', outcome.assistant_message)
+        self.assertIn(f'Committed 1 change to [Alpha](proyekto://roadmap/{ALPHA})', outcome.assistant_message)
+        self.assertIn(f'[Beta](proyekto://roadmap/{BETA}) failed: stale', outcome.assistant_message)
         self.assertEqual(run.verify.status, 'partial')
 
     def test_past_soft_budget_skips_the_model_call(self):
@@ -160,7 +160,7 @@ class ModelReportTests(unittest.TestCase):
             outcome = verify.run(ctx, session, run)
         self.assertEqual(FakeLLM.calls, [])
         self.assertEqual(outcome.kind, 'verified')
-        self.assertIn('Committed 1 change to "Alpha"', outcome.assistant_message)
+        self.assertIn(f'Committed 1 change to [Alpha](proyekto://roadmap/{ALPHA})', outcome.assistant_message)
         self.assertEqual(run.verify.status, 'verified')
         self.assertEqual(run.verify.summary, outcome.assistant_message)
 
@@ -208,7 +208,7 @@ class OutcomeBlockTests(unittest.TestCase):
         self.assertIn('UNDO applied', block)
         self.assertIn('prior state restored', block)
         self.assertIn('changes: ASSIGNEE_CHANGED 1', block)
-        self.assertIn('modified task "Target task"', block)
+        self.assertIn('modified task [Target task](proyekto://task/t1)', block)
         self.assertIn('HAS been applied', block)
 
     def test_ordinary_commit_is_not_called_an_undo(self):
@@ -216,7 +216,7 @@ class OutcomeBlockTests(unittest.TestCase):
         _committed(run, ALPHA, 'Alpha')
         block = verify._outcome_block(session, run, verify.deterministic_report(session, run))
         self.assertNotIn('UNDO', block)
-        self.assertIn('"Alpha": committed (created 1)', block)
+        self.assertIn(f'[Alpha](proyekto://roadmap/{ALPHA}): committed (created 1)', block)
 
 
 class UndoRunReportTests(unittest.TestCase):
@@ -255,7 +255,7 @@ class UndoRunReportTests(unittest.TestCase):
             outcome = verify.run(ctx, session, run)
         self.assertEqual(FakeLLM.calls, [])
         self.assertEqual(outcome.kind, 'verified')
-        self.assertEqual(outcome.assistant_message, 'Undid the last change on "Alpha" — restored task "Target task".')
+        self.assertEqual(outcome.assistant_message, f'Undid the last change on [Alpha](proyekto://roadmap/{ALPHA}) — restored task [Target task](proyekto://task/t1).')
         self.assertEqual(run.verify.summary, outcome.assistant_message)
         self.assertEqual(run.verify.status, 'verified')
 
@@ -273,4 +273,4 @@ class UndoRunReportTests(unittest.TestCase):
         run.commits[0].error_message = 'stale'
         self.assertFalse(verify.is_undo_run(run) and False)
         summary = verify.undo_summary(session, run)
-        self.assertIn('"Alpha" failed: stale', summary)
+        self.assertIn(f'[Alpha](proyekto://roadmap/{ALPHA}) failed: stale', summary)

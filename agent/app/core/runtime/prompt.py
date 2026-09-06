@@ -302,7 +302,7 @@ def scope_block(session: AgentSession) -> str:
         title = (context.title if context is not None else None) or 'Untitled roadmap'
         return (
             '# Scope\n'
-            f'Focus roadmap: "{title}" (bare handles). You may also read or edit '
+            f'Focus roadmap: "{title}" (id {scope.roadmap_id}; bare handles). You may also read or edit '
             'other roadmaps the user can access.'
         )
     workspace = session.metadata.workspace_context

@@ -123,7 +123,7 @@ class BlockOrderTests(unittest.TestCase):
         positions = [_pos(system, header) for header in headers]
         self.assertEqual(positions, sorted(positions), headers)
         self.assertGreater(positions[0], len(prompt.static_prefix()) - 1)
-        self.assertIn('Focus roadmap: "Alpha" (bare handles)', system)
+        self.assertIn(f'Focus roadmap: "Alpha" (id {FOCUS}; bare handles)', system)
         self.assertIn('## R1 — "Beta"', system)
         self.assertIn('R1.E1. Billing', system)
         self.assertIn('# Project context\nRoadmap: "Alpha"\nProject: Alpha app', system)
@@ -304,6 +304,23 @@ class WorkspaceScopeTests(unittest.TestCase):
 
 
 class MessagesAndPhaseTailTests(unittest.TestCase):
+    def test_static_prefix_teaches_entity_links(self) -> None:
+        prefix = prompt.static_prefix()
+        self.assertIn('# Entity links', prefix)
+        self.assertIn('[Title](proyekto://<kind>/<id>)', prefix)
+        self.assertIn('`E1`, `E1.F2`, `M1`, `R2`, `R2.E1`', prefix)
+        self.assertIn('Never show a uuid or handle as visible text', prefix)
+        self.assertIn('`search_tasks` matches carry ids', prefix)
+        self.assertIn('Entity links are only for assistant reply text and final reports', prefix)
+        self.assertIn('Never put entity links in any tool arguments', prefix)
+        for tool_text in (
+            '`ask_user` questions or options',
+            '`propose` summaries, next_steps or hierarchy titles',
+            '`add_task_comments` comment content',
+            '`save_memory` content',
+        ):
+            self.assertIn(tool_text, prefix)
+
     def test_build_messages_shape(self) -> None:
         session = _roadmap_session(with_beta=False)
         session.messages = []
@@ -332,6 +349,9 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertNotIn('{roadmap_', execute)
         verify = prompt.render_phase_tail('verify')
         self.assertTrue(verify.startswith('# Run\nPhase: verify.'))
+        self.assertIn('[Title](proyekto://<kind>/<id>)', verify)
+        self.assertIn('ids from `# Outcome`', verify)
+        self.assertIn('Tool arguments, including `propose` summaries and next_steps, use plain titles', verify)
         self.assertIn('never re-apply anything', verify)
         self.assertEqual(prompt.render_phase_tail('propose'), '')
 

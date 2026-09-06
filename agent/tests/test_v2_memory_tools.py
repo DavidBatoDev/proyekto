@@ -120,6 +120,48 @@ def _handler(nest):
 
 
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_strips_entity_links_from_saved_content_and_confirmation(self) -> None:
+        nest = _FakeNestClient()
+        content = (
+            r'Keep [Growth \[Q4\]](proyekto://epic/E1) in '
+            '[Alpha](proyekto://roadmap/11111111-1111-1111-1111-111111111111). '
+            'Use **quarter names** and [docs](https://example.com).'
+        )
+        expected = 'Keep Growth [Q4] in Alpha. Use **quarter names** and [docs](https://example.com).'
+        context = {'auth_header': 'Bearer t'}
+        args = {
+            'content': content, 'roadmap_id': 'rm1', 'source': 'inferred',
+            'scope': 'project', 'category': 'decision',
+        }
+        result = await _handler(nest).execute('save_memory', args, context)
+        self.assertEqual(nest.created, [('rm1', {
+            'content': expected, 'source': 'inferred', 'scope': 'project', 'category': 'decision',
+        })])
+        self.assertEqual(result['memory']['content'], expected)
+        self.assertNotIn('proyekto:', result['memory']['content'])
+        self.assertTrue(context['memory_notes_dirty'])
+        self.assertEqual(args['content'], content)
+
+    async def test_strips_before_memory_truncation(self) -> None:
+        nest = _FakeNestClient()
+        title = 'Quarter ' * 80
+        result = await _handler(nest).execute(
+            'save_memory',
+            {'content': f'[{title}](proyekto://epic/E1)', 'roadmap_id': 'rm1'},
+            {},
+        )
+        self.assertEqual(nest.created[0][1]['content'], title.strip()[:500])
+        self.assertEqual(result['memory']['content'], title.strip()[:500])
+
+    async def test_validates_cleaned_memory_content(self) -> None:
+        nest = _FakeNestClient()
+        for content in ('[](proyekto://epic/E1)', '[x](proyekto://task/E1)'):
+            result = await _handler(nest).execute(
+                'save_memory', {'content': content, 'roadmap_id': 'rm1'}, {},
+            )
+            self.assertEqual(result['error']['code'], 'INVALID_MEMORY_CONTENT')
+        self.assertEqual(nest.created, [])
+
     async def test_save_memory_creates_and_marks_dirty(self) -> None:
         nest = _FakeNestClient()
         context = {'focus_roadmap_id': 'rm1', 'auth_header': 'Bearer t'}

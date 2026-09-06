@@ -80,6 +80,19 @@ class _Base(unittest.TestCase):
 
 
 class RoadmapScopeTests(_Base):
+    def test_reply_entity_handles_expand_on_wire_and_in_persisted_history(self):
+        store, nest, service = _bootstrap(roadmap_session())
+        with patched_llm([text_resp('[X](proyekto://epic/E1)')]):
+            _ctx, result = _send(service, 'sess-alpha', 'Which epics are in this roadmap?')
+        expected = f'[X](proyekto://epic/{ALPHA_EPIC})'
+        self.assertEqual(result.assistant_message, expected)
+        self.assertEqual((result.run.status, result.run.next), ('done', 'done'))
+        persisted = store.get('sess-alpha')
+        self.assertEqual(persisted.messages[-1].role, 'assistant')
+        self.assertEqual(persisted.messages[-1].content, expected)
+        self.assertEqual(persisted.metadata.run.final_message, expected)
+        self.assertEqual(nest.commit_calls, [])
+
     def test_small_edit_executes_immediately_and_reports_commit(self):
         store, nest, service = _bootstrap(roadmap_session())
         with patched_llm([

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging_utils import log_event, summarize_tool_result
+from app.core.runtime.entity_links import strip_entity_links
 
 from .base import ToolHandlerBase
 
@@ -75,7 +76,7 @@ class CommentToolHandler(ToolHandlerBase):
                         ),
                     }
                 }
-            content = str(args.get('content') or '').strip()
+            content = strip_entity_links(str(args.get('content') or '')).strip()
             if not content or len(content) > _MAX_CONTENT_CHARS:
                 return {
                     'error': {

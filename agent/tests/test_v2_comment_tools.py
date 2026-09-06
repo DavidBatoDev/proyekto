@@ -136,6 +136,33 @@ def _handler(nest):
 
 
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_strips_entity_links_from_posted_content_only(self) -> None:
+        nest = _FakeNestClient()
+        content = (
+            r'Follow [Login \[Q4\]](proyekto://feature/E1.F2) in '
+            '[Alpha](proyekto://roadmap/11111111-1111-1111-1111-111111111111). '
+            'See **notes** and [docs](https://example.com).'
+        )
+        args = {'task_ids': ['t1', 't2'], 'content': content, 'roadmap_id': 'rm1'}
+        result = await _handler(nest).execute('add_task_comments', args, {'auth_header': 'Bearer t'})
+        self.assertEqual(nest.posted, [('rm1', {
+            'task_ids': ['t1', 't2'],
+            'content': 'Follow Login [Q4] in Alpha. See **notes** and [docs](https://example.com).',
+        })])
+        self.assertEqual(result['posted'], 2)
+        self.assertNotIn('proyekto:', nest.posted[0][1]['content'])
+        self.assertEqual(args['content'], content)
+
+    async def test_validates_cleaned_comment_content(self) -> None:
+        nest = _FakeNestClient()
+        result = await _handler(nest).execute(
+            'add_task_comments',
+            {'task_ids': ['t1'], 'content': '[](proyekto://task/E1)', 'roadmap_id': 'rm1'},
+            {},
+        )
+        self.assertEqual(result['error']['code'], 'INVALID_COMMENT_CONTENT')
+        self.assertEqual(nest.posted, [])
+
     async def test_posts_batch_and_passes_results_through(self) -> None:
         nest = _FakeNestClient()
         context = {'auth_header': 'Bearer t'}

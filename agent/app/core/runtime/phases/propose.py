@@ -17,6 +17,7 @@ from app.core.contracts.sessions import AgentSession
 from app.core.logging_utils import log_event
 from app.core.memory.pending_plan_manager import record_pending_plan_from_planner_output
 from app.core.runtime import context_cache
+from app.core.runtime.entity_links import entity_link
 from app.core.runtime.handles import handle_map_for_roadmap
 from app.core.runtime.operation_contracts import read_operation_title
 from app.core.runtime.results import PhaseOutcome
@@ -262,8 +263,9 @@ def _auto_summary(targets: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for target in targets:
         count = int(target.get('operations_count') or 0)
-        title = target.get('roadmap_title') or target.get('roadmap_id')
-        parts.append(f'{count} change{"s" if count != 1 else ""} to "{title}"')
+        title = target.get('roadmap_title') or 'Untitled roadmap'
+        link = entity_link(title, 'roadmap', str(target.get('roadmap_id') or ''))
+        parts.append(f'{count} change{"s" if count != 1 else ""} to {link}')
     return 'Proposed ' + '; '.join(parts) + '.'
 
 

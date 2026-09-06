@@ -15,6 +15,7 @@ from app.core.engine.llm_client import LLMClient
 from app.core.engine.loop import run_loop
 from app.core.logging_utils import log_event
 from app.core.runtime import runs, terminal
+from app.core.runtime.entity_links import entity_link
 from app.core.runtime.handles import merged_handle_map
 from app.core.runtime.phases import propose as propose_phase
 from app.core.runtime.prompt import build_messages
@@ -52,7 +53,11 @@ def _label(session: AgentSession, commit: RunCommit, batch: Any) -> str:
     if not title:
         context = session.metadata.roadmaps.get(commit.roadmap_id)
         title = context.title if context is not None else None
-    return f'"{title}"' if title else f'roadmap {commit.roadmap_id}'
+    return title or 'Untitled roadmap'
+
+
+def _link(label: str, roadmap_id: str) -> str:
+    return entity_link(label, 'roadmap', roadmap_id)
 
 
 def deterministic_report(session: AgentSession, run_state: Any) -> VerifyReport:
@@ -137,7 +142,7 @@ def deterministic_summary(session: AgentSession, run_state: Any) -> str:
     parts: list[str] = []
     for commit in run_state.commits:
         batch = runs.batch_by_id(run_state, commit.batch_id)
-        label = _label(session, commit, batch)
+        label = _link(_label(session, commit, batch), commit.roadmap_id)
         count = len(batch.operations) if batch is not None else 0
         if commit.status == 'committed':
             parts.append(f'Committed {count} change{"s" if count != 1 else ""} to {label}')
@@ -158,7 +163,7 @@ def _outcome_block(session: AgentSession, run_state: Any, report: VerifyReport) 
     ]
     for commit in run_state.commits:
         batch = runs.batch_by_id(run_state, commit.batch_id)
-        label = _label(session, commit, batch)
+        label = _link(_label(session, commit, batch), commit.roadmap_id)
         source = str(getattr(batch, 'source', '') or '') if batch is not None else ''
         if commit.status == 'committed':
             summary = ', '.join(f'{k} {v}' for k, v in sorted(commit.impacted_summary.items()) if v)
@@ -177,7 +182,8 @@ def _outcome_block(session: AgentSession, run_state: Any, report: VerifyReport) 
             if diff:
                 lines.append(f'  changes: {diff}')
             for item in commit.impacted_items[:25]:
-                lines.append(f'  - {item.impact} {item.node_type} "{item.title or item.node_id}"')
+                link = entity_link(item.title or f'Untitled {item.node_type}', item.node_type, item.node_id)
+                lines.append(f'  - {item.impact} {item.node_type} {link}')
         else:
             lines.append(f'- {label}: {commit.status}' + (f' — {commit.error_message}' if commit.error_message else ''))
     lines.append('# Checks')
@@ -205,9 +211,10 @@ def undo_summary(session: AgentSession, run_state: Any) -> str:
     parts: list[str] = []
     for commit in run_state.commits:
         batch = runs.batch_by_id(run_state, commit.batch_id)
-        label = _label(session, commit, batch)
+        label = _link(_label(session, commit, batch), commit.roadmap_id)
         items = [
-            f'{_IMPACT_VERB.get(str(item.impact or ""), "restored")} {item.node_type} "{item.title or item.node_id}"'
+            f'{_IMPACT_VERB.get(str(item.impact or ""), "restored")} {item.node_type} '
+            + entity_link(item.title or f'Untitled {item.node_type}', item.node_type, item.node_id)
             for item in commit.impacted_items[:5]
         ]
         extra = len(commit.impacted_items) - len(items)
