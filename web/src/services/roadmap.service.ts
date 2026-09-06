@@ -375,19 +375,22 @@ export interface QuickCreateTaskFromTimerDto {
 }
 
 export interface UpdateTaskDto {
-	feature_id?: string;
 	title?: string;
 	description?: string | null;
 	status?: TaskStatus;
 	priority?: TaskPriority;
 	work_type?: TaskWorkType;
-	position?: number;
 	board_order?: number;
 	assignee_id?: string | null;
 	assignee_ids?: string[];
 	due_date?: string | null;
 	completed_at?: string;
 	checklist?: ChecklistItem[];
+}
+
+export interface MoveTaskDto {
+	feature_id: string;
+	position: number;
 }
 
 export interface AddTaskAttachmentDto {
@@ -1110,6 +1113,18 @@ export const taskService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, `Update task ${id}`);
+		}
+	},
+
+	async move(id: string, data: MoveTaskDto): Promise<RoadmapTask> {
+		try {
+			const response = await apiClient.patch<ApiResponse<RoadmapTask>>(
+				`/api/tasks/${id}/move`,
+				data,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Move task ${id}`);
 		}
 	},
 

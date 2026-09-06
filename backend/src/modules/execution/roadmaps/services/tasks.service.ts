@@ -6,6 +6,7 @@ import {
   CreateTaskDto,
   QuickCreateTaskFromTimerDto,
   UpdateTaskDto,
+  MoveTaskDto,
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 import {
@@ -142,25 +143,8 @@ export class TasksService {
     if (dto.assignee_ids !== undefined || dto.assignee_id !== undefined) {
       this.assertAssignCapability(ctx);
     }
-    const movingFeature =
-      dto.feature_id !== undefined && dto.feature_id !== existing.feature_id;
-    if (movingFeature) {
-      const targetCtx = await this.roadmapAuthz.assertFeaturePermission(
-        dto.feature_id as string,
-        userId,
-        'roadmap.create_tasks',
-      );
-      if (targetCtx.roadmapId !== ctx.roadmapId) {
-        throw new NotFoundException('Feature not found');
-      }
-    }
     const task = await this.repo.update(id, dto, userId);
-    // A cross-feature move affects the derived status of both the feature the
-    // task left and the one it landed in.
     await this.featureStatusSync.syncAfterTaskChange(task.feature_id);
-    if (movingFeature) {
-      await this.featureStatusSync.syncAfterTaskChange(existing.feature_id);
-    }
     // Notify only assignees that are newly added by this update.
     const previousAssignees = new Set(this.assigneeIdsOf(existing));
     const currentAssignees = this.assigneeIdsOf(task);
@@ -193,6 +177,44 @@ export class TasksService {
           ? { assignees: this.activity.assigneeSummary(currentAssignees) }
           : {}),
       },
+    });
+    return task;
+  }
+
+  async move(id: string, dto: MoveTaskDto, userId: string) {
+    const existing = await this.repo.findById(id);
+    if (!existing) throw new NotFoundException('Task not found');
+    const sourceCtx = await this.roadmapAuthz.assertTaskPermission(
+      id,
+      userId,
+      'roadmap.edit',
+    );
+    const targetCtx = await this.roadmapAuthz.assertFeaturePermission(
+      dto.feature_id,
+      userId,
+      'roadmap.create_tasks',
+    );
+    if (targetCtx.roadmapId !== sourceCtx.roadmapId) {
+      throw new NotFoundException('Feature not found');
+    }
+
+    const task = await this.repo.update(id, dto, userId);
+    await this.featureStatusSync.syncAfterTaskChange(task.feature_id);
+    if (task.feature_id !== existing.feature_id) {
+      await this.featureStatusSync.syncAfterTaskChange(existing.feature_id);
+    }
+    const changes = this.activity.diff(existing, task, TASK_TRACKED_FIELDS);
+    this.effects.emit(sourceCtx, userId, {
+      action: this.activity.taskUpdateAction({
+        assigneesChanged: false,
+        assigneesAdded: 0,
+        statusChanged: false,
+        featureChanged: true,
+      }),
+      entityType: 'task',
+      entityId: id,
+      title: task.title ?? existing.title,
+      metadata: { changes },
     });
     return task;
   }

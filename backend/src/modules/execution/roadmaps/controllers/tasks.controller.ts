@@ -20,6 +20,7 @@ import {
   UpdateTaskDto,
   BulkReorderDto,
   QuickCreateTaskFromTimerDto,
+  MoveTaskDto,
 } from '../dto/roadmaps.dto';
 
 @Controller('tasks')
@@ -102,6 +103,15 @@ export class TasksController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.tasksService.update(id, dto, user.id);
+  }
+
+  @Patch(':id/move')
+  move(
+    @Param('id') id: string,
+    @Body() dto: MoveTaskDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tasksService.move(id, dto, user.id);
   }
 
   @Delete(':id')

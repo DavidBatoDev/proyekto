@@ -137,7 +137,7 @@ export function registerTaskWriteTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'Update a task',
       description:
-        'Update a task’s fields (title, description, status, priority, due date, position). Use task_assign to change assignees.',
+        'Update a task’s fields (title, description, status, priority, due date). Use task_assign to change assignees.',
       inputSchema: {
         task_id: z.string().uuid(),
         title: z.string().min(1).max(200).optional(),
@@ -145,24 +145,15 @@ export function registerTaskWriteTools(server: McpServer, deps: McpToolDeps) {
         status: taskStatus.optional(),
         priority: taskPriority.optional(),
         due_date: z.string().nullable().optional(),
-        position: z.number().int().min(0).optional(),
       },
       annotations: {},
     },
-    async ({
-      task_id,
-      title,
-      description,
-      status,
-      priority,
-      due_date,
-      position,
-    }) =>
+    async ({ task_id, title, description, status, priority, due_date }) =>
       runTool(async () => {
         requireScope(deps.caller, 'tasks:write');
         const task = await deps.s.tasks.update(
           task_id,
-          { title, description, status, priority, due_date, position },
+          { title, description, status, priority, due_date },
           uid,
         );
         auditWrite(

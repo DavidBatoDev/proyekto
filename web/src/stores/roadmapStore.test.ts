@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { taskService } from "@/services/roadmap.service";
 import type {
 	AgentCommitImpactedItem,
 	AgentOperation,
@@ -216,5 +217,39 @@ describe("roadmapStore.applyAiCommitImpactedItems assignment", () => {
 		const task = findTask("task-solo");
 		expect(task?.assignee_ids).toEqual(["u-ana"]);
 		expect(task?.assignee_id).toBe("u-ana");
+	});
+});
+
+describe("roadmapStore task update payloads", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		useRoadmapStore.getState().resetRoadmap();
+		seed(makeTask({ position: 7 }));
+	});
+
+	it("does not resend the cached position during an ordinary task edit", async () => {
+		const update = vi
+			.spyOn(taskService, "update")
+			.mockResolvedValue(makeTask({ title: "Renamed", position: 7 }));
+
+		await useRoadmapStore
+			.getState()
+			.updateTask(makeTask({ title: "Renamed", position: 7 }));
+
+		expect(update).toHaveBeenCalledOnce();
+		expect(update.mock.calls[0]?.[1]).not.toHaveProperty("position");
+	});
+
+	it("does not resend the cached position during a status update", async () => {
+		const update = vi
+			.spyOn(taskService, "update")
+			.mockResolvedValue(makeTask({ status: "in_progress", position: 7 }));
+
+		await useRoadmapStore
+			.getState()
+			.updateTaskStatusIntent("task-1", "in_progress");
+
+		expect(update).toHaveBeenCalledOnce();
+		expect(update.mock.calls[0]?.[1]).not.toHaveProperty("position");
 	});
 });

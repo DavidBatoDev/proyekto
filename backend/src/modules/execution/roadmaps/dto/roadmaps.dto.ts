@@ -307,7 +307,6 @@ export class QuickCreateTaskFromTimerDto {
 }
 
 export class UpdateTaskDto {
-  @IsUUID() @IsOptional() feature_id?: string;
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() description?: string | null;
   @IsEnum(['urgent', 'high', 'medium', 'low']) @IsOptional() priority?: string;
@@ -319,7 +318,6 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsUUID('all', { each: true })
   assignee_ids?: string[];
-  @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsNumber() @IsOptional() @Min(0) board_order?: number;
   @IsDateString() @IsOptional() due_date?: string | null;
   @IsDateString() @IsOptional() completed_at?: string;
@@ -331,6 +329,11 @@ export class UpdateTaskDto {
   @ValidateNested({ each: true })
   @Type(() => ChecklistItemDto)
   checklist?: ChecklistItemDto[];
+}
+
+export class MoveTaskDto {
+  @IsUUID() feature_id: string;
+  @IsNumber() @Min(0) position: number;
 }
 
 // Comment/Attachment DTOs

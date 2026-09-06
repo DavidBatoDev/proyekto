@@ -1,6 +1,7 @@
 import {
   CreateTaskDto,
   UpdateTaskDto,
+  MoveTaskDto,
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 
@@ -9,7 +10,11 @@ export interface ITasksRepository {
   findByRoadmap(roadmapId: string): Promise<any[]>;
   findById(id: string): Promise<any | null>;
   create(dto: CreateTaskDto, userId: string): Promise<any>;
-  update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any>;
+  update(
+    id: string,
+    dto: UpdateTaskDto & Partial<MoveTaskDto>,
+    userId?: string,
+  ): Promise<any>;
   bulkReorder(featureId: string, dto: BulkReorderDto): Promise<void>;
   bulkReorderByStatus(
     roadmapId: string,

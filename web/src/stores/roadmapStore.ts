@@ -2137,7 +2137,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				status: task.status,
 				priority: task.priority,
 				work_type: task.work_type,
-				position: task.position ?? undefined,
 				assignee_id: task.assignee_id ?? undefined,
 				// Only sent when the caller explicitly set the multi-assignee list;
 				// undefined tells the backend to leave assignees untouched.
@@ -2221,7 +2220,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 						title: taskForRequest.title,
 						status: intentStatus.status,
 						priority: taskForRequest.priority,
-						position: taskForRequest.position,
 						assignee_id: taskForRequest.assignee_id,
 						due_date: taskForRequest.due_date,
 						completed_at: taskForRequest.completed_at,
@@ -2586,7 +2584,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			// Step 1: move the task to the target feature with a safe temp
 			// position that won't collide with any existing task there.
 			const safePosition = orderedTargetTaskIds.length * 1000 + 5000;
-			await taskService.update(taskId, {
+			await taskService.move(taskId, {
 				feature_id: targetFeatureId,
 				position: safePosition,
 			});

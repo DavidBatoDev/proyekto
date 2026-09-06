@@ -1,10 +1,11 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { ConflictException, Injectable, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
 import { ITasksRepository } from './tasks.repository.interface';
 import {
   CreateTaskDto,
   UpdateTaskDto,
+  MoveTaskDto,
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 
@@ -266,7 +267,11 @@ export class TasksRepositorySupabase implements ITasksRepository {
     return this.findById(data.id);
   }
 
-  async update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any> {
+  async update(
+    id: string,
+    dto: UpdateTaskDto & Partial<MoveTaskDto>,
+    userId?: string,
+  ): Promise<any> {
     // board_order needs the task's existing feature_id when the caller
     // changes status without an explicit board_order (e.g. mobile bucket
     // drag) — fetch existing eagerly in that case even if userId is absent.
@@ -312,6 +317,11 @@ export class TasksRepositorySupabase implements ITasksRepository {
       .from('roadmap_tasks')
       .update(dbPayload)
       .eq('id', id);
+    if (error?.code === '23505') {
+      throw new ConflictException(
+        'Task order changed while this update was being saved. Refresh and try again.',
+      );
+    }
     if (error) throw new Error(error.message);
 
     let assigneeChanges: { added: string[]; removed: string[] } = {
