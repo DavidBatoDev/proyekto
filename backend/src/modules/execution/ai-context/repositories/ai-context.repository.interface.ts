@@ -80,6 +80,16 @@ export interface AiContextRefTaskRow {
   id: string;
   title: string;
   status: string | null;
+  assignee_id: string | null;
+  assignees: {
+    assignee_id: string;
+    assigned_at: string | null;
+    profile: {
+      id: string;
+      display_name: string | null;
+      avatar_url: string | null;
+    } | null;
+  }[];
   feature: {
     id: string;
     title: string;

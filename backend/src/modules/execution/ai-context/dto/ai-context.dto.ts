@@ -438,6 +438,12 @@ export interface AiContextParentChainEntryDto {
 
 export type AiContextRefErrorCode = 'NOT_FOUND' | 'LOOKUP_FAILED';
 
+export interface AiContextRefAssigneeDto {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
 export interface AiContextResolvedRefDto {
   kind: AiContextRefKind;
   id: string;
@@ -449,6 +455,10 @@ export interface AiContextResolvedRefDto {
   workspace_id?: string | null;
   /** Nearest-first: task -> feature -> epic -> roadmap -> project -> workspace. */
   parent_chain?: AiContextParentChainEntryDto[];
+  /** Tasks only: stored primary first, then assignment time, capped at five. */
+  assignees?: AiContextRefAssigneeDto[];
+  /** Total unique assignees with a profile, before the response cap. */
+  assignee_count?: number;
   error_code?: AiContextRefErrorCode;
 }
 

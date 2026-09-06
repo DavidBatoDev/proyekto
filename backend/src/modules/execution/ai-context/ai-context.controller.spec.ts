@@ -1,4 +1,9 @@
+/* eslint-disable @typescript-eslint/unbound-method -- Handler references are metadata lookup targets, never invoked. */
+import 'reflect-metadata';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { AiContextController } from './ai-context.controller';
+import { AiContextThrottlerGuard } from './guards/ai-context-throttler.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import type { RoadmapAiProjectMeetingsQueryDto } from '../roadmaps/dto/roadmap-ai-project-context.dto';
 import type {
@@ -10,6 +15,23 @@ import type {
   AiContextSearchQueryDto,
   AiContextTasksQueryDto,
 } from './dto/ai-context.dto';
+
+describe('AiContextController rate-limit wiring', () => {
+  it('authenticates once at class level and throttles resolve-refs per actor at 60 requests per minute', () => {
+    const handler = AiContextController.prototype.resolveRefs;
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
+      AiContextThrottlerGuard,
+    ]);
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(60);
+    expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60_000);
+    expect(Reflect.getMetadata(GUARDS_METADATA, AiContextController)).toEqual([
+      SupabaseAuthGuard,
+    ]);
+    expect(
+      Reflect.getMetadata('THROTTLER:LIMITdefault', AiContextController),
+    ).toBeUndefined();
+  });
+});
 
 describe('AiContextController trace forwarding', () => {
   const user: AuthenticatedUser = { id: 'user-1' };

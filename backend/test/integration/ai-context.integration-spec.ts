@@ -55,6 +55,12 @@ type ResolvedRef = {
   project_id?: string | null;
   roadmap_id?: string | null;
   parent_chain?: Array<{ kind: string; id: string; title: string }>;
+  assignees?: Array<{
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  }>;
+  assignee_count?: number;
   error_code?: string;
 };
 
@@ -100,6 +106,11 @@ describe('AI context family (/api/ai/context)', () => {
     await h.boot();
     owner = await h.createUser('aic-owner');
     member = await h.createUser('aic-member');
+    const { error: memberProfileError } = await h.admin
+      .from('profiles')
+      .update({ display_name: 'AI context member' })
+      .eq('id', member.id);
+    if (memberProfileError) throw new Error(memberProfileError.message);
     outsider = await h.createUser('aic-outsider');
     needle = `alpha launch ${h.runId}`;
 
@@ -519,6 +530,14 @@ describe('AI context family (/api/ai/context)', () => {
       const task = byKey.get(`task:${taskAssigned}`)!;
       expect(task.accessible).toBe(true);
       expect(task.title).toBe(`Alpha task ${h.runId}`);
+      expect(task.assignees).toEqual([
+        {
+          id: member.id,
+          display_name: 'AI context member',
+          avatar_url: null,
+        },
+      ]);
+      expect(task.assignee_count).toBe(1);
       expect(task).toMatchObject({
         roadmap_id: roadmapA,
         project_id: projectA,
@@ -565,6 +584,8 @@ describe('AI context family (/api/ai/context)', () => {
         });
         // A denial never carries a title (no existence leak).
         expect(denied.title).toBeUndefined();
+        expect(denied.assignees).toBeUndefined();
+        expect(denied.assignee_count).toBeUndefined();
       }
     });
 

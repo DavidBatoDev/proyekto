@@ -4,6 +4,7 @@ import { RoadmapsModule } from '../roadmaps/roadmaps.module';
 import { TeamsModule } from '../teams/teams.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { AiContextController } from './ai-context.controller';
+import { AiContextThrottlerGuard } from './guards/ai-context-throttler.guard';
 import { AI_CONTEXT_REPOSITORY } from './repositories/ai-context.repository.interface';
 import { AiContextRepositorySupabase } from './repositories/ai-context.repository.supabase';
 import { AiContextService } from './services/ai-context.service';
@@ -23,6 +24,7 @@ import { AiContextRefsService } from './services/ai-context-refs.service';
   imports: [RoadmapsModule, ProjectsModule, WorkspacesModule, TeamsModule],
   controllers: [AiContextController],
   providers: [
+    AiContextThrottlerGuard,
     AiContextService,
     AiContextRefsService,
     AiContextKnowledgeService,

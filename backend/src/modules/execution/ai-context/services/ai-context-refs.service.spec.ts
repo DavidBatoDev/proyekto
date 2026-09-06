@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AiContextResolveRefsDto } from '../dto/ai-context.dto';
+import type { AiContextRefTaskRow } from '../repositories/ai-context.repository.interface';
 import { AiContextRefsService } from './ai-context-refs.service';
 
 const uuid = (n: number) =>
@@ -43,6 +44,8 @@ describe('AiContextRefsService.resolve', () => {
         id: 'task-1',
         title: 'Ship checkout',
         status: 'todo',
+        assignee_id: null,
+        assignees: [],
         feature: {
           id: 'feat-1',
           title: 'Checkout',
@@ -107,6 +110,8 @@ describe('AiContextRefsService.resolve', () => {
         roadmap_id: 'rm-a',
         project_id: 'proj-a',
         workspace_id: 'ws-1',
+        assignees: [],
+        assignee_count: 0,
         parent_chain: [
           { kind: 'feature', id: 'feat-1', title: 'Checkout' },
           { kind: 'epic', id: 'epic-1', title: 'Payments' },
@@ -134,6 +139,118 @@ describe('AiContextRefsService.resolve', () => {
         parent_chain: [],
       },
     ]);
+  });
+
+  describe('task assignees', () => {
+    const assignment = (
+      id: string,
+      assignedAt: string | null,
+    ): AiContextRefTaskRow['assignees'][number] => ({
+      assignee_id: id,
+      assigned_at: assignedAt,
+      profile: { id, display_name: `Name ${id}`, avatar_url: null },
+    });
+
+    const task = (
+      assignees: AiContextRefTaskRow['assignees'],
+    ): AiContextRefTaskRow => ({
+      id: 'task-1',
+      title: 'Ship checkout',
+      status: 'todo',
+      assignee_id: 'primary',
+      assignees,
+      feature: {
+        id: 'feat-1',
+        title: 'Checkout',
+        roadmap_id: 'rm-a',
+        epic_id: null,
+        epic: null,
+      },
+    });
+
+    function withTask(row: AiContextRefTaskRow) {
+      const built = buildService();
+      built.repo.loadRefTasks.mockResolvedValue([row]);
+      built.roadmapAuth.filterViewableRoadmapIds.mockResolvedValue(
+        new Map([['rm-a', { projectId: null, ownerId: 'user-1', name: 'A' }]]),
+      );
+      return built;
+    }
+
+    it('puts the stored primary first even when its join row comes second', async () => {
+      const secondary = assignment('secondary', '2026-09-01T00:00:00Z');
+      const primary = assignment('primary', '2026-09-02T00:00:00Z');
+      const { service } = withTask(task([secondary, primary]));
+
+      const { refs } = await service.resolve('user-1', {
+        refs: [{ kind: 'task', id: 'task-1' }],
+      });
+
+      expect(refs[0].assignees).toEqual([primary.profile, secondary.profile]);
+      expect(refs[0].assignee_count).toBe(2);
+    });
+
+    it('sorts other assignments by time, drops missing profiles and dedupes before counting', async () => {
+      const early = assignment('early', '2026-09-01T00:00:00Z');
+      const late = assignment('late', '2026-09-03T00:00:00Z');
+      const undated = assignment('undated', null);
+      const { service } = withTask(
+        task([
+          late,
+          { ...assignment('missing', '2026-09-01T00:00:00Z'), profile: null },
+          undated,
+          early,
+          late,
+        ]),
+      );
+
+      const { refs } = await service.resolve('user-1', {
+        refs: [{ kind: 'task', id: 'task-1' }],
+      });
+
+      expect(refs[0].assignees).toEqual([
+        early.profile,
+        late.profile,
+        undated.profile,
+      ]);
+      expect(refs[0].assignee_count).toBe(3);
+    });
+
+    it('returns five profiles with the full count of six unique assignees', async () => {
+      const assignments = Array.from({ length: 6 }, (_, index) =>
+        assignment(`member-${index}`, `2026-09-0${index + 1}T00:00:00Z`),
+      );
+      const { service } = withTask(task(assignments));
+
+      const { refs } = await service.resolve('user-1', {
+        refs: [{ kind: 'task', id: 'task-1' }],
+      });
+
+      expect(refs[0].assignees).toEqual(
+        assignments.slice(0, 5).map((row) => row.profile),
+      );
+      expect(refs[0].assignee_count).toBe(6);
+    });
+
+    it('never reveals assignees or their count on a denied task', async () => {
+      const { service, roadmapAuth } = withTask(
+        task([assignment('primary', null)]),
+      );
+      roadmapAuth.filterViewableRoadmapIds.mockResolvedValue(new Map());
+
+      const { refs } = await service.resolve('user-1', {
+        refs: [{ kind: 'task', id: 'task-1' }],
+      });
+
+      expect(refs[0]).toEqual({
+        kind: 'task',
+        id: 'task-1',
+        accessible: false,
+        error_code: 'NOT_FOUND',
+      });
+      expect(refs[0]).not.toHaveProperty('assignees');
+      expect(refs[0]).not.toHaveProperty('assignee_count');
+    });
   });
 
   it('denies a missing row without a title and never throws for it', async () => {

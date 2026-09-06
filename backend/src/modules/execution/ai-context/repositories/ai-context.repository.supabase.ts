@@ -277,7 +277,7 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
     // of its own; `feature.roadmap_id` is the attribution.
     const rows = await this.loadByIds(
       'roadmap_tasks',
-      'id, title, status, feature:roadmap_features(id, title, roadmap_id, epic_id, epic:roadmap_epics(id, title))',
+      'id, title, status, assignee_id, assignees:roadmap_task_assignees(assignee_id, assigned_at, profile:profiles!assignee_id(id, display_name, avatar_url)), feature:roadmap_features(id, title, roadmap_id, epic_id, epic:roadmap_epics(id, title))',
       ids,
     );
     return rows.flatMap((raw) => {
@@ -291,6 +291,31 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
           id,
           title: readString(raw.title) ?? '',
           status: readString(raw.status),
+          assignee_id: readString(raw.assignee_id),
+          assignees: (Array.isArray(raw.assignees)
+            ? raw.assignees
+            : []
+          ).flatMap((assignment: Record<string, unknown>) => {
+            const assigneeId = readString(assignment.assignee_id);
+            if (!assigneeId) return [];
+            const profile = firstEmbedded<Record<string, unknown>>(
+              assignment.profile,
+            );
+            const profileId = readString(profile?.id);
+            return [
+              {
+                assignee_id: assigneeId,
+                assigned_at: readString(assignment.assigned_at),
+                profile: profileId
+                  ? {
+                      id: profileId,
+                      display_name: readString(profile?.display_name),
+                      avatar_url: readString(profile?.avatar_url),
+                    }
+                  : null,
+              },
+            ];
+          }),
           feature:
             feature && featureId && featureRoadmapId
               ? {

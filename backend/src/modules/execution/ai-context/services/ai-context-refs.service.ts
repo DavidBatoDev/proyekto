@@ -7,6 +7,7 @@ import {
 import { ROADMAPS_REPOSITORY } from '../../roadmaps/services/roadmaps.service';
 import type {
   AiContextParentChainEntryDto,
+  AiContextRefAssigneeDto,
   AiContextRefDto,
   AiContextRefErrorCode,
   AiContextRefKind,
@@ -26,6 +27,8 @@ import {
   type AiContextRefTeamRow,
   type IAiContextRepository,
 } from '../repositories/ai-context.repository.interface';
+
+export const AI_CONTEXT_REF_ASSIGNEE_LIMIT = 5;
 
 type LoadedRows = {
   task: Map<string, AiContextRefTaskRow>;
@@ -362,6 +365,22 @@ export class AiContextRefsService {
         title: row.feature.epic.title,
       });
     }
+    const assignees = new Map<string, AiContextRefAssigneeDto>();
+    const assignments = [...(row.assignees ?? [])].sort((left, right) => {
+      const primaryOrder =
+        Number(right.assignee_id === row.assignee_id) -
+        Number(left.assignee_id === row.assignee_id);
+      if (primaryOrder) return primaryOrder;
+      if (left.assigned_at === right.assigned_at) return 0;
+      if (left.assigned_at === null) return 1;
+      if (right.assigned_at === null) return -1;
+      return left.assigned_at.localeCompare(right.assigned_at);
+    });
+    for (const assignment of assignments) {
+      if (!assignment.profile || assignees.has(assignment.assignee_id))
+        continue;
+      assignees.set(assignment.assignee_id, assignment.profile);
+    }
     return {
       kind: 'task',
       id: row.id,
@@ -372,6 +391,11 @@ export class AiContextRefsService {
       project_id: meta.projectId,
       workspace_id: tail.workspaceId,
       parent_chain: [...parents, ...tail.chain],
+      assignees: [...assignees.values()].slice(
+        0,
+        AI_CONTEXT_REF_ASSIGNEE_LIMIT,
+      ),
+      assignee_count: assignees.size,
     };
   }
 

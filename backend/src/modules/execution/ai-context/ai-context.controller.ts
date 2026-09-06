@@ -11,6 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
@@ -24,6 +25,7 @@ import {
   AiContextSearchQueryDto,
   AiContextTasksQueryDto,
 } from './dto/ai-context.dto';
+import { AiContextThrottlerGuard } from './guards/ai-context-throttler.guard';
 import { AiContextService } from './services/ai-context.service';
 import { AiContextKnowledgeService } from './services/ai-context-knowledge.service';
 import { AiContextProjectService } from './services/ai-context-project.service';
@@ -100,6 +102,8 @@ export class AiContextController {
   }
 
   @Post('resolve-refs')
+  @UseGuards(AiContextThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   resolveRefs(
     @Body() dto: AiContextResolveRefsDto,
