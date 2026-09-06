@@ -364,6 +364,8 @@ describe('RoadmapAiService actor + assignee context', () => {
     );
 
     expect(summary.title).toBe('Draft Snapshot');
+    // Commit cards and deep links attribute the roadmap through this id.
+    expect(summary).toHaveProperty('project_id');
     expect(tasks.tasks).toHaveLength(1);
     expect(tasks.tasks[0].title).toBe('Harden auth middleware');
     expect(roadmapsRepo.findFull).not.toHaveBeenCalled();

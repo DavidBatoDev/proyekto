@@ -569,7 +569,7 @@ export class PayoutsService {
   ): Promise<void> {
     const { data: team, error } = await this.supabase
       .from('teams')
-      .select('owner_id, time_tracking_enabled, compensation_enabled')
+      .select('owner_id, time_tracking_enabled, payouts_enabled')
       .eq('id', teamId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -577,16 +577,17 @@ export class PayoutsService {
     const t = team as {
       owner_id: string;
       time_tracking_enabled: boolean;
-      compensation_enabled: boolean;
+      payouts_enabled: boolean;
     };
     if (!t.time_tracking_enabled) {
       throw new ForbiddenException(
         'Time tracking is not enabled for this team.',
       );
     }
-    // Payouts are part of the team's money layer. When that layer is off there
-    // is nothing to pay from: rates are hidden and new logs snapshot at zero.
-    if (!t.compensation_enabled) {
+    // Payouts is its own switch, nested under member rates: a team can price
+    // its hours without settling them here. The DB CHECK guarantees this flag
+    // is false whenever rates are, so testing it alone is sufficient.
+    if (!t.payouts_enabled) {
       throw new ForbiddenException('Payouts are disabled for this team.');
     }
     if (t.owner_id === callerId) return;

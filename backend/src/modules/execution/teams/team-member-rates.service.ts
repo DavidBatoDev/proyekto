@@ -36,15 +36,14 @@ export interface TeamMemberRateRow {
 }
 
 /**
- * Rates are the entry point to the team's money layer, so they follow the same
- * switch as cut-offs and payouts. Reads stay open — existing rate rows survive
- * a team turning compensation off and reappear untouched when it comes back —
- * but nothing new may be written while the layer is off.
+ * Rate cards are exactly what member_rates_enabled governs. Reads stay open —
+ * existing rate rows survive a team switching rates off and reappear untouched
+ * when it comes back — but nothing new may be written while it is off.
  */
-function assertCompensationEnabled(team: TeamRow): void {
-  if (!team.compensation_enabled) {
+function assertMemberRatesEnabled(team: TeamRow): void {
+  if (!team.member_rates_enabled) {
     throw new ForbiddenException(
-      'Compensation is disabled for this team. Enable payouts in team settings to manage rates.',
+      'Member rates are disabled for this team. Enable them in team settings to manage rates.',
     );
   }
 }
@@ -121,7 +120,7 @@ export class TeamMemberRatesService {
   ): Promise<TeamMemberRateRow[]> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    assertCompensationEnabled(team);
+    assertMemberRatesEnabled(team);
     await this.assertMemberExists(teamId, userId);
 
     const uniqueProjectIds = Array.from(new Set(dto.project_ids));
@@ -182,7 +181,7 @@ export class TeamMemberRatesService {
   ): Promise<TeamMemberRateRow> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    assertCompensationEnabled(team);
+    assertMemberRatesEnabled(team);
     const existing = await this.fetchOrThrow(teamId, userId, rateId);
 
     const patch: Record<string, unknown> = {};
@@ -250,7 +249,7 @@ export class TeamMemberRatesService {
   ): Promise<void> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
-    assertCompensationEnabled(team);
+    assertMemberRatesEnabled(team);
     await this.fetchOrThrow(teamId, userId, rateId);
     const { error } = await this.supabase
       .from('team_member_rates')

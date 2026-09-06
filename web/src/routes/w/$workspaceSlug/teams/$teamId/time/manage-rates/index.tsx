@@ -330,7 +330,12 @@ function ManageRatesTab() {
 				currency: editCurrency || undefined,
 				custom_id: editCustomId || undefined,
 				start_date: editStartDate || undefined,
-				end_date: editEndDate || undefined,
+				// Explicitly null, not undefined: clearing the field must REOPEN the
+				// rate, and JSON drops undefined keys so `|| undefined` silently sent
+				// nothing at all. The backend also keys its sibling-closing branch off
+				// `end_date === null` exactly, so "" would set the date but skip the
+				// step that protects the one-active-rate index.
+				end_date: editEndDate === "" ? null : editEndDate,
 			},
 		});
 	};
@@ -348,6 +353,7 @@ function ManageRatesTab() {
 			<TeamRatesSection
 				members={allMembers}
 				activeRatesByUserId={activeRatesByUserId}
+				allRatesByUserId={ratesByUserId}
 				projectTitleById={projectTitleById}
 				loadingMembers={membersQuery.isPending}
 				loadingRates={loadingRates}

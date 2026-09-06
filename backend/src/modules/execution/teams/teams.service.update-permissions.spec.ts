@@ -93,9 +93,11 @@ describe('TeamsService — updateTeam permissions', () => {
     ['billing_address', { billing_address: '1 Rogue Way' }],
     ['tax_id', { tax_id: 'ROGUE-1' }],
     ['billing_email', { billing_email: 'rogue@example.com' }],
-    // Whether the team pays anyone at all — rates, cut-offs and payouts all
-    // hang off it, so it must never become admin-writable.
-    ['compensation_enabled', { compensation_enabled: true }],
+    // Whether hours carry a cost at all, and whether the team settles them
+    // here. Both must stay owner-only — an admin must never be able to commit
+    // the team to paying people, nor hide the rate card the owner set.
+    ['member_rates_enabled', { member_rates_enabled: true }],
+    ['payouts_enabled', { payouts_enabled: false }],
     ['retroactive_log_days', { retroactive_log_days: 90 }],
     ['default_currency', { default_currency: 'PHP' }],
     ['pay_period_config', { pay_period_config: null }],
@@ -170,6 +172,42 @@ describe('TeamsService — updateTeam permissions', () => {
         expect(captured.update).toHaveProperty(field);
       },
     );
+  });
+
+  describe('the rates -> payouts dependency', () => {
+    // A payout totals hours x rate_snapshot, so payouts-without-rates would
+    // record a zero-value payment. The DB holds a CHECK; these pin the service
+    // behaviour that keeps that CHECK from ever surfacing as a raw 500.
+    it('clears payouts when rates are switched off, rather than letting the CHECK fire', async () => {
+      const { service, captured } = build(null);
+      await service.updateTeam('team-1', OWNER, {
+        member_rates_enabled: false,
+      } as any);
+      expect(captured.update).toMatchObject({
+        member_rates_enabled: false,
+        payouts_enabled: false,
+      });
+    });
+
+    it('refuses payouts on a team with no rates, naming the reason', async () => {
+      const { service, captured } = build(null);
+      await expect(
+        service.updateTeam('team-1', OWNER, { payouts_enabled: true } as any),
+      ).rejects.toThrow(/member rates/i);
+      expect(captured.update).toBeUndefined();
+    });
+
+    it('allows payouts on when the same patch turns rates on', async () => {
+      const { service, captured } = build(null);
+      await service.updateTeam('team-1', OWNER, {
+        member_rates_enabled: true,
+        payouts_enabled: true,
+      } as any);
+      expect(captured.update).toMatchObject({
+        member_rates_enabled: true,
+        payouts_enabled: true,
+      });
+    });
   });
 
   describe('a plain member', () => {

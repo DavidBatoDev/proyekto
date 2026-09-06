@@ -10,7 +10,7 @@ describe('PayoutsService QA fixture safety', () => {
       data: {
         owner_id: 'consultant-1',
         time_tracking_enabled: true,
-        compensation_enabled: true,
+        payouts_enabled: true,
       },
       error: null,
     });

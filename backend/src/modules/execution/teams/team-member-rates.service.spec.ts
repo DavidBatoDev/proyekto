@@ -29,7 +29,7 @@ describe('TeamMemberRatesService — who may set a rate', () => {
     owner_id: OWNER,
     name: 'Analytical Engines Ltd',
     tags: [],
-    compensation_enabled: true,
+    member_rates_enabled: true,
   };
 
   const DTO = {
@@ -53,7 +53,7 @@ describe('TeamMemberRatesService — who may set a rate', () => {
     compensationEnabled = true,
   ) {
     const captured: { insert?: Record<string, unknown> } = {};
-    const team = { ...TEAM, compensation_enabled: compensationEnabled };
+    const team = { ...TEAM, member_rates_enabled: compensationEnabled };
 
     const chain = (table: string) => {
       const c: Record<string, unknown> = {};
@@ -129,7 +129,7 @@ describe('TeamMemberRatesService — who may set a rate', () => {
   });
 
   it('refuses even the owner while the money layer is off', async () => {
-    // compensation_enabled gates rates, cut-offs and payouts together: with it
+    // member_rates_enabled gates rates, cut-offs and payouts together: with it
     // off there is no rate card to edit, so this must fail on permission
     // grounds rather than silently writing a rate nothing will ever read.
     const { service, captured } = build(null, false);

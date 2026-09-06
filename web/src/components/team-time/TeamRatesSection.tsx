@@ -39,6 +39,13 @@ function RateCardSkeleton() {
 interface TeamRatesSectionProps {
 	members: TeamMember[];
 	activeRatesByUserId: Record<string, TeamMemberRate[]>;
+	/**
+	 * Every rate row, ended ones included. A member whose only rate has an
+	 * end_date has no ACTIVE rate, and used to vanish from this list entirely —
+	 * which also hid the Manage button, the one way into their rate history. So
+	 * the list keys off this and marks the ended-only case instead.
+	 */
+	allRatesByUserId: Record<string, TeamMemberRate[]>;
 	projectTitleById: Record<string, string | null>;
 	loadingMembers: boolean;
 	loadingRates: boolean;
@@ -88,6 +95,7 @@ function formatRateSummary(
 export function TeamRatesSection({
 	members,
 	activeRatesByUserId,
+	allRatesByUserId,
 	projectTitleById,
 	loadingMembers,
 	loadingRates,
@@ -98,7 +106,7 @@ export function TeamRatesSection({
 	onManageMember,
 }: TeamRatesSectionProps) {
 	const ratedMembers = members.filter(
-		(m) => (activeRatesByUserId[m.user_id]?.length ?? 0) > 0,
+		(m) => (allRatesByUserId[m.user_id]?.length ?? 0) > 0,
 	);
 
 	const isLoading = loadingMembers || loadingRates;
@@ -145,6 +153,9 @@ export function TeamRatesSection({
 						{ratedMembers.map((member) => {
 							const isPending = Boolean(pendingMemberById[member.user_id]);
 							const rates = activeRatesByUserId[member.user_id] ?? [];
+							const endedCount =
+								(allRatesByUserId[member.user_id]?.length ?? 0) - rates.length;
+							const endedOnly = rates.length === 0 && endedCount > 0;
 							const { headline, sub } = formatRateSummary(
 								rates,
 								projectTitleById,
@@ -206,6 +217,13 @@ export function TeamRatesSection({
 												{sub && (
 													<p className="mt-0.5 text-[11px] text-muted-foreground">
 														{sub}
+													</p>
+												)}
+												{endedOnly && (
+													<p className="mt-1 text-[11px] text-warning-foreground">
+														{endedCount === 1
+															? "1 ended rate — open Manage to view or reuse it"
+															: `${endedCount} ended rates — open Manage to view or reuse them`}
 													</p>
 												)}
 											</div>

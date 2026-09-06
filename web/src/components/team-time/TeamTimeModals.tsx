@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
+	AlertTriangle,
 	Check,
 	CheckCircle2,
 	ChevronRight,
@@ -795,6 +796,28 @@ export function AddRateModal({
 									/>
 								</div>
 							</div>
+
+							{/* "Current rate" means end_date IS NULL everywhere it is read —
+							    the rate list, hasAnyActiveRate, and the backend's
+							    resolveTeamRate. So ANY end date, even a future one, files
+							    the rate as history the moment it is saved. Say so here
+							    rather than letting it save and silently vanish. */}
+							{newRateEndDate && (
+								<div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+									<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+									<div>
+										<div className="font-semibold">
+											This will be saved as a past rate
+										</div>
+										<p className="mt-0.5">
+											A rate with an end date is kept as history: it will not
+											price new time logs, and the member still counts as having
+											no active rate. Leave the end date empty to make this
+											their current rate.
+										</p>
+									</div>
+								</div>
+							)}
 
 							<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
 								Members with no rate row cannot start timers or add new logs.

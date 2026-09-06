@@ -81,7 +81,8 @@ function MyLogsTab() {
 		queryFn: () => getTeam(teamId),
 	});
 	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
-	const paysMoney = teamQuery.data?.compensation_enabled === true;
+	const hasRates = teamQuery.data?.member_rates_enabled === true;
+	const canPay = teamQuery.data?.payouts_enabled === true;
 
 	const period = useMemo(
 		() => resolveTeamLogPeriod(search, payPeriodConfig),
@@ -569,6 +570,7 @@ function MyLogsTab() {
 
 			{viewMode === "calendar" ? (
 				<TimeLogCalendar
+					showMoney={hasRates}
 					teamId={teamId}
 					mode="my"
 					currentUserId={user?.id ?? null}
@@ -592,7 +594,7 @@ function MyLogsTab() {
 					{/* Rate + balance summary */}
 					<div className="mb-3">
 						<TeamLogsStatsCard
-							showMoney={paysMoney}
+							showMoney={hasRates}
 							rate={activeRate}
 							stats={stats}
 							fallbackCurrency={activeRate?.currency || "USD"}
@@ -601,7 +603,7 @@ function MyLogsTab() {
 							onOpenHistory={
 								hasRateHistory ? () => setHistoryOpen(true) : undefined
 							}
-							includePaidColumn={paysMoney}
+							includePaidColumn={canPay}
 							includeTrainingRate={false}
 							rateLabel="Rate"
 						/>
@@ -615,7 +617,7 @@ function MyLogsTab() {
 					{/* Date range filter (below the summary) */}
 					<div className="mb-4">
 						<TeamLogsPeriodFilter
-							showCutoffs={paysMoney}
+							showCutoffs={canPay}
 							period={period}
 							payPeriodConfig={payPeriodConfig}
 							onPresetChange={(preset) => updatePeriod(preset)}
@@ -637,6 +639,7 @@ function MyLogsTab() {
 					)}
 					{/* Activity — e-wallet style transaction list */}
 					<TeamMyLogsList
+						showMoney={hasRates}
 						logs={allLogs}
 						tasks={tasksForRowQuery.data ?? []}
 						ownRateByProjectId={ownRateByProjectId}

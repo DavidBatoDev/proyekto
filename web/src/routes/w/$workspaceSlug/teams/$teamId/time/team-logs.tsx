@@ -71,7 +71,8 @@ function TeamLogsRoute() {
 	});
 	const payPeriodConfig = teamQuery.data?.pay_period_config ?? null;
 	// The team's money layer. Off means no fees, no Paid status, no paying.
-	const paysMoney = teamQuery.data?.compensation_enabled === true;
+	const hasRates = teamQuery.data?.member_rates_enabled === true;
+	const canPay = teamQuery.data?.payouts_enabled === true;
 
 	const period = useMemo(
 		() => resolveTeamLogPeriod(search, payPeriodConfig),
@@ -370,19 +371,20 @@ function TeamLogsRoute() {
 
 			{viewMode === "calendar" ? (
 				<TimeLogCalendar
+					showMoney={hasRates}
 					teamId={teamId}
 					mode="team"
 					currentUserId={user?.id ?? null}
 					busyLogIds={busyLogIds}
 					onReviewLogs={handleReviewLogs}
-					onPayMember={paysMoney ? handlePayMember : undefined}
+					onPayMember={canPay ? handlePayMember : undefined}
 					onOpenTaskInRoadmap={handleOpenInRoadmap}
 					canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 				/>
 			) : (
 				<>
 					<TeamLogsStatsCard
-						showMoney={paysMoney}
+						showMoney={hasRates}
 						rate={null}
 						stats={stats}
 						fallbackCurrency="USD"
@@ -390,7 +392,7 @@ function TeamLogsRoute() {
 					/>
 
 					<TeamLogsPeriodFilter
-						showCutoffs={paysMoney}
+						showCutoffs={canPay}
 						period={period}
 						payPeriodConfig={payPeriodConfig}
 						onPresetChange={(preset) => updatePeriod(preset)}
@@ -406,7 +408,7 @@ function TeamLogsRoute() {
 
 					<div className="space-y-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
 						<TeamLogsStatusTabs
-							showPaid={paysMoney}
+							showPaid={canPay}
 							value={activeStatus}
 							onChange={setActiveStatus}
 							counts={statusCounts}
@@ -464,12 +466,13 @@ function TeamLogsRoute() {
 					)}
 
 					<TeamApprovalsInbox
+						showMoney={hasRates}
 						logs={items}
 						loadingLogs={logsQuery.isPending}
 						currentUserId={user?.id ?? null}
 						busyLogIds={busyLogIds}
 						onReviewLogs={handleReviewLogs}
-						onPayMember={paysMoney ? handlePayMember : undefined}
+						onPayMember={canPay ? handlePayMember : undefined}
 						onOpenTaskInRoadmap={handleOpenInRoadmap}
 						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 					/>

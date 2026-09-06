@@ -69,11 +69,16 @@ export interface Team {
 	billing_email?: string | null;
 	time_tracking_enabled: boolean;
 	/**
-	 * Gates the team's money layer: per-member rates, payout cut-offs and
-	 * payouts. False means the team tracks hours only, and the Manage Rates /
-	 * Payouts tabs and every fee figure stay hidden.
+	 * Do this team's hours carry an internal cost? Gates the Manage Rates tab,
+	 * the rate snapshot on every log, and every fee figure.
 	 */
-	compensation_enabled: boolean;
+	member_rates_enabled: boolean;
+	/**
+	 * Does this team record payments here? Gates the Payouts tab, the Paid
+	 * status and the cut-off schedule. Nested under member_rates_enabled — a DB
+	 * CHECK keeps it false whenever rates are off.
+	 */
+	payouts_enabled: boolean;
 	/**
 	 * Optional for the same reason `tags` is: query-cache entries persisted
 	 * before this shipped carry no `status`. Read sites use
@@ -296,7 +301,8 @@ export interface UpdateTeamPatch {
 	tax_id?: string;
 	billing_email?: string;
 	time_tracking_enabled?: boolean;
-	compensation_enabled?: boolean;
+	member_rates_enabled?: boolean;
+	payouts_enabled?: boolean;
 	retroactive_log_days?: number;
 	default_currency?: "USD" | "CAD" | "PHP";
 	pay_period_config?: PayPeriodConfig | null;

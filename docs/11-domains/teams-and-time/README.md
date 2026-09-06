@@ -40,6 +40,30 @@ both that check and its `tg_team_member_rates_check_consultant` trigger were rem
 2026-09-06, when time tracking was decoupled from consultant capability. `team_member_rates`
 has RLS enabled with no policies, so it is reachable only by the backend's service role.
 
+**Money is opt-in, in two steps.** Time tracking on its own records hours and nothing else.
+Two owner-only flags on `teams`, both defaulting to false, layer money on top:
+
+| Flag | Turns on |
+| --- | --- |
+| `member_rates_enabled` | Per-member rate cards, the `rate_snapshot` written onto every log, and every fee figure in the UI |
+| `payouts_enabled` | The payouts module, the `paid` log status, and the cut-off schedule |
+
+`payouts_enabled` **requires** `member_rates_enabled` — a payout totals `hours × rate_snapshot`,
+so payouts without rates would record a zero-value payment. The CHECK constraint
+`teams_payouts_require_rates` makes that state unrepresentable, `TeamsService.updateTeam`
+cascades payouts off when rates go off, and `create_payout_and_mark_paid` re-checks
+`payouts_enabled` in SQL so the invariant holds even if a caller bypasses the service.
+
+With rates off, `resolveTeamRate` zeroes the snapshot — the single point through which
+every fee enters a log — so a team cannot mint a priced log from stale rate rows. Hours
+already logged keep their historical amounts untouched and reappear if rates come back on.
+Because those hours then carry no cost, `ProjectFinancials.uncosted` reports them so the
+cost and margin figures can be labelled incomplete rather than reading as pure profit.
+
+Hour caps (`weekly_limit_hours`, `monthly_limit_hours`, `overtime_requires_approval`) live on
+`team_member_rates` but are a **time** policy, not a money one: they stay in force with rates
+off, which is why rate *reads* are deliberately ungated.
+
 **Tags are labels, not permissions.** `teams.tags` is a freeform `text[]` (GIN-indexed,
 `NOT NULL DEFAULT '{}'`) that the API normalizes on write — trimmed, whitespace-collapsed,
 case-insensitively deduped, capped at 20 tags of 40 characters. They are descriptive in

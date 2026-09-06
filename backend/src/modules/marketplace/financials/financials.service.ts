@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
@@ -49,6 +49,13 @@ export interface ProjectFinancials {
   };
   /** Cash position in the project currency. */
   receivables: ProjectReceivables;
+  /**
+   * Hours that carry no cost because the team logging them has member rates
+   * switched off. Cost and margin above simply do not cover them — without this
+   * marker a project staffed by an hours-only team reads as 100% margin rather
+   * than as unmeasured.
+   */
+  uncosted: { hours: number; cost_incomplete: boolean };
   /** Every currency seen (a project can mix), so nothing is summed across FX. */
   by_currency: CurrencyTotals[];
   /** Monthly revenue vs cost in the project currency, for the charts. */
@@ -77,6 +84,8 @@ export interface ProjectFinancials {
  */
 @Injectable()
 export class FinancialsService {
+  private readonly logger = new Logger(FinancialsService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly financeAccess: ConsultantFinanceAccessService,
@@ -89,12 +98,14 @@ export class FinancialsService {
   ): Promise<ProjectFinancials> {
     await this.financeAccess.assertProject(callerId, projectId);
 
-    const [project, economics, invoices, logs] = await Promise.all([
-      this.getProject(projectId),
-      this.getEconomics(projectId),
-      this.getRevenueRows(projectId, range),
-      this.getCostRows(projectId, range),
-    ]);
+    const [project, economics, invoices, logs, uncostedHours] =
+      await Promise.all([
+        this.getProject(projectId),
+        this.getEconomics(projectId),
+        this.getRevenueRows(projectId, range),
+        this.getCostRows(projectId, range),
+        this.getUncostedHours(projectId, range),
+      ]);
 
     const projectCurrency = (project?.currency ?? 'USD').toUpperCase();
 
@@ -163,6 +174,10 @@ export class FinancialsService {
         team_pool: teamPool,
         team_burn: head.cost,
         pool_remaining: round2(teamPool - head.cost),
+      },
+      uncosted: {
+        hours: uncostedHours,
+        cost_incomplete: uncostedHours > 0,
       },
       by_currency,
       months,
@@ -325,6 +340,45 @@ export class FinancialsService {
       // Attribute revenue to the covered period, else the issue/creation month.
       month: monthOf(row.period_start ?? row.issue_date ?? row.created_at),
     }));
+  }
+
+  /**
+   * Approved/paid real-work hours logged by a team with member rates switched
+   * off. Those logs snapshot at rate 0, so they contribute nothing to the cost
+   * sum above and would otherwise be invisible — the project would read as pure
+   * margin. Reported so the UI can say the figure is incomplete.
+   *
+   * `teams!inner` makes this one query rather than a two-step id lookup; the
+   * filter applies to the embedded row, so only rates-off teams come back.
+   */
+  private async getUncostedHours(
+    projectId: string,
+    range?: { from?: string; to?: string },
+  ): Promise<number> {
+    let q = this.supabase
+      .from('task_time_logs')
+      .select('duration_seconds, teams!inner(member_rates_enabled)')
+      .eq('project_id', projectId)
+      .in('status', ['approved', 'paid'])
+      .eq('work_type_snapshot', 'real_work')
+      .eq('teams.member_rates_enabled', false);
+    if (range?.from) q = q.gte('started_at', range.from);
+    if (range?.to) q = q.lte('started_at', `${range.to}T23:59:59.999Z`);
+    const { data, error } = await q;
+    if (error) {
+      // Never fail the whole financials page over the completeness marker.
+      this.logger.warn(`uncosted-hours lookup failed: ${error.message}`);
+      return 0;
+    }
+    const seconds = (data ?? []).reduce(
+      (sum, row) =>
+        sum +
+        Number(
+          (row as { duration_seconds: number | null }).duration_seconds ?? 0,
+        ),
+      0,
+    );
+    return round2(seconds / 3600);
   }
 
   /** Approved/paid real-work time logs, priced at the member's internal rate. */

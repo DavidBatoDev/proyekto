@@ -13,6 +13,7 @@ import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
 import { projectService } from "@/services/project.service";
 import {
+	getTeam,
 	listCuratedMembers,
 	listMemberRates,
 	listProjectTeams,
@@ -79,6 +80,22 @@ function ProjectTimeSettings() {
 			enabled: canManageTeamTime,
 		})),
 	});
+	// Whether each attached team prices its hours. Hour caps below are a TIME
+	// policy and stay available regardless; only the rate/budget calculator is
+	// money and has to disappear for an hours-only team.
+	const teamDetailQueries = useQueries({
+		queries: teams.map((t) => ({
+			queryKey: ["team", t.team_id] as const,
+			queryFn: () => getTeam(t.team_id),
+			enabled: canManageTeamTime,
+		})),
+	});
+	const ratedTeamIds = new Set(
+		teams
+			.filter((_, i) => teamDetailQueries[i]?.data?.member_rates_enabled)
+			.map((t) => t.team_id),
+	);
+
 	const rows = teams.flatMap((t, i) => {
 		const curatedIds = new Set(
 			(curatedQueries[i]?.data ?? []).map((m) => m.user_id),
@@ -87,6 +104,7 @@ function ProjectTimeSettings() {
 			.filter((member) => curatedIds.has(member.user_id))
 			.map((member) => ({ teamId: t.team_id, member }));
 	});
+	const ratedRows = rows.filter((r) => ratedTeamIds.has(r.teamId));
 
 	const membersLoading =
 		memberQueries.some((q) => q.isPending) ||
@@ -119,8 +137,8 @@ function ProjectTimeSettings() {
 					</div>
 				) : (
 					<div className="space-y-6">
-						{rows.length > 0 && (
-							<RateBudgetCalculator projectId={projectId} rows={rows} />
+						{ratedRows.length > 0 && (
+							<RateBudgetCalculator projectId={projectId} rows={ratedRows} />
 						)}
 						<div className="app-surface-card-strong overflow-hidden rounded-2xl">
 							<div className="space-y-4 px-5 py-6">

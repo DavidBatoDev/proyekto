@@ -568,6 +568,15 @@ export class RoadmapAiContextSummaryResponseDto {
   @IsString()
   title: string;
 
+  /**
+   * The project the roadmap belongs to (null when standalone). The agent
+   * attributes commits and deep links through it, so every roadmap it loads
+   * via this summary must carry it.
+   */
+  @IsOptional()
+  @IsUUID()
+  project_id: string | null;
+
   @IsOptional()
   @IsString()
   description?: string;

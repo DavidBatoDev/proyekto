@@ -55,6 +55,8 @@ interface TimeLogCalendarProps {
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
 	onPayMember?: (memberId: string, logIds: string[], currency: string) => void;
+	/** False when member rates are off — day rows hide the Amount column. */
+	showMoney?: boolean;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 	// ─── My mode only — member row actions in the day modal ──────────────────
@@ -95,6 +97,7 @@ export function TimeLogCalendar({
 	busyLogIds,
 	onReviewLogs,
 	onPayMember,
+	showMoney = true,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
 	onStopLog,
@@ -310,6 +313,7 @@ export function TimeLogCalendar({
 			)}
 
 			<DayLogsModal
+				showMoney={showMoney}
 				isOpen={dayModal !== null}
 				date={dayModal?.date ?? null}
 				dateLabel={

@@ -120,7 +120,8 @@ function TeamTimeLayout() {
 		);
 	}
 
-	const paysMoney = team?.compensation_enabled === true;
+	const hasRates = team?.member_rates_enabled === true;
+	const canPay = team?.payouts_enabled === true;
 
 	const tabs: TabSpec[] = [];
 	if (isTeamMember) {
@@ -139,10 +140,10 @@ function TeamTimeLayout() {
 			icon: Clock,
 		});
 	}
-	// Rates and Payouts are the team's money layer. compensation_enabled gates
+	// Rates and Payouts are the team's money layer. member_rates_enabled gates
 	// both together: a team that only tracks hours never sees either tab, and
 	// the matching backend gates refuse the calls behind them.
-	if (isApprover && paysMoney) {
+	if (isApprover && hasRates) {
 		tabs.push({
 			id: "manage-rates",
 			label: "Manage Rates",
@@ -150,7 +151,7 @@ function TeamTimeLayout() {
 			icon: Coins,
 		});
 	}
-	if (isApprover && paysMoney) {
+	if (isApprover && canPay) {
 		tabs.push({
 			id: "payouts",
 			label: "Payouts",
@@ -198,19 +199,28 @@ function TeamTimeLayout() {
 		return null;
 	})();
 
-	// The tabs above are hidden when the money layer is off, but the routes
-	// underneath are still reachable by URL (a bookmark, or a link from before
-	// the team switched it off). Answer here rather than letting the page mount
-	// and fail against the matching 403s.
-	const onMoneyRoute =
-		activeTabId === "payouts" || activeTabId === "manage-rates";
-	if (onMoneyRoute && !paysMoney) {
+	// The tabs above are hidden when a switch is off, but the routes underneath
+	// stay reachable by URL (a bookmark, or a link from before the team switched
+	// it off). Answer here rather than letting the page mount and fail against
+	// the matching 403s. Name the switch that is actually off, so "turn it on"
+	// points somewhere real.
+	const blockedBy =
+		activeTabId === "manage-rates" && !hasRates
+			? "rates"
+			: activeTabId === "payouts" && !canPay
+				? "payouts"
+				: null;
+	if (blockedBy) {
 		return (
 			<DashboardShell>
 				<div className="space-y-6 p-6">
 					<AppSectionHeader
 						title={`${team.name} — Time`}
-						subtitle="Payouts are turned off for this team."
+						subtitle={
+							blockedBy === "rates"
+								? "Member rates are turned off for this team."
+								: "Payouts are turned off for this team."
+						}
 						rightSlot={
 							<Link
 								to="/w/$workspaceSlug/teams/$teamId/time/my-logs"
@@ -224,9 +234,9 @@ function TeamTimeLayout() {
 					<AppSurfaceCard>
 						<div className="space-y-3 p-6 text-sm text-muted-foreground">
 							<p>
-								This team tracks hours only — it has no member rates, cut-off
-								periods or payouts. The team owner can turn payouts on from time
-								settings.
+								{blockedBy === "rates"
+									? "This team tracks hours only — they carry no rate, so there is nothing to price here. The team owner can turn member rates on from time settings."
+									: "This team prices its hours but settles pay outside Proyekto, so there are no cut-off periods or payment records. The team owner can turn payouts on from time settings."}
 							</p>
 							<Link
 								to="/w/$workspaceSlug/teams/$teamId/settings/time"

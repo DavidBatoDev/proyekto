@@ -44,6 +44,8 @@ export interface DayLogsModalProps {
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
 	onPayMember?: (memberId: string, logIds: string[], currency: string) => void;
+	/** False when member rates are off — the Amount column disappears. */
+	showMoney?: boolean;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 	/** Peek at the logged task's details (status/description/comments/etc.). */
@@ -86,6 +88,7 @@ export function DayLogsModal({
 	onClose,
 	onReviewLogs,
 	onPayMember,
+	showMoney = true,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
 	onViewTaskDetails,
@@ -293,6 +296,7 @@ export function DayLogsModal({
 					<tbody>
 						{logs.map((log) => (
 							<DayLogRow
+								showMoney={showMoney}
 								key={log.id}
 								log={log}
 								mode={mode}
@@ -365,6 +369,7 @@ function ModalBulkButton({
 }
 
 function DayLogRow({
+	showMoney,
 	log,
 	mode,
 	highlighted,
@@ -390,6 +395,7 @@ function DayLogRow({
 	canOpenTaskInRoadmap,
 	onViewTaskDetails,
 }: {
+	showMoney: boolean;
 	log: TaskTimeLog;
 	mode: "my" | "team";
 	highlighted: boolean;
@@ -535,6 +541,7 @@ function DayLogRow({
 					running={isRunning}
 					fee={fee}
 					currency={currency}
+					show={showMoney}
 				/>
 			</td>
 			<td className="px-2 py-2 align-middle">

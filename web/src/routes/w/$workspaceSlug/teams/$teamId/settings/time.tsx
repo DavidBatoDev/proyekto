@@ -150,6 +150,15 @@ function TeamTimeSettings() {
 	const canToggle = isOwner || team?.viewer_role === "admin";
 	const enabled = team?.time_tracking_enabled === true;
 
+	// Every switch on this page invalidates the same three caches: the detail
+	// query this page reads, the ["team", id] one the Time tabs read, and the
+	// sidebar's list.
+	const invalidateTeam = () => {
+		qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
+		qc.invalidateQueries({ queryKey: ["team", teamId] });
+		qc.invalidateQueries({ queryKey: ["teams", "mine"] });
+	};
+
 	const toggleMutation = useMutation({
 		mutationFn: (next: boolean) =>
 			updateTeam(teamId, { time_tracking_enabled: next }),
@@ -192,22 +201,34 @@ function TeamTimeSettings() {
 	const retroLimitOn = Number(team?.retroactive_log_days ?? 0) > 0;
 	const RETRO_DEFAULT_DAYS = 7;
 
-	const compensationMutation = useMutation({
+	const ratesMutation = useMutation({
 		mutationFn: (next: boolean) =>
-			updateTeam(teamId, { compensation_enabled: next }),
+			updateTeam(teamId, { member_rates_enabled: next }),
 		onSuccess: (updated) => {
 			toast.success(
-				updated.compensation_enabled
-					? "Payouts enabled"
-					: "Payouts disabled for this team",
+				updated.member_rates_enabled
+					? "Member rates enabled"
+					: "Member rates disabled — payouts turned off with them",
 			);
-			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
-			qc.invalidateQueries({ queryKey: ["team", teamId] });
-			qc.invalidateQueries({ queryKey: ["teams", "mine"] });
+			invalidateTeam();
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
-	const paysMoney = team?.compensation_enabled === true;
+
+	const payoutsMutation = useMutation({
+		mutationFn: (next: boolean) =>
+			updateTeam(teamId, { payouts_enabled: next }),
+		onSuccess: (updated) => {
+			toast.success(
+				updated.payouts_enabled ? "Payouts enabled" : "Payouts disabled",
+			);
+			invalidateTeam();
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const hasRates = team?.member_rates_enabled === true;
+	const canPay = team?.payouts_enabled === true;
 
 	const currencyMutation = useMutation({
 		mutationFn: (currency: "USD" | "CAD" | "PHP") =>
@@ -451,42 +472,66 @@ function TeamTimeSettings() {
 												<div className="flex items-start justify-between gap-4">
 													<div>
 														<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-															Payouts
+															Member rates
 														</p>
 														<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-															{paysMoney
-																? "This team pays through Proyekto: members carry rates, hours accrue a value, and you record payments against cut-off periods."
-																: "This team tracks hours only. Turn payouts on to set per-member rates, group approved hours into cut-off periods, and record payments."}
+															{hasRates
+																? "Hours carry an internal cost: each member has a rate card, and logged time accrues a value you can report on."
+																: "This team tracks hours only. Turn this on to give members rate cards so their logged time carries a cost."}
 														</p>
 													</div>
 													<SettingSwitch
-														checked={paysMoney}
-														disabled={compensationMutation.isPending}
-														onChange={(next) =>
-															compensationMutation.mutate(next)
-														}
-														label="Enable payouts for this team"
+														checked={hasRates}
+														disabled={ratesMutation.isPending}
+														onChange={(next) => ratesMutation.mutate(next)}
+														label="Enable member rates for this team"
 													/>
 												</div>
 
-												{!paysMoney && (
+												{!hasRates && (
 													<p className="mt-2 max-w-xl text-xs text-muted-foreground">
-														While this is off, the Manage Rates and Payouts tabs
-														are hidden and new logs record no fee. Existing
-														rates and past amounts are kept, and reappear
-														unchanged if you turn it back on.
+														While this is off, the Manage Rates tab is hidden
+														and new logs record no fee. Existing rate cards and
+														past amounts are kept, and reappear unchanged if you
+														turn it back on.
 													</p>
 												)}
 
-												{paysMoney && (
-													<div className="mt-5 border-t border-border pt-5">
-														<PayPeriodSettingsCard
-															teamId={teamId}
-															config={team?.pay_period_config}
-															canManage={isOwner}
+												{/* Payouts is nested because a payout is priced from a rate: with
+												    no rates a payout would record a zero-value payment, which the
+												    DB refuses outright. */}
+												<div className="mt-5 border-l-2 border-border pl-4">
+													<div className="flex items-start justify-between gap-4">
+														<div>
+															<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+																Payouts
+															</p>
+															<p className="mt-1 max-w-xl text-xs text-muted-foreground">
+																{!hasRates
+																	? "Needs member rates — a payout is priced from each member's rate."
+																	: canPay
+																		? "Record payments you have made against cut-off periods, and mark the hours they covered as paid."
+																		: "This team prices its hours but settles pay outside Proyekto. Turn this on to track cut-off periods and record payments here."}
+															</p>
+														</div>
+														<SettingSwitch
+															checked={canPay}
+															disabled={!hasRates || payoutsMutation.isPending}
+															onChange={(next) => payoutsMutation.mutate(next)}
+															label="Enable payouts for this team"
 														/>
 													</div>
-												)}
+
+													{canPay && (
+														<div className="mt-5 border-t border-border pt-5">
+															<PayPeriodSettingsCard
+																teamId={teamId}
+																config={team?.pay_period_config}
+																canManage={isOwner}
+															/>
+														</div>
+													)}
+												</div>
 											</section>
 										</div>
 									)}

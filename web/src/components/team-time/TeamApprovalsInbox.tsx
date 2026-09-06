@@ -130,7 +130,9 @@ interface TeamApprovalsInboxProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	/** Undefined when the team's money layer is off — pay actions disappear. */
+	/** False when member rates are off — the Amount column disappears. */
+	showMoney?: boolean;
+	/** Undefined when payouts are off — pay actions disappear. */
 	onPayMember?: (
 		memberId: string,
 		logIds: string[],
@@ -147,6 +149,7 @@ export function TeamApprovalsInbox({
 	currentUserId,
 	busyLogIds,
 	onReviewLogs,
+	showMoney = true,
 	onPayMember,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
@@ -370,6 +373,7 @@ export function TeamApprovalsInbox({
 								isEligible={isEligible}
 								onToggleSelect={toggleSelect}
 								onReviewLogs={onReviewLogs}
+								showMoney={showMoney}
 								onPayMember={onPayMember}
 								onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 								canOpenTaskInRoadmap={canOpenTaskInRoadmap}
@@ -492,7 +496,9 @@ interface MemberDrilldownProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	/** Undefined when the team's money layer is off — pay actions disappear. */
+	/** False when member rates are off — the Amount column disappears. */
+	showMoney?: boolean;
+	/** Undefined when payouts are off — pay actions disappear. */
 	onPayMember?: (
 		memberId: string,
 		logIds: string[],
@@ -513,6 +519,7 @@ function MemberDrilldown({
 	isEligible,
 	onToggleSelect,
 	onReviewLogs,
+	showMoney = true,
 	onPayMember,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
@@ -585,6 +592,7 @@ function MemberDrilldown({
 				<tbody>
 					{shown.map((log) => (
 						<DrilldownRow
+							showMoney={showMoney}
 							key={log.id}
 							log={log}
 							memberId={group.memberId}
@@ -629,6 +637,7 @@ const DrilldownRow = memo(function DrilldownRow({
 	onSetOpenMenuRowId,
 	onToggleSelect,
 	onReviewLogs,
+	showMoney = true,
 	onPayMember,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
@@ -646,7 +655,9 @@ const DrilldownRow = memo(function DrilldownRow({
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	/** Undefined when the team's money layer is off — pay actions disappear. */
+	/** False when member rates are off — the Amount column disappears. */
+	showMoney?: boolean;
+	/** Undefined when payouts are off — pay actions disappear. */
 	onPayMember?: (
 		memberId: string,
 		logIds: string[],
@@ -771,6 +782,7 @@ const DrilldownRow = memo(function DrilldownRow({
 					running={isRunning}
 					fee={fee}
 					currency={currency}
+					show={showMoney}
 				/>
 			</td>
 			<td className="px-2 py-2 align-middle">

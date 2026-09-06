@@ -58,6 +58,8 @@ interface DayGroup {
 }
 
 interface TeamMyLogsListProps {
+	/** False when member rates are off — the amount line disappears. */
+	showMoney?: boolean;
 	logs: TaskTimeLog[];
 	tasks: ProjectTaskOption[];
 	ownRateByProjectId: Record<string, { hourly_rate: number; currency: string }>;
@@ -88,6 +90,7 @@ interface TeamMyLogsListProps {
 }
 
 export function TeamMyLogsList({
+	showMoney = true,
 	logs,
 	tasks,
 	ownRateByProjectId,
@@ -163,6 +166,7 @@ export function TeamMyLogsList({
 	const renderRow = (log: TaskTimeLog) => (
 		<MyLogTxnRow
 			key={log.id}
+			showMoney={showMoney}
 			log={log}
 			taskTitleById={taskTitleById}
 			fallbackRate={ownRateByProjectId[log.project_id]}
@@ -319,7 +323,9 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 	onOpenTaskInRoadmap,
 	canOpenInRoadmap,
 	onViewTimeline,
+	showMoney,
 }: {
+	showMoney: boolean;
 	log: TaskTimeLog;
 	taskTitleById: Map<string, string>;
 	fallbackRate?: { hourly_rate: number; currency: string };
@@ -495,6 +501,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 						running={isRunning}
 						fee={fee}
 						currency={currency}
+						show={showMoney}
 					/>
 				</div>
 				<div className="flex items-center justify-end gap-1 text-[11px] tabular-nums text-muted-foreground">

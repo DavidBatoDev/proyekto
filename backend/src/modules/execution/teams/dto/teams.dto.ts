@@ -164,11 +164,17 @@ export class UpdateTeamDto {
   @IsBoolean()
   time_tracking_enabled?: boolean;
 
-  // Gates the team's whole money layer: per-member rates, payout cut-offs, and
-  // payouts. Defaults false in the DB — money is opt-in per team.
+  // Do this team's hours carry an internal cost? Gates the rate cards and every
+  // fee figure. Defaults false in the DB — money is opt-in per team.
   @IsOptional()
   @IsBoolean()
-  compensation_enabled?: boolean;
+  member_rates_enabled?: boolean;
+
+  // Does this team record payments here? Requires member_rates_enabled; the DB
+  // holds a CHECK, and updateTeam cascades this off when rates go off.
+  @IsOptional()
+  @IsBoolean()
+  payouts_enabled?: boolean;
 
   @IsOptional()
   @IsNumber()
@@ -349,8 +355,13 @@ export class UpdateTeamMemberRateDto {
   start_date?: string;
 
   @IsOptional()
+  // `null` clears the end date, reopening a closed rate as the current one —
+  // update() keys the sibling-closing branch off exactly `null`, so the web
+  // must send null rather than "" or an omitted field. @IsOptional() skips
+  // validation for null as well as undefined, so @IsDateString still guards
+  // real values.
   @IsDateString()
-  end_date?: string;
+  end_date?: string | null;
 
   // `null` clears the cap; a number sets it. ValidateIf lets null through the
   // @IsNumber check (the service maps `?? null`).

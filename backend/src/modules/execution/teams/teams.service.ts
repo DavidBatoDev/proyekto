@@ -111,10 +111,19 @@ export interface TeamRow {
   billing_email: string | null;
   time_tracking_enabled: boolean;
   /**
-   * Gates the team's whole money layer: per-member rates, payout cut-offs, and
-   * payouts. False (the DB default) means the team tracks hours only.
+   * Do this team's hours carry an internal cost? Gates the rate cards, the rate
+   * snapshot written onto every log, and every fee figure. False (the DB
+   * default) means the team tracks hours only.
    */
-  compensation_enabled: boolean;
+  member_rates_enabled: boolean;
+  /**
+   * Does this team record payments in Proyekto? Gates the payouts module, the
+   * `paid` log status, and the cut-off schedule. A DB CHECK
+   * (teams_payouts_require_rates) keeps this false whenever
+   * member_rates_enabled is false — a payout totals hours x rate_snapshot, so
+   * payouts without rates would record a zero-value payment.
+   */
+  payouts_enabled: boolean;
   retroactive_log_days: number | null;
   default_currency: string;
   pay_period_config: PayPeriodConfigInput | null;
@@ -172,17 +181,18 @@ void TEAM_SHARED_UPDATE_FIELDS;
  *    gets paid.
  *  - retroactive_log_days / default_currency / pay_period_config drive payout
  *    windows and amounts.
- *  - compensation_enabled decides whether the team has a money layer at all
- *    (rates, cut-offs, payouts). An admin turning it on would be committing the
- *    team to paying people; an admin turning it off would hide the rate card
- *    the owner set.
+ *  - member_rates_enabled decides whether hours carry an internal cost at all,
+ *    and payouts_enabled whether the team settles them here. An admin turning
+ *    either on would be committing the team to paying people; turning them off
+ *    would hide the rate card the owner set.
  */
 const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'legal_name',
   'billing_address',
   'tax_id',
   'billing_email',
-  'compensation_enabled',
+  'member_rates_enabled',
+  'payouts_enabled',
   'retroactive_log_days',
   'default_currency',
   'pay_period_config',
@@ -559,8 +569,27 @@ export class TeamsService {
     if (dto.time_tracking_enabled !== undefined) {
       patch.time_tracking_enabled = dto.time_tracking_enabled;
     }
-    if (dto.compensation_enabled !== undefined) {
-      patch.compensation_enabled = dto.compensation_enabled;
+    if (dto.member_rates_enabled !== undefined) {
+      patch.member_rates_enabled = dto.member_rates_enabled;
+      // Payouts price themselves off rate snapshots, so the DB holds a CHECK
+      // that forbids payouts-without-rates. Cascade rather than letting that
+      // constraint surface as a raw 500: switching rates off switches payouts
+      // off with it, which is what the nested UI shows anyway.
+      if (dto.member_rates_enabled === false) {
+        patch.payouts_enabled = false;
+      }
+    }
+    if (dto.payouts_enabled !== undefined) {
+      if (dto.payouts_enabled === true) {
+        const ratesAfterPatch =
+          dto.member_rates_enabled ?? team.member_rates_enabled;
+        if (!ratesAfterPatch) {
+          throw new BadRequestException(
+            "Enable member rates before turning on payouts — a payout is priced from each member's rate.",
+          );
+        }
+      }
+      patch.payouts_enabled = dto.payouts_enabled;
     }
     if (dto.retroactive_log_days !== undefined) {
       patch.retroactive_log_days = dto.retroactive_log_days;

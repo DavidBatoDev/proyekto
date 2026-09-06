@@ -539,6 +539,7 @@ export class RoadmapAiService {
     const response = {
       roadmap_id: roadmapNodeId,
       title: state.name,
+      project_id: state.project_id ?? null,
       description: state.description,
       status: state.status,
       revision_token: this.requireRevisionToken(

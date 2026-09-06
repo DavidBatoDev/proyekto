@@ -7,18 +7,26 @@ import { formatMoney } from "./time-utils";
  * Billable = approved + paid (emerald). Pending is provisional and shown muted,
  * since it is not yet billable. Rejected is non-billable — struck through.
  * Running or unrated logs have no amount to show ("—").
+ *
+ * `show={false}` blanks it entirely, for teams with member rates switched off.
+ * That case is not the same as a zero fee: such a team may still hold logs from
+ * before it was switched off, and those carry real historical amounts which the
+ * rest of the UI hides.
  */
 export function BillableAmount({
 	status,
 	running,
 	fee,
 	currency,
+	show = true,
 }: {
 	status: TimeLogStatus;
 	running?: boolean;
 	fee: number | null;
 	currency: string;
+	show?: boolean;
 }) {
+	if (!show) return null;
 	if (running || fee === null || fee <= 0)
 		return <span className="text-slate-400">—</span>;
 	const money = formatMoney(fee, currency);
