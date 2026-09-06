@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { TriangleAlert } from "lucide-react";
 import {
 	type ReactNode,
@@ -19,6 +20,7 @@ import type { AiSendOptions } from "./AiMessage";
 import { AiRunBanner } from "./AiRunBanner";
 import { AiThreadMenuButton } from "./AiThreadMenuButton";
 import { AiThreadView } from "./AiThreadView";
+import { invalidateAiEntities } from "./aiEntityResolver";
 import {
 	type AiMentionCandidate,
 	buildContextChips,
@@ -149,6 +151,14 @@ export function AiAssistantPanel({
 	composerAriaLabel,
 	className,
 }: AiAssistantPanelProps) {
+	const queryClient = useQueryClient();
+	const handleCommits = useCallback<NonNullable<RunHooks["onCommits"]>>(
+		(commits, context) => {
+			onCommits?.(commits, context);
+			void invalidateAiEntities(queryClient);
+		},
+		[onCommits, queryClient],
+	);
 	const scopeKey = scope ? aiScopeKey(scope) : null;
 	const threads = useAiThreads(scope, { baseRevision });
 	const { activeThreadId, threadsList } = threads;
@@ -161,7 +171,7 @@ export function AiAssistantPanel({
 		persistTurn: thread.persistTurn,
 		rehydrateAgentSession: thread.rehydrateAgentSession,
 		baseRevision,
-		onCommits,
+		onCommits: handleCommits,
 		onTraceEvents,
 	});
 

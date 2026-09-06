@@ -1,6 +1,6 @@
 # Runs & Phases
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 Every user message to the Proyekto agent is a **run**: a server-side state machine the
 Python agent owns, persisted in the Redis session and the durable snapshot, that moves
@@ -347,6 +347,59 @@ as the per-turn tail block:
 The web persists the mention spans on the user turn in
 `roadmap_ai_messages.metadata.refs` (64 KB ceiling per message).
 
+## Entity Links In Assistant Replies
+
+[`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md) keeps the short
+confirmation rule under `# Style` and defines the wire format under `# Entity links`:
+`[Title](proyekto://<kind>/<id>)`. The supported kinds are `project`, `roadmap`, `epic`,
+`feature`, `task`, `milestone` and `team`. The link text is only the entity title;
+relationship words such as "in", "under" and "/" remain outside the link. The model
+uses IDs from tools and links only entities it knows about. This rule applies only
+to assistant reply text and final reports. The prompt requires plain titles in tool
+text fields and raw IDs or handles only in identifier fields; this includes
+`ask_user` questions and options, proposal summaries and hierarchy titles, edit
+arguments, task comments and memory content.
+
+| ID source | Expansion before the reply leaves the agent |
+| --- | --- |
+| UUID from list, search or detail tools | Preserved |
+| Outline handle `E1`, `E1.F2`, `M1`, `R2.E1` | Resolved through `merged_handle_map(session, run)` only when the stored type matches the link kind |
+| Roadmap prefix `R2` | Resolved to the loaded `RoadmapContext` with that prefix; only for kind `roadmap` |
+| Unknown handle, invalid ID or kind mismatch | Link removed; title preserved |
+| Empty link text | Link removed |
+
+The roadmap `# Scope` line includes the focus UUID:
+`Focus roadmap: "Alpha" (id <uuid>; bare handles)`. Task refs include `id <uuid>` in
+their `# Referenced items` parentheses because tasks have no outline handle.
+These additions keep the scope block session-stable and refs in the per-turn tail.
+
+[`runtime/entity_links.py`](../../agent/app/core/runtime/entity_links.py)
+`expand_entity_links` runs at the start of `orchestrator.finalize_step`, writing back
+to `run.final_message` before `assistant_message` and the history append are derived.
+The persisted assistant turn and the response therefore contain the same expanded
+links. Expansion is pure; it does not fetch entity data.
+
+Verify's `# Outcome` includes each impacted item as
+`- {impact} {node_type} [Title](proyekto://{node_type}/{node_id})`, making the ID
+available to its report model. `phase_verify.md` asks for entity links in report text
+using those IDs, keeps proposal arguments plain, and retains the prohibition on
+re-applying changes. Deterministic verify and undo reports link roadmap names and
+impacted items; automatic proposal summaries
+link roadmap names. Generated titles escape Markdown punctuation.
+
+`strip_entity_links` in the same runtime helper replaces entity links with their
+titles and leaves ordinary Markdown alone. The
+[`comment handler`](../../agent/app/core/tools/handlers/comment_tools.py) applies it
+before validating and posting comment content; the
+[`memory handler`](../../agent/app/core/tools/handlers/memory_tools.py) applies it
+before validating and storing a memory. These checks keep reply URIs out of shared
+task comments and durable preferences even if a tool payload includes them.
+
+The [web kit](../04-web/ai-assistant.md#entity-chips-in-assistant-replies) resolves
+these links through [the context API](../03-backend/ai-context-api.md#resolve-refs).
+Deployment order is backend, agent, then web: older backends omit avatars, older web bundles display link
+titles with the unsupported href stripped, and older replies remain plain text.
+
 ## Prompt layout and the cache invariant
 
 [`runtime/prompt.py`](../../agent/app/core/runtime/prompt.py) assembles the system
@@ -354,7 +407,7 @@ prompt as `STATIC_PREFIX + SCOPE_BLOCK + STATE_BLOCKS + TAIL`:
 
 | Part | Blocks | Changes when |
 | --- | --- | --- |
-| Static prefix | [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md) | Never (byte-identical across sessions) |
+| Static prefix | [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md), including `# Style` and `# Entity links` | Never (byte-identical across sessions) |
 | Scope block | `# Scope` | Per session |
 | State blocks (fixed order) | `# Focus roadmap`, `# Loaded roadmaps`, `# Workspace overview`, `# Project context`, `# Earlier conversation summary`, `# Memory notes`, `# Pending proposal awaiting user confirmation`, `# Recently resolved items`, `# Recent changes`, `# Actor` | Only when cached state changes (a roadmap loads, a commit lands) |
 | Tail (always last) | `# Referenced items`, `# Relevant memories`, `# Run` (`phase_investigate.md` only on a resumed investigate; `phase_execute.md` and `phase_verify.md` always) | Every turn |

@@ -1,6 +1,6 @@
 # Agent & Roadmap AI
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 The Python FastAPI agent that powers the Proyekto assistant in two places: the
 in-roadmap panel (a session focused on one roadmap) and the dashboard assistant (a
@@ -19,6 +19,7 @@ instance can continue any run. The web talks to it directly.
 | Doc | What's in it |
 | --- | --- |
 | [runs-and-phases.md](./runs-and-phases.md) | The run state machine - endpoints, input and transition tables, checkpoint policy, phases, tool catalog, refs, prompt cache, budgets, legacy sync mode, error codes, trace events, the `logs.txt` block |
+| [Backend AI context API](../03-backend/ai-context-api.md) | Entity-chip hydration through `resolve-refs`, task assignee fields, authorization, batching and throttling |
 | [memory.md](./memory.md) | The Redis session document (scope, owner, run), the trace store keys, the durable snapshot ladder, the summarizer, roadmap memories |
 | [operations-schema.md](./operations-schema.md) | The shared backend/agent operations contract and its parity checker |
 | [json-editing.md](./json-editing.md) | Manual JSON dev-mode editing (`/roadmaps/full`, JSON patch) |
@@ -41,9 +42,34 @@ instance can continue any run. The web talks to it directly.
 | **Checkpoint policy** | The rule that decides whether `stage_edits` batches execute immediately or become a proposal: focus roadmap up to 90 ops (deletes included); workspace scope up to 15 ops, no deletes; anything multi-roadmap or non-focus proposes. |
 | **Terminal tool** | A tool that ends a loop turn: `stage_edits`, `propose`, `revise_proposal`, `ask_user`, `revert_changes`. |
 | **Ref** | A composer `@`-mention (`{kind, id, label}`) hydrated once per run; a hint about what the user means, never a restriction. |
+| **Entity link** | An assistant reply link `[Title](proyekto://<kind>/<id>)`; the agent expands outline handles to UUIDs, and the web resolves the canonical title, destination and task avatars. |
 | **Legacy sync mode** | A `/messages` call without `capabilities: ["continue"]`: the whole run happens in one request, batches that do not fit are skipped. Kept one release for old bundles. |
 | **Lean diff** | The `include_roadmap: false` commit path that returns a fresh revision token instead of the full roadmap. |
 | **Roadmap memory** | A durable per-roadmap preference in `roadmap_ai_memories`, shared across collaborators. |
+
+## Entity Links In Replies
+
+The prompt's `# Entity links` section applies only to assistant reply text and final
+reports. It tells the model to link every known project, roadmap, epic, feature,
+task, milestone and team it names using
+`[Title](proyekto://<kind>/<id>)`. Relationship words stay outside the links. IDs come
+from tool results or outline handles (`E1`, `E1.F2`, `M1`, `R2`, `R2.E1`); the focus
+roadmap's UUID appears in `# Scope`. The verify phase supplies links with node IDs in
+its `# Outcome` item lines, and deterministic verify, undo and proposal summaries use
+the same form.
+
+Tool arguments use plain entity titles, including clarifier options, proposal text,
+comments and saved memories. The comment and memory handlers also strip entity links
+before sending content to the backend, so reply formatting does not enter shared
+task comments or durable preferences.
+
+[`entity_links.py`](../../agent/app/core/runtime/entity_links.py) expands handles in
+`orchestrator.finalize_step` before the reply is persisted or returned. Unknown handles
+and kind mismatches keep the title and lose the link. The web hydrates UUID links as
+clickable chips through the
+[resolver API](../03-backend/ai-context-api.md#resolve-refs); see the
+[web kit](../04-web/ai-assistant.md#entity-chips-in-assistant-replies) for caching,
+avatars and fallback rendering. Existing replies without links keep their rendering.
 
 ## Code locations
 

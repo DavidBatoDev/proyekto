@@ -12,6 +12,7 @@ import {
 	isClarifierQuestionAnswered,
 	resolveClarifierQuestions,
 } from "./AiClarifierCard.logic";
+import { stripEntityLinks } from "./aiEntityLinks";
 
 export interface AiClarifierCardProps {
 	card: ClarifierCardLike;
@@ -34,7 +35,24 @@ export const AiClarifierCard: FC<AiClarifierCardProps> = ({
 	disabled,
 	badgeLabel,
 }) => {
-	const questions = useMemo(() => resolveClarifierQuestions(card), [card]);
+	const questions = useMemo(
+		() =>
+			resolveClarifierQuestions(card).map((question) => ({
+				...question,
+				header: question.header
+					? stripEntityLinks(question.header)
+					: question.header,
+				question: stripEntityLinks(question.question),
+				options: question.options.map((option) => ({
+					...option,
+					label: stripEntityLinks(option.label),
+					description: option.description
+						? stripEntityLinks(option.description)
+						: option.description,
+				})),
+			})),
+		[card],
+	);
 	const [currentIndex, setCurrentIndex] = useState<number>(0);
 	const [selections, setSelections] = useState<Record<string, string[]>>({});
 	const [customs, setCustoms] = useState<Record<string, string>>({});

@@ -152,6 +152,12 @@ export interface AgentResolvedRef {
 	workspace_id?: string | null;
 	/** Nearest-first: feature -> epic -> roadmap -> project -> workspace. */
 	parent_chain?: AgentResolvedRefChainEntry[];
+	assignees?: {
+		id: string;
+		display_name: string | null;
+		avatar_url: string | null;
+	}[];
+	assignee_count?: number;
 	/** NOT_FOUND | FORBIDDEN | RESOLVE_FAILED | ... when accessible=false. */
 	error_code?: string | null;
 }

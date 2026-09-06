@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import type { AgentPlanProposal } from "@/services/ai-agent.service";
 import { AiPlanProposalGraph } from "./AiPlanProposalGraph";
+import { stripEntityLinks } from "./aiEntityLinks";
 
 export interface AiPlanProposalCardProps {
 	plan: AgentPlanProposal;
@@ -52,7 +53,9 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 				{plan.goal ? (
 					<div>
 						<SectionTitle>Goal</SectionTitle>
-						<div className="text-sm text-foreground">{plan.goal}</div>
+						<div className="text-sm text-foreground">
+							{stripEntityLinks(plan.goal)}
+						</div>
 					</div>
 				) : null}
 
@@ -60,7 +63,7 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 					<div>
 						<SectionTitle>Rationale</SectionTitle>
 						<div className="text-sm text-muted-foreground">
-							{plan.rationale}
+							{stripEntityLinks(plan.rationale)}
 						</div>
 					</div>
 				) : null}
@@ -79,7 +82,7 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 								>
 									<div className="flex flex-wrap items-center gap-2">
 										<span className="font-medium text-foreground">
-											{target.roadmap_title || "Roadmap"}
+											{stripEntityLinks(target.roadmap_title || "Roadmap")}
 										</span>
 										{typeof target.operations_count === "number" ? (
 											<span className="text-xs text-muted-foreground">
@@ -101,7 +104,9 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 									{target.summary_lines && target.summary_lines.length > 0 ? (
 										<ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
 											{target.summary_lines.map((line, lineIdx) => (
-												<li key={`line-${lineIdx}`}>{line}</li>
+												<li key={`line-${lineIdx}`}>
+													{stripEntityLinks(line)}
+												</li>
 											))}
 										</ul>
 									) : null}
@@ -115,7 +120,7 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 					<div>
 						<SectionTitle>
 							{targets.length > 1
-								? `Proposed structure (${targets[0]?.roadmap_title || "first roadmap"})`
+								? `Proposed structure (${stripEntityLinks(targets[0]?.roadmap_title || "first roadmap")})`
 								: "Proposed structure"}
 						</SectionTitle>
 						<div className="mt-1">
@@ -129,7 +134,7 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 						<SectionTitle>Risks</SectionTitle>
 						<ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
 							{plan.risks.map((risk, idx) => (
-								<li key={`risk-${idx}`}>{risk}</li>
+								<li key={`risk-${idx}`}>{stripEntityLinks(risk)}</li>
 							))}
 						</ul>
 					</div>
@@ -140,7 +145,7 @@ export const AiPlanProposalCard: FC<AiPlanProposalCardProps> = ({
 						<SectionTitle>Next steps</SectionTitle>
 						<ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
 							{plan.next_steps.map((step, idx) => (
-								<li key={`next-${idx}`}>{step}</li>
+								<li key={`next-${idx}`}>{stripEntityLinks(step)}</li>
 							))}
 						</ul>
 					</div>

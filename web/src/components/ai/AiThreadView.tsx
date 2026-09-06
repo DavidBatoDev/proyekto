@@ -3,6 +3,7 @@ import { useAiRunState, useAiRunStore } from "@/stores/aiRunStore";
 import { AiActivityTimelineView } from "./AiActivityTimeline";
 import type { AiCommitLinkView } from "./AiCommitCard";
 import { AiMessage, type AiSendOptions } from "./AiMessage";
+import { stripEntityLinks } from "./aiEntityLinks";
 import {
 	normalizeTimelineForDisplay,
 	PROGRESS_PRESENTATION_MODE,
@@ -181,7 +182,7 @@ export function AiThreadView({
 						Assistant
 					</div>
 					<div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-						{streamingPreview.text}
+						{stripEntityLinks(streamingPreview.text)}
 						<span className="ml-0.5 inline-block h-3 w-[2px] translate-y-[2px] animate-pulse bg-muted-foreground" />
 					</div>
 				</article>

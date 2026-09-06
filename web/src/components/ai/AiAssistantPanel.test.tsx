@@ -78,12 +78,14 @@ vi.mock("@/stores/authStore", () => ({
 	useUser: () => null,
 }));
 
+import type { RunCommitView } from "@/services/ai-agent.service";
 import { useAiRunStore } from "@/stores/aiRunStore";
 import { useAiThreadsStore } from "@/stores/aiThreadsStore";
 import {
 	AiAssistantPanel,
 	type AiAssistantPanelProps,
 } from "./AiAssistantPanel";
+import { aiEntityKeys } from "./aiEntityResolver";
 import { aiRunController } from "./runController";
 import type { AiSessionScope } from "./scope";
 import type { AiMentionPick } from "./types";
@@ -122,6 +124,7 @@ function renderPanel(props: AiAssistantPanelProps) {
 	const utils = render(wrap(<AiAssistantPanel {...props} />));
 	return {
 		...utils,
+		queryClient: client,
 		rerender: (next: AiAssistantPanelProps) =>
 			utils.rerender(wrap(<AiAssistantPanel {...next} />)),
 	};
@@ -253,6 +256,43 @@ describe("AiAssistantPanel", () => {
 		});
 		expect(typeof send.mock.calls[0][0].ensureThread).toBe("function");
 		expect(textarea.value).toBe("");
+	});
+
+	it("invalidates entity queries after forwarding committed changes to the caller", async () => {
+		const send = vi.spyOn(aiRunController, "send").mockResolvedValue();
+		const onCommits = vi.fn();
+		const { queryClient } = renderPanel(
+			baseProps({ initialMessage: "Mark the task done", onCommits }),
+		);
+		await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+		const taskKey = aiEntityKeys.one("task", "task-id");
+		queryClient.setQueryData(taskKey, {
+			kind: "task",
+			id: "task-id",
+			accessible: true,
+			status: "todo",
+		});
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		const commits: RunCommitView[] = [
+			{
+				batch_id: "batch",
+				roadmap_id: "rm-1",
+				status: "committed",
+				operations_count: 1,
+			},
+		];
+		const context = { threadId: "t1", runId: "run" };
+		const hook = send.mock.calls[0][0].hooks.onCommits;
+		expect(hook).toBeTypeOf("function");
+		act(() => hook?.(commits, context));
+		expect(onCommits).toHaveBeenCalledExactlyOnceWith(commits, context);
+		expect(invalidate).toHaveBeenCalledExactlyOnceWith({
+			queryKey: aiEntityKeys.all,
+		});
+		expect(onCommits.mock.invocationCallOrder[0]).toBeLessThan(
+			invalidate.mock.invocationCallOrder[0],
+		);
+		expect(queryClient.getQueryState(taskKey)?.isInvalidated).toBe(true);
 	});
 
 	it("shows the run banner and disables the composer while the thread is sending", async () => {

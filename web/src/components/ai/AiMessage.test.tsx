@@ -1,8 +1,13 @@
 /* @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/services/ai-context.service", () => ({
+	aiContextService: { resolveRefs: vi.fn() },
+}));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual =
@@ -33,6 +38,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
+import { aiContextService } from "@/services/ai-context.service";
 import {
 	AI_MESSAGE_CONTEXT_LABEL,
 	AiMessage,
@@ -178,5 +184,47 @@ describe("AiMessage user bubble context row", () => {
 		});
 		expect(screen.queryByTestId("ai-message-context")).toBeNull();
 		expect(screen.getByText("Done.")).toBeTruthy();
+	});
+});
+
+describe("AiMessage assistant entity links", () => {
+	it("passes workspace scope through markdown so an assistant team chip links", async () => {
+		const id = "a91b9842-15ae-48c1-bf90-627a71179e38";
+		vi.mocked(aiContextService.resolveRefs).mockResolvedValue([
+			{ kind: "team", id, accessible: true, title: "Platform" },
+		]);
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		const { container, unmount } = render(
+			<QueryClientProvider client={client}>
+				<AiMessage
+					message={{
+						id: "reply",
+						role: "assistant",
+						content: `[Platform](proyekto://team/${id}) owns this work.`,
+						timestamp: "2026-09-06T10:00:00Z",
+					}}
+					scope={{
+						kind: "workspace",
+						workspaceId: "workspace",
+						slug: "studio",
+					}}
+					threadId={null}
+					isLatestMessage
+					isSending={false}
+					activityTimeline={null}
+					isLiveTimelineHost={false}
+					onSend={vi.fn()}
+				/>
+			</QueryClientProvider>,
+		);
+		const chip = await screen.findByRole("link", { name: "Team Platform" });
+		expect(chip.getAttribute("href")).toBe(`/w/studio/teams/${id}`);
+		expect(chip.getAttribute("data-entity-kind")).toBe("team");
+		expect(chip.getAttribute("data-entity-state")).toBe("linked");
+		expect(container.textContent).not.toContain("proyekto://");
+		unmount();
+		client.clear();
 	});
 });

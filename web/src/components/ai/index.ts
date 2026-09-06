@@ -53,6 +53,7 @@ export {
 	AiComposer,
 	type AiComposerProps,
 } from "./AiComposer";
+export { AiEntityChip, type AiEntityChipProps } from "./AiEntityChip";
 export {
 	AiMarkdown,
 	type AiMarkdownProps,
@@ -99,6 +100,18 @@ export {
 	type AiThreadViewProps,
 	ThreadHistorySkeleton,
 } from "./AiThreadView";
+export {
+	aiMarkdownUrlTransform,
+	ENTITY_URI_SCHEME,
+	entityKey,
+	parseEntityHref,
+	stripEntityLinks,
+} from "./aiEntityLinks";
+export {
+	aiEntityKeys,
+	invalidateAiEntities,
+	useAiEntity,
+} from "./aiEntityResolver";
 export {
 	AI_MENTION_CHIP_TONE_CLASS,
 	type AiContextChip,

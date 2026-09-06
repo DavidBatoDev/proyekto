@@ -147,3 +147,68 @@ describe("AiPlanProposalCard proposed task assignees", () => {
 		expect(screen.queryByText(/Dan/)).toBeNull();
 	});
 });
+
+describe("AiPlanProposalCard entity-link fallback", () => {
+	it("strips entity links across prose, target summaries and hierarchy while retaining ordinary links", () => {
+		const ref = (title: string) => `[${title}](proyekto://epic/E1)`;
+		const plan: AgentPlanProposal = {
+			...legacyPlan,
+			goal: `Improve ${ref("Activation")}`,
+			rationale: `Depends on ${ref("Foundation")}`,
+			risks: [`Delay to ${ref("Launch")}`],
+			next_steps: [`Review ${ref("Delivery")} [Docs](https://example.test)`],
+			targets: [
+				{
+					roadmap_id: "rm-a",
+					roadmap_title: ref("Roadmap A"),
+					summary_lines: [`Rename ${ref("Milestone")}`],
+				},
+			],
+			proposed_hierarchy: [
+				{
+					title: ref("Epic title"),
+					description: `For ${ref("Project")}`,
+					features: [
+						{
+							title: ref("Feature title"),
+							target_epic_title: ref("Existing epic"),
+							tasks: [
+								{
+									title: ref("Task title"),
+									description: `Check ${ref("Other task")}`,
+									target_feature_title: ref("Existing feature"),
+								},
+							],
+						},
+					],
+				},
+			],
+		};
+		const onApply = vi.fn();
+		const { container } = render(
+			<AiPlanProposalCard plan={plan} onApply={onApply} onDiscard={vi.fn()} />,
+		);
+		for (const text of [
+			"Improve Activation",
+			"Depends on Foundation",
+			"Delay to Launch",
+			"Roadmap A",
+			"Rename Milestone",
+			"Epic title",
+			"For Project",
+			"Feature title",
+			'under existing "Existing epic"',
+			"Task title",
+			"Check Other task",
+			'under existing "Existing feature"',
+		]) {
+			expect(screen.getByText(text)).toBeTruthy();
+		}
+		expect(
+			screen.getByText("Review Delivery [Docs](https://example.test)"),
+		).toBeTruthy();
+		expect(container.innerHTML).not.toContain("proyekto:");
+		expect(container.querySelector("a")).toBeNull();
+		expect(plan.goal).toContain("proyekto:");
+	});
+});

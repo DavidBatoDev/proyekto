@@ -133,3 +133,47 @@ describe("AiClarifierCard — built-in catch-all", () => {
 		expect(screen.queryByTestId("clarifier-other")).toBeNull();
 	});
 });
+
+describe("AiClarifierCard entity-link fallback", () => {
+	it("renders and submits plain questions and options without changing question ids", () => {
+		const onSubmit = vi.fn();
+		const card: ClarifierCardLike = {
+			question_id: "linked-question",
+			questions: [
+				{
+					id: "choose-target",
+					header: "[Roadmap](proyekto://roadmap/R2)",
+					question: "Rename [Epic](proyekto://epic/E1)?",
+					multi_select: false,
+					allow_custom: false,
+					options: [
+						{
+							label: "Use [Feature](proyekto://feature/E1.F2)",
+							description: "Under [Epic](proyekto://epic/E1)",
+						},
+					],
+				},
+			],
+		};
+		const { container } = render(
+			<AiClarifierCard card={card} onSubmit={onSubmit} />,
+		);
+		expect(screen.getByText("Roadmap")).toBeTruthy();
+		expect(screen.getByText("Rename Epic?")).toBeTruthy();
+		expect(screen.getByText("Under Epic")).toBeTruthy();
+		expect(container.innerHTML).not.toContain("proyekto:");
+		expect(container.querySelector("a")).toBeNull();
+		fireEvent.click(
+			screen.getByRole("radio", { name: /^Use Feature\s*Under Epic$/ }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+		expect(onSubmit).toHaveBeenCalledWith([
+			{
+				question_id: "choose-target",
+				question: "Rename Epic?",
+				selected_options: ["Use Feature"],
+			},
+		]);
+		expect(card.questions?.[0].question).toContain("proyekto:");
+	});
+});

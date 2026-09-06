@@ -5,6 +5,7 @@ import type {
 	AgentPlanProposalAnswer,
 	AgentPlanProposalQuestion,
 } from "@/services/ai-agent.service";
+import { stripEntityLinks } from "./aiEntityLinks";
 
 export interface AiPlanQuestionCardProps {
 	plan: AgentPlanProposal;
@@ -35,7 +36,15 @@ export const AiPlanQuestionCard: FC<AiPlanQuestionCardProps> = ({
 	onDiscard,
 	disabled,
 }) => {
-	const questions = useMemo(() => resolveQuestions(plan), [plan]);
+	const questions = useMemo(
+		() =>
+			resolveQuestions(plan).map((question) => ({
+				...question,
+				question: stripEntityLinks(question.question),
+				options: question.options.map(stripEntityLinks),
+			})),
+		[plan],
+	);
 	const [currentIndex, setCurrentIndex] = useState<number>(0);
 	const [selections, setSelections] = useState<Record<string, string>>({});
 	const [customs, setCustoms] = useState<Record<string, string>>({});

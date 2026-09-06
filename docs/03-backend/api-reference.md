@@ -139,9 +139,13 @@ The dashboard assistant's threads (scope `workspace`). Same eight routes and DTO
 | PUT | /api/workspaces/:id/ai-sessions/:sessionId/agent-state | Supabase | Persist agent state snapshot (64 KB cap) |
 | GET·POST | /api/workspaces/:id/ai-sessions/:sessionId/messages | Supabase | List / append messages (metadata capped at 64 KB) |
 
-### AI context · `ai/context` (user-scoped, called by the agent)
+### AI context · `ai/context` (user-scoped)
 
 Cross-roadmap reads over everything the caller can access; workspace ids only filter and classify (`current` / `shared` / `other_workspace`), they never authorize. Full reference: [ai-context-api.md](./ai-context-api.md).
+
+The agent uses this family for context; the web also calls `resolve-refs` to hydrate
+assistant reply chips. Its wire contract is documented under
+[AI context API -> resolve-refs](./ai-context-api.md#resolve-refs).
 
 | Method | Path | Who | Notes |
 | --- | --- | --- | --- |
@@ -151,9 +155,16 @@ Cross-roadmap reads over everything the caller can access; workspace ids only fi
 | GET | /api/ai/context/search | Supabase | Cross-roadmap epic/feature/task/roadmap/project search; `?q=&kinds=&roadmap_ids=` |
 | GET | /api/ai/context/tasks | Supabase | Cross-roadmap tasks; `?assigned_to_me=&status=&overdue=&due_before=&due_after=` |
 | GET | /api/ai/context/knowledge-search | Supabase | Multi-project knowledge search; `?q=&project_ids=` |
-| POST | /api/ai/context/resolve-refs | Supabase | Batch-resolve @-mention refs (fail-closed per ref) |
+| POST | /api/ai/context/resolve-refs | Supabase +Throttler | Resolve 1-25 composer or reply entity refs; valid guest headers accepted. `AiContextThrottlerGuard`: 60 requests per 60,000 ms per actor (`request.user.id`, IP fallback). Class-level auth runs once. Fail-closed per ref |
 | GET | /api/ai/context/projects/:projectId[/brief · /resources · /meetings · /members · /members/:memberId] | Supabase | Project-keyed context pack |
 | GET | /api/ai/context/changes | Supabase | Run/session-attributed change history; `?run_id=` or `?session_id=` |
+
+Accessible task refs additionally return `assignees: [{id, display_name, avatar_url}]`
+and `assignee_count`. The stored primary comes first, followed by `assigned_at`
+ascending (null timestamps last). Join rows without profiles are dropped and IDs are
+deduplicated; `assignees` is capped at five while `assignee_count` reports the total
+before that cap. Names and avatar URLs may be null. Other kinds and denied task refs
+omit both fields; denied refs also omit the title and other entity details.
 
 > **Authorization & contract:** context reads require **view** access
 > (`assertCanViewRoadmap`); preview / commit / discard / rollback require **edit**

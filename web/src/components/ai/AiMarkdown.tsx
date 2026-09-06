@@ -1,6 +1,9 @@
 import { cloneElement, isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AiEntityChip } from "./AiEntityChip";
+import { aiMarkdownUrlTransform, parseEntityHref } from "./aiEntityLinks";
+import type { AiSessionScope } from "./scope";
 
 // =============================================================================
 // Assistant-turn Markdown renderer. Lifted from the old roadmap panel
@@ -54,7 +57,10 @@ export const renderBracketTagsInNode = (node: ReactNode): ReactNode => {
 	if (Array.isArray(node)) {
 		return node.map((child) => renderBracketTagsInNode(child));
 	}
-	if (isValidElement<{ children?: ReactNode }>(node)) {
+	if (isValidElement<{ children?: ReactNode; href?: string }>(node)) {
+		if (node.type === AiEntityChip) return node;
+		// ReactMarkdown's link override may not have rendered its chip yet.
+		if (parseEntityHref(node.props.href)) return node;
 		if (node.props.children === undefined) return node;
 		return cloneElement(
 			node,
@@ -68,9 +74,25 @@ export const renderBracketTagsInNode = (node: ReactNode): ReactNode => {
 export interface AiMarkdownProps {
 	content: string;
 	className?: string;
+	scope?: AiSessionScope | null;
 }
 
-export function AiMarkdown({ content, className }: AiMarkdownProps) {
+function textOf(children: ReactNode): string {
+	if (typeof children === "string" || typeof children === "number") {
+		return String(children);
+	}
+	if (Array.isArray(children)) return children.map(textOf).join("");
+	if (isValidElement<{ children?: ReactNode }>(children)) {
+		return textOf(children.props.children);
+	}
+	return "";
+}
+
+export function AiMarkdown({
+	content,
+	className,
+	scope = null,
+}: AiMarkdownProps) {
 	return (
 		<div
 			className={
@@ -80,7 +102,31 @@ export function AiMarkdown({ content, className }: AiMarkdownProps) {
 		>
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
+				urlTransform={aiMarkdownUrlTransform}
 				components={{
+					a: ({ href, children }) => {
+						if (!href) return <>{children}</>;
+						const entity = parseEntityHref(href);
+						if (entity) {
+							return (
+								<AiEntityChip
+									{...entity}
+									label={textOf(children)}
+									scope={scope}
+								/>
+							);
+						}
+						const external = /^https?:\/\//i.test(href ?? "");
+						return (
+							<a
+								href={href}
+								target={external ? "_blank" : undefined}
+								rel={external ? "noopener noreferrer" : undefined}
+							>
+								{children}
+							</a>
+						);
+					},
 					p: ({ children }) => (
 						<p className="mb-2 last:mb-0 whitespace-pre-wrap">
 							{renderBracketTagsInNode(children)}

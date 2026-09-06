@@ -215,7 +215,9 @@ export function AiMessage({
 				</div>
 			)}
 
-			{message.content ? <AiMarkdown content={message.content} /> : null}
+			{message.content ? (
+				<AiMarkdown content={message.content} scope={scope} />
+			) : null}
 
 			{commitCards.map((commit) => (
 				<AiCommitCard

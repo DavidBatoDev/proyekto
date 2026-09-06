@@ -1,6 +1,6 @@
 # AI Assistant
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-06 · **Status:** current
 
 The assistant is one shared kit under `web/src/components/ai/`, mounted on two
 surfaces: the roadmap page's side panel (scope = one roadmap) and the workspace
@@ -71,6 +71,7 @@ AiAssistantPanel  (variant: panel | rail | fullscreen)
 | `useAiAssistantRun.ts` | React binding: `send` / `cancel` / `resume` over the controller, `useAiRunState` for the slice |
 | `useAiThreads.ts`, `useAiThreadMessages.ts` | Thread list + active thread; row hydration (`dbRowToClientMessage`), `persistTurnForScope`, `rehydrateAgentSessionForScope`, the exported `useThreadMessagesStore` |
 | `aiMentions.ts`, `AiComposer.tsx`, `AiMentionPicker.tsx`, `useAiMentionCandidates.ts` | Entity @-mentions (below) |
+| `AiEntityChip.tsx`, `aiEntityLinks.ts`, `aiEntityResolver.ts` | Assistant reply entity chips, URI parsing, plain-text link stripping, batched hydration and entity query caching |
 | `aiProgress.ts` | Trace -> timeline normalizers, poll constants, `SHARED_HIDDEN_ACTIVITY_EVENTS`, commit-row describers |
 | `aiToolMessaging.ts` | Human copy for tool calls in the timeline |
 | `AiCommitCard.tsx` | One card per `RunCommitView` (roadmap title, status label, grouped impacted chips that deep-link with the `"n"` project sentinel) |
@@ -173,8 +174,8 @@ and the user is signed in (guests poll), refcounted per user so the two dashboar
 share one socket. Poll cursors are kept per trace id across sends, so a checkpoint answer
 never replays from `seq 0`; `beforeunload` tears every loop down. Run bookkeeping events
 (`run_started`, `phase_entered`, `phase_completed`, `run_step_completed`, `run_checkpoint`,
-`refs_resolved`) are hidden from the timeline — the banner reads `phase_entered` details
-live — while `commit_started` / `commit_completed` / `commit_failed` / `verify_completed`
+`refs_resolved`) are hidden from the timeline � the banner reads `phase_entered` details
+live � while `commit_started` / `commit_completed` / `commit_failed` / `verify_completed`
 render as curated rows. The retired `auto_commit_async_*` events are no longer emitted.
 
 **Legacy responses.** A reply with `commit_summary` but no `commits` is folded into one
@@ -206,6 +207,59 @@ Drafts (`draftInputByThread`, `draftPicksByThread`) live in `aiThreadsStore`, th
 source of truth, because the rail and the full-screen overlay share a thread; only the
 interactive panel writes.
 
+## Entity Chips In Assistant Replies
+
+`AiMessage` passes the session `scope` into `AiMarkdown`. Its `a` override renders
+`[Title](proyekto://<kind>/<uuid>)` as one `AiEntityChip`; `aiMarkdownUrlTransform`
+preserves valid entity URIs and uses react-markdown's default transform for other
+URLs. Handles must already be expanded by the
+[agent](../05-agent-ai/runs-and-phases.md#entity-links-in-assistant-replies).
+Absolute HTTP(S) links open with `target="_blank"` and `rel="noopener noreferrer"`;
+relative links stay in the current tab. Bracket-tag rendering skips chips, and
+an empty or stripped href renders only its children without an anchor.
+`AiThreadView` uses `stripEntityLinks` to keep only titles in the streaming preview.
+It also hides an incomplete trailing entity URI once the `proyekto:` prefix arrives,
+so partial links do not expose their handle or UUID while the reply streams.
+
+| Component | Behaviour |
+| --- | --- |
+| `AiEntityChip` | A 12px `AiMentionKindIcon`, canonical title (link text while loading or inaccessible), and task assignee avatars; inline on `AI_MENTION_CHIP_TONE_CLASS.onSurface` theme tokens. Titles use the available container width with truncation, without a fixed character cap |
+| Tooltip | Kind, humanized status, parent titles nearest-first joined with ` / `, and `Assigned to` followed by every returned assignee name plus any additional count; status is not painted inside the chip |
+| `AiEntityAvatars` | 16px circles with shared `displayNameOf` / `initialsOf` fallbacks. Up to three assignees show individually; more than three use two avatars plus a `+N` slot, so four assignees show two avatars and `+2`. The decorative stack is `aria-hidden`, keeping avatar names out of the link's accessible name; the tooltip carries the assignment summary |
+| Accessible link name | Explicit `aria-label` combines kind and canonical title with a space, such as `Task Drag Task` or `Team Platform`; assignee names remain in the tooltip description |
+| Destination | `resolveAiEntityDestination` and `AiRouteLink`: projects open their roadmap page; roadmaps and nodes use their roadmap route (`?nodeId=` for nodes); absent project IDs use `n`; teams link only in workspace scope |
+| Loading or inaccessible | Non-linked chip with the supplied title. An accessible entity without a destination also stays non-linked |
+| Test attributes | `data-entity-kind`, `data-entity-id`, `data-entity-state="loading\|linked\|plain"` |
+
+[`aiEntityResolver.ts`](../../web/src/components/ai/aiEntityResolver.ts) queues lookups
+for 30 ms, deduplicates by `entityKey(kind, id)` within the current actor's queue,
+and sends chunks of at most 25 refs
+through `aiContextService.resolveRefs`. Responses are matched by kind and ID, not
+array position. Missing entries, malformed responses and failed requests settle
+every waiter as
+`accessible: false, error_code: "RESOLVE_FAILED"`; failures do not throw into React.
+Queues are isolated by actor. The resolver checks the actor before sending and
+discards results if authentication changes while a request is in flight, preventing
+another account from receiving cached titles or assignee profiles.
+
+| Query setting | Value |
+| --- | --- |
+| Keys | `aiEntityKeys.all = ["ai", "entity"]`; `one(kind, id)` appends the kind and UUID. `useAiEntity` adds an actor suffix: `user:<id>`, an opaque `guest:<generation>`, or `anonymous`; guest credentials never appear in query keys |
+| Freshness | `staleTime: 5 * 60_000`; repeated mentions by the same actor share one entity query |
+| Retention | `gcTime: 30 * 60_000` |
+| Retries | `retry: false` |
+| Commit refresh | `AiAssistantPanel` calls the caller's `onCommits` hook, then `invalidateAiEntities(queryClient)` to refresh titles, statuses and assignees; invalidation still uses the shared `aiEntityKeys.all` prefix |
+
+Guests use the same backend path with their guest header. See
+[resolve-refs](../03-backend/ai-context-api.md#resolve-refs) for authorization, task
+assignee fields and the 60-request-per-minute quota per actor. An older backend without those fields
+still produces chips without avatars; persisted messages without entity links render
+as before. Clarifier cards, plan-question cards, proposal cards and proposal graphs
+strip entity links from displayed text instead of hydrating chips. Questions, option
+labels, descriptions, roadmap names and hierarchy titles therefore remain readable
+even if the model puts a reply URI in structured content. Activity rows do not use
+this reply renderer.
+
 ## Stores
 
 | Store | Persisted | Holds |
@@ -220,6 +274,7 @@ Both are among the seven stores listed in [state-and-services.md](./state-and-se
 | Module | Surface |
 | --- | --- |
 | `services/ai-agent.service.ts` | The canonical agent client and every `Agent*` wire type (`RunView`, `RunCommitView`, `AgentRunResponse`, `AgentPlanProposal` with `kind` / `targets`, ...). Methods: `createSession`, `sendMessage`, `continueRun`, `cancelRun`, `getTraceEvents`. Errors are `AiAgentServiceError` with `code` and, for 409s, the `run` body; the codes the kit switches on are `AUTH_REQUIRED`, `SESSION_NOT_FOUND`, `SESSION_SCOPE_NOT_FOUND`, `RUN_NOT_FOUND`, `RUN_NOT_CONTINUABLE`, `RUN_IN_PROGRESS`, `TRACE_EVENTS_NOT_FOUND`. Responses are **not** enveloped |
+| `services/ai-context.service.ts` | `resolveRefs([{kind, id}])` calls `POST /api/ai/context/resolve-refs` through `apiClient`, unwraps `{data: {refs}}`, and returns `AiResolvedEntity[]`; task refs have optional `assignees` and `assignee_count` |
 | `services/ai-sessions.service.ts` | Scope-first backend client over `aiSessionsBasePath(scope)`: `list`, `create`, `getById`, `update`, `delete`, `listMessages`, `appendMessage` (message `metadata` is capped at 64 KB server-side; the eighth backend route, `PUT .../agent-state`, is written by the agent). `AiSession` carries `scope`, `roadmap_id \| null`, `workspace_id \| null` |
 | `hooks/useAiSessions.ts` | `aiSessionKeys` keyed by the **scope key** (a roadmap thread and a workspace thread can never share a cache entry); `useAiSessionsList`, `useAiMessages`, `useCreateAiSession`, `useUpdateAiSession`, `useDeleteAiSession`, `useAppendAiMessage` |
 | `hooks/useRoadmapsPreviewQuery.ts` | `roadmapsPreviewQueryOptions(userId)` — the one definition of the `["dashboard","roadmaps-preview",uid]` query the picker and the dashboard grid share |
@@ -292,12 +347,16 @@ These are byte-identical across the migration; the specs under `web/playwright/t
 
 ## Tests
 
-Vitest, co-located: 15 files under `components/ai/` (`aiMentions`, `AiComposer`,
+Vitest tests are co-located under `components/ai/` (`aiMentions`, `AiComposer`,
 `runController`, `scope`, `AiAssistantPanel`, `AiCommitCard`, `aiProgress`, the
 clarifier / proposal / timeline logic, `useAiThreadMessages`, `importBoundary`, ...) plus
 `stores/aiThreadsStore.test.ts` (legacy-key migration), `services/ai-agent.service.test.ts`,
 and `components/home/DashboardAiPanel.test.tsx`. Drive the Playwright specs adaptively —
 answer the clarifier the assistant asks before the next prompt.
+
+Entity-chip coverage lives in `aiEntityLinks.test.ts`, `aiEntityResolver.test.ts`,
+`AiEntityChip.test.tsx`, `AiMarkdown.test.tsx` and `AiMessage.test.tsx`; the existing
+import-boundary test covers the new kit modules too.
 
 ## See also
 

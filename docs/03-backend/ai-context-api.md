@@ -2,8 +2,9 @@
 
 > **Last updated:** 2026-09-06 · **Status:** current
 
-The user-scoped read surface the Python agent uses when a session is in **workspace
-scope**: what the caller can reach across every roadmap, project, team and workspace,
+The user-scoped read surface the Python agent uses across session scopes and the
+web calls to hydrate entity chips in assistant replies: what the caller can reach
+across every roadmap, project, team and workspace,
 plus the two write-side additions that make a multi-roadmap agent run auditable —
 workspace-scoped AI threads and run attribution on commits. The roadmap-keyed
 `roadmaps/:id/ai/context/*` family (see [api-reference.md](./api-reference.md)) stays
@@ -44,7 +45,7 @@ Common to every route:
 | Tracing | the `x-trace-id` request header is echoed into every `event=ai_context_*_timing` log line |
 | Validation | the global `ValidationPipe` runs `whitelist + forbidNonWhitelisted + enableImplicitConversion`, so an unknown query param is a **400**. Booleans and CSV lists carry explicit `@Transform`s because implicit conversion would turn `'false'` into `true` and leave a CSV as one string |
 | Denial | `NotFoundException` (404), never 403 — non-member workspace, unviewable roadmap, foreign project, foreign team |
-| Primary consumer | the agent, via the user-scoped section of [`agent/app/core/nest_client.py`](../../agent/app/core/nest_client.py) (`resolve_refs`, `ai_context_actor`, `ai_context_overview`, …, `ai_context_changes`); the web kit sends `refs` to the agent, which hydrates them here |
+| Consumers | the agent, via the user-scoped section of [`agent/app/core/nest_client.py`](../../agent/app/core/nest_client.py) (`resolve_refs`, `ai_context_actor`, `ai_context_overview`, …, `ai_context_changes`); the web also calls `resolve-refs` directly for assistant reply chips |
 
 ## Lanes
 
@@ -177,7 +178,8 @@ activity_log, brief, file_chunk`. Each result carries its `project_id`.
 
 ### `resolve-refs`
 
-Hydrates the composer's @-mentions **once per run**
+Hydrates the composer's @-mentions **once per run** through the agent and assistant
+reply chips through the browser's batched resolver
 ([`ai-context-refs.service.ts`](../../backend/src/modules/execution/ai-context/services/ai-context-refs.service.ts)).
 `kind` ∈ `project, roadmap, epic, feature, task, milestone, team`; `label` is
 accepted for the wire shape and not used by the backend. Refs are deduped on
@@ -192,8 +194,27 @@ accepted for the wire shape and not used by the backend. Refs are deduped on
 | `project` | owner, or in `getAccessibleProjectIds` |
 | `team` | owner or member (mirrors `TeamsService.resolveViewerRole`) |
 
-Resolved shape: `kind, id, accessible, title?, status?, roadmap_id?, project_id?,
-workspace_id?, parent_chain?, error_code?`. `parent_chain` is **nearest-first**:
+The response envelope is `{data: {refs: ResolvedRef[]}}`. This endpoint accepts UUIDs;
+the agent expands outline handles such as `E1` and `R2` before replies reach the
+browser. The supplied `label` does not replace the canonical entity title.
+
+| Route control | Behaviour |
+| --- | --- |
+| Authentication | Class-level `SupabaseAuthGuard` runs once, accepting a bearer JWT or valid `X-Guest-User-Id` and populating `request.user` |
+| Throttle | Method-level `AiContextThrottlerGuard` extends `ThrottlerGuard`; `@Throttle({default: {limit: 60, ttl: 60_000}})` allows 60 requests per minute |
+| Quota identity | `request.user.id`, including the authenticated guest profile; IP is the fallback when no actor is present. Callers behind one shared IP keep separate quotas |
+
+| Resolved field | Meaning |
+| --- | --- |
+| `kind`, `id`, `accessible` | Entity identity and whether the caller can view it |
+| `title?`, `status?` | Canonical title and nullable status for accessible refs |
+| `roadmap_id?`, `project_id?`, `workspace_id?` | Nullable attribution for routing |
+| `parent_chain?` | `{kind, id, title}[]`, nearest-first |
+| `assignees?` | Accessible tasks only: up to five `{id, display_name: string \| null, avatar_url: string \| null}` profiles |
+| `assignee_count?` | Accessible tasks only: unique assignees with profiles before the five-profile response cap |
+| `error_code?` | `NOT_FOUND` or `LOOKUP_FAILED` on inaccessible refs |
+
+`parent_chain` is **nearest-first**:
 task → feature → epic → roadmap → project → workspace; a roadmap ref's chain starts
 at its project; project and team chains hold only the workspace. Failure modes:
 
@@ -205,6 +226,56 @@ at its project; project and team chains hold only the workspace. Failure modes:
 
 The route never throws for an individual ref; the agent treats a transport-level
 failure of the whole call as every ref inaccessible.
+
+Task hydration embeds `roadmap_task_assignees` and their `profiles` in the existing
+chunked task load. It sorts the task row's stored `assignee_id` first, then remaining
+join rows by `assigned_at` ascending with null timestamps last. Rows without a profile
+are dropped, duplicate assignee IDs collapse, and `AI_CONTEXT_REF_ASSIGNEE_LIMIT = 5`
+caps the returned profiles. A task with no surviving profiles returns `assignees: []`
+and `assignee_count: 0`. A scalar primary without a matching join row does not produce
+a synthetic profile. Denied task refs carry no title, parents, status or assignees.
+
+Illustrative task response excerpt:
+
+```json
+{
+  "assignees": [
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "display_name": "Ana",
+      "avatar_url": null
+    }
+  ],
+  "assignee_count": 1
+}
+```
+
+The [web resolver](../04-web/ai-assistant.md#entity-chips-in-assistant-replies)
+deduplicates requests per actor over 30 ms and sends chunks of 25. The
+`aiEntityKeys.one(kind, id)` factory returns `["ai", "entity", kind, id]`;
+`useAiEntity` appends a user or opaque guest actor suffix before caching. Each result
+has five minutes of freshness, and inactive entries remain for 30 minutes. Queues
+are isolated by actor and discard results after authentication changes. Guest
+credentials are not stored in query keys. Commit hooks invalidate the shared
+`["ai", "entity"]` prefix. Network errors, malformed responses and missing results
+become local `RESOLVE_FAILED` entries, rendering a non-linked chip with the supplied
+title.
+
+Deploy backend, then agent, then web. The task fields are additive: older backends
+produce chips without avatars, the agent's `ResolvedRef` ignores unknown fields, and
+older web bundles show entity-link titles with the unsupported href stripped. The
+reply carries only Markdown links; hydration remains client-side and uses no
+separate profile endpoint.
+
+| Source | Responsibility |
+| --- | --- |
+| [`ai-context.controller.ts`](../../backend/src/modules/execution/ai-context/ai-context.controller.ts) | Authentication, throttle, response status and trace forwarding |
+| [`ai-context-throttler.guard.ts`](../../backend/src/modules/execution/ai-context/guards/ai-context-throttler.guard.ts) | Actor-keyed throttle tracker with IP fallback |
+| [`dto/ai-context.dto.ts`](../../backend/src/modules/execution/ai-context/dto/ai-context.dto.ts) | Request validation and resolved-ref fields |
+| [`ai-context-refs.service.ts`](../../backend/src/modules/execution/ai-context/services/ai-context-refs.service.ts) | Authorization, canonical fields, parent chains and assignee ordering |
+| [`ai-context.repository.supabase.ts`](../../backend/src/modules/execution/ai-context/repositories/ai-context.repository.supabase.ts) | Chunked entity reads and task assignment/profile embed |
+| [`ai-context.service.ts`](../../web/src/services/ai-context.service.ts) | Browser client and response envelope handling |
+| [`entity_links.py`](../../agent/app/core/runtime/entity_links.py) | Reply handle expansion before persistence and the wire response |
 
 ### `projects/:projectId/*`
 

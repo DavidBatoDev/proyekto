@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import type { AgentPlanProposalEpic } from "@/services/ai-agent.service";
+import { stripEntityLinks } from "./aiEntityLinks";
 
 type NodeKind = "epic" | "feature" | "task";
 
@@ -168,10 +169,12 @@ export const AiPlanProposalGraph: FC<AiPlanProposalGraphProps> = ({
 								>
 									{labelText[row.kind]}
 								</span>
-								<span className={titleClass[row.kind]}>{row.title}</span>
+								<span className={titleClass[row.kind]}>
+									{stripEntityLinks(row.title)}
+								</span>
 								{row.targetTitle ? (
 									<span className="text-xs text-muted-foreground">
-										under existing "{row.targetTitle}"
+										under existing "{stripEntityLinks(row.targetTitle)}"
 									</span>
 								) : null}
 								{row.assigneeLabels.length > 0 ? (
@@ -182,13 +185,13 @@ export const AiPlanProposalGraph: FC<AiPlanProposalGraphProps> = ({
 										{row.assigneeLabels.length === 1
 											? "assigned to "
 											: `${row.assigneeLabels.length} assignees: `}
-										{listWithAnd(row.assigneeLabels)}
+										{stripEntityLinks(listWithAnd(row.assigneeLabels))}
 									</span>
 								) : null}
 							</div>
 							{row.description ? (
 								<div className="mt-0.5 text-xs text-muted-foreground">
-									{row.description}
+									{stripEntityLinks(row.description)}
 								</div>
 							) : null}
 						</div>
