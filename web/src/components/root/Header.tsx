@@ -82,6 +82,19 @@ export const Header = () => {
 							<motion.div
 								whileTap={{ scale: 0.97 }}
 								transition={{ duration: 0.15 }}
+								className="hidden sm:block"
+							>
+								<Link
+									to="/pricing"
+									preload="intent"
+									className={`inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium transition-colors hover:text-foreground sm:h-11 ${HEADER_THEME.text}`}
+								>
+									Pricing
+								</Link>
+							</motion.div>
+							<motion.div
+								whileTap={{ scale: 0.97 }}
+								transition={{ duration: 0.15 }}
 							>
 								<Link
 									to="/auth/login"

@@ -57,7 +57,7 @@ const navStep: Step = {
 	target: '[data-tour="sidebar-nav"]',
 	title: "Everything else lives here",
 	content:
-		"Inbox collects what needs your attention, Command Center is every task assigned to you across projects, and Meetings holds your calls. That's the tour — you can replay it any time from your profile menu.",
+		"Inbox collects what needs your attention, Task board is every task assigned to you across projects, and Meetings holds your calls. That's the tour — you can replay it any time from your profile menu.",
 	placement: "right",
 };
 

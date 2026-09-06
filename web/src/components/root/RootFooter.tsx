@@ -67,12 +67,13 @@ export const RootFooter = () => {
 								</button>
 							</li>
 							<li>
-								<button
-									type="button"
+								<Link
+									to="/pricing"
+									preload="intent"
 									className="transition-colors hover:text-slate-900"
 								>
 									Pricing
-								</button>
+								</Link>
 							</li>
 						</ul>
 					</div>

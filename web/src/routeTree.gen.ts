@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as StartSellingRouteImport } from './routes/start-selling'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as HomeRouteImport } from './routes/home'
@@ -46,11 +47,11 @@ import { Route as AdminConsultantsRouteImport } from './routes/admin/consultants
 import { Route as AdminApproveAdminRouteImport } from './routes/admin/approve-admin'
 import { Route as AdminApplicationsRouteImport } from './routes/admin/applications'
 import { Route as ExecutionWorkItemsRouteImport } from './routes/_execution/work-items'
+import { Route as ExecutionTaskBoardRouteImport } from './routes/_execution/task-board'
 import { Route as ExecutionMeetingsRouteImport } from './routes/_execution/meetings'
 import { Route as ExecutionInvitesRouteImport } from './routes/_execution/invites'
 import { Route as ExecutionInboxRouteImport } from './routes/_execution/inbox'
 import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dashboard'
-import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
 import { Route as WWorkspaceSlugRouteRouteImport } from './routes/w/$workspaceSlug/route'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
@@ -176,6 +177,11 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
 const StartSellingRoute = StartSellingRouteImport.update({
   id: '/start-selling',
   path: '/start-selling',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -348,6 +354,11 @@ const ExecutionWorkItemsRoute = ExecutionWorkItemsRouteImport.update({
   path: '/work-items',
   getParentRoute: () => ExecutionRoute,
 } as any)
+const ExecutionTaskBoardRoute = ExecutionTaskBoardRouteImport.update({
+  id: '/task-board',
+  path: '/task-board',
+  getParentRoute: () => ExecutionRoute,
+} as any)
 const ExecutionMeetingsRoute = ExecutionMeetingsRouteImport.update({
   id: '/meetings',
   path: '/meetings',
@@ -366,11 +377,6 @@ const ExecutionInboxRoute = ExecutionInboxRouteImport.update({
 const ExecutionDashboardRoute = ExecutionDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
-  getParentRoute: () => ExecutionRoute,
-} as any)
-const ExecutionCommandCenterRoute = ExecutionCommandCenterRouteImport.update({
-  id: '/command-center',
-  path: '/command-center',
   getParentRoute: () => ExecutionRoute,
 } as any)
 const WWorkspaceSlugRouteRoute = WWorkspaceSlugRouteRouteImport.update({
@@ -1034,17 +1040,18 @@ export interface FileRoutesByFullPath {
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
-  '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
   '/invites': typeof ExecutionInvitesRoute
   '/meetings': typeof ExecutionMeetingsRoute
+  '/task-board': typeof ExecutionTaskBoardRoute
   '/work-items': typeof ExecutionWorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
@@ -1183,17 +1190,18 @@ export interface FileRoutesByTo {
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioIndexRoute
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
-  '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
   '/invites': typeof ExecutionInvitesRoute
   '/meetings': typeof ExecutionMeetingsRoute
+  '/task-board': typeof ExecutionTaskBoardRoute
   '/work-items': typeof ExecutionWorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
@@ -1333,17 +1341,18 @@ export interface FileRoutesById {
   '/home': typeof HomeRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinanceRouteRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
-  '/_execution/command-center': typeof ExecutionCommandCenterRoute
   '/_execution/dashboard': typeof ExecutionDashboardRoute
   '/_execution/inbox': typeof ExecutionInboxRoute
   '/_execution/invites': typeof ExecutionInvitesRoute
   '/_execution/meetings': typeof ExecutionMeetingsRoute
+  '/_execution/task-board': typeof ExecutionTaskBoardRoute
   '/_execution/work-items': typeof ExecutionWorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
@@ -1489,17 +1498,18 @@ export interface FileRouteTypes {
     | '/home'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
-    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/invites'
     | '/meetings'
+    | '/task-board'
     | '/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
@@ -1638,17 +1648,18 @@ export interface FileRouteTypes {
     | '/home'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
-    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/invites'
     | '/meetings'
+    | '/task-board'
     | '/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
@@ -1787,17 +1798,18 @@ export interface FileRouteTypes {
     | '/home'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
-    | '/_execution/command-center'
     | '/_execution/dashboard'
     | '/_execution/inbox'
     | '/_execution/invites'
     | '/_execution/meetings'
+    | '/_execution/task-board'
     | '/_execution/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
@@ -1943,6 +1955,7 @@ export interface RootRouteChildren {
   HomeRoute: typeof HomeRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
+  PricingRoute: typeof PricingRoute
   StartSellingRoute: typeof StartSellingRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
@@ -1981,6 +1994,13 @@ declare module '@tanstack/react-router' {
       path: '/start-selling'
       fullPath: '/start-selling'
       preLoaderRoute: typeof StartSellingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -2221,6 +2241,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionWorkItemsRouteImport
       parentRoute: typeof ExecutionRoute
     }
+    '/_execution/task-board': {
+      id: '/_execution/task-board'
+      path: '/task-board'
+      fullPath: '/task-board'
+      preLoaderRoute: typeof ExecutionTaskBoardRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
     '/_execution/meetings': {
       id: '/_execution/meetings'
       path: '/meetings'
@@ -2247,13 +2274,6 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof ExecutionDashboardRouteImport
-      parentRoute: typeof ExecutionRoute
-    }
-    '/_execution/command-center': {
-      id: '/_execution/command-center'
-      path: '/command-center'
-      fullPath: '/command-center'
-      preLoaderRoute: typeof ExecutionCommandCenterRouteImport
       parentRoute: typeof ExecutionRoute
     }
     '/w/$workspaceSlug': {
@@ -3424,11 +3444,11 @@ const ExecutionTeamsTeamIdRouteWithChildren =
   ExecutionTeamsTeamIdRoute._addFileChildren(ExecutionTeamsTeamIdRouteChildren)
 
 interface ExecutionRouteChildren {
-  ExecutionCommandCenterRoute: typeof ExecutionCommandCenterRoute
   ExecutionDashboardRoute: typeof ExecutionDashboardRoute
   ExecutionInboxRoute: typeof ExecutionInboxRoute
   ExecutionInvitesRoute: typeof ExecutionInvitesRoute
   ExecutionMeetingsRoute: typeof ExecutionMeetingsRoute
+  ExecutionTaskBoardRoute: typeof ExecutionTaskBoardRoute
   ExecutionWorkItemsRoute: typeof ExecutionWorkItemsRoute
   ExecutionBriefNewRoute: typeof ExecutionBriefNewRoute
   ExecutionEngagementsEngagementIdRoute: typeof ExecutionEngagementsEngagementIdRoute
@@ -3447,11 +3467,11 @@ interface ExecutionRouteChildren {
 }
 
 const ExecutionRouteChildren: ExecutionRouteChildren = {
-  ExecutionCommandCenterRoute: ExecutionCommandCenterRoute,
   ExecutionDashboardRoute: ExecutionDashboardRoute,
   ExecutionInboxRoute: ExecutionInboxRoute,
   ExecutionInvitesRoute: ExecutionInvitesRoute,
   ExecutionMeetingsRoute: ExecutionMeetingsRoute,
+  ExecutionTaskBoardRoute: ExecutionTaskBoardRoute,
   ExecutionWorkItemsRoute: ExecutionWorkItemsRoute,
   ExecutionBriefNewRoute: ExecutionBriefNewRoute,
   ExecutionEngagementsEngagementIdRoute: ExecutionEngagementsEngagementIdRoute,
@@ -3593,6 +3613,7 @@ const rootRouteChildren: RootRouteChildren = {
   HomeRoute: HomeRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
+  PricingRoute: PricingRoute,
   StartSellingRoute: StartSellingRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,

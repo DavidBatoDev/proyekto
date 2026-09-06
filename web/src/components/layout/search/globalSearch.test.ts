@@ -104,7 +104,12 @@ describe("buildGlobalSearchCandidates", () => {
 			],
 		});
 
-		expect(results.map((r) => r.kind)).toEqual(["page", "project", "workItem"]);
+		expect(results.map((r) => r.kind)).toEqual([
+			"page",
+			"page",
+			"project",
+			"workItem",
+		]);
 	});
 
 	it("caps projects at 5 and work items at 8", () => {

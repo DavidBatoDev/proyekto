@@ -38,9 +38,9 @@ export const EXECUTION_PRIMARY_NAV_ITEMS: ExecutionNavItem[] = [
 	},
 	{ key: "inbox", to: "/inbox", label: "Inbox", icon: Inbox, match: "prefix" },
 	{
-		key: "command-center",
-		to: "/command-center",
-		label: "Command Center",
+		key: "task-board",
+		to: "/task-board",
+		label: "Task board",
 		icon: ListChecks,
 		match: "exact",
 	},

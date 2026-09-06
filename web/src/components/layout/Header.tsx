@@ -17,7 +17,7 @@ const Header = () => {
 	const validPaths = [
 		"/dashboard",
 		"/inbox",
-		"/command-center",
+		"/task-board",
 		"/meetings",
 		"/marketplace",
 		"/teams",
@@ -34,7 +34,8 @@ const Header = () => {
 		// `/contract/sign/$token` is deliberately absent: the account-free
 		// signing page carries no app chrome, exactly as before the move.
 		// `/get-started` likewise — the mobile deck is full-bleed and draws its
-		// own brand mark.
+		// own brand mark. `/pricing` too: it is a public marketing page with its
+		// own slim header, and the app chrome would be wrong above it.
 		"/freelancer",
 	];
 
