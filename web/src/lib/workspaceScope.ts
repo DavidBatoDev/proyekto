@@ -22,6 +22,14 @@ export interface WorkspaceGrouping<T> {
 	shared: T[];
 }
 
+/** Keep only entities whose organizational home is the workspace being viewed. */
+export function filterByWorkspace<T extends WorkspaceScoped>(
+	items: T[],
+	workspaceId: string,
+): T[] {
+	return items.filter((item) => item.workspace_id === workspaceId);
+}
+
 export function groupByWorkspace<T extends WorkspaceScoped>(
 	items: T[],
 	currentWorkspaceId: string | null,

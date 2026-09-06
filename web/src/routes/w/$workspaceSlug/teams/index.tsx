@@ -11,6 +11,7 @@ import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { CreateTeamModal } from "@/components/team/CreateTeamModal";
 import { richTextToPlain } from "@/lib/richText";
+import { filterByWorkspace } from "@/lib/workspaceScope";
 import {
 	listMyTeams,
 	type ProfileSummary,
@@ -29,14 +30,18 @@ export const Route = createFileRoute("/w/$workspaceSlug/teams/")({
 });
 
 function TeamsIndexPage() {
+	const { workspace } = Route.useRouteContext();
 	const {
-		data: teams,
+		data: allTeams,
 		isLoading,
 		error,
 	} = useQuery({
 		queryKey: ["teams", "mine"],
 		queryFn: listMyTeams,
 	});
+	const teams = allTeams
+		? filterByWorkspace(allTeams, workspace.id)
+		: undefined;
 	const [createOpen, setCreateOpen] = useState(false);
 
 	return (

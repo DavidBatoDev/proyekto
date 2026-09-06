@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { groupByWorkspace } from "./workspaceScope";
+import { filterByWorkspace, groupByWorkspace } from "./workspaceScope";
 
 const MINE = ["ws-a", "ws-b"];
 
 function item(id: string, workspace_id: string | null) {
 	return { id, workspace_id };
 }
+
+describe("filterByWorkspace", () => {
+	it("keeps only items homed in the open workspace", () => {
+		const result = filterByWorkspace(
+			[item("current", "ws-a"), item("other", "ws-b"), item("shared", null)],
+			"ws-a",
+		);
+
+		expect(result.map((i) => i.id)).toEqual(["current"]);
+	});
+});
 
 describe("groupByWorkspace", () => {
 	it("puts items in the open workspace in the current list", () => {
