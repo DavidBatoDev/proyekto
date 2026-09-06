@@ -15,6 +15,10 @@ the MCP Access settings page:
 | `TalentStory` | profile → terms → staffing → paid | `web/public/talent-story.mp4` |
 | `ConsultantStory` | scope → roadmap → team → terms | `web/public/consultant-story.mp4` |
 | `McpStory` | connect → scopes → in use → control, as a chat thread | `web/public/mcp-access.mp4` |
+| `RoadmapEmptyStory` | canvas → milestone → epics → features & owners | `web/public/roadmap-empty.mp4` |
+| `BoardEmptyStory` | columns → a card → it moves → it lands done | `web/public/board-empty.mp4` |
+| `TimelineEmptyStory` | weeks → bars → dependencies → the date line | `web/public/timeline-empty.mp4` |
+| `DeliverableEmptyStory` | define → link → review → accepted | `web/public/deliverable-empty.mp4` |
 
 All are 30fps, 330 frames (11s), and built to loop seamlessly. The first three
 are 1920×1080. The three `Hero*` clips are 1200×900: they are the slides of the
@@ -22,7 +26,14 @@ marketplace hero carousel, filling the 30% column of a 70/30 band where a 16:9
 strip would be a letterbox slot. They are light, caption-free, and use bars
 rather than prose — at the ~340px they render into, a real sentence is a smear.
 
-The two `/start-selling` clips are navy; `McpStory` is **light**. `Stage` takes a
+The last four are the project empty states: the roadmap, board, timeline and
+deliverables pages render them beside an illustration and a CTA when the
+project has nothing to show yet (`web/src/components/project/empty/`). They are
+1920×1080 like the first three, and **light** for the same reason `McpStory` is
+— they sit inside the app shell, where a navy slab reads as a foreign object.
+
+The two `/start-selling` clips are navy; `McpStory` and the four empty-state
+clips are **light**. `Stage` takes a
 `palette` and provides it through context, so every primitive follows whichever
 one a composition picks — see `brand/palette.ts` for both, and for why a light
 clip leans on the embed's border instead of luminance to draw its edge.
@@ -62,6 +73,11 @@ Every flag is load-bearing:
 - `--pixel-format=yuv420p` is required for Safari/iOS playback.
 - `--muted` guarantees no silent audio track.
 
+The four empty-state clips take the same flags — substitute the composition id
+and `web/public/<name>-empty.mp4`, and pull the poster from the frame named in
+`POSTER_FRAME` (`roadmapEmpty`, `boardEmpty`, `timelineEmpty`,
+`deliverableEmpty`).
+
 ### Posters
 
 ```bash
@@ -94,13 +110,14 @@ browser cache, so the version param is what forces a refetch. If you change what
 a clip shows, update that entry's `steps` too — it is the video's text
 alternative and must not drift from the captions on screen.
 
-Budget: keep each MP4 under ~500KB. Current output is 240KB / 268KB / 208KB.
+Budget: keep each MP4 under ~500KB. Current output is 240KB / 268KB / 208KB for
+the three originals, and 164KB / 165KB / 161KB / 186KB for the empty states.
 
 ## Structure
 
 ```
 src/
-  Root.tsx              registers both compositions
+  Root.tsx              registers every composition
   anim.ts               lerp / springIn / envelope / bezier
   brand/
     palette.ts          DARK_PALETTE + LIGHT_PALETTE, as raw hex, and the context
@@ -114,6 +131,10 @@ src/
     TalentStory.tsx
     ConsultantStory.tsx
     McpStory.tsx
+    RoadmapEmptyStory.tsx
+    BoardEmptyStory.tsx
+    TimelineEmptyStory.tsx
+    DeliverableEmptyStory.tsx
 ```
 
 ## Gotchas that already bit

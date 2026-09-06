@@ -53,4 +53,13 @@ export const POSTER_FRAME = {
 	consultant: 302,
 	mcp: 270,
 	hero: 268,
+	/**
+	 * The four project empty-state clips. Each is pulled from late in its
+	 * fourth beat, after the closing move has landed and before the teardown
+	 * at 298 — so the poster carries the finished picture, not a half-built one.
+	 */
+	roadmapEmpty: 288,
+	boardEmpty: 292,
+	timelineEmpty: 294,
+	deliverableEmpty: 290,
 } as const;

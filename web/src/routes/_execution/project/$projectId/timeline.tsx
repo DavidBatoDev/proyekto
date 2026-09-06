@@ -5,14 +5,12 @@ import {
 	useChildMatches,
 	useNavigate,
 } from "@tanstack/react-router";
-import { CalendarRange, ExternalLink } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-	AppEmptyState,
-	AppSectionHeader,
-	AppSurfaceCard,
-} from "@/components/common/AppPrimitives";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { TimelineIllustration } from "@/components/project/empty/EmptyStateIllustrations";
+import { TIMELINE_EMPTY_CLIP } from "@/components/project/empty/emptyStateClips";
+import { ProjectEmptyShowcase } from "@/components/project/empty/ProjectEmptyShowcase";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { RoadmapPageSkeleton } from "@/components/roadmap/views/RoadmapPageSkeleton";
 import {
@@ -90,43 +88,41 @@ function TimelinePageBody() {
 		return <RoadmapPageSkeleton />;
 	}
 
+	// The timeline is the roadmap with dates on it, so the empty state explains
+	// the dates rather than repeating "no roadmap linked" a third time.
 	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-8 md:py-8">
-				<AppSurfaceCard strong className="mb-6 p-6">
-					<AppSectionHeader
-						kicker="Planning"
-						title="Timeline"
-						subtitle="Schedule this project's epics, features, and milestones on a timeline."
-					/>
-				</AppSurfaceCard>
-
-				<AppEmptyState
-					icon={CalendarRange}
-					title="No roadmap linked"
-					description="The Timeline is built from this project's roadmap. Create or link a roadmap to start scheduling."
-					className="app-surface-card-strong border-dashed py-16"
-					action={
-						<div className="flex items-center justify-center gap-3">
-							<Link
-								to="/project/$projectId/roadmap/create"
-								params={{ projectId }}
-								className="app-cta inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-							>
-								<ExternalLink className="w-4 h-4" />
-								Create a Roadmap
-							</Link>
-							<button
-								type="button"
-								onClick={() => setIsLinkModalOpen(true)}
-								className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-							>
-								Link Existing Roadmap
-							</button>
-						</div>
-					}
-				/>
-			</div>
+		<>
+			<ProjectEmptyShowcase
+				eyebrow="Planning"
+				title="No timeline yet"
+				description="The Timeline lays this project's epics, features and milestones against real weeks, so a slip shows up as a bar that no longer reaches its milestone. It is built from the roadmap."
+				clip={TIMELINE_EMPTY_CLIP}
+				illustration={<TimelineIllustration />}
+				points={[
+					"Give each epic a start and an end and drag to reschedule",
+					"Wire up what has to finish before something else starts",
+					"The current-date line shows what is late without a report",
+				]}
+				primaryAction={
+					<Link
+						to="/project/$projectId/roadmap/create"
+						params={{ projectId }}
+						className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						Create a roadmap
+					</Link>
+				}
+				secondaryAction={
+					<button
+						type="button"
+						onClick={() => setIsLinkModalOpen(true)}
+						className="text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+					>
+						Link an existing roadmap instead
+					</button>
+				}
+			/>
 
 			<LinkRoadmapModal
 				isOpen={isLinkModalOpen}
@@ -137,6 +133,6 @@ function TimelinePageBody() {
 					void invalidateLinkedRoadmap();
 				}}
 			/>
-		</div>
+		</>
 	);
 }

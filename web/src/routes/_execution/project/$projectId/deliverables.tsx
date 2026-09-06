@@ -16,7 +16,6 @@ import {
 	storeDeliveryView,
 } from "@/components/project/delivery/DeliveryHealth";
 import {
-	DeliveryEmpty,
 	DeliveryPageShell,
 	DeliverySkeleton,
 	PrimaryButton,
@@ -27,6 +26,9 @@ import {
 	pipelineColumnFor,
 	summarize,
 } from "@/components/project/delivery/deliveryModel";
+import { DeliverablesIllustration } from "@/components/project/empty/EmptyStateIllustrations";
+import { DELIVERABLES_EMPTY_CLIP } from "@/components/project/empty/emptyStateClips";
+import { ProjectEmptyShowcase } from "@/components/project/empty/ProjectEmptyShowcase";
 import { LinkRoadmapWorkModal } from "@/components/project/roadmap-links/LinkRoadmapWorkModal";
 import {
 	useDeliverableMutations,
@@ -165,17 +167,34 @@ function DeliverablesBody({ projectId }: { projectId: string }) {
 			)}
 
 			{deliverables.length === 0 ? (
-				<DeliveryEmpty
-					icon={Package}
+				/* The centred icon-and-paragraph block is gone here: acceptance is
+				   the least self-evident thing this project surface does, and a
+				   16px glyph was never going to carry it. The clip shows a
+				   submission being reviewed; the still shows the record it leaves. */
+				<ProjectEmptyShowcase
+					eyebrow="Delivery"
 					title="No deliverables yet"
-					description="A deliverable is something the project hands over and someone accepts — a design, a build, a deployment. Link the roadmap work that produces it and give reviewers somewhere to sign off."
-					action={
+					description="A deliverable is something the project hands over and someone accepts — a design, a build, a deployment. It is the only place acceptance is recorded against a person and a date."
+					clip={DELIVERABLES_EMPTY_CLIP}
+					illustration={<DeliverablesIllustration />}
+					points={[
+						"Acceptance criteria a reviewer ticks off one by one",
+						"Link the roadmap features, tasks and milestones behind it",
+						"Submit for review, and the decision is stamped with who made it",
+					]}
+					primaryAction={
 						canEdit ? (
 							<PrimaryButton onClick={() => setIsCreating(true)}>
 								<Plus className="h-4 w-4" />
 								Add the first one
 							</PrimaryButton>
-						) : undefined
+						) : (
+							/* Read-only viewers get the explanation without a button
+							   that would only fail on them. */
+							<p className="text-sm text-muted-foreground">
+								You do not have permission to add deliverables to this project.
+							</p>
+						)
 					}
 				/>
 			) : (

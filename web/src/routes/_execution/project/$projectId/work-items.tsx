@@ -5,14 +5,12 @@ import {
 	useChildMatches,
 	useNavigate,
 } from "@tanstack/react-router";
-import { ExternalLink, ListChecks } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-	AppEmptyState,
-	AppSectionHeader,
-	AppSurfaceCard,
-} from "@/components/common/AppPrimitives";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { BoardIllustration } from "@/components/project/empty/EmptyStateIllustrations";
+import { BOARD_EMPTY_CLIP } from "@/components/project/empty/emptyStateClips";
+import { ProjectEmptyShowcase } from "@/components/project/empty/ProjectEmptyShowcase";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { RoadmapPageSkeleton } from "@/components/roadmap/views/RoadmapPageSkeleton";
 import {
@@ -70,43 +68,42 @@ function WorkItemsLayoutBody() {
 		return <RoadmapPageSkeleton />;
 	}
 
+	// No card, and no second header restating the nav item that got you here.
+	// The clip carries what a board is FOR — a card changing column — which is
+	// the one thing a screenshot of an empty board cannot show.
 	return (
-		<div className="app-shell-bg h-full w-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-8 md:py-8">
-				<AppSurfaceCard strong className="mb-6 p-6">
-					<AppSectionHeader
-						kicker="Delivery"
-						title="Board"
-						subtitle="View and manage this project's epics, features, and tasks."
-					/>
-				</AppSurfaceCard>
-
-				<AppEmptyState
-					icon={ListChecks}
-					title="No roadmap linked"
-					description="This project doesn't have a roadmap yet. Link or create a roadmap to start tracking epics, features, and tasks."
-					className="app-surface-card-strong border-dashed py-16"
-					action={
-						<div className="flex items-center justify-center gap-3">
-							<Link
-								to="/project/$projectId/roadmap/create"
-								params={{ projectId }}
-								className="app-cta inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-							>
-								<ExternalLink className="w-4 h-4" />
-								Create a Roadmap
-							</Link>
-							<button
-								type="button"
-								onClick={() => setIsLinkModalOpen(true)}
-								className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-							>
-								Link Existing Roadmap
-							</button>
-						</div>
-					}
-				/>
-			</div>
+		<>
+			<ProjectEmptyShowcase
+				eyebrow="Delivery"
+				title="No board yet"
+				description="The board is this project's roadmap seen as work in flight: every task, in the column it's actually in. It is built from the roadmap, so creating or linking one is what fills it."
+				clip={BOARD_EMPTY_CLIP}
+				illustration={<BoardIllustration />}
+				points={[
+					"Tasks move To do to In progress to Done as the work lands",
+					"Owners, due dates and priorities live on the card",
+					"Moving a card updates the roadmap it came from",
+				]}
+				primaryAction={
+					<Link
+						to="/project/$projectId/roadmap/create"
+						params={{ projectId }}
+						className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						Create a roadmap
+					</Link>
+				}
+				secondaryAction={
+					<button
+						type="button"
+						onClick={() => setIsLinkModalOpen(true)}
+						className="text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+					>
+						Link an existing roadmap instead
+					</button>
+				}
+			/>
 
 			<LinkRoadmapModal
 				isOpen={isLinkModalOpen}
@@ -117,6 +114,6 @@ function WorkItemsLayoutBody() {
 					void invalidateLinkedRoadmap();
 				}}
 			/>
-		</div>
+		</>
 	);
 }
