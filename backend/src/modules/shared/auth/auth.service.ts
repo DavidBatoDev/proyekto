@@ -8,7 +8,6 @@ import {
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
 } from './dto/email-auth.dto';
-import { PersonalProjectService } from '../../execution/projects/personal-project.service';
 import { WorkspacesService } from '../../execution/workspaces/workspaces.service';
 import { EmailOtpService } from './email-otp.service';
 import type { AuthProfile } from './repositories/auth.repository.interface';
@@ -17,13 +16,16 @@ export interface CompleteOnboardingResult {
   profile: AuthProfile;
   /** The organization the user lands in. Null only for guests. */
   workspace_id: string | null;
-  personal_project_id: string | null;
   /**
-   * Deprecated alias for `personal_project_id`, kept so a client running the
-   * previous bundle keeps working through the deploy window. Remove once the
-   * web app no longer reads it.
+   * Always null. Signup used to auto-create a personal project ("X's Space")
+   * for every new user; it no longer does — a user's first project is one they
+   * asked for. The field stays in the response so a client running an older
+   * bundle keeps parsing it, and so do its two deprecated aliases below.
    */
+  personal_project_id: string | null;
+  /** Deprecated alias for `personal_project_id`. Always null. */
   personal_workspace_id: string | null;
+  /** Always null: consultants create teams after vetting, not at signup. */
   personal_team_id: string | null;
 }
 
@@ -33,7 +35,6 @@ export class AuthService {
 
   constructor(
     @Inject(AUTH_REPOSITORY) private readonly authRepo: AuthRepository,
-    private readonly personalProjectService: PersonalProjectService,
     private readonly workspacesService: WorkspacesService,
     private readonly emailOtpService: EmailOtpService,
   ) {}
@@ -47,21 +48,16 @@ export class AuthService {
   async completeOnboarding(userId: string): Promise<CompleteOnboardingResult> {
     const profile = await this.authRepo.completeOnboarding(userId);
 
-    // Every user gets a workspace and a personal project — there is no signup
-    // lane, so no role-scoped provisioning. Both are idempotent on re-run. If
-    // provisioning throws, the onboarding state is already persisted — surface
-    // the error so the client can retry without rolling back the onboarding
-    // write.
-    // personal_team_id stays in the response shape for older clients; it is
-    // always null now (consultants create teams after vetting, not at signup).
+    // Every user gets a workspace — the organization tier they land in. That
+    // is the whole of signup provisioning: no personal project is created for
+    // them any more, because an empty project nobody asked for is clutter the
+    // user then has to explain to themselves. Their first project is the one
+    // they create. Existing personal projects are untouched.
+    //
+    // personal_project_id / personal_workspace_id / personal_team_id stay in
+    // the response shape for older clients and are always null.
     let workspace_id: string | null = null;
-    let personal_project_id: string | null = null;
-    const personal_team_id: string | null = null;
 
-    // The workspace comes FIRST: it is the backstop behind the required
-    // "create your workspace" step, and provision_personal_project stamps the
-    // personal project into it, so the order decides whether that project has
-    // an organizational home on the very first call.
     try {
       const workspace = await this.workspacesService.provisionDefault(userId);
       workspace_id = workspace?.id ?? null;
@@ -74,25 +70,12 @@ export class AuthService {
       throw err;
     }
 
-    try {
-      const personalProject =
-        await this.personalProjectService.provision(userId);
-      personal_project_id = personalProject.id;
-    } catch (err) {
-      this.logger.error(
-        `Failed to provision personal project for ${userId} after onboarding: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      throw err;
-    }
-
     return {
       profile,
       workspace_id,
-      personal_project_id,
-      personal_workspace_id: personal_project_id,
-      personal_team_id,
+      personal_project_id: null,
+      personal_workspace_id: null,
+      personal_team_id: null,
     };
   }
 

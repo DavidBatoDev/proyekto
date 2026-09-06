@@ -59,9 +59,9 @@ function WelcomePage() {
 	// Backstop: anyone who reaches /welcome without onboarding persisted (e.g. the
 	// OAuth callback's completion call failed, or a legacy account that got stuck
 	// looping here) gets it completed now — idempotently. This flips
-	// has_completed_onboarding and provisions the personal workspace the deck
-	// itself needs, so the user is never re-trapped on /welcome. Best-effort: the
-	// tour renders regardless of the result.
+	// has_completed_onboarding and provisions the user's workspace, so the user
+	// is never re-trapped on /welcome. Best-effort: the tour renders regardless
+	// of the result.
 	useEffect(() => {
 		if (!profile || ensuredCompletionRef.current) return;
 		if (profile.has_completed_onboarding) return;
