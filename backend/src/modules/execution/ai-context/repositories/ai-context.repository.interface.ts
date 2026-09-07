@@ -33,6 +33,8 @@ export interface AiContextTaskRow {
   epic_title: string | null;
   roadmap_id: string;
   assignee_ids: string[];
+  /** Size of the whole filtered set (window count), the same on every row. */
+  total_count: number | null;
 }
 
 export interface AiContextListTasksParams {
@@ -44,6 +46,8 @@ export interface AiContextListTasksParams {
   dueTo: string | null;
   overdueAt: string | null;
   limit: number;
+  /** Zero-based start within the RPC's total order. */
+  offset: number;
 }
 
 export interface AiContextSearchNodesParams {

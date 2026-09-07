@@ -117,6 +117,14 @@ export class AiContextRoadmapsQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  /** Zero-based start within the ordered set (applied after `cursor`). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(5000)
+  offset?: number;
 }
 
 export class AiContextSearchQueryDto {
@@ -153,6 +161,14 @@ export class AiContextSearchQueryDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  /** Zero-based start within the merged, ranked result set. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(200)
+  offset?: number;
 }
 
 export class AiContextTasksQueryDto {
@@ -199,6 +215,14 @@ export class AiContextTasksQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+
+  /** Zero-based start within the ordered set (due date, then recency). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(2000)
+  offset?: number;
 }
 
 /**
@@ -363,9 +387,22 @@ export interface AiContextRoadmapListItemDto {
   } | null;
 }
 
-export interface AiContextRoadmapsResponseDto {
+/**
+ * Offset paging keys shared by the list responses. `offset` echoes the
+ * effective start, `next_offset` is the start of the following page or null
+ * when this page ended the set, `total` is the size of the whole filtered
+ * set when it is known (null past the end; absent where the source cannot
+ * count, i.e. search).
+ */
+export interface AiContextPageDto {
+  offset: number;
+  next_offset: number | null;
+}
+
+export interface AiContextRoadmapsResponseDto extends AiContextPageDto {
   items: AiContextRoadmapListItemDto[];
   next_cursor: string | null;
+  total: number;
 }
 
 /**
@@ -391,7 +428,7 @@ export interface AiContextSearchMatchDto {
   updated_at: string | null;
 }
 
-export interface AiContextSearchResponseDto {
+export interface AiContextSearchResponseDto extends AiContextPageDto {
   matches: AiContextSearchMatchDto[];
 }
 
@@ -414,8 +451,9 @@ export interface AiContextTaskDto {
   workspace_id: string | null;
 }
 
-export interface AiContextTasksResponseDto {
+export interface AiContextTasksResponseDto extends AiContextPageDto {
   tasks: AiContextTaskDto[];
+  total: number | null;
 }
 
 export interface AiContextKnowledgeSearchResponseDto {

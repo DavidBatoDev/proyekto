@@ -379,6 +379,34 @@ describe('AiContextService.listRoadmaps', () => {
     expect(second.next_cursor).toBeNull();
   });
 
+  it('pages the same total order by offset, reports the total, and composes with a cursor', async () => {
+    const { service } = buildService({ roadmaps });
+
+    const first = await service.listRoadmaps('user-1', { limit: 2 });
+    expect(first).toMatchObject({ offset: 0, total: 4, next_offset: 2 });
+
+    const second = await service.listRoadmaps('user-1', {
+      limit: 2,
+      offset: 2,
+    });
+    expect(second.items.map((item) => item.id)).toEqual(['r-old', 'r-null']);
+    expect(second).toMatchObject({ offset: 2, total: 4, next_offset: null });
+    expect(second.next_cursor).toBeNull();
+
+    // offset applies after the cursor filter: cursor past r-b, then skip one.
+    const composed = await service.listRoadmaps('user-1', {
+      limit: 1,
+      offset: 1,
+      cursor: first.next_cursor as string,
+    });
+    expect(composed.items.map((item) => item.id)).toEqual(['r-null']);
+    expect(composed).toMatchObject({ offset: 1, total: 2, next_offset: null });
+
+    const past = await service.listRoadmaps('user-1', { limit: 2, offset: 9 });
+    expect(past.items).toEqual([]);
+    expect(past).toMatchObject({ offset: 9, total: 4, next_offset: null });
+  });
+
   it('rejects an undecodable cursor with 400 and narrows by workspace/project in-process', async () => {
     const scoped = [
       roadmap({
@@ -431,6 +459,8 @@ describe('AiContextService.search', () => {
 
     await expect(service.search('user-1', { q: '%%__' })).resolves.toEqual({
       matches: [],
+      offset: 0,
+      next_offset: null,
     });
     expect(repo.searchNodes).not.toHaveBeenCalled();
     expect(roadmapsRepo.listAccessibleRoadmapsLight).not.toHaveBeenCalled();
@@ -472,13 +502,15 @@ describe('AiContextService.search', () => {
       limit: 10,
     });
 
+    // One row past the page is the "is there more" probe.
     expect(repo.searchNodes).toHaveBeenCalledWith({
       roadmapIds: ['r-1'],
       query: 'pay ments',
       kinds: ['epic', 'task'],
-      limit: 10,
+      limit: 11,
     });
     expect(result.matches.map((match) => match.id)).toEqual(['e-1']);
+    expect(result).toMatchObject({ offset: 0, next_offset: null });
     expect(result.matches[0]).toMatchObject({
       kind: 'epic',
       roadmap_name: 'Payments platform',
@@ -561,6 +593,7 @@ describe('AiContextService.listTasks', () => {
       limit: 7,
     });
 
+    // One row past the page is the "is there more" probe.
     expect(repo.listTasks).toHaveBeenCalledWith({
       roadmapIds: ['r-1'],
       assignee: 'user-1',
@@ -568,7 +601,8 @@ describe('AiContextService.listTasks', () => {
       dueFrom: null,
       dueTo: '2026-12-31T00:00:00Z',
       overdueAt: null,
-      limit: 7,
+      limit: 8,
+      offset: 0,
     });
     expect(result.tasks[0]).toMatchObject({
       id: 't-1',
@@ -576,6 +610,45 @@ describe('AiContextService.listTasks', () => {
       project_id: 'p-1',
       project_title: 'Fintech',
       workspace_id: WS_CURRENT,
+    });
+    expect(result.tasks[0]).not.toHaveProperty('total_count');
+    expect(result).toMatchObject({ offset: 0, next_offset: null });
+  });
+
+  it('pages by offset: the probe row sets next_offset and the window count is the total', async () => {
+    const { service, repo } = buildService({ roadmaps });
+    const row = (id: string) => ({
+      id,
+      title: `Task ${id}`,
+      status: 'todo',
+      priority: null,
+      due_date: null,
+      updated_at: null,
+      feature_id: 'f-1',
+      feature_title: 'Checkout',
+      epic_id: 'e-1',
+      epic_title: 'Payments',
+      roadmap_id: 'r-1',
+      assignee_ids: [],
+      total_count: 9,
+    });
+    repo.listTasks.mockResolvedValueOnce([row('t-4'), row('t-5'), row('t-6')]);
+
+    const page = await service.listTasks('user-1', { limit: 2, offset: 3 });
+    expect(repo.listTasks.mock.calls[0][0]).toMatchObject({
+      limit: 3,
+      offset: 3,
+    });
+    expect(page.tasks.map((task) => task.id)).toEqual(['t-4', 't-5']);
+    expect(page).toMatchObject({ offset: 3, total: 9, next_offset: 5 });
+
+    repo.listTasks.mockResolvedValueOnce([]);
+    const past = await service.listTasks('user-1', { limit: 2, offset: 40 });
+    expect(past).toEqual({
+      tasks: [],
+      offset: 40,
+      total: null,
+      next_offset: null,
     });
   });
 
@@ -591,7 +664,7 @@ describe('AiContextService.listTasks', () => {
     repo.listTasks.mockClear();
     await expect(
       service.listTasks('user-1', { roadmap_ids: ['r-not-mine'] }),
-    ).resolves.toEqual({ tasks: [] });
+    ).resolves.toEqual({ tasks: [], offset: 0, total: 0, next_offset: null });
     expect(repo.listTasks).not.toHaveBeenCalled();
   });
 });

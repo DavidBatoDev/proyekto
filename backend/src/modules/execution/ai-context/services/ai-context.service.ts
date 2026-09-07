@@ -286,10 +286,13 @@ export class AiContextService {
             }) > 0,
         )
       : ordered;
-    const page = after.slice(0, limit);
+    // `offset` applies after the cursor filter, so the two compose: a cursor
+    // caller keeps its walk, an offset caller pages the same total order.
+    const offset = query.offset ?? 0;
+    const page = after.slice(offset, offset + limit);
     const last = page[page.length - 1];
-    const nextCursor =
-      after.length > limit && last ? encodeAiContextCursor(last) : null;
+    const hasMore = after.length > offset + limit;
+    const nextCursor = hasMore && last ? encodeAiContextCursor(last) : null;
 
     this.logTiming('ai_context_roadmaps_timing', traceId, startedAt, {
       returned: page.length,
@@ -297,6 +300,9 @@ export class AiContextService {
     return {
       items: page.map((item) => this.toRoadmapListItem(item)),
       next_cursor: nextCursor,
+      offset,
+      total: after.length,
+      next_offset: hasMore ? offset + limit : null,
     };
   }
 
@@ -314,9 +320,10 @@ export class AiContextService {
   ): Promise<AiContextSearchResponseDto> {
     const startedAt = Date.now();
     const limit = query.limit ?? DEFAULT_SEARCH_LIMIT;
+    const offset = query.offset ?? 0;
     const kinds = this.resolveSearchKinds(query.kinds);
     const needle = sanitizeAiContextQuery(query.q);
-    if (!needle) return { matches: [] };
+    if (!needle) return { matches: [], offset, next_offset: null };
 
     const accessible = await this.loadAccessibleRoadmaps(userId, {
       workspaceId: query.workspace_id,
@@ -330,11 +337,15 @@ export class AiContextService {
       NODE_KIND_SET.has(kind),
     );
     if (nodeKinds.length > 0 && accessible.length > 0) {
+      // The page is cut after the merge with the in-process roadmap/project
+      // matches, so the RPC must return everything up to the page's end plus
+      // one row (the "is there more" probe). Its order is the same total
+      // order as `compareMatches`, so the prefix it returns is exact.
       const rows = await this.repo.searchNodes({
         roadmapIds: accessible.map((item) => item.id),
         query: needle,
         kinds: nodeKinds,
-        limit,
+        limit: offset + limit + 1,
       });
       for (const row of rows) {
         const roadmap = byId.get(row.roadmap_id);
@@ -387,12 +398,17 @@ export class AiContextService {
     }
 
     matches.sort(compareMatches);
-    const page = matches.slice(0, limit);
+    const page = matches.slice(offset, offset + limit);
+    const hasMore = matches.length > offset + limit;
     this.logTiming('ai_context_search_timing', traceId, startedAt, {
       kinds: kinds.join('|'),
       returned: page.length,
     });
-    return { matches: page };
+    return {
+      matches: page,
+      offset,
+      next_offset: hasMore ? offset + limit : null,
+    };
   }
 
   /**
@@ -407,14 +423,20 @@ export class AiContextService {
     traceId?: string,
   ): Promise<AiContextTasksResponseDto> {
     const startedAt = Date.now();
+    const limit = query.limit ?? DEFAULT_TASKS_LIMIT;
+    const offset = query.offset ?? 0;
     const accessible = await this.loadAccessibleRoadmaps(userId, {
       workspaceId: query.workspace_id,
       projectId: query.project_id,
       roadmapIds: query.roadmap_ids,
     });
-    if (accessible.length === 0) return { tasks: [] };
+    if (accessible.length === 0) {
+      return { tasks: [], offset, total: 0, next_offset: null };
+    }
     const byId = new Map(accessible.map((item) => [item.id, item]));
 
+    // One row past the page tells us whether a next page exists without a
+    // second query; the RPC's window count carries the filtered total.
     const rows = await this.repo.listTasks({
       roadmapIds: accessible.map((item) => item.id),
       assignee: query.assigned_to_me ? userId : null,
@@ -422,15 +444,22 @@ export class AiContextService {
       dueFrom: query.due_after ?? null,
       dueTo: query.due_before ?? null,
       overdueAt: query.overdue ? new Date().toISOString() : null,
-      limit: query.limit ?? DEFAULT_TASKS_LIMIT,
+      limit: limit + 1,
+      offset,
     });
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const total = rows[0]?.total_count ?? (offset === 0 ? 0 : null);
 
-    const tasks = rows.flatMap((row) => {
+    const tasks = pageRows.flatMap((row) => {
       const roadmap = byId.get(row.roadmap_id);
       if (!roadmap) return [];
+      // The window count is response metadata, not a task field.
+      const { total_count, ...task } = row;
+      void total_count;
       return [
         {
-          ...row,
+          ...task,
           roadmap_name: roadmap.name,
           project_id: roadmap.project_id,
           project_title: roadmap.project?.title ?? null,
@@ -441,7 +470,12 @@ export class AiContextService {
     this.logTiming('ai_context_tasks_timing', traceId, startedAt, {
       returned: tasks.length,
     });
-    return { tasks };
+    return {
+      tasks,
+      offset,
+      total,
+      next_offset: hasMore ? offset + limit : null,
+    };
   }
 
   /**

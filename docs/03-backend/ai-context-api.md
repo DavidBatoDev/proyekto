@@ -1,6 +1,6 @@
 # AI Context API
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 The user-scoped read surface the Python agent uses across session scopes and the
 web calls to hydrate entity chips in assistant replies: what the caller can reach
@@ -68,9 +68,9 @@ All paths are under `/api`. Query params are listed with their DTO limits
 | --- | --- | --- | --- |
 | GET | `/ai/context/actor` | — | `{ actor_id, display_name, locale: null, timezone: null }` |
 | GET | `/ai/context/overview` | `workspace_id?` | `{ workspace, projects[], roadmaps[], teams[], counts_truncated, generated_at }` |
-| GET | `/ai/context/roadmaps` | `workspace_id?`, `project_id?`, `cursor?` (≤200 chars), `limit?` 1–100 (default 50) | `{ items[], next_cursor }` |
-| GET | `/ai/context/search` | `q` (≤160), `kinds?` CSV of `roadmap,project,epic,feature,task`, `workspace_id?`, `project_id?`, `roadmap_ids?` CSV (≤50 uuids), `limit?` 1–50 (default 20) | `{ matches[] }` |
-| GET | `/ai/context/tasks` | `assigned_to_me?`, `status?`, `due_before?` / `due_after?` (ISO 8601), `overdue?`, `workspace_id?`, `project_id?`, `roadmap_ids?` (≤50), `limit?` 1–200 (default 50) | `{ tasks[] }` |
+| GET | `/ai/context/roadmaps` | `workspace_id?`, `project_id?`, `cursor?` (≤200 chars), `limit?` 1–100 (default 50), `offset?` 0–5000 | `{ items[], next_cursor, offset, total, next_offset }` |
+| GET | `/ai/context/search` | `q` (≤160), `kinds?` CSV of `roadmap,project,epic,feature,task`, `workspace_id?`, `project_id?`, `roadmap_ids?` CSV (≤50 uuids), `limit?` 1–50 (default 20), `offset?` 0–200 | `{ matches[], offset, next_offset }` |
+| GET | `/ai/context/tasks` | `assigned_to_me?`, `status?`, `due_before?` / `due_after?` (ISO 8601), `overdue?`, `workspace_id?`, `project_id?`, `roadmap_ids?` (≤50), `limit?` 1–200 (default 50), `offset?` 0–2000 | `{ tasks[], offset, total, next_offset }` |
 | GET | `/ai/context/knowledge-search` | `q` (≤500), `project_ids?` CSV (≤50), `workspace_id?`, `sources?` CSV, `limit?` 1–20 | `{ project_ids[], query, results[] }` |
 | POST | `/ai/context/resolve-refs` | body `{ refs: [{ kind, id, label? }] }`, 1–25 refs | **200** `{ refs: ResolvedRef[] }` |
 | GET | `/ai/context/projects/:projectId` | — | the project context pack (same shape as `roadmaps/:id/ai/context/project`); `project.workspace` is `{id, name, slug}` or null for an unhomed project |
@@ -83,6 +83,14 @@ All paths are under `/api`. Query params are listed with their DTO limits
 
 `:projectId` and `:memberId` go through `ParseUUIDPipe` (a malformed id is a 400,
 an unknown one a 404).
+
+**Offset paging** (`roadmaps`, `search`, `tasks`; since 2026-09-08). `offset` is a
+zero-based start into the endpoint's total order; the response echoes `offset` and
+returns `next_offset` (the start of the following page, or null when this page ended
+the set) and, where the source can count, `total`. Every order ends in the row id so
+pages are stable. The agent's list tools pass the model's `offset` straight through
+and send it only when it is non-zero, so page one is byte-identical to a call from
+before paging.
 
 ### `overview`
 
@@ -120,6 +128,8 @@ Everything the caller can reach, laned against `workspace_id`.
 The light accessible list filtered in-process by `workspace_id` / `project_id`,
 then keyset-paged on `(updated_at desc nulls last, id asc)`. The cursor is
 `base64url("{updated_at}|{id}")` of the last item; an undecodable cursor is a 400.
+`offset` applies after the cursor filter, so the two compose; `total` is the size of
+the filtered set and `next_cursor` / `next_offset` are both null on the last page.
 Items: `id, name, description` (truncated to 280 chars), `status, owner_id,
 updated_at, project: { id, title, workspace_id } | null`.
 
@@ -133,7 +143,11 @@ updated_at, project: { id, title, workspace_id } | null`.
   are matched **in-process** on name/title and description.
 - **Rank**: `0` exact title, `1` prefix, `2` substring, `3` description-only; tasks
   are title-only (their descriptions are long). Sort is rank, then `updated_at`
-  desc, then id. `limit` applies after the merge.
+  desc, then id. `offset` and `limit` apply after the merge: the RPC is asked for
+  `offset + limit + 1` rows (its lanes and final order carry the same `id` tiebreak
+  and are capped at 300, migration `20260908090000_ai_context_offset_paging.sql`),
+  so the page is exact and the extra row decides `next_offset`. There is no `total`
+  for search.
 - `roadmap_ids` **intersects** the accessible set and can never widen it; with it,
   project matches are limited to those roadmaps' projects.
 - Attribution (`roadmap_name`, `project_id`, `project_title`, `workspace_id`) is
@@ -157,7 +171,12 @@ updated_at, project: { id, title, workspace_id } | null`.
 | `overdue=true` | `due_date < now` and not `done` |
 | `due_after` / `due_before` | inclusive bounds on `due_date` |
 
-Order: due-dated tasks first (ascending), then `updated_at` desc. Task shape:
+Order: due-dated tasks first (ascending), then `updated_at` desc, then id. The RPC
+takes `p_offset` and returns `total_count` (a window count over the filtered set,
+repeated on every row and lifted into the response's `total`); the service asks for
+`limit + 1` rows and the extra one decides `next_offset`. The function's return type
+changed with paging, so `20260908090000_ai_context_offset_paging.sql` drops the old
+signature before recreating it (cap 500). Task shape:
 `id, title, status, priority, due_date, updated_at, assignee_ids[], feature_id,
 feature_title, epic_id, epic_title, roadmap_id, roadmap_name, project_id,
 project_title, workspace_id`.

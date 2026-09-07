@@ -179,6 +179,7 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
       p_due_to: params.dueTo,
       p_overdue_at: params.overdueAt,
       p_limit: params.limit,
+      p_offset: params.offset,
     })) as { data: unknown; error: QueryError };
     if (error) throw new Error(error.message);
 
@@ -205,6 +206,13 @@ export class AiContextRepositorySupabase implements IAiContextRepository {
                 (value): value is string => typeof value === 'string',
               )
             : [],
+          total_count:
+            typeof raw.total_count === 'number'
+              ? raw.total_count
+              : typeof raw.total_count === 'string' &&
+                  raw.total_count.trim() !== ''
+                ? Number(raw.total_count)
+                : null,
         },
       ];
     });

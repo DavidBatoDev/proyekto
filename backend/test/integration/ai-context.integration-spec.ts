@@ -338,6 +338,34 @@ describe('AI context family (/api/ai/context)', () => {
       expect(page2.body.data.next_cursor).toBeNull();
     });
 
+    it('pages by offset over the same total order', async () => {
+      const page1 = await get(
+        '/api/ai/context/roadmaps?limit=2',
+        owner.token,
+      ).expect(200);
+      expect(page1.body.data).toMatchObject({
+        offset: 0,
+        total: 3,
+        next_offset: 2,
+      });
+      const page2 = await get(
+        '/api/ai/context/roadmaps?limit=2&offset=2',
+        owner.token,
+      ).expect(200);
+      expect(page2.body.data.items).toHaveLength(1);
+      expect(page2.body.data).toMatchObject({
+        offset: 2,
+        total: 3,
+        next_offset: null,
+      });
+      const ids = [...page1.body.data.items, ...page2.body.data.items].map(
+        (i: { id: string }) => i.id,
+      );
+      expect(new Set(ids)).toEqual(new Set([roadmapA, roadmapB, roadmapD]));
+
+      await get('/api/ai/context/roadmaps?offset=-1', owner.token).expect(400);
+    });
+
     it('rejects a malformed cursor', async () => {
       await get(
         '/api/ai/context/roadmaps?cursor=not-a-cursor',
@@ -467,6 +495,32 @@ describe('AI context family (/api/ai/context)', () => {
       expect(new Set(ids(all))).toEqual(
         new Set([taskAssigned, taskOverdueNullStatus, taskDone]),
       );
+    });
+
+    it('pages by offset with a stable order and the filtered total', async () => {
+      const base = `/api/ai/context/tasks?status=all&roadmap_ids=${roadmapA}`;
+      const page1 = await get(`${base}&limit=2`, owner.token).expect(200);
+      expect(page1.body.data).toMatchObject({
+        offset: 0,
+        total: 3,
+        next_offset: 2,
+      });
+      const page2 = await get(`${base}&limit=2&offset=2`, owner.token).expect(
+        200,
+      );
+      expect(page2.body.data).toMatchObject({
+        offset: 2,
+        total: 3,
+        next_offset: null,
+      });
+      expect(new Set([...ids(page1), ...ids(page2)])).toEqual(
+        new Set([taskAssigned, taskOverdueNullStatus, taskDone]),
+      );
+      expect(ids(page1)).not.toContain(ids(page2)[0]);
+      const task = (page1.body.data.tasks as TaskItem[])[0];
+      expect(task).not.toHaveProperty('total_count');
+
+      await get(`${base}&offset=-1`, owner.token).expect(400);
     });
 
     it('overdue keeps only open tasks whose due date has passed', async () => {

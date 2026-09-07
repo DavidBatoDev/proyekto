@@ -1,6 +1,6 @@
 # Migrations Workflow
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 The database schema is **migration-driven**: every change is a timestamped SQL file
 in [`supabase/migrations/`](../../supabase/migrations/), and that folder is the
@@ -71,6 +71,15 @@ Both are `BEGIN; … COMMIT;` and re-runnable (`IF NOT EXISTS`, `DROP … IF EXI
 change, 2026-09-06) takes the same path - dev first, then prod - and must be applied
 **before** the backend that passes `p_actor_id` deploys (backend -> agent -> web).
 Treat it as unapplied until `list_migrations` on both refs says otherwise.
+
+`20260908090000_ai_context_offset_paging.sql` (offset paging for the agent's list
+tools, 2026-09-08) follows it: applied to hosted dev on 2026-09-08, prod pending. It
+`DROP`s the 7-argument `ai_context_list_tasks` and recreates it with `p_offset` and a
+`total_count` window column (the return type changes, so `CREATE OR REPLACE` cannot be
+used and a leftover overload would break every caller: check `pg_proc` shows one
+row), and `CREATE OR REPLACE`s `ai_context_search_nodes` with `id` tiebreaks in every
+`ORDER BY` and its caps raised to 300. Apply **before** the backend that sends
+`p_offset` deploys; the old backend keeps working against the new function.
 
 > **Not part of this change:** the working tree also holds a second uncommitted
 > migration, `20260906120000_time_tracking_without_consultant.sql`, from another

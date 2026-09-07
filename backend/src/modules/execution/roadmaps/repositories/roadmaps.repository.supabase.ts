@@ -100,13 +100,23 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     ];
   }
 
-  private sortByPosition<T extends { position?: number }>(items: T[]): T[] {
+  /**
+   * Position order with the id as a tiebreak, so the array order every
+   * context read slices is total: the AI agent pages those reads by offset,
+   * and two rows sharing (or missing) a position must not swap between calls.
+   */
+  private sortByPosition<T extends { position?: number; id?: unknown }>(
+    items: T[],
+  ): T[] {
     return [...items].sort((a, b) => {
       const aPos =
         typeof a?.position === 'number' ? a.position : Number.MAX_SAFE_INTEGER;
       const bPos =
         typeof b?.position === 'number' ? b.position : Number.MAX_SAFE_INTEGER;
-      return aPos - bPos;
+      if (aPos !== bPos) return aPos - bPos;
+      const aId = typeof a?.id === 'string' ? a.id : '';
+      const bId = typeof b?.id === 'string' ? b.id : '';
+      return aId < bId ? -1 : aId > bId ? 1 : 0;
     });
   }
 

@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-09-07 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -151,9 +151,9 @@ assistant reply chips. Its wire contract is documented under
 | --- | --- | --- | --- |
 | GET | /api/ai/context/actor | Supabase | `{actor_id, display_name}` |
 | GET | /api/ai/context/overview | Supabase | Projects / roadmaps (with counts) / teams, lanes; `?workspace_id=` (404 for non-members) |
-| GET | /api/ai/context/roadmaps | Supabase | Accessible roadmaps, keyset cursor; `?workspace_id=&project_id=` |
-| GET | /api/ai/context/search | Supabase | Cross-roadmap epic/feature/task/roadmap/project search; `?q=&kinds=&roadmap_ids=` |
-| GET | /api/ai/context/tasks | Supabase | Cross-roadmap tasks; `?assigned_to_me=&status=&overdue=&due_before=&due_after=` |
+| GET | /api/ai/context/roadmaps | Supabase | Accessible roadmaps, keyset cursor or `offset` (`next_offset`, `total`); `?workspace_id=&project_id=` |
+| GET | /api/ai/context/search | Supabase | Cross-roadmap epic/feature/task/roadmap/project search, `offset`-paged after the merge; `?q=&kinds=&roadmap_ids=` |
+| GET | /api/ai/context/tasks | Supabase | Cross-roadmap tasks, `offset`-paged with `total`; `?assigned_to_me=&status=&overdue=&due_before=&due_after=` |
 | GET | /api/ai/context/knowledge-search | Supabase | Multi-project knowledge search; `?q=&project_ids=` |
 | POST | /api/ai/context/resolve-refs | Supabase +Throttler | Resolve 1-25 composer or reply entity refs; valid guest headers accepted. `AiContextThrottlerGuard`: 60 requests per 60,000 ms per actor (`request.user.id`, IP fallback). Class-level auth runs once. Fail-closed per ref |
 | GET | /api/ai/context/projects/:projectId[/brief · /resources · /meetings · /members · /members/:memberId] | Supabase | Project-keyed context pack |
