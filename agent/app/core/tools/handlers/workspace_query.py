@@ -46,6 +46,7 @@ ROADMAP_OPTIONAL_TOOL_NAMES: frozenset[str] = PROJECT_KEYED_TOOL_NAMES | {'searc
 
 # The backend's AI_CONTEXT_SEARCH_KINDS (@IsIn each): anything else is a 400.
 _SEARCH_KINDS = ('project', 'roadmap', 'epic', 'feature', 'task')
+_TASK_ROW_OMIT = frozenset({'updated_at', 'workspace_id'})
 _DUE_WINDOWS = ('overdue', 'today', 'week', 'all')
 _MAX_LIST_ITEMS = 60
 _MAX_ID_LIST = 20
@@ -216,6 +217,13 @@ class WorkspaceQueryHandler(ToolHandlerBase):
             )
             if isinstance(result, dict) and not isinstance(result.get('error'), dict):
                 result = _cap_list(result, 'tasks', 50)
+                # Neither field ever reaches a reply; dropping them lets more
+                # whole rows fit under the engine's list cap.
+                result['tasks'] = [
+                    {key: value for key, value in task.items() if key not in _TASK_ROW_OMIT}
+                    if isinstance(task, dict) else task
+                    for task in (result.get('tasks') or [])
+                ]
             return self._log_result(tool_name, result, trace_id)
 
         if tool_name == 'list_project_members':

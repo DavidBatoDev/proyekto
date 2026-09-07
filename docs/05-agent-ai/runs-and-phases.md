@@ -404,11 +404,35 @@ stay in the per-turn tail, after `# Actor`.
 
 [`runtime/entity_links.py`](../../agent/app/core/runtime/entity_links.py)
 `ground_entity_links` runs at the start of `orchestrator.finalize_step`, returning
-`GroundingResult{text, expanded, kept, rejected}`. It expands handles, validates every
-typed UUID and title, then writes the text back to `run.final_message` before the
-response and history are derived. A rejection leaves the unescaped link text in the
-prose. `expand_entity_links` remains a compatibility wrapper returning only `.text`.
+`GroundingResult{text, expanded, kept, repaired, auto, rejected}`. It runs three passes
+and writes the text back to `run.final_message` before the response and history are
+derived: handle expansion, grounding (validate, else repair, else reject) and
+auto-linking. A rejection leaves the unescaped link text in the prose.
+`expand_entity_links` remains a compatibility wrapper returning only `.text`.
 Grounding performs no network reads and does not mutate session or run state itself.
+
+**Repair.** A link that fails validation is re-pointed when the evidence still
+identifies exactly one observed entity, and collapses to plain text otherwise:
+
+| Failure | Repaired when | Example |
+| --- | --- | --- |
+| `UNKNOWN_ID` or `TITLE_MISMATCH` | Exactly one entity of the **same kind** has the link's exact normalized title; with several, the registered id within `MAX_ID_EDIT_DISTANCE = 3` edits of the written id wins | A 35-character task id from production run `affeea1e` re-points at the task with that title |
+| `KIND_MISMATCH` | The written id **and** the title agree on one entity under another kind | `[Growth](proyekto://task/E1)` where `E1` is the epic "Growth" |
+
+A title is never followed across kinds on its own, so a workspace name written on a
+team or roadmap id still collapses. Each repair logs `entity_link_repaired` with
+`run_id`, `kind`, `entity_id`, `reason`, `repaired_kind`, `repaired_id`, `link_text`
+and `registered_title`.
+
+**Auto-linking.** `autolink_entities` then turns plain-text mentions of observed
+titles into links, so a list the model wrote without links (production run
+`0a014ee4`) still renders as chips. A mention qualifies only when the title names
+exactly one observed entity across all kinds (a project and its default roadmap share
+a name and are skipped), its normalized form has at least
+`MIN_AUTOLINK_TITLE_CHARS = 12` characters, and the mention is bounded by line ends or
+delimiters (`- — : ; , . ( ) quotes * _ / | > #`). Existing links and their labels,
+inline and fenced code, `[bracket tags]` and bare URLs are never rewritten. The label
+keeps the model's spelling; the chip swaps in the canonical title when they agree.
 
 [`runtime/entity_registry.py`](../../agent/app/core/runtime/entity_registry.py) owns
 `RunState.entities_seen`: UUID-only `EntitySeen{kind, id, title}` facts, deduped on
@@ -447,12 +471,25 @@ network baseline` matches `Supply network baseline`, but `Test` does not validat
 
 Each rejection logs `entity_link_rejected` with `run_id`, `kind`, `entity_id`,
 `reason`, `link_text` and `registered_title`. `StepResult`, `run_step_completed` and
-`message_completed` carry `entity_links_kept` / `entity_links_rejected`; the
-`AI REQUEST` lifecycle block prints the counts directly after `cache`:
+`message_completed` carry `entity_links_kept` / `entity_links_rejected` /
+`entity_links_repaired` / `entity_links_auto`; the `AI REQUEST` lifecycle block
+prints the counts directly after `cache`:
 
 ```text
-  links       kept=3 rejected=1
+  links       kept=3 rejected=1 repaired=2 auto=4
 ```
+
+**Tool results the model can link from.** The loop engine feeds every tool result
+back as a JSON string capped at `MAX_TOOL_RESULT_CHARS = 8000`
+([`engine/tool_results.py`](../../agent/app/core/engine/tool_results.py)). A result
+whose bulk is a list of items (`tasks`, `matches`, `epics`, `roadmaps`, ...) may run to
+`MAX_LIST_TOOL_RESULT_CHARS = 16_000` and, past that, is cut as an ordered prefix of
+whole items with `returned_<key>`, `total_<key>`, `result_truncated: true` and a
+`truncation_hint`, so every id the model sees is complete and it knows how much it did
+not see. Only a result with no such list falls back to a hard character cut.
+`system.md` tells the model to report the shown/total count and narrow the query
+rather than repeat the call with a larger limit. `list_my_tasks` rows drop
+`updated_at` and `workspace_id` before serialization.
 
 The persisted assistant turn and wire response contain the same grounded text.
 The real-reply corpus in `test_entity_links.py` rejects a workspace title on a
@@ -555,7 +592,7 @@ timeline decides what to show. Run-specific events and their `details`:
 | `run_started` | `run_id`, `phase`, `step`, `scope_kind`, `refs_count` | hidden |
 | `phase_entered` | `phase`, `step`, `commits_done`, `commits_total` | hidden (patches the banner phase / progress) |
 | `phase_completed` | `phase`, `step`, `outcome` | hidden |
-| `run_step_completed` | `run_id`, `phase`, `step`, `run_next`, `run_status`, `checkpoint`, `elapsed_ms`, `entity_links_kept`, `entity_links_rejected` | hidden; sets `done` on the trace (`run_next != "continue"`) |
+| `run_step_completed` | `run_id`, `phase`, `step`, `run_next`, `run_status`, `checkpoint`, `elapsed_ms`, `entity_links_kept`, `entity_links_rejected`, `entity_links_repaired`, `entity_links_auto` | hidden; sets `done` on the trace (`run_next != "continue"`) |
 | `run_checkpoint` | `run_id`, `phase`, `checkpoint`, `plan_id` | hidden |
 | `refs_resolved` | `refs_total`, `refs_accessible`, `refs_inaccessible`, `loaded_roadmap_ids` | hidden |
 | `checkpoint_policy` | `decision`, `reason`, `batches`, `operations` (verbose detail only; no structured picker) | log / verbose only |

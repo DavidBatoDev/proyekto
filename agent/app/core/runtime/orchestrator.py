@@ -725,6 +725,8 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         elapsed_ms=elapsed_ms,
         entity_links_kept=links.kept,
         entity_links_rejected=len(links.rejected),
+        entity_links_repaired=links.repaired,
+        entity_links_auto=links.auto,
     )
 
     clarifier_card = run.clarifier if run.checkpoint == 'clarifier' else ctx.clarifier_card
@@ -751,6 +753,8 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         tokens_cached=ctx.tokens['cached'] or None,
         entity_links_kept=links.kept,
         entity_links_rejected=len(links.rejected),
+        entity_links_repaired=links.repaired,
+        entity_links_auto=links.auto,
         verify_report_mode=(run.verify.report_mode if run.verify is not None and segment_ended else None),
         route_lane=route_lane,
         react_loop_turns=ctx.loop_turns or None,

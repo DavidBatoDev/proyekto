@@ -317,6 +317,8 @@ def _log_message_completed(
         tokens_cached=result.tokens_cached if result else None,
         entity_links_kept=result.entity_links_kept if result else 0,
         entity_links_rejected=result.entity_links_rejected if result else 0,
+        entity_links_repaired=result.entity_links_repaired if result else 0,
+        entity_links_auto=result.entity_links_auto if result else 0,
         verify_report_mode=result.verify_report_mode if result else None,
         operations_count=len(result.operations) if result else 0,
         staged_changes_present=bool(result.staged_operations_count) if result else False,

@@ -343,6 +343,8 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'error_code',
                 'entity_links_kept',
                 'entity_links_rejected',
+                'entity_links_repaired',
+                'entity_links_auto',
             ),
         )
     if event == 'run_started':
@@ -370,6 +372,8 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'elapsed_ms',
                 'entity_links_kept',
                 'entity_links_rejected',
+                'entity_links_repaired',
+                'entity_links_auto',
             ),
         )
     if event == 'run_checkpoint':
@@ -538,6 +542,7 @@ def _progress_event_title(event: str) -> str:
         'phase_completed': 'Phase completed',
         'run_step_completed': 'Step completed',
         'entity_link_rejected': 'Entity link rejected',
+        'entity_link_repaired': 'Entity link repaired',
         'verify_report_rejected': 'Report rewritten from the outcome',
         'run_checkpoint': 'Waiting for input',
         'refs_resolved': 'References resolved',
@@ -989,6 +994,8 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'tokens_cached': payload.get('tokens_cached'),
                 'entity_links_kept': payload.get('entity_links_kept', 0),
                 'entity_links_rejected': payload.get('entity_links_rejected', 0),
+                'entity_links_repaired': payload.get('entity_links_repaired', 0),
+                'entity_links_auto': payload.get('entity_links_auto', 0),
                 'verify_report_mode': payload.get('verify_report_mode'),
             },
         }
@@ -1059,7 +1066,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  validation  {trace.response.get("operation_validation_error")}',
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
             f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"))}',
-            f'  links       kept={trace.response.get("entity_links_kept", 0)} rejected={trace.response.get("entity_links_rejected", 0)}',
+            f'  links       kept={trace.response.get("entity_links_kept", 0)} rejected={trace.response.get("entity_links_rejected", 0)} repaired={trace.response.get("entity_links_repaired", 0)} auto={trace.response.get("entity_links_auto", 0)}',
             f'  verify      report={trace.response.get("verify_report_mode") or "-"}',
             '',
             'ASSISTANT',

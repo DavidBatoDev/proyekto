@@ -6,8 +6,14 @@ import unittest
 
 from app.core.contracts.runs import RunState
 from app.core.contracts.sessions import AgentSession, RoadmapContext
-from app.core.runtime.entity_links import entity_link, expand_entity_links, ground_entity_links, strip_entity_links
-from app.core.runtime.entity_registry import register, register_many
+from app.core.runtime.entity_links import (
+    autolink_entities,
+    entity_link,
+    expand_entity_links,
+    ground_entity_links,
+    strip_entity_links,
+)
+from app.core.runtime.entity_registry import build_lookup, register, register_many
 from app.core.runtime.phases.propose import _auto_summary
 
 ALPHA = '11111111-1111-1111-1111-111111111111'
@@ -62,9 +68,13 @@ class EntityLinkTests(unittest.TestCase):
                     f'[{title}](proyekto://{kind}/{entity_id})',
                 )
 
-    def test_kind_mismatch_drops_only_the_link(self) -> None:
-        self.assertEqual(self.expand('Under [Growth](proyekto://task/E1).'), 'Under Growth.')
-        self.assertEqual(self.expand('[Beta](proyekto://epic/R2)'), 'Beta')
+    def test_kind_mismatch_with_agreeing_id_and_title_is_repaired(self) -> None:
+        # The id and the title both name the epic; only the kind label was wrong.
+        self.assertEqual(self.expand('Under [Growth](proyekto://task/E1).'), f'Under [Growth](proyekto://epic/{EPIC}).')
+        self.assertEqual(self.expand('[Beta](proyekto://epic/R2)'), f'[Beta](proyekto://roadmap/{BETA})')
+
+    def test_kind_mismatch_without_an_agreeing_title_drops_the_link(self) -> None:
+        self.assertEqual(self.expand('Under [Wrong](proyekto://task/E1).'), 'Under Wrong.')
 
     def test_roadmap_prefix_expands_to_its_roadmap(self) -> None:
         self.assertEqual(self.expand('[Beta](proyekto://roadmap/R2)'), f'[Beta](proyekto://roadmap/{BETA})')
@@ -87,7 +97,11 @@ class EntityLinkTests(unittest.TestCase):
                     self.expand(f'[{label}](proyekto://epic/E1)'),
                     f'[{label}](proyekto://epic/{EPIC})',
                 )
-                self.assertEqual(self.expand(f'[{label}](proyekto://epic/E99)'), 'Growth [Q4]')
+                # An unknown handle with the epic's exact title re-points at the epic.
+                self.assertEqual(
+                    self.expand(f'[{label}](proyekto://epic/E99)'),
+                    f'[{label}](proyekto://epic/{EPIC})',
+                )
 
     def test_generated_links_escape_markdown_punctuation(self) -> None:
         self.assertEqual(
@@ -255,6 +269,167 @@ If you want, I can also break these down by status, show your most active roadma
                 else:
                     self.assertEqual(result.text, text)
 
+
+
+PRODUCTION_LIST_REPLY = """You’ve got a number of assigned tasks. From the current list I can see these statuses:
+
+- Set up the twice-a-week sprint meeting cadence — done
+- Reorganise the Proyekto project/team structure and confirm access for all members — done
+- Convert PRD documentation from markdown to a client-friendly docs format — done
+- Decide backend build priority: user-facing front end first vs CMS in parallel — in progress
+- Confirm the shared Gmail account for hosting and database services — in progress
+- Define maximum file sizes and compression targets for video and media — done
+- Choose the hosting and database provider and set up the accounts — in progress
+- Write the CMS-managed content specification (resources, articles, blogs, media) — in progress
+- Model the CMS content types and schema — in progress
+- Build the media storage and upload pipeline with large-video support — in progress
+
+If you want, I can also group all your assigned tasks by roadmap or show only the open ones."""
+PRODUCTION_TASK_TITLES = [
+    line[2:].rsplit(' — ', 1)[0] for line in PRODUCTION_LIST_REPLY.splitlines() if line.startswith('- ')
+]
+YACHATDAC = '64867cc7-f528-4bce-b5ee-7f9bf109523c'
+
+
+def _task_id(index: int) -> str:
+    return f'a852a3e8-f1bd-42e7-b426-ddb43e908{index:03d}'
+
+
+class RepairTests(unittest.TestCase):
+    """A wrong link that still identifies one entity is re-pointed, not dropped."""
+
+    def setUp(self) -> None:
+        from app.core.contracts.runs import EntitySeen
+
+        self.session = AgentSession(scope={'kind': 'workspace', 'workspace_id': ALPHA})
+        self.run = RunState(trace_id='repair', scope=self.session.scope, user_message='list')
+        register_many(self.run, [
+            EntitySeen(kind='task', id=_task_id(index), title=title)
+            for index, title in enumerate(PRODUCTION_TASK_TITLES)
+        ])
+        register(self.run, 'roadmap', YACHATDAC, 'PRD - Yachatdac Website')
+
+    def test_production_typo_id_is_repaired_from_the_exact_title(self) -> None:
+        # Run affeea1e: the model wrote a 35-character uuid for this task.
+        title = 'Build the media storage and upload pipeline with large-video support'
+        text = f'- [{title}](proyekto://task/a852a3e8-f1bd-42e7-b426-ddb43e9082e)'
+        with self.assertLogs('app.core.runtime.entity_links', level='INFO') as logs:
+            result = ground_entity_links(text, self.session, self.run)
+        self.assertEqual(result.text, f'- [{title}](proyekto://task/{_task_id(9)})')
+        self.assertEqual((result.kept, result.repaired, result.rejected), (0, 1, []))
+        self.assertIn('ENTITY_LINK_REPAIRED', '\n'.join(logs.output).upper())
+        self.assertIn('UNKNOWN_ID', '\n'.join(logs.output))
+
+    def test_borrowed_id_within_the_same_kind_follows_the_title(self) -> None:
+        title = PRODUCTION_TASK_TITLES[0]
+        result = ground_entity_links(f'[{title}](proyekto://task/{_task_id(3)})', self.session, self.run)
+        self.assertEqual(result.text, f'[{title}](proyekto://task/{_task_id(0)})')
+        self.assertEqual(result.repaired, 1)
+
+    def test_status_words_and_unknown_titles_are_still_rejected(self) -> None:
+        # Run 53b7e58b linked the status word to a task id.
+        result = ground_entity_links(f'[in review](proyekto://task/{_task_id(3)})', self.session, self.run)
+        self.assertEqual(result.text, 'in review')
+        self.assertEqual(result.rejected[0]['reason'], 'TITLE_MISMATCH')
+        result = ground_entity_links('[Nothing like this](proyekto://task/E99)', self.session, self.run)
+        self.assertEqual(result.text, 'Nothing like this')
+        self.assertEqual(result.rejected[0]['reason'], 'UNKNOWN_ID')
+
+    def test_a_title_shared_across_kinds_never_re_points_across_kinds(self) -> None:
+        from app.core.contracts.runs import EntitySeen
+
+        team = 'f4004aa2-25a1-4e2e-89ed-e7bb94d81f17'
+        register_many(self.run, [
+            EntitySeen(kind='team', id=team, title='Claude Maxxing'),
+            EntitySeen(kind='workspace', id=BETA, title="David's Workspace"),
+        ])
+        result = ground_entity_links(f"in [David's Workspace](proyekto://team/{team})", self.session, self.run)
+        self.assertEqual(result.text, "in David's Workspace")
+        self.assertEqual(result.rejected[0]['reason'], 'TITLE_MISMATCH')
+        self.assertEqual(result.repaired, 0)
+
+    def test_duplicate_titles_pick_the_nearest_id_or_nothing(self) -> None:
+        from app.core.contracts.runs import EntitySeen
+
+        twin = 'a852a3e8-f1bd-42e7-b426-ddb43e999000'
+        register(self.run, 'task', twin, PRODUCTION_TASK_TITLES[0])
+        title = PRODUCTION_TASK_TITLES[0]
+        near = ground_entity_links(f'[{title}](proyekto://task/a852a3e8-f1bd-42e7-b426-ddb43e99900)', self.session, self.run)
+        self.assertEqual(near.text, f'[{title}](proyekto://task/{twin})')
+        far = ground_entity_links(f'[{title}](proyekto://task/{EPIC})', self.session, self.run)
+        self.assertEqual(far.text, title)
+        self.assertEqual(far.rejected[0]['reason'], 'UNKNOWN_ID')
+        self.assertIsInstance(EntitySeen(kind='task', id=twin, title=title), EntitySeen)
+
+
+class AutolinkTests(unittest.TestCase):
+    """Plain-text lists of observed titles render as chips regardless of the model."""
+
+    def setUp(self) -> None:
+        from app.core.contracts.runs import EntitySeen
+
+        self.session = AgentSession(scope={'kind': 'workspace', 'workspace_id': ALPHA})
+        self.run = RunState(trace_id='autolink', scope=self.session.scope, user_message='list')
+        register_many(self.run, [
+            EntitySeen(kind='task', id=_task_id(index), title=title)
+            for index, title in enumerate(PRODUCTION_TASK_TITLES)
+        ])
+        # The project and its default roadmap share a name: ambiguous, never auto-linked.
+        register(self.run, 'roadmap', YACHATDAC, 'PRD - Yachatdac Website')
+        register(self.run, 'project', BETA, 'PRD - Yachatdac Website')
+        register(self.run, 'epic', EPIC, 'Growth')
+
+    def test_production_plain_list_gets_one_link_per_item(self) -> None:
+        # Run 0a014ee4 wrote this reply with no links at all.
+        result = ground_entity_links(PRODUCTION_LIST_REPLY, self.session, self.run)
+        self.assertEqual((result.kept, result.repaired, result.auto, result.rejected), (0, 0, 10, []))
+        for index, title in enumerate(PRODUCTION_TASK_TITLES):
+            self.assertIn(f'- {entity_link(title, "task", _task_id(index))} — ', result.text)
+        self.assertIn('assigned tasks by roadmap', result.text)
+        self.assertEqual(result.text.count('proyekto://'), 10)
+        # A second pass is a no-op: links are protected spans.
+        again = ground_entity_links(result.text, self.session, self.run)
+        self.assertEqual((again.kept, again.auto, again.text), (10, 0, result.text))
+
+    def test_only_whole_delimited_mentions_are_linked(self) -> None:
+        title = PRODUCTION_TASK_TITLES[8]  # Model the CMS content types and schema
+        cases = {
+            f'**{title}** is done.': 1,
+            f'Next: "{title}".': 1,
+            f'1. {title}\n': 1,
+            f'| {title} | done |': 1,
+            f'### {title}': 1,
+            f'the task {title} is done': 0,  # bare prose: not delimiter-bounded
+            f'{title} v2 — in progress': 0,  # a longer, unregistered title
+            f'Growth — done': 0,  # short title
+            f'- PRD - Yachatdac Website': 0,  # shared by a project and a roadmap
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                _linked, count = autolink_entities(text, build_lookup(self.session, self.run))
+                self.assertEqual(count, expected)
+
+    def test_links_code_and_bracket_tags_are_never_rewritten(self) -> None:
+        title = PRODUCTION_TASK_TITLES[8]
+        text = (
+            f'[{title}](proyekto://task/{_task_id(8)}), `{title}`, [{title}], '
+            f'[docs](https://example.com/{title.replace(" ", "-")}) and ```\n- {title}\n```'
+        )
+        result = ground_entity_links(text, self.session, self.run)
+        self.assertEqual((result.kept, result.auto), (1, 0))
+        self.assertEqual(result.text, text)
+
+    def test_prefix_form_and_case_are_tolerated(self) -> None:
+        register(self.run, 'epic', MILESTONE, '(Month 1) Supply network baseline')
+        result = ground_entity_links('- supply network baseline — planned', self.session, self.run)
+        self.assertEqual(result.auto, 1)
+        self.assertEqual(result.text, f'- [supply network baseline](proyekto://epic/{MILESTONE}) — planned')
+
+    def test_text_without_observed_titles_is_byte_identical(self) -> None:
+        text = 'Nothing here mentions a task.\r\n\n- Something else entirely — todo\n'
+        result = ground_entity_links(text, self.session, self.run)
+        self.assertEqual(result.text.encode('utf-8'), text.encode('utf-8'))
+        self.assertEqual(result.auto, 0)
 
 class StripEntityLinkTests(unittest.TestCase):
     def test_uuid_and_handle_links_keep_titles_and_relationship_words(self) -> None:

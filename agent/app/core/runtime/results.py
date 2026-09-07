@@ -78,6 +78,10 @@ class StepResult:
     tokens_cached: int | None = None
     entity_links_kept: int = 0
     entity_links_rejected: int = 0
+    # Wrong links re-pointed at the one entity they evidently meant, and
+    # plain-text titles the grounding step turned into links.
+    entity_links_repaired: int = 0
+    entity_links_auto: int = 0
     # Who wrote the reply of a run that reached verify (model | deterministic
     # | rejected); None when the step did not settle a verify report.
     verify_report_mode: str | None = None
