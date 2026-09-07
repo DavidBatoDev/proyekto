@@ -81,13 +81,10 @@ class CatalogTests(unittest.TestCase):
                 self.assertNotIn('roadmap_id', fn['parameters']['required'], name)
         self.assertIn('search_nodes', specs)
 
-    def test_repair_and_verify_catalogs(self) -> None:
+    def test_repair_catalog(self) -> None:
         repair = tools.repair_tools(RID, WORKSPACE)
         self.assertEqual(_names(repair), ['stage_edits'])
         self.assertEqual(repair[0]['function']['parameters']['properties']['roadmap_id']['enum'], [RID])
-        verify = tools.verify_tools(ROADMAP)
-        self.assertEqual(_names(verify), ['propose'])
-        self.assertIn('targets', verify[0]['function']['parameters']['required'])
 
 
 class ScopeRequirementTests(unittest.TestCase):

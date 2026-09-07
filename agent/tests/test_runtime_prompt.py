@@ -385,14 +385,6 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertIn(f'roadmap R2 "Beta" (roadmap_id {BETA})', execute)
         self.assertIn(f'`roadmap_id` = {BETA}', execute)
         self.assertNotIn('{roadmap_', execute)
-        verify = prompt.render_phase_tail('verify')
-        self.assertTrue(verify.startswith('# Run\nPhase: verify.'))
-        self.assertIn('[Title](proyekto://<kind>/<id>)', verify)
-        self.assertIn('ids from `# Outcome`', verify)
-        self.assertIn('Copy the links from `# Outcome` verbatim', verify)
-        self.assertIn('Tool arguments, including `propose` summaries and next_steps, use plain titles', verify)
-        self.assertIn('never re-apply anything', verify)
-        self.assertIn('`# Outcome` is the ground truth', verify)
         self.assertEqual(prompt.render_phase_tail('propose'), '')
 
 

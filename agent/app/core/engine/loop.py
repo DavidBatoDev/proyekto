@@ -285,6 +285,10 @@ def run_loop(
             outcome = terminal_handler(terminal_calls)
             if isinstance(outcome, LoopResult):
                 outcome.used_read_tools = used_read_tools
+                # The echoed function_call items of this turn ride along so
+                # the phase that applies the edit can hand the commit result
+                # back to this same loop as the tool's output.
+                outcome.transcript = _transcript()
                 return _finalize(
                     outcome,
                     turn,

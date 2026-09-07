@@ -232,7 +232,6 @@ class CatalogAndDispatchTests(unittest.TestCase):
         for catalog in (
             tools_spec.materialize_tools(AgentSession(roadmap_id=_ROADMAP), _ROADMAP),
             tools_spec.repair_tools(_ROADMAP),
-            tools_spec.verify_tools(),
         ):
             names = {spec['function']['name'] for spec in catalog}
             self.assertFalse(PROJECT_ADMIN_TOOL_NAMES & names)

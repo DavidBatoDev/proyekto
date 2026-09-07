@@ -262,6 +262,9 @@ class RunBatch(BaseModel):
     operations_hash: str | None = None
     assistant_message: str = ''
     source: BatchSource = 'stage_edits'
+    # The terminal tool call ids that staged this batch: verify answers them
+    # with the commit outcome so the staging loop writes the reply itself.
+    call_ids: list[str] = Field(default_factory=list)
     contains_delete: bool = False
     # kind='plan' proposal targets carry titles only; execute materializes
     # them into operations with a mini loop first.
@@ -331,7 +334,7 @@ class VerifyReport(BaseModel):
     # Who wrote `summary`: the verify model, the deterministic renderer, or the
     # renderer after the model's text was rejected for contradicting the
     # outcome (a refusal on top of a committed change).
-    report_mode: Literal['model', 'deterministic', 'rejected'] = 'deterministic'
+    report_mode: Literal['loop', 'staged', 'model', 'deterministic', 'rejected'] = 'deterministic'
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +401,9 @@ class RunState(BaseModel):
     execute_cursor: int = 0
     # Side key of a paused investigate transcript.
     loop_transcript_key: str | None = None
+    # Side key of the transcript that staged the current batches (its last
+    # turn is the unanswered stage_edits / revert_changes call).
+    staged_transcript_key: str | None = None
     # {phase: {'turns': n, 'tool_calls': n}}
     phase_usage: dict[str, dict[str, int]] = Field(default_factory=dict)
     # input/output/total/cached, summed across the run.

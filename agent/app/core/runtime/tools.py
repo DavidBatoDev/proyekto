@@ -242,11 +242,6 @@ def repair_tools(roadmap_id: str, scope: Any = None) -> list[dict[str, Any]]:
     return [stage_edits_tool(scope, pinned_roadmap_id=roadmap_id)]
 
 
-def verify_tools(scope: Any = None) -> list[dict[str, Any]]:
-    """Verify phase: ``propose`` only (a follow-up proposal), targets required."""
-    return [propose_tool(scope, targets_required=True)]
-
-
 # ---------------------------------------------------------------------------
 # Roadmap reads (registry copies)
 # ---------------------------------------------------------------------------

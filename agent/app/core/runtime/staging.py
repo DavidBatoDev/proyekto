@@ -60,6 +60,7 @@ def stage_batch(
     assistant_message: str = '',
     source: str = 'stage_edits',
     roadmap_title: str | None = None,
+    call_ids: list[str] | None = None,
 ) -> StageBatchResult:
     """Stage ``operations`` for one roadmap on the run.
 
@@ -98,6 +99,11 @@ def stage_batch(
         )
         run.batches.append(batch)
         created = True
+    # The terminal call ids that staged these operations: verify answers
+    # them with the commit outcome so the staging loop writes the reply.
+    for call_id in call_ids or []:
+        if call_id and call_id not in batch.call_ids:
+            batch.call_ids.append(str(call_id))
     if added:
         batch.operations.extend(added)
         batch.refresh_operations_hash()

@@ -589,6 +589,7 @@ def _stage(ctx: StepContext, session: AgentSession, run: RunState, batches: list
             assistant_message=batch.assistant_message,
             source=source,
             roadmap_title=batch.roadmap_title,
+            call_ids=list(getattr(batch, 'call_ids', None) or []),
         )
         if result.batch is None:
             continue

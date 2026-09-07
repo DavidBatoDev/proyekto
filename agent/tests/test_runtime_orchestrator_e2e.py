@@ -119,9 +119,20 @@ class RoadmapScopeTests(_Base):
         self.assertEqual([c.status for c in result.commits], ['committed'])
         self.assertEqual(len(result.commits[0].operations), 1)
         self.assertEqual(result.staged_operations_count, 1)
-        # Investigate + verify model calls: scope cache key, verify tools = [propose].
+        # Investigate, then the same loop continues with the commit result as
+        # the stage_edits output and no tools: that text is the reply.
         self.assertEqual(FakeLLM.calls[0]['prompt_cache_key'], f'roadmap:{ALPHA}')
-        self.assertEqual(FakeLLM.calls[1]['tools'], ['propose'])
+        self.assertEqual(FakeLLM.calls[1]['tools'], [])
+        # Same static prefix (prompt cache); the state blocks may reflect the
+        # commit (the outline now has the epic), and there is no verify block.
+        self.assertTrue(FakeLLM.calls[1]['messages'][0]['content'].startswith(FakeLLM.calls[0]['messages'][0]['content'][:1500]))
+        self.assertNotIn('Phase: verify', FakeLLM.calls[1]['messages'][0]['content'])
+        outputs = [m for m in FakeLLM.calls[1]['messages'] if m.get('type') == 'function_call_output']
+        self.assertEqual(len(outputs), 1)
+        self.assertIn('"status": "committed"', outputs[0]['output'])
+        self.assertEqual(FakeLLM.calls[1]['messages'][-1]['role'], 'system')
+        self.assertIn('Reply to the user now', FakeLLM.calls[1]['messages'][-1]['content'])
+        self.assertEqual(run.verify.report_mode, 'loop')
         # History persisted together at segment end.
         persisted = store.get('sess-alpha')
         self.assertEqual([m.role for m in persisted.messages], ['user', 'assistant'])

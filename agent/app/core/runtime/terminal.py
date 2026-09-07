@@ -247,28 +247,6 @@ def for_materialize(
 for_repair = for_materialize
 
 
-def for_verify(
-    session: Any,
-    run: Any = None,
-    *,
-    settings: Any = None,
-    trace_id: str | None = None,
-    session_context: dict[str, Any] | None = None,
-) -> TerminalHandler:
-    """Verify phase: only ``propose`` (a follow-up proposal)."""
-    return make_terminal_handler(
-        _context_from_session(
-            session,
-            run,
-            settings=settings,
-            trace_id=trace_id,
-            actor_id=None,
-            session_context=session_context,
-            allowed=frozenset({KIND_PROPOSE}),
-        )
-    )
-
-
 # ---------------------------------------------------------------------------
 # Interpretation
 # ---------------------------------------------------------------------------
@@ -349,6 +327,7 @@ def _interpret_stage_calls(
                 batches[outcome.roadmap_id] = outcome
             else:
                 existing.operations.extend(outcome.operations)
+                existing.call_ids.extend(outcome.call_ids)
                 existing.refresh_operations_hash()
                 if outcome.assistant_message:
                     existing.assistant_message = (
@@ -441,6 +420,7 @@ def _interpret_stage_call(
                 operations=kept,
                 assistant_message=parsed.assistant_message,
                 source='stage_edits',
+                call_ids=[str(tc.id)],
             )
         if dropped:
             return LoopResult(
@@ -798,6 +778,7 @@ def _handle_revert(tc: Any, ctx: TerminalContext) -> LoopResult | dict[str, dict
         operations=parsed.operations,
         assistant_message=parsed.assistant_message,
         source='revert',
+        call_ids=[str(tc.id)],
     )
     return LoopResult(
         kind='revert',

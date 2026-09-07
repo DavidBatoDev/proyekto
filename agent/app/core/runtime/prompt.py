@@ -54,7 +54,6 @@ _ACTOR_HEADER = '# Actor'
 _PHASE_FILES = {
     'investigate': 'phase_investigate.md',
     'execute': 'phase_execute.md',
-    'verify': 'phase_verify.md',
 }
 
 
@@ -473,7 +472,8 @@ def render_tail(
 def render_phase_tail(phase: str, *, resumed: bool = False, **fields: Any) -> str:
     """The ``# Run`` block for a phase: ``phase_investigate.md`` only when the
     loop resumed a paused investigation; ``phase_execute.md`` (with its
-    ``{roadmap_*}`` fields filled) and ``phase_verify.md`` always."""
+    ``{roadmap_*}`` fields filled) always. Verify has no block: its reply is
+    the staging loop continuing with the commit result as the tool output."""
     if phase == 'investigate' and not resumed:
         return ''
     name = _PHASE_FILES.get(phase)

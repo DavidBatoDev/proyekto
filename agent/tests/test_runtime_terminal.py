@@ -101,14 +101,6 @@ class InterpretTerminalsTests(unittest.TestCase):
         result = terminal.interpret_terminals([_call('nope', {})], terminal.TerminalContext())
         self.assertEqual(result['c_nope']['error']['code'], 'UNKNOWN_TERMINAL')
 
-    def test_verify_handler_only_accepts_propose(self):
-        session = roadmap_session()
-        handler = terminal.for_verify(session, None)
-        result = handler([_call('stage_edits', {'operations': [{'op': 'add_epic', 'data': {'title': 'A'}}]})])
-        self.assertEqual(result['c_stage_edits']['error']['code'], 'TERMINAL_NOT_ALLOWED')
-        proposal = handler([_call('propose', {'summary': 'Follow-up', 'goal': 'g'})])
-        self.assertEqual(proposal.kind, 'plan_proposal')
-
     def test_materialize_handler_pins_the_roadmap(self):
         session = roadmap_session()
         handler = terminal.for_materialize(session, None, BETA)

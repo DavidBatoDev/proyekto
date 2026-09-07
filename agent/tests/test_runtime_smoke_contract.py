@@ -301,7 +301,9 @@ class RunContractTests(_SmokeBase):
         self.assertTrue(plan_id)
         self.assertEqual(self.nest.commit_calls, [])
 
-        with patched_llm([text_resp('Added sixteen epics to Alpha.')]):
+        # A confirmed proposal has no staging loop to continue: the reply is
+        # the message the model wrote when it staged the batch.
+        with patched_llm([text_resp('never called: no continuation for a confirmed proposal')]):
             response = self._send(session_id, _confirm(plan_id))
         self.assertEqual(response.status_code, 200, response.text)
         confirmed, _continues = self._drive(session_id, response.json())
@@ -310,7 +312,8 @@ class RunContractTests(_SmokeBase):
         self.assertEqual((run['status'], run['next'], run['phase']), ('done', 'done', 'verify'))
         self.assertEqual(confirmed['parse_mode'], 'run_report')
         self.assertEqual(confirmed['response_mode'], 'edit_plan')
-        self.assertEqual(confirmed['assistant_message'], 'Added sixteen epics to Alpha.')
+        self.assertEqual(confirmed['assistant_message'], 'Sixteen epics.')
+        self.assertEqual(run['verify']['report_mode'], 'staged')
         # The verify report.
         self.assertEqual(run['verify']['status'], 'verified')
         self.assertTrue(run['verify']['checks'])

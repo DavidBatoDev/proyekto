@@ -33,7 +33,7 @@ report. There is no feature flag: the run machine is always on.
         | ask_user                  | propose |----------------> [user confirms] -----> awaiting_user
         v                           +---------+   (proposal)                            (proposal)
    awaiting_user                         ^
-   (clarifier) --[answer]--> resumes     |  verify may attach a follow-up proposal
+   (clarifier) --[answer]--> resumes     |  verify: checks, then the staging loop writes the reply
         | revert_changes                 |
         +------> execute (no policy gate)
 ```
@@ -267,16 +267,37 @@ One independent commit per roadmap batch, in `execute_cursor` order:
 Deterministic checks over `run.commits` - `all_batches_committed`, per commit
 `diff_matches_plan` (expected vs. `impacted_summary` counts), `revision_advanced`,
 `history_recorded`, and `no_repairs_needed` - produce a `VerifyReport` with status
-`verified | partial | failed | nothing_to_verify`. Then **at most one model call**
-(2 turns, tools = `propose` only) writes the user-facing report and may attach a
-follow-up proposal (`follow_up_plan_id`); it never re-applies anything. The model
-call is skipped when the step is already past its soft budget, and a provider
-failure falls back to the deterministic summary. The model's text is validated against the
-outcome before it becomes the reply: when at least one commit is `committed` and the text
-refuses to apply/edit/change, blames "this session", or claims nothing changed,
-`report_contradicts_outcome` rejects it, the deterministic summary stands, and
-`verify_report_rejected` is logged (the `AI REQUEST` block prints `verify report=model |
-deterministic | rejected`). Emits `verify_completed` with `report_mode`.
+`verified | partial | failed | nothing_to_verify`.
+
+**The reply is written by the loop that staged the edit.** There is no report model
+and no template: when the investigate loop ends on `stage_edits` or `revert_changes`,
+the engine attaches the turn's echoed transcript (`LoopResult.transcript`) and
+`loop_result_to_outcome` stores it under the `:staged` side key
+(`run.staged_transcript_key`); each batch records the terminal call ids that staged
+it (`RunBatch.call_ids`, carried through `staging.stage_batch`). After execute, verify
+rebuilds the same messages (same system prompt, so the prefix stays cached), appends
+one `function_call_output` per unanswered call of that turn - the commit outcome from
+`commit_outcome_payload` (status, roadmap link, `impacted_items` with ready-made entity
+links, `undo` for reverts, and a note when some operations produced no change) or a
+`not_run` output for a read issued beside the terminal - then `REPORT_INSTRUCTION` as
+a system item, and runs one turn with **no tools**. The model's text is the reply
+(`report_mode = loop`). This is the ordinary tool-result turn of an agent loop: the
+model that acted answers with the real outcome in front of it, so the refusals a
+fresh-prompt report model produced ("I can't apply roadmap edits from here", prod runs
+`e9f3d51b`, `7fc01b90`, `9a9a77f4`) have no footing.
+
+Fallbacks, in order: the continuation is skipped past the soft budget, when the
+transcript is gone (TTL, or a run confirmed from a proposal, whose staging happened in
+an earlier run), when the provider fails, when the model answers with a tool call, or
+when `report_contradicts_outcome` rejects the text (refuses to apply/edit/change,
+blames "this session", or denies changes; logged as `verify_report_rejected`). Then the
+batches' own model-written `assistant_message`s are the reply (`staged`), with a status
+sentence appended for failed or skipped batches; an undo run without a transcript gets
+the deterministic restored-items confirmation; a batch with no message at all gets the
+templated status sentence (`deterministic`). Emits `verify_completed` with
+`report_mode` (`loop | staged | deterministic | rejected`); the `AI REQUEST` block prints
+`verify report=<mode>`. `follow_up_plan_id` is always null now (verify no longer
+proposes).
 
 ## Tool catalog per phase
 
@@ -290,7 +311,7 @@ module never edits). Counts below are from importing the builders.
 | investigate (37 baseline; 39 with a pending plan + knowledge search) | 17 roadmap reads + 9 cross-scope reads (+ `search_knowledge`) + 7 non-terminal writes + terminals `stage_edits`, `propose`, (`revise_proposal` only while a proposal is pending), `ask_user`, `revert_changes` |
 | execute / materialize (18) | The 17 roadmap reads and `stage_edits`, all pinned to the target roadmap (`roadmap_id` enum of one value) |
 | execute / repair (1) | `stage_edits` pinned to the batch's roadmap |
-| verify (1) | `propose` with `targets` required |
+| verify (0) | No tools: the staging loop continues with the commit result as its tool output and must answer in text |
 
 **Roadmap reads (17):** `get_roadmap_summary`, `get_roadmap_overview` (loads a roadmap
 into context and assigns it `R{n}` handles), `resolve_node_reference`, `search_nodes`,
@@ -495,13 +516,11 @@ The persisted assistant turn and wire response contain the same grounded text.
 The real-reply corpus in `test_entity_links.py` rejects a workspace title on a
 team or roadmap ID while preserving valid replies.
 
-Verify's `# Outcome` includes each impacted item as
-`- {impact} {node_type} [Title](proyekto://{node_type}/{node_id})`, making the ID
-available to its report model. `phase_verify.md` asks the model to copy those links
-verbatim in report text, keeps proposal arguments plain, and retains the prohibition on
-re-applying changes. Deterministic verify and undo reports link roadmap names and
-impacted items; automatic proposal summaries
-link roadmap names. Generated titles escape Markdown punctuation.
+The commit outcome the staging loop reads back (`commit_outcome_payload`) carries a
+ready-made `link` for the roadmap and for each impacted item, and `REPORT_INSTRUCTION`
+tells the model to copy them. Fallback verify and undo replies link roadmap names and
+impacted items; automatic proposal summaries link roadmap names. Generated titles
+escape Markdown punctuation.
 
 `strip_entity_links` in the same runtime helper replaces entity links with their
 titles and leaves ordinary Markdown alone. The
@@ -529,7 +548,7 @@ prompt as `STATIC_PREFIX + SCOPE_BLOCK + STATE_BLOCKS + TAIL`:
 | Static prefix | [`prompts/system.md`](../../agent/app/core/runtime/prompts/system.md), including `# Style`, `# Entities` and `# Entity links` | Never (byte-identical across sessions) |
 | Scope block | `# Scope` | Per session |
 | State blocks (fixed order) | `# Focus roadmap`, `# Loaded roadmaps`, `# Workspace overview`, `# Project context`, `# Earlier conversation summary`, `# Memory notes`, `# Pending proposal awaiting user confirmation`, `# Recently resolved items`, `# Recent changes`, `# Actor` | Only when cached state changes (a roadmap loads, a commit lands) |
-| Tail (always last) | `# Referenced items`, `# Relevant memories`, `# Run` (`phase_investigate.md` only on a resumed investigate; `phase_execute.md` and `phase_verify.md` always) | Every turn |
+| Tail (always last) | `# Referenced items`, `# Relevant memories`, `# Run` (`phase_investigate.md` only on a resumed investigate; `phase_execute.md` always; verify has no block) | Every turn |
 
 **Invariant:** nothing per-turn may render above `# Actor`. The prefix through that
 block is what the provider's prompt cache keys on (`prompt_cache_key = scope.key`),
@@ -540,7 +559,7 @@ sessions. The full roadmap is never re-stuffed; the model fetches detail on dema
 
 | Budget | Value | What it bounds |
 | --- | --- | --- |
-| Soft step budget | `AGENT_RUN_STEP_BUDGET_SECONDS` = 90s | Loops stop starting new model turns past it; `advance()` returns `next: continue` at the next phase boundary; verify skips its model call |
+| Soft step budget | `AGENT_RUN_STEP_BUDGET_SECONDS` = 90s | Loops stop starting new model turns past it; `advance()` returns `next: continue` at the next phase boundary; verify skips the reply continuation (the staged message is the reply) |
 | Hard deadline | `AGENT_RUN_HARD_DEADLINE_SECONDS` = 165s | Per request, under the web's 180s axios timeout and Cloud Run's 300s; raised to the soft budget if configured lower |
 | Batch reserve | `OPENAI_MODEL_TIMEOUT_SECONDS` (90) + 3 x `NEST_TIMEOUT_SECONDS` (20) = 150s | What must still fit before a model-calling batch starts (direct edits reserve only the 60s Nest tail) |
 | Steps per run | `AGENT_RUN_MAX_STEPS` = 8 | ~24 minutes at 180s each; the web caps a run's polling at 30 minutes |
@@ -600,7 +619,7 @@ timeline decides what to show. Run-specific events and their `details`:
 | `commit_started` | `roadmap_id`, `roadmap_title`, `batch_id`, `operations_count`, `attempt` | curated row |
 | `commit_completed` | `roadmap_id`, `roadmap_title`, `batch_id`, `change_id`, `operations_count`, `commit_ms`, `impacted_item_count`, `impacted_summary`, `impacted_items`, `history_recorded` | curated row |
 | `commit_failed` | `roadmap_id`, `roadmap_title`, `batch_id`, `error_code`, `error_message`, `upstream_status`, `invalid_operation`, `attempt`, `impacted_items` | curated row (status `error`) |
-| `verify_completed` | `status`, `summary_text`, `checks[]`, `follow_up_plan_id`, `commits_total`, `commits_committed` | curated row (status `error` when `failed`) |
+| `verify_completed` | `status`, `summary_text`, `checks[]`, `follow_up_plan_id`, `commits_total`, `commits_committed`, `report_mode` | curated row (status `error` when `failed`) |
 
 The pre-run events (`message_received`, `route_selected`, `tool_call_requested`,
 `tool_call_result`, `provider_*`, `assistant_delta`, `assistant_thought`,
@@ -665,7 +684,7 @@ ordering above is paying off.
 | [`agent/app/core/runtime/phases/`](../../agent/app/core/runtime/phases/) | `investigate.py`, `propose.py`, `execute.py`, `verify.py` |
 | [`agent/app/core/runtime/service.py`](../../agent/app/core/runtime/service.py) | `RuntimeService` (DI root), `StepContext` (auth, trace id, budgets, cancel probe, per-step accumulators), ownership helpers |
 | [`agent/app/core/runtime/tools.py`](../../agent/app/core/runtime/tools.py) | The per-phase, per-scope tool catalogs |
-| [`agent/app/core/runtime/terminal.py`](../../agent/app/core/runtime/terminal.py) | Terminal handlers per loop (`for_investigate`, `for_materialize`, `for_verify`, repair) |
+| [`agent/app/core/runtime/terminal.py`](../../agent/app/core/runtime/terminal.py) | Terminal handlers per loop (`for_investigate`, `for_materialize`, repair) |
 | [`agent/app/core/runtime/prompt.py`](../../agent/app/core/runtime/prompt.py) + `prompts/` | Prompt assembly and the cache invariant |
 | [`agent/app/core/runtime/refs.py`](../../agent/app/core/runtime/refs.py) | Ref hydration, auto-load, the `# Referenced items` block |
 | [`agent/app/core/runtime/handles.py`](../../agent/app/core/runtime/handles.py), [`scope.py`](../../agent/app/core/runtime/scope.py), [`context_cache.py`](../../agent/app/core/runtime/context_cache.py), [`overview.py`](../../agent/app/core/runtime/overview.py) | Handles, scope helpers, the per-roadmap LRU and outlines |

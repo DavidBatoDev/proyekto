@@ -1,6 +1,6 @@
 # Memory
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-07 · **Status:** current
 
 The agent keeps state in four layers with different lifetimes: the **session
 document** in Redis (this conversation, including the active run), the **trace
@@ -29,6 +29,7 @@ prefix:
 | `...:{session_id}:summary_candidate` | string (JSON) | The summarizer's side-key candidate (below) |
 | `...:{session_id}:run_lock` | string | Per-session run lock: `SET NX EX` with a random token, TTL `AGENT_RUN_LOCK_TTL_SECONDS` (300s), released by compare-and-delete |
 | `...:{session_id}:run:{run_id}:transcript` | JSON list | A paused investigate loop's echoed transcript, TTL `AGENT_RUN_TRANSCRIPT_TTL_SECONDS` (900s) |
+| `...:{session_id}:run:{run_id}:staged` | JSON list | The transcript of the turn that staged the run's batches (its last items are the unanswered `stage_edits` / `revert_changes` calls); verify answers them with the commit outcome and lets that loop write the reply, then deletes the key. Same TTL |
 | `...:{session_id}:run:{run_id}:cancel` | flag | Set by `POST .../cancel`; the running step polls it between turns, phases and batches |
 
 The `AgentSession` document ([`contracts/sessions.py`](../../agent/app/core/contracts/sessions.py)):
@@ -73,11 +74,11 @@ the document the run machine mutates; it also rides the snapshot.
 | `user_message`, `raw_user_message` | The folded text handed to the model (sentinels resolved) and the raw body |
 | `refs[]`, `resolved_refs[]` | The composer refs and their once-per-run hydration |
 | `clarifier`, `asked_in_phase`, `plan_id` | The checkpoint payloads: the clarifier card, where to resume after an answer, the pending plan id |
-| `batches[]` | `RunBatch`: `batch_id`, `roadmap_id`, `roadmap_title`, `operations[]`, `operations_hash`, `assistant_message`, `source` (`stage_edits \| proposal \| revert`), `contains_delete`, `needs_materialize`, `materialize_transcript_key` |
+| `batches[]` | `RunBatch`: `batch_id`, `roadmap_id`, `roadmap_title`, `operations[]`, `operations_hash`, `assistant_message`, `source` (`stage_edits \| proposal \| revert`), `call_ids[]` (the terminal calls that staged it), `contains_delete`, `needs_materialize`, `materialize_transcript_key` |
 | `commits[]` | `RunCommit`: `batch_id`, `roadmap_id`, `idempotency_key`, `operations_hash`, `status` (`pending \| committed \| failed \| skipped`), `attempts`, `change_id`, `revision_token_after`, `semantic_diff_summary`, `impacted_summary`, `impacted_items[]`, `error_code`, `error_message`, `history_recorded` (the operations themselves stay on the batch so the document does not double) |
-| `execute_cursor`, `loop_transcript_key`, `batches_truncated` | The next batch to run; the side key of a paused investigate; set when the snapshot ladder dropped batch operations (the run can report but not resume execute: `RUN_STATE_LOST`) |
+| `execute_cursor`, `loop_transcript_key`, `staged_transcript_key`, `batches_truncated` | The next batch to run; the side key of a paused investigate; the side key of the staging turn verify continues; set when the snapshot ladder dropped batch operations (the run can report but not resume execute: `RUN_STATE_LOST`) |
 | `phase_usage{}`, `tokens{}`, `reasoning_effort{}` | Per-phase turns/tool calls, summed input/output/total/cached tokens, effort per phase |
-| `verify`, `error`, `final_message`, `cancel_requested` | The `VerifyReport` (`status`, `checks[]`, `summary`, `follow_up_plan_id`), the failure `{code, message}`, the closing text, the cancel flag |
+| `verify`, `error`, `final_message`, `cancel_requested` | The `VerifyReport` (`status`, `checks[]`, `summary`, `report_mode`, `follow_up_plan_id` - always null now), the failure `{code, message}`, the closing text, the cancel flag |
 
 ## 2. Trace store (Redis)
 

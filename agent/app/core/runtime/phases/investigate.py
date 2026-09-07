@@ -458,6 +458,12 @@ def loop_result_to_outcome(
         return PhaseOutcome(kind=kind, loop=loop_result, used_read_tools=loop_result.used_read_tools)
     if transcript_key:
         ctx.delete_transcript(transcript_key)
+    if kind in {'batches', 'revert'} and loop_result.transcript:
+        # Keep this turn's transcript so verify can answer the staging call
+        # with the commit outcome and let this same loop write the reply.
+        key = ctx.transcript_key(session.session_id, run_state.run_id, 'staged')
+        if ctx.put_transcript(key, loop_result.transcript):
+            run_state.staged_transcript_key = key
     if kind == 'batches':
         return PhaseOutcome(
             kind='batches',
