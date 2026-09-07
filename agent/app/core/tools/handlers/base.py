@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
+from app.core.tools.handlers.paging import page_from_start
 from app.core.metrics import record_cache_event
 from app.core.tools.resolver import resolve_candidates
 from app.core.uuid_utils import is_uuid_like
@@ -176,6 +177,29 @@ class ToolHandlerBase:
                 'message': message,
             }
         }
+
+    def _page_search_result(
+        self,
+        result: dict[str, Any],
+        *,
+        offset: int,
+        limit: int,
+        window: int,
+    ) -> dict[str, Any]:
+        """Page a roadmap-keyed search response. `resolution_id` (whose
+        `choice` indexes are the backend's own list) rides only with the first
+        page, where the backend's list and the page agree."""
+        if not isinstance(result, dict) or isinstance(result.get('error'), dict):
+            return result
+        matches_raw = result.get('matches')
+        matches = [item for item in matches_raw if isinstance(item, dict)] if isinstance(matches_raw, list) else []
+        extra = {k: v for k, v in result.items() if k not in {'matches', 'resolution_id'}}
+        if offset == 0 and result.get('resolution_id') is not None:
+            extra['resolution_id'] = result.get('resolution_id')
+        return page_from_start(
+            matches, 'matches', offset=offset, limit=limit,
+            complete=len(matches) < window, extra=extra,
+        )
 
     def _normalize_query_text(self, value: str) -> str:
         normalized = value.strip()

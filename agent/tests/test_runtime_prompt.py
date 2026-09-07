@@ -336,7 +336,9 @@ class MessagesAndPhaseTailTests(unittest.TestCase):
         self.assertIn('`search_tasks` matches carry ids', prefix)
         self.assertIn("In a list, every item line starts with the item's link", prefix)
         self.assertIn('Copy each uuid character for character', prefix)
-        self.assertIn('A result with `result_truncated: true` holds only the first `returned_<list>` of `total_<list>` items', prefix)
+        self.assertIn('A list result is one page: `returned_<list>` items from `offset`', prefix)
+        self.assertIn('repeat the same call with `offset` = `next_offset`', prefix)
+        self.assertNotIn('never repeat the same call with a larger limit', prefix)
         self.assertIn('Entity links are only for assistant reply text and final reports', prefix)
         self.assertIn('Never put entity links in any tool arguments', prefix)
         for rule in (

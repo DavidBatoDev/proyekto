@@ -38,6 +38,7 @@ from app.core.tools.registry import (
     get_context_tools,
     get_planning_tool,
 )
+from app.core.tools.registry import OFFSET_PROPERTY, paging_clause
 
 STAGE_EDITS_TOOL_NAME = 'stage_edits'
 PROPOSE_TOOL_NAME = 'propose'
@@ -315,7 +316,8 @@ def get_workspace_overview_tool() -> dict[str, Any]:
         'Projects and roadmaps are separate lists: a roadmap with project_id null '
         'is standalone (no project); a project with roadmap_id null has no roadmap '
         'yet. lane "shared" only means outside your workspaces — check owner_id '
-        'before describing an item as shared with the user.',
+        'before describing an item as shared with the user. Each list is capped '
+        'at 60 (total_<list> says how many exist); list_roadmaps pages the full set.',
         [],
         {
             'workspace_id': {
@@ -335,7 +337,7 @@ def list_roadmaps_tool() -> dict[str, Any]:
         'List roadmaps the user can access, optionally narrowed to a workspace '
         'or project or filtered by name. Returns ids you can pass to '
         'get_roadmap_overview and stage_edits. A roadmap with project_id null is '
-        'standalone — it is not a project and belongs to none.',
+        'standalone — it is not a project and belongs to none.' + paging_clause(50, 20),
         [],
         {
             'workspace_id': {'type': 'string'},
@@ -346,6 +348,7 @@ def list_roadmaps_tool() -> dict[str, Any]:
                 'description': 'Case-insensitive name filter.',
             },
             'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+            'offset': OFFSET_PROPERTY,
         },
     )
 
@@ -358,7 +361,7 @@ def search_everything_tool() -> dict[str, Any]:
         'not on a loaded outline or you do not know which roadmap it lives on. '
         'Results carry roadmap/project attribution. Teams and milestones are '
         'not searchable here: teams are on get_workspace_overview, milestones '
-        'on the roadmap outline.',
+        'on the roadmap outline.' + paging_clause(20, 10),
         ['query'],
         {
             'query': {'type': 'string', 'minLength': 2, 'maxLength': 200},
@@ -378,6 +381,7 @@ def search_everything_tool() -> dict[str, Any]:
                 'description': 'Narrow to these roadmaps (never widens access).',
             },
             'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20},
+            'offset': OFFSET_PROPERTY,
         },
     )
 
@@ -387,7 +391,7 @@ def list_my_tasks_tool() -> dict[str, Any]:
         'list_my_tasks',
         "Tasks assigned to the current user across every accessible roadmap, "
         "with feature/epic/roadmap attribution. Use for \"what's on my plate\", "
-        '"what is overdue for me", or "what do I have this week".',
+        '"what is overdue for me", or "what do I have this week".' + paging_clause(50, 25),
         [],
         {
             'status': {
@@ -406,6 +410,7 @@ def list_my_tasks_tool() -> dict[str, Any]:
                 'maxItems': 20,
             },
             'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+            'offset': OFFSET_PROPERTY,
         },
     )
 

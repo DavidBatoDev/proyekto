@@ -1,6 +1,6 @@
 # Runs & Phases
 
-> **Last updated:** 2026-09-07 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 Every user message to the Proyekto agent is a **run**: a server-side state machine the
 Python agent owns, persisted in the Redis session and the durable snapshot, that moves
@@ -313,6 +313,11 @@ module never edits). Counts below are from importing the builders.
 | execute / repair (1) | `stage_edits` pinned to the batch's roadmap |
 | verify (0) | No tools: the staging loop continues with the commit result as its tool output and must answer in text |
 
+**Paging:** the ten list reads below and the three cross-scope lists take
+`offset` and answer with `offset` / `returned_<key>` / `next_offset` /
+`total_<key>` (see *Tool results the model can link from* under Entity Links);
+`search_tasks` is capped at 50 to match the backend.
+
 **Roadmap reads (17):** `get_roadmap_summary`, `get_roadmap_overview` (loads a roadmap
 into context and assigns it `R{n}` handles), `resolve_node_reference`, `search_nodes`,
 `search_tasks`, `get_node_details`, `get_children_from_resolution`,
@@ -500,17 +505,40 @@ prints the counts directly after `cache`:
   links       kept=3 rejected=1 repaired=2 auto=4
 ```
 
-**Tool results the model can link from.** The loop engine feeds every tool result
-back as a JSON string capped at `MAX_TOOL_RESULT_CHARS = 8000`
-([`engine/tool_results.py`](../../agent/app/core/engine/tool_results.py)). A result
-whose bulk is a list of items (`tasks`, `matches`, `epics`, `roadmaps`, ...) may run to
-`MAX_LIST_TOOL_RESULT_CHARS = 16_000` and, past that, is cut as an ordered prefix of
-whole items with `returned_<key>`, `total_<key>`, `result_truncated: true` and a
-`truncation_hint`, so every id the model sees is complete and it knows how much it did
-not see. Only a result with no such list falls back to a hard character cut.
-`system.md` tells the model to report the shown/total count and narrow the query
-rather than repeat the call with a larger limit. `list_my_tasks` rows drop
-`updated_at` and `workspace_id` before serialization.
+**Tool results the model can link from.** Every list tool is paged, and paging is
+the mechanism the model uses to see more; the size cap is only a backstop.
+
+- *The contract* ([`tools/handlers/paging.py`](../../agent/app/core/tools/handlers/paging.py)):
+  every list tool takes an optional `offset` beside `limit` (its description ends with
+  "Returns up to N per call (limit, default D); pass offset = next_offset from the
+  previous result to continue", `registry.paging_clause`), and every list result
+  carries `offset`, `returned_<key>`, `next_offset` (the next page's start, or null
+  when this page ended the set) and `total_<key>` when the handler knows it. The
+  cross-scope lists (`list_my_tasks`, `search_everything`, `list_roadmaps`) let the
+  backend page (`page_from_backend`; `offset` is sent only when non-zero, and a 400
+  from a backend that predates paging becomes the tool error `PAGING_UNSUPPORTED`).
+  The roadmap-keyed reads (`search_nodes`, `search_tasks`, `get_children_from_resolution`,
+  `get_features_by_epic`, `get_epics_by_roadmap`, `get_tasks_assigned_to_me`,
+  `get_tasks_by_status`, `get_tasks_by_parent`, `get_overdue_tasks`, `get_blocked_items`)
+  page client-side: the handler asks its source for `offset + limit + 1` rows
+  (`fetch_window`, bounded by the source's cap) and `page_from_start` slices the page;
+  the extra row is the "is there more" probe, and a fetch that came back short of the
+  window proves the set complete, which is when `total_<key>` is reported. Backend
+  `findFull` orders ties by id so those pages are stable. `list_roadmaps` with a name
+  filter walks the backend's keyset pages (at most three pages of 100). Non-paged
+  capped lists (`get_workspace_overview` at 60 per list, `list_project_members`) carry
+  `total_<key>` and `returned_<key>`; `get_roadmap_overview` reports `total_epics`.
+- *The backstop* ([`engine/tool_results.py`](../../agent/app/core/engine/tool_results.py)):
+  the loop engine feeds every tool result back as a JSON string capped at
+  `MAX_TOOL_RESULT_CHARS = 8000`. A result whose bulk is a list of items may run to
+  `MAX_LIST_TOOL_RESULT_CHARS = 16_000` and, past that, is cut as an ordered prefix of
+  whole items with `returned_<key>`, the handler's `total_<key>` (or the page size when
+  there was none), `result_truncated: true`, a `next_offset` that resumes right after
+  the last item shown and a `truncation_hint` that says so. Only a result with no
+  such list falls back to a hard character cut. `system.md` tells the model to say how
+  many it is showing and continue with `offset = next_offset` (never raise `limit`
+  past the cap). `list_my_tasks` rows and `search_everything` matches drop
+  `updated_at` and `workspace_id` before serialization.
 
 The persisted assistant turn and wire response contain the same grounded text.
 The real-reply corpus in `test_entity_links.py` rejects a workspace title on a

@@ -187,5 +187,83 @@ class ReadToolDescriptionTests(unittest.TestCase):
         self.assertIn('call get_node_details for the assignee set', description)
 
 
+class PagingTests(unittest.TestCase):
+    """Roadmap-keyed list reads page client-side: the handler asks the source
+    for offset + limit + 1 rows and reports the total only when the fetch
+    proved the set complete."""
+
+    def test_tasks_by_status_pages_a_complete_set(self) -> None:
+        nest = _Nest(children=[_task_row(f'task-{i}') for i in range(7)])
+        result = asyncio.run(
+            _handler(nest).execute(
+                'get_tasks_by_status',
+                {'roadmap_id': ROADMAP, 'status': 'all', 'limit': 2, 'offset': 5},
+                {'auth_header': 'Bearer t'},
+            )
+        )
+        self.assertEqual([row['id'] for row in result['tasks']], ['task-5', 'task-6'])
+        self.assertEqual((result['offset'], result['returned_tasks'], result['total_tasks'], result['next_offset']), (5, 2, 7, None))
+        self.assertEqual(result['roadmap_id'], ROADMAP)
+
+        first = asyncio.run(
+            _handler(nest).execute(
+                'get_tasks_by_status',
+                {'roadmap_id': ROADMAP, 'status': 'all', 'limit': 3},
+                {'auth_header': 'Bearer t'},
+            )
+        )
+        self.assertEqual([row['id'] for row in first['tasks']], ['task-0', 'task-1', 'task-2'])
+        # The fetch window (offset + limit + 1 = 4) came back full, so the set
+        # is not proven complete: no total, but a next page.
+        self.assertEqual((first['offset'], first['next_offset']), (0, 3))
+        self.assertNotIn('total_tasks', first)
+
+    def test_features_by_epic_reports_no_total_when_the_fetch_filled_its_window(self) -> None:
+        class _ManyFeatures(_Nest):
+            async def context_features(self, *, limit, **kwargs):
+                self.feature_limit = limit
+                return {
+                    'children': [
+                        {'id': f'feat-{i}', 'type': 'feature', 'title': f'F{i}', 'status': 'todo'}
+                        for i in range(limit)
+                    ]
+                }
+
+        nest = _ManyFeatures(children=[])
+        result = asyncio.run(
+            _handler(nest).execute(
+                'get_features_by_epic',
+                {'roadmap_id': ROADMAP, 'epic_id': '22222222-2222-4222-8222-222222222222', 'limit': 4, 'offset': 4},
+                {'auth_header': 'Bearer t'},
+            )
+        )
+        self.assertEqual(nest.feature_limit, 9)  # offset + limit + 1
+        self.assertEqual([row['id'] for row in result['children']], ['feat-4', 'feat-5', 'feat-6', 'feat-7'])
+        self.assertEqual((result['offset'], result['returned_children'], result['next_offset']), (4, 4, 8))
+        self.assertNotIn('total_children', result)
+
+    def test_search_nodes_keeps_resolution_id_only_on_the_first_page(self) -> None:
+        class _Search(_Nest):
+            async def context_search(self, *, limit, **kwargs):
+                self.search_limit = limit
+                return {
+                    'resolution_id': 'res-1',
+                    'matches': [{'id': f'n-{i}', 'type': 'task', 'title': f'N{i}', 'score': 1} for i in range(limit)],
+                }
+
+        nest = _Search(children=[])
+        page_one = asyncio.run(
+            _handler(nest).execute('search_nodes', {'roadmap_id': ROADMAP, 'query': 'n', 'limit': 2}, {'auth_header': 'Bearer t'})
+        )
+        self.assertEqual(nest.search_limit, 3)
+        self.assertEqual(page_one['resolution_id'], 'res-1')
+        self.assertEqual((page_one['returned_matches'], page_one['next_offset']), (2, 2))
+        page_two = asyncio.run(
+            _handler(nest).execute('search_nodes', {'roadmap_id': ROADMAP, 'query': 'n', 'limit': 2, 'offset': 2}, {'auth_header': 'Bearer t'})
+        )
+        self.assertNotIn('resolution_id', page_two)
+        self.assertEqual([row['id'] for row in page_two['matches']], ['n-2', 'n-3'])
+
+
 if __name__ == '__main__':
     unittest.main()

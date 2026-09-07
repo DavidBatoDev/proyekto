@@ -403,6 +403,24 @@ def _function_tool(
     }
 
 
+OFFSET_PROPERTY: dict[str, Any] = {
+    'type': 'integer',
+    'minimum': 0,
+    'default': 0,
+    'description': 'Zero-based start; pass next_offset from the previous page to continue.',
+}
+
+
+def paging_clause(cap: int, default: int) -> str:
+    """The sentence every list tool's description ends with: the cap and how
+    to continue. Only descriptions and `properties` change for paging; the
+    `required=` literals stay untouched (the backend schema gate greps them)."""
+    return (
+        f' Returns up to {cap} per call (limit, default {default}); pass '
+        'offset = next_offset from the previous result to continue.'
+    )
+
+
 def get_context_tools() -> list[dict[str, Any]]:
     return [
         _function_tool(
@@ -458,12 +476,13 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'Search roadmap nodes by text query for broad keyword exploration. '
                 'Use only when resolve_node_reference fails to disambiguate.'
-            ),
+            ) + paging_clause(50, 10),
             required=['roadmap_id', 'query'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'query': {'type': 'string'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -471,12 +490,13 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'Search task nodes by keyword. Assignees are not included; '
                 'call get_node_details for the assignee set.'
-            ),
+            ) + paging_clause(50, 10),
             required=['roadmap_id', 'query'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'query': {'type': 'string'},
-                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -493,24 +513,26 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'Get child nodes by selecting a candidate from resolve_node_reference '
                 'using a backend-issued resolution_id and choice index.'
-            ),
+            ) + paging_clause(100, 25),
             required=['roadmap_id', 'resolution_id', 'choice'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'resolution_id': {'type': 'string'},
                 'choice': {'type': 'integer', 'minimum': 1},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
             name='get_features_by_epic',
-            description='List features for an epic id.',
+            description='List features for an epic id.' + paging_clause(100, 100),
             required=['roadmap_id', 'epic_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'epic_id': {'type': 'string'},
                 'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -524,13 +546,14 @@ def get_context_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='get_epics_by_roadmap',
-            description='List epics in a roadmap with status and feature counts.',
+            description='List epics in a roadmap with status and feature counts.' + paging_clause(200, 200),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
                 'priority': {'type': 'string', 'enum': EPIC_PRIORITY_FILTER_VALUES},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -611,22 +634,24 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'Get roadmap tasks assigned to the authenticated actor in the current roadmap '
                 '(as primary or co-assignee). ' + _TASK_ASSIGNEE_FIELDS_CLAUSE
-            ),
+            ) + paging_clause(200, 50),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
             name='get_tasks_by_status',
-            description='List tasks in the roadmap filtered by status. ' + _TASK_ASSIGNEE_FIELDS_CLAUSE,
+            description='List tasks in the roadmap filtered by status. ' + _TASK_ASSIGNEE_FIELDS_CLAUSE + paging_clause(500, 200),
             required=['roadmap_id', 'status'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -635,7 +660,7 @@ def get_context_tools() -> list[dict[str, Any]]:
                 'List tasks under a parent epic or feature. '
                 'By default, completed tasks are excluded unless include_completed is true. '
                 + _TASK_ASSIGNEE_FIELDS_CLAUSE
-            ),
+            ) + paging_clause(500, 200),
             required=['roadmap_id', 'parent_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -644,6 +669,7 @@ def get_context_tools() -> list[dict[str, Any]]:
                 'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
                 'include_completed': {'type': 'boolean'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
@@ -651,18 +677,19 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'List overdue tasks (due_date before reference_date and not completed). '
                 + _TASK_ASSIGNEE_FIELDS_CLAUSE
-            ),
+            ) + paging_clause(500, 200),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'reference_date': {'type': 'string'},
                 'include_completed': {'type': 'boolean'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+                'offset': OFFSET_PROPERTY,
             },
         ),
         _function_tool(
             name='get_blocked_items',
-            description='List blocked epics, features, and tasks in the roadmap.',
+            description='List blocked epics, features, and tasks in the roadmap.' + paging_clause(500, 200),
             required=['roadmap_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -670,6 +697,7 @@ def get_context_tools() -> list[dict[str, Any]]:
                 'include_features': {'type': 'boolean'},
                 'include_tasks': {'type': 'boolean'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+                'offset': OFFSET_PROPERTY,
             },
         ),
     ]

@@ -15,7 +15,7 @@ _GUEST_PREFIX = 'Guest '
 
 # Query keys each /ai/context list endpoint accepts (the backend's global
 # ValidationPipe runs with forbidNonWhitelisted, so an unknown key is a 400).
-_AI_CONTEXT_ROADMAPS_PARAMS = ('workspace_id', 'project_id', 'cursor', 'limit')
+_AI_CONTEXT_ROADMAPS_PARAMS = ('workspace_id', 'project_id', 'cursor', 'limit', 'offset')
 _AI_CONTEXT_SEARCH_PARAMS = (
     'q',
     'kinds',
@@ -23,6 +23,7 @@ _AI_CONTEXT_SEARCH_PARAMS = (
     'project_id',
     'roadmap_ids',
     'limit',
+    'offset',
 )
 _AI_CONTEXT_TASKS_PARAMS = (
     'assigned_to_me',
@@ -34,6 +35,7 @@ _AI_CONTEXT_TASKS_PARAMS = (
     'project_id',
     'roadmap_ids',
     'limit',
+    'offset',
 )
 
 

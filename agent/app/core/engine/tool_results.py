@@ -4,9 +4,12 @@ Every tool result is fed back to the model as a ``function_call_output`` string.
 Large payloads are capped so one verbose read cannot blow the context window.
 A result whose bulk is a list of items (tasks, matches, roadmaps, epics...) is
 cut as an ordered prefix of whole items with ``returned_<key>`` /
-``total_<key>`` markers, so the model sees well-formed JSON, every id it sees is
-complete, and it knows how much it did not see. Only a result with no such list
-falls back to a hard character cut.
+``total_<key>`` markers and a ``next_offset`` that resumes right after the last
+item shown, so the model sees well-formed JSON, every id it sees is complete,
+and it can page for the rest. List tools page by ``offset`` themselves
+(``tools/handlers/paging.py``); this cut is the backstop for a page that is
+still too large. Only a result with no such list falls back to a hard
+character cut.
 """
 
 from __future__ import annotations
@@ -156,25 +159,36 @@ def _list_container_key(result: Any) -> str | None:
     return best
 
 
-def _truncation_hint(key: str, returned: int, total: int) -> str:
+def _truncation_hint(key: str, returned: int, page_size: int, next_offset: int) -> str:
     return (
-        f'Only the first {returned} of {total} {key} fit in one result. Tell the '
-        'user how many you are showing; to see the rest, narrow the query '
-        '(status, due window, roadmap_ids, a smaller limit) instead of repeating '
-        'the same call with a larger limit.'
+        f'Only the first {returned} of the {page_size} {key} on this page fit in '
+        'one result. Tell the user how many you are showing; to continue, repeat '
+        f'the same call with offset={next_offset} (or narrow by status, due window '
+        'or roadmap_ids). Do not raise limit.'
     )
+
+
+def _offset_of(result: dict[str, Any]) -> int:
+    value = result.get('offset')
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
 
 
 def _structured_list_result(result: dict[str, Any], key: str, max_chars: int) -> str | None:
     """Keep an ordered prefix of whole items under ``key``; None when nothing fits."""
     items = [item for item in result[key] if isinstance(item, dict)]
+    offset = _offset_of(result)
     truncated: dict[str, Any] = {k: v for k, v in result.items() if k != key}
     truncated[key] = []
-    truncated[f'total_{key}'] = len(items)
+    # A handler that counted the whole set already wrote total_<key>; the
+    # engine only knows the page it was handed.
+    truncated.setdefault(f'total_{key}', len(items))
     truncated[f'returned_{key}'] = 0
     truncated['result_truncated'] = True
     # The widest hint the loop can end with, so the final one always fits.
-    truncated['truncation_hint'] = _truncation_hint(key, len(items), len(items))
+    truncated['next_offset'] = offset + len(items)
+    truncated['truncation_hint'] = _truncation_hint(key, len(items), len(items), offset + len(items))
 
     def fits() -> bool:
         return len(_serialized_tool_result(truncated)) <= max_chars
@@ -190,7 +204,11 @@ def _structured_list_result(result: dict[str, Any], key: str, max_chars: int) ->
             break
     if not truncated[key]:
         return None
-    truncated['truncation_hint'] = _truncation_hint(key, truncated[f'returned_{key}'], len(items))
+    returned = truncated[f'returned_{key}']
+    # The cut page resumes right after its last item, whatever the handler's
+    # own next_offset said.
+    truncated['next_offset'] = offset + returned
+    truncated['truncation_hint'] = _truncation_hint(key, returned, len(items), offset + returned)
     return _serialized_tool_result(truncated)
 
 

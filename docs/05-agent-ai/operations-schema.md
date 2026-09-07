@@ -1,6 +1,6 @@
 # The Operations Schema
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 Roadmap edits crossing the agent↔backend boundary conform to a single shared
 contract: [`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json).
@@ -105,6 +105,10 @@ removal from what a read just returned. Keyword search is the one exception.
 | - | `GET .../context/tasks?assignee_id=...` (filtered list) | `assignee_id`, `assignee_ids`; the filter matches the full set |
 | `list_my_tasks` (workspace scope) | `GET /ai/context/tasks` (`ai_context_list_tasks`) | `assignee_ids`, primary first |
 | `search_tasks`, `search_nodes`, `search_everything` | `GET .../context/search`, `GET /ai/context/search` | **Not included.** `RoadmapAiContextSearchMatchDto` is contract-checked and frozen, the `search_tasks` description says so, and the model follows a hit with `get_node_details` before changing an assignment |
+
+Every read in this table is offset-paged since 2026-09-08 (`offset` in, `offset` /
+`returned_<key>` / `next_offset` / `total_<key>` out); the row shapes above did not
+change, and paging metadata never lands on `RoadmapAiContextSearchMatchDto`.
 
 > **Rollout order is fixed** because the contract has no version field: apply the
 > `20260906090000_upsert_full_roadmap_task_assignees.sql` migration, deploy the

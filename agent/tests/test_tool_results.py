@@ -48,8 +48,21 @@ class ListTruncationTests(unittest.TestCase):
         self.assertEqual(parsed['returned_tasks'], len(parsed['tasks']))
         self.assertGreater(parsed['returned_tasks'], 15)
         self.assertEqual(parsed['tasks'], payload['tasks'][: parsed['returned_tasks']])
-        self.assertIn(f'first {parsed["returned_tasks"]} of 30 tasks', parsed['truncation_hint'])
-        self.assertIn('larger limit', parsed['truncation_hint'])
+        # The cut page resumes right after its last item.
+        self.assertEqual(parsed['next_offset'], parsed['returned_tasks'])
+        self.assertIn(f'first {parsed["returned_tasks"]} of the 30 tasks', parsed['truncation_hint'])
+        self.assertIn(f'offset={parsed["next_offset"]}', parsed['truncation_hint'])
+        self.assertNotIn('larger limit', parsed['truncation_hint'])
+
+    def test_a_cut_page_keeps_the_handler_total_and_resumes_from_its_offset(self) -> None:
+        # A handler page at offset 10 of a 90-task set, itself too big to fit.
+        payload = {'tasks': [_task(index) for index in range(30)], 'offset': 10, 'total_tasks': 90, 'next_offset': 40}
+        parsed = json.loads(tool_result_content(payload, 'list_my_tasks'))
+        self.assertTrue(parsed['result_truncated'])
+        self.assertEqual(parsed['total_tasks'], 90)
+        self.assertEqual(parsed['offset'], 10)
+        self.assertEqual(parsed['next_offset'], 10 + parsed['returned_tasks'])
+        self.assertLess(parsed['next_offset'], 40)
 
     def test_a_list_under_the_list_cap_is_returned_whole(self) -> None:
         payload = {'tasks': [_task(index) for index in range(18)]}

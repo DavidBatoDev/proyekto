@@ -54,6 +54,22 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn('propose_plan', names)
         self.assertEqual(len(names), len(set(names)))
 
+    def test_every_list_tool_declares_offset_and_how_to_continue(self) -> None:
+        by_name = _by_name(tools.build_tools(scope=ROADMAP))
+        for name in (
+            'list_roadmaps', 'search_everything', 'list_my_tasks',
+            'search_nodes', 'search_tasks', 'get_children_from_resolution',
+            'get_features_by_epic', 'get_epics_by_roadmap', 'get_tasks_assigned_to_me',
+            'get_tasks_by_status', 'get_tasks_by_parent', 'get_overdue_tasks', 'get_blocked_items',
+        ):
+            params = by_name[name]['parameters']
+            self.assertEqual(params['properties']['offset']['minimum'], 0, name)
+            self.assertNotIn('offset', params['required'], name)
+            self.assertIn('offset = next_offset', by_name[name]['description'], name)
+            self.assertIn('Returns up to', by_name[name]['description'], name)
+        self.assertEqual(by_name['search_tasks']['parameters']['properties']['limit']['maximum'], 50)
+        self.assertNotIn('offset', by_name['get_workspace_overview']['parameters']['properties'])
+
     def test_investigate_tools_derives_flags_from_the_session(self) -> None:
         session = AgentSession(scope=ROADMAP)
         self.assertNotIn('revise_proposal', _names(tools.investigate_tools(session)))

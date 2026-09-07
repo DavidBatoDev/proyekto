@@ -10,6 +10,7 @@ from app.core.logging_utils import log_event, summarize_tool_result
 from app.core.tools.resolver import resolve_candidates
 
 from .base import RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE, ToolHandlerBase
+from app.core.tools.handlers.paging import clamp_offset, fetch_window, page_from_start
 
 # Per-excerpt cap for search_knowledge results: 12 excerpts x 900 chars stays
 # comfortably under the loop's 8000-char tool-result truncation, so the JSON
@@ -301,7 +302,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     'feature_count': summary.get('feature_count'),
                     'task_count': summary.get('task_count'),
                     'epics': overview_epics,
-                    'truncated_epics': max(0, len(epics) - len(overview_epics)) if include_epics else None,
+                    'total_epics': max(0, len(epics) - len(overview_epics)) if include_epics else None,
                 }
                 if isinstance(loaded, dict):
                     result['handle_prefix'] = loaded.get('handle_prefix')
@@ -380,6 +381,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 200))
+            offset = clamp_offset(args.get('offset'))
             epics_raw = summary.get('epics') if isinstance(summary, dict) else None
             epics = [item for item in epics_raw if isinstance(item, dict)] if isinstance(epics_raw, list) else []
             filtered: list[dict[str, Any]] = []
@@ -400,12 +402,11 @@ class ContextQueryHandler(ToolHandlerBase):
                         'feature_count': epic.get('feature_count'),
                     }
                 )
-                if len(filtered) >= limit:
-                    break
-            result = {
-                'roadmap_id': roadmap_id,
-                'epics': filtered,
-            }
+            # The summary is the whole roadmap, so the set is complete.
+            result = page_from_start(
+                filtered, 'epics', offset=offset, limit=limit, complete=True,
+                extra={'roadmap_id': roadmap_id},
+            )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -437,18 +438,21 @@ class ContextQueryHandler(ToolHandlerBase):
                 return result
             query = self._normalize_query_text(query)
             limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
+            limit = max(1, min(int(limit_raw), 50)) if isinstance(limit_raw, int) else 10
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 50)
             result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
                     query=query,
                     node_type=None,
-                    limit=limit,
+                    limit=window,
                     auth_header=auth_value,
                     trace_id=trace_id,
                 )
             )
+            result = self._page_search_result(result, offset=offset, limit=limit, window=window)
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -480,18 +484,21 @@ class ContextQueryHandler(ToolHandlerBase):
                 return result
             normalized_query = self._normalize_query_text(query)
             limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
+            limit = max(1, min(int(limit_raw), 50)) if isinstance(limit_raw, int) else 10
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 50)
             result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
                     query=normalized_query,
                     node_type='task',
-                    limit=limit,
+                    limit=window,
                     auth_header=auth_value,
                     trace_id=trace_id,
                 ),
             )
+            result = self._page_search_result(result, offset=offset, limit=limit, window=window)
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1081,18 +1088,27 @@ class ContextQueryHandler(ToolHandlerBase):
                 )
                 return result
             limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
+            limit = max(1, min(int(limit_raw), 100)) if isinstance(limit_raw, int) else 25
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 100)
             result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_children_from_resolution(
                     roadmap_id=roadmap_id,
                     resolution_id=resolution_id,
                     choice=choice,
-                    limit=limit,
+                    limit=window,
                     auth_header=auth_value,
                     trace_id=trace_id,
                 )
             )
+            if isinstance(result, dict) and not isinstance(result.get('error'), dict):
+                children = self._children_from_result(result)
+                result = page_from_start(
+                    children, 'children', offset=offset, limit=limit,
+                    complete=len(children) < window,
+                    extra={k: v for k, v in result.items() if k != 'children'},
+                )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1145,7 +1161,9 @@ class ContextQueryHandler(ToolHandlerBase):
                 )
                 return result
             limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
+            limit = max(1, min(int(limit_raw), 100)) if isinstance(limit_raw, int) else 100
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 100)
             status_filter = self._normalize_feature_status_filter(args.get('status'))
             if status_filter is None and args.get('status') is not None:
                 result = self._invalid_argument_result(
@@ -1171,20 +1189,24 @@ class ContextQueryHandler(ToolHandlerBase):
                 self._nest_client.context_features(
                     roadmap_id=roadmap_id,
                     epic_id=epic_id,
-                    limit=limit,
+                    limit=window,
                     auth_header=auth_value,
                     trace_id=trace_id,
                 )
             )
-            feature_limit = int(limit) if isinstance(limit, int) else 100
-            feature_limit = max(1, min(feature_limit, 100))
-            result = {
-                'children': self._filtered_features(
-                    features=self._children_from_result(upstream_result),
-                    status_filter=status_filter,
-                    limit=feature_limit,
+            if isinstance(upstream_result.get('error'), dict):
+                result = upstream_result
+            else:
+                fetched = self._children_from_result(upstream_result)
+                result = page_from_start(
+                    self._filtered_features(
+                        features=fetched,
+                        status_filter=status_filter,
+                        limit=window,
+                    ),
+                    'children', offset=offset, limit=limit,
+                    complete=len(fetched) < window,
                 )
-            }
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1335,6 +1357,8 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 500)
 
             parent_type = parent_type_raw
             if not parent_type:
@@ -1369,29 +1393,32 @@ class ContextQueryHandler(ToolHandlerBase):
                     return result
 
             tasks: list[dict[str, Any]] = []
+            complete = True
             if parent_type == 'feature':
+                feature_window = min(window, 100)
                 children_result = await self._run_context_call(
                     session_context,
                     self._nest_client.context_children(
                         roadmap_id=roadmap_id,
                         node_id=parent_id,
-                        limit=min(limit, 100),
+                        limit=feature_window,
                         auth_header=auth_value,
                         trace_id=trace_id,
                     ),
                 )
                 children = self._children_from_result(children_result)
+                complete = len(children) < feature_window
                 tasks = self._filtered_tasks(
                     tasks=children,
                     status_filter=status_filter,
-                    limit=limit,
+                    limit=feature_window,
                 )
             else:
                 tasks_result = await self._collect_tasks_for_epic(
                     roadmap_id=roadmap_id,
                     epic_id=parent_id,
                     status_filter=status_filter,
-                    limit=limit,
+                    limit=window,
                     session_context=session_context,
                     auth_header=auth_value,
                     trace_id=trace_id,
@@ -1410,6 +1437,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     return result
                 tasks_raw = tasks_result.get('tasks')
                 tasks = [item for item in tasks_raw if isinstance(item, dict)] if isinstance(tasks_raw, list) else []
+                complete = len(tasks) < window
 
             if not include_completed and status_filter in {None, 'all', 'open'}:
                 tasks = [
@@ -1417,12 +1445,14 @@ class ContextQueryHandler(ToolHandlerBase):
                     if not self._is_done_status(self._normalized_status_filter(item.get('status')))
                 ]
 
-            result = {
-                'parent_id': parent_id,
-                'parent_type': parent_type,
-                'include_completed': include_completed,
-                'tasks': tasks[:limit],
-            }
+            result = page_from_start(
+                tasks, 'tasks', offset=offset, limit=limit, complete=complete,
+                extra={
+                    'parent_id': parent_id,
+                    'parent_type': parent_type,
+                    'include_completed': include_completed,
+                },
+            )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1584,15 +1614,24 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 2000)
             result = await self._collect_tasks_for_roadmap(
                 roadmap_id=roadmap_id,
                 status_filter=status_filter,
-                limit=limit,
+                limit=window,
                 session_context=session_context,
                 auth_header=auth_value,
                 trace_id=trace_id,
                 context_selector=context_selector,
             )
+            if isinstance(result, dict) and not isinstance(result.get('error'), dict):
+                collected = [item for item in (result.get('tasks') or []) if isinstance(item, dict)]
+                result = page_from_start(
+                    collected, 'tasks', offset=offset, limit=limit,
+                    complete=len(collected) < window,
+                    extra={'roadmap_id': roadmap_id},
+                )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1609,10 +1648,14 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
+            offset = clamp_offset(args.get('offset'))
+            # Overdue is a filter over every task, so the collection window is
+            # the larger of the page's need and the historical 200-row scan.
+            collect_window = max(fetch_window(offset, limit, 2000), 200)
             task_result = await self._collect_tasks_for_roadmap(
                 roadmap_id=roadmap_id,
                 status_filter='all',
-                limit=max(limit, 200),
+                limit=collect_window,
                 session_context=session_context,
                 auth_header=auth_value,
                 trace_id=trace_id,
@@ -1620,6 +1663,7 @@ class ContextQueryHandler(ToolHandlerBase):
             )
             tasks_raw = task_result.get('tasks')
             tasks = [item for item in tasks_raw if isinstance(item, dict)] if isinstance(tasks_raw, list) else []
+            complete = len(tasks) < collect_window
             candidate_ids: list[str] = []
             for item in tasks:
                 status = self._normalized_status_filter(item.get('status'))
@@ -1667,13 +1711,13 @@ class ContextQueryHandler(ToolHandlerBase):
                     if assignee_key in detail:
                         payload[assignee_key] = detail.get(assignee_key)
                 overdue.append(payload)
-                if len(overdue) >= limit:
-                    break
-            result = {
-                'roadmap_id': roadmap_id,
-                'reference_date': reference_date.isoformat(),
-                'tasks': overdue,
-            }
+            result = page_from_start(
+                overdue, 'tasks', offset=offset, limit=limit, complete=complete,
+                extra={
+                    'roadmap_id': roadmap_id,
+                    'reference_date': reference_date.isoformat(),
+                },
+            )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1691,6 +1735,9 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
+            offset = clamp_offset(args.get('offset'))
+            # The walk stops once the page and its probe row are in hand.
+            window = fetch_window(offset, limit, 500)
             blocked: list[dict[str, Any]] = []
 
             summary = await self._run_context_call(
@@ -1706,7 +1753,7 @@ class ContextQueryHandler(ToolHandlerBase):
             epics = [item for item in epics_raw if isinstance(item, dict)] if isinstance(epics_raw, list) else []
 
             for epic in epics:
-                if len(blocked) >= limit:
+                if len(blocked) >= window:
                     break
                 epic_id = str(epic.get('id') or '').strip()
                 epic_title = str(epic.get('title') or 'Untitled epic')
@@ -1734,7 +1781,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 )
                 features = self._children_from_result(feature_result)
                 for feature in features:
-                    if len(blocked) >= limit:
+                    if len(blocked) >= window:
                         break
                     feature_id = str(feature.get('id') or '').strip()
                     feature_title = str(feature.get('title') or 'Untitled feature')
@@ -1764,7 +1811,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     )
                     tasks = self._children_from_result(task_result)
                     for task in tasks:
-                        if len(blocked) >= limit:
+                        if len(blocked) >= window:
                             break
                         task_status = self._normalized_status_filter(task.get('status'))
                         if task_status != 'blocked':
@@ -1782,10 +1829,10 @@ class ContextQueryHandler(ToolHandlerBase):
                             }
                         )
 
-            result = {
-                'roadmap_id': roadmap_id,
-                'items': blocked,
-            }
+            result = page_from_start(
+                blocked, 'items', offset=offset, limit=limit, complete=len(blocked) < window,
+                extra={'roadmap_id': roadmap_id},
+            )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1822,14 +1869,16 @@ class ContextQueryHandler(ToolHandlerBase):
                     return result
                 status_filter = normalized_status
             limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
+            limit = max(1, min(int(limit_raw), 200)) if isinstance(limit_raw, int) else 50
+            offset = clamp_offset(args.get('offset'))
+            window = fetch_window(offset, limit, 200)
             upstream_status = 'all' if status_filter and status_filter not in {'all', 'open'} else status_filter
             result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_tasks_assigned_to_me(
                     roadmap_id=roadmap_id,
                     status=upstream_status,
-                    limit=limit,
+                    limit=window,
                     preview_id=context_selector,
                     auth_header=auth_value,
                     trace_id=trace_id,
@@ -1838,15 +1887,17 @@ class ContextQueryHandler(ToolHandlerBase):
             if isinstance(result, dict) and not isinstance(result.get('error'), dict):
                 tasks_raw = result.get('tasks')
                 if isinstance(tasks_raw, list):
-                    task_limit = int(limit) if isinstance(limit, int) else 200
-                    task_limit = max(1, min(task_limit, 200))
+                    fetched = [item for item in tasks_raw if isinstance(item, dict)]
                     filtered_tasks = self._filtered_tasks(
-                        tasks=[item for item in tasks_raw if isinstance(item, dict)],
+                        tasks=fetched,
                         status_filter=status_filter,
-                        limit=task_limit,
+                        limit=window,
                     )
-                    result = dict(result)
-                    result['tasks'] = filtered_tasks
+                    result = page_from_start(
+                        filtered_tasks, 'tasks', offset=offset, limit=limit,
+                        complete=len(fetched) < window,
+                        extra={k: v for k, v in result.items() if k != 'tasks'},
+                    )
             log_event(
                 self._logger,
                 'tool_call_result',

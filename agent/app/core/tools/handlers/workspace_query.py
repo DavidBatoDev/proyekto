@@ -18,6 +18,13 @@ from app.core.contracts.statuses import TASK_STATUS_VALUES
 from app.core.logging_utils import log_event, summarize_tool_result
 
 from .base import ToolHandlerBase
+from app.core.tools.handlers.paging import (
+    capped_list,
+    clamp_offset,
+    page_from_backend,
+    page_from_start,
+    paging_unsupported_error,
+)
 
 WORKSPACE_TOOL_NAMES: frozenset[str] = frozenset(
     {
@@ -46,9 +53,13 @@ ROADMAP_OPTIONAL_TOOL_NAMES: frozenset[str] = PROJECT_KEYED_TOOL_NAMES | {'searc
 
 # The backend's AI_CONTEXT_SEARCH_KINDS (@IsIn each): anything else is a 400.
 _SEARCH_KINDS = ('project', 'roadmap', 'epic', 'feature', 'task')
-_TASK_ROW_OMIT = frozenset({'updated_at', 'workspace_id'})
+# Never reach a reply; dropping them lets more whole rows fit under the
+# engine's list cap (task rows and search matches alike).
+_ROW_OMIT = frozenset({'updated_at', 'workspace_id'})
+# list_roadmaps with a name filter walks the backend's keyset pages; this many
+# pages of 100 bound the walk (a workspace rarely has 300 roadmaps).
+_ROADMAP_FILTER_MAX_PAGES = 3
 _DUE_WINDOWS = ('overdue', 'today', 'week', 'all')
-_MAX_LIST_ITEMS = 60
 _MAX_ID_LIST = 20
 
 
@@ -70,12 +81,6 @@ def _string_list(value: Any, *, cap: int = _MAX_ID_LIST) -> list[str]:
             break
     return out
 
-
-def _cap_list(payload: dict[str, Any], key: str, cap: int = _MAX_LIST_ITEMS) -> dict[str, Any]:
-    items = payload.get(key)
-    if not isinstance(items, list) or len(items) <= cap:
-        return payload
-    return {**payload, key: items[:cap], f'{key}_truncated': len(items) - cap}
 
 
 class WorkspaceQueryHandler(ToolHandlerBase):
@@ -108,42 +113,66 @@ class WorkspaceQueryHandler(ToolHandlerBase):
             )
             if isinstance(result, dict) and not isinstance(result.get('error'), dict):
                 for key in ('projects', 'roadmaps', 'teams'):
-                    result = _cap_list(result, key)
+                    result = capped_list(result, key, 60)
             return self._log_result(tool_name, result, trace_id)
 
         if tool_name == 'list_roadmaps':
             limit = _clamp_int(args.get('limit'), default=20, low=1, high=50)
+            offset = clamp_offset(args.get('offset'))
             query = str(args.get('query') or '').strip().lower()[:200]
-            params: dict[str, Any] = {
+            scope_params: dict[str, Any] = {
                 'workspace_id': str(args.get('workspace_id') or '').strip() or None,
                 'project_id': str(args.get('project_id') or '').strip() or None,
-                # Fetch more than the limit when filtering client-side by name.
-                'limit': min(100, limit * 3) if query else limit,
             }
-            result = await self._run_context_call(
-                session_context,
-                self._nest_client.ai_context_roadmaps(
-                    params,
-                    auth_value,
-                    trace_id=trace_id,
-                ),
-            )
-            if isinstance(result, dict) and not isinstance(result.get('error'), dict):
-                # The backend answers {items, next_cursor} (AiContextRoadmapsResponseDto);
-                # `roadmaps` is tolerated for older fakes/payloads.
-                list_key = 'items' if isinstance(result.get('items'), list) else 'roadmaps'
-                roadmaps = result.get(list_key)
-                if isinstance(roadmaps, list):
-                    entries = [item for item in roadmaps if isinstance(item, dict)]
-                    if query:
-                        entries = [
-                            item
-                            for item in entries
-                            if query in str(item.get('name') or item.get('title') or '').lower()
-                        ]
-                    result = {**result, list_key: entries[:limit]}
-                    if len(entries) > limit:
-                        result[f'{list_key}_truncated'] = len(entries) - limit
+            if not query:
+                # The backend pages the total order for us; `offset` rides only
+                # when it is non-zero so page one is byte-identical against a
+                # backend from before paging.
+                params: dict[str, Any] = {**scope_params, 'limit': limit}
+                if offset:
+                    params['offset'] = offset
+                result = await self._run_context_call(
+                    session_context,
+                    self._nest_client.ai_context_roadmaps(params, auth_value, trace_id=trace_id),
+                )
+                if isinstance(result, dict) and isinstance(result.get('error'), dict):
+                    if offset and result['error'].get('code') == 'INVALID_ARGUMENT':
+                        result = paging_unsupported_error()
+                elif isinstance(result, dict):
+                    # The backend answers {items, next_cursor, offset, total, next_offset}
+                    # (AiContextRoadmapsResponseDto); `roadmaps` is tolerated for older fakes.
+                    list_key = 'items' if isinstance(result.get('items'), list) else 'roadmaps'
+                    result = page_from_backend(result, list_key, offset=offset)
+                return self._log_result(tool_name, result, trace_id)
+
+            # A name filter is applied here, so walk the backend's keyset pages
+            # until the filtered rows cover the page (plus a probe row), the
+            # cursor runs out, or the walk hits its bound.
+            wanted = offset + limit + 1
+            entries: list[dict[str, Any]] = []
+            cursor: str | None = None
+            exhausted = False
+            for _page in range(_ROADMAP_FILTER_MAX_PAGES):
+                params = {**scope_params, 'limit': 100}
+                if cursor:
+                    params['cursor'] = cursor
+                page = await self._run_context_call(
+                    session_context,
+                    self._nest_client.ai_context_roadmaps(params, auth_value, trace_id=trace_id),
+                )
+                if not isinstance(page, dict) or isinstance(page.get('error'), dict):
+                    return self._log_result(tool_name, page, trace_id)
+                items = page.get('items') if isinstance(page.get('items'), list) else page.get('roadmaps')
+                for item in items or []:
+                    if isinstance(item, dict) and query in str(item.get('name') or item.get('title') or '').lower():
+                        entries.append(item)
+                cursor = page.get('next_cursor') if isinstance(page.get('next_cursor'), str) else None
+                if not cursor:
+                    exhausted = True
+                    break
+                if len(entries) >= wanted:
+                    break
+            result = page_from_start(entries, 'items', offset=offset, limit=limit, complete=exhausted)
             return self._log_result(tool_name, result, trace_id)
 
         if tool_name == 'search_everything':
@@ -164,6 +193,7 @@ class WorkspaceQueryHandler(ToolHandlerBase):
             kinds = [
                 kind for kind in (raw_kinds if isinstance(raw_kinds, list) else []) if kind in _SEARCH_KINDS
             ] or None
+            offset = clamp_offset(args.get('offset'))
             params = {
                 # AiContextSearchQueryDto: q is @MaxLength(160); roadmap_ids is
                 # @IsUUID each (one bad id fails the whole request with a 400).
@@ -172,6 +202,8 @@ class WorkspaceQueryHandler(ToolHandlerBase):
                 'roadmap_ids': self._uuid_list(args.get('roadmap_ids')) or None,
                 'limit': _clamp_int(args.get('limit'), default=10, low=1, high=20),
             }
+            if offset:
+                params['offset'] = offset
             result = await self._run_context_call(
                 session_context,
                 self._nest_client.ai_context_search(
@@ -180,9 +212,16 @@ class WorkspaceQueryHandler(ToolHandlerBase):
                     trace_id=trace_id,
                 ),
             )
-            if isinstance(result, dict) and not isinstance(result.get('error'), dict):
-                result = _cap_list(result, 'results', 20)
-                result = _cap_list(result, 'matches', 20)
+            if isinstance(result, dict) and isinstance(result.get('error'), dict):
+                if offset and result['error'].get('code') == 'INVALID_ARGUMENT':
+                    result = paging_unsupported_error()
+            elif isinstance(result, dict):
+                list_key = 'matches' if isinstance(result.get('matches'), list) else 'results'
+                result = page_from_backend(result, list_key, offset=offset)
+                result[list_key] = [
+                    {key: value for key, value in match.items() if key not in _ROW_OMIT}
+                    for match in result[list_key]
+                ]
             return self._log_result(tool_name, result, trace_id)
 
         if tool_name == 'list_my_tasks':
@@ -193,12 +232,15 @@ class WorkspaceQueryHandler(ToolHandlerBase):
             if due not in _DUE_WINDOWS:
                 due = 'all'
             today = date.today()
+            offset = clamp_offset(args.get('offset'))
             params = {
                 'assigned_to_me': True,
                 'status': status,
                 'roadmap_ids': self._uuid_list(args.get('roadmap_ids')) or None,
                 'limit': _clamp_int(args.get('limit'), default=25, low=1, high=50),
             }
+            if offset:
+                params['offset'] = offset
             if due == 'overdue':
                 params['overdue'] = True
             elif due == 'today':
@@ -215,14 +257,14 @@ class WorkspaceQueryHandler(ToolHandlerBase):
                     trace_id=trace_id,
                 ),
             )
-            if isinstance(result, dict) and not isinstance(result.get('error'), dict):
-                result = _cap_list(result, 'tasks', 50)
-                # Neither field ever reaches a reply; dropping them lets more
-                # whole rows fit under the engine's list cap.
+            if isinstance(result, dict) and isinstance(result.get('error'), dict):
+                if offset and result['error'].get('code') == 'INVALID_ARGUMENT':
+                    result = paging_unsupported_error()
+            elif isinstance(result, dict):
+                result = page_from_backend(result, 'tasks', offset=offset)
                 result['tasks'] = [
-                    {key: value for key, value in task.items() if key not in _TASK_ROW_OMIT}
-                    if isinstance(task, dict) else task
-                    for task in (result.get('tasks') or [])
+                    {key: value for key, value in task.items() if key not in _ROW_OMIT}
+                    for task in result['tasks']
                 ]
             return self._log_result(tool_name, result, trace_id)
 
@@ -264,7 +306,7 @@ class WorkspaceQueryHandler(ToolHandlerBase):
                 ),
             )
             if isinstance(result, dict) and not isinstance(result.get('error'), dict):
-                result = _cap_list(result, 'members', 50)
+                result = capped_list(result, 'members', 50)
             return self._log_result(tool_name, result, trace_id)
 
         return {

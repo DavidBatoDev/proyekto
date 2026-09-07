@@ -39,6 +39,10 @@ class _Nest:
     # The /ai/context list family, answering with the backend's wire shapes
     # (AiContextRoadmapsResponseDto / AiContextSearchResponseDto /
     # AiContextTasksResponseDto) and recording the query params sent.
+    roadmaps_page: dict = {}
+    tasks_page: dict = {}
+    tasks_error: dict | None = None
+
     async def ai_context_roadmaps(self, params, auth_header, trace_id=None):
         self.roadmaps_params = dict(params or {})
         return {
@@ -47,15 +51,18 @@ class _Nest:
                 {'id': OTHER, 'name': 'Beta', 'project': None},
             ],
             'next_cursor': None,
+            **self.roadmaps_page,
         }
 
     async def ai_context_search(self, params, auth_header, trace_id=None):
         self.search_params = dict(params or {})
-        return {'matches': [{'id': 'epic-1', 'kind': 'epic', 'title': 'Growth', 'roadmap_id': FOCUS}]}
+        return {'matches': [{'id': 'epic-1', 'kind': 'epic', 'title': 'Growth', 'roadmap_id': FOCUS, 'updated_at': 'x'}]}
 
     async def ai_context_tasks(self, params, auth_header, trace_id=None):
         self.tasks_params = dict(params or {})
-        return {'tasks': []}
+        if self.tasks_error is not None:
+            return dict(self.tasks_error)
+        return {'tasks': [], **self.tasks_page}
 
     async def ai_context_project_brief(self, project_id, auth_header, trace_id=None):
         self.brief_calls.append(('project', project_id))
@@ -173,11 +180,47 @@ class DispatcherTests(unittest.TestCase):
         )
         # Filtered client-side by name on the `items` list the backend returns.
         self.assertEqual([item['id'] for item in result['items']], [OTHER])
-        self.assertIsNone(result['next_cursor'])
+        self.assertNotIn('next_cursor', result)
         self.assertNotIn('items_truncated', result)
-        # The over-fetch for a name filter never exceeds the DTO's @Max(100).
-        self.assertEqual(nest.roadmaps_params['limit'], 15)
+        self.assertEqual((result['offset'], result['returned_items'], result['total_items'], result['next_offset']), (0, 1, 1, None))
+        # A name filter walks the backend's keyset pages of 100; no offset is sent.
+        self.assertEqual(nest.roadmaps_params['limit'], 100)
         self.assertNotIn('query', nest.roadmaps_params)
+        self.assertNotIn('offset', nest.roadmaps_params)
+        self.assertNotIn('cursor', nest.roadmaps_params)
+
+    def test_list_roadmaps_without_a_filter_is_paged_by_the_backend(self) -> None:
+        nest = _Nest()
+        result = _dispatcher(nest).execute('list_roadmaps', {'limit': 5}, {'auth_header': 'Bearer t'})
+        self.assertNotIn('offset', nest.roadmaps_params)
+        self.assertEqual(nest.roadmaps_params['limit'], 5)
+        self.assertEqual(result['returned_items'], 2)
+        self.assertEqual(result['next_offset'], None)
+
+        nest.roadmaps_page = {'offset': 5, 'total': 12, 'next_offset': 10}
+        result = _dispatcher(nest).execute('list_roadmaps', {'limit': 5, 'offset': 5}, {'auth_header': 'Bearer t'})
+        self.assertEqual(nest.roadmaps_params['offset'], 5)
+        self.assertEqual((result['offset'], result['total_items'], result['next_offset']), (5, 12, 10))
+        self.assertNotIn('total', result)
+
+    def test_offset_rides_only_when_non_zero_and_maps_the_backend_page(self) -> None:
+        nest = _Nest()
+        nest.tasks_page = {'offset': 25, 'total': 30, 'next_offset': None}
+        result = _dispatcher(nest).execute('list_my_tasks', {'offset': 25, 'limit': 25}, {'auth_header': 'Bearer t'})
+        self.assertEqual(nest.tasks_params['offset'], 25)
+        self.assertEqual((result['offset'], result['returned_tasks'], result['total_tasks'], result['next_offset']), (25, 0, 30, None))
+        _dispatcher(nest).execute('list_my_tasks', {'offset': 0}, {'auth_header': 'Bearer t'})
+        self.assertNotIn('offset', nest.tasks_params)
+        _dispatcher(nest).execute('search_everything', {'query': 'growth', 'offset': 10}, {'auth_header': 'Bearer t'})
+        self.assertEqual(nest.search_params['offset'], 10)
+
+    def test_a_paged_call_against_an_old_backend_says_paging_is_unsupported(self) -> None:
+        nest = _Nest()
+        nest.tasks_error = {'error': {'code': 'INVALID_ARGUMENT', 'message': 'property offset should not exist'}}
+        paged = _dispatcher(nest).execute('list_my_tasks', {'offset': 25}, {'auth_header': 'Bearer t'})
+        self.assertEqual(paged['error']['code'], 'PAGING_UNSUPPORTED')
+        first = _dispatcher(nest).execute('list_my_tasks', {}, {'auth_header': 'Bearer t'})
+        self.assertEqual(first['error']['code'], 'INVALID_ARGUMENT')
 
     def test_search_and_tasks_send_only_what_the_dtos_accept(self) -> None:
         nest = _Nest()
@@ -188,6 +231,9 @@ class DispatcherTests(unittest.TestCase):
             {'auth_header': 'Bearer t'},
         )
         self.assertEqual(result['matches'][0]['id'], 'epic-1')
+        self.assertNotIn('updated_at', result['matches'][0])
+        self.assertEqual((result['offset'], result['returned_matches'], result['next_offset']), (0, 1, None))
+        self.assertNotIn('offset', nest.search_params)
         # q is @MaxLength(160); kinds are @IsIn; roadmap_ids are @IsUUID each.
         self.assertEqual(len(nest.search_params['q']), 160)
         self.assertEqual(nest.search_params['kinds'], ['epic'])
