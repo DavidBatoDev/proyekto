@@ -11,7 +11,7 @@ import {
 } from "./aiMentions";
 import type { AiSessionScope } from "./scope";
 
-const KIND_LABEL: Record<AiMentionKind, string> = {
+export const AI_ENTITY_KIND_LABEL: Record<AiMentionKind, string> = {
 	project: "Project",
 	roadmap: "Roadmap",
 	epic: "Epic",
@@ -34,7 +34,8 @@ function assigneeName(assignee: AiEntityAssignee): string {
 	});
 }
 
-function AiEntityAvatars({
+/** Up to three stacked 16px assignee avatars with a +N overflow slot. */
+export function AiEntityAvatars({
 	assignees,
 	count,
 }: {
@@ -126,7 +127,7 @@ export function AiEntityChip({ kind, id, label, scope }: AiEntityChipProps) {
 		: undefined;
 	const attributes = {
 		title: [
-			KIND_LABEL[kind],
+			AI_ENTITY_KIND_LABEL[kind],
 			status,
 			chain,
 			assignedTo,
@@ -160,7 +161,7 @@ export function AiEntityChip({ kind, id, label, scope }: AiEntityChipProps) {
 		<AiRouteLink
 			{...destination}
 			{...attributes}
-			aria-label={`${KIND_LABEL[kind]} ${title}`}
+			aria-label={`${AI_ENTITY_KIND_LABEL[kind]} ${title}`}
 			className={`${attributes.className} underline-offset-2 hover:underline`}
 		>
 			{body}

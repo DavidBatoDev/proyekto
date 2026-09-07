@@ -20,6 +20,7 @@ import type { RunCommitView } from "@/services/ai-agent.service";
 import { aiContextService } from "@/services/ai-context.service";
 import {
 	AiCommitCard,
+	describeCommitChange,
 	getCommitStatusLabel,
 	legacyLifecycleToCommit,
 	toCommitCards,
@@ -183,7 +184,120 @@ describe("AiCommitCard", () => {
 		expect(
 			screen.getByText("The roadmap changed while applying."),
 		).toBeTruthy();
-		expect(screen.queryByRole("link")).toBeNull();
+		expect(screen.queryByRole("link", { name: "Onboarding" })).toBeNull();
+		expect(screen.queryByTestId("ai-commit-item")).toBeNull();
+		// The roadmap heading still links to the roadmap.
+		expect(screen.getByRole("link", { name: "Alpha" })).toBeTruthy();
+	});
+
+	it("renders a task chip with its glyph, assignee avatars and the new status", async () => {
+		vi.mocked(aiContextService.resolveRefs).mockImplementation(async (refs) =>
+			refs.map((ref) =>
+				ref.kind === "task"
+					? {
+							...ref,
+							accessible: true,
+							title: "Write tests",
+							status: "in_review",
+							roadmap_id: "rm-alpha",
+							project_id: "proj-alpha",
+							assignees: [
+								{ id: "u1", display_name: "August Teleg", avatar_url: null },
+								{ id: "u2", display_name: "David Bato", avatar_url: null },
+							],
+							assignee_count: 2,
+						}
+					: { ...ref, accessible: true, title: "Resolved roadmap" },
+			),
+		);
+		await renderWithRouter(
+			<AiCommitCard
+				commit={committed({
+					impacted_items: [
+						{
+							node_id: "task-1",
+							node_type: "task",
+							title: "Write tests",
+							change_type: "STATUS_CHANGED",
+							impact: "modified",
+						},
+						{
+							node_id: "epic-1",
+							node_type: "epic",
+							title: "Onboarding",
+							change_type: "TITLE_CHANGED",
+							impact: "modified",
+						},
+					],
+				})}
+				scope={workspaceScope}
+			/>,
+		);
+		const chip = await screen.findByRole("link", { name: /Write tests/ });
+		expect(chip.getAttribute("href")).toContain("nodeId=task-1");
+		expect(await screen.findByText("AT")).toBeTruthy();
+		expect(screen.getByText("DB")).toBeTruthy();
+		expect(await screen.findByText("Status → In Review")).toBeTruthy();
+		expect(screen.getByText("Renamed")).toBeTruthy();
+		expect(screen.getByText("Modified (2)")).toBeTruthy();
+		// Only the task needed the resolver (the commit already carries the roadmap).
+		expect(aiContextService.resolveRefs).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(aiContextService.resolveRefs).mock.calls[0][0]).toEqual([
+			{ kind: "task", id: "task-1" },
+		]);
+		const items = screen.getAllByTestId("ai-commit-item");
+		expect(items.map((item) => item.getAttribute("data-entity-kind"))).toEqual(
+			expect.arrayContaining(["task", "epic"]),
+		);
+	});
+
+	it("renders a deleted node as a plain chip under Deleted", async () => {
+		await renderWithRouter(
+			<AiCommitCard
+				commit={committed({
+					impacted_items: [
+						{
+							node_id: "feature-9",
+							node_type: "feature",
+							title: "Old feature",
+							change_type: "NODE_REMOVED",
+							impact: "deleted",
+						},
+					],
+				})}
+				scope={workspaceScope}
+			/>,
+		);
+		expect(screen.getByText("Deleted (1)")).toBeTruthy();
+		expect(screen.getByText("Old feature")).toBeTruthy();
+		expect(screen.queryByRole("link", { name: "Old feature" })).toBeNull();
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		expect(aiContextService.resolveRefs).not.toHaveBeenCalled();
+	});
+
+	it("describes a modified node's change beside its chip", () => {
+		expect(
+			describeCommitChange(
+				{ kind: "modified", changeType: "STATUS_CHANGED" },
+				"in_progress",
+			),
+		).toBe("Status → In Progress");
+		expect(
+			describeCommitChange({ kind: "modified", changeType: "STATUS_CHANGED" }),
+		).toBe("Status changed");
+		expect(
+			describeCommitChange({
+				kind: "modified",
+				changeType: "ASSIGNEE_CHANGED",
+			}),
+		).toBe("Assignees changed");
+		expect(
+			describeCommitChange({ kind: "modified", changeType: "SOMETHING_NEW" }),
+		).toBe("Something New");
+		expect(
+			describeCommitChange({ kind: "created", changeType: "NODE_ADDED" }),
+		).toBeNull();
+		expect(describeCommitChange({ kind: "modified" })).toBeNull();
 	});
 
 	it("backfills chip titles from this step's operations", async () => {
