@@ -2,7 +2,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   clampLimit,
+  clampOffset,
   defineTool,
+  fetchWindow,
+  pageFetchedList,
+  pagingClause,
   requireScope,
   runTool,
   type McpToolDeps,
@@ -81,11 +85,13 @@ export function registerAiSessionTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List your roadmap AI threads',
       description:
-        'List YOUR OWN AI planning threads for a roadmap, so you can pick up where the user left off with the in-app planner. Only your threads are visible — never a teammate’s.',
+        'List YOUR OWN AI planning threads for a roadmap, so you can pick up where the user left off with the in-app planner. Only your threads are visible — never a teammate’s.' +
+        pagingClause(100, 25),
       inputSchema: {
         roadmap_id: z.string().uuid(),
         archived: z.boolean().optional(),
         limit: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
@@ -93,27 +99,34 @@ export function registerAiSessionTools(server: McpServer, deps: McpToolDeps) {
       roadmap_id,
       archived,
       limit,
+      offset,
     }: {
       roadmap_id: string;
       archived?: boolean;
       limit?: number;
+      offset?: number;
     }) =>
       runTool(async () => {
         requireScope(deps.caller, 'ai-sessions:read');
+        const size = Math.min(clampLimit(limit, deps.s.maxPageSize, 25), 100);
+        const start = clampOffset(offset);
+        // The service DTO caps at 100 regardless of our page ceiling, so the
+        // reachable window is the first 100 threads.
+        const window = fetchWindow(start, size, 100);
         const rows = await deps.s.aiSessions.list(
           { kind: 'roadmap', roadmapId: roadmap_id },
           uid,
-          {
-            archived,
-            // The service DTO caps at 100 regardless of our page ceiling.
-            limit: Math.min(clampLimit(limit, deps.s.maxPageSize, 25), 100),
-          },
+          { archived, limit: window },
         );
-        return {
-          sessions: (rows as unknown as Record<string, unknown>[]).map(
-            projectSession,
-          ),
-        };
+        return pageFetchedList(
+          {
+            sessions: (rows as unknown as Record<string, unknown>[]).map(
+              projectSession,
+            ),
+          },
+          'sessions',
+          { offset: start, limit: size, window },
+        );
       }),
   );
 

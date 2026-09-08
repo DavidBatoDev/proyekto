@@ -15,6 +15,7 @@ import { TaskExtrasService } from '../../execution/roadmaps/services/task-extras
 import { EpicsService } from '../../execution/roadmaps/services/epics.service';
 import { FeaturesService } from '../../execution/roadmaps/services/features.service';
 import { RoadmapAiSessionsService } from '../../execution/roadmaps/services/roadmap-ai-sessions.service';
+import { AiContextService } from '../../execution/ai-context/services/ai-context.service';
 import { ChatService } from '../../execution/chat/chat.service';
 import { DeliverablesService } from '../../execution/delivery/deliverables.service';
 import { ChangeRequestsService } from '../../execution/delivery/change-requests.service';
@@ -24,6 +25,9 @@ import { DecisionCategoriesService } from '../../execution/delivery/decision-cat
 import { AuditService } from '../audit/audit.service';
 import { McpCapabilitiesService } from './mcp-capabilities.service';
 import { registerProjectTools } from './tools/projects.tools';
+import { registerWorkspaceTools } from './tools/workspace.tools';
+import { registerProjectWriteTools } from './tools/project-write.tools';
+import { registerRoadmapAdminTools } from './tools/roadmap-admin.tools';
 import { registerRoadmapTools } from './tools/roadmaps.tools';
 import { registerTaskTools } from './tools/tasks.tools';
 import { registerKnowledgeTools } from './tools/knowledge.tools';
@@ -75,6 +79,7 @@ export class McpServerFactory {
     private readonly epics: EpicsService,
     private readonly features: FeaturesService,
     private readonly aiSessions: RoadmapAiSessionsService,
+    private readonly aiContext: AiContextService,
     private readonly chat: ChatService,
     private readonly deliverables: DeliverablesService,
     private readonly changeRequests: ChangeRequestsService,
@@ -104,6 +109,7 @@ export class McpServerFactory {
       epics: this.epics,
       features: this.features,
       aiSessions: this.aiSessions,
+      aiContext: this.aiContext,
       chat: this.chat,
       deliverables: this.deliverables,
       changeRequests: this.changeRequests,
@@ -120,11 +126,14 @@ export class McpServerFactory {
     const deps = { s: services, caller };
 
     registerProjectTools(server, deps);
+    registerWorkspaceTools(server, deps);
     registerRoadmapTools(server, deps);
     registerTaskTools(server, deps);
     registerKnowledgeTools(server, deps);
     registerChatTools(server, deps);
     registerRoadmapWriteTools(server, deps);
+    registerRoadmapAdminTools(server, deps);
+    registerProjectWriteTools(server, deps);
     registerTaskWriteTools(server, deps);
     registerCommentWriteTools(server, deps);
     registerAiSessionTools(server, deps);

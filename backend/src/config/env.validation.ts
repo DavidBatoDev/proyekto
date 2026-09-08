@@ -417,6 +417,13 @@ class EnvironmentVariables {
   @IsNumber()
   MCP_MAX_PAGE_SIZE?: number;
 
+  // Ceiling on ONE serialized tool result. Past it a list result is cut on
+  // whole items with a next_offset the host can resume from, so a big page is
+  // never emitted as unparseable half-JSON. Optional; defaults to 24,000.
+  @IsOptional()
+  @IsNumber()
+  MCP_MAX_RESULT_CHARS?: number;
+
   // ── MCP OAuth 2.1 authorization server (Phase 3) — ships dark ──────────────
   // Second gate on top of MCP_ENABLED. Unless this is 'true' the discovery
   // documents 404, /oauth/* denies, and /mcp emits no WWW-Authenticate

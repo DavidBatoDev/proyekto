@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -103,8 +103,8 @@ exactly as in Phases 1–2.
 ## Scopes
 
 Coarse OAuth-style grants
-([`mcp-scopes.ts`](../../backend/src/modules/shared/mcp/mcp-scopes.ts)) — eleven of them,
-six read and five write, carried either on a PAT or in an OAuth access token.
+([`mcp-scopes.ts`](../../backend/src/modules/shared/mcp/mcp-scopes.ts)) — twelve of them,
+six read and six write, carried either on a PAT or in an OAuth access token.
 PAT issuance rejects any unknown scope string and the OAuth server drops any it
 doesn't recognize, so a credential can't carry a grant no tool honors. Every tool
 requires **both** its scope **and** the live Proyekto project/roadmap permission.
@@ -122,6 +122,12 @@ requires **both** its scope **and** the live Proyekto project/roadmap permission
 | `tasks:assign` | write | set a task's assignee set (notifies newly-assigned) |
 | `chat:write` | write | send / edit / unsend **channel** messages (Phase 4) — dark unless `MCP_CHAT_WRITE_ENABLED` |
 | `delivery:write` | write | register writes + lifecycle verbs (Phase 5) — flagless, live on deploy |
+| `projects:write` | write | create/update a project, create a roadmap, attach a standalone one to a project (Phase 6) — flagless, live on deploy |
+
+A credential never grows a scope on its own: a PAT carries exactly what it was
+minted with and an OAuth token exactly what was consented to. So after
+`projects:write` ships, a PAT holder must issue a **new** token and a hosted-Claude
+user must **reconnect** the connector before the project write tools appear.
 
 The OAuth server advertises the currently **enabled** scopes **plus
 `offline_access`** (`supportedScopes()` in
@@ -170,44 +176,108 @@ absent from the PAT picker as well as from OAuth discovery and consent.
 
 ## Tools
 
-Fifty-two tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
-twenty-five read, twenty-seven write. The three chat writes register only while
+Fifty-nine tools in [`tools/*.tools.ts`](../../backend/src/modules/shared/mcp/tools/) —
+twenty-eight read, thirty-one write. The three chat writes register only while
 `MCP_CHAT_WRITE_ENABLED` is on, so a server with that flag unset advertises
-**forty-nine**. Each tool reuses an existing domain service that carries its own
+**fifty-six**. Each tool reuses an existing domain service that carries its own
 authz; inputs are Zod-validated and page sizes are clamped to a per-tool ceiling
 (at most `MCP_MAX_PAGE_SIZE`, default 100; `project_knowledge_search` caps at 20,
 `roadmap_ai_sessions_list` at 100 and `roadmap_ai_session_messages` at 200 by the
 service DTO).
 
+### Pagination
+
+Every list tool is **paged, not truncated** — a host can always reach the rest of
+a list rather than being handed a silent slice. The contract is the one the
+in-app agent speaks
+([`agent/app/core/tools/handlers/paging.py`](../../agent/app/core/tools/handlers/paging.py)),
+so the two AI surfaces read the same; the TypeScript twin is
+[`tool-helpers.ts`](../../backend/src/modules/shared/mcp/tools/tool-helpers.ts).
+
+| Key | Meaning |
+| --- | --- |
+| `offset` (input) | Zero-based start within the tool's order. Optional, default 0, capped at 10,000 |
+| `offset` (output) | The effective start of this page |
+| `returned_<key>` | Rows on this page |
+| `next_offset` | Where the next page starts, or `null` when this page ended the set |
+| `total_<key>` | The size of the whole filtered set — present **only when it is known** |
+
+`total_<key>` is deliberately absent rather than guessed. A tool whose source
+returns the whole set (`projects_list`, `roadmaps_list`, the delivery registers)
+always knows it; a tool that over-fetches one probe row past the page only knows
+it once the fetch comes back short of that window. **`next_offset` is the
+authoritative "there is more" signal** — a missing total never means the list ended.
+
+Three tools page by keyset cursor instead, because their rows shift as new ones
+arrive: `chat_messages_list` and `roadmap_list_changes` return `next_before`
+(a `created_at` / `committed_at` cursor), and `roadmap_ai_session_messages`
+returns `next_before_seq`. `task_comments_list` is the one tool whose `offset`
+counts **backwards from the newest** comment, so offset 0 stays the newest page
+and a host walks into older history from there.
+`project_knowledge_search` is not paged at all: an offset over a relevance
+ranking is not stable, so it caps at 20 and reports `returned_results`.
+
+**The size backstop.** A page that is still too large to emit is cut on WHOLE
+items, never mid-record, and the cut result carries `result_truncated: true`,
+`returned_<key>`, `total_<key>` and a `next_offset` that resumes right after the
+last item shown, plus a `truncation_hint` saying so. The cap is
+`MCP_MAX_RESULT_CHARS` (default 24,000 characters of pretty-printed JSON) and it
+applies to the JSON block only — a rendered SVG or PNG block is never touched.
+
 ### Read tools
 
-| Tool | Scope | Inputs | Returns |
-| --- | --- | --- | --- |
-| `projects_list` | `projects:read` | — | Accessible projects, newest first |
-| `projects_get` | `projects:read` | `project_id` | Project + the caller's effective permissions |
-| `project_members_list` | `projects:read` | `project_id`, `limit?` | Members + share roles (needs `members.view`) |
-| `roadmaps_list` | `roadmaps:read` | `include_visual?` | **Every roadmap you can access** — owner union `project_access`, the same set the dashboard shows (`RoadmapsService.findAll`; it used to be owner-only) — with a portfolio visual by default |
-| `roadmap_get_by_project` | `roadmaps:read` | `project_id`, `include_visual?` | The project's single linked roadmap, or `roadmap: null` (split out of `roadmaps_list`) |
-| `roadmap_get_summary` | `roadmaps:read` | `roadmap_id`, `include_visual?` | Compact tree summary (counts, epics, features, milestones) |
-| `roadmap_get_node` | `roadmaps:read` | `roadmap_id`, `node_id`, `include_children?`, `children_limit?` | One node's detail, optionally with children |
-| `roadmap_search_nodes` | `roadmaps:read` | `roadmap_id`, `query`, `node_type?`, `limit?` | Matching nodes + resolved ids |
-| `roadmap_list_changes` | `roadmaps:read` | `roadmap_id`, `limit?`, `before?`, `include_operations?` | Committed changes newest-first from the durable log — who, when, what. `before` is a `committed_at` cursor; `include_operations` defaults **off** |
-| `tasks_list` | `roadmaps:read` | `roadmap_id`, `assigned_to_me?`, `status?`, `parent_type?`, `parent_id?`, `assignee_id?`, `keyword?`, `include_completed?`, `limit?` | Filtered tasks; `assigned_to_me` = "what's on my plate" |
-| `task_comments_list` | `roadmaps:read` | `task_id`, `limit?` | A task's comments oldest-first (newest `limit` of them, default 50, plus the true `total`); authors whitelisted to `id` + `display_name` |
-| `project_knowledge_search` | `knowledge:read` | `roadmap_id`, `query`, `sources?`, `limit?` | Hybrid RAG over chat/comments/activity/brief (empty for guest/project-less roadmaps) |
-| `chat_rooms_list` | `chat:read` | `project_id` | Channels the user participates in |
-| `chat_messages_list` | `chat:read` | `room_id`, `before?`, `limit?` | Recent messages, newest first |
-| `chat_messages_search` | `chat:read` | `room_id`, `query`, `limit?` | Keyword search within a room |
-| `roadmap_ai_sessions_list` | `ai-sessions:read` | `roadmap_id`, `archived?`, `limit?` | **Your own** AI planning threads for a roadmap |
-| `roadmap_ai_session_messages` | `ai-sessions:read` | `roadmap_id`, `session_id`, `before_seq?`, `after_seq?`, `limit?` | One thread's messages oldest-first, plus a `next_before_seq` cursor |
-| `deliverables_list` | `delivery:read` | `project_id`, `status?`, `limit?` | The deliverables register with acceptance-criteria progress |
-| `deliverable_get` | `delivery:read` | `project_id`, `deliverable_id` | One deliverable with criteria, reviewers, attachments, links |
-| `change_requests_list` | `delivery:read` | `project_id`, `status?`, `view?`, `requested_by?`, `limit?` | The change-request register; `view` is the coarse grouping, ignored when `status` is given |
-| `change_request_get` | `delivery:read` | `project_id`, `change_request_id` | One request with impact fields, links, and stamps |
-| `risks_list` | `delivery:read` | `project_id`, `kind?`, `status?`, `limit?` | The risk & issue register, severity-first; `internal` rows filtered by `risks.view_internal` |
-| `decisions_list` | `delivery:read` | `project_id`, `status?`, `category_id?`, `limit?` | The decision register, newest decided first; `internal` rows filtered |
-| `decision_get` | `delivery:read` | `project_id`, `decision_id` | One decision with options, links, supersession chain |
-| `decision_categories_list` | `delivery:read` | `project_id` | The project's decision categories |
+Every list tool below also takes `offset` and answers with `offset` /
+`returned_<key>` / `next_offset` (+ `total_<key>` when known) — see
+[Pagination](#pagination). The Paging column names the exception where there is one.
+
+| Tool | Scope | Inputs | Returns | Paging |
+| --- | --- | --- | --- | --- |
+| `projects_list` | `projects:read` | `limit?`, `offset?` | Accessible projects, newest first | offset |
+| `projects_get` | `projects:read` | `project_id` | Project + the caller's effective permissions | — |
+| `project_members_list` | `projects:read` | `project_id`, `limit?`, `offset?` | Members + share roles (needs `members.view`) | offset (a real database page, with an exact `total_members`) |
+| `roadmaps_list` | `roadmaps:read` | `include_visual?`, `limit?`, `offset?` | **Every roadmap you can access** — owner union `project_access`, the same set the dashboard shows (`RoadmapsService.findAll`; it used to be owner-only) — with a portfolio visual by default | offset |
+| `roadmap_get_by_project` | `roadmaps:read` | `project_id`, `include_visual?` | The project's single linked roadmap, or `roadmap: null` (split out of `roadmaps_list`) | — |
+| `roadmap_get_summary` | `roadmaps:read` | `roadmap_id`, `include_visual?` | Compact tree summary (counts, epics, features, milestones) | — (bounded by the size backstop) |
+| `roadmap_get_node` | `roadmaps:read` | `roadmap_id`, `node_id`, `include_children?`, `children_limit?`, `children_offset?` | One node's detail, optionally with children | offset (over the children) |
+| `roadmap_search_nodes` | `roadmaps:read` | `roadmap_id`, `query`, `node_type?`, `limit?`, `offset?` | Matching nodes + resolved ids. `resolution_id` rides the first page only — its choice indexes address that page | offset |
+| `roadmap_list_changes` | `roadmaps:read` | `roadmap_id`, `limit?`, `before?`, `include_operations?` | Committed changes newest-first from the durable log — who, when, what. `before` is a `committed_at` cursor — pass the returned `next_before` to continue; `include_operations` defaults **off** | keyset `before` |
+| `tasks_list` | `roadmaps:read` | `roadmap_id`, `assigned_to_me?`, `status?`, `parent_type?`, `parent_id?`, `assignee_id?`, `keyword?`, `include_completed?`, `limit?`, `offset?` | Filtered tasks in ONE roadmap; `assignee_id` matches any assignee, primary or co-. Across every roadmap, use `my_tasks_list` | offset |
+| `task_comments_list` | `roadmaps:read` | `task_id`, `limit?`, `offset?` | A task's comments oldest-first within the page (newest `limit` of them, default 50, plus the true `total`); authors whitelisted to `id` + `display_name` | offset, counted **backwards from the newest** |
+| `project_knowledge_search` | `knowledge:read` | `roadmap_id`, `query`, `sources?`, `limit?` | Hybrid RAG over chat/comments/activity/brief (empty for guest/project-less roadmaps) | none — relevance-ranked, capped at 20 |
+| `chat_rooms_list` | `chat:read` | `project_id`, `limit?`, `offset?` | Channels the user participates in | offset |
+| `chat_messages_list` | `chat:read` | `room_id`, `before?`, `limit?` | Recent messages newest-first as `{room_id, messages, next_before}` | keyset `before`; pass the returned `next_before` |
+| `chat_messages_search` | `chat:read` | `room_id`, `query`, `limit?`, `offset?` | Keyword search within a room | offset |
+| `roadmap_ai_sessions_list` | `ai-sessions:read` | `roadmap_id`, `archived?`, `limit?`, `offset?` | **Your own** AI planning threads for a roadmap | offset (first 100 threads) |
+| `roadmap_ai_session_messages` | `ai-sessions:read` | `roadmap_id`, `session_id`, `before_seq?`, `after_seq?`, `limit?` | One thread's messages oldest-first, plus a `next_before_seq` cursor | keyset seq |
+| `deliverables_list` | `delivery:read` | `project_id`, `status?`, `limit?`, `offset?` | The deliverables register with acceptance-criteria progress | offset |
+| `deliverable_get` | `delivery:read` | `project_id`, `deliverable_id` | One deliverable with criteria, reviewers, attachments, links | — |
+| `change_requests_list` | `delivery:read` | `project_id`, `status?`, `view?`, `requested_by?`, `limit?`, `offset?` | The change-request register; `view` is the coarse grouping, ignored when `status` is given | offset |
+| `change_request_get` | `delivery:read` | `project_id`, `change_request_id` | One request with impact fields, links, and stamps | — |
+| `risks_list` | `delivery:read` | `project_id`, `kind?`, `status?`, `limit?`, `offset?` | The risk & issue register, severity-first; `internal` rows filtered by `risks.view_internal` | offset |
+| `decisions_list` | `delivery:read` | `project_id`, `status?`, `category_id?`, `limit?`, `offset?` | The decision register, newest decided first; `internal` rows filtered | offset |
+| `decision_get` | `delivery:read` | `project_id`, `decision_id` | One decision with options, links, supersession chain | — |
+| `decision_categories_list` | `delivery:read` | `project_id`, `limit?`, `offset?` | The project's decision categories, under an `items` key | offset |
+
+#### Cross-roadmap reads
+
+[`workspace.tools.ts`](../../backend/src/modules/shared/mcp/tools/workspace.tools.ts).
+Every other read answers about ONE roadmap or ONE project; these three answer
+about everything the caller can reach, and are the MCP twins of the in-app
+assistant's `list_my_tasks` / `search_everything` / `get_workspace_overview`.
+They delegate to `AiContextService`, so their authorization, lane tagging and
+offset paging are the ones already running in the app rather than a second
+implementation. Nothing is forbidden here — an item the caller cannot reach is
+simply absent.
+
+| Tool | Scope | Inputs | Returns | Paging |
+| --- | --- | --- | --- | --- |
+| `my_tasks_list` | `roadmaps:read` | `status?`, `due?` (`overdue`/`today`/`week`/`all`), `roadmap_ids?`, `project_id?`, `workspace_id?`, `limit?`, `offset?` | Tasks assigned to you across every accessible roadmap, with roadmap + project attribution, due dates and the full `assignee_ids` set | offset |
+| `search_everything` | `roadmaps:read` **and** `projects:read` | `query`, `kinds?`, `roadmap_ids?`, `project_id?`, `workspace_id?`, `limit?`, `offset?` | Epics, features, tasks, roadmaps and projects across everything you can access, ranked exact → prefix → substring | offset |
+| `workspace_overview_get` | `projects:read` **and** `roadmaps:read` | `workspace_id?` | Projects, roadmaps (with counts) and teams, laned `current` / `other_workspace` / `shared` | none — each list capped at 60 with `total_<list>`; page the full roadmap set with `roadmaps_list` |
+
+The two tools that mix project rows with roadmap rows require **both** read
+scopes on purpose: a token granted only one half must not learn titles from the
+other.
 
 #### AI-session reads
 
@@ -265,6 +335,10 @@ notify, or post are flagged `destructiveHint` so the host asks the user first.
 | `chat_send_message` | `chat:write` | `project_id`, `room_id`, `content`, `reply_to_id?` | Posts to a channel. `destructiveHint`. |
 | `chat_message_edit` | `chat:write` | `message_id`, `content` | Edits a message **you** sent; shows an "(edited)" marker. `destructiveHint`. |
 | `chat_message_unsend` | `chat:write` | `message_id` | Deletes a message **you** sent. `destructiveHint`. |
+| `project_create` | `projects:write` | `title`, `status?`, `duration?`, `workspace_id?` | Creates a project you own **and its default roadmap** in one call — returns `{project, roadmap}`, so never follow it with `roadmap_create`. Omitting `workspace_id` uses your default workspace. The brief and description are not writable here. |
+| `project_update` | `projects:write` | `project_id`, `title?`, `status?`, `duration?` | Renames a project or changes its status/duration. **Owner only** — anyone else gets `FORBIDDEN`. Description/brief cannot be changed. An empty patch is `VALIDATION_FAILED`. |
+| `roadmap_create` | `roadmaps:write` | `name`, `description?`, `category?`, `status?`, `project_id?` | Creates a roadmap, standalone or attached to a project you can edit. A project holds at most one roadmap, so a second one is `CONFLICT` (`PROJECT_ALREADY_HAS_ROADMAP`). |
+| `roadmap_attach_to_project` | `roadmaps:write` | `roadmap_id`, `project_id` | Links a standalone roadmap to a project, giving its members access. **Cannot be undone here**: an already-linked roadmap cannot be moved. `destructiveHint`. |
 
 The `operations[]` payload is the existing shared contract
 ([`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json)):
@@ -743,6 +817,7 @@ absent or mis-sized.
 | --- | --- |
 | `MCP_ENABLED` | Kill switch — anything but `'true'` keeps the whole surface dark (503) |
 | `MCP_MAX_PAGE_SIZE` | Optional page-size ceiling (default 100) |
+| `MCP_MAX_RESULT_CHARS` | Optional ceiling on one serialized tool result before the whole-item cut (default 24,000) |
 | `MCP_OAUTH_ENABLED` | Second gate — anything but `'true'` keeps Phase 3 dark (discovery 404s, no challenge) |
 | `MCP_OAUTH_JWT_SECRET` | HS256 signing secret for access tokens; **must not** be `SUPABASE_JWT_SECRET`; < 32 chars ⇒ 503 |
 | `MCP_OAUTH_ISSUER` | Authorization-server issuer (falls back to `PUBLIC_API_URL`) |

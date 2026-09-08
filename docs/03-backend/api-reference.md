@@ -393,7 +393,8 @@ module above.
 
 ## mcp · `/mcp` · `/oauth` · `/api/mcp`
 
-The first-party MCP server (read + write since Phase 2). `POST /mcp` is served
+The first-party MCP server (read + write since Phase 2; project/roadmap
+provisioning and cross-roadmap reads since Phase 6). `POST /mcp` is served
 **outside** the `/api` prefix and gated by `McpAuthGuard` (a Proyekto PAT, an
 OAuth access token, or a Supabase session JWT); the whole surface is **503**
 unless `MCP_ENABLED === 'true'`. Writes require an opt-in `*:write` scope on the

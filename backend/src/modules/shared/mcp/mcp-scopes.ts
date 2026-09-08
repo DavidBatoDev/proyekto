@@ -37,6 +37,11 @@ export const MCP_WRITE_SCOPES = [
   // per-credential scope opt-in and the services' own permission gates are the
   // control surface.
   'delivery:write',
+  // Phase 6. Project + roadmap provisioning: create/update a project, create a
+  // roadmap, attach a standalone one to a project. Live on deploy like
+  // delivery:write - the per-credential scope opt-in plus the services' own
+  // owner/permission gates are the control surface, not a feature flag.
+  'projects:write',
 ] as const;
 
 export const MCP_ALL_SCOPES = [

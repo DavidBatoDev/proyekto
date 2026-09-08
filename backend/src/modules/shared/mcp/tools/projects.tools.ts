@@ -5,7 +5,10 @@ import {
   McpToolError,
   assertProjectViewer,
   clampLimit,
+  clampOffset,
   defineTool,
+  pageFromStart,
+  pagingClause,
   requireScope,
   runTool,
   type McpToolDeps,
@@ -23,17 +26,27 @@ export function registerProjectTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List my projects',
       description:
-        'List every Proyekto project the authenticated user can access, newest first.',
-      inputSchema: {},
+        'List every Proyekto project the authenticated user can access, newest first.' +
+        pagingClause(25, 25),
+      inputSchema: {
+        limit: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async () =>
+    async ({ limit, offset }: { limit?: number; offset?: number }) =>
       runTool(async () => {
         requireScope(deps.caller, 'projects:read');
         const projects = await deps.s.projects.listUserProjects(
           deps.caller.userId,
         );
-        return { projects };
+        // The service returns the whole accessible set, so the page is exact
+        // and the total is known.
+        return pageFromStart(projects, 'projects', {
+          offset: clampOffset(offset),
+          limit: clampLimit(limit, deps.s.maxPageSize, 25),
+          complete: true,
+        });
       }),
   );
 
@@ -62,14 +75,24 @@ export function registerProjectTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List project members',
       description:
-        'List the members of a project with their share roles. Requires member-view access.',
+        'List the members of a project with their share roles. Requires member-view access.' +
+        pagingClause(50, 50),
       inputSchema: {
         project_id: z.string().uuid(),
         limit: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ project_id, limit }) =>
+    async ({
+      project_id,
+      limit,
+      offset,
+    }: {
+      project_id: string;
+      limit?: number;
+      offset?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'projects:read');
         const perms = await assertProjectViewer(deps, project_id);
@@ -80,16 +103,29 @@ export function registerProjectTools(server: McpServer, deps: McpToolDeps) {
           );
         }
         const cap = clampLimit(limit, deps.s.maxPageSize, 50);
-        const { data, error } = await deps.s.db
+        const start = clampOffset(offset);
+        // A real database page: `range` is inclusive on both ends and the
+        // exact count comes back in the same round trip.
+        const { data, error, count } = await deps.s.db
           .from('project_access')
-          .select('user_id, role, origin, created_at')
+          .select('user_id, role, origin, created_at', { count: 'exact' })
           .eq('project_id', project_id)
           .order('created_at', { ascending: true })
-          .limit(cap);
+          .range(start, start + cap - 1);
         if (error) {
           throw new McpToolError('INTERNAL', error.message);
         }
-        return { members: data ?? [] };
+        const members = data ?? [];
+        const total =
+          typeof count === 'number' ? count : start + members.length;
+        return {
+          members,
+          offset: start,
+          returned_members: members.length,
+          total_members: total,
+          next_offset:
+            start + members.length < total ? start + members.length : null,
+        };
       }),
   );
 }

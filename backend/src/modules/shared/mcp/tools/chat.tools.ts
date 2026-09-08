@@ -2,7 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   clampLimit,
+  clampOffset,
   defineTool,
+  fetchWindow,
+  pageFetchedList,
+  pageFromStart,
+  pagingClause,
   requireScope,
   runTool,
   type McpToolDeps,
@@ -22,15 +27,32 @@ export function registerChatTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List chat rooms',
       description:
-        'List the chat channels in a project that the authenticated user participates in.',
-      inputSchema: { project_id: z.string().uuid() },
+        'List the chat channels in a project that the authenticated user participates in.' +
+        pagingClause(50, 50),
+      inputSchema: {
+        project_id: z.string().uuid(),
+        limit: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ project_id }) =>
+    async ({
+      project_id,
+      limit,
+      offset,
+    }: {
+      project_id: string;
+      limit?: number;
+      offset?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'chat:read');
         const rooms = await deps.s.chat.listRooms(project_id, uid);
-        return { rooms };
+        return pageFromStart(rooms, 'rooms', {
+          offset: clampOffset(offset),
+          limit: clampLimit(limit, deps.s.maxPageSize, 50),
+          complete: true,
+        });
       }),
   );
 
@@ -40,7 +62,7 @@ export function registerChatTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'List chat messages',
       description:
-        'List recent messages in a chat room the user participates in, newest first. Use `before` (an ISO timestamp) to page backwards.',
+        'List recent messages in a chat room the user participates in, newest first. Use `before` (an ISO timestamp) to page backwards — pass the returned `next_before` to continue.',
       inputSchema: {
         room_id: z.string().uuid(),
         before: z.string().optional(),
@@ -51,13 +73,22 @@ export function registerChatTools(server: McpServer, deps: McpToolDeps) {
     async ({ room_id, before, limit }) =>
       runTool(async () => {
         requireScope(deps.caller, 'chat:read');
-        const messages = await deps.s.chat.listRoomMessages(
+        const size = clampLimit(limit, deps.s.maxPageSize, 30);
+        // The service already answers {room_id, messages, next_before}; the
+        // tool used to wrap that whole object as `messages`, hiding the cursor
+        // one level down. Flatten it so the keyset page is what it looks like.
+        const page = await deps.s.chat.listRoomMessages(
           room_id,
           uid,
           before,
-          clampLimit(limit, deps.s.maxPageSize, 30),
+          size,
         );
-        return { messages };
+        return {
+          room_id: page.room_id,
+          messages: page.messages,
+          returned_messages: page.messages.length,
+          next_before: page.next_before,
+        };
       }),
   );
 
@@ -67,11 +98,13 @@ export function registerChatTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'Search chat messages',
       description:
-        'Search the messages of a chat room the user participates in by keyword.',
+        'Search the messages of a chat room the user participates in by keyword.' +
+        pagingClause(50, 30),
       inputSchema: {
         room_id: z.string().uuid(),
         query: z.string().min(1),
         limit: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
       },
       annotations: {
         readOnlyHint: true,
@@ -79,15 +112,34 @@ export function registerChatTools(server: McpServer, deps: McpToolDeps) {
         openWorldHint: true,
       },
     },
-    async ({ room_id, query, limit }) =>
+    async ({
+      room_id,
+      query,
+      limit,
+      offset,
+    }: {
+      room_id: string;
+      query: string;
+      limit?: number;
+      offset?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'chat:read');
-        return deps.s.chat.searchRoomMessages(
+        const size = clampLimit(limit, deps.s.maxPageSize, 30);
+        const start = clampOffset(offset);
+        // The service ranks from the start and caps at 50.
+        const window = fetchWindow(start, size, 50);
+        const result = (await deps.s.chat.searchRoomMessages(
           room_id,
           uid,
           query,
-          clampLimit(limit, deps.s.maxPageSize, 30),
-        );
+          window,
+        )) as unknown as Record<string, unknown>;
+        return pageFetchedList(result, 'results', {
+          offset: start,
+          limit: size,
+          window,
+        });
       }),
   );
 }

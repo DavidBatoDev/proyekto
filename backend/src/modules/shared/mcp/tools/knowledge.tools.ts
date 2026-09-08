@@ -22,7 +22,7 @@ export function registerKnowledgeTools(server: McpServer, deps: McpToolDeps) {
     {
       title: 'Search project knowledge',
       description:
-        'Semantic + keyword search across the project knowledge behind a roadmap: chat messages, task comments, activity log, and the brief. Only content you are authorized to see is searched.',
+        'Semantic + keyword search across the project knowledge behind a roadmap: chat messages, task comments, activity log, and the brief. Only content you are authorized to see is searched. Ranked by relevance and capped at 20 — narrow the query rather than paging.',
       inputSchema: {
         roadmap_id: z.string().uuid(),
         query: z.string().min(1).max(500),
@@ -35,14 +35,30 @@ export function registerKnowledgeTools(server: McpServer, deps: McpToolDeps) {
         openWorldHint: true,
       },
     },
-    async ({ roadmap_id, query, sources, limit }) =>
+    async ({
+      roadmap_id,
+      query,
+      sources,
+      limit,
+    }: {
+      roadmap_id: string;
+      query: string;
+      sources?: (typeof KNOWLEDGE_SEARCH_SOURCE_TYPES)[number][];
+      limit?: number;
+    }) =>
       runTool(async () => {
         requireScope(deps.caller, 'knowledge:read');
-        return deps.s.knowledge.searchKnowledge(
+        const result = (await deps.s.knowledge.searchKnowledge(
           roadmap_id,
           { id: deps.caller.userId },
           { query, sources, limit: clampLimit(limit, 20, 10) },
-        );
+        )) as unknown as Record<string, unknown>;
+        // Deliberately not offset-paged: an offset over a relevance ranking is
+        // not stable. Say how many came back so the host can judge coverage.
+        const results: unknown[] = Array.isArray(result.results)
+          ? (result.results as unknown[])
+          : [];
+        return { ...result, returned_results: results.length };
       }),
   );
 }

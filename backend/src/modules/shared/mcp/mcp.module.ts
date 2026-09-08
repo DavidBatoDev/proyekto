@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AiContextModule } from '../../execution/ai-context/ai-context.module';
 import { ProjectsModule } from '../../execution/projects/projects.module';
 import { RoadmapsModule } from '../../execution/roadmaps/roadmaps.module';
 import { ChatModule } from '../../execution/chat/chat.module';
@@ -32,7 +33,14 @@ import { WellKnownController } from './oauth/well-known.controller';
  *    flag the new scope would go live on deploy with no activation step.
  */
 @Module({
-  imports: [ProjectsModule, RoadmapsModule, ChatModule, DeliveryModule],
+  imports: [
+    ProjectsModule,
+    RoadmapsModule,
+    ChatModule,
+    DeliveryModule,
+    // The cross-roadmap read tools reuse the in-app assistant's context reader.
+    AiContextModule,
+  ],
   controllers: [
     McpController,
     McpTokensController,

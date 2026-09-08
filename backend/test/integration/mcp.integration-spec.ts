@@ -108,6 +108,14 @@ describe('MCP read-only endpoint (Phase 1)', () => {
         'tasks_list',
         'project_knowledge_search',
         'chat_rooms_list',
+        // Cross-roadmap reads and the project/roadmap writes.
+        'my_tasks_list',
+        'search_everything',
+        'workspace_overview_get',
+        'project_create',
+        'project_update',
+        'roadmap_create',
+        'roadmap_attach_to_project',
       ]),
     );
   });
@@ -156,5 +164,59 @@ describe('MCP read-only endpoint (Phase 1)', () => {
     expect(
       outsiderProjects.some((p: { id: string }) => p.id === projectId),
     ).toBe(false);
+  });
+
+  it('pages a list with offset and reports where to continue', async () => {
+    const page = async (offset?: number) => {
+      const res = await call(ownerToken, 'projects_list', {
+        limit: 1,
+        ...(offset === undefined ? {} : { offset }),
+      }).expect(200);
+      return JSON.parse(res.body.result.content[0].text);
+    };
+
+    const first = await page();
+    expect(first.returned_projects).toBe(first.projects.length);
+    expect(first.offset).toBe(0);
+    expect(typeof first.total_projects).toBe('number');
+
+    if (first.next_offset === null) {
+      // The fixture owner has a single project: the page must say it ended.
+      expect(first.total_projects).toBe(first.returned_projects);
+      return;
+    }
+    const second = await page(first.next_offset);
+    expect(second.offset).toBe(first.next_offset);
+    const firstIds = first.projects.map((p: { id: string }) => p.id);
+    const secondIds = second.projects.map((p: { id: string }) => p.id);
+    // Pages never overlap.
+    expect(firstIds.filter((id: string) => secondIds.includes(id))).toEqual([]);
+  });
+
+  it('answers the cross-roadmap reads for the caller only', async () => {
+    const res = await call(ownerToken, 'my_tasks_list', { limit: 5 }).expect(
+      200,
+    );
+    expect(res.body.result?.isError).toBeFalsy();
+    const body = JSON.parse(res.body.result.content[0].text);
+    expect(Array.isArray(body.tasks)).toBe(true);
+    expect(body.offset).toBe(0);
+    expect(body.returned_tasks).toBe(body.tasks.length);
+
+    // The overview is the first MCP tool that knows workspaces exist.
+    const overview = await call(
+      ownerToken,
+      'workspace_overview_get',
+      {},
+    ).expect(200);
+    const overviewBody = JSON.parse(overview.body.result.content[0].text);
+    expect(Array.isArray(overviewBody.projects)).toBe(true);
+    expect(typeof overviewBody.total_projects).toBe('number');
+
+    // search_everything needs BOTH read scopes; the no-scope token has neither.
+    const denied = await call(noScopeToken, 'search_everything', {
+      query: 'anything',
+    }).expect(200);
+    expect(denied.body.result?.isError).toBe(true);
   });
 });

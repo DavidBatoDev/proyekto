@@ -1,6 +1,6 @@
 # Modules
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-08 · **Status:** current
 
 The backend is **42 feature modules** under
 [`backend/src/modules/`](../../backend/src/modules/) (counted from directories holding their own
@@ -181,8 +181,11 @@ family, and `changes?run_id=|session_id=`. Four services
 (`AiContextService`, `AiContextRefsService`, `AiContextKnowledgeService`,
 `AiContextProjectService`) over one repository that wraps the three
 `ai_context_*` RPCs and the batch `.in()` loads. It imports `RoadmapsModule`,
-`ProjectsModule`, `WorkspacesModule`, `TeamsModule` and nothing imports it, so the
-`RoadmapsModule → ProjectsModule → WorkspacesModule` chain stays acyclic. Every
+`ProjectsModule`, `WorkspacesModule`, `TeamsModule`, and exports
+`AiContextService` to `McpModule` so the connector's cross-roadmap read tools
+reuse the same reader as the in-app assistant. The
+`RoadmapsModule → ProjectsModule → WorkspacesModule` chain stays acyclic because
+nothing imports `McpModule` except `AppModule`. Every
 read starts from an already-authorized set and **every denial is a 404**. Full
 page: [AI context API](./ai-context-api.md).
 
@@ -266,7 +269,11 @@ module. See [Agent & Roadmap AI](../05-agent-ai/README.md).
 plus Personal Access Token management (`/api/mcp/tokens`, table
 `mcp_personal_access_tokens`). Reuses the projects/roadmaps/chat/knowledge/task
 services in-process so every tool re-checks live authorization; writes are gated
-by opt-in `*:write` scopes (Phase 2). Ships dark behind `MCP_ENABLED`. The
+by opt-in `*:write` scopes (Phase 2). It also imports `AiContextModule` for the
+cross-roadmap reads (`my_tasks_list`, `search_everything`,
+`workspace_overview_get`), so those answer with the same authorization and offset
+paging as the in-app assistant. Every list tool is offset-paged. Ships dark
+behind `MCP_ENABLED`. The
 `oauth/` sub-tree (Phase 3) is a full **OAuth 2.1 authorization server** —
 discovery documents at the domain root, CIMD + RFC 7591 client identity
 (`mcp_oauth_clients`), a PKCE authorization-code flow with a first-party consent

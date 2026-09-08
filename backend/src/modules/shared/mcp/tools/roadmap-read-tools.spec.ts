@@ -137,7 +137,13 @@ describe('MCP roadmap_list_changes', () => {
     const res = await handlers.roadmap_list_changes({ roadmap_id: 'r1' });
 
     expect(isError(res)).toBeFalsy();
-    expect(payload(res)).toEqual({ changes: [row] });
+    // Keyset paging: `changes` keeps its shape and the next cursor rides
+    // alongside it — null here because the page was not full.
+    expect(payload(res)).toEqual({
+      changes: [row],
+      returned_changes: 1,
+      next_before: null,
+    });
   });
 
   it('surfaces a denied roadmap as a structured error, not a raw throw', async () => {
@@ -275,7 +281,15 @@ describe('MCP roadmaps_list', () => {
     // findAll is the owner UNION project_access read; the owner-only
     // findByUser would hide roadmaps shared through a project.
     expect(findAll).toHaveBeenCalledWith('user-1');
-    expect(payload(res)).toEqual({ roadmaps });
+    // The whole accessible set is fetched, so the page is exact and the total
+    // is known; the `roadmaps` key itself never changes shape.
+    expect(payload(res)).toEqual({
+      roadmaps,
+      offset: 0,
+      returned_roadmaps: 2,
+      total_roadmaps: 2,
+      next_offset: null,
+    });
   });
 });
 
