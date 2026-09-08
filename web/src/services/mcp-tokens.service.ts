@@ -19,6 +19,7 @@ export const MCP_WRITE_SCOPES = [
 	"tasks:assign",
 	"chat:write",
 	"delivery:write",
+	"projects:write",
 ] as const;
 
 export type McpReadScope = (typeof MCP_READ_SCOPES)[number];
@@ -37,6 +38,7 @@ export const MCP_SCOPE_LABELS: Record<McpScope, string> = {
 	"tasks:assign": "Assign tasks",
 	"chat:write": "Post & delete chat messages",
 	"delivery:write": "Edit delivery registers",
+	"projects:write": "Create & edit projects",
 };
 
 /** Non-secret token metadata returned by the list endpoint. */

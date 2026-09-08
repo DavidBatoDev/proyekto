@@ -112,6 +112,10 @@ export const ACTIVITY_ACTIONS = {
 	MCP_TASK_COMMENT_ADD: "mcp.task_comment_add",
 	MCP_EPIC_COMMENT_ADD: "mcp.epic_comment_add",
 	MCP_FEATURE_COMMENT_ADD: "mcp.feature_comment_add",
+	MCP_PROJECT_CREATE: "mcp.project_create",
+	MCP_PROJECT_UPDATE: "mcp.project_update",
+	MCP_ROADMAP_CREATE: "mcp.roadmap_create",
+	MCP_ROADMAP_ATTACHED: "mcp.roadmap_attached",
 	MCP_CHAT_SEND_MESSAGE: "mcp.chat_send_message",
 	MCP_CHAT_MESSAGE_EDIT: "mcp.chat_message_edit",
 	MCP_CHAT_MESSAGE_UNSEND: "mcp.chat_message_unsend",
@@ -158,6 +162,8 @@ export type ActivityAction =
 	(typeof ACTIVITY_ACTIONS)[keyof typeof ACTIVITY_ACTIONS];
 
 export const ACTIVITY_ENTITY_TYPES = [
+	// Emitted by mcp/tools/project-write.tools.ts.
+	"project",
 	"roadmap",
 	"epic",
 	"feature",
@@ -606,6 +612,22 @@ export const ACTIVITY_COPY: Record<ActivityAction, ActivityCopy> = {
 	"mcp.feature_comment_add": mcp(
 		"commented on a feature via the AI connector",
 		"a feature",
+	),
+	"mcp.project_create": mcp(
+		"created a project via the AI connector",
+		"a project",
+	),
+	"mcp.project_update": mcp(
+		"updated a project via the AI connector",
+		"a project",
+	),
+	"mcp.roadmap_create": mcp(
+		"created a roadmap via the AI connector",
+		"a roadmap",
+	),
+	"mcp.roadmap_attached": mcp(
+		"attached a roadmap to the project via the AI connector",
+		"a roadmap",
 	),
 	"mcp.chat_send_message": mcp(
 		"sent a chat message via the AI connector",

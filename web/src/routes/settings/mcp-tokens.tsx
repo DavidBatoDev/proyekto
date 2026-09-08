@@ -131,6 +131,11 @@ const SCOPE_META: Record<
 		hint: "Create & update entries, run their lifecycles",
 		Icon: ClipboardCheck,
 	},
+	"projects:write": {
+		label: "Create & edit projects",
+		hint: "New projects and roadmaps; renames are owner-only",
+		Icon: FolderKanban,
+	},
 };
 
 function formatDate(value: string | null): string {
