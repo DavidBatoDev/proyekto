@@ -296,6 +296,7 @@ export interface ProjectInvite {
 		id: string;
 		title: string;
 		status: string;
+		workspace_id?: string | null;
 	} | null;
 	inviter?: {
 		id: string;

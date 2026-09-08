@@ -3,7 +3,12 @@ import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
-import type { Project } from "@/services/project.service";
+import { belongsToWorkspace, filterByWorkspace } from "@/lib/workspaceScope";
+import {
+	type Project,
+	type ProjectInvite,
+	projectService,
+} from "@/services/project.service";
 import {
 	listMyTeamInvites,
 	listMyTeams,
@@ -13,9 +18,10 @@ import {
 import { useUser } from "@/stores/authStore";
 import { dashboardProjectsQueryOptions } from "./useDashboardProjectsQuery";
 import { roadmapsPreviewQueryOptions } from "./useRoadmapsPreviewQuery";
+import { useCurrentWorkspace } from "./useWorkspaceQueries";
 
 /**
- * Does this account have anything on it yet?
+ * Does the selected workspace have any visible dashboard content?
  *
  * The dashboard used to render Teams, Projects and Roadmaps unconditionally,
  * so a new account met five "nothing here" panels (those three plus Meetings
@@ -24,7 +30,7 @@ import { roadmapsPreviewQueryOptions } from "./useRoadmapsPreviewQuery";
  *
  * Every query key here is a copy of the one its own grid already uses, so
  * these are cache reads, not extra requests — mounting this hook alongside the
- * grids costs one render, not four round-trips.
+ * grids reuses cached results.
  *
  * `isEmpty` is derived from the TOUR-DEMO values, never the raw query data.
  * A tour replay swaps fixtures in (TourDemoContext), and the dashboard tour
@@ -35,6 +41,14 @@ import { roadmapsPreviewQueryOptions } from "./useRoadmapsPreviewQuery";
  */
 export function useDashboardContent() {
 	const user = useUser();
+	const { workspace, isLoading: workspaceLoading } = useCurrentWorkspace();
+	const workspaceId = workspace?.id ?? null;
+	const projectInvitesQuery = useQuery({
+		queryKey: ["projects", "my-invites"],
+		queryFn: () => projectService.getMyInvites(),
+		enabled: Boolean(user?.id),
+		staleTime: 30_000,
+	});
 
 	const projectsQuery = useQuery({
 		...dashboardProjectsQueryOptions(user?.id),
@@ -57,17 +71,39 @@ export function useDashboardContent() {
 	const isDemo = useTourDemoActive();
 	const projects = useTourDemo<Project[]>(
 		"projects",
-		(projectsQuery.data as Project[] | undefined) ?? [],
+		filterByWorkspace(
+			(projectsQuery.data as Project[] | undefined) ?? [],
+			workspaceId,
+		),
 	);
-	const roadmaps = useTourDemo("roadmaps", roadmapsQuery.data ?? []);
+	const roadmaps = useTourDemo(
+		"roadmaps",
+		(roadmapsQuery.data ?? []).filter((roadmap) =>
+			belongsToWorkspace(roadmap.project, workspaceId),
+		),
+	);
 	const teams = useTourDemo<Team[]>(
 		"teams",
-		(teamsQuery.data as Team[] | undefined) ?? [],
+		filterByWorkspace(
+			(teamsQuery.data as Team[] | undefined) ?? [],
+			workspaceId,
+		),
 	);
 	const teamInvites = useTourDemo<TeamInvite[]>(
 		"teamInvites",
 		((teamInvitesQuery.data as TeamInvite[] | undefined) ?? []).filter(
-			(invite) => invite.status === "pending",
+			(invite) =>
+				invite.status === "pending" &&
+				belongsToWorkspace(invite.team, workspaceId),
+		),
+	);
+
+	const projectInvites = useTourDemo<ProjectInvite[]>(
+		"projectInvites",
+		(projectInvitesQuery.data ?? []).filter(
+			(invite) =>
+				invite.status === "pending" &&
+				belongsToWorkspace(invite.project, workspaceId),
 		),
 	);
 
@@ -76,22 +112,27 @@ export function useDashboardContent() {
 	// yanked away, which reads as a bug to anyone who already has projects.
 	const isLoading =
 		!isDemo &&
-		(projectsQuery.isPending ||
+		(workspaceLoading ||
+			!workspaceId ||
+			projectInvitesQuery.isPending ||
+			projectsQuery.isPending ||
 			roadmapsQuery.isPending ||
 			teamsQuery.isPending ||
 			teamInvitesQuery.isPending);
 
-	// A pending team invite counts as content: someone who has been invited
+	// A pending project or team invite counts as content: someone who has been invited
 	// somewhere is not staring at a blank account, and the invite card is the
 	// most useful thing we could show them.
 	const isEmpty =
 		!isLoading &&
+		projectInvites.length === 0 &&
 		projects.length === 0 &&
 		roadmaps.length === 0 &&
 		teams.length === 0 &&
 		teamInvites.length === 0;
 
 	return {
+		projectInvites,
 		projects,
 		roadmaps,
 		teams,

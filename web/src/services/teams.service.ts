@@ -215,7 +215,12 @@ export interface TeamInvite {
 	responded_at: string | null;
 	created_at: string;
 	updated_at: string;
-	team?: { id: string; name: string; avatar_url: string | null } | null;
+	team?: {
+		id: string;
+		name: string;
+		avatar_url: string | null;
+		workspace_id?: string | null;
+	} | null;
 	invited_by_profile?: ProfileSummary | null;
 	invitee?: ProfileSummary | null;
 	/**

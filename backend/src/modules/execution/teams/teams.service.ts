@@ -247,7 +247,12 @@ export interface TeamInviteRow {
   responded_at: string | null;
   created_at: string;
   updated_at: string;
-  team?: { id: string; name: string; avatar_url: string | null } | null;
+  team?: {
+    id: string;
+    name: string;
+    avatar_url: string | null;
+    workspace_id: string | null;
+  } | null;
   invited_by_profile?: {
     id: string;
     display_name: string | null;
@@ -264,7 +269,7 @@ export interface TeamInviteRow {
 
 const TEAM_INVITE_SELECT = `
   *,
-  team:teams!team_invites_team_id_fkey(id, name, avatar_url),
+  team:teams!team_invites_team_id_fkey(id, name, avatar_url, workspace_id),
   invited_by_profile:profiles!team_invites_invited_by_fkey(id, display_name, avatar_url, email),
   invitee:profiles!team_invites_invitee_id_fkey(id, display_name, avatar_url, email)
 `;
@@ -306,7 +311,7 @@ export class TeamsService {
         is_personal: true,
       })
       .select('*')
-      .single();
+      .single<TeamRow>();
 
     if (error) {
       // Race: another caller won the partial unique index. Re-fetch.
@@ -323,17 +328,17 @@ export class TeamsService {
 
     // Owner gets a team_members row, mirroring createTeam().
     const insertOwner = await this.supabase.from('team_members').insert({
-      team_id: (created as TeamRow).id,
+      team_id: created.id,
       user_id: userId,
       role: 'owner',
     });
     if (insertOwner.error) {
       this.logger.error(
-        `Personal team ${(created as TeamRow).id} created but owner team_members insert failed: ${insertOwner.error.message}`,
+        `Personal team ${created.id} created but owner team_members insert failed: ${insertOwner.error.message}`,
       );
       throw new Error(insertOwner.error.message);
     }
-    return created as TeamRow;
+    return created;
   }
 
   async findPersonalTeam(userId: string): Promise<TeamRow | null> {
@@ -342,9 +347,9 @@ export class TeamsService {
       .select('*')
       .eq('owner_id', userId)
       .eq('is_personal', true)
-      .maybeSingle();
+      .maybeSingle<TeamRow>();
     if (error) throw new Error(error.message);
-    return (data as TeamRow | null) ?? null;
+    return data ?? null;
   }
 
   private async buildDefaultPersonalTeamName(userId: string): Promise<string> {
@@ -375,8 +380,12 @@ export class TeamsService {
       .eq('user_id', userId);
     if (memberships.error) throw new Error(memberships.error.message);
 
-    const memberTeamIds = (memberships.data ?? []).map((m) => m.team_id);
-    const ownedIds = new Set((owned.data ?? []).map((t) => t.id));
+    const memberTeamIds = (memberships.data ?? []).map(
+      (m) => m.team_id as string,
+    );
+    const ownedIds = new Set(
+      ((owned.data ?? []) as TeamRow[]).map((t) => t.id),
+    );
     const extraIds = memberTeamIds.filter((id) => !ownedIds.has(id));
 
     let extras: TeamRow[] = [];
@@ -476,14 +485,14 @@ export class TeamsService {
         tags: normalizeTeamTags(dto.tags),
       })
       .select('*')
-      .single();
+      .single<TeamRow>();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to create team');
     }
     // Auto-add owner as a team_members row so triggers and RLS treat
     // the owner as a member without needing a separate flow.
     const insertOwner = await this.supabase.from('team_members').insert({
-      team_id: (data as TeamRow).id,
+      team_id: data.id,
       user_id: userId,
       role: 'owner',
     });
@@ -496,15 +505,15 @@ export class TeamsService {
       const cleanup = await this.supabase
         .from('teams')
         .delete()
-        .eq('id', (data as TeamRow).id);
+        .eq('id', data.id);
       if (cleanup.error) {
         this.logger.error(
-          `Orphan team ${(data as TeamRow).id}: owner insert failed (${insertOwner.error.message}) and rollback failed (${cleanup.error.message})`,
+          `Orphan team ${data.id}: owner insert failed (${insertOwner.error.message}) and rollback failed (${cleanup.error.message})`,
         );
       }
       throw new Error(insertOwner.error.message);
     }
-    return data as TeamRow;
+    return data;
   }
 
   async updateTeam(
@@ -610,11 +619,11 @@ export class TeamsService {
       .update(patch)
       .eq('id', teamId)
       .select('*')
-      .single();
+      .single<TeamRow>();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to update team');
     }
-    return data as TeamRow;
+    return data;
   }
 
   /**
@@ -667,8 +676,7 @@ export class TeamsService {
       if (!intInRange(p.start_day, 1, 31)) {
         throw new BadRequestException(`Period "${id}" start_day must be 1–31`);
       }
-      const endDay: number | 'EOM' =
-        p.end_day === 'EOM' ? 'EOM' : (p.end_day as number);
+      const endDay: number | 'EOM' = p.end_day === 'EOM' ? 'EOM' : p.end_day;
       if (endDay !== 'EOM' && !intInRange(endDay, 1, 31)) {
         throw new BadRequestException(
           `Period "${id}" end_day must be 1–31 or "EOM"`,
@@ -998,11 +1006,11 @@ export class TeamsService {
       .from('team_members')
       .insert(payload)
       .select(TEAM_MEMBER_SELECT)
-      .single();
+      .single<TeamMemberRow>();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to add team member');
     }
-    return data as TeamMemberRow;
+    return data;
   }
 
   async updateMember(
@@ -1033,11 +1041,11 @@ export class TeamsService {
       .eq('team_id', teamId)
       .eq('user_id', targetUserId)
       .select(TEAM_MEMBER_SELECT)
-      .single();
+      .single<TeamMemberRow>();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to update team member');
     }
-    return data as TeamMemberRow;
+    return data;
   }
 
   async removeMember(
@@ -1072,10 +1080,10 @@ export class TeamsService {
       .from('teams')
       .select('*')
       .eq('id', teamId)
-      .maybeSingle();
+      .maybeSingle<TeamRow>();
     if (error) throw new Error(error.message);
     if (!data) throw new NotFoundException('Team not found');
-    return data as TeamRow;
+    return data;
   }
 
   /**
@@ -1213,11 +1221,11 @@ export class TeamsService {
         })
         .eq('id', (existing as { id: string }).id)
         .select(TEAM_INVITE_SELECT)
-        .single();
+        .single<Record<string, unknown>>();
       if (error || !data) {
         throw new Error(error?.message ?? 'Failed to refresh invite');
       }
-      row = data as Record<string, unknown>;
+      row = data;
     } else {
       const { data, error } = await this.supabase
         .from('team_invites')
@@ -1232,11 +1240,11 @@ export class TeamsService {
           status: 'pending',
         })
         .select(TEAM_INVITE_SELECT)
-        .single();
+        .single<Record<string, unknown>>();
       if (error || !data) {
         throw new Error(error?.message ?? 'Failed to create invite');
       }
-      row = data as Record<string, unknown>;
+      row = data;
     }
 
     // Hoisted out of the notification branch below: the email needs both, and
@@ -1409,11 +1417,11 @@ export class TeamsService {
       .eq('team_id', teamId)
       .eq('status', 'pending')
       .select(TEAM_INVITE_SELECT)
-      .single();
+      .single<TeamInviteRow>();
     if (error || !data) {
       throw new NotFoundException('Pending invite not found');
     }
-    return data as unknown as TeamInviteRow;
+    return data;
   }
 
   async respondInvite(
@@ -1427,7 +1435,7 @@ export class TeamsService {
       .from('team_invites')
       .select('*')
       .eq('id', inviteId)
-      .maybeSingle();
+      .maybeSingle<TeamInviteRow>();
     if (fetchErr) throw new Error(fetchErr.message);
     if (!invite) throw new NotFoundException('Invite not found');
     if (invite.invitee_id !== userId) {
@@ -1466,12 +1474,12 @@ export class TeamsService {
       })
       .eq('id', inviteId)
       .select(TEAM_INVITE_SELECT)
-      .single();
+      .single<TeamInviteRow>();
     if (updateErr || !updated) {
       throw new Error(updateErr?.message ?? 'Failed to update invite');
     }
 
-    return updated as unknown as TeamInviteRow;
+    return updated;
   }
 
   private async getDisplayName(userId: string): Promise<string | null> {
@@ -1479,7 +1487,12 @@ export class TeamsService {
       .from('profiles')
       .select('display_name, first_name, last_name, email')
       .eq('id', userId)
-      .maybeSingle();
+      .maybeSingle<{
+        display_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+      }>();
     if (!data) return null;
     const composed = [data.first_name, data.last_name]
       .filter(Boolean)

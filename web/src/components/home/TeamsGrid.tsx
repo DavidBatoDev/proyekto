@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowRight, Mail, User } from "lucide-react";
-import { useMemo } from "react";
 import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
@@ -10,7 +9,7 @@ import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
-import { groupByWorkspace } from "@/lib/workspaceScope";
+import { belongsToWorkspace, filterByWorkspace } from "@/lib/workspaceScope";
 import {
 	listMyTeamInvites,
 	listMyTeams,
@@ -28,6 +27,8 @@ type TeamsCard =
 
 export function TeamsGrid() {
 	const user = useUser();
+	const { workspace, isLoading: workspaceLoading } = useCurrentWorkspace();
+	const workspaceId = workspace?.id ?? null;
 	const teamsQuery = useQuery({
 		queryKey: ["teams", "mine", user?.id ?? "anonymous"] as const,
 		queryFn: listMyTeams,
@@ -45,42 +46,31 @@ export function TeamsGrid() {
 	// real rows. Returns the real value untouched when no tour is replaying.
 	const teams = useTourDemo<Team[]>(
 		"teams",
-		(teamsQuery.data as Team[] | undefined) ?? [],
+		filterByWorkspace(
+			(teamsQuery.data as Team[] | undefined) ?? [],
+			workspaceId,
+		),
 	);
 	const pendingInvites = useTourDemo<TeamInvite[]>(
 		"teamInvites",
 		((invitesQuery.data as TeamInvite[] | undefined) ?? []).filter(
-			(i) => i.status === "pending",
+			(i) => i.status === "pending" && belongsToWorkspace(i.team, workspaceId),
 		),
 	);
 	const isDemo = useTourDemoActive();
-	const isLoading = !isDemo && (teamsQuery.isPending || invitesQuery.isPending);
+	const isLoading =
+		!isDemo &&
+		(workspaceLoading ||
+			!workspaceId ||
+			teamsQuery.isPending ||
+			invitesQuery.isPending);
 
-	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
 	const { workspaceSlug } = useParams({ from: "/w/$workspaceSlug" });
-	const myWorkspaceIds = useMemo(
-		() => workspaces.map((item) => item.id),
-		[workspaces],
-	);
-
-	// Scoped to the workspace that is open, plus anything reached through
-	// project access rather than membership. Teams in the user's OTHER
-	// workspaces are left out — they appear on switching. Flattened rather than
-	// split into two labelled groups, because this is a three-card preview
-	// strip, not the full list the sidebar and /teams render.
-	const visibleTeams = useMemo(() => {
-		const grouped = groupByWorkspace(
-			teams,
-			currentWorkspace?.id ?? null,
-			myWorkspaceIds,
-		);
-		return [...grouped.current, ...grouped.shared];
-	}, [teams, currentWorkspace?.id, myWorkspaceIds]);
 
 	// Dashboard preview is a single row: pending invites first (they're
 	// time-sensitive), then the 3 most recently updated teams. Anything
 	// beyond that lives on the /teams page.
-	const recentTeams = [...visibleTeams]
+	const recentTeams = [...teams]
 		.sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
 		.slice(0, 3);
 

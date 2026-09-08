@@ -5,7 +5,9 @@ import type { RoadmapPreview } from "@/api/endpoints/roadmap";
 import { DashboardCreateActions } from "@/components/home/DashboardCreateActions";
 import { TourDemoBanner } from "@/components/tour/TourDemoBanner";
 import { roadmapsPreviewQueryOptions } from "@/hooks/useRoadmapsPreviewQuery";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { useTourDemo } from "@/lib/tours/demo/TourDemoContext";
+import { belongsToWorkspace, filterByWorkspace } from "@/lib/workspaceScope";
 import { type Meeting, meetingsService } from "@/services/meetings.service";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
@@ -48,6 +50,8 @@ export function DashboardWidgets({
 	children?: ReactNode;
 }) {
 	const user = useUser();
+	const { workspace } = useCurrentWorkspace();
+	const workspaceId = workspace?.id ?? null;
 	const { profile } = useAuthStore();
 	const projectsQueryKey = [
 		"dashboard",
@@ -85,8 +89,20 @@ export function DashboardWidgets({
 	// tour replay, so the meeting and activity panels have something to show.
 	const projects = useTourDemo<Project[]>(
 		"projects",
-		(projectsQuery.data as Project[] | undefined) ?? [],
+		filterByWorkspace(
+			(projectsQuery.data as Project[] | undefined) ?? [],
+			workspaceId,
+		),
 	);
+
+	const workspaceRoadmaps = useMemo(
+		() =>
+			(timelineQuery.data ?? []).filter((roadmap) =>
+				belongsToWorkspace(roadmap.project, workspaceId),
+			),
+		[timelineQuery.data, workspaceId],
+	);
+	const roadmaps = useTourDemo<RoadmapPreview[]>("roadmaps", workspaceRoadmaps);
 
 	const projectTitleById = useMemo(() => {
 		const map = new Map<string, string>();
@@ -103,7 +119,12 @@ export function DashboardWidgets({
 		return meetings
 			.filter((meeting) => {
 				const parsed = new Date(meeting.scheduled_at).getTime();
-				return Number.isFinite(parsed) && parsed >= nowMs;
+				return (
+					Number.isFinite(parsed) &&
+					parsed >= nowMs &&
+					Boolean(workspaceId) &&
+					(!meeting.project_id || projectTitleById.has(meeting.project_id))
+				);
 			})
 			.sort(
 				(a, b) =>
@@ -117,10 +138,10 @@ export function DashboardWidgets({
 					? (projectTitleById.get(meeting.project_id) ?? null)
 					: null,
 			}));
-	}, [meetingsQuery.data, projectTitleById]);
+	}, [meetingsQuery.data, projectTitleById, workspaceId]);
 
 	const activityItems = useMemo(() => {
-		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
+		const validRoadmaps = roadmaps;
 		const currentUserId = user?.id ?? null;
 
 		const flattened = validRoadmaps.flatMap((roadmap, roadmapIndex: number) =>
@@ -193,7 +214,7 @@ export function DashboardWidgets({
 
 			return a.id.localeCompare(b.id);
 		});
-	}, [timelineQuery.data, user?.id, projectTitleById]);
+	}, [roadmaps, user?.id, projectTitleById]);
 
 	const assignedToMeCount = activityItems.filter(
 		(item) => item.isAssignedToCurrentUser,

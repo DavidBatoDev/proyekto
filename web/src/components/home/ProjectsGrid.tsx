@@ -19,7 +19,7 @@ import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
-import { groupByWorkspace } from "@/lib/workspaceScope";
+import { belongsToWorkspace, filterByWorkspace } from "@/lib/workspaceScope";
 import {
 	type Project,
 	type ProjectInvite,
@@ -88,6 +88,8 @@ function formatInviteSentLabel(value: string): string {
 
 export function ProjectsGrid() {
 	const user = useUser();
+	const { workspace, isLoading: workspaceLoading } = useCurrentWorkspace();
+	const workspaceId = workspace?.id ?? null;
 	const queryClient = useQueryClient();
 	const projectsQueryKey = useMemo(
 		() => dashboardProjectsQueryOptions(user?.id).queryKey,
@@ -101,23 +103,14 @@ export function ProjectsGrid() {
 	});
 	// See TeamsGrid: fixtures are swapped in ahead of the card-building memos so
 	// the real derivation logic runs unchanged during a tour replay.
-	const allProjects = useTourDemo<Project[]>(
+	const projects = useTourDemo<Project[]>(
 		"projects",
-		(projectsQuery.data as Project[] | undefined) ?? [],
+		filterByWorkspace(
+			(projectsQuery.data as Project[] | undefined) ?? [],
+			workspaceId,
+		),
 	);
 
-	// Scoped to the open workspace, keeping work reached through project access
-	// rather than membership. Projects in the user's other workspaces surface
-	// when they switch.
-	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
-	const projects = useMemo(() => {
-		const grouped = groupByWorkspace(
-			allProjects,
-			currentWorkspace?.id ?? null,
-			workspaces.map((item) => item.id),
-		);
-		return [...grouped.current, ...grouped.shared];
-	}, [allProjects, currentWorkspace?.id, workspaces]);
 	const invitesQuery = useQuery({
 		queryKey: ["projects", "my-invites"],
 		queryFn: () => projectService.getMyInvites(),
@@ -130,12 +123,16 @@ export function ProjectsGrid() {
 	const realPendingInvites = useMemo(
 		() =>
 			((invitesQuery.data as ProjectInvite[] | undefined) ?? [])
-				.filter((invite) => invite.status === "pending")
+				.filter(
+					(invite) =>
+						invite.status === "pending" &&
+						belongsToWorkspace(invite.project, workspaceId),
+				)
 				.sort(
 					(a, b) =>
 						new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
 				),
-		[invitesQuery.data],
+		[invitesQuery.data, workspaceId],
 	);
 	const pendingInvites = useTourDemo<ProjectInvite[]>(
 		"projectInvites",
@@ -143,7 +140,11 @@ export function ProjectsGrid() {
 	);
 	const isDemo = useTourDemoActive();
 	const isLoading =
-		!isDemo && (projectsQuery.isPending || invitesQuery.isPending);
+		!isDemo &&
+		(workspaceLoading ||
+			!workspaceId ||
+			projectsQuery.isPending ||
+			invitesQuery.isPending);
 
 	const primaryCards = useMemo<DashboardCard[]>(() => {
 		const inviteCards: DashboardCard[] = pendingInvites.map((invite) => ({
@@ -233,7 +234,7 @@ export function ProjectsGrid() {
 					)}
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
-					Every project you own, share, or have been invited to.
+					Projects you own, share, or have been invited to in this workspace.
 				</p>
 			</div>
 

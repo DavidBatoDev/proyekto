@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { filterByWorkspace, groupByWorkspace } from "./workspaceScope";
+import {
+	belongsToWorkspace,
+	filterByWorkspace,
+	groupByWorkspace,
+} from "./workspaceScope";
 
 const MINE = ["ws-a", "ws-b"];
 
@@ -8,6 +12,21 @@ function item(id: string, workspace_id: string | null) {
 }
 
 describe("filterByWorkspace", () => {
+	it("hides everything until a workspace is resolved", () => {
+		expect(
+			filterByWorkspace(
+				[item("current", "ws-a"), item("unassigned", null)],
+				null,
+			),
+		).toEqual([]);
+	});
+
+	it("excludes missing embeds and unassigned items", () => {
+		for (const value of [undefined, null, {}, { workspace_id: null }]) {
+			expect(belongsToWorkspace(value, "ws-a")).toBe(false);
+		}
+	});
+
 	it("keeps only items homed in the open workspace", () => {
 		const result = filterByWorkspace(
 			[item("current", "ws-a"), item("other", "ws-b"), item("shared", null)],

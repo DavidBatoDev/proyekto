@@ -26,7 +26,6 @@ import {
   RespondProjectInviteDto,
   UpdateProjectDto,
   UpdateProjectMemberDto,
-  UpdateProjectMemberPermissionsDto,
   UpdateProjectResourceFolderDto,
   UpdateProjectResourceLinkDto,
 } from '../dto/project.dto';
@@ -35,7 +34,6 @@ import type {
   DashboardProject,
   ProjectResourceFolderWithLinks,
   ProjectResourcesPayload,
-  ProjectRoadmapSummary,
 } from './projects.repository.interface';
 import { isActiveConsultantEnrollment } from '../../../../common/auth/consultant-capability';
 import {
@@ -175,11 +173,11 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       `,
       )
       .eq('id', id)
-      .single();
+      .single<Project & { members?: unknown[] }>();
 
     if (error || !data) return null;
 
-    return data as Project & { members?: unknown[] };
+    return data;
   }
 
   async create(userId: string, dto: CreateProjectDto): Promise<Project> {
@@ -553,13 +551,17 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       return [];
     }
 
-    const projectIds = [...new Set(invites.map((invite) => invite.project_id))];
-    const inviterIds = [...new Set(invites.map((invite) => invite.invited_by))];
+    const projectIds = [
+      ...new Set(invites.map((invite) => invite.project_id as string)),
+    ];
+    const inviterIds = [
+      ...new Set(invites.map((invite) => invite.invited_by as string)),
+    ];
 
     const [projectsRes, invitersRes] = await Promise.all([
       this.supabase
         .from('projects')
-        .select('id, title, status')
+        .select('id, title, status, workspace_id')
         .in('id', projectIds),
       this.supabase
         .from('profiles')
@@ -589,6 +591,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           id: project.id as string,
           title: (project.title as string) || 'Untitled Project',
           status: (project.status as string) || 'unknown',
+          workspace_id: (project.workspace_id as string | null) ?? null,
         };
       })(),
       inviter: (() => {
@@ -906,22 +909,18 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     };
   }
 
-  async getMemberPermissions(
-    _projectId: string,
-    _memberId: string,
-  ): Promise<ProjectPermissions | null> {
+  getMemberPermissions(): Promise<ProjectPermissions | null> {
     // Slice 3b: per-member permissions_json is gone. Authority comes from
     // project_shares.role; per-share capabilities (a small JSONB on the
     // share row) handle overrides. Legacy callers requesting "what's the
     // permissions_json for this member" get null — they should switch to
     // role-based checks.
-    return null;
+    return Promise.resolve(null);
   }
 
   async updateMemberPermissions(
     projectId: string,
     memberId: string,
-    _dto: UpdateProjectMemberPermissionsDto,
   ): Promise<unknown> {
     // Slice 3b: permissions_json updates are no-ops. Roles + capabilities
     // on project_shares are the source of truth — a controller should
@@ -1146,7 +1145,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         ...(dto.color !== undefined ? { color: dto.color } : {}),
       })
       .select('*')
-      .single();
+      .single<ProjectResourceFolder>();
 
     if (error || !data) {
       throw new BadRequestException(
@@ -1154,7 +1153,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    return data as ProjectResourceFolder;
+    return data;
   }
 
   async updateProjectResourceFolder(
@@ -1175,10 +1174,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         .select('*')
         .eq('project_id', projectId)
         .eq('id', folderId)
-        .maybeSingle();
+        .maybeSingle<ProjectResourceFolder>();
       if (error) throw new BadRequestException(error.message);
       if (!data) throw new NotFoundException('Resource folder not found.');
-      return data as ProjectResourceFolder;
+      return data;
     }
 
     const { data, error } = await this.supabase
@@ -1190,11 +1189,11 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('project_id', projectId)
       .eq('id', folderId)
       .select('*')
-      .maybeSingle();
+      .maybeSingle<ProjectResourceFolder>();
 
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Resource folder not found.');
-    return data as ProjectResourceFolder;
+    return data;
   }
 
   async deleteProjectResourceFolder(
@@ -1310,7 +1309,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         position,
       })
       .select('*')
-      .single();
+      .single<ProjectResourceLink>();
 
     if (error || !data) {
       throw new BadRequestException(
@@ -1318,7 +1317,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    return data as ProjectResourceLink;
+    return data;
   }
 
   async updateProjectResourceLink(
@@ -1331,12 +1330,12 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .select('*')
       .eq('project_id', projectId)
       .eq('id', linkId)
-      .maybeSingle();
+      .maybeSingle<ProjectResourceLink>();
 
     if (existingError) throw new BadRequestException(existingError.message);
     if (!existing) throw new NotFoundException('Resource link not found.');
 
-    const existingLink = existing as ProjectResourceLink;
+    const existingLink = existing;
     const patch: Record<string, unknown> = {};
     let shouldCompactSourceContainer = false;
 
@@ -1350,10 +1349,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       patch.description = this.normalizeOptionalText(dto.description);
     }
 
-    const hasFolderIdInPayload = Object.prototype.hasOwnProperty.call(
-      dto,
-      'folder_id',
-    );
+    const hasFolderIdInPayload = Object.hasOwn(dto, 'folder_id');
     let sourceFolderIdForCompaction: string | null =
       existingLink.folder_id ?? null;
     if (hasFolderIdInPayload) {
@@ -1390,7 +1386,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('project_id', projectId)
       .eq('id', linkId)
       .select('*')
-      .maybeSingle();
+      .maybeSingle<ProjectResourceLink>();
 
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Resource link not found.');
@@ -1402,7 +1398,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    return data as ProjectResourceLink;
+    return data;
   }
 
   async deleteProjectResourceLink(

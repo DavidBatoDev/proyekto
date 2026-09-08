@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { workspaceKeys } from "@/queries/workspaces";
 import { RoadmapsGrid } from "./RoadmapsGrid";
 
 const { getRoadmapsPreview, deleteRoadmap } = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const { getRoadmapsPreview, deleteRoadmap } = vi.hoisted(() => ({
 vi.mock("@/api", () => ({ getRoadmapsPreview, deleteRoadmap }));
 
 vi.mock("@tanstack/react-router", () => ({
+	useParams: () => ({ workspaceSlug: "acme" }),
 	Link: ({
 		children,
 		to,
@@ -69,6 +71,9 @@ function renderGrid() {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
+	client.setQueryData(workspaceKeys.mine(undefined), [
+		{ id: "ws-a", slug: "acme" },
+	]);
 	return render(
 		<QueryClientProvider client={client}>
 			<RoadmapsGrid />
@@ -84,7 +89,8 @@ describe("RoadmapsGrid", () => {
 				name: "Existing roadmap",
 				description: "Current plan",
 				status: "draft",
-				project_id: null,
+				project_id: "project-1",
+				project: { id: "project-1", title: "Project", workspace_id: "ws-a" },
 				epics: [],
 			},
 		]);

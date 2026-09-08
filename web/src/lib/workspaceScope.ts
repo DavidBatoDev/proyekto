@@ -25,9 +25,17 @@ export interface WorkspaceGrouping<T> {
 /** Keep only entities whose organizational home is the workspace being viewed. */
 export function filterByWorkspace<T extends WorkspaceScoped>(
 	items: T[],
-	workspaceId: string,
+	workspaceId: string | null,
 ): T[] {
-	return items.filter((item) => item.workspace_id === workspaceId);
+	return items.filter((item) => belongsToWorkspace(item, workspaceId));
+}
+
+/** Unresolved and unassigned work never belongs to a selected workspace. */
+export function belongsToWorkspace(
+	item: WorkspaceScoped | null | undefined,
+	workspaceId: string | null,
+): boolean {
+	return workspaceId !== null && item?.workspace_id === workspaceId;
 }
 
 export function groupByWorkspace<T extends WorkspaceScoped>(

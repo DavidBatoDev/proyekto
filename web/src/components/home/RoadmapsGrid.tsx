@@ -18,10 +18,12 @@ import { RoadmapPreviewCard } from "@/components/home/RoadmapPreviewCard";
 import { RoadmapStartTrigger } from "@/components/roadmap/RoadmapStartDialog";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { roadmapsPreviewQueryOptions } from "@/hooks/useRoadmapsPreviewQuery";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import {
 	useTourDemo,
 	useTourDemoActive,
 } from "@/lib/tours/demo/TourDemoContext";
+import { belongsToWorkspace } from "@/lib/workspaceScope";
 import { useUser } from "@/stores/authStore";
 
 // Dashboard shows this many roadmap cards before the "View more" toggle reveals
@@ -109,16 +111,23 @@ export function RoadmapsGrid() {
 	};
 
 	const user = useUser();
+	const { workspace, isLoading: workspaceLoading } = useCurrentWorkspace();
+	const workspaceId = workspace?.id ?? null;
 	const roadmapsQuery = useQuery(roadmapsPreviewQueryOptions(user?.id));
 	const isDemo = useTourDemoActive();
 	// See TeamsGrid: fixtures replace the query result before the card mapping,
 	// and the loading/error states are suppressed so a skeleton or an error
 	// panel never covers the element the tour is spotlighting.
-	const roadmaps = useTourDemo<RoadmapPreview[]>(
-		"roadmaps",
-		roadmapsQuery.data ?? [],
+	const workspaceRoadmaps = useMemo(
+		() =>
+			(roadmapsQuery.data ?? []).filter((roadmap) =>
+				belongsToWorkspace(roadmap.project, workspaceId),
+			),
+		[roadmapsQuery.data, workspaceId],
 	);
-	const loading = !isDemo && roadmapsQuery.isPending;
+	const roadmaps = useTourDemo<RoadmapPreview[]>("roadmaps", workspaceRoadmaps);
+	const loading =
+		!isDemo && (workspaceLoading || !workspaceId || roadmapsQuery.isPending);
 	const isUnavailable = !isDemo && Boolean(roadmapsQuery.error);
 	const templates = useMemo(
 		() =>
