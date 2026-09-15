@@ -1264,6 +1264,8 @@ export class RoadmapAiService {
             type: 'task',
             title: task.title ?? 'Untitled task',
             status: task.status,
+            priority: this.readTaskScalar(task, 'priority'),
+            due_date: this.readTaskScalar(task, 'due_date'),
             assignee_id: taskAssigneeIds[0],
             assignee_ids: taskAssigneeIds,
             feature_id: featureId,
@@ -1401,6 +1403,7 @@ export class RoadmapAiService {
             title: task.title ?? 'Untitled task',
             status: task.status,
             priority: task.priority,
+            due_date: this.readTaskScalar(task, 'due_date'),
             assignee_id: taskAssigneeIds[0],
             assignee_ids: taskAssigneeIds,
             feature_id: featureId,
@@ -1679,6 +1682,8 @@ export class RoadmapAiService {
                 type: 'task' as const,
                 title: task.title ?? 'Untitled task',
                 status: task.status,
+                priority: this.readTaskScalar(task, 'priority'),
+                due_date: this.readTaskScalar(task, 'due_date'),
                 assignee_id: taskAssigneeIds[0],
                 assignee_ids: taskAssigneeIds,
                 parent_id: parentId,
@@ -4674,6 +4679,18 @@ export class RoadmapAiService {
    * keeps `[0]` equal to the stored column, and keeps the assignee of a task
    * the pre-2026-09 RPC wrote (column set, no join row) from being dropped.
    */
+  /**
+   * A task's scalar column (`due_date`, `priority`) as a string, or null when
+   * unset — explicit null so a list consumer can tell "no date" from "not
+   * fetched" and never re-reads the node for it.
+   */
+  private readTaskScalar(task: unknown, key: string): string | null {
+    if (!task || typeof task !== 'object') return null;
+    const value = (task as Record<string, unknown>)[key];
+    if (value instanceof Date) return value.toISOString();
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
   private readTaskAssigneeIds(raw: Record<string, unknown>): string[] {
     const joinRows = this.readArray(raw, 'assignees');
     const fromRows = joinRows

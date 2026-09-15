@@ -845,6 +845,16 @@ export class RoadmapAiContextChildDto {
   @IsOptional()
   @IsUUID()
   parent_id?: string;
+
+  // Task children only: due date (ISO, null when unset) and priority, so a
+  // "with their dates" follow-up never needs one node-details read per task.
+  @IsOptional()
+  @IsString()
+  due_date?: string | null;
+
+  @IsOptional()
+  @IsString()
+  priority?: string | null;
 }
 
 export class RoadmapAiContextChildrenResponseDto {
@@ -991,6 +1001,17 @@ export class RoadmapAiContextAssignedTaskDto {
   @IsOptional()
   @IsString()
   epic_title?: string;
+
+  // Due date (ISO, null when unset) and priority ride on every task row: the
+  // agent answers "include their dates" from the list instead of fanning out
+  // one get_node_details per task (which exhausted its tool budget).
+  @IsOptional()
+  @IsString()
+  due_date?: string | null;
+
+  @IsOptional()
+  @IsString()
+  priority?: string | null;
 }
 
 export class RoadmapAiContextTasksAssignedResponseDto {
@@ -1091,6 +1112,11 @@ export class RoadmapAiContextFilteredTaskDto {
   @IsOptional()
   @IsString()
   epic_title?: string;
+
+  // ISO due date, null when unset (see RoadmapAiContextAssignedTaskDto).
+  @IsOptional()
+  @IsString()
+  due_date?: string | null;
 }
 
 export class RoadmapAiContextTasksFilteredResponseDto {

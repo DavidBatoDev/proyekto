@@ -210,6 +210,8 @@ describe('RoadmapAiService actor + assignee context', () => {
                     id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
                     title: 'Implement login API',
                     status: 'in_progress',
+                    priority: 'high',
+                    due_date: '2026-09-30',
                     assignee_id: USER_ID,
                   },
                   {
@@ -274,6 +276,10 @@ describe('RoadmapAiService actor + assignee context', () => {
     expect(result.tasks[0].title).toBe('Implement login API');
     expect(result.tasks[0].feature_title).toBe('Authentication System');
     expect(result.tasks[0].epic_title).toBe('Platform Foundation');
+    // Dates and priority ride on the row so "include their dates" never
+    // needs one node-details read per task.
+    expect(result.tasks[0].due_date).toBe('2026-09-30');
+    expect(result.tasks[0].priority).toBe('high');
   });
 
   it('returns open and completed tasks when status=all', async () => {
@@ -289,6 +295,33 @@ describe('RoadmapAiService actor + assignee context', () => {
       'Implement login API',
       'Close legacy auth ticket',
     ]);
+    // An unset date is an explicit null, not a missing key.
+    expect(result.tasks[1].due_date).toBeNull();
+    expect(result.tasks[1]).toHaveProperty('due_date');
+  });
+
+  it('filtered task rows and task children carry due_date too', async () => {
+    const { service } = createServiceWithMocks();
+    const filtered = await service.getContextTasksFiltered(
+      ROADMAP_ID,
+      { status: 'in_progress' },
+      USER_ID,
+    );
+    const login = filtered.tasks.find((t) => t.title === 'Implement login API');
+    expect(login?.due_date).toBe('2026-09-30');
+    expect(login?.priority).toBe('high');
+
+    const children = await service.getContextNodeChildren(
+      ROADMAP_ID,
+      '60bcab3f-3989-448d-9c84-3261cf38685b',
+      {},
+      USER_ID,
+    );
+    const child = children.children.find(
+      (c) => c.title === 'Implement login API',
+    );
+    expect(child?.due_date).toBe('2026-09-30');
+    expect(child?.priority).toBe('high');
   });
 
   it('returns done tasks for filtered context query even when include_completed=false', async () => {
