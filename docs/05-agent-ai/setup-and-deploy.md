@@ -1,6 +1,6 @@
 # Setup & Deploy
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-16 · **Status:** current
 
 The agent is a Python 3.12 FastAPI service. Locally it runs via `run.py` (uvicorn);
 in production it is a Docker image on Cloud Run. This page covers running it, every
@@ -57,9 +57,11 @@ The `*_V2_*` names are kept for deploy compatibility; there is one model and one
 | Var | Default | What |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | - | Required |
-| `OPENAI_MODEL_V2` | `gpt-5.4-mini` | The one model, via the Responses API |
-| `OPENAI_V2_REASONING_EFFORT` | `low` | Base effort (`minimal \| low \| medium \| high`; anything else -> `low`); investigate escalates to at least `medium` on hard turns, materialize/repair always run at least `medium` |
-| `OPENAI_V2_MAX_OUTPUT_TOKENS` | `4000` | Max output per call |
+| `OPENAI_MODEL_V2` | `gpt-5.6-luna` | The one model, via the Responses API. GPT-5.6 ships as `gpt-5.6-luna` (cheapest, 1M context), `gpt-5.6-terra`, `gpt-5.6-sol`; the deploy workflow pins the tier explicitly |
+| `OPENAI_V2_REASONING_EFFORT` | `low` | Base effort (`none \| minimal \| low \| medium \| high \| xhigh \| max`; anything else -> `low`, blank disables reasoning); investigate escalates to at least `medium` on hard turns, materialize/repair always run at least `medium`. A value the model rejects (e.g. `minimal` on GPT-5.6) is remapped to `low` for the process |
+| `OPENAI_V2_VERBOSITY` | `low` | `text.verbosity` (`low \| medium \| high`; blank = not sent) - the API's brevity lever; the prompt states priorities, not length |
+| `OPENAI_V2_PROMPT_CACHE_MODE` | `explicit` | `explicit` (one breakpoint on the static prefix through `# Actor`, sent via `prompt_cache_options`; measured 56% cached input and half the cache writes of implicit on a five-turn session, 2026-09-16) \| `implicit` (the API caches through the latest message and writes the whole tail at 1.25x per call) \| `off` (no key, no options) |
+| `OPENAI_V2_MAX_OUTPUT_TOKENS` | `16000` (clamp 1000-128000) | Reasoning + visible output per call; a 90-op `stage_edits` is ~8-10k tokens of arguments |
 | `OPENAI_V2_TEMPERATURE` | unset | Omitted unless set (GPT-5 reasoning models reject non-default values) |
 | `OPENAI_V2_STREAMING_ENABLED` | `true` | Stream text deltas (`assistant_delta` events) |
 | `OPENAI_V2_REASONING_SUMMARY_ENABLED` | `false` | Emit reasoning summaries (`assistant_thought` events) |
@@ -79,6 +81,7 @@ Every knob is a clamped number, never an on/off switch - the run machine is alwa
 | `AGENT_RUN_MAX_STEPS` | `8` (clamp 1-32) | HTTP requests (message + continues) one run may consume; the web caps polling at 30 minutes |
 | `AGENT_RUN_LOCK_TTL_SECONDS` | `300` (clamp 60-3600) | Per-session run lock (`SET NX EX`); keep >= the Cloud Run request timeout |
 | `AGENT_RUN_TRANSCRIPT_TTL_SECONDS` | `900` (clamp 60-14400) | Paused loop transcripts (Redis side keys); a missing transcript restarts the read-only phase |
+| `AGENT_RUN_TRANSCRIPT_MAX_BYTES` | `400000` (clamp 50000-900000) | Serialized cap for a paused transcript; past it the model's encrypted reasoning items are stripped first, then assistant text (`transcript_reasoning_stripped`) |
 | `AGENT_DIRECT_EDIT_MAX_OPERATIONS` | `15` (clamp 0-200) | Workspace scope: a single-roadmap, delete-free batch up to this many ops executes without confirmation |
 | `AGENT_DIRECT_EDIT_MAX_OPERATIONS_FOCUS` | `90` (clamp 0-200) | Roadmap scope: a batch on the focus roadmap executes immediately up to this many ops, deletes included |
 | `AGENT_EXECUTE_MAX_TURNS` / `AGENT_EXECUTE_MAX_TOOL_CALLS` | `4` (1-16) / `10` (1-60) | The materialize mini loop (proposal titles -> operations per target) |
@@ -108,7 +111,8 @@ Every knob is a clamped number, never an on/off switch - the run machine is alwa
 
 | Var | Default | What |
 | --- | --- | --- |
-| `AGENT_SUMMARY_MODEL` | `gpt-4o-mini` | Summarizer model |
+| `AGENT_SUMMARY_MODEL` | `gpt-5.6-luna` | Summarizer model |
+| `AGENT_SUMMARY_REASONING_EFFORT` | `none` | Effort for the summary call (same set as above; blank omits the `reasoning` param for a non-reasoning model) |
 | `AGENT_SUMMARY_TRIGGER_MESSAGES` / `_KEEP_MESSAGES` / `_MAX_CHARS` | `40` / `30` / `4000` | Compaction thresholds (see [memory.md](./memory.md#4-conversation-summarizer)) |
 
 ### Logging, tracing, realtime push

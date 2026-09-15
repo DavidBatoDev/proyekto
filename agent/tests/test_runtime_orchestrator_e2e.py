@@ -486,5 +486,34 @@ class WorkspaceScopeTests(_Base):
         self.assertIn('PROPOSAL_TARGET_REQUIRED', system)
 
 
+
+class ReasoningReplayTests(_Base):
+    """A paused investigate stores the model's encrypted reasoning with the
+    tool call it produced, and the continue replays it in front of that call."""
+
+    def test_continue_replays_reasoning_ahead_of_the_tool_call(self):
+        store, _nest, service = _bootstrap(
+            roadmap_session(), settings=settings_with(agent_run_step_budget_seconds=10)
+        )
+        first = tool_resp('search_nodes', {'query': 'growth'})
+        call_id = first.tool_calls[0].id
+        first.raw_output = [
+            {'type': 'reasoning', 'id': 'rs_1', 'summary': [], 'encrypted_content': 'blob-e2e'},
+            {'type': 'function_call', 'id': 'fc_1', 'call_id': call_id, 'name': 'search_nodes', 'arguments': '{"query": "growth"}'},
+        ]
+        with patched_llm([first]):
+            _ctx, paused = _send(service, 'sess-alpha', 'find growth', started_offset=30)
+        self.assertEqual((paused.run.status, paused.run.next), ('running', 'continue'))
+        with patched_llm([text_resp('Found it.')]):
+            _ctx, resumed = _continue(service, 'sess-alpha', paused.run.run_id)
+        self.assertEqual(resumed.run.status, 'done')
+        replayed = [m for m in FakeLLM.calls[0]['messages'] if m.get('type')]
+        self.assertEqual([m['type'] for m in replayed], ['reasoning', 'function_call', 'function_call_output'])
+        self.assertEqual(replayed[0]['encrypted_content'], 'blob-e2e')
+        self.assertEqual(replayed[1]['call_id'], call_id)
+        self.assertEqual(replayed[2]['call_id'], call_id)
+        self.assertIsNone(store.get('sess-alpha').metadata.run.loop_transcript_key)
+
+
 if __name__ == '__main__':
     unittest.main()

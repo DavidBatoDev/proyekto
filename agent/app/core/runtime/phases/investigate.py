@@ -16,6 +16,7 @@ import logging
 import re
 from typing import Any
 
+from app.core.config import REASONING_EFFORT_LEVELS
 from app.core.contracts.sessions import AgentSession
 from app.core.engine.llm_client import LLMClient
 from app.core.engine.loop import LoopResult, run_loop
@@ -32,8 +33,9 @@ from app.core.tools.dispatch import ToolDispatcher
 logger = logging.getLogger(__name__)
 
 # Reasoning effort escalates on "hard" turns. Ordered so we can take a max
-# without downgrading a higher configured base.
-_EFFORT_ORDER = {'minimal': 0, 'low': 1, 'medium': 2, 'high': 3}
+# without downgrading a higher configured base (none < minimal < low <
+# medium < high < xhigh < max — the shared ladder in config.py).
+_EFFORT_ORDER = {level: index for index, level in enumerate(REASONING_EFFORT_LEVELS)}
 
 # The user message drives relevant-memory retrieval; cap what we embed.
 _SEMANTIC_MEMORY_QUERY_MAX_CHARS = 500
@@ -206,7 +208,7 @@ def _turn_reasoning_effort(settings: Any, trigger: str) -> str | None:
         return None
     if trigger == 'none':
         return base
-    if _EFFORT_ORDER.get(base, 1) >= _EFFORT_ORDER['medium']:
+    if _EFFORT_ORDER.get(base, _EFFORT_ORDER['low']) >= _EFFORT_ORDER['medium']:
         return base
     return 'medium'
 
@@ -216,7 +218,9 @@ def escalated_effort(settings: Any, minimum: str = 'medium') -> str | None:
     base = settings.openai_v2_reasoning_effort
     if base is None:
         return None
-    if _EFFORT_ORDER.get(base, 1) >= _EFFORT_ORDER.get(minimum, 2):
+    if _EFFORT_ORDER.get(base, _EFFORT_ORDER['low']) >= _EFFORT_ORDER.get(
+        minimum, _EFFORT_ORDER['medium']
+    ):
         return base
     return minimum
 
@@ -436,6 +440,8 @@ def _add_run_tokens(run_state: Any, loop_result: LoopResult) -> None:
         ('output', 'tokens_output'),
         ('total', 'tokens_total'),
         ('cached', 'tokens_cached'),
+        ('cache_write', 'tokens_cache_write'),
+        ('reasoning', 'tokens_reasoning'),
     ):
         run_state.tokens[key] = int(run_state.tokens.get(key, 0) or 0) + int(
             getattr(loop_result, attr, 0) or 0

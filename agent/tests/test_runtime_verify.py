@@ -382,5 +382,70 @@ class ReportContradictionTests(unittest.TestCase):
         self.assertEqual(failed_run.verify.report_mode, 'loop')
 
 
+
+class ReasoningTranscriptTests(unittest.TestCase):
+    """The staged transcript now carries the model's reasoning items; the
+    verify continuation replays them ahead of the commit tool output."""
+
+    def test_reasoning_items_ride_ahead_of_the_commit_output(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha')
+        batch.call_ids = ['call_stage_1']
+        transcript = [
+            {'type': 'reasoning', 'id': 'rs_1', 'summary': [], 'encrypted_content': 'blob'},
+            {'type': 'function_call', 'call_id': 'call_stage_1', 'name': 'stage_edits', 'arguments': '{"operations": []}'},
+        ]
+        key = ctx.transcript_key(session.session_id, run.run_id, 'staged')
+        self.assertTrue(ctx.put_transcript(key, transcript))
+        run.staged_transcript_key = key
+        with patched_llm([text_resp('Added G to Alpha.')]):
+            outcome = verify.run(ctx, session, run)
+        self.assertEqual(outcome.kind, 'verified')
+        self.assertEqual(run.verify.report_mode, 'loop')
+        messages = FakeLLM.calls[0]['messages']
+        typed = [m['type'] for m in messages if m.get('type')]
+        self.assertEqual(typed, ['reasoning', 'function_call', 'function_call_output'])
+        self.assertEqual(messages[-1]['role'], 'system')
+        reasoning = next(m for m in messages if m.get('type') == 'reasoning')
+        self.assertEqual(reasoning['encrypted_content'], 'blob')
+
+
+class TranscriptSizeGuardTests(unittest.TestCase):
+    def _ctx(self, max_bytes):
+        from tests.runtime_fakes import settings_with
+
+        store = MemoryStore()
+        service = make_service(store, FakeNest(), settings=settings_with(agent_run_transcript_max_bytes=max_bytes))
+        return StepContext(service=service, auth_header='Bearer x', trace_id='trace-1')
+
+    def _transcript(self, blob_chars):
+        return [
+            {'type': 'reasoning', 'id': 'rs_1', 'summary': [], 'encrypted_content': 'x' * blob_chars},
+            {'type': 'message', 'id': 'm1', 'role': 'assistant', 'status': 'completed', 'content': [{'type': 'output_text', 'text': 'hi', 'annotations': []}]},
+            {'type': 'function_call', 'call_id': 'c1', 'name': 'search_nodes', 'arguments': '{}'},
+            {'type': 'function_call_output', 'call_id': 'c1', 'output': '{"matches": []}'},
+        ]
+
+    def test_under_the_cap_everything_is_kept(self):
+        ctx = self._ctx(50_000)
+        key = ctx.transcript_key('s', 'r', 'transcript')
+        self.assertTrue(ctx.put_transcript(key, self._transcript(1_000)))
+        self.assertEqual([m['type'] for m in ctx.get_transcript(key)], ['reasoning', 'message', 'function_call', 'function_call_output'])
+
+    def test_over_the_cap_reasoning_is_stripped_first_and_the_pause_still_stores(self):
+        ctx = self._ctx(50_000)
+        key = ctx.transcript_key('s', 'r', 'transcript')
+        self.assertTrue(ctx.put_transcript(key, self._transcript(60_000)))
+        self.assertEqual([m['type'] for m in ctx.get_transcript(key)], ['message', 'function_call', 'function_call_output'])
+
+    def test_tool_calls_and_outputs_always_survive(self):
+        ctx = self._ctx(50_000)
+        key = ctx.transcript_key('s', 'r', 'transcript')
+        transcript = self._transcript(60_000)
+        transcript[1]['content'][0]['text'] = 'y' * 60_000
+        self.assertTrue(ctx.put_transcript(key, transcript))
+        self.assertEqual([m['type'] for m in ctx.get_transcript(key)], ['function_call', 'function_call_output'])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -955,5 +955,138 @@ class ExplicitHandlerTests(unittest.TestCase):
         self.assertTrue(any('TERMINAL_NOT_ALLOWED' in o for o in outputs))
 
 
+
+def _raw_resp(name, args, *, encrypted='enc-blob', text=None, call_id='call_r1', summary=True):
+    """A response the way the real adapter builds it: raw_output carries the
+    model's reasoning / message / function_call items verbatim."""
+    raw = [
+        {
+            'type': 'reasoning',
+            'id': 'rs_1',
+            'summary': [{'type': 'summary_text', 'text': 'Looking it up.'}] if summary else [],
+            'encrypted_content': encrypted,
+            'status': None,
+        }
+    ]
+    if text is not None:
+        raw.append(
+            {
+                'type': 'message',
+                'id': 'msg_1',
+                'role': 'assistant',
+                'status': 'completed',
+                'phase': 'commentary',
+                'content': [{'type': 'output_text', 'text': text, 'annotations': []}],
+            }
+        )
+    raw.append(
+        {
+            'type': 'function_call',
+            'id': 'fc_1',
+            'call_id': call_id,
+            'name': name,
+            'arguments': json.dumps(args),
+            'status': 'completed',
+        }
+    )
+    return LLMResponse(
+        content=text,
+        tool_calls=[ToolCall(id=call_id, name=name, arguments=args, raw_arguments=json.dumps(args))],
+        raw_output=raw,
+    )
+
+
+class ReasoningEchoTests(unittest.TestCase):
+    """The model's reasoning (encrypted, store=False) and interim text are
+    echoed back with the tool outputs, in order, cut down to input fields."""
+
+    def test_reasoning_and_message_items_are_echoed_in_order(self):
+        dispatcher = _FakeDispatcher({'search_nodes': {'matches': [{'id': 'n1'}]}})
+        client = _ScriptedClient([
+            _raw_resp('search_nodes', {'query': 'growth'}, text='Checking growth.'),
+            _text_resp('Found it.'),
+        ])
+        result = _run(client, dispatcher=dispatcher)
+        self.assertEqual(result.kind, 'chat')
+        echoed = [m for m in client.last_messages if m.get('type')]
+        self.assertEqual(
+            [m['type'] for m in echoed],
+            ['reasoning', 'message', 'function_call', 'function_call_output'],
+        )
+        reasoning, message, call, output = echoed
+        self.assertEqual(set(reasoning), {'type', 'id', 'summary', 'encrypted_content'})
+        self.assertEqual(reasoning['encrypted_content'], 'enc-blob')
+        self.assertEqual(reasoning['summary'], [{'type': 'summary_text', 'text': 'Looking it up.'}])
+        self.assertEqual(
+            message,
+            {
+                'type': 'message',
+                'id': 'msg_1',
+                'role': 'assistant',
+                'status': 'completed',
+                'phase': 'commentary',
+                'content': [{'type': 'output_text', 'text': 'Checking growth.', 'annotations': []}],
+            },
+        )
+        self.assertEqual(set(call), {'type', 'call_id', 'name', 'arguments'})
+        self.assertEqual((call['call_id'], call['name']), ('call_r1', 'search_nodes'))
+        self.assertEqual(output['call_id'], 'call_r1')
+
+    def test_reasoning_without_encrypted_content_is_dropped(self):
+        dispatcher = _FakeDispatcher({'search_nodes': {'matches': []}})
+        client = _ScriptedClient([
+            _raw_resp('search_nodes', {'query': 'x'}, encrypted=None),
+            _text_resp('Nothing.'),
+        ])
+        _run(client, dispatcher=dispatcher)
+        types = [m['type'] for m in client.last_messages if m.get('type')]
+        self.assertEqual(types, ['function_call', 'function_call_output'])
+
+    def test_legacy_responses_without_raw_output_are_byte_identical(self):
+        from app.core.engine.loop import _echo_items
+
+        legacy = _echo_items(_tool_resp('search_nodes', {'query': 'x'}, call_id='c9'))
+        self.assertEqual(
+            legacy,
+            [{'type': 'function_call', 'call_id': 'c9', 'name': 'search_nodes', 'arguments': '{"query": "x"}'}],
+        )
+
+    def test_tool_calls_missing_from_raw_output_still_get_a_function_call(self):
+        from app.core.engine.loop import _echo_items
+
+        response = _raw_resp('search_nodes', {'query': 'x'}, call_id='c1')
+        response.tool_calls.append(
+            ToolCall(id='c2', name='get_node_details', arguments={'node_id': 'n'}, raw_arguments='{"node_id": "n"}')
+        )
+        echoed = _echo_items(response)
+        self.assertEqual([m['type'] for m in echoed], ['reasoning', 'function_call', 'function_call'])
+        self.assertEqual(echoed[-1]['call_id'], 'c2')
+
+    def test_paused_transcript_with_reasoning_survives_json(self):
+        dispatcher = _FakeDispatcher({'search_nodes': {'matches': [{'id': 'n1'}]}})
+        client = _ScriptedClient([
+            _raw_resp('search_nodes', {'query': 'growth'}),
+            _text_resp('never reached'),
+        ])
+        result = _run(client, dispatcher=dispatcher, deadline_monotonic=monotonic() - 1)
+        self.assertEqual(result.kind, 'paused')
+        self.assertEqual(
+            [m['type'] for m in result.transcript],
+            ['reasoning', 'function_call', 'function_call_output'],
+        )
+        self.assertEqual(json.loads(json.dumps(result.transcript)), result.transcript)
+
+    def test_loop_result_accumulates_cache_write_and_reasoning_tokens(self):
+        first = _raw_resp('search_nodes', {'query': 'x'})
+        first.tokens_cache_write = 500
+        first.tokens_reasoning = 40
+        second = _text_resp('done')
+        second.tokens_cache_write = 0
+        second.tokens_reasoning = 10
+        result = _run(_ScriptedClient([first, second]))
+        self.assertEqual(result.tokens_cache_write, 500)
+        self.assertEqual(result.tokens_reasoning, 50)
+
+
 if __name__ == '__main__':
     unittest.main()

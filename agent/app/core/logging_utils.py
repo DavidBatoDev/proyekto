@@ -317,6 +317,8 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
                 'tokens_output',
                 'tokens_total',
                 'tokens_cached',
+                'tokens_cache_write',
+                'tokens_reasoning',
             ),
         )
     if event == 'session_staged_state':
@@ -957,6 +959,8 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
         trace.response['tokens_output'] = payload.get('tokens_output')
         trace.response['tokens_total'] = payload.get('tokens_total')
         trace.response['tokens_cached'] = payload.get('tokens_cached')
+        trace.response['tokens_cache_write'] = payload.get('tokens_cache_write')
+        trace.response['tokens_reasoning'] = payload.get('tokens_reasoning')
         trace.response['fallback_used'] = payload.get('fallback_used')
         return
     if event == 'message_completed':
@@ -992,6 +996,8 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'tokens_output': payload.get('tokens_output'),
                 'tokens_total': payload.get('tokens_total'),
                 'tokens_cached': payload.get('tokens_cached'),
+                'tokens_cache_write': payload.get('tokens_cache_write'),
+                'tokens_reasoning': payload.get('tokens_reasoning'),
                 'entity_links_kept': payload.get('entity_links_kept', 0),
                 'entity_links_rejected': payload.get('entity_links_rejected', 0),
                 'entity_links_repaired': payload.get('entity_links_repaired', 0),
@@ -1064,8 +1070,8 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  retry_dedupe {_yes_no(trace.response.get("retry_duplicate_operation_deduped"))}',
             f'  retry_auto  {_yes_no(trace.response.get("retry_autostage_applied"))}',
             f'  validation  {trace.response.get("operation_validation_error")}',
-            f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
-            f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"))}',
+            f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")} reasoning={trace.response.get("tokens_reasoning")}',
+            f'  cache       {_format_cache_hit(trace.response.get("tokens_input"), trace.response.get("tokens_cached"), trace.response.get("tokens_cache_write"))}',
             f'  links       kept={trace.response.get("entity_links_kept", 0)} rejected={trace.response.get("entity_links_rejected", 0)} repaired={trace.response.get("entity_links_repaired", 0)} auto={trace.response.get("entity_links_auto", 0)}',
             f'  verify      report={trace.response.get("verify_report_mode") or "-"}',
             '',
@@ -1185,8 +1191,12 @@ def _yes_no(value: Any) -> str:
     return str(value)
 
 
-def _format_cache_hit(tokens_input: Any, tokens_cached: Any) -> str:
-    """Render prompt-cache effectiveness as `cached/input (NN%)`.
+def _format_cache_hit(tokens_input: Any, tokens_cached: Any, tokens_cache_write: Any = None) -> str:
+    """Render prompt-cache effectiveness as `cached/input (NN%) write=N`.
+
+    `write` is the count written INTO the cache on this request (GPT-5.6
+    bills writes at 1.25x): expected on the first call after a prefix
+    change, a churning prefix when it shows up on every call.
 
     Cached input tokens bill at ~10%, and the prompt is ordered so the static
     prefix stays byte-stable (see v2/context.py compact_state). A hit rate that
@@ -1195,10 +1205,15 @@ def _format_cache_hit(tokens_input: Any, tokens_cached: Any) -> str:
     """
     if not isinstance(tokens_input, int) or tokens_input <= 0:
         return 'n/a'
+    write = (
+        f' write={tokens_cache_write}'
+        if isinstance(tokens_cache_write, int) and tokens_cache_write >= 0
+        else ''
+    )
     if not isinstance(tokens_cached, int) or tokens_cached < 0:
-        return f'0/{tokens_input} (0%)'
+        return f'0/{tokens_input} (0%){write}'
     percent = round(tokens_cached * 100 / tokens_input)
-    return f'{tokens_cached}/{tokens_input} ({percent}%)'
+    return f'{tokens_cached}/{tokens_input} ({percent}%){write}'
 
 
 def _ordered_keys(payload: dict[str, Any]) -> list[str]:

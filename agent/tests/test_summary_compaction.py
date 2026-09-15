@@ -111,5 +111,60 @@ class CompactionTests(unittest.TestCase):
         self.assertEqual(len(session.messages), 12)
 
 
+
+class _SessionStore(_FakeStore):
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+        self.written = None
+
+    def get(self, _session_id):
+        return self.session
+
+    def set_summary_candidate(self, _session_id, candidate):
+        self.written = candidate
+
+
+class SummaryModelCallTests(unittest.IsolatedAsyncioTestCase):
+    """The compaction call runs on the summary model with the summary effort
+    (no tools, no streaming) — it used to inherit the loop's effort and eat a
+    400 on every compaction when the summary model rejected it."""
+
+    async def test_summary_call_sends_the_summary_effort_on_the_summary_model(self):
+        from unittest import mock
+
+        from app.core.runtime import summarizer
+        from tests.runtime_fakes import FakeLLM, text_resp
+
+        session = _session_with_messages(10)
+        store = _SessionStore(session)
+        settings = _settings(agent_summary_model='gpt-5.6-luna', agent_summary_reasoning_effort='none')
+        FakeLLM.reset([text_resp('Early turns summarized.')])
+        with mock.patch.object(summarizer, 'LLMClient', FakeLLM):
+            await summarizer.run_summary_compaction(
+                store=store, session_id=session.session_id, settings=settings, trace_id=None
+            )
+        self.assertEqual(FakeLLM.instances[0].model, 'gpt-5.6-luna')
+        self.assertEqual(FakeLLM.calls[0]['kwargs'], {'reasoning_effort': 'none'})
+        self.assertEqual(FakeLLM.calls[0]['tools'], [])
+        self.assertEqual(store.written['summary'], 'Early turns summarized.')
+        self.assertEqual(store.written['fold_count'], 4)
+
+    async def test_blank_summary_effort_omits_the_reasoning_param(self):
+        from unittest import mock
+
+        from app.core.runtime import summarizer
+        from tests.runtime_fakes import FakeLLM, text_resp
+
+        session = _session_with_messages(10)
+        settings = _settings(agent_summary_reasoning_effort=None)
+        FakeLLM.reset([text_resp('ok')])
+        with mock.patch.object(summarizer, 'LLMClient', FakeLLM):
+            await summarizer.run_summary_compaction(
+                store=_SessionStore(session), session_id=session.session_id, settings=settings, trace_id=None
+            )
+        self.assertEqual(FakeLLM.calls[0]['kwargs'], {'reasoning_effort': None})
+
+
 if __name__ == '__main__':
     unittest.main()

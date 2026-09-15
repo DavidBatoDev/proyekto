@@ -1,6 +1,6 @@
 # Memory
 
-> **Last updated:** 2026-09-07 · **Status:** current
+> **Last updated:** 2026-09-16 · **Status:** current
 
 The agent keeps state in four layers with different lifetimes: the **session
 document** in Redis (this conversation, including the active run), the **trace
@@ -142,7 +142,8 @@ never races the request path:
 - **Compute (post-step, background, side key):** when message count passes
   `AGENT_SUMMARY_TRIGGER_MESSAGES` (40), a background task folds everything beyond
   `AGENT_SUMMARY_KEEP_MESSAGES` (30), summarizes on `AGENT_SUMMARY_MODEL`
-  (`gpt-4o-mini`, capped at `AGENT_SUMMARY_MAX_CHARS` = 4000), and writes a
+  (`gpt-5.6-luna` at `AGENT_SUMMARY_REASONING_EFFORT` = `none`, capped at
+  `AGENT_SUMMARY_MAX_CHARS` = 4000), and writes a
   *candidate* to `...:{session_id}:summary_candidate` - never the session document.
 - **Apply (step start, request path, under the run lock):** the next step validates
   the candidate against the current messages via first/last SHA-256 fingerprints; on

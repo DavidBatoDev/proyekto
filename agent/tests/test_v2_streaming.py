@@ -448,5 +448,29 @@ class AssistantDeltaProgressPlumbingTests(unittest.TestCase):
             self.assertEqual(event['details'].get('turn'), 2, detail)
 
 
+
+class StreamedReasoningItemTests(unittest.TestCase):
+    """The terminal event's Response carries the reasoning items (with the
+    encrypted blob the loop echoes back) exactly like the plain path."""
+
+    def test_encrypted_reasoning_survives_the_streaming_path(self):
+        final = _final_response('Hi')
+        final.output.insert(
+            0,
+            {
+                'type': 'reasoning',
+                'id': 'rs_1',
+                'summary': [],
+                'encrypted_content': 'blob-123',
+            },
+        )
+        fake = _FakeResponses(stream_events=[_delta_event('Hi'), _completed_event(final)])
+        client = _client(fake, reasoning_effort='low')
+        result = client.complete([], [], on_text_delta=lambda _t: None)
+        self.assertEqual(result.raw_output[0]['type'], 'reasoning')
+        self.assertEqual(result.raw_output[0]['encrypted_content'], 'blob-123')
+        self.assertEqual(fake.calls[0]['include'], ['reasoning.encrypted_content'])
+
+
 if __name__ == '__main__':
     unittest.main()

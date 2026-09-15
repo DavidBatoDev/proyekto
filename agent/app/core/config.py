@@ -7,6 +7,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _AGENT_ROOT = Path(__file__).resolve().parents[2]
 
 
+# reasoning.effort values, lowest to highest. 'minimal' is the older GPT-5
+# spelling (GPT-5.6 documents none|low|medium|high|xhigh|max); the ladder is
+# shared with the hard-turn escalation in runtime/phases/investigate.py.
+REASONING_EFFORT_LEVELS: tuple[str, ...] = (
+    'none',
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+)
+
+
 def _clamp_int(value: int, low: int, high: int) -> int:
     if value < low:
         return low
@@ -137,9 +151,11 @@ class Settings(BaseSettings):
     # separate classifier). The AGENT_V2_* / OPENAI_V2_* env names are kept
     # for deploy compatibility.
     # ------------------------------------------------------------------
-    # Single knob for the v2 loop's model id. Set to whatever GPT-5 variant
-    # the org exposes (e.g. 'gpt-5', 'gpt-5.4', 'gpt-5.4-mini').
-    openai_model_v2: str = Field(default='gpt-5.4-mini', alias='OPENAI_MODEL_V2')
+    # Single knob for the v2 loop's model id. The GPT-5.6 family ships as three
+    # tiers ('gpt-5.6-sol' / 'gpt-5.6-terra' / 'gpt-5.6-luna'); Luna is the
+    # default — cheapest, 1M context, and ahead of gpt-5.4-mini on tool use.
+    # Tier and effort are runtime policy: the deploy workflow pins both.
+    openai_model_v2: str = Field(default='gpt-5.6-luna', alias='OPENAI_MODEL_V2')
     agent_v2_max_turns: int = Field(default=8, alias='AGENT_V2_MAX_TURNS')
     # 24 (was 14): sized so exhaustive-read Q&A ("explain every epic in
     # detail") fits — on a ~8-feature roadmap the model fetches details per
@@ -147,13 +163,40 @@ class Settings(BaseSettings):
     # clarifier). Edit turns still use a handful of calls; the cap remains the
     # runaway guard.
     agent_v2_max_tool_calls: int = Field(default=24, alias='AGENT_V2_MAX_TOOL_CALLS')
+    # Covers hidden reasoning + visible output. Low effort reasons in a few
+    # hundred to ~2k tokens, but one stage_edits at the focus op cap (90) is
+    # ~8-10k tokens of arguments; 4000/8000 truncated those (status
+    # 'incomplete'). Billed only when used.
     openai_v2_max_output_tokens: int | None = Field(
-        default=4000,
+        default=16000,
         alias='OPENAI_V2_MAX_OUTPUT_TOKENS',
     )
+    # GPT-5.6 accepts none|low|medium|high|xhigh|max ('minimal' is the older
+    # GPT-5 spelling; kept for the validator, the client self-heals a 400).
+    # Hard turns escalate to at least 'medium' (runtime/phases/investigate.py).
     openai_v2_reasoning_effort: str | None = Field(
         default='low',
         alias='OPENAI_V2_REASONING_EFFORT',
+    )
+    # text.verbosity — the API's brevity lever. Prose "be concise" rules make
+    # the 5.6 family drop deliverables, so the prompt states priorities and
+    # this knob sets length. Empty → not sent.
+    openai_v2_verbosity: str | None = Field(
+        default='low',
+        alias='OPENAI_V2_VERBOSITY',
+    )
+    # Prompt caching on GPT-5.6 bills writes at 1.25x and reads at 0.1x.
+    # 'explicit' (default) declares one breakpoint on the static prefix
+    # through '# Actor': the prefix is written once and read at 0.1x, the
+    # per-turn tail is billed plainly. 'implicit' lets the API cache through
+    # the latest message, which writes the whole growing tail at 1.25x on
+    # every call — measured 2026-09-16 (scripts/benchmark_gpt56_cache.mjs):
+    # explicit 56% cached / 52k writes vs implicit 46% / 97k on the same
+    # five-turn session, because our loops are mostly two steps. 'off'
+    # sends no cache key or options.
+    openai_v2_prompt_cache_mode: str = Field(
+        default='explicit',
+        alias='OPENAI_V2_PROMPT_CACHE_MODE',
     )
     # GPT-5 reasoning models reject non-default temperature, so v2 omits it by
     # default (None → not sent). Set a float only if the configured model
@@ -187,7 +230,14 @@ class Settings(BaseSettings):
     # next turn start) and truncated from Redis. The summary rides the
     # durable agent-state snapshot.
     # ------------------------------------------------------------------
-    agent_summary_model: str = Field(default='gpt-4o-mini', alias='AGENT_SUMMARY_MODEL')
+    agent_summary_model: str = Field(default='gpt-5.6-luna', alias='AGENT_SUMMARY_MODEL')
+    # Summaries are bounded extraction — 'none' skips hidden reasoning. Empty
+    # → the reasoning param is omitted (point the summarizer at a
+    # non-reasoning model without a wasted 400 per compaction).
+    agent_summary_reasoning_effort: str | None = Field(
+        default='none',
+        alias='AGENT_SUMMARY_REASONING_EFFORT',
+    )
     agent_summary_trigger_messages: int = Field(
         default=40,
         alias='AGENT_SUMMARY_TRIGGER_MESSAGES',
@@ -235,6 +285,14 @@ class Settings(BaseSettings):
     agent_run_transcript_ttl_seconds: int = Field(
         default=900,
         alias='AGENT_RUN_TRANSCRIPT_TTL_SECONDS',
+    )
+    # Serialized size cap for a paused transcript. It now carries the model's
+    # encrypted reasoning items (2-10 KB each); past the cap those are
+    # stripped first, then assistant text, so the side key always fits under
+    # Upstash's 1 MB request ceiling and a pause never fails on size.
+    agent_run_transcript_max_bytes: int = Field(
+        default=400_000,
+        alias='AGENT_RUN_TRANSCRIPT_MAX_BYTES',
     )
     # Checkpoint policy (D4). Workspace scope: a single-roadmap, delete-free
     # batch up to this many ops executes without confirmation.
@@ -409,17 +467,49 @@ class Settings(BaseSettings):
             return 60
         return value
 
-    @field_validator('openai_v2_reasoning_effort')
+    @field_validator('openai_v2_reasoning_effort', 'agent_summary_reasoning_effort')
     @classmethod
-    def normalize_openai_v2_reasoning_effort(cls, value: str | None) -> str | None:
+    def normalize_reasoning_effort(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = str(value).strip().lower()
         if not normalized:
             return None
-        if normalized not in {'minimal', 'low', 'medium', 'high'}:
+        if normalized not in REASONING_EFFORT_LEVELS:
             return 'low'
         return normalized
+
+    @field_validator('openai_v2_verbosity')
+    @classmethod
+    def normalize_openai_v2_verbosity(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+        if normalized not in {'low', 'medium', 'high'}:
+            return 'low'
+        return normalized
+
+    @field_validator('openai_v2_prompt_cache_mode')
+    @classmethod
+    def normalize_openai_v2_prompt_cache_mode(cls, value: str) -> str:
+        normalized = (value or '').strip().lower()
+        if normalized not in {'implicit', 'explicit', 'off'}:
+            return 'explicit'
+        return normalized
+
+    @field_validator('openai_v2_max_output_tokens')
+    @classmethod
+    def normalize_openai_v2_max_output_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        return _clamp_int(value, 1000, 128_000)
+
+    @field_validator('agent_run_transcript_max_bytes')
+    @classmethod
+    def normalize_agent_run_transcript_max_bytes(cls, value: int) -> int:
+        return _clamp_int(value, 50_000, 900_000)
 
     @field_validator('nest_api_base_url')
     @classmethod

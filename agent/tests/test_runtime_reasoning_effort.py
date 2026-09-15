@@ -255,5 +255,72 @@ class ClientReasoningOverrideTests(unittest.TestCase):
         self.assertNotIn('reasoning', fake.responses.last_kwargs)
 
 
+
+class ExtendedEffortLadderTests(unittest.TestCase):
+    """GPT-5.6 adds none / xhigh / max around the old minimal..high ladder."""
+
+    def test_none_base_escalates_on_a_hard_turn(self):
+        self.assertEqual(_turn_reasoning_effort(_settings('none'), 'workspace_scope'), 'medium')
+        self.assertEqual(_turn_reasoning_effort(_settings('none'), 'none'), 'none')
+
+    def test_top_efforts_are_never_downgraded(self):
+        for base in ('xhigh', 'max'):
+            self.assertEqual(_turn_reasoning_effort(_settings(base), 'pending_plan'), base)
+            self.assertEqual(escalated_effort(_settings(base)), base)
+            self.assertEqual(escalated_effort(_settings(base), 'high'), base)
+
+    def test_unknown_base_counts_as_low(self):
+        self.assertEqual(_turn_reasoning_effort(_settings('bogus'), 'plan_request'), 'medium')
+        self.assertEqual(escalated_effort(_settings('bogus')), 'medium')
+
+
+class EffortValidatorTests(unittest.TestCase):
+    """Validators run on construction (not on model_copy), so build Settings."""
+
+    def _settings(self, **env):
+        from app.core.config import Settings
+
+        return Settings(_env_file=None, **env)  # type: ignore[arg-type]
+
+    def test_every_documented_effort_is_accepted(self):
+        for value in ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'):
+            self.assertEqual(self._settings(OPENAI_V2_REASONING_EFFORT=value).openai_v2_reasoning_effort, value)
+            self.assertEqual(
+                self._settings(AGENT_SUMMARY_REASONING_EFFORT=value).agent_summary_reasoning_effort, value
+            )
+
+    def test_unknown_effort_falls_back_to_low_and_blank_disables(self):
+        self.assertEqual(self._settings(OPENAI_V2_REASONING_EFFORT='turbo').openai_v2_reasoning_effort, 'low')
+        self.assertIsNone(self._settings(OPENAI_V2_REASONING_EFFORT='').openai_v2_reasoning_effort)
+        self.assertIsNone(self._settings(AGENT_SUMMARY_REASONING_EFFORT='  ').agent_summary_reasoning_effort)
+
+    def test_verbosity_and_cache_mode_are_normalized(self):
+        self.assertEqual(self._settings(OPENAI_V2_VERBOSITY='HIGH').openai_v2_verbosity, 'high')
+        self.assertEqual(self._settings(OPENAI_V2_VERBOSITY='chatty').openai_v2_verbosity, 'low')
+        self.assertIsNone(self._settings(OPENAI_V2_VERBOSITY='').openai_v2_verbosity)
+        self.assertEqual(self._settings(OPENAI_V2_PROMPT_CACHE_MODE='Implicit').openai_v2_prompt_cache_mode, 'implicit')
+        self.assertEqual(self._settings(OPENAI_V2_PROMPT_CACHE_MODE='nope').openai_v2_prompt_cache_mode, 'explicit')
+
+    def test_output_and_transcript_caps_are_clamped(self):
+        self.assertEqual(self._settings(OPENAI_V2_MAX_OUTPUT_TOKENS='10').openai_v2_max_output_tokens, 1000)
+        self.assertEqual(self._settings(OPENAI_V2_MAX_OUTPUT_TOKENS='999999').openai_v2_max_output_tokens, 128_000)
+        self.assertEqual(self._settings(AGENT_RUN_TRANSCRIPT_MAX_BYTES='1').agent_run_transcript_max_bytes, 50_000)
+        self.assertEqual(
+            self._settings(AGENT_RUN_TRANSCRIPT_MAX_BYTES='5000000').agent_run_transcript_max_bytes, 900_000
+        )
+
+    def test_code_defaults_are_the_luna_policy(self):
+        from app.core.config import Settings
+
+        fields = Settings.model_fields
+        self.assertEqual(fields['openai_model_v2'].default, 'gpt-5.6-luna')
+        self.assertEqual(fields['agent_summary_model'].default, 'gpt-5.6-luna')
+        self.assertEqual(fields['openai_v2_reasoning_effort'].default, 'low')
+        self.assertEqual(fields['agent_summary_reasoning_effort'].default, 'none')
+        self.assertEqual(fields['openai_v2_verbosity'].default, 'low')
+        self.assertEqual(fields['openai_v2_prompt_cache_mode'].default, 'explicit')
+        self.assertEqual(fields['openai_v2_max_output_tokens'].default, 16000)
+
+
 if __name__ == '__main__':
     unittest.main()

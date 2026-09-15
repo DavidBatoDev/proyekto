@@ -53,9 +53,22 @@ class LLMResponse:
     # usage.input_tokens_details.cached_tokens — the signal that OpenAI's
     # automatic prompt caching hit our stable system-prompt + state prefix.
     tokens_cached: int | None = None
+    # Tokens written INTO the prompt cache on this call (billed at 1.25x on
+    # GPT-5.6). usage.input_tokens_details.cache_write_tokens; a write on
+    # every step of a loop means the prefix is churning.
+    tokens_cache_write: int | None = None
+    # Hidden reasoning tokens (usage.output_tokens_details.reasoning_tokens):
+    # billed as output, invisible in the text, and the cost lever behind the
+    # effort knob.
+    tokens_reasoning: int | None = None
 
 
 _DEFAULT_MODEL_TIMEOUT_SECONDS = 90
+# GPT-5.6 explicit prompt caching: the only documented TTL, also the default.
+_PROMPT_CACHE_TTL = '30m'
+_ENCRYPTED_REASONING_INCLUDE = 'reasoning.encrypted_content'
+# Every GPT-5 generation accepts 'low'; a rejected effort value lands here.
+_EFFORT_FALLBACK = 'low'
 
 
 def _model_timeout_seconds(settings: Any) -> int:
@@ -97,6 +110,13 @@ class LLMClient:
         # reasoning.summary — drop just the summary request (keep effort) and
         # remember for the rest of the process.
         self._drop_reasoning_summary = False
+        # text.verbosity is a GPT-5.x-family param; a model that rejects it
+        # loses just that knob.
+        self._drop_verbosity = False
+        # A rejected effort VALUE (e.g. 'minimal' on GPT-5.6) retries at 'low'
+        # instead of disabling reasoning altogether; only that value is
+        # remapped, so a per-turn escalation to 'medium' still goes through.
+        self._rejected_effort: str | None = None
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -146,19 +166,35 @@ class LLMClient:
             if reasoning_effort is _USE_CONFIGURED_EFFORT
             else reasoning_effort
         )
+        if effort is not None and effort == self._rejected_effort:
+            effort = _EFFORT_FALLBACK
+        cache_mode = str(getattr(self._settings, 'openai_v2_prompt_cache_mode', 'implicit') or 'implicit')
         kwargs: dict[str, Any] = {
             'model': self._model,
-            'input': input_items,
+            'input': _with_cache_breakpoint(input_items) if cache_mode == 'explicit' else input_items,
             'tools': _to_responses_tools(tools),
             'tool_choice': 'auto',
             'store': False,
         }
         if self._settings.openai_v2_max_output_tokens is not None:
             kwargs['max_output_tokens'] = self._settings.openai_v2_max_output_tokens
-        if self._prompt_cache_key:
+        if self._prompt_cache_key and cache_mode != 'off':
             kwargs['prompt_cache_key'] = self._prompt_cache_key
+        if cache_mode == 'explicit':
+            # Not in SDK 1.109's typed signature yet; extra_body merges into
+            # the JSON body. Explicit mode caches only through the declared
+            # breakpoint (the static prefix) and bills nothing for the tail.
+            kwargs['extra_body'] = {
+                'prompt_cache_options': {'mode': 'explicit', 'ttl': _PROMPT_CACHE_TTL},
+            }
         if send_reasoning and effort is not None:
             kwargs['reasoning'] = {'effort': effort}
+            # With store=False the model's reasoning only survives a tool step
+            # as an encrypted blob on the reasoning item; the loop echoes it
+            # back with the function outputs (engine/loop.py _echo_items).
+            # GPT-5.6 returns it by default; the include is the documented
+            # opt-in for older models and harmless on newer ones.
+            kwargs['include'] = [_ENCRYPTED_REASONING_INCLUDE]
             # Sanitized reasoning summaries → assistant_thought timeline rows.
             # Only requested when a consumer is listening (auxiliary callers
             # like the summarizer pass no callback and shouldn't pay for it).
@@ -168,8 +204,22 @@ class LLMClient:
                 and not self._drop_reasoning_summary
             ):
                 kwargs['reasoning']['summary'] = 'auto'
+        verbosity = getattr(self._settings, 'openai_v2_verbosity', None)
+        if isinstance(verbosity, str) and verbosity and not self._drop_verbosity:
+            kwargs['text'] = {'verbosity': verbosity}
         if self._settings.openai_v2_temperature is not None:
             kwargs['temperature'] = self._settings.openai_v2_temperature
+
+        def _retry(*, send_reasoning_next: bool) -> LLMResponse:
+            return self._create(
+                client,
+                input_items,
+                tools,
+                send_reasoning=send_reasoning_next,
+                reasoning_effort=reasoning_effort,
+                on_text_delta=on_text_delta,
+                on_reasoning_part=on_reasoning_part,
+            )
 
         # Stream only when someone is listening for deltas: the summarizer and
         # other auxiliary callers pass no callback and keep plain calls.
@@ -182,30 +232,9 @@ class LLMClient:
             try:
                 return self._create_streaming(client, kwargs, on_text_delta, on_reasoning_part)
             except Exception as exc:  # noqa: BLE001 — self-heal, then plain call
-                # Check summary first: the org-verification 400 mentions
-                # "reasoning summaries" and must not disable reasoning itself.
-                if 'summary' in kwargs.get('reasoning', {}) and _is_reasoning_summary_unsupported(exc):
-                    self._drop_reasoning_summary = True
-                    return self._create(
-                        client,
-                        input_items,
-                        tools,
-                        send_reasoning=send_reasoning,
-                        reasoning_effort=reasoning_effort,
-                        on_text_delta=on_text_delta,
-                        on_reasoning_part=on_reasoning_part,
-                    )
-                if send_reasoning and _is_reasoning_unsupported(exc):
-                    self._drop_reasoning = True
-                    return self._create(
-                        client,
-                        input_items,
-                        tools,
-                        send_reasoning=False,
-                        reasoning_effort=reasoning_effort,
-                        on_text_delta=on_text_delta,
-                        on_reasoning_part=on_reasoning_part,
-                    )
+                healed = self._heal_request(exc, kwargs, send_reasoning)
+                if healed is not None:
+                    return _retry(send_reasoning_next=healed)
                 # Any other streaming failure (open error, mid-stream drop, no
                 # terminal event): remember and retry non-streaming below. The
                 # retry re-sends the same request; worst case is a duplicated
@@ -220,28 +249,9 @@ class LLMClient:
         try:
             response = client.responses.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — narrow retry on a known 400
-            if 'summary' in kwargs.get('reasoning', {}) and _is_reasoning_summary_unsupported(exc):
-                self._drop_reasoning_summary = True
-                return self._create(
-                    client,
-                    input_items,
-                    tools,
-                    send_reasoning=send_reasoning,
-                    reasoning_effort=reasoning_effort,
-                    on_text_delta=on_text_delta,
-                    on_reasoning_part=on_reasoning_part,
-                )
-            if send_reasoning and _is_reasoning_unsupported(exc):
-                self._drop_reasoning = True
-                return self._create(
-                    client,
-                    input_items,
-                    tools,
-                    send_reasoning=False,
-                    reasoning_effort=reasoning_effort,
-                    on_text_delta=on_text_delta,
-                    on_reasoning_part=on_reasoning_part,
-                )
+            healed = self._heal_request(exc, kwargs, send_reasoning)
+            if healed is not None:
+                return _retry(send_reasoning_next=healed)
             raise
         # Non-streaming path: reasoning summaries arrive as parts on the
         # response's reasoning items rather than as stream events. Emit them
@@ -250,6 +260,49 @@ class LLMClient:
         if on_reasoning_part is not None and 'summary' in kwargs.get('reasoning', {}):
             _emit_reasoning_summary_parts(response, on_reasoning_part)
         return adapt_response(response)
+
+    def _heal_request(
+        self,
+        exc: Exception,
+        kwargs: dict[str, Any],
+        send_reasoning: bool,
+    ) -> bool | None:
+        """Classify a rejected request. Returns the ``send_reasoning`` value
+        for a retry after latching the matching drop flag, or ``None`` when
+        the error is not one of the known parameter 400s.
+
+        Order matters: the org-verification 400 mentions "reasoning
+        summaries" and must not disable reasoning; an effort VALUE rejection
+        ("'minimal' is not supported…") names reasoning too and must fall
+        back to 'low' rather than dropping reasoning.
+        """
+        reasoning = kwargs.get('reasoning') or {}
+        if 'summary' in reasoning and _is_reasoning_summary_unsupported(exc):
+            self._drop_reasoning_summary = True
+            return send_reasoning
+        if 'text' in kwargs and _is_verbosity_unsupported(exc):
+            self._drop_verbosity = True
+            return send_reasoning
+        if send_reasoning and reasoning:
+            effort = reasoning.get('effort')
+            if (
+                _is_effort_value_unsupported(exc)
+                and isinstance(effort, str)
+                and effort != _EFFORT_FALLBACK
+                and self._rejected_effort is None
+            ):
+                self._rejected_effort = effort
+                logger.warning(
+                    'reasoning effort %r rejected by %s — using %r for it from now on',
+                    effort,
+                    self._model,
+                    _EFFORT_FALLBACK,
+                )
+                return True
+            if _is_reasoning_unsupported(exc):
+                self._drop_reasoning = True
+                return False
+        return None
 
     def _create_streaming(
         self,
@@ -368,28 +421,91 @@ def adapt_response(response: Any) -> LLMResponse:
         tokens_output=getattr(usage, 'output_tokens', None) if usage is not None else None,
         tokens_total=getattr(usage, 'total_tokens', None) if usage is not None else None,
         tokens_cached=_cached_tokens(usage),
+        tokens_cache_write=_usage_detail(usage, 'input_tokens_details', 'cache_write_tokens'),
+        tokens_reasoning=_usage_detail(usage, 'output_tokens_details', 'reasoning_tokens'),
     )
+
+
+def _usage_detail(usage: Any, details_key: str, value_key: str) -> int | None:
+    """Pull one counter out of a usage details block (object or dict)."""
+    if usage is None:
+        return None
+    details = getattr(usage, details_key, None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get(details_key)
+    if details is None:
+        return None
+    if isinstance(details, dict):
+        value = details.get(value_key)
+    else:
+        value = getattr(details, value_key, None)
+    return int(value) if isinstance(value, (int, float)) else None
 
 
 def _cached_tokens(usage: Any) -> int | None:
     """Pull cached_tokens out of usage.input_tokens_details (object or dict)."""
-    if usage is None:
-        return None
-    details = getattr(usage, 'input_tokens_details', None)
-    if details is None and isinstance(usage, dict):
-        details = usage.get('input_tokens_details')
-    if details is None:
-        return None
-    if isinstance(details, dict):
-        value = details.get('cached_tokens')
-    else:
-        value = getattr(details, 'cached_tokens', None)
-    return int(value) if isinstance(value, (int, float)) else None
+    return _usage_detail(usage, 'input_tokens_details', 'cached_tokens')
+
+
+def _with_cache_breakpoint(input_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Explicit prompt caching: split the leading system message at the
+    ``# Actor`` boundary and mark the stable prefix as the cache breakpoint.
+
+    Returns a NEW list (the loop keeps appending to the caller's). Untouched
+    when the first item is not a plain-string system message or carries no
+    ``# Actor`` block (the summarizer's short prompt).
+    """
+    if not input_items:
+        return input_items
+    first = input_items[0]
+    if not isinstance(first, dict) or first.get('role') != 'system':
+        return input_items
+    content = first.get('content')
+    if not isinstance(content, str):
+        return input_items
+    from app.core.runtime.prompt import split_cache_prefix
+
+    parts = split_cache_prefix(content)
+    if parts is None:
+        return input_items
+    prefix, tail = parts
+    blocks: list[dict[str, Any]] = [
+        {'type': 'input_text', 'text': prefix, 'prompt_cache_breakpoint': {'mode': 'explicit'}},
+    ]
+    if tail:
+        blocks.append({'type': 'input_text', 'text': tail})
+    return [{**first, 'content': blocks}, *input_items[1:]]
 
 
 def _is_reasoning_unsupported(exc: Exception) -> bool:
     text = str(exc).lower()
+    if 'effort' in text:
+        # A rejected effort VALUE is handled by _is_effort_value_unsupported.
+        return False
     return 'reasoning' in text and ('not supported' in text or 'unsupported' in text)
+
+
+def _is_effort_value_unsupported(exc: Exception) -> bool:
+    """The reasoning.effort VALUE was rejected (e.g. 'minimal' on GPT-5.6,
+    'none' on an older model) — reasoning itself still works."""
+    text = str(exc).lower()
+    return 'effort' in text and (
+        'not supported' in text
+        or 'unsupported' in text
+        or 'invalid' in text
+        or 'must be one of' in text
+    )
+
+
+def _is_verbosity_unsupported(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return 'verbosity' in text and (
+        'not supported' in text
+        or 'unsupported' in text
+        or 'unknown' in text
+        or 'unrecognized' in text
+        or 'invalid' in text
+    )
 
 
 def _is_reasoning_summary_unsupported(exc: Exception) -> bool:

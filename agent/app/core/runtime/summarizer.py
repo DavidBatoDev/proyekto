@@ -82,6 +82,11 @@ async def run_summary_compaction(
                 'New turns to merge:\n' + '\n'.join(transcript_lines)
             )
             client = LLMClient(settings, model=settings.agent_summary_model)
+            # Bounded extraction: 'none' effort by default (no hidden
+            # reasoning tokens); an empty setting omits the reasoning param
+            # so a non-reasoning summary model never eats a 400 per
+            # compaction (this client is fresh each time, so the loop's
+            # self-heal would not have stuck).
             response = await asyncio.to_thread(
                 client.complete,
                 [
@@ -89,6 +94,7 @@ async def run_summary_compaction(
                     {'role': 'user', 'content': user_payload},
                 ],
                 [],
+                reasoning_effort=getattr(settings, 'agent_summary_reasoning_effort', None),
             )
             summary = (response.content or '').strip()
             if not summary:

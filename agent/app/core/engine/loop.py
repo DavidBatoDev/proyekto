@@ -60,8 +60,11 @@ class LoopResult:
     tokens_output: int = 0
     tokens_total: int = 0
     tokens_cached: int = 0
+    tokens_cache_write: int = 0
+    tokens_reasoning: int = 0
     # kind='paused' / 'cancelled': the echoed items after the user turn
-    # (function_call / function_call_output / nudges) to replay on resume.
+    # (reasoning / function_call / message / function_call_output / nudges)
+    # to replay on resume.
     transcript: list[dict[str, Any]] | None = None
 
 
@@ -112,6 +115,7 @@ def run_loop(
     nudged_ask_user = False
     nudged_act = False
     tok_in = tok_out = tok_total = tok_cached = 0
+    tok_cache_write = tok_reasoning = 0
     # Everything after this index is the turn's transcript (a resumed
     # transcript the caller already appended is included, so a second pause
     # carries the whole history forward).
@@ -163,6 +167,8 @@ def run_loop(
                     tok_out,
                     tok_total,
                     tok_cached,
+                    tok_cache_write,
+                    tok_reasoning,
                 )
             if deadline_monotonic is not None and monotonic() > deadline_monotonic:
                 return _finalize(
@@ -178,6 +184,8 @@ def run_loop(
                     tok_out,
                     tok_total,
                     tok_cached,
+                    tok_cache_write,
+                    tok_reasoning,
                 )
         progress.provider_attempt(settings, trace_id, turn)
         if delta_emitter is not None:
@@ -191,6 +199,8 @@ def run_loop(
         tok_out += int(response.tokens_output or 0)
         tok_total += int(response.tokens_total or 0)
         tok_cached += int(response.tokens_cached or 0)
+        tok_cache_write += int(getattr(response, 'tokens_cache_write', 0) or 0)
+        tok_reasoning += int(getattr(response, 'tokens_reasoning', 0) or 0)
         progress.provider_success(
             settings,
             trace_id,
@@ -200,6 +210,8 @@ def run_loop(
             tokens_total=response.tokens_total,
             tokens_input=response.tokens_input,
             tokens_cached=response.tokens_cached,
+            tokens_cache_write=getattr(response, 'tokens_cache_write', None),
+            tokens_reasoning=getattr(response, 'tokens_reasoning', None),
         )
         messages.extend(_echo_items(response))
 
@@ -261,6 +273,8 @@ def run_loop(
                 tok_out,
                 tok_total,
                 tok_cached,
+                tok_cache_write,
+                tok_reasoning,
             )
 
         results_by_id: dict[str, Any] = {}
@@ -297,6 +311,8 @@ def run_loop(
                     tok_out,
                     tok_total,
                     tok_cached,
+                    tok_cache_write,
+                    tok_reasoning,
                 )
             # Errors from the terminal(s) — feed them back to the model.
             for tc in terminal_calls:
@@ -341,6 +357,8 @@ def run_loop(
                 tok_out,
                 tok_total,
                 tok_cached,
+                tok_cache_write,
+                tok_reasoning,
             )
 
     return _finalize(
@@ -355,6 +373,8 @@ def run_loop(
         tok_out,
         tok_total,
         tok_cached,
+        tok_cache_write,
+        tok_reasoning,
     )
 
 
@@ -434,23 +454,98 @@ def _is_textual_option_question(text: str) -> bool:
 def _echo_items(response: LLMResponse) -> list[dict[str, Any]]:
     """Items to append back into the Responses `input` for the next turn.
 
-    Echo only the model's ``function_call`` items, sanitized to the fields the
-    Responses API accepts as INPUT (type / call_id / name / arguments). Echoing
-    raw output items verbatim is rejected — they carry output-only fields like
-    ``status``. Reasoning and assistant-message items are dropped: they aren't
-    needed for the stateless tool loop, and the model re-reasons each turn.
-    Only continuation turns (reads) reuse these items; terminal turns return
-    immediately, so dropping the assistant text is harmless.
+    The model's output items are echoed in their original order, each cut
+    down to the fields the Responses API accepts as INPUT (raw output items
+    carry output-only fields and are rejected verbatim):
+
+    - ``reasoning`` → type / id / summary / encrypted_content. With
+      ``store=False`` the encrypted blob is the only way the model's reasoning
+      survives a tool step; OpenAI's guidance for reasoning models is to pass
+      every reasoning item back together with the function outputs. Items
+      without a blob (older models) are dropped — an empty shell is useless.
+    - ``message`` → the assistant text (``status`` is REQUIRED on a replayed
+      message; ``phase`` is passed through when the model sets it).
+    - ``function_call`` → type / call_id / name / arguments, exactly as before.
+
+    Responses whose ``raw_output`` is empty (scripted fakes, adapters that do
+    not populate it) fall back to rebuilding the ``function_call`` items from
+    ``tool_calls``, so the legacy transcript shape stays reachable. Only the
+    current turn replays these items: cross-turn history is text-only
+    (``runtime/prompt.py`` ``_trimmed_history``) because reasoning is only
+    valid since the last user message.
     """
-    return [
-        {
-            'type': 'function_call',
-            'call_id': tc.id,
-            'name': tc.name,
-            'arguments': tc.raw_arguments,
-        }
-        for tc in response.tool_calls
-    ]
+    items: list[dict[str, Any]] = []
+    seen_call_ids: set[str] = set()
+    for raw in response.raw_output or []:
+        if not isinstance(raw, dict):
+            continue
+        item_type = raw.get('type')
+        if item_type == 'reasoning':
+            encrypted = raw.get('encrypted_content')
+            if not isinstance(encrypted, str) or not encrypted:
+                continue
+            summary = raw.get('summary')
+            items.append(
+                {
+                    'type': 'reasoning',
+                    'id': raw.get('id'),
+                    'summary': [part for part in summary if isinstance(part, dict)]
+                    if isinstance(summary, list)
+                    else [],
+                    'encrypted_content': encrypted,
+                }
+            )
+        elif item_type == 'message':
+            content = [
+                {'type': 'output_text', 'text': part.get('text'), 'annotations': []}
+                for part in (raw.get('content') or [])
+                if isinstance(part, dict)
+                and part.get('type') == 'output_text'
+                and isinstance(part.get('text'), str)
+            ]
+            if not content:
+                continue
+            message: dict[str, Any] = {
+                'type': 'message',
+                'id': raw.get('id'),
+                'role': 'assistant',
+                'status': raw.get('status') or 'completed',
+                'content': content,
+            }
+            if isinstance(raw.get('phase'), str):
+                message['phase'] = raw['phase']
+            items.append(message)
+        elif item_type == 'function_call':
+            call_id = str(raw.get('call_id') or raw.get('id') or '')
+            arguments = raw.get('arguments')
+            if not isinstance(arguments, str):
+                arguments = next(
+                    (tc.raw_arguments for tc in response.tool_calls if tc.id == call_id),
+                    '{}',
+                )
+            seen_call_ids.add(call_id)
+            items.append(
+                {
+                    'type': 'function_call',
+                    'call_id': call_id,
+                    'name': raw.get('name'),
+                    'arguments': arguments,
+                }
+            )
+    # Every tool call the loop is about to answer must have its function_call
+    # item in the transcript, or the function_call_output is unbalanced.
+    for tc in response.tool_calls:
+        if tc.id in seen_call_ids:
+            continue
+        items.append(
+            {
+                'type': 'function_call',
+                'call_id': tc.id,
+                'name': tc.name,
+                'arguments': tc.raw_arguments,
+            }
+        )
+    return items
 
 
 def _finalize(
@@ -461,6 +556,8 @@ def _finalize(
     tok_out: int,
     tok_total: int,
     tok_cached: int = 0,
+    tok_cache_write: int = 0,
+    tok_reasoning: int = 0,
 ) -> LoopResult:
     result.turns = turns
     result.tool_calls_used = tool_calls_used
@@ -468,6 +565,8 @@ def _finalize(
     result.tokens_output = tok_out
     result.tokens_total = tok_total
     result.tokens_cached = tok_cached
+    result.tokens_cache_write = tok_cache_write
+    result.tokens_reasoning = tok_reasoning
     if not result.termination_reason:
         result.termination_reason = result.kind
     return result

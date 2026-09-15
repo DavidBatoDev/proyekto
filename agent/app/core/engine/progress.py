@@ -140,6 +140,8 @@ def provider_success(
     tokens_total: int | None,
     tokens_input: int | None = None,
     tokens_cached: int | None = None,
+    tokens_cache_write: int | None = None,
+    tokens_reasoning: int | None = None,
 ) -> None:
     log_event(
         logger,
@@ -155,6 +157,11 @@ def provider_success(
         # Cached-prefix input tokens on this call — grep logs.txt for
         # `tokens_cached` to confirm prompt caching is hitting the prefix.
         tokens_cached=tokens_cached,
+        # Tokens written to the cache (billed 1.25x on GPT-5.6): expected on
+        # the first call per prefix, a regression on every call.
+        tokens_cache_write=tokens_cache_write,
+        # Hidden reasoning tokens — the cost behind the effort knob.
+        tokens_reasoning=tokens_reasoning,
     )
 
 

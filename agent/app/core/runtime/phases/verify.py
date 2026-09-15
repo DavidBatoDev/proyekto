@@ -462,7 +462,14 @@ def _loop_reply(ctx: Any, session: AgentSession, run_state: Any, report: VerifyR
         )
         return None
     ctx.add_loop_usage(result)
-    for key, attr in (('input', 'tokens_input'), ('output', 'tokens_output'), ('total', 'tokens_total'), ('cached', 'tokens_cached')):
+    for key, attr in (
+        ('input', 'tokens_input'),
+        ('output', 'tokens_output'),
+        ('total', 'tokens_total'),
+        ('cached', 'tokens_cached'),
+        ('cache_write', 'tokens_cache_write'),
+        ('reasoning', 'tokens_reasoning'),
+    ):
         run_state.tokens[key] = int(run_state.tokens.get(key, 0) or 0) + int(getattr(result, attr, 0) or 0)
     usage = run_state.phase_usage.setdefault('verify', {'turns': 0, 'tool_calls': 0})
     usage['turns'] = int(usage.get('turns', 0) or 0) + int(result.turns or 0)

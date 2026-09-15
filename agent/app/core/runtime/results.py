@@ -76,6 +76,9 @@ class StepResult:
     # ordered so the static prefix stays byte-stable (runtime/prompt.py) and
     # this is the only signal that the ordering is paying off.
     tokens_cached: int | None = None
+    # Cache writes (1.25x on GPT-5.6) and hidden reasoning tokens, same provenance.
+    tokens_cache_write: int | None = None
+    tokens_reasoning: int | None = None
     entity_links_kept: int = 0
     entity_links_rejected: int = 0
     # Wrong links re-pointed at the one entity they evidently meant, and

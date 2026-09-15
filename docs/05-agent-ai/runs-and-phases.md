@@ -1,6 +1,6 @@
 # Runs & Phases
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-09-16 · **Status:** current
 
 Every user message to the Proyekto agent is a **run**: a server-side state machine the
 Python agent owns, persisted in the Redis session and the durable snapshot, that moves
@@ -200,11 +200,18 @@ overview in workspace scope; memory notes and the project pack for the focus roa
 `AGENT_MEMORY_SEMANTIC_THRESHOLD`), then runs the loop engine with the investigate
 catalog until the model ends the turn with one terminal tool or plain text.
 
-- **Reasoning effort** starts at `OPENAI_V2_REASONING_EFFORT` (default `low`) and
-  escalates to at least `medium` on a hard turn; the trigger (first match wins) is
-  `pending_plan`, `ambiguous_title` (a mentioned title shared by several nodes in the
-  merged handle map), `plan_request`, `multi_roadmap_refs` (two or more accessible
-  referenced roadmaps) or `workspace_scope`. Logged as `reasoning_effort_selected`.
+- **Reasoning effort** starts at `OPENAI_V2_REASONING_EFFORT` (default `low`; the
+  ladder is `none < minimal < low < medium < high < xhigh < max`) and escalates to at
+  least `medium` on a hard turn; the trigger (first match wins) is `pending_plan`,
+  `ambiguous_title` (a mentioned title shared by several nodes in the merged handle
+  map), `plan_request`, `multi_roadmap_refs` (two or more accessible referenced
+  roadmaps) or `workspace_scope`. Logged as `reasoning_effort_selected`.
+- **Reasoning continuity** - with `store=false` the model's reasoning only survives a
+  tool step as the `encrypted_content` blob on its reasoning item. The loop echoes
+  every reasoning / assistant-message / `function_call` item back, in order, ahead of
+  the `function_call_output` items (OpenAI's guidance for reasoning models), so a
+  paused transcript and the verify continuation replay them too. Cross-turn history
+  stays text-only: reasoning is only valid since the last user message.
 - **Budgets** are `AGENT_V2_MAX_TURNS` (8) and `AGENT_V2_MAX_TOOL_CALLS` (24) per
   phase entry; a resumed investigate continues its own counters
   (`run.phase_usage.investigate`).
@@ -644,6 +651,7 @@ timeline decides what to show. Run-specific events and their `details`:
 | `refs_resolved` | `refs_total`, `refs_accessible`, `refs_inaccessible`, `loaded_roadmap_ids` | hidden |
 | `checkpoint_policy` | `decision`, `reason`, `batches`, `operations` (verbose detail only; no structured picker) | log / verbose only |
 | `reasoning_effort_selected` | `phase`, `effort`, `escalated`, `trigger` (verbose detail only; no structured picker) | log / verbose only |
+| `provider_success` | `turn`, `tool_names`, `finish_reason`, `tokens_total`, `tokens_input`, `tokens_cached`, `tokens_cache_write` (prompt-cache writes, billed 1.25x on GPT-5.6), `tokens_reasoning` (hidden reasoning tokens) | log / verbose only |
 | `commit_started` | `roadmap_id`, `roadmap_title`, `batch_id`, `operations_count`, `attempt` | curated row |
 | `commit_completed` | `roadmap_id`, `roadmap_title`, `batch_id`, `change_id`, `operations_count`, `commit_ms`, `impacted_item_count`, `impacted_summary`, `impacted_items`, `history_recorded` | curated row |
 | `commit_failed` | `roadmap_id`, `roadmap_title`, `batch_id`, `error_code`, `error_message`, `upstream_status`, `invalid_operation`, `attempt`, `impacted_items` | curated row (status `error`) |

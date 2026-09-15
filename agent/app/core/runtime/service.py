@@ -24,6 +24,7 @@ from fastapi import HTTPException, status
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, RecentResolvedTarget
+from app.core.logging_utils import log_event
 from app.core.memory.recent_targets import (
     append_recent_resolved_target as append_recent_resolved_target_helper,
     get_recent_resolved_targets as get_recent_resolved_targets_helper,
@@ -40,6 +41,8 @@ from app.core.runtime.operation_contracts import read_operation_title
 from app.core.runtime.prompt import build_turn_context
 from app.core.session_store import SessionStore, SessionStoreUnavailableError
 from app.core.uuid_utils import is_uuid_like
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -289,7 +292,16 @@ class StepContext:
     # Per-step accumulators read by finalize_step.
     step_batch_ids: set[str] = field(default_factory=set)
     step_commit_batch_ids: set[str] = field(default_factory=set)
-    tokens: dict[str, int] = field(default_factory=lambda: {'input': 0, 'output': 0, 'total': 0, 'cached': 0})
+    tokens: dict[str, int] = field(
+        default_factory=lambda: {
+            'input': 0,
+            'output': 0,
+            'total': 0,
+            'cached': 0,
+            'cache_write': 0,
+            'reasoning': 0,
+        }
+    )
     loop_turns: int = 0
     loop_termination_reason: str | None = None
     provider_used: str = 'openai'
@@ -427,11 +439,43 @@ class StepContext:
         if not key or not callable(put):
             return False
         ttl = int(getattr(self.settings, 'agent_run_transcript_ttl_seconds', 900))
+        transcript = self._fit_transcript(transcript)
         try:
             put(key, transcript, ttl)
         except Exception:  # noqa: BLE001 — a lost transcript restarts the read-only phase
             return False
         return True
+
+    def _fit_transcript(self, transcript: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep the side key under ``AGENT_RUN_TRANSCRIPT_MAX_BYTES``. The
+        model's encrypted reasoning items go first (the resumed loop simply
+        re-reasons), then assistant text; tool calls and their outputs are the
+        part a resume cannot recompute, so they always survive."""
+        max_bytes = int(getattr(self.settings, 'agent_run_transcript_max_bytes', 400_000) or 400_000)
+        try:
+            size = len(json.dumps(transcript, ensure_ascii=False).encode('utf-8'))
+        except (TypeError, ValueError):
+            return transcript
+        if size <= max_bytes:
+            return transcript
+        original_size = size
+        for stripped_type in ('reasoning', 'message'):
+            transcript = [item for item in transcript if item.get('type') != stripped_type]
+            size = len(json.dumps(transcript, ensure_ascii=False).encode('utf-8'))
+            if size <= max_bytes:
+                break
+        log_event(
+            logger,
+            'transcript_reasoning_stripped',
+            settings=self.settings,
+            level=logging.WARNING,
+            trace_id=self.trace_id,
+            original_bytes=original_size,
+            stored_bytes=size,
+            max_bytes=max_bytes,
+            items=len(transcript),
+        )
+        return transcript
 
     def get_transcript(self, key: str | None) -> list[dict[str, Any]] | None:
         get = getattr(self.store, 'get_side_key', None)
@@ -464,5 +508,7 @@ class StepContext:
         self.tokens['output'] += int(getattr(loop_result, 'tokens_output', 0) or 0)
         self.tokens['total'] += int(getattr(loop_result, 'tokens_total', 0) or 0)
         self.tokens['cached'] += int(getattr(loop_result, 'tokens_cached', 0) or 0)
+        self.tokens['cache_write'] += int(getattr(loop_result, 'tokens_cache_write', 0) or 0)
+        self.tokens['reasoning'] += int(getattr(loop_result, 'tokens_reasoning', 0) or 0)
         self.loop_turns += int(turns if turns is not None else (getattr(loop_result, 'turns', 0) or 0))
         self.loop_termination_reason = getattr(loop_result, 'termination_reason', None) or self.loop_termination_reason

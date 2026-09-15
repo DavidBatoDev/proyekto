@@ -262,11 +262,21 @@ def build_system_prompt(
 def prompt_prefix(system_prompt: str) -> str:
     """Everything through the ``# Actor`` block — the cacheable prefix. Tests
     assert it is byte-identical across turns whose tails differ."""
+    parts = split_cache_prefix(system_prompt)
+    return system_prompt if parts is None else parts[0]
+
+
+def split_cache_prefix(system_prompt: str) -> tuple[str, str] | None:
+    """``(prefix, tail)`` at the ``# Actor`` boundary, or ``None`` when the
+    prompt has no actor block (auxiliary prompts). The engine's explicit
+    prompt-cache mode marks ``prefix`` as the cache breakpoint."""
     index = system_prompt.find(f'\n{_ACTOR_HEADER}\n')
     if index == -1:
-        return system_prompt
+        return None
     end = system_prompt.find('\n\n', index + 1)
-    return system_prompt if end == -1 else system_prompt[:end]
+    if end == -1:
+        return system_prompt, ''
+    return system_prompt[:end], system_prompt[end:]
 
 
 def _trimmed_history(session_context: dict[str, Any]) -> list[dict[str, Any]]:

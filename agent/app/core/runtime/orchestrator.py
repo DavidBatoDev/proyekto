@@ -752,6 +752,8 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
         tokens_output=ctx.tokens['output'] or None,
         tokens_total=ctx.tokens['total'] or None,
         tokens_cached=ctx.tokens['cached'] or None,
+        tokens_cache_write=ctx.tokens['cache_write'] or None,
+        tokens_reasoning=ctx.tokens['reasoning'] or None,
         entity_links_kept=links.kept,
         entity_links_rejected=len(links.rejected),
         entity_links_repaired=links.repaired,
