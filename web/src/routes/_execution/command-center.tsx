@@ -16,7 +16,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapTask } from "@/types/roadmap";
 
-export const Route = createFileRoute("/_execution/task-board")({
+export const Route = createFileRoute("/_execution/command-center")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
 		if (!isAuthenticated) {
@@ -126,7 +126,7 @@ function CommandCenterPage() {
 							</div>
 							<div className="leading-tight">
 								<h1 className="text-sm font-semibold text-slate-900">
-									Task board
+									Command center
 								</h1>
 								<p className="text-[11px] text-slate-400">
 									Board view of every task in the selected project

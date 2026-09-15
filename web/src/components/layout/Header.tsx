@@ -17,7 +17,7 @@ const Header = () => {
 	const validPaths = [
 		"/dashboard",
 		"/inbox",
-		"/task-board",
+		"/command-center",
 		"/meetings",
 		"/marketplace",
 		"/teams",

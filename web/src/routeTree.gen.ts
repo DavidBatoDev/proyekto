@@ -52,6 +52,7 @@ import { Route as ExecutionMeetingsRouteImport } from './routes/_execution/meeti
 import { Route as ExecutionInvitesRouteImport } from './routes/_execution/invites'
 import { Route as ExecutionInboxRouteImport } from './routes/_execution/inbox'
 import { Route as ExecutionDashboardRouteImport } from './routes/_execution/dashboard'
+import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/command-center'
 import { Route as WWorkspaceSlugRouteRouteImport } from './routes/w/$workspaceSlug/route'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
@@ -377,6 +378,11 @@ const ExecutionInboxRoute = ExecutionInboxRouteImport.update({
 const ExecutionDashboardRoute = ExecutionDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => ExecutionRoute,
+} as any)
+const ExecutionCommandCenterRoute = ExecutionCommandCenterRouteImport.update({
+  id: '/command-center',
+  path: '/command-center',
   getParentRoute: () => ExecutionRoute,
 } as any)
 const WWorkspaceSlugRouteRoute = WWorkspaceSlugRouteRouteImport.update({
@@ -1047,6 +1053,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
+  '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
   '/invites': typeof ExecutionInvitesRoute
@@ -1197,6 +1204,7 @@ export interface FileRoutesByTo {
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioIndexRoute
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
+  '/command-center': typeof ExecutionCommandCenterRoute
   '/dashboard': typeof ExecutionDashboardRoute
   '/inbox': typeof ExecutionInboxRoute
   '/invites': typeof ExecutionInvitesRoute
@@ -1348,6 +1356,7 @@ export interface FileRoutesById {
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinanceRouteRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
+  '/_execution/command-center': typeof ExecutionCommandCenterRoute
   '/_execution/dashboard': typeof ExecutionDashboardRoute
   '/_execution/inbox': typeof ExecutionInboxRoute
   '/_execution/invites': typeof ExecutionInvitesRoute
@@ -1505,6 +1514,7 @@ export interface FileRouteTypes {
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
+    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/invites'
@@ -1655,6 +1665,7 @@ export interface FileRouteTypes {
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
+    | '/command-center'
     | '/dashboard'
     | '/inbox'
     | '/invites'
@@ -1805,6 +1816,7 @@ export interface FileRouteTypes {
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
+    | '/_execution/command-center'
     | '/_execution/dashboard'
     | '/_execution/inbox'
     | '/_execution/invites'
@@ -2274,6 +2286,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof ExecutionDashboardRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
+    '/_execution/command-center': {
+      id: '/_execution/command-center'
+      path: '/command-center'
+      fullPath: '/command-center'
+      preLoaderRoute: typeof ExecutionCommandCenterRouteImport
       parentRoute: typeof ExecutionRoute
     }
     '/w/$workspaceSlug': {
@@ -3444,6 +3463,7 @@ const ExecutionTeamsTeamIdRouteWithChildren =
   ExecutionTeamsTeamIdRoute._addFileChildren(ExecutionTeamsTeamIdRouteChildren)
 
 interface ExecutionRouteChildren {
+  ExecutionCommandCenterRoute: typeof ExecutionCommandCenterRoute
   ExecutionDashboardRoute: typeof ExecutionDashboardRoute
   ExecutionInboxRoute: typeof ExecutionInboxRoute
   ExecutionInvitesRoute: typeof ExecutionInvitesRoute
@@ -3467,6 +3487,7 @@ interface ExecutionRouteChildren {
 }
 
 const ExecutionRouteChildren: ExecutionRouteChildren = {
+  ExecutionCommandCenterRoute: ExecutionCommandCenterRoute,
   ExecutionDashboardRoute: ExecutionDashboardRoute,
   ExecutionInboxRoute: ExecutionInboxRoute,
   ExecutionInvitesRoute: ExecutionInvitesRoute,
