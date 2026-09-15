@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -139,6 +140,29 @@ def _repair(
     return None
 
 
+_PARAPHRASE_MIN_SHARED_WORDS = 2
+_PARAPHRASE_MIN_OVERLAP = 0.6
+
+
+def _title_words(value: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r'[a-z0-9]+', unicodedata.normalize('NFKC', value).casefold())
+        if len(word) >= 3
+    }
+
+
+def _paraphrases(link_text: str, title: str) -> bool:
+    """True when ``link_text`` reads as a shortened form of ``title``: it
+    shares at least two content words with it and most of its own words are
+    in it. Rejects status words ("in review") and unrelated titles."""
+    words, title_words = _title_words(link_text), _title_words(title)
+    if not words or not title_words:
+        return False
+    shared = len(words & title_words)
+    return shared >= _PARAPHRASE_MIN_SHARED_WORDS and shared / len(words) >= _PARAPHRASE_MIN_OVERLAP
+
+
 def ground_entity_links(text: str, session: Any, run: Any) -> GroundingResult:
     """Expand handles, validate or repair every link, then auto-link plain titles.
 
@@ -197,6 +221,26 @@ def ground_entity_links(text: str, session: Any, run: Any) -> GroundingResult:
                     registered_title=repaired.title,
                 )
                 return f'[{label}](proyekto://{repaired.kind}/{repaired.id})'
+            if reason == 'TITLE_MISMATCH' and registered is not None and _paraphrases(link_text, registered.title):
+                # The id is right and the text is a shortened form of that
+                # entity's title ("Set up the sprint meeting cadence" for
+                # "Set up the twice-a-week sprint meeting cadence"): keep the
+                # link, show the entity's own title. A status word or an
+                # unrelated title on a real id still collapses below.
+                result.repaired += 1
+                log_event(
+                    _logger,
+                    'entity_link_repaired',
+                    run_id=run.run_id,
+                    kind=kind,
+                    entity_id=resolved_id,
+                    reason='TITLE_PARAPHRASE',
+                    repaired_kind=kind,
+                    repaired_id=resolved_id,
+                    link_text=link_text,
+                    registered_title=registered.title,
+                )
+                return entity_link(registered.title, kind, resolved_id)
             rejection = {
                 'run_id': run.run_id,
                 'kind': kind,

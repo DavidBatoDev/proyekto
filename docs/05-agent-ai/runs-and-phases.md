@@ -206,6 +206,11 @@ catalog until the model ends the turn with one terminal tool or plain text.
   `ambiguous_title` (a mentioned title shared by several nodes in the merged handle
   map), `plan_request`, `multi_roadmap_refs` (two or more accessible referenced
   roadmaps) or `workspace_scope`. Logged as `reasoning_effort_selected`.
+- **Entity links** - a link whose id is right but whose text is a shortened form
+  of the entity's title ("Set up the sprint meeting cadence" for "Set up the
+  twice-a-week sprint meeting cadence") is relabelled to the entity's own title
+  (`entity_link_repaired` with reason `TITLE_PARAPHRASE`) rather than dropped; a
+  status word or an unrelated title on a real id still collapses to plain text.
 - **Reasoning continuity** - with `store=false` the model's reasoning only survives a
   tool step as the `encrypted_content` blob on its reasoning item. The loop echoes
   every reasoning / assistant-message / `function_call` item back, in order, ahead of
@@ -214,7 +219,13 @@ catalog until the model ends the turn with one terminal tool or plain text.
   stays text-only: reasoning is only valid since the last user message.
 - **Budgets** are `AGENT_V2_MAX_TURNS` (8) and `AGENT_V2_MAX_TOOL_CALLS` (24) per
   phase entry; a resumed investigate continues its own counters
-  (`run.phase_usage.investigate`).
+  (`run.phase_usage.investigate`). When investigate exhausts either budget it
+  makes one more call with no tools (`BUDGET_FINALIZE_NOTE`) so the model answers
+  from the tool outputs it already has; the reply lands as a `chat` outcome with
+  `termination_reason=max_tool_calls_finalized` / `max_turns_finalized`. Only when
+  that call fails, is empty, or still asks for tools does the canned
+  "couldn't finish" clarifier (`budget` outcome) appear. Execute's mini loops keep
+  the plain budget terminal.
 - **Pause/resume**: past the soft step budget the loop stops only at a turn boundary,
   never mid-call, and hands back the echoed transcript. It is stored at
   `{prefix}:{session_id}:run:{run_id}:transcript` for `AGENT_RUN_TRANSCRIPT_TTL_SECONDS`

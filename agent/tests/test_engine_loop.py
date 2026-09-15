@@ -1088,5 +1088,90 @@ class ReasoningEchoTests(unittest.TestCase):
         self.assertEqual(result.tokens_reasoning, 50)
 
 
+
+class _RecordingClient:
+    """Scripted client that also records the tools list of every call."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def complete(self, messages, tools, **kwargs):
+        self.calls.append({'messages': [dict(m) for m in messages], 'tools': list(tools)})
+        return self._responses.pop(0)
+
+
+class BudgetFinalizeTests(unittest.TestCase):
+    """Out of tool calls: one tool-less call answers from the gathered
+    outputs (production run: 'include their dates' fanned out 23
+    get_node_details and answered with the canned clarifier)."""
+
+    def _settings(self):
+        return _settings(agent_v2_max_turns=8, agent_v2_max_tool_calls=2)
+
+    def test_answers_from_context_instead_of_the_clarifier(self):
+        from app.core.engine.loop import BUDGET_FINALIZE_NOTE
+
+        dispatcher = _FakeDispatcher({'search_nodes': {'matches': [{'id': 'n1', 'due_date': '2026-10-01'}]}})
+        client = _RecordingClient([
+            _multi_resp(('search_nodes', {'query': 'a'}), ('search_nodes', {'query': 'b'})),
+            _text_resp('Two items, both due 2026-10-01.'),
+        ])
+        result = _run(client, dispatcher=dispatcher, settings=self._settings(), finalize_on_budget=True)
+        self.assertEqual(result.kind, 'chat')
+        self.assertEqual(result.assistant_message, 'Two items, both due 2026-10-01.')
+        self.assertEqual(result.termination_reason, 'max_tool_calls_finalized')
+        self.assertTrue(result.used_read_tools)
+        self.assertEqual(result.turns, 2)
+        final = client.calls[-1]
+        self.assertEqual(final['tools'], [])
+        self.assertEqual(final['messages'][-1], {'role': 'system', 'content': BUDGET_FINALIZE_NOTE})
+        # The tool outputs the model paid for are in front of the note.
+        self.assertEqual(
+            [m.get('type') for m in final['messages'] if m.get('type')],
+            ['function_call', 'function_call', 'function_call_output', 'function_call_output'],
+        )
+
+    def test_a_final_reply_that_still_wants_tools_falls_back_to_budget(self):
+        client = _RecordingClient([
+            _multi_resp(('search_nodes', {'query': 'a'}), ('search_nodes', {'query': 'b'})),
+            _tool_resp('get_node_details', {'node_id': 'n1'}),
+        ])
+        result = _run(client, settings=self._settings(), finalize_on_budget=True)
+        self.assertEqual(result.kind, 'budget')
+        self.assertEqual(result.termination_reason, 'max_tool_calls')
+
+    def test_a_failing_final_call_falls_back_to_budget(self):
+        client = _RecordingClient([
+            _multi_resp(('search_nodes', {'query': 'a'}), ('search_nodes', {'query': 'b'})),
+            RuntimeError('provider down'),
+        ])
+
+        def complete(messages, tools, **kwargs):
+            item = client._responses.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        client.complete = complete
+        result = _run(client, settings=self._settings(), finalize_on_budget=True)
+        self.assertEqual(result.kind, 'budget')
+
+    def test_max_turns_is_finalized_too(self):
+        client = _RecordingClient([
+            _tool_resp('search_nodes', {'query': 'a'}),
+            _tool_resp('search_nodes', {'query': 'b'}),
+            _text_resp('Here is what I found.'),
+        ])
+        result = _run(client, settings=_settings(agent_v2_max_turns=2, agent_v2_max_tool_calls=99), finalize_on_budget=True)
+        self.assertEqual((result.kind, result.termination_reason), ('chat', 'max_turns_finalized'))
+        self.assertEqual(result.turns, 3)
+
+    def test_default_is_the_legacy_budget_terminal(self):
+        client = _LoopingClient(_tool_resp('search_nodes', {'query': 'x'}))
+        result = _run(client, settings=self._settings())
+        self.assertEqual((result.kind, result.termination_reason), ('budget', 'max_tool_calls'))
+
+
 if __name__ == '__main__':
     unittest.main()

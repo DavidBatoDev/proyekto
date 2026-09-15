@@ -92,6 +92,7 @@ def run_loop(
     should_stop: Callable[[], bool] | None = None,
     turns_used: int = 0,
     tool_calls_used: int = 0,
+    finalize_on_budget: bool = False,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     # None → let the client use the configured effort. A resolved value
@@ -134,16 +135,78 @@ def run_loop(
     def _transcript() -> list[dict[str, Any]]:
         return [dict(item) for item in messages[transcript_start:] if isinstance(item, dict)]
 
-    if turns_used >= max_turns:
-        return _finalize(
-            LoopResult(kind='budget', termination_reason='max_turns'),
-            turns_used,
-            tool_calls_used,
-            0,
-            0,
-            0,
-            0,
+    def _exhausted(reason: str, turns_done: int) -> LoopResult:
+        """The budget terminal. With ``finalize_on_budget`` the model gets one
+        tool-less call to answer from what it already gathered (the tool
+        outputs are all in ``messages``) instead of the canned clarifier;
+        a reply that still wants tools, or an empty one, falls back to it."""
+        nonlocal tok_in, tok_out, tok_total, tok_cached, tok_cache_write, tok_reasoning
+        budget = LoopResult(kind='budget', used_read_tools=used_read_tools, termination_reason=reason)
+        if not finalize_on_budget:
+            return _finalize(
+                budget, turns_done, tool_calls_used, tok_in, tok_out, tok_total, tok_cached, tok_cache_write, tok_reasoning,
+            )
+        final_turn = turns_done + 1
+        try:
+            progress.provider_attempt(settings, trace_id, final_turn)
+            if delta_emitter is not None:
+                delta_emitter.set_turn(final_turn)
+            if thought_emitter is not None:
+                thought_emitter.set_turn(final_turn)
+            answer: LLMResponse = client.complete(
+                [*messages, {'role': 'system', 'content': BUDGET_FINALIZE_NOTE}],
+                [],
+                **complete_kwargs,
+            )
+            if delta_emitter is not None:
+                delta_emitter.finish()
+        except Exception as exc:  # noqa: BLE001 — never worse than the clarifier
+            logger.warning('budget finalize call failed (%s: %s)', type(exc).__name__, str(exc)[:200])
+            return _finalize(
+                budget, turns_done, tool_calls_used, tok_in, tok_out, tok_total, tok_cached, tok_cache_write, tok_reasoning,
+            )
+        tok_in += int(answer.tokens_input or 0)
+        tok_out += int(answer.tokens_output or 0)
+        tok_total += int(answer.tokens_total or 0)
+        tok_cached += int(answer.tokens_cached or 0)
+        tok_cache_write += int(getattr(answer, 'tokens_cache_write', 0) or 0)
+        tok_reasoning += int(getattr(answer, 'tokens_reasoning', 0) or 0)
+        progress.provider_success(
+            settings,
+            trace_id,
+            final_turn,
+            tool_names=[tc.name for tc in answer.tool_calls],
+            finish_reason=answer.finish_reason,
+            tokens_total=answer.tokens_total,
+            tokens_input=answer.tokens_input,
+            tokens_cached=answer.tokens_cached,
+            tokens_cache_write=getattr(answer, 'tokens_cache_write', None),
+            tokens_reasoning=getattr(answer, 'tokens_reasoning', None),
         )
+        text = (answer.content or '').strip()
+        if answer.tool_calls or not text:
+            return _finalize(
+                budget, final_turn, tool_calls_used, tok_in, tok_out, tok_total, tok_cached, tok_cache_write, tok_reasoning,
+            )
+        return _finalize(
+            LoopResult(
+                kind='chat',
+                assistant_message=text,
+                used_read_tools=used_read_tools,
+                termination_reason=f'{reason}_finalized',
+            ),
+            final_turn,
+            tool_calls_used,
+            tok_in,
+            tok_out,
+            tok_total,
+            tok_cached,
+            tok_cache_write,
+            tok_reasoning,
+        )
+
+    if turns_used >= max_turns:
+        return _exhausted('max_turns', turns_used)
 
     turns_in_call = 0
     turn = turns_used
@@ -345,37 +408,9 @@ def run_loop(
 
         tool_calls_used += len(response.tool_calls)
         if tool_calls_used >= max_tool_calls:
-            return _finalize(
-                LoopResult(
-                    kind='budget',
-                    used_read_tools=used_read_tools,
-                    termination_reason='max_tool_calls',
-                ),
-                turn,
-                tool_calls_used,
-                tok_in,
-                tok_out,
-                tok_total,
-                tok_cached,
-                tok_cache_write,
-                tok_reasoning,
-            )
+            return _exhausted('max_tool_calls', turn)
 
-    return _finalize(
-        LoopResult(
-            kind='budget',
-            used_read_tools=used_read_tools,
-            termination_reason='max_turns',
-        ),
-        max_turns,
-        tool_calls_used,
-        tok_in,
-        tok_out,
-        tok_total,
-        tok_cached,
-        tok_cache_write,
-        tok_reasoning,
-    )
+    return _exhausted('max_turns', max_turns)
 
 
 def _safe_should_stop(should_stop: Callable[[], bool]) -> bool:
@@ -414,6 +449,17 @@ def _default_terminal_handler(
             roadmap_titles=dict(session_context.get('roadmap_titles') or {}),
         )
     )
+
+
+# Appended for the one tool-less call a budget-exhausted investigate gets
+# (see ``_exhausted``): answer from the gathered tool outputs, say what is
+# missing, no more tools. Replaces the canned "couldn't finish" clarifier.
+BUDGET_FINALIZE_NOTE = (
+    'You have used every tool call available for this turn. Answer the user '
+    'now from the information already gathered above, following the reply '
+    'rules; say plainly which part you could not verify or fetch. Do not '
+    'call any tool.'
+)
 
 
 _ANNOUNCE_OPENER = re.compile(

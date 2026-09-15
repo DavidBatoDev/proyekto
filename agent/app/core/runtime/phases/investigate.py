@@ -388,6 +388,9 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
             should_stop=ctx.should_stop,
             turns_used=turns_before,
             tool_calls_used=tool_calls_before,
+            # A read-heavy turn that runs out of tool calls still answers
+            # from what it read instead of the canned clarifier.
+            finalize_on_budget=True,
         )
     except Exception as exc:  # noqa: BLE001 — keep the endpoint resilient
         log_event(

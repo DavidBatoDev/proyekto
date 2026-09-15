@@ -466,5 +466,53 @@ class StripEntityLinkTests(unittest.TestCase):
         self.assertEqual(strip_entity_links('[](proyekto://epic/E1)'), '')
 
 
+
+class ParaphraseRelabelTests(unittest.TestCase):
+    """A correct id whose text is a shortened form of the title keeps the link
+    and shows the entity's own title (production run: three of eight done
+    tasks rendered as plain text because the model trimmed their titles)."""
+
+    def setUp(self) -> None:
+        from app.core.contracts.runs import EntitySeen
+
+        self.session = AgentSession(scope={'kind': 'workspace', 'workspace_id': ALPHA})
+        self.run = RunState(trace_id='para', scope=self.session.scope, user_message='list')
+        self.titles = [
+            'Set up the twice-a-week sprint meeting cadence',
+            'Define maximum file sizes and compression targets for video and media',
+            'Convert PRD documentation from markdown to a client-friendly docs format',
+        ]
+        register_many(self.run, [
+            EntitySeen(kind='task', id=_task_id(index), title=title) for index, title in enumerate(self.titles)
+        ])
+
+    def test_shortened_titles_are_relabelled_not_dropped(self) -> None:
+        text = (
+            f'- [Set up the sprint meeting cadence](proyekto://task/{_task_id(0)})\n'
+            f'- [Define video and media compression targets](proyekto://task/{_task_id(1)})\n'
+            f'- [Convert PRD documentation to client-friendly docs](proyekto://task/{_task_id(2)})'
+        )
+        with self.assertLogs('app.core.runtime.entity_links', level='INFO') as logs:
+            result = ground_entity_links(text, self.session, self.run)
+        self.assertEqual(
+            result.text,
+            '\n'.join(f'- [{title}](proyekto://task/{_task_id(index)})' for index, title in enumerate(self.titles)),
+        )
+        self.assertEqual((result.kept, result.repaired, result.rejected), (0, 3, []))
+        self.assertIn('TITLE_PARAPHRASE', '\n'.join(logs.output))
+
+    def test_a_status_word_or_unrelated_title_on_a_real_id_still_collapses(self) -> None:
+        for text in ('in review', 'Ship the billing page', 'cadence'):
+            result = ground_entity_links(f'[{text}](proyekto://task/{_task_id(0)})', self.session, self.run)
+            self.assertEqual(result.text, text, text)
+            self.assertEqual(result.rejected[0]['reason'], 'TITLE_MISMATCH')
+
+    def test_exact_title_on_a_borrowed_id_still_re_points_first(self) -> None:
+        # The exact title of task 1 on task 0's id: the title wins (borrowed id),
+        # not a relabel to task 0's title.
+        result = ground_entity_links(f'[{self.titles[1]}](proyekto://task/{_task_id(0)})', self.session, self.run)
+        self.assertEqual(result.text, f'[{self.titles[1]}](proyekto://task/{_task_id(1)})')
+
+
 if __name__ == '__main__':
     unittest.main()

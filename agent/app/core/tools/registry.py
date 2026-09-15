@@ -291,7 +291,8 @@ _CREATE_OP_NODE_TYPES = {
 # One clause shared by every task-returning read tool so the model knows
 # where to find the FULL assignee set before computing a union / minus.
 _TASK_ASSIGNEE_FIELDS_CLAUSE = (
-    'Tasks carry `assignee_ids` (all assignees) and `assignee_id` (primary).'
+    'Task rows carry `due_date` (ISO date, null when unset), `priority`, '
+    '`assignee_ids` (all assignees) and `assignee_id` (primary).'
 )
 
 

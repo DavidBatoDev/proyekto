@@ -170,7 +170,10 @@ class ReadToolDescriptionTests(unittest.TestCase):
 
     def test_task_list_reads_advertise_the_set(self) -> None:
         descriptions = self._descriptions()
-        clause = 'Tasks carry `assignee_ids` (all assignees) and `assignee_id` (primary).'
+        clause = (
+            'Task rows carry `due_date` (ISO date, null when unset), `priority`, '
+            '`assignee_ids` (all assignees) and `assignee_id` (primary).'
+        )
         for name in (
             'get_node_details',
             'get_tasks_by_parent',
@@ -182,7 +185,7 @@ class ReadToolDescriptionTests(unittest.TestCase):
 
     def test_search_tasks_says_assignees_are_not_included(self) -> None:
         description = self._descriptions()['search_tasks']
-        self.assertNotIn('Tasks carry `assignee_ids`', description)
+        self.assertNotIn('`assignee_ids` (all assignees)', description)
         self.assertIn('Assignees are not included', description)
         self.assertIn('call get_node_details for the assignee set', description)
 
