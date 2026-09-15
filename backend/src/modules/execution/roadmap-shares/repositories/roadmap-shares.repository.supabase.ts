@@ -14,7 +14,6 @@ interface PreviewRoadmapRow {
 interface PreviewNodeRow {
   id: string;
   title: string;
-  roadmap_id: string;
 }
 
 interface QueryResult<T> {
@@ -35,18 +34,43 @@ export class RoadmapSharesRepositorySupabase implements IRoadmapSharesRepository
     if (roadmapError) throw new Error(roadmapError.message);
     if (!roadmap) return null;
 
-    const lookups = [
-      { table: 'roadmap_epics', type: 'epic' as const },
-      { table: 'roadmap_features', type: 'feature' as const },
-      { table: 'roadmap_tasks', type: 'task' as const },
+    // Epics and features carry a denormalized roadmap_id; tasks do NOT (they
+    // hang off a feature), so the task lookup must scope through the parent
+    // feature. Covered by the real-DB integration spec
+    // (test/integration/roadmap-preview.integration-spec.ts) — a mocked unit
+    // test cannot catch a wrong column name.
+    const lookups: Array<{
+      table: string;
+      type: 'epic' | 'feature' | 'task';
+      select: string;
+      roadmapColumn: string;
+    }> = [
+      {
+        table: 'roadmap_epics',
+        type: 'epic',
+        select: 'id, title',
+        roadmapColumn: 'roadmap_id',
+      },
+      {
+        table: 'roadmap_features',
+        type: 'feature',
+        select: 'id, title',
+        roadmapColumn: 'roadmap_id',
+      },
+      {
+        table: 'roadmap_tasks',
+        type: 'task',
+        select: 'id, title, feature:roadmap_features!inner(roadmap_id)',
+        roadmapColumn: 'feature.roadmap_id',
+      },
     ];
 
     for (const lookup of lookups) {
       const { data: node, error: nodeError } = (await this.db
         .from(lookup.table)
-        .select('id, title, roadmap_id')
+        .select(lookup.select)
         .eq('id', nodeId)
-        .eq('roadmap_id', roadmapId)
+        .eq(lookup.roadmapColumn, roadmapId)
         .maybeSingle()) as QueryResult<PreviewNodeRow>;
       if (nodeError) throw new Error(nodeError.message);
       if (node) {
