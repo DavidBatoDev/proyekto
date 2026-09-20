@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-09-01 · **Status:** draft
+> **Last updated:** 2026-09-20 · **Status:** draft
 
 > **⚠️ The billing anchor moved.** This page was written when the only candidate container was
 > a **team**. The [Workspace](../11-domains/workspaces/README.md) tier shipped on 2026-09-01 and
@@ -42,10 +42,12 @@ file is cited so the cost of the change is visible.
   `SupabaseAuthGuard`. The Nest `ThrottlerModule` is configured
   (`backend/src/app.module.ts`) but **not bound as a global guard**, so `@Throttle` is inert
   except on the handful of controllers that add `@UseGuards(ThrottlerGuard)` explicitly.
-- The **only pricing artifact** in the product is the consultant landing page
-  (`web/src/routes/consultant/index.tsx`): a "Consultant seat — $TBD/month, per consultant,
-  cancel anytime" marketing section with nothing behind it. This is the strongest existing
-  signal of intended shape: **providers pay, clients don't**.
+- **Superseded 2026-09-08.** This bullet used to cite a "$TBD/month consultant seat" section on
+  `web/src/routes/consultant/index.tsx` as the only pricing artifact in the product. That route no
+  longer exists, and `/pricing` — a full four-tier page with a yearly/monthly toggle and a feature
+  grid — is now the single published source. Its shape confirms the same intent by other means:
+  seats are `workspace_members`, and a client or outside consultant who reaches a project through
+  `project_access` consumes no seat and pays nothing.
 
 ### Hooks a tier system can reuse
 
@@ -88,46 +90,21 @@ workspace membership, so a client on a consultant's project consumes no seat by 
 [11-domains/finance](../11-domains/finance/README.md#contract-parties)). The plan is the
 **workspace's** plan — `workspace_subscriptions` is 1:1 with `workspaces` — not a team owner's.
 
-### Execution platform — tier matrix (completed)
+### The published tier matrix lives in code, not here
 
-Limits marked ⚙ are new enforcement that does not exist today.
+`web/src/lib/pricing.ts` is the single source of the published plans, prices and feature grid, and
+`/pricing` renders it. The tables that used to sit here contradicted that page on every row (they
+said Free = 3 projects / 1 team / 5 members-per-team; the page says 2 projects / 2 teams / up to 10
+members), and both were unenforced. They are deliberately **not** restated — rewriting them to match
+would only recreate the drift.
 
-| Feature | Free | Professional | Business | Enterprise |
-| --- | --- | --- | --- | --- |
-| Projects ⚙ | 3 | 25 | Unlimited | Unlimited |
-| Roadmaps ⚙ | 3 (1 per project until multi-roadmap ships) | 25 | Unlimited | Unlimited |
-| Teams created ⚙ | 1 (+ personal team, which never counts) | 3 | 10 | Unlimited |
-| Members per team ⚙ | 5 | 15 | 50 | Custom |
-| Roadmap/Project AI chat ⚙ | Limited (e.g. 25 messages / user / month) | Enhanced (e.g. 500/mo) | High (e.g. 2 000/mo) | Custom / pooled |
-| Inbox & chat | ✔ | ✔ | ✔ | ✔ + retention controls |
-| Meetings | ✔ basic scheduling | ✔ + Google Calendar connect | ✔ + integrations | ✔ |
-| Roadmap templates (use) | ✔ | ✔ | ✔ | ✔ |
-| **Time section** | **Add-on** | **Add-on** (or bundled — D4) | Included | Included |
-| **Finance section** (contracts, invoices, portfolio) | **Add-on** | **Add-on** (or bundled — D4) | Included | Included |
-| Payouts / rates / pay-period config | with Time add-on | with Time add-on | Included | Included |
-| Guest roadmap builder | ✔ (existing behaviour) | — | — | — |
-| SSO / SAML, audit log, data residency | — | — | — | ✔ |
+Two notes that do not live in that file:
 
-All rows apply to all three roles (consultant / talent / client) as in the draft tables,
-with the standing exceptions that already exist in code and are **not** tier questions:
-Finance and template-publishing are consultant-capability surfaces
-(`ConsultantOnlyGuard`), and clients are read-mostly by `ORIGIN_DELTAS`.
-
-### Marketplace platform — tier matrix (completed)
-
-| Feature | Free | Professional | Business | Enterprise |
-| --- | --- | --- | --- | --- |
-| Post a project for bidding *(new build)* | 1 active listing (Client) | 5 active | Unlimited | Unlimited |
-| Bid on a project *(new build)* | 3 active bids (Consultant) | Unlimited | Unlimited | Unlimited |
-| Sell a roadmap template *(new monetization)* | List free templates only | Sell — platform takes X% | Sell — lower % | Negotiated |
-| Buy a roadmap template | ✔ | ✔ | ✔ | ✔ |
-| Find & apply to a project *(new build)* | 5 applications/mo (Talent/Consultant) | Unlimited | Unlimited | Unlimited |
-| Go-live discoverability (existing `is_public`) | ✔ | ✔ + boosted placement | ✔ | ✔ |
-| Consultant→talent browse & invite (existing) | ✔ (verified consultants) | ✔ | ✔ | ✔ |
-
-Marketplace revenue is **transactional** (take-rate on template sales, possibly on awarded
-bids) layered on top of subscription tiers — the tiers gate *volume and placement*, the
-take-rate earns on *success*. This mirrors Shopify (subscription + payments cut).
+- Its "members per team" ancestor is dead: seats are workspace-level now, so a per-team member cap
+  maps to nothing the page sells.
+- Free's "up to 10 members" is a **published intention, not a rule**. Nothing enforces it, and the
+  billing UI is deliberately built never to render `seat_limit` — no "6 of 10", no progress bar, no
+  warning — because a cap shown but not enforced misleads in both directions. Enforcement is B3.
 
 ### Add-ons (the Shopify move)
 
@@ -288,7 +265,7 @@ Rules, in order of importance:
 | Phase | Lands | Flag | User-visible |
 | --- | --- | --- | --- |
 | **B1** | Entitlement resolution + `EntitlementGuard` over the **existing** `workspace_subscriptions`; all workspaces `legacy_unlimited` (needs a CHECK-widening expand migration) | — | no |
-| **B2** | Stripe Billing integration, checkout + webhooks + seat proration; replaces the `/workspace/settings/billing` placeholder | `BILLING_ENABLED` | pricing page only |
+| **B2** | Stripe Billing integration, checkout + webhooks + seat proration; replaces the workspace billing placeholder at `/w/<slug>/settings/billing` | `BILLING_ENABLED` | pricing page only |
 | **B3** | Free-tier limit enforcement (projects/roadmaps/teams/members) for **new** accounts | `BILLING_ENFORCEMENT_ENABLED` | yes |
 | **B4** | AI usage metering + per-user throttle binding | `AI_METERING_ENABLED` | yes (limit UI) |
 | **B5** | Time & Finance add-on purchase flows (price the existing flags) | per-add-on flags | yes |
@@ -304,4 +281,5 @@ Rules, in order of importance:
 - [11-domains/consultants](../11-domains/consultants/README.md) and
   [11-domains/talent](../11-domains/talent/README.md) — the role domains the tier ladder
   prices (vetting vs payment axes, E9/E14).
-- `web/src/routes/consultant/index.tsx` — the existing consultant-seat pricing copy.
+- `web/src/lib/pricing.ts` and `web/src/routes/pricing.tsx` — the published plans, prices and
+  feature grid. The former is the file to change when a price changes.
