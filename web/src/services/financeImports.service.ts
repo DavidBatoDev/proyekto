@@ -125,9 +125,13 @@ export const financeImportsService = {
 		body.append("file", file);
 		body.append("project_id", projectId);
 		body.append("kind", kind);
-		const { data } = await apiClient.post("/finance-imports/documents", body, {
-			headers: { "Content-Type": "multipart/form-data" },
-		});
+		const { data } = await apiClient.post(
+			"/api/finance-imports/documents",
+			body,
+			{
+				headers: { "Content-Type": "multipart/form-data" },
+			},
+		);
 		return data.data as FinanceDocumentWithPreview;
 	},
 
@@ -135,7 +139,7 @@ export const financeImportsService = {
 		projectId: string,
 		kind?: FinanceDocumentKind,
 	): Promise<FinanceDocument[]> {
-		const { data } = await apiClient.get("/finance-imports/documents", {
+		const { data } = await apiClient.get("/api/finance-imports/documents", {
 			params: { project_id: projectId, kind },
 		});
 		return data.data as FinanceDocument[];
@@ -143,7 +147,7 @@ export const financeImportsService = {
 
 	async get(documentId: string): Promise<FinanceDocumentWithPreview> {
 		const { data } = await apiClient.get(
-			`/finance-imports/documents/${documentId}`,
+			`/api/finance-imports/documents/${documentId}`,
 		);
 		return data.data as FinanceDocumentWithPreview;
 	},
@@ -157,7 +161,7 @@ export const financeImportsService = {
 	 */
 	async file(documentId: string): Promise<ArrayBuffer> {
 		const { data } = await apiClient.get(
-			`/finance-imports/documents/${documentId}/file`,
+			`/api/finance-imports/documents/${documentId}/file`,
 			{ responseType: "arraybuffer" },
 		);
 		return data as ArrayBuffer;
@@ -166,19 +170,22 @@ export const financeImportsService = {
 	/** Draft the fields from the document's text layer. Safe to call again. */
 	async read(documentId: string): Promise<FinanceDocument> {
 		const { data } = await apiClient.post(
-			`/finance-imports/documents/${documentId}/read`,
+			`/api/finance-imports/documents/${documentId}/read`,
 		);
 		return data.data as FinanceDocument;
 	},
 
 	async remove(documentId: string): Promise<void> {
-		await apiClient.delete(`/finance-imports/documents/${documentId}`);
+		await apiClient.delete(`/api/finance-imports/documents/${documentId}`);
 	},
 
 	async importInvoice(
 		input: ImportInvoiceInput,
 	): Promise<{ invoice_id: string }> {
-		const { data } = await apiClient.post("/finance-imports/invoices", input);
+		const { data } = await apiClient.post(
+			"/api/finance-imports/invoices",
+			input,
+		);
 		return data.data as { invoice_id: string };
 	},
 
@@ -186,7 +193,7 @@ export const financeImportsService = {
 		invoiceId: string,
 	): Promise<Array<DocumentSnip & { id: string; invoice_id: string | null }>> {
 		const { data } = await apiClient.get(
-			`/finance-imports/invoices/${invoiceId}/snips`,
+			`/api/finance-imports/invoices/${invoiceId}/snips`,
 		);
 		return data.data as Array<
 			DocumentSnip & { id: string; invoice_id: string | null }

@@ -153,7 +153,22 @@ function ImportWorkspace() {
 			apply("due_date", read.due_date?.value);
 			apply("total", read.total?.value);
 			if (read.currency?.value) setCurrency(read.currency.value);
-			toast.success("Draft filled in. Snip each figure to evidence it.");
+			// A reader that failed still answers, with every field blank and a
+			// note saying why — that is not a draft, and must not be announced
+			// as one.
+			const drafted = [
+				read.number,
+				read.issue_date,
+				read.due_date,
+				read.total,
+			].some((entry) => entry?.value);
+			if (drafted) {
+				toast.success("Draft filled in. Snip each figure to evidence it.");
+			} else {
+				toast.info(
+					read.note ?? "Nothing could be pre-filled. Snip the fields instead.",
+				);
+			}
 		},
 		onError: (error: Error) => toast.error(error.message),
 	});
@@ -200,7 +215,21 @@ function ImportWorkspace() {
 			if (read.settled_currency?.value) {
 				setSettledCurrency(read.settled_currency.value);
 			}
-			toast.success("Payment drafted from the bank record. Check each figure.");
+			const drafted = [
+				read.payment_date,
+				read.settled_amount,
+				read.reference,
+			].some((entry) => entry?.value);
+			if (drafted) {
+				toast.success(
+					"Payment drafted from the bank record. Check each figure.",
+				);
+			} else {
+				toast.info(
+					read.note ??
+						"That record could not be read. Enter the payment from it.",
+				);
+			}
 		},
 		onError: (error: Error) => toast.error(error.message),
 	});
