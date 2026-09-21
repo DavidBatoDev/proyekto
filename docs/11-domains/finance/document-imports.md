@@ -1,17 +1,18 @@
 # Finance Document Imports
 
-> **Last updated:** 2026-08-28 · **Status:** current (code) / **not deployed** (database)
+> **Last updated:** 2026-09-21 · **Status:** current (code, on `feat/finance-imports-ship`) / **not deployed**
 
-> **⚠️ The migration is not applied to production.** The code is merged and the routes are
-> wired, but
-> [`20260826090000_finance_document_imports.sql`](../../../supabase/migrations/20260826090000_finance_document_imports.sql)
-> appears in **no** applied migration version — the newest applied versions are
-> `20260827103415 finance_books` and `20260827104156 timer_contract_enforcement`. Verified
-> 2026-08-28 against the live migration list. Until it is applied via the Supabase MCP
+> **⚠️ Not on `main`, and the migration is not applied to production.** This workspace was
+> removed from `main` on 2026-08-29 (`4b8f8fac`, completing the web-side rollback in
+> `a77e9480`) and re-landed on the `feat/finance-imports-ship` branch on 2026-09-21, pending
+> review. [`20260826090000_finance_document_imports.sql`](../../../supabase/migrations/20260826090000_finance_document_imports.sql)
+> appears in **no** applied production migration version (re-verified 2026-09-21 against the
+> live migration list; hosted **dev** has it). Until it is applied via the Supabase MCP
 > `apply_migration` tool (**never** `supabase db push` — see
 > [supabase/CLAUDE.md](../../../supabase/CLAUDE.md)), every `finance-imports` route fails on
 > the missing tables and `origin='imported'` is rejected by the still-narrow
-> `invoices_origin_check`.
+> `invoices_origin_check`. The migration is additive only: two new tables, nullable columns,
+> and a widened check constraint.
 
 Recording invoices and payments that were **created outside Proyekto** — the backfill path
 for billing that predates the platform, or that runs beside it.
@@ -19,13 +20,13 @@ for billing that predates the platform, or that runs beside it.
 ## The shape
 
 ```text
-upload a document
+upload a document (invoice PDF, or a bank record: PDF / JPEG / PNG / WebP)
       |
       v
-server reads the PDF text layer
+server reads it: PDF text layer, or vision for an image
       |
       v
-an LLM drafts the header fields          <- suggestions only, never authoritative
+an LLM drafts the fields                 <- suggestions only, never authoritative
       |
       v
 snip regions on the rendered page        <- each figure gets a visual evidence anchor
@@ -38,6 +39,39 @@ invoice_payments tables, origin='imported'
 The design intent is DataSnipper-style: **every committed figure keeps a pointer back to the
 region of the source document it came from**, so a number in Proyekto can always be traced
 to the paper it was read off. Extraction is a drafting aid; a human commits.
+
+## Reading a document
+
+`InvoiceReaderService` has two input paths and two field shapes, all on one model call that
+**never throws** — any failure (no `OPENAI_API_KEY`, an upstream 401, a timeout) collapses
+to blank fields plus a `note`, and the import continues by hand.
+
+| Input | Path | Used for |
+| --- | --- | --- |
+| `application/pdf` | text layer (`read` / `readPayment`) | invoices, remittance advices |
+| `image/jpeg`, `image/png`, `image/webp` up to 8 MB | vision (`readImage`) | bank-app screenshots, photographed invoices |
+| anything else (HEIC, oversized scans) | none — `extraction_status = 'skipped'` | entered by hand |
+
+| `finance_documents.kind` | Draft shape stored in `extraction.fields` |
+| --- | --- |
+| `invoice`, `other` | `number`, `currency`, `total`, `issue_date`, `due_date`, `client_name` |
+| `payment_proof` | `payment_date`, `settled_amount`, `settled_currency`, `reference`, `original_amount`, `original_currency`, `sender` |
+
+`extraction.kind` and `extraction.source` (`text` / `vision`) are stamped on every draft so
+the workspace never infers the shape. Drafts read before 2026-09-21 carry neither.
+
+`original_amount` / `original_currency` are what the **sender** instructed, when the bank
+narration quotes it — `SUPPLIER /OCMT/AUD3840,00/` on a PESONet credit means AUD 3,840.00.
+That is the only thing on a PHP credit that ties it to an AUD invoice, so the workspace
+compares it with the invoice total and says whether the picked record matches.
+
+Every value is re-validated server-side before it is stored: dates must parse, amounts must
+be positive numbers, currencies three letters. Anything else becomes a blank field.
+
+In the workspace, picking a **Proof of payment** reads that record once (reusing its stored
+draft afterwards) and drafts *Date received*, *Amount received*, *Bank reference* and
+*Received in*. A suggestion never overwrites a figure that was already snipped or typed, and
+a read that drafted nothing surfaces the reader's note rather than a success message.
 
 ## Schema
 
