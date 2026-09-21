@@ -1,9 +1,9 @@
 import {
 	BarChart3,
-	CircleDollarSign,
 	FileSignature,
 	FileUp,
 	Handshake,
+	House,
 	type LucideIcon,
 	ReceiptText,
 	UserRound,
@@ -56,7 +56,7 @@ export const FINANCE_NAV_ITEMS: EngagementsNavItem[] = [
 		key: "finance-home",
 		to: "/engagements/finance",
 		label: "Home",
-		icon: CircleDollarSign,
+		icon: House,
 		match: "prefix",
 		excludes: [
 			"/engagements/finance/me",

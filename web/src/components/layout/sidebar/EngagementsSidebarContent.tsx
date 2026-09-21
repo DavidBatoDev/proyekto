@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, FolderKanban, Share2, Users } from "lucide-react";
+import { ArrowLeft, Folder, Share2, Users } from "lucide-react";
 import { financeBooksService } from "@/services/financeBooks.service";
 import {
 	ENGAGEMENTS_NAV_ITEMS,
@@ -47,6 +47,7 @@ export function EngagementsSidebarContent() {
 						icon={item.icon}
 						label={item.label}
 						active={isEngagementsNavItemActive(item, currentPath)}
+						tone="tint"
 					/>
 				))}
 			</nav>
@@ -60,12 +61,17 @@ export function EngagementsSidebarContent() {
 						icon={item.icon}
 						label={item.label}
 						active={isEngagementsNavItemActive(item, currentPath)}
+						tone="tint"
 					/>
 				))}
 
+				{/*
+				 * A team is a place of the same rank as Home and Personal, so it is
+				 * drawn at the same size; only its project books step down a level.
+				 */}
 				{teams.map((team) => (
 					<div key={team.team_id} className="space-y-0.5">
-						<SidebarSubLink
+						<SidebarNavLink
 							to="/engagements/finance/team/$teamId"
 							params={{ teamId: team.team_id }}
 							icon={Users}
@@ -73,19 +79,21 @@ export function EngagementsSidebarContent() {
 							active={currentPath.startsWith(
 								`/engagements/finance/team/${team.team_id}`,
 							)}
+							tone="tint"
 						/>
 						{team.project_books.length > 0 && (
-							<div className="ml-6 space-y-0.5 border-l border-sidebar-border pl-2">
+							<div className="ml-7 space-y-0.5">
 								{team.project_books.map((entry) => (
 									<SidebarSubLink
 										key={entry.book.id}
 										to="/engagements/finance/book/$bookId"
 										params={{ bookId: entry.book.id }}
-										icon={FolderKanban}
+										icon={Folder}
 										label={entry.project_title}
 										active={currentPath.startsWith(
 											`/engagements/finance/book/${entry.book.id}`,
 										)}
+										tone="tint"
 									/>
 								))}
 							</div>
@@ -94,11 +102,12 @@ export function EngagementsSidebarContent() {
 				))}
 
 				{sharedCount > 0 && (
-					<SidebarSubLink
+					<SidebarNavLink
 						to="/engagements/finance"
 						icon={Share2}
-						label={`Shared with me (${sharedCount})`}
+						label="Shared with me"
 						active={false}
+						tone="tint"
 					/>
 				)}
 			</nav>

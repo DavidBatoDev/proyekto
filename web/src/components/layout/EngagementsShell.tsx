@@ -16,8 +16,8 @@ import { EngagementsSidebarContent } from "./sidebar/EngagementsSidebarContent";
 export function EngagementsShell({ children }: { children: ReactNode }) {
 	return (
 		<ProtectedRoute loadingFallback={null}>
-			<div className="app-shell-bg flex min-h-screen bg-background pt-app-header text-foreground">
-				<aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[260px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur lg:flex">
+			<div className="finance-canvas flex min-h-screen bg-background pt-app-header text-foreground">
+				<aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[260px] shrink-0 flex-col border-r border-border bg-card text-sidebar-foreground lg:flex">
 					<EngagementsSidebarContent />
 				</aside>
 				<main className="min-w-0 flex-1">{children}</main>

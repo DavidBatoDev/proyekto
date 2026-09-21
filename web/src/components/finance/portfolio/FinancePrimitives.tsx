@@ -34,7 +34,7 @@ export function FinanceStatusBadge({
 		>
 			<span
 				aria-hidden
-				className={`h-1.5 w-1.5 rounded-full ${financeStatusDotClass(meta.tone)}`}
+				className={`finance-status-dot h-1.5 w-1.5 rounded-full ${financeStatusDotClass(meta.tone)}`}
 			/>
 			{meta.label}
 		</span>

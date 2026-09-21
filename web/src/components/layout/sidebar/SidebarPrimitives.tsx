@@ -17,20 +17,31 @@ export function SidebarNavLink({
 	label,
 	active,
 	params,
+	tone = "solid",
 }: {
 	to: string;
 	icon: React.ElementType;
 	label: string;
 	active: boolean;
 	params?: Record<string, string>;
+	/**
+	 * `solid` fills the active item; `tint` washes it in the accent and colours
+	 * the label. Tint is for navs that list PLACES (a tree the eye scans down)
+	 * rather than modes, where a solid bar on every level is too heavy.
+	 */
+	tone?: "solid" | "tint";
 }) {
+	const activeClass =
+		tone === "tint"
+			? "bg-primary/10 font-semibold text-primary"
+			: "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm";
 	return (
 		<Link
 			to={to}
 			params={params}
 			className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
 				active
-					? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+					? activeClass
 					: "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 			}`}
 		>
@@ -47,6 +58,7 @@ export function SidebarSubLink({
 	active,
 	params,
 	search,
+	tone = "solid",
 }: {
 	to: string;
 	icon: React.ElementType;
@@ -54,6 +66,7 @@ export function SidebarSubLink({
 	active: boolean;
 	params?: Record<string, string>;
 	search?: Record<string, unknown>;
+	tone?: "solid" | "tint";
 }) {
 	return (
 		<Link
@@ -62,7 +75,9 @@ export function SidebarSubLink({
 			search={search as never}
 			className={`flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
 				active
-					? "bg-sidebar-primary text-sidebar-primary-foreground"
+					? tone === "tint"
+						? "font-semibold text-primary"
+						: "bg-sidebar-primary text-sidebar-primary-foreground"
 					: "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 			}`}
 		>

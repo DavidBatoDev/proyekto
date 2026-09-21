@@ -841,6 +841,49 @@ html[data-ui-theme="dark"] {
   box-shadow: var(--app-shadow-md);
 }
 
+/*
+  The Engagements + Finance surface, as drawn on its design canvas: a flat
+  page, and cards that are a hairline border rather than a shadow. Money pages
+  are dense lists of near-identical rows, and a drop shadow under every card
+  turns that into visual noise; a border keeps the grouping and lets the
+  figures carry the page.
+
+  Scoped to the shell on purpose — the rest of the app keeps its elevated
+  cards — and built only from theme tokens, so every ui-theme and dark mode
+  follow without a second set of values.
+*/
+.finance-canvas,
+.finance-canvas .app-shell-bg {
+  background: var(--background);
+}
+
+.finance-canvas .app-surface-card,
+.finance-canvas .app-surface-card-strong {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 1rem;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* Tabs read as text: the accent carries the active one, as drawn. */
+.finance-canvas [role="tablist"] [aria-selected="true"] {
+  color: var(--primary);
+}
+
+.finance-canvas [role="tablist"] [role="tab"] > svg {
+  display: none;
+}
+
+/* The pill's tone already says the status; the dot said it twice. */
+.finance-canvas .finance-status-dot {
+  display: none;
+}
+
+.finance-canvas .finance-flat {
+  box-shadow: none;
+}
+
 .app-section-kicker {
   font-size: 0.7rem;
   letter-spacing: 0.14em;

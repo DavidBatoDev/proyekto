@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Tints drawn from the semantic tokens, so a tile follows the theme — minus the
- * destructive red, which on a person or a team reads as something being wrong.
+ * destructive red, which on a person or a team reads as something being wrong,
+ * and minus grey, which reads as a missing avatar.
  * Which one
  * a name gets is a hash of the name — stable across renders and pages, so
  * "JC Studio" is the same colour in the launcher, the sidebar, and its own
@@ -14,7 +15,6 @@ const TINTS = [
 	"bg-info/10 text-info-foreground",
 	"bg-success/10 text-success-foreground",
 	"bg-warning/15 text-warning-foreground",
-	"bg-foreground/10 text-foreground",
 ] as const;
 
 function tintFor(name: string): string {

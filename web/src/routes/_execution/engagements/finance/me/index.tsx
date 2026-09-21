@@ -322,7 +322,7 @@ function PersonalStat({
 	compact?: boolean;
 }) {
 	return (
-		<div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
+		<div className="rounded-2xl border border-border bg-card px-5 py-4">
 			<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
 				{label}
 			</p>
