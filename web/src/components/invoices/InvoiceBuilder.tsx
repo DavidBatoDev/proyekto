@@ -182,7 +182,7 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 			});
 			if (!invoiceId) {
 				void navigate({
-					to: "/marketplace/finance/invoices/$invoiceId/edit",
+					to: "/engagements/finance/invoices/$invoiceId/edit",
 					params: { invoiceId: inv.id },
 					search: { projectId },
 				});
@@ -235,7 +235,7 @@ export function InvoiceBuilder({ projectId, invoiceId }: Props) {
 				queryKey: ["invoices", "project", projectId],
 			});
 			void navigate({
-				to: "/marketplace/finance/invoices",
+				to: "/engagements/finance/invoices",
 				search: { projectId },
 			});
 		},

@@ -71,6 +71,25 @@ export interface Engagement {
 	current_rates: EngagementTimeRate[];
 }
 
+/**
+ * A signed (or in-flight) agreement the caller is a party to, flattened for
+ * the engagements list — one row per contract seat, not per engagement.
+ */
+export interface EngagementAgreement {
+	contract_id: string;
+	contract_number: string;
+	status: string;
+	relationship_kind: EngagementKind;
+	my_position: EngagementPosition;
+	my_capacity: string;
+	counterparty_name: string | null;
+	project_id: string | null;
+	project_title: string | null;
+	currency: string;
+	signed_at: string | null;
+	client_hourly_rate?: number | null;
+}
+
 export interface EngagementFilters {
 	kind?: EngagementKind;
 	status?: EngagementStatus;
@@ -95,4 +114,5 @@ export const engagementService = {
 	list: (filters: EngagementFilters = {}) =>
 		get<Engagement[]>("/api/engagements", filters),
 	byId: (id: string) => get<Engagement>(`/api/engagements/${id}`),
+	agreements: () => get<EngagementAgreement[]>("/api/engagements/agreements"),
 };

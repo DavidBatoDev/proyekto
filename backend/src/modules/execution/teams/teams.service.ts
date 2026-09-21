@@ -124,6 +124,7 @@ export interface TeamRow {
    * payouts without rates would record a zero-value payment.
    */
   payouts_enabled: boolean;
+  contract_enforcement: 'off' | 'warn' | 'enforce';
   retroactive_log_days: number | null;
   default_currency: string;
   pay_period_config: PayPeriodConfigInput | null;
@@ -185,6 +186,9 @@ void TEAM_SHARED_UPDATE_FIELDS;
  *    and payouts_enabled whether the team settles them here. An admin turning
  *    either on would be committing the team to paying people; turning them off
  *    would hide the rate card the owner set.
+ *  - contract_enforcement decides whether a member without a signed contract
+ *    may start a timer at all — that is the owner's commercial policy, and an
+ *    admin loosening it would let uncontracted hours accrue against the team.
  */
 const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'legal_name',
@@ -193,6 +197,7 @@ const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'billing_email',
   'member_rates_enabled',
   'payouts_enabled',
+  'contract_enforcement',
   'retroactive_log_days',
   'default_currency',
   'pay_period_config',
@@ -599,6 +604,11 @@ export class TeamsService {
         }
       }
       patch.payouts_enabled = dto.payouts_enabled;
+    }
+    if (dto.contract_enforcement !== undefined) {
+      // The "no contract -> no timer" rollout dial (off | warn | enforce);
+      // owner-only like the rest of this patch, enforced in team-time.
+      patch.contract_enforcement = dto.contract_enforcement;
     }
     if (dto.retroactive_log_days !== undefined) {
       patch.retroactive_log_days = dto.retroactive_log_days;

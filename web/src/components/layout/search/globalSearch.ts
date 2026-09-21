@@ -1,5 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import { HEADER_NAV_ITEMS } from "@/components/layout/headerNavigation";
+import {
+	ENGAGEMENTS_NAV_ITEMS,
+	FINANCE_NAV_ITEMS,
+	FINANCE_TAB_PAGES,
+} from "@/components/layout/sidebar/engagementsNavigation";
 import { EXECUTION_PRIMARY_NAV_ITEMS } from "@/components/layout/sidebar/executionNavigation";
 import { MARKETPLACE_NAV_ITEMS } from "@/components/layout/sidebar/marketplaceNavigation";
 import type { Project } from "@/services/project.service";
@@ -70,6 +75,29 @@ export function buildSearchablePages(consultant: boolean): SearchablePage[] {
 				label: `${item.label} · ${child.label}`,
 				to: child.to,
 				icon: child.icon,
+			});
+		}
+	}
+
+	// The engagements shell's nav, since finance left the marketplace sidebar.
+	// Its engagements entry dedupes against the entries above. Nothing here is
+	// consultant-gated any more: finance is a book surface every execution
+	// user can hold.
+	for (const item of [...ENGAGEMENTS_NAV_ITEMS, ...FINANCE_NAV_ITEMS]) {
+		add({ key: item.key, label: item.label, to: item.to, icon: item.icon });
+	}
+
+	// The portfolio's sections are tabs rather than sidebar entries, but a
+	// user who searches "invoices" still means to land on one
+	// ("Finance · Invoices"). The rollup is consultant data, so they follow
+	// that gate.
+	if (consultant) {
+		for (const tab of FINANCE_TAB_PAGES) {
+			add({
+				key: tab.key,
+				label: `Finance · ${tab.label}`,
+				to: tab.to,
+				icon: tab.icon,
 			});
 		}
 	}

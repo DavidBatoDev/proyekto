@@ -1,6 +1,6 @@
 # Engagements
 
-> **Last updated:** 2026-08-25 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 > **⚠️ Activation is live; the consuming runtime is not.** All three migrations are
 > applied in production —
@@ -41,6 +41,8 @@ authority; engagements organize their operational and financial effects.
 | [Data model](./data-model.md) | What every engagement table stores and which invariants the database enforces |
 | [Scenarios](./scenarios.md) | What rows exist when a client hires a consultant, a consultant hires Talent, work spans projects, rates change, or a project is deleted |
 | [Lifecycle and edge cases](./lifecycle-and-edge-cases.md) | When records are created, what can change, who approves time, and how exceptional cases behave |
+| [Action surface](./action-surface.md) | What each seat's next action is and where it lives — the linear path, the detail action rail, and the UI/UX contract (draft) |
+| [Test matrix](./test-matrix.md) | The per-seat walkthroughs, including which dead ends are expected (draft) |
 
 ## The model in one picture
 
@@ -112,6 +114,8 @@ Client never gains visibility into `E2`.
 ## Related documentation
 
 - [Identity and enrollment](../13-proposals/identity-and-enrollment.md)
+- [Off-platform engagement adoption](../13-proposals/off-platform-engagement-adoption.md) — bringing agreements signed elsewhere into the model
+- [Authorization axes](../03-backend/authorization-axes.md)
 - [Finance](../11-domains/finance/README.md)
 - [Teams and time](../11-domains/teams-and-time/README.md)
 - [Data schema overview](../07-data-and-db/schema-overview.md)

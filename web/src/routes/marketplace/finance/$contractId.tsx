@@ -1,95 +1,24 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ProjectContract } from "@/components/finance/ProjectContract";
-import {
-	FINANCE_CRUMB_LINK_CLASS,
-	FinanceBreadcrumbs,
-	FinanceCurrentCrumb,
-} from "@/components/finance/portfolio/FinanceBreadcrumbs";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import {
 	type ContractEditorSearch,
 	validateContractStep,
 } from "@/components/finance/portfolio/financeSearch";
-import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
 
 /**
- * The contract document editor.
+ * Redirect stub: `/marketplace/finance/<id>` → `/engagements/finance/<id>`.
  *
- * Deliberately a sibling of the `_portfolio` layout rather than a child: this
- * is a full-page document, and inheriting the section tab bar and filter
- * toolbar would frame an agreement as a filtered list view. Auth and the
- * marketplace shell still come from `finance/route.tsx` above it.
- *
- * Its URL keeps the bare `/marketplace/finance/<id>` shape even though the
- * sections now sit beside it, because `contracts.service.ts` writes exactly
- * that string into `notifications.link_url` and rows already exist with it.
- * Static section names win over the dynamic segment in the router's ranking, so
- * `/marketplace/finance/contracts` still resolves to the list.
+ * `contracts.service.ts` wrote exactly this URL shape into
+ * `notifications.link_url` before the move, and rows already exist with it.
  */
-const UUID_RE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export const Route = createFileRoute("/marketplace/finance/$contractId")({
 	validateSearch: (search: Record<string, unknown>): ContractEditorSearch => ({
 		section: validateContractStep(search.section),
 	}),
-	component: ContractEditorPage,
+	beforeLoad: ({ params, search }) => {
+		throw redirect({
+			to: "/engagements/finance/$contractId",
+			params: { contractId: params.contractId },
+			search,
+		});
+	},
 });
-
-function ContractEditorPage() {
-	const { contractId } = Route.useParams();
-	const { section } = Route.useSearch();
-	const navigate = useNavigate();
-
-	// The dynamic segment is the router's last resort under /marketplace/finance,
-	// so any junk path lands here — including the removed engagements section's
-	// old URL, which used to hold a spinner forever while the contract query
-	// retried an id that could never exist. A param that is not shaped like an
-	// id is a 404, not a contract.
-	if (!UUID_RE.test(contractId)) return <NotFoundRoute />;
-
-	return (
-		<div className="app-shell-bg min-h-full">
-			<div className="px-5 pt-4 md:px-8 md:pt-5">
-				<FinanceBreadcrumbs
-					items={[
-						<Link
-							key="marketplace"
-							to="/marketplace"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Marketplace
-						</Link>,
-						<Link
-							key="finance"
-							to="/marketplace/finance"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Finance
-						</Link>,
-						<Link
-							key="contracts"
-							to="/marketplace/finance/contracts"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Contracts
-						</Link>,
-						<FinanceCurrentCrumb key="contract">Contract</FinanceCurrentCrumb>,
-					]}
-				/>
-			</div>
-			<ProjectContract
-				contractId={contractId}
-				initialStep={section}
-				onBack={() => void navigate({ to: "/marketplace/finance/contracts" })}
-				onOpenContract={(nextContractId) =>
-					void navigate({
-						to: "/marketplace/finance/$contractId",
-						params: { contractId: nextContractId },
-						search: { section: "terms" },
-						replace: true,
-					})
-				}
-			/>
-		</div>
-	);
-}

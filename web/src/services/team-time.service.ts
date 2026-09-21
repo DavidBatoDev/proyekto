@@ -54,6 +54,10 @@ export interface TaskTimeLog {
 	project?: { id: string; title: string | null } | null;
 	day_review_summary?: TimeLogDaySummary;
 	review_comments?: TimeLogComment[];
+	/** Enforcement-pass marker (e.g. contract_lapsed); informational only. */
+	flagged_reason?: string | null;
+	/** Present when the team is in warn-mode contract enforcement and the member has no live contract. */
+	contract_warning?: string;
 }
 
 export interface TimeLogComment {
@@ -669,4 +673,26 @@ export const teamTimeService = {
 			throw extractError(e, "Failed to fetch team members");
 		}
 	},
+
+	/**
+	 * Whether the caller can track time on this project without a signed
+	 * contract — feeds the warn/enforce banner on the project Time page.
+	 */
+	async getProjectContractStatus(
+		projectId: string,
+	): Promise<ProjectContractStatus> {
+		try {
+			const res = await apiClient.get<ApiResponse<ProjectContractStatus>>(
+				`/api/team-time/projects/${projectId}/contract-status`,
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to check contract status");
+		}
+	},
 };
+
+export interface ProjectContractStatus {
+	enforcement: "off" | "warn" | "enforce";
+	engagement_status: "engaged" | "grandfathered" | "ineligible";
+}

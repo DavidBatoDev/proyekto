@@ -36,17 +36,22 @@ describe("buildSearchablePages", () => {
 		const pages = buildSearchablePages(false);
 		const paths = pages.map((p) => p.to);
 
-		expect(paths).not.toContain("/marketplace/finance");
-		expect(paths).not.toContain("/marketplace/finance/invoices");
+		// Finance is a book surface every execution user can hold, so its Home
+		// and Personal places are ungated — only the consultant portfolio's
+		// tabs stay behind the capability.
+		expect(paths).toContain("/engagements/finance");
+		expect(paths).toContain("/engagements/finance/me");
+		expect(paths).not.toContain("/engagements/finance/invoices");
+		expect(paths).not.toContain("/engagements/finance/portfolio");
 		expect(paths).not.toContain("/marketplace/talent/browse");
 		// Ungated marketplace entries stay.
 		expect(paths).toContain("/marketplace/consultant/browse");
 	});
 
-	it("surfaces gated destinations, children included, to consultants", () => {
+	it("surfaces gated destinations to consultants", () => {
 		const pages = buildSearchablePages(true);
 		const invoices = pages.find(
-			(p) => p.to === "/marketplace/finance/invoices",
+			(p) => p.to === "/engagements/finance/invoices",
 		);
 
 		expect(invoices?.label).toBe("Finance · Invoices");
@@ -104,12 +109,7 @@ describe("buildGlobalSearchCandidates", () => {
 			],
 		});
 
-		expect(results.map((r) => r.kind)).toEqual([
-			"page",
-			"page",
-			"project",
-			"workItem",
-		]);
+		expect(results.map((r) => r.kind)).toEqual(["page", "project", "workItem"]);
 	});
 
 	it("caps projects at 5 and work items at 8", () => {

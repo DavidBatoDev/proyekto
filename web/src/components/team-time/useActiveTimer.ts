@@ -96,6 +96,7 @@ export function useActiveTimer(options?: {
 		onSuccess: (row) => {
 			setRunning(row);
 			invalidateTime();
+			if (row.contract_warning) toast.warning(row.contract_warning);
 			onStarted?.(row);
 		},
 		onError: (error) => {

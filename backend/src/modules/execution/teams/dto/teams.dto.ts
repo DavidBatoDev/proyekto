@@ -177,6 +177,10 @@ export class UpdateTeamDto {
   payouts_enabled?: boolean;
 
   @IsOptional()
+  @IsIn(['off', 'warn', 'enforce'])
+  contract_enforcement?: 'off' | 'warn' | 'enforce';
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   retroactive_log_days?: number;

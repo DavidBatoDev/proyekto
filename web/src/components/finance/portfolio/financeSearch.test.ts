@@ -8,8 +8,8 @@ import {
 
 describe("legacyTabRoute", () => {
 	it("forwards every tab that became its own route", () => {
-		expect(legacyTabRoute("contracts")).toBe("/marketplace/finance/contracts");
-		expect(legacyTabRoute("invoices")).toBe("/marketplace/finance/invoices");
+		expect(legacyTabRoute("contracts")).toBe("/engagements/finance/contracts");
+		expect(legacyTabRoute("invoices")).toBe("/engagements/finance/invoices");
 	});
 
 	it("stays put for the overview and for junk", () => {
@@ -28,11 +28,11 @@ describe("legacyTabRoute", () => {
 
 describe("financeSectionFromPathname", () => {
 	it("names the section for each list route", () => {
-		expect(financeSectionFromPathname("/marketplace/finance")).toBe("overview");
-		expect(financeSectionFromPathname("/marketplace/finance/contracts")).toBe(
+		expect(financeSectionFromPathname("/engagements/finance")).toBe("overview");
+		expect(financeSectionFromPathname("/engagements/finance/contracts")).toBe(
 			"contracts",
 		);
-		expect(financeSectionFromPathname("/marketplace/finance/invoices")).toBe(
+		expect(financeSectionFromPathname("/engagements/finance/invoices")).toBe(
 			"invoices",
 		);
 	});
@@ -41,19 +41,19 @@ describe("financeSectionFromPathname", () => {
 		// They render outside the portfolio chrome, but a filter toolbar built
 		// while one is open should still be the invoice one.
 		expect(
-			financeSectionFromPathname("/marketplace/finance/invoices/new"),
+			financeSectionFromPathname("/engagements/finance/invoices/new"),
 		).toBe("invoices");
 		expect(
-			financeSectionFromPathname("/marketplace/finance/invoices/abc-123/edit"),
+			financeSectionFromPathname("/engagements/finance/invoices/abc-123/edit"),
 		).toBe("invoices");
 	});
 
 	it("treats a contract id as the overview, not a section", () => {
-		// `/marketplace/finance/<uuid>` is the document editor. It is not one of
+		// `/engagements/finance/<uuid>` is the document editor. It is not one of
 		// the four sections, and claiming it were would light up the wrong tab.
 		expect(
 			financeSectionFromPathname(
-				"/marketplace/finance/7f3c1e2a-0000-4000-8000-000000000000",
+				"/engagements/finance/7f3c1e2a-0000-4000-8000-000000000000",
 			),
 		).toBe("overview");
 	});

@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-26 · **Status:** current
+> **Last updated:** 2026-08-28 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -11,6 +11,13 @@ provisioned balance storage, but it has no HTTP module.
 > the remaining `fund_escrow` / `refund_escrow` functions. Treat **payouts +
 > invoices** as the real money system. See
 > [Data → schema overview](../../07-data-and-db/schema-overview.md).
+
+## Sub-pages
+
+| Page | What's in it |
+| --- | --- |
+| [Finance books](./finance-books.md) | The F1/F2/F3 book model, book roles and capabilities, contract-gated time, add-ons |
+| [Document imports](./document-imports.md) | Recording invoices and payments created outside Proyekto (**migration not yet applied to production**) |
 
 ## Payouts (live)
 
@@ -52,6 +59,16 @@ designates a consultant of record. Note this is deliberately narrower than the f
 `finance.controller.ts` carries `ConsultantOnlyGuard`, so on the other four finance
 controllers `assertProject` *is* the authorization, and these services run as
 `SUPABASE_ADMIN` where RLS never backstops them.
+
+> **That describes the consultant portfolio only.** Since 2026-08-27 it is no longer the
+> whole finance surface. [Finance books](./finance-books.md) are a created surface **any**
+> execution user can have — creating one is never gated, and a contract unlocks data rather
+> than creation. Book access is resolved by `FinanceBookAccessService` over
+> `finance_book_members`, and **team finance for project admins** runs through
+> `TeamFinanceAccessService.assertProjectFinanceActor`, an either/or facade: the consultant
+> path, **or** a project permission check, **or** team administration. So there are now three
+> independent doors into finance, and `ConsultantOnlyGuard` guards only the oldest one. See
+> [Authorization axes](../../03-backend/authorization-axes.md).
 
 Project deletion is refused while contracts are sent or signed, or while
 invoices are issued/sent. Drafts are discarded; ended/cancelled contracts and paid/void

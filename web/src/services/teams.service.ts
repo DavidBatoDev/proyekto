@@ -85,6 +85,7 @@ export interface Team {
 	 * `team.status ?? "active"`.
 	 */
 	status?: TeamStatus;
+	contract_enforcement?: "off" | "warn" | "enforce";
 	retroactive_log_days?: number | null;
 	default_currency?: string | null;
 	pay_period_config?: PayPeriodConfig | null;
@@ -308,6 +309,7 @@ export interface UpdateTeamPatch {
 	time_tracking_enabled?: boolean;
 	member_rates_enabled?: boolean;
 	payouts_enabled?: boolean;
+	contract_enforcement?: "off" | "warn" | "enforce";
 	retroactive_log_days?: number;
 	default_currency?: "USD" | "CAD" | "PHP";
 	pay_period_config?: PayPeriodConfig | null;

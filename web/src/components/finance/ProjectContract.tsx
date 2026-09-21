@@ -301,7 +301,13 @@ export function ProjectContract({
 		if (confirmed) deleteMutation.mutate();
 	};
 
-	if (contractQuery.isPending || (contract && projectQuery.isPending)) {
+	// A flexible contract has no project, so its project query is disabled —
+	// and a disabled query reports `isPending` forever. Waiting on it here hung
+	// every flexible contract on this spinner for every viewer.
+	if (
+		contractQuery.isPending ||
+		(contract?.project_id && projectQuery.isPending)
+	) {
 		return (
 			<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] items-center justify-center">
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

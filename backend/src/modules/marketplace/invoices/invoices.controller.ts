@@ -67,6 +67,20 @@ export class InvoicesController {
     return this.invoices.createInvoice(user.id, dto);
   }
 
+  /**
+   * Invoices billed TO the caller — the payer's ledger. Declared before
+   * `:id` so the literal segment is not captured as an id.
+   */
+  @Get('received')
+  listReceived(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoices.listReceived(user.id);
+  }
+
+  @Get('received/:id')
+  getReceived(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invoices.getReceived(user.id, id);
+  }
+
   @Get(':id')
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoices.getInvoice(user.id, id);

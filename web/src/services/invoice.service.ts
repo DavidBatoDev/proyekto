@@ -211,7 +211,66 @@ function normalizeInvoice(invoice: Invoice): Invoice {
 	};
 }
 
+/** One invoice billed TO the caller — the payer's row. */
+export interface ReceivedInvoiceSummary {
+	id: string;
+	number: string;
+	status: InvoiceStatus;
+	currency: string;
+	total: number;
+	issue_date: string | null;
+	due_date: string | null;
+	project_title: string | null;
+	issued_by_name: string | null;
+	amount_paid: number;
+	balance_due: number;
+	is_overdue: boolean;
+	days_overdue: number;
+	has_pdf: boolean;
+}
+
+export interface ReceivedInvoiceDetail extends ReceivedInvoiceSummary {
+	period_start: string | null;
+	period_end: string | null;
+	bill_to: InvoiceParty;
+	issued_by: InvoiceParty;
+	payment_method: string | null;
+	notes: string | null;
+	subtotal: number;
+	line_items: Array<{
+		id: string;
+		description: string;
+		quantity: number;
+		unit_rate: number;
+		amount: number;
+		is_hours: boolean;
+	}>;
+	payments: Array<{
+		id: string;
+		amount: number;
+		payment_date: string | null;
+		payment_method: string | null;
+		reference: string | null;
+		is_reversal: boolean;
+	}>;
+}
+
 export const invoiceService = {
+	/** Non-draft invoices billed to the caller — the payer's own ledger. */
+	async listReceived(): Promise<ReceivedInvoiceSummary[]> {
+		const { data } = await apiClient.get<{ data: ReceivedInvoiceSummary[] }>(
+			"/api/invoices/received",
+		);
+		return data.data;
+	},
+
+	async getReceived(invoiceId: string): Promise<ReceivedInvoiceDetail> {
+		const { data } = await apiClient.get<{ data: ReceivedInvoiceDetail }>(
+			`/api/invoices/received/${invoiceId}`,
+		);
+		return data.data;
+	},
+
 	async listByProject(
 		projectId: string,
 		query?: {
