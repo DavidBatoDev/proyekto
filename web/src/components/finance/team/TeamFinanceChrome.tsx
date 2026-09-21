@@ -6,11 +6,11 @@ import {
 	FileSignature,
 	HandCoins,
 	ReceiptText,
-	Users,
 	Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppTabs } from "@/components/common/AppTabs";
+import { InitialsTile } from "@/components/finance/InitialsTile";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -58,6 +58,9 @@ export function TeamFinanceChrome({
 	search,
 	projects,
 	onChange,
+	roleLabel,
+	actions,
+	showFilters = true,
 	children,
 }: {
 	teamId: string;
@@ -65,6 +68,15 @@ export function TeamFinanceChrome({
 	search: FinanceSearchState;
 	projects: Array<{ id: string; title: string }>;
 	onChange: (patch: Partial<FinanceSearchState>) => void;
+	/** The viewer's standing on this team ("Owner"), shown beside its name. */
+	roleLabel?: string;
+	/** Header actions — who is on the book, Share, the page's primary action. */
+	actions?: ReactNode;
+	/**
+	 * The filter toolbar narrows lists. The overview is a summary of places, not
+	 * a list, so it hides the bar until there is a rollup beneath it to filter.
+	 */
+	showFilters?: boolean;
 	children: ReactNode;
 }) {
 	const teamsQuery = useQuery({
@@ -129,20 +141,29 @@ export function TeamFinanceChrome({
 						]}
 					/>
 
-					<div className="mt-2 flex items-center justify-between gap-4">
-						<div className="flex min-w-0 items-center gap-2.5">
-							<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/10 text-foreground">
-								<Users className="h-4 w-4" />
-							</span>
-							<div className="min-w-0 leading-tight">
-								<h1 className="truncate text-sm font-semibold text-foreground">
-									{teamName} finance
-								</h1>
-								<p className="truncate text-[11px] text-muted-foreground">
-									Invoices, contracts, and billing across this team's projects
+					<div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+						<div className="flex min-w-0 items-center gap-3.5">
+							<InitialsTile name={teamName} size="lg" />
+							<div className="min-w-0">
+								<div className="flex min-w-0 items-center gap-2.5">
+									<h1 className="truncate text-2xl font-bold tracking-tight text-foreground">
+										{teamName}
+									</h1>
+									{roleLabel ? (
+										<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+											{roleLabel}
+										</span>
+									) : null}
+								</div>
+								<p className="mt-0.5 truncate text-sm text-muted-foreground">
+									Team finance — rates, time, payouts, and the contracts behind
+									them.
 								</p>
 							</div>
 						</div>
+						{actions ? (
+							<div className="flex shrink-0 items-center gap-2">{actions}</div>
+						) : null}
 					</div>
 
 					{/*
@@ -204,12 +225,16 @@ export function TeamFinanceChrome({
 					/>
 				</header>
 
-				<FinanceFiltersBar
-					search={search}
-					section={section}
-					projects={projects}
-					onChange={onChange}
-				/>
+				{showFilters ? (
+					<FinanceFiltersBar
+						search={search}
+						section={section}
+						projects={projects}
+						onChange={onChange}
+					/>
+				) : (
+					<div className="mt-5" />
+				)}
 
 				{children}
 			</div>

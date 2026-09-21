@@ -3,6 +3,7 @@ import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { InitialsTile } from "@/components/finance/InitialsTile";
 import {
 	FinanceLoading,
 	FinanceStatusBadge,
@@ -119,7 +120,10 @@ function EngagementRow({
 	onOpen: (engagementId: string) => void;
 	agreement?: EngagementAgreement;
 }) {
-	const isClientSide = engagement.kind === "client_services";
+	const counterparty =
+		engagement.counterparty?.display_name_snapshot ??
+		engagement.counterparty?.email_snapshot ??
+		null;
 	const signed = agreement?.signed_at
 		? new Date(agreement.signed_at).toLocaleDateString(undefined, {
 				month: "short",
@@ -134,21 +138,39 @@ function EngagementRow({
 			className="group flex w-full items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-muted/40 md:px-5 md:py-4"
 		>
 			<span className="flex min-w-0 items-center gap-3">
-				<span
-					className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isClientSide ? "bg-primary/10 text-primary" : "bg-info/10 text-info-foreground"}`}
-				>
-					<Handshake className="h-5 w-5" />
-				</span>
+				{/*
+				 * The list is scanned by WHO, so the row leads with the counterparty
+				 * rather than a handshake that is identical on every line. A removed
+				 * counterparty has no name to abbreviate and keeps the icon.
+				 */}
+				{counterparty ? (
+					<InitialsTile name={counterparty} shape="round" />
+				) : (
+					<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+						<Handshake className="h-5 w-5" />
+					</span>
+				)}
 				<span className="min-w-0">
-					<span className="block truncate font-semibold text-foreground">
-						{describeRelationship(engagement)}
+					<span className="flex min-w-0 items-center gap-2">
+						<span className="truncate font-semibold text-foreground">
+							{describeRelationship(engagement)}
+						</span>
+						{/*
+						 * The COUNTERPARTY's capacity, not the engagement's kind: to the
+						 * client on a client engagement the other seat is a consultant,
+						 * and "You hired Dev Consultant · Client" would be backwards.
+						 */}
+						{engagement.counterparty?.capacity ? (
+							<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
+								{engagement.counterparty.capacity}
+							</span>
+						) : null}
 					</span>
 					<span className="mt-1 block truncate text-xs text-muted-foreground">
-						{isClientSide ? "Client engagement" : "Talent engagement"} ·{" "}
 						{describeScope(engagement)}
 					</span>
 					{agreement && (
-						<span className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+						<span className="mt-1 flex items-center gap-1.5 truncate text-xs font-medium text-primary">
 							<FileSignature className="h-3 w-3 shrink-0" />
 							{agreement.contract_number ?? "Contract"}
 							{signed ? ` · signed ${signed}` : ""}

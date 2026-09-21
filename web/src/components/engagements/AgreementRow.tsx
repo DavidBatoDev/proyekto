@@ -48,8 +48,18 @@ export function AgreementRow({
 					<FileSignature className="h-5 w-5" />
 				</span>
 				<span className="min-w-0">
-					<span className="block truncate font-semibold text-foreground">
-						{agreementTitle(agreement)}
+					<span className="flex min-w-0 items-center gap-2">
+						<span className="truncate font-semibold text-foreground">
+							{agreementTitle(agreement)}
+						</span>
+						{/*
+						 * The same person can be a consultant on one line and a client
+						 * on the next; the seat is what decides which figures the
+						 * contract will show them, so it is stated per row.
+						 */}
+						<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+							As {agreement.my_capacity}
+						</span>
 					</span>
 					<span className="mt-1 block truncate text-xs text-muted-foreground">
 						{agreement.relationship_kind === "client_services"

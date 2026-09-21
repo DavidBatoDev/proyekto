@@ -2,13 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	CircleDollarSign,
-	Clock,
 	Download,
 	FolderKanban,
 	HandCoins,
-	Hourglass,
 	ReceiptText,
-	Users,
 	Wallet,
 } from "lucide-react";
 import { useState } from "react";
@@ -16,10 +13,10 @@ import { AppDialog } from "@/components/common/AppDialog";
 import {
 	AppEmptyState,
 	AppSectionHeader,
-	AppStatCard,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { AgreementRow } from "@/components/engagements/AgreementRow";
+import { InitialsTile } from "@/components/finance/InitialsTile";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -164,7 +161,6 @@ function PersonalDashboardBody({
 	currency: string;
 }) {
 	const { hours, payouts_in, engaged_projects } = dashboard;
-	const hasContracts = engaged_projects.length > 0;
 
 	const hubQuery = useQuery({
 		queryKey: ["finance-books", "hub"],
@@ -172,93 +168,173 @@ function PersonalDashboardBody({
 	});
 	const teams = hubQuery.data?.teams ?? [];
 
+	// The same query (and cache entry) the contracts list below reads, so the
+	// tile and the list can never disagree about how many there are.
+	const agreementsQuery = useQuery({
+		queryKey: ["engagements", "agreements"],
+		queryFn: () => engagementService.agreements(),
+	});
+	const activeContracts = (agreementsQuery.data ?? []).filter(
+		(agreement) => agreement.status === "signed",
+	).length;
+	const payoutCount = payouts_in.reduce((sum, entry) => sum + entry.count, 0);
+
 	return (
 		<>
-			<AppSectionHeader
-				title="My finance"
-				subtitle={`Your private book — hours, payouts, and engaged projects. Display currency ${currency}.`}
-				className="mt-4"
-			/>
-
-			<div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				<AppStatCard
-					label="Hours worked"
-					value={formatHours(hours.total_seconds)}
-					icon={Clock}
+			<div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+				<AppSectionHeader
+					title="My finance"
+					subtitle="Only you can see this. Signed contracts feed it automatically."
 				/>
-				<AppStatCard
-					label="This month"
-					value={formatHours(hours.month_seconds)}
-					icon={Hourglass}
-				/>
-				<AppStatCard
-					label="Awaiting approval"
-					value={formatHours(hours.pending_seconds)}
-					icon={Hourglass}
-				/>
+				<span className="shrink-0 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground">
+					Display currency · {currency}
+				</span>
 			</div>
 
-			<MyRateCard />
-
-			<AppSectionHeader
-				title="Money in"
-				subtitle="Recorded payouts, grouped by currency."
-				className="mt-8"
-			/>
-			{payouts_in.length === 0 ? (
-				<AppEmptyState
-					icon={Wallet}
-					title="No payouts yet"
-					description={
-						hasContracts
-							? "Payouts recorded by your teams will appear here."
-							: "Payouts arrive through engaged projects. Once a contract with a team is signed, your payouts will land here."
-					}
-					className="mt-3"
+			<div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+				<PersonalStat
+					label="Hours this month"
+					value={formatHours(hours.month_seconds)}
+					hint={`${formatHours(hours.total_seconds)} all time`}
 				/>
-			) : (
-				<div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{payouts_in.map((entry) => (
-						<AppStatCard
-							key={entry.currency}
-							label={`${entry.currency} · ${entry.count} payout${entry.count === 1 ? "" : "s"}`}
-							value={`${entry.total.toLocaleString()} ${entry.currency}`}
-							icon={HandCoins}
-						/>
-					))}
-				</div>
-			)}
+				<PersonalStat
+					label="Awaiting approval"
+					value={formatHours(hours.pending_seconds)}
+					hint="submitted, not yet decided"
+					attention={hours.pending_seconds > 0}
+				/>
+				<PersonalStat
+					label="Money in"
+					value={
+						payouts_in.length
+							? payouts_in
+									.map(
+										(entry) =>
+											`${entry.total.toLocaleString()} ${entry.currency}`,
+									)
+									.join(" · ")
+							: "—"
+					}
+					hint={
+						payoutCount
+							? `${payoutCount} payout${payoutCount === 1 ? "" : "s"} received`
+							: "no payouts recorded yet"
+					}
+					compact={payouts_in.length > 1}
+				/>
+				<PersonalStat
+					label="Active contracts"
+					value={agreementsQuery.isPending ? "…" : String(activeContracts)}
+					hint="every seat you hold"
+				/>
+			</div>
 
 			<InvoicesToPaySection />
 
 			<MyContractsSection />
 
-			<AppSectionHeader
-				title="My teams"
-				subtitle="Your teams and the finance books behind them — signed contracts unlock the timer and payouts per project."
-				className="mt-8"
-			/>
-			{hubQuery.isPending ? (
-				<p className="mt-3 text-sm text-slate-500">Loading your teams…</p>
-			) : teams.length === 0 ? (
-				<AppEmptyState
-					icon={Users}
-					title="No teams yet"
-					description="When you join or create a team, its projects and finance books appear here. Signed contracts unlock the execution timer and payouts."
-					className="mt-3"
-				/>
-			) : (
-				<div className="mt-3 space-y-3">
-					{teams.map((team) => (
-						<MyTeamBlock
-							key={team.team_id}
-							team={team}
-							engagedProjects={engaged_projects}
-						/>
-					))}
-				</div>
-			)}
+			<div className="mt-8 grid gap-8 lg:grid-cols-2">
+				<section>
+					<h2 className="text-base font-semibold text-foreground">My teams</h2>
+					<p className="mb-3 mt-0.5 text-sm text-muted-foreground">
+						Where your contracts live. Open a team to manage its money.
+					</p>
+					{hubQuery.isPending ? (
+						<p className="text-sm text-muted-foreground">Loading your teams…</p>
+					) : teams.length === 0 ? (
+						<AppSurfaceCard className="px-5 py-4 text-sm text-muted-foreground">
+							No teams yet. When you join or create one, its finance appears
+							here.
+						</AppSurfaceCard>
+					) : (
+						<div className="space-y-3">
+							{teams.map((team) => (
+								<MyTeamBlock
+									key={team.team_id}
+									team={team}
+									engagedProjects={engaged_projects}
+								/>
+							))}
+						</div>
+					)}
+				</section>
+
+				<section>
+					<h2 className="text-base font-semibold text-foreground">
+						Rates &amp; payouts
+					</h2>
+					<p className="mb-3 mt-0.5 text-sm text-muted-foreground">
+						Your rate card, and money that reached you.
+					</p>
+					<AppSurfaceCard className="divide-y divide-border/60 overflow-hidden">
+						<MyRateCard />
+						{payouts_in.length === 0 ? (
+							<p className="px-5 py-4 text-sm text-muted-foreground">
+								{engaged_projects.length > 0
+									? "No payouts yet — ones your teams record will appear here."
+									: "Payouts arrive through engaged projects, once a contract with a team is signed."}
+							</p>
+						) : (
+							payouts_in.map((entry) => (
+								<div
+									key={entry.currency}
+									className="flex items-center justify-between gap-4 px-5 py-3.5"
+								>
+									<span className="flex min-w-0 items-center gap-3">
+										<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success-foreground">
+											<Wallet className="h-5 w-5" />
+										</span>
+										<span className="min-w-0">
+											<span className="block text-sm font-semibold text-foreground">
+												{entry.total.toLocaleString()} {entry.currency}
+											</span>
+											<span className="block text-xs text-muted-foreground">
+												{entry.count} payout{entry.count === 1 ? "" : "s"}{" "}
+												received
+											</span>
+										</span>
+									</span>
+									<span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+										Recorded
+									</span>
+								</div>
+							))
+						)}
+					</AppSurfaceCard>
+				</section>
+			</div>
 		</>
+	);
+}
+
+/** A figure with the sentence that says what it counts. */
+function PersonalStat({
+	label,
+	value,
+	hint,
+	attention,
+	compact,
+}: {
+	label: string;
+	value: string;
+	hint: string;
+	attention?: boolean;
+	compact?: boolean;
+}) {
+	return (
+		<div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
+			<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+				{label}
+			</p>
+			<p
+				className={`mt-1.5 font-bold tracking-tight ${compact ? "text-base" : "text-2xl"} ${
+					attention ? "text-warning-foreground" : "text-foreground"
+				}`}
+			>
+				{value}
+			</p>
+			<p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+		</div>
 	);
 }
 
@@ -284,9 +360,7 @@ function MyTeamBlock({
 							className="h-9 w-9 shrink-0 rounded-lg object-cover"
 						/>
 					) : (
-						<span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-							<Users className="h-4 w-4" />
-						</span>
+						<InitialsTile name={team.team_name} />
 					)}
 					<div className="min-w-0">
 						<p className="truncate text-sm font-semibold text-slate-900">
@@ -374,11 +448,13 @@ function MyContractsSection() {
 
 	return (
 		<>
-			<AppSectionHeader
-				title="My contracts"
-				subtitle="Every agreement you are a party to. Your seat on each contract decides what it shows you."
-				className="mt-8"
-			/>
+			<h2 className="mt-8 text-base font-semibold text-foreground">
+				My contracts
+			</h2>
+			<p className="mt-0.5 text-sm text-muted-foreground">
+				Every agreement you are a party to. Your seat on each contract is shown
+				per row.
+			</p>
 			{agreementsQuery.isPending ? (
 				<p className="mt-3 text-sm text-muted-foreground">Loading…</p>
 			) : agreements.length === 0 ? (
@@ -425,7 +501,7 @@ function MyRateCard() {
 	if (!rate || rate.hourly_rate == null) return null;
 
 	return (
-		<AppSurfaceCard className="mt-6 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+		<div className="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
 			<div className="flex min-w-0 items-center gap-3">
 				<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
 					<HandCoins className="h-5 w-5" />
@@ -450,7 +526,7 @@ function MyRateCard() {
 			>
 				Edit
 			</Link>
-		</AppSurfaceCard>
+		</div>
 	);
 }
 
@@ -479,15 +555,14 @@ function InvoicesToPaySection() {
 
 	return (
 		<>
-			<AppSectionHeader
-				title="Invoices to pay"
-				subtitle={
-					outstanding > 0
-						? `${outstanding.toLocaleString()} ${currency} outstanding${overdueCount > 0 ? ` · ${overdueCount} past due` : ""}.`
-						: "Everything billed to you is settled."
-				}
-				className="mt-8"
-			/>
+			<h2 className="mt-8 text-base font-semibold text-foreground">
+				Invoices to pay
+			</h2>
+			<p className="mt-0.5 text-sm text-muted-foreground">
+				{outstanding > 0
+					? `${outstanding.toLocaleString()} ${currency} outstanding${overdueCount > 0 ? ` · ${overdueCount} past due` : ""}.`
+					: "Everything billed to you is settled."}
+			</p>
 			<AppSurfaceCard className="mt-3 divide-y divide-border overflow-hidden">
 				{items.map((invoice) => (
 					<button

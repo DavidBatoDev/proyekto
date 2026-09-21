@@ -87,7 +87,7 @@ function FinanceBookPage() {
 
 	return (
 		<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
-			<div className="mx-auto w-full max-w-4xl">
+			<div className="mx-auto w-full max-w-6xl">
 				<FinanceBreadcrumbs
 					items={[
 						<Link

@@ -5,21 +5,25 @@ import {
 	BookOpen,
 	ChevronRight,
 	CircleDollarSign,
-	FolderKanban,
+	Folder,
 	Plus,
-	Users,
+	Share2,
 	Wallet,
 } from "lucide-react";
+import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { FinanceShareDialog } from "@/components/finance/FinanceShareDialog";
+import { InitialsTile } from "@/components/finance/InitialsTile";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
 	FinanceCurrentCrumb,
 } from "@/components/finance/portfolio/FinanceBreadcrumbs";
 import {
+	countLabel,
 	FinanceLoading,
 	FinanceStatusBadge,
 } from "@/components/finance/portfolio/FinancePrimitives";
@@ -291,7 +295,7 @@ function HomeStat({ label, value }: { label: string; value: string }) {
 			<span className="block text-[11px] font-bold tracking-wider text-muted-foreground/70 uppercase">
 				{label}
 			</span>
-			<span className="mt-0.5 block font-['Sora',sans-serif] text-base font-bold text-foreground">
+			<span className="mt-0.5 block whitespace-pre-line font-['Sora',sans-serif] text-base font-bold text-foreground">
 				{value}
 			</span>
 		</span>
@@ -299,9 +303,12 @@ function HomeStat({ label, value }: { label: string; value: string }) {
 }
 
 function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
+	const [shareOpen, setShareOpen] = useState(false);
+	const canManage = team.book_role === "owner" || team.book_role === "manager";
+
 	return (
 		<AppSurfaceCard className="self-start overflow-hidden">
-			<div className="flex items-center gap-3 border-b border-border/60 px-5 py-4">
+			<div className="flex items-center gap-3.5 border-b border-border/60 px-5 py-4">
 				{team.avatar_url ? (
 					<img
 						src={team.avatar_url}
@@ -309,9 +316,7 @@ function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
 						className="h-10 w-10 shrink-0 rounded-xl object-cover"
 					/>
 				) : (
-					<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info-foreground">
-						<Users className="h-5 w-5" />
-					</span>
+					<InitialsTile name={team.team_name} />
 				)}
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
@@ -322,27 +327,26 @@ function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
 						>
 							{team.team_name}
 						</Link>
-						<span className="rounded-lg bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
+						<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
 							{team.my_team_role.replace(/_/g, " ")}
 						</span>
 					</div>
 					<p className="text-xs text-muted-foreground">
 						{team.project_books.length === 0
 							? "No project finance yet"
-							: `${team.project_books.length} project ${
-									team.project_books.length === 1 ? "book" : "books"
-								}`}
+							: countLabel(team.project_books.length, "project")}
 					</p>
 				</div>
-				{team.book ? (
-					<Link
-						to="/engagements/finance/book/$bookId"
-						params={{ bookId: team.book.id }}
-						className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+				{team.book && canManage ? (
+					<button
+						type="button"
+						onClick={() => setShareOpen(true)}
+						className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
 					>
-						Team book
-					</Link>
-				) : team.can_create ? (
+						<Share2 className="h-3.5 w-3.5" />
+						Share
+					</button>
+				) : !team.book && team.can_create ? (
 					<Link
 						to="/engagements/finance/setup/team"
 						className="app-cta inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
@@ -358,12 +362,19 @@ function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
 					key={entry.book.id}
 					to="/engagements/finance/book/$bookId"
 					params={{ bookId: entry.book.id }}
-					className="flex items-center justify-between gap-3 border-b border-border/40 px-5 py-3 transition-colors last:border-b-0 hover:bg-muted/40"
+					className="flex items-center justify-between gap-3 border-b border-border/40 px-5 py-3.5 transition-colors hover:bg-muted/40"
 				>
-					<span className="flex min-w-0 items-center gap-3">
-						<FolderKanban className="h-4 w-4 shrink-0 text-muted-foreground" />
-						<span className="truncate text-sm font-medium text-foreground">
-							{entry.project_title}
+					<span className="flex min-w-0 items-center gap-3.5">
+						<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+							<Folder className="h-[18px] w-[18px]" />
+						</span>
+						<span className="min-w-0">
+							<span className="block truncate text-sm font-semibold text-foreground">
+								{entry.project_title}
+							</span>
+							<span className="block truncate text-xs text-muted-foreground">
+								Project finance · {entry.book.currency}
+							</span>
 						</span>
 					</span>
 					<span className="flex shrink-0 items-center gap-2">
@@ -372,6 +383,34 @@ function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
 					</span>
 				</Link>
 			))}
+
+			{/*
+			 * Not a button: a project book is opened by a signed client contract,
+			 * never by hand. The row says so where the person would look for "new".
+			 */}
+			<div className="flex items-center gap-3.5 px-5 py-3.5">
+				<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
+					<Plus className="h-4 w-4" />
+				</span>
+				<span className="min-w-0">
+					<span className="block text-sm font-semibold text-muted-foreground">
+						New project finance
+					</span>
+					<span className="block text-xs text-muted-foreground">
+						Opens once a project has a signed client contract
+					</span>
+				</span>
+			</div>
+
+			{team.book ? (
+				<FinanceShareDialog
+					bookId={team.book.id}
+					bookTitle={`${team.team_name} · Team finance`}
+					canManage={canManage}
+					open={shareOpen}
+					onClose={() => setShareOpen(false)}
+				/>
+			) : null}
 		</AppSurfaceCard>
 	);
 }
@@ -382,7 +421,10 @@ function PortfolioDoor() {
 		queryKey: ["finance", "portfolio", {}],
 		queryFn: () => financeService.portfolio({}),
 	});
-	const lead = portfolioQuery.data?.totals_by_currency[0];
+	// Every currency, never just the first: amounts in different currencies
+	// cannot be summed or ranked, and showing one silently hides the rest of
+	// the book (an AUD import used to displace the whole PHP ledger here).
+	const totals = portfolioQuery.data?.totals_by_currency ?? [];
 
 	return (
 		<>
@@ -402,15 +444,24 @@ function PortfolioDoor() {
 							Revenue, receivables, and margin across every project you lead.
 						</p>
 					</div>
-					{lead && (
-						<div className="hidden items-center gap-7 md:flex">
+					{totals.length > 0 && (
+						<div className="hidden items-start gap-7 md:flex">
 							<HomeStat
 								label="Billed"
-								value={`${lead.revenue.toLocaleString()} ${lead.currency}`}
+								value={totals
+									.map(
+										(row) => `${row.revenue.toLocaleString()} ${row.currency}`,
+									)
+									.join("\n")}
 							/>
 							<HomeStat
 								label="Outstanding"
-								value={`${lead.outstanding.toLocaleString()} ${lead.currency}`}
+								value={totals
+									.map(
+										(row) =>
+											`${row.outstanding.toLocaleString()} ${row.currency}`,
+									)
+									.join("\n")}
 							/>
 						</div>
 					)}

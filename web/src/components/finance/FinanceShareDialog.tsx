@@ -51,7 +51,7 @@ const ROLE_OPTIONS: Array<{
 	},
 ];
 
-const ROLE_LABELS: Record<string, string> = {
+export const FINANCE_ROLE_LABELS: Record<string, string> = {
 	owner: "Owner",
 	manager: "Manager",
 	accountant: "Accountant",
@@ -271,7 +271,8 @@ export function FinanceShareDialog({
 											{invite.email}
 										</p>
 										<p className="text-xs text-muted-foreground">
-											{ROLE_LABELS[invite.finance_role] ?? invite.finance_role}{" "}
+											{FINANCE_ROLE_LABELS[invite.finance_role] ??
+												invite.finance_role}{" "}
 											· invited, not yet accepted
 										</p>
 									</div>
@@ -378,7 +379,7 @@ function ShareMemberRow({
 				</div>
 			) : (
 				<span className="shrink-0 text-xs font-semibold text-muted-foreground">
-					{ROLE_LABELS[member.finance_role] ?? member.finance_role}
+					{FINANCE_ROLE_LABELS[member.finance_role] ?? member.finance_role}
 				</span>
 			)}
 		</div>
