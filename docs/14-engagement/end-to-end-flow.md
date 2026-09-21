@@ -1,6 +1,6 @@
 # End-to-End Flow
 
-> **Last updated:** 2026-08-25 · **Status:** draft
+> **Last updated:** 2026-08-26 · **Status:** draft
 
 This page walks each market position — Client, Consultant, Talent — from first
 marketplace contact, through contracting and engagement activation, to the execution
@@ -61,8 +61,8 @@ The Consultant is the only position that traverses every stage.
 | 2 | Admin approves → `consultant_profiles.status='verified'` | admin console | live |
 | 3 | Create or join a project; become consultant-of-record | `/project/new`, assignment | live |
 | 4 | Browse and invite Talent | `/marketplace/talent`, `POST /marketplace/invite` | live |
-| 5 | Draft a contract with two positions; resolve counterparty by exact email | `/marketplace/finance` | live |
-| 6 | Send; both parties sign; engagement activates | `/marketplace/finance/$contractId`, sign token | live |
+| 5 | Draft a contract with two positions; resolve counterparty by exact email | `/engagements/finance` | live |
+| 6 | Send; both parties sign; engagement activates | `/engagements/finance/$contractId`, sign token | live |
 | 7 | Review the engagement — seats, links, effective rates and time policy | `/engagements/$engagementId` | live |
 | 8 | Assign a worker to project work under the engagement | — | **unbuilt** |
 | 9 | Review submitted Talent time; approve or reject | — | **unbuilt** |

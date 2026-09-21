@@ -40,6 +40,7 @@ import { TeamsModule } from './modules/execution/teams/teams.module';
 import { WorkspacesModule } from './modules/execution/workspaces/workspaces.module';
 import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
+import { FinanceImportsModule } from './modules/marketplace/finance-imports/finance-imports.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
 import { ContractsModule } from './modules/marketplace/contracts/contracts.module';
 import { EngagementsModule } from './modules/marketplace/engagements/engagements.module';
@@ -107,6 +108,7 @@ import { AppController } from './app.controller';
     WorkspacesModule,
     TeamTimeModule,
     MeetingsModule,
+    FinanceImportsModule,
     InvoicesModule,
     ContractsModule,
     EngagementsModule,

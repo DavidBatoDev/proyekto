@@ -1,6 +1,6 @@
 # Consultant Surfaces
 
-> **Last updated:** 2026-08-24 · **Status:** current
+> **Last updated:** 2026-08-26 · **Status:** current
 
 Consultant routes fall into three groups: public marketing/discovery, authenticated
 application and shared work, and active-consultant operator tools. A `/consultant/*` path is
@@ -30,9 +30,9 @@ not automatically protected; each surface has its own gate.
 | --- | --- | --- |
 | `/marketplace/talent` | Search and invite Talent | Web predicate plus guarded marketplace API |
 | `/marketplace/consultant/templates` | Manage consultant-authored roadmap templates | Web predicate plus guarded write endpoints |
-| `/marketplace/finance` | Portfolio summary | Finance controller guard |
-| `/marketplace/finance/contracts` and related views | Contract operations | Finance/controller and project checks |
-| `/marketplace/finance/invoices` and related views | Invoice operations | Finance/controller and project checks |
+|  `/engagements/finance` | Portfolio summary | Finance controller guard |
+| `/engagements/finance/contracts` and related views | Contract operations | Finance/controller and project checks |
+| `/engagements/finance/invoices` and related views | Invoice operations | Finance/controller and project checks |
 
 The sidebar displays Finance only for an active consultant. Direct navigation still reaches a
 page shell in some cases, but protected API calls return 403 when the predicate fails.

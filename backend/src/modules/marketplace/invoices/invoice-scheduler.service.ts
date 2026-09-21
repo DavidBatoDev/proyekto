@@ -387,7 +387,7 @@ export class InvoiceSchedulerService {
           period_end: periodEnd,
           message: `Invoice ${invoiceNumber} is drafted for ${periodStart} – ${periodEnd}. Review and send it.`,
         },
-        link_url: `/marketplace/finance/invoices?projectId=${contract.project_id}`,
+        link_url: `/engagements/finance/invoices?projectId=${contract.project_id}`,
       });
     } catch (err) {
       this.logger.warn(
@@ -432,7 +432,7 @@ export class InvoiceSchedulerService {
             service_end_date: row.service_end_date,
             message: `This contract's service period ends on ${row.service_end_date}. Renew or extend it if the work continues.`,
           },
-          link_url: `/marketplace/finance/${row.id}`,
+          link_url: `/engagements/finance/${row.id}`,
         });
       } catch {
         // Advisory only.
