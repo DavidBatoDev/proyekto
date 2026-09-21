@@ -23,6 +23,7 @@ import { CURRENCY_CODE_OPTIONS } from "@/lib/currency";
 import {
 	type DocumentSnip,
 	financeImportsService,
+	type PaymentReadFields,
 } from "@/services/financeImports.service";
 
 /**
@@ -99,6 +100,7 @@ function ImportWorkspace() {
 	const [settledCurrency, setSettledCurrency] = useState("PHP");
 	const [recordPayment, setRecordPayment] = useState(true);
 	const [proofDocumentId, setProofDocumentId] = useState("");
+	const [proofRead, setProofRead] = useState<PaymentReadFields | null>(null);
 
 	const documentQuery = useQuery({
 		queryKey: ["finance-import", "document", documentId],
@@ -155,6 +157,59 @@ function ImportWorkspace() {
 		},
 		onError: (error: Error) => toast.error(error.message),
 	});
+
+	/**
+	 * Choosing the bank record fills the payment from it. The record is read
+	 * once (by vision, for a screenshot) and its draft is reused afterwards; the
+	 * same rule as the invoice applies — a suggestion never overwrites a figure
+	 * somebody already snipped or typed.
+	 */
+	const proofMutation = useMutation({
+		mutationFn: async (proofId: string) => {
+			const listed = proofsQuery.data?.find((proof) => proof.id === proofId);
+			if (
+				listed?.extraction?.kind === "payment_proof" &&
+				listed.extraction.fields
+			) {
+				return listed;
+			}
+			return financeImportsService.read(proofId);
+		},
+		onSuccess: (row) => {
+			void qc.invalidateQueries({ queryKey: ["finance-import", "proofs"] });
+			const read = row.extraction?.fields;
+			setProofRead(read ?? null);
+			if (!read) {
+				toast.info(
+					row.extraction?.note ??
+						"That record could not be read. Enter the payment from it.",
+				);
+				return;
+			}
+			const apply = (key: string, value: string | null | undefined) => {
+				if (!value) return;
+				setFields((previous) =>
+					previous[key]?.value
+						? previous
+						: { ...previous, [key]: { value, suggested: true } },
+				);
+			};
+			apply("payment_date", read.payment_date?.value);
+			apply("settled_amount", read.settled_amount?.value);
+			apply("reference", read.reference?.value);
+			if (read.settled_currency?.value) {
+				setSettledCurrency(read.settled_currency.value);
+			}
+			toast.success("Payment drafted from the bank record. Check each figure.");
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+
+	const onPickProof = (proofId: string) => {
+		setProofDocumentId(proofId);
+		setProofRead(null);
+		if (proofId) proofMutation.mutate(proofId);
+	};
 
 	const importMutation = useMutation({
 		mutationFn: () => {
@@ -259,6 +314,23 @@ function ImportWorkspace() {
 		const settled = Number(field("settled_amount").value);
 		if (!total || !settled || settledCurrency === currency) return null;
 		return (settled / total).toFixed(4);
+	})();
+
+	/**
+	 * Does the bank's own narration agree with this invoice? A cross-border
+	 * credit often quotes the amount the sender instructed; when it does, that
+	 * is independent evidence the transfer belongs to this bill — or that the
+	 * wrong record was picked.
+	 */
+	const narrationCheck = (() => {
+		const quoted = Number(proofRead?.original_amount?.value);
+		const quotedCurrency = proofRead?.original_currency?.value;
+		const total = Number(field("total").value);
+		if (!quoted || !quotedCurrency || !total) return null;
+		const label = `${quotedCurrency} ${quoted.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+		const matches =
+			quotedCurrency === currency && Math.abs(quoted - total) < 0.01;
+		return { label, matches };
 	})();
 
 	if (documentQuery.isPending) {
@@ -434,6 +506,52 @@ function ImportWorkspace() {
 
 							{recordPayment && (
 								<div className="space-y-3">
+									<div>
+										<label
+											htmlFor="proof-document"
+											className="mb-1 block text-xs font-medium text-muted-foreground"
+										>
+											Proof of payment
+										</label>
+										<select
+											id="proof-document"
+											value={proofDocumentId}
+											onChange={(event) => onPickProof(event.target.value)}
+											disabled={proofMutation.isPending}
+											className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+										>
+											<option value="">No document attached</option>
+											{(proofsQuery.data ?? []).map((proof) => (
+												<option key={proof.id} value={proof.id}>
+													{proof.file_name}
+												</option>
+											))}
+										</select>
+										<p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+											{proofMutation.isPending ? (
+												<>
+													<Loader2 className="h-3 w-3 animate-spin" />
+													Reading the bank record…
+												</>
+											) : (
+												"Pick the bank record and the payment is drafted from it. Upload records on the Imports tab."
+											)}
+										</p>
+										{narrationCheck && (
+											<p
+												className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+													narrationCheck.matches
+														? "border-success/30 bg-success/10 text-success-foreground"
+														: "border-warning/40 bg-warning/10 text-warning-foreground"
+												}`}
+											>
+												{narrationCheck.matches
+													? `The bank narration quotes ${narrationCheck.label} — it matches this invoice.`
+													: `The bank narration quotes ${narrationCheck.label}, which is not this invoice's total. Check that this is the right record.`}
+											</p>
+										)}
+									</div>
+
 									{PAYMENT_FIELDS.map((entry) => (
 										<SnipField
 											key={entry.key}
@@ -442,9 +560,12 @@ function ImportWorkspace() {
 											type={"type" in entry ? entry.type : "text"}
 											value={field(entry.key).value}
 											evidence={field(entry.key).evidence}
+											suggested={field(entry.key).suggested}
 											activeField={activeField}
 											onArm={setActiveField}
-											onChange={(value) => setField(entry.key, { value })}
+											onChange={(value) =>
+												setField(entry.key, { value, suggested: false })
+											}
 										/>
 									))}
 
@@ -475,33 +596,6 @@ function ImportWorkspace() {
 												transfer
 											</p>
 										)}
-									</div>
-
-									<div>
-										<label
-											htmlFor="proof-document"
-											className="mb-1 block text-xs font-medium text-muted-foreground"
-										>
-											Proof of payment
-										</label>
-										<select
-											id="proof-document"
-											value={proofDocumentId}
-											onChange={(event) =>
-												setProofDocumentId(event.target.value)
-											}
-											className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-										>
-											<option value="">No document attached</option>
-											{(proofsQuery.data ?? []).map((proof) => (
-												<option key={proof.id} value={proof.id}>
-													{proof.file_name}
-												</option>
-											))}
-										</select>
-										<p className="mt-1 text-[11px] text-muted-foreground">
-											Upload bank records on the Imports tab to list them here.
-										</p>
 									</div>
 								</div>
 							)}

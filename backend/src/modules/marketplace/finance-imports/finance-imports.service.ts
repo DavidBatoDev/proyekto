@@ -215,9 +215,11 @@ export class FinanceImportsService {
    * Read the document once and store the draft fields on it.
    *
    * Idempotent by design: re-reading a document overwrites its draft and
-   * touches nothing that was already committed. Only PDFs carry a text layer —
-   * a photograph of a bank app is marked `skipped` rather than failed, because
-   * there is nothing wrong with it; it simply has to be snipped by hand.
+   * touches nothing that was already committed. A PDF is read off its text
+   * layer; a photograph or bank-app screenshot has none, so it is read by
+   * vision instead. What neither path can take (HEIC, an oversized scan) is
+   * marked `skipped` rather than failed, because there is nothing wrong with
+   * it; it simply has to be entered by hand.
    */
   async readDocument(
     callerId: string,
@@ -230,22 +232,51 @@ export class FinanceImportsService {
       'manage',
     );
 
-    if (row.mime_type !== 'application/pdf') {
+    const isPdf = row.mime_type === 'application/pdf';
+    if (!isPdf && !this.reader.canReadImage(row.mime_type, row.size_bytes)) {
       return this.saveExtraction(documentId, {
         extraction_status: 'skipped',
         extraction: {
-          note: 'Images carry no text layer. Snip the fields from the document.',
+          note: 'That file cannot be read automatically. Enter the fields from the document.',
         },
       });
     }
 
     try {
       const buffer = await this.uploads.getPrivateObject(row.file_path);
+      // `kind` rides along so the workspace never has to guess which shape the
+      // draft has: an invoice's header fields, or a bank record's transfer.
+      if (!isPdf) {
+        const fields = await this.reader.readImage(
+          buffer,
+          row.mime_type,
+          row.kind,
+        );
+        return this.saveExtraction(documentId, {
+          extraction_status: 'ready',
+          extraction: {
+            kind: row.kind === 'payment_proof' ? 'payment_proof' : 'invoice',
+            source: 'vision',
+            fields,
+            read_at: new Date().toISOString(),
+          },
+          page_count: 1,
+        });
+      }
+
       const text = await this.pdfText.extract(buffer);
-      const fields = await this.reader.read(text.plainText);
+      const fields =
+        row.kind === 'payment_proof'
+          ? await this.reader.readPayment(text.plainText)
+          : await this.reader.read(text.plainText);
       return this.saveExtraction(documentId, {
         extraction_status: 'ready',
-        extraction: { fields, read_at: new Date().toISOString() },
+        extraction: {
+          kind: row.kind === 'payment_proof' ? 'payment_proof' : 'invoice',
+          source: 'text',
+          fields,
+          read_at: new Date().toISOString(),
+        },
         extracted_text: text.plainText,
         page_count: text.pageCount,
       });

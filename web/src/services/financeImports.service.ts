@@ -16,6 +16,31 @@ export interface ReadField {
 	confidence: number;
 }
 
+/** An invoice's header, as drafted by the reader. */
+export interface InvoiceReadFields {
+	number?: ReadField;
+	currency?: ReadField;
+	total?: ReadField;
+	issue_date?: ReadField;
+	due_date?: ReadField;
+	client_name?: ReadField;
+}
+
+/**
+ * One transfer, as drafted off a bank record. `original_*` is the amount the
+ * sender's bank quoted in the narration ("/OCMT/AUD3840,00/") — the only thing
+ * on a PHP credit that ties it to an AUD invoice.
+ */
+export interface PaymentReadFields {
+	payment_date?: ReadField;
+	settled_amount?: ReadField;
+	settled_currency?: ReadField;
+	reference?: ReadField;
+	original_amount?: ReadField;
+	original_currency?: ReadField;
+	sender?: ReadField;
+}
+
 export interface FinanceDocument {
 	id: string;
 	project_id: string;
@@ -25,15 +50,11 @@ export interface FinanceDocument {
 	size_bytes: number;
 	page_count: number | null;
 	extraction: {
-		fields?: {
-			number?: ReadField;
-			currency?: ReadField;
-			total?: ReadField;
-			issue_date?: ReadField;
-			due_date?: ReadField;
-			client_name?: ReadField;
-			note?: string | null;
-		};
+		/** Which shape `fields` has. Absent on drafts read before 2026-09. */
+		kind?: "invoice" | "payment_proof";
+		/** `text` = the PDF text layer; `vision` = read off an image. */
+		source?: "text" | "vision";
+		fields?: InvoiceReadFields & PaymentReadFields & { note?: string | null };
 		note?: string;
 		read_at?: string;
 	};

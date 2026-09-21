@@ -90,14 +90,22 @@ function fakeSupabase(
   } as unknown as SupabaseClient;
 }
 
-function buildService(writes: Writes, document = documentRow as unknown) {
+function buildService(
+  writes: Writes,
+  document = documentRow as unknown,
+  reader: Record<string, jest.Mock> = { read: jest.fn() },
+) {
   return new FinanceImportsService(
     fakeSupabase(writes, document as Record<string, unknown> | null),
-    { uploadFile: jest.fn(), getPrivateSignedUrl: jest.fn() } as never,
+    {
+      uploadFile: jest.fn(),
+      getPrivateSignedUrl: jest.fn(),
+      getPrivateObject: jest.fn().mockResolvedValue(Buffer.from('bytes')),
+    } as never,
     { assertProjectFinanceActor: jest.fn() } as never,
     { refreshPaymentState: jest.fn() } as never,
     { extract: jest.fn() } as never,
-    { read: jest.fn() } as never,
+    reader as never,
   );
 }
 
@@ -279,17 +287,60 @@ describe('FinanceImportsService import', () => {
 });
 
 describe('FinanceImportsService documents', () => {
-  it('marks an image as skipped rather than failed', async () => {
+  it('reads a bank screenshot by vision, as a payment proof', async () => {
     const writes = emptyWrites();
-    const service = buildService(writes, {
-      ...documentRow,
-      kind: FinanceDocumentKind.PaymentProof,
-      mime_type: 'image/png',
-    });
+    const fields = { settled_amount: { value: '158870.12', confidence: 0.9 } };
+    const reader = {
+      canReadImage: jest.fn().mockReturnValue(true),
+      readImage: jest.fn().mockResolvedValue(fields),
+    };
+    const service = buildService(
+      writes,
+      {
+        ...documentRow,
+        kind: FinanceDocumentKind.PaymentProof,
+        mime_type: 'image/jpeg',
+      },
+      reader,
+    );
 
     const row = await service.readDocument('user-1', DOCUMENT_ID);
 
-    // There is nothing wrong with a bank screenshot; it just has no text layer.
+    // The screenshot IS the proof of payment, so it must not be the one
+    // document that is never read.
+    expect(reader.readImage).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'image/jpeg',
+      FinanceDocumentKind.PaymentProof,
+    );
+    expect(row.extraction_status).toBe('ready');
+    expect(row.extraction).toMatchObject({
+      kind: 'payment_proof',
+      source: 'vision',
+      fields,
+    });
+  });
+
+  it('marks a file neither path can take as skipped rather than failed', async () => {
+    const writes = emptyWrites();
+    const reader = {
+      canReadImage: jest.fn().mockReturnValue(false),
+      readImage: jest.fn(),
+    };
+    const service = buildService(
+      writes,
+      {
+        ...documentRow,
+        kind: FinanceDocumentKind.PaymentProof,
+        mime_type: 'image/heic',
+      },
+      reader,
+    );
+
+    const row = await service.readDocument('user-1', DOCUMENT_ID);
+
+    // There is nothing wrong with the file; it just has to be entered by hand.
     expect(row.extraction_status).toBe('skipped');
+    expect(reader.readImage).not.toHaveBeenCalled();
   });
 });
