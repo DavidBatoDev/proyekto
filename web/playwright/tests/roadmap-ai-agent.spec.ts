@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { canvasRoot } from "./canvasLocators";
 
 // End-to-end smoke for the rebuilt v2 roadmap AI agent (single-loop brain,
-// gpt-5.4-mini via the OpenAI Responses API). Drives the real web UI ->
+// gpt-5.6-luna via the OpenAI Responses API). Drives the real web UI ->
 // agent (8010) -> backend (8001) pipeline: open the AI assistant panel, ask
 // it to create an epic, and confirm the agent stages + auto-commits it so the
 // new epic node renders on the canvas *immediately* (optimistic apply), not

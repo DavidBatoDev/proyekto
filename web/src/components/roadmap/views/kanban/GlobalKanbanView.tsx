@@ -379,7 +379,7 @@ export function GlobalKanbanView({
 				onDragCancel={handleDragCancel}
 			>
 				<div className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden">
-					<div className="flex gap-2 p-2 h-full min-w-full w-max">
+					<div className="flex gap-2 p-2 h-full w-full">
 						{DEFAULT_KANBAN_COLUMNS.map((column) => (
 							<KanbanColumn
 								key={column.id}
