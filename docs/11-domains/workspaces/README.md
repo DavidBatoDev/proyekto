@@ -23,16 +23,16 @@ client's project has `project_access` there and no seat in that client's workspa
 > applied to dev and prod on 2026-09-05 (not verifiable from the repo — confirm with
 > `list_migrations`); the consuming code is on `feat/ai-revamp`, not yet on `main`.
 
-> **⚠️ Plan limits (2026-09-22): schema live in both environments, code not yet deployed.** The
-> plan-limit layer described under [Plans & limits](#plans--limits) is implemented in the repo.
+> **Plan limits: live in production since 2026-09-22.** The plan-limit layer described under
+> [Plans & limits](#plans--limits) shipped in commits `1bb4535c` (direct-write hardening) and
+> `29dc2ebe` (plan limits); backend, agent and web were deployed from `29dc2ebe`.
 > Its two migrations (`20260922130000_harden_direct_table_writes.sql`, then
 > `20260922120000_workspace_plan_limits.sql`) were applied via MCP `apply_migration` to hosted
 > dev and to production (`byvbnkpiselvvulsvxgo`) on 2026-09-22, with identical function bodies.
 > Production was backfilled the same day with four complimentary plans ("fit tier": the lowest
 > tier covering what each workspace already used): Prodigitality Workspace and August Teleg's
 > Workspace → Business, Juan Carlos Gan's Workspace and the QA delivery sandbox → Pro; the other
-> 31 workspaces are Free. **Nothing is enforced in production until the backend and web
-> revisions that carry the code are deployed.**
+> 31 workspaces are Free.
 
 ## The shape
 
@@ -323,7 +323,7 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   plan-limit matrix and is shown on the Usage page. A workspace on a complimentary plan gets no
   checkout for plans at or below it, but keeps the customer portal whenever it has a billing
   account. See [Billing](#billing) and [Plans & limits](#plans--limits).
-- **Usage** — `/w/<slug>/settings/usage` (ships with the plan-limits deploy), readable by every
+- **Usage** — `/w/<slug>/settings/usage`, readable by every
   member. See [The Usage page](#the-usage-page).
 - **Scoping** — `groupByWorkspace` (`web/src/lib/workspaceScope.ts`) splits teams and projects
   three ways: in the open workspace → the main list; unhomed, or in a workspace the viewer is not a

@@ -152,9 +152,9 @@ is likewise final and never retried. The system prompt tells the model to
 explain the limit, suggest an upgrade, and never split the change or delete
 other items to make room.
 
-> **⚠️ Built, not yet deployed.** `PLAN_LIMIT` ships with the workspace plan
-> limits (schema applied to dev and production 2026-09-22); it takes effect when
-> the backend and agent revisions carrying it are deployed. See
+> **Live since 2026-09-22.** `PLAN_LIMIT` shipped with the workspace plan limits
+> (schema applied to dev and production; backend and agent deployed in commit
+> `29dc2ebe`). See
 > [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
 
 ## The parity checker

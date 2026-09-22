@@ -17,8 +17,8 @@ gate over the Phase-4 `chat:write` scope and its three chat write tools. The
 Phase-5 delivery scopes are deliberately **flagless** (owner decision,
 2026-08-25): live wherever `MCP_ENABLED` is, gated per credential. On top of all
 that, every tool and resource call runs the workspace plan's `mcp_server` gate
-([Plan gate](#plan-gate)) — built; its schema is live in dev and production
-(2026-09-22) and the gate takes effect with the plan-limits backend deploy.
+([Plan gate](#plan-gate)) — live in production since the 2026-09-22 plan-limits
+deploy (commit `29dc2ebe`).
 
 > **⚠️ Writes are opt-in per credential.** A token only mutates if it carries the
 > relevant `*:write` scope **and** the caller holds the live Proyekto permission.
@@ -466,9 +466,8 @@ no-access, so a caller can't probe which ids exist.
 
 ## Plan gate
 
-> **⚠️ Built, not yet deployed.** The gate ships with the workspace plan limits, whose
-> schema is applied to dev and production (2026-09-22); it takes effect when the
-> backend revision carrying it is deployed. See
+> **Live since 2026-09-22.** The gate shipped with the workspace plan limits (schema
+> applied to dev and production, backend deployed in commit `29dc2ebe`). See
 > [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
 
 MCP access is itself a plan feature, `mcp_server` (off on Free, on from Pro up in
@@ -975,7 +974,7 @@ flip with no Secret Manager work.
   grow scopes: hosted-Claude users reconnect the connector and PAT users
   re-issue to pick up `delivery:*`, and the consent screen leaves
   `delivery:write` unchecked like every write scope.
-- **Plan gate (built 2026-09-22; takes effect with the plan-limits deploy)** — the per-call
+- **Plan gate (live 2026-09-22)** — the per-call
   `mcp_server` gate and the `PLAN_LIMIT` error code ([Plan gate](#plan-gate)).
   No flag: it ships with the workspace plan-limit migrations, and production
   rollout is pending.

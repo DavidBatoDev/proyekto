@@ -13,7 +13,7 @@ gating done in route `beforeLoad` hooks and project components.
 | Subtree | Covers |
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
-| `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `plans`, `workspaces`, `settings`. `plans` is the plan-limits editor and `workspaces` the staff workspace list with complimentary plans (both built, ship with the plan-limits web deploy; see [Plan limits](#plan-limits)) |
+| `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `plans`, `workspaces`, `settings`. `plans` is the plan-limits editor and `workspaces` the staff workspace list with complimentary plans (both live since 2026-09-22; see [Plan limits](#plan-limits)) |
 | `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
@@ -228,7 +228,7 @@ Gating happens in three places:
 
 ## Plan limits
 
-> **⚠️ Built 2026-09-22; schema live in dev and production, web not yet deployed.** See
+> **Live since 2026-09-22** (web deployed in commit `29dc2ebe`). See
 > [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
 
 A workspace's plan is **never a route guard**. The backend enforces every limit and refuses with

@@ -44,8 +44,8 @@ file is cited so the cost of the change is visible.
   workspace tier shipped). **Since B2** (`20260908120000`) it also carries the payment-provider
   projection. It still has no seat-count column, and `seat_limit` is still enforced nowhere: the
   member cap is the `members` plan limit.
-- **No** `plans` / `tiers` / `entitlements` / `usage` table. **Since B1/B3 (repo; schema in dev
-  and production, code deploy pending):** `plan_limit_keys` and `plan_limits` hold the limit matrix, and the SQL
+- **No** `plans` / `tiers` / `entitlements` / `usage` table. **Since B1/B3 (live in production
+  2026-09-22):** `plan_limit_keys` and `plan_limits` hold the limit matrix, and the SQL
   functions `workspace_plan_state` and `workspace_usage_counts` answer the effective plan and the
   usage. There is still no usage-counter table; AI messages are unmetered.
 - **No** Stripe/Paddle/etc. SDK anywhere. **Since B2:** the backend depends on `stripe`, used only
@@ -208,8 +208,7 @@ Rules, in order of importance:
 
 ### As built: B1 and B3
 
-B1 and B3 are built in the repo; their schema is applied to dev and production (2026-09-22) and
-the code deploy is pending. The
+B1 and B3 shipped to production on 2026-09-22 (commits `1bb4535c`, `29dc2ebe`). The
 current-state reference is [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
 Where the build departs from the rules above:
 
@@ -310,9 +309,9 @@ Where the build departs from the rules above:
 
 | Phase | Lands | Flag | User-visible |
 | --- | --- | --- | --- |
-| **B1** | **Built in the repo 2026-09-22 (schema in dev + prod; code deploy pending)** — entitlement resolution (`EntitlementsService`, no guard) over the existing `workspace_subscriptions`, plus complimentary plans on `workspaces`. No `legacy_unlimited` tier. See [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits) | — (no flag) | Usage page, admin editors |
+| **B1** | **Shipped 2026-09-22** — entitlement resolution (`EntitlementsService`, no guard) over the existing `workspace_subscriptions`, plus complimentary plans on `workspaces`. No `legacy_unlimited` tier. See [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits) | — (no flag) | Usage page, admin editors |
 | **B2** | **Built 2026-09-22** — provider-neutral billing (Stripe adapter first): checkout + webhooks + seat proration, replacing the billing placeholder at `/w/<slug>/settings/billing`. See [Workspaces → Billing](../11-domains/workspaces/README.md#billing) | — (on wherever a provider is configured) | billing page |
-| **B3** | **Built in the repo 2026-09-22 (schema in dev + prod; code deploy pending)** — members, projects, teams and roadmap-node limits, the delivery-register, time-tracking and MCP feature gates, and activity retention, for **every** workspace | — (no flag) | yes |
+| **B3** | **Shipped 2026-09-22** — members, projects, teams and roadmap-node limits, the delivery-register, time-tracking and MCP feature gates, and activity retention, for **every** workspace | — (no flag) | yes |
 | **B4** | AI usage metering + per-user throttle binding | `AI_METERING_ENABLED` | yes (limit UI) |
 | **B5** | Time & Finance add-on purchase flows (price the existing flags) | per-add-on flags | yes |
 | **B6** | Marketplace: sell-a-roadmap (price + checkout + take-rate on templates) | `TEMPLATE_SALES_ENABLED` | yes |
