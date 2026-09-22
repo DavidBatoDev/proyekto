@@ -239,7 +239,12 @@ function UpgradeActions({
 	workspaceSlug: string;
 }) {
 	if (cta.kind === "none") return null;
-	if (cta.kind === "ask_owner") {
+	// Everything that is not an owner-with-somewhere-to-buy renders as text.
+	// Written as the negation of "upgrade" rather than a list of the others so
+	// a new UpgradeCta member cannot fall through into the buy button below.
+	// (This page is a commerce surface and never renders in the installed app;
+	// this is here so the types stay honest.)
+	if (cta.kind !== "upgrade") {
 		return (
 			<div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
 				<p className="text-sm text-muted-foreground">{cta.label}</p>

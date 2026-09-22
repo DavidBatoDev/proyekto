@@ -1,11 +1,22 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { usePresentationContext } from "@/contexts/PresentationContext";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 import UserMenu from "../auth/UserMenu";
+
+/**
+ * The marketing pages, in the order someone evaluating Proyekto would want
+ * them: what it is, how it works, what it costs.
+ */
+const MARKETING_LINKS = [
+	{ to: "/product", label: "Product" },
+	{ to: "/docs", label: "Docs" },
+	{ to: "/pricing", label: "Pricing" },
+] as const;
 
 const HEADER_THEME = {
 	bg: "bg-background/90 backdrop-blur-xl",
@@ -15,6 +26,7 @@ const HEADER_THEME = {
 
 export const Header = () => {
 	const { isAuthenticated } = useAuthStore();
+	const [menuOpen, setMenuOpen] = useState(false);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { goToSection } = usePresentationContext();
@@ -63,35 +75,59 @@ export const Header = () => {
 						</>
 					) : (
 						<>
-							<motion.div
-								whileTap={{ scale: 0.97 }}
-								transition={{ duration: 0.15 }}
-								className="hidden lg:block"
+							<nav
+								aria-label="Marketing"
+								className="hidden items-center sm:flex"
 							>
-								<Link
-									to="/marketplace/consultant"
-									preload="intent"
-									className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-muted"
+								{MARKETING_LINKS.map((item) => (
+									<motion.div
+										key={item.to}
+										whileTap={{ scale: 0.97 }}
+										transition={{ duration: 0.15 }}
+									>
+										<Link
+											to={item.to}
+											preload="intent"
+											className={`inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium transition-colors hover:text-foreground sm:h-11 ${HEADER_THEME.text}`}
+										>
+											{item.label}
+										</Link>
+									</motion.div>
+								))}
+							</nav>
+
+							{/* Below sm the links above are hidden and this header has no
+							    drawer, so without this the marketing pages would be
+							    unreachable from a phone browser. */}
+							<div className="relative sm:hidden">
+								<button
+									type="button"
+									aria-expanded={menuOpen}
+									aria-label="More pages"
+									onClick={() => setMenuOpen((open) => !open)}
+									className={`inline-flex h-10 items-center justify-center rounded-xl border border-border px-2.5 transition-colors hover:bg-muted ${HEADER_THEME.text}`}
 								>
-									<Sparkles className="h-3.5 w-3.5 text-amber-400" />
-									<span className={HEADER_THEME.text}>
-										Apply as a consultant
-									</span>
-								</Link>
-							</motion.div>
-							<motion.div
-								whileTap={{ scale: 0.97 }}
-								transition={{ duration: 0.15 }}
-								className="hidden sm:block"
-							>
-								<Link
-									to="/pricing"
-									preload="intent"
-									className={`inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium transition-colors hover:text-foreground sm:h-11 ${HEADER_THEME.text}`}
-								>
-									Pricing
-								</Link>
-							</motion.div>
+									<ChevronDown
+										className={`h-4 w-4 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+										aria-hidden
+									/>
+								</button>
+								{menuOpen ? (
+									<div className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+										{MARKETING_LINKS.map((item) => (
+											<Link
+												key={item.to}
+												to={item.to}
+												onClick={() => setMenuOpen(false)}
+												className="block px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+											>
+												{item.label}
+											</Link>
+										))}
+									</div>
+								) : null}
+							</div>
+
 							<motion.div
 								whileTap={{ scale: 0.97 }}
 								transition={{ duration: 0.15 }}

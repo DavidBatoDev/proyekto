@@ -9,6 +9,7 @@ import { Calculator, Info, Link2, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import { formatMoney } from "@/lib/contract-term";
+import { isNativeApp } from "@/lib/platform";
 import {
 	capsFromMonthlyHours,
 	capsFromRate,
@@ -540,13 +541,18 @@ function MemberCard({
 							: "No slice yet — set the rate and hours directly"
 					}
 					action={
-						<Link
-							to="/marketplace/finance"
-							search={{ projectId }}
-							className="text-[11px] font-semibold text-blue-600 hover:underline"
-						>
-							Edit split
-						</Link>
+						// Finance is a marketplace surface and is not in the installed
+						// app. The link is dropped rather than left to bounce off the
+						// route gate, which would read as a broken button.
+						isNativeApp() ? undefined : (
+							<Link
+								to="/marketplace/finance"
+								search={{ projectId }}
+								className="text-[11px] font-semibold text-blue-600 hover:underline"
+							>
+								Edit split
+							</Link>
+						)
 					}
 				>
 					{useBudget ? (

@@ -49,8 +49,9 @@ import {
 	seatsCopy,
 } from "@/lib/billingCopy";
 import { planLabel } from "@/lib/planLimits";
+import { isNativeApp } from "@/lib/platform";
 import { PLANS } from "@/lib/pricing";
-import { COMPLIMENTARY_BADGE } from "@/lib/usageCopy";
+import { COMPLIMENTARY_BADGE, PLAN_CHANGES_UNAVAILABLE } from "@/lib/usageCopy";
 import type { BillingSummary } from "@/services/billing.service";
 import type { Workspace } from "@/services/workspaces.service";
 
@@ -381,6 +382,16 @@ function OwnerActions({
 	);
 
 	async function go(promise: Promise<{ url: string }>) {
+		// A second, independent lock. This page is already unreachable in the
+		// installed app (lib/platformSurfaces.ts), so this should never run —
+		// but it is the one line whose failure cannot be recovered from: inside
+		// a WebView `window.location.assign` takes the app off-origin to the
+		// provider's hosted checkout, whose return URL points at the web
+		// origin, and the user's app is simply gone. Worth two lines.
+		if (isNativeApp()) {
+			setError(PLAN_CHANGES_UNAVAILABLE);
+			return;
+		}
 		setError(null);
 		try {
 			const { url } = await promise;

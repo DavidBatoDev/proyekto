@@ -1,28 +1,14 @@
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
-import {
-	ArrowLeft,
-	Building2,
-	CreditCard,
-	Gauge,
-	type LucideIcon,
-	Users,
-} from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { isNativeApp } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { stripWorkspacePrefix } from "@/lib/workspacePaths";
+import { workspaceSettingsNavItems } from "./workspaceSettingsNavigation";
 
 interface WorkspaceSettingsLayoutProps {
 	children: ReactNode;
-}
-
-interface NavItem {
-	label: string;
-	to: string;
-	icon: LucideIcon;
-	active: boolean;
-	/** Only General needs it: the other pages live under its path. */
-	exact?: boolean;
 }
 
 const FOCUS_RING =
@@ -74,34 +60,11 @@ export function WorkspaceSettingsLayout({
 		};
 	}, [currentPath]);
 
-	const navItems: NavItem[] = [
-		{
-			label: "General",
-			to: `/w/${workspaceSlug}/settings`,
-			icon: Building2,
-			// Exact match — Members, Usage and Billing live under this prefix.
-			active: currentPath === "/settings" || currentPath === "/settings/",
-			exact: true,
-		},
-		{
-			label: "Members",
-			to: `/w/${workspaceSlug}/settings/members`,
-			icon: Users,
-			active: currentPath.startsWith("/settings/members"),
-		},
-		{
-			label: "Usage",
-			to: `/w/${workspaceSlug}/settings/usage`,
-			icon: Gauge,
-			active: currentPath.startsWith("/settings/usage"),
-		},
-		{
-			label: "Billing",
-			to: `/w/${workspaceSlug}/settings/billing`,
-			icon: CreditCard,
-			active: currentPath.startsWith("/settings/billing"),
-		},
-	];
+	const navItems = workspaceSettingsNavItems(
+		workspaceSlug,
+		currentPath,
+		isNativeApp(),
+	);
 
 	return (
 		<div className="flex h-full min-h-0 overflow-hidden">

@@ -28,6 +28,12 @@ export const STATIC_ROUTES = [
   { path: "/marketplace/consultant/browse", group: "public", auth: false },
   { path: "/marketplace/talent", group: "public", auth: false },
   { path: "/pricing", group: "public", auth: false },
+  // Where the installed app sends the pages it does not carry (commerce and
+  // the marketplace). Public and chrome-less, like /get-started.
+  { path: "/not-available", group: "public", auth: false },
+  { path: "/product", group: "public", auth: false },
+  { path: "/docs", group: "public", auth: false },
+  { path: "/contact", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },
@@ -93,6 +99,9 @@ export const STATIC_ROUTES = [
 ];
 
 export const DYNAMIC_ROUTES = [
+  // A docs article. Both placeholders are fixed strings from the docs manifest
+  // rather than ids discovered at runtime, so this always resolves.
+  { tpl: "/docs/:section/:slug", needs: [], group: "public", auth: false },
   { tpl: "/project/:projectId", needs: ["projectId"], group: "project", auth: true },
   // ── project-scoped ──────────────────────────────────────────────────────
   { tpl: "/project/:projectId/overview", needs: ["projectId"], group: "project", auth: true },

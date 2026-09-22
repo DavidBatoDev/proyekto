@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-09-22 · **Status:** current
+> **Last updated:** 2026-09-23 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -24,6 +24,7 @@ gating done in route `beforeLoad` hooks and project components.
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
 | `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps), `notifications` |
+| `docs/` | `route.tsx` layout (its own slim header + section rail) + `index` (the docs home) + `$section/$slug` (one article). Content is markdown under `web/src/content/docs/<section>/`, with `docs.manifest.ts` as the table of contents |
 | `contract/` | `sign/$token` — the public, account-free client signing page |
 | `oauth/` | `authorize` — the standalone MCP OAuth consent screen (below) |
 
@@ -32,7 +33,7 @@ forwarded to `/dashboard`, GitHub/Vercel style), `home` (the same landing, alway
 the in-app brand mark links here), `dashboard` (a redirect stub to `/w/<slug>/dashboard`;
 it renders a create-workspace card only for an account with no workspace at all), `onboarding`,
 `welcome`, `inbox`, `notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`,
-`command-center`.
+`command-center`, `product` and `contact` (both public marketing pages).
 
 Which URLs carry the `/w/<slug>/` segment is decided once, in
 `web/src/lib/workspacePaths.ts`: only the organizational surfaces (`/dashboard`, `/teams/**`
@@ -248,12 +249,80 @@ members panel, the create-team modal, the teams list, `project/new` and a team's
 settings show an inline `PlanLimitNotice`, and the invite dialog shows its own cap note. A refusal that reaches the axios interceptor raises a
 single upgrade toast (`PlanLimitBridge`) that links to the Usage page.
 
+## What the installed app carries
+
+> **Live since 2026-09-23.** Web-only, so it reached installed apps over OTA.
+
+The Android/iOS app is free on both stores while the SaaS is paid on the web, so the
+Capacitor shell carries **no commerce surface** — and, because the app is the SaaS half of
+the product only, **no marketplace surface** either. The web is untouched: the two ship the
+same bundle, so this is a runtime split, not a second build.
+
+[`web/src/lib/platformSurfaces.ts`](../../web/src/lib/platformSurfaces.ts) is the one place
+that decides, classifying a path as `app`, `commerce`, `marketplace`, `staff` or `silent`. It is pure —
+the platform comes in as an argument from `isNativeApp()` in
+[`lib/platform.ts`](../../web/src/lib/platform.ts) — which is why almost all of its tests need
+no mocks.
+
+| Surface | Paths | In the app |
+| --- | --- | --- |
+| `commerce` | `/pricing`, `settings/billing`, `settings/usage` (both bare and under `/w/<slug>/`) | `/not-available?surface=commerce` |
+| `marketplace` | all of `/marketplace`, plus `/start-selling`, `/engagements`, `/brief`, `/freelancer`, `/contract/sign`, and `/docs/clients-and-marketplace` — that rule sits *above* `/docs` in the longest-prefix-first list, so those articles inherit the treatment without the docs code knowing about it | `/not-available?surface=marketplace` |
+| `staff` | all of `/admin` — mostly commerce (Plans, Workspaces) or marketplace (Applications, Consultants, Match), and a desktop console besides | `/not-available?surface=unavailable` |
+| `silent` | `/` and `/home` — the marketing landing the in-app brand mark used to point at — plus `/product`, which is marketing too | `/dashboard`, no explanation |
+| `app` | everything else, including `/docs` and `/contact` — help and support are useful on a phone | shown |
+
+**One gate, on the root route.** `__root.tsx`'s `beforeLoad` runs for every match on every
+navigation — first paint, client navigation, `history.replace` and a full page load — so it
+closes every deep-link door at once: a push tap through `lib/pushLink.ts`, an old
+`notifications.link_url` that `NotificationBell` assigns to `window.location`, a
+`signup_redirect` arriving from an email, and the legacy rewrites `NotFoundRoute` forwards.
+None of those modules needed a change. It also runs before the matched route's loader, so a
+hidden page never mounts and no price is painted.
+
+Nothing is deleted: every old URL still resolves, because notification rows and FCM payloads
+already in device trays point at them. They land on `/not-available`, never a 404.
+
+Nav filtering (the header nav, global search, the workspace settings tabs, the admin nav) is
+cosmetic — it stops dead entries rendering. **The route gate is the boundary.**
+
+Plan limits still apply in full on mobile; only the destination disappears. `usageCopy.ts`
+takes a `CopySurface` and, in the app, drops the upgrade sentence and the toast button —
+and `PlanLimitBridge`/`PlanLimitNotice` ignore the server's own `plan_limit` message there,
+so `usageCopy.ts` is the only source of limit wording on a phone.
+
+## The documentation site
+
+`/docs` is a public, signed-out documentation site: a section rail, a home page with a Popular
+grid, and 47 markdown articles under [`web/src/content/docs/`](../../web/src/content/docs/).
+
+- **[`docs.manifest.ts`](../../web/src/content/docs.manifest.ts) is the table of contents** —
+  sections, order, titles, descriptions, and the fields that drive the callouts (`plan`,
+  `flagged`, `surface`, `hub`, `popular`). Metadata lives there rather than in frontmatter
+  because the sidebar, home page and search need it for *every* article before any body
+  renders; frontmatter would force an eager `?raw` glob and ship all 47 bodies in the initial
+  chunk. Bodies stay a lazy glob fetched per article.
+- **Articles carry no `# Title`** — the page renders it from the manifest, so it can only be
+  wrong in one place.
+- **Docs ship inside the free mobile app**, so `docs.content.test.ts` fails the build on a
+  currency amount, a `/pricing` link, the word "escrow", or a docs link that does not resolve.
+  Plan articles describe what a tier *includes* and link to
+  `/docs/workspaces-and-plans/plans`; the pricing link lives only in web-only chrome.
+- Adding an article means a markdown file **and** a manifest entry: `docsContent.test.ts`
+  asserts the two sets are identical, so an orphan file or a dangling entry fails.
+- `npm run sitemap` regenerates `public/sitemap.xml` from the manifest.
+
 ## Adding a route
 
 1. Add a file under `web/src/routes/` (the plugin regenerates `routeTree.gen.ts`).
 2. Add a `beforeLoad` auth guard if it's authenticated.
 3. Wrap in `RequireProjectAccess` or check the relevant durable capability if it is access-scoped.
-4. If it's a new top-level page, remember to keep the header/nav's known-paths in
+4. **Classify it for the installed app** in
+   [`platformSurfaces.ts`](../../web/src/lib/platformSurfaces.ts). Unclassified means
+   *hidden* — CI runs no tests on pull requests, so the gate fails closed on purpose.
+   `platformSurfaces.routes.test.ts` fails with the file to edit named, and snapshots the
+   whole path→surface table, so even a route covered by an existing prefix has to be looked at.
+5. If it's a new top-level page, remember to keep the header/nav's known-paths in
    sync (per the web theme conventions). `validPaths` in
    [`Header.tsx`](../../web/src/components/layout/Header.tsx) is a **prefix** allowlist,
    so anything under an already-listed namespace such as `/marketplace` needs no entry —

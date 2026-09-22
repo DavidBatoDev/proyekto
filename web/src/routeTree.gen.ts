@@ -12,21 +12,26 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as StartSellingRouteImport } from './routes/start-selling'
+import { Route as ProductRouteImport } from './routes/product'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as NotAvailableRouteImport } from './routes/not-available'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as GetStartedRouteImport } from './routes/get-started'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
 import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
 import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as MarketplaceRouteRouteImport } from './routes/marketplace/route'
+import { Route as DocsRouteRouteImport } from './routes/docs/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-templates/index'
 import { Route as MarketplaceIndexRouteImport } from './routes/marketplace/index'
+import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
@@ -78,6 +83,7 @@ import { Route as MarketplaceConsultantTemplatesRouteImport } from './routes/mar
 import { Route as MarketplaceConsultantBrowseRouteImport } from './routes/marketplace/consultant/browse'
 import { Route as MarketplaceConsultantApplyRouteImport } from './routes/marketplace/consultant/apply'
 import { Route as MarketplaceConsultantProfileIdRouteImport } from './routes/marketplace/consultant/$profileId'
+import { Route as DocsSectionSlugRouteImport } from './routes/docs/$section/$slug'
 import { Route as ContractSignTokenRouteImport } from './routes/contract/sign/$token'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
@@ -183,6 +189,11 @@ const StartSellingRoute = StartSellingRouteImport.update({
   path: '/start-selling',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductRoute = ProductRouteImport.update({
+  id: '/product',
+  path: '/product',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -198,6 +209,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NotAvailableRoute = NotAvailableRouteImport.update({
+  id: '/not-available',
+  path: '/not-available',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -206,6 +222,11 @@ const HomeRoute = HomeRouteImport.update({
 const GetStartedRoute = GetStartedRouteImport.update({
   id: '/get-started',
   path: '/get-started',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -237,6 +258,11 @@ const MarketplaceRouteRoute = MarketplaceRouteRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsRouteRoute = DocsRouteRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -256,6 +282,11 @@ const MarketplaceIndexRoute = MarketplaceIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => MarketplaceRouteRoute,
+} as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsRouteRoute,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
@@ -526,6 +557,11 @@ const MarketplaceConsultantProfileIdRoute =
     path: '/consultant/$profileId',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const DocsSectionSlugRoute = DocsSectionSlugRouteImport.update({
+  id: '/$section/$slug',
+  path: '/$section/$slug',
+  getParentRoute: () => DocsRouteRoute,
+} as any)
 const ContractSignTokenRoute = ContractSignTokenRouteImport.update({
   id: '/contract/sign/$token',
   path: '/contract/sign/$token',
@@ -1056,16 +1092,20 @@ const WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/docs': typeof DocsRouteRouteWithChildren
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
@@ -1100,6 +1140,7 @@ export interface FileRoutesByFullPath {
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -1113,6 +1154,7 @@ export interface FileRoutesByFullPath {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1215,11 +1257,14 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
@@ -1254,6 +1299,7 @@ export interface FileRoutesByTo {
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
+  '/docs': typeof DocsIndexRoute
   '/marketplace': typeof MarketplaceIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -1265,6 +1311,7 @@ export interface FileRoutesByTo {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1364,17 +1411,21 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/docs': typeof DocsRouteRouteWithChildren
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
@@ -1409,6 +1460,7 @@ export interface FileRoutesById {
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -1422,6 +1474,7 @@ export interface FileRoutesById {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1526,16 +1579,20 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
     | '/workspace'
     | '/admin'
+    | '/contact'
     | '/get-started'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/product'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
@@ -1570,6 +1627,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
+    | '/docs/'
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
@@ -1583,6 +1641,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -1685,11 +1744,14 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/workspace'
+    | '/contact'
     | '/get-started'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/product'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
@@ -1724,6 +1786,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
@@ -1735,6 +1798,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -1833,17 +1897,21 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
     | '/workspace'
     | '/_execution'
     | '/admin'
+    | '/contact'
     | '/get-started'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/product'
     | '/start-selling'
     | '/unsubscribe'
     | '/welcome'
@@ -1878,6 +1946,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
+    | '/docs/'
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
@@ -1891,6 +1960,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -1994,17 +2064,21 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DocsRouteRoute: typeof DocsRouteRouteWithChildren
   MarketplaceRouteRoute: typeof MarketplaceRouteRouteWithChildren
   RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  ContactRoute: typeof ContactRoute
   GetStartedRoute: typeof GetStartedRoute
   HomeRoute: typeof HomeRoute
+  NotAvailableRoute: typeof NotAvailableRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
+  ProductRoute: typeof ProductRoute
   StartSellingRoute: typeof StartSellingRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
@@ -2045,6 +2119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StartSellingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/product': {
+      id: '/product'
+      path: '/product'
+      fullPath: '/product'
+      preLoaderRoute: typeof ProductRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -2066,6 +2147,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/not-available': {
+      id: '/not-available'
+      path: '/not-available'
+      fullPath: '/not-available'
+      preLoaderRoute: typeof NotAvailableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
@@ -2078,6 +2166,13 @@ declare module '@tanstack/react-router' {
       path: '/get-started'
       fullPath: '/get-started'
       preLoaderRoute: typeof GetStartedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -2122,6 +2217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -2149,6 +2251,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marketplace/'
       preLoaderRoute: typeof MarketplaceIndexRouteImport
       parentRoute: typeof MarketplaceRouteRoute
+    }
+    '/docs/': {
+      id: '/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof DocsRouteRoute
     }
     '/admin/': {
       id: '/admin/'
@@ -2506,6 +2615,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marketplace/consultant/$profileId'
       preLoaderRoute: typeof MarketplaceConsultantProfileIdRouteImport
       parentRoute: typeof MarketplaceRouteRoute
+    }
+    '/docs/$section/$slug': {
+      id: '/docs/$section/$slug'
+      path: '/$section/$slug'
+      fullPath: '/docs/$section/$slug'
+      preLoaderRoute: typeof DocsSectionSlugRouteImport
+      parentRoute: typeof DocsRouteRoute
     }
     '/contract/sign/$token': {
       id: '/contract/sign/$token'
@@ -3133,6 +3249,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DocsRouteRouteChildren {
+  DocsIndexRoute: typeof DocsIndexRoute
+  DocsSectionSlugRoute: typeof DocsSectionSlugRoute
+}
+
+const DocsRouteRouteChildren: DocsRouteRouteChildren = {
+  DocsIndexRoute: DocsIndexRoute,
+  DocsSectionSlugRoute: DocsSectionSlugRoute,
+}
+
+const DocsRouteRouteWithChildren = DocsRouteRoute._addFileChildren(
+  DocsRouteRouteChildren,
+)
+
 interface MarketplaceCategoryRouteRouteChildren {
   MarketplaceCategoryCategorySlugIndexRoute: typeof MarketplaceCategoryCategorySlugIndexRoute
   MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
@@ -3688,17 +3818,21 @@ const WWorkspaceSlugRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DocsRouteRoute: DocsRouteRouteWithChildren,
   MarketplaceRouteRoute: MarketplaceRouteRouteWithChildren,
   RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  ContactRoute: ContactRoute,
   GetStartedRoute: GetStartedRoute,
   HomeRoute: HomeRoute,
+  NotAvailableRoute: NotAvailableRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
+  ProductRoute: ProductRoute,
   StartSellingRoute: StartSellingRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,

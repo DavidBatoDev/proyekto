@@ -8,6 +8,7 @@ import {
 	featureAvailabilityCopy,
 	inviteCapNote,
 	meterCaption,
+	PLAN_CHANGES_UNAVAILABLE,
 	pendingInvitesNote,
 	planLimitTitle,
 	planLimitToastCopy,
@@ -322,5 +323,83 @@ describe("usage copy — blocked writes", () => {
 			"Free has room for 1 more member. Pending invites count toward the limit.",
 		);
 		expect(inviteCapNote(0, "free")).toMatch(/no member spots left/);
+	});
+});
+
+describe("usage copy — the installed app sells nothing", () => {
+	// The app is free on both stores while the SaaS is paid on the web, so
+	// nothing written for it may name a price, offer an upgrade, or point at a
+	// place to buy one.
+	const FORBIDDEN = [
+		/\$\d/,
+		/upgrade to/i,
+		/proyekto\.tech/i,
+		/contact sales/i,
+	];
+
+	function assertSellsNothing(text: string) {
+		for (const pattern of FORBIDDEN) {
+			expect(text, text).not.toMatch(pattern);
+		}
+	}
+
+	it("gives an owner a statement instead of an upgrade button", () => {
+		const cta = upgradeCta({
+			role: "owner",
+			upgradePlanName: "pro",
+			surface: "app",
+		});
+		expect(cta.kind).toBe("unavailable");
+		expect(cta.label).toBe(PLAN_CHANGES_UNAVAILABLE);
+		assertSellsNothing(cta.label);
+	});
+
+	it("says nothing at all on a complimentary or top plan", () => {
+		expect(
+			upgradeCta({ role: "owner", upgradePlanName: null, surface: "app" }).kind,
+		).toBe("none");
+		expect(
+			upgradeCta({
+				role: "owner",
+				isComplimentary: true,
+				upgradePlanName: "business",
+				surface: "app",
+			}).kind,
+		).toBe("none");
+	});
+
+	it("drops the toast's destination for an owner", () => {
+		const copy = planLimitToastCopy(info(), "owner", "app");
+		expect(copy.action).toBeNull();
+		expect(copy.actionLabel).toBeNull();
+		assertSellsNothing(copy.message);
+		// The refusal itself is unchanged — only where it sends you.
+		expect(copy.message).toMatch(/has reached the 2-project limit/);
+		expect(copy.message).toContain("Everything you have stays");
+	});
+
+	it("keeps 'ask an owner' for a member — talking to a person is not a purchase", () => {
+		const copy = planLimitToastCopy(info(), "member", "app");
+		expect(copy.message).toContain("Ask a workspace owner to upgrade.");
+		expect(copy.action).toBeNull();
+	});
+
+	it("keeps the invitee's advice, which was never a purchase prompt", () => {
+		const copy = planLimitToastCopy(info({ context: "accept" }), null, "app");
+		expect(copy.message).toContain("accept this invite again");
+		expect(copy.action).toBeNull();
+	});
+
+	it("leaves the browser's wording byte-identical", () => {
+		// The parity lock: omitting `surface` must reproduce today's strings, so
+		// this change is invisible on the web.
+		for (const role of ["owner", "admin", "member", null] as const) {
+			expect(planLimitToastCopy(info(), role)).toEqual(
+				planLimitToastCopy(info(), role, "web"),
+			);
+			expect(upgradeCta({ role, upgradePlanName: "pro" })).toEqual(
+				upgradeCta({ role, upgradePlanName: "pro", surface: "web" }),
+			);
+		}
 	});
 });

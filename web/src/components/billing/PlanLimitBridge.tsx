@@ -8,6 +8,7 @@ import {
 	type PlanLimitInfo,
 	setPlanLimitNotifier,
 } from "@/lib/planLimitErrors";
+import { isNativeApp } from "@/lib/platform";
 import { planLimitToastCopy } from "@/lib/usageCopy";
 import { workspaceKeys } from "@/queries/workspaces";
 
@@ -50,7 +51,12 @@ export function PlanLimitBridge() {
 				? (workspacesRef.current.find((item) => item.id === info.workspaceId) ??
 					null)
 				: null;
-			const copy = planLimitToastCopy(info, workspace?.my_role ?? null);
+			const native = isNativeApp();
+			const copy = planLimitToastCopy(
+				info,
+				workspace?.my_role ?? null,
+				native ? "app" : "web",
+			);
 			const slug = workspace?.slug ?? null;
 
 			let action: ToastAction | undefined;
@@ -75,7 +81,12 @@ export function PlanLimitBridge() {
 			}
 
 			showToast({
-				message: info.message || copy.message,
+				// In the app, ignore the server's message and use ours. The
+				// backend authors `info.message` on PlanLimitException, and one
+				// "Upgrade to Pro" written there would walk straight past every
+				// guard on this side — so usageCopy is the only source of limit
+				// wording on a phone.
+				message: native ? copy.message : info.message || copy.message,
 				severity: "warning",
 				duration: PLAN_LIMIT_TOAST_MS,
 				action,

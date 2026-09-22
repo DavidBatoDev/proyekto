@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
 	navigate: vi.fn(),
 	invalidateQueries: vi.fn(),
 	workspaces: [] as Workspace[],
+	native: false,
+}));
+
+vi.mock("@/lib/platform", () => ({
+	isNativeApp: () => mocks.native,
 }));
 
 vi.mock("@/hooks/useToast", () => ({
@@ -72,6 +77,7 @@ afterEach(() => {
 	resetPlanLimitNotifications();
 	vi.clearAllMocks();
 	mocks.workspaces = [];
+	mocks.native = false;
 });
 
 describe("PlanLimitBridge", () => {
@@ -118,6 +124,61 @@ describe("PlanLimitBridge", () => {
 		const toast = lastToast();
 		expect(toast.action).toBeUndefined();
 		expect(toast.message).toContain("Ask a workspace owner to upgrade");
+	});
+
+	describe("in the installed app", () => {
+		// Billing and Usage are not in the app, so the toast must not offer to
+		// open either of them — the refusal still shows, it just has nowhere to
+		// send anyone.
+		it("gives an owner no upgrade button", () => {
+			mocks.native = true;
+			mocks.workspaces = [workspace("owner")];
+			render(<PlanLimitBridge />);
+
+			notifyPlanLimit(info());
+
+			const toast = lastToast();
+			expect(toast.action).toBeUndefined();
+			expect(mocks.navigate).not.toHaveBeenCalled();
+			expect(toast.message).toContain("Plan changes aren't available");
+			expect(toast.message).not.toMatch(/upgrade to/i);
+		});
+
+		it("gives a member no usage button", () => {
+			mocks.native = true;
+			mocks.workspaces = [workspace("member")];
+			render(<PlanLimitBridge />);
+
+			notifyPlanLimit(info());
+
+			expect(lastToast().action).toBeUndefined();
+		});
+
+		it("ignores the server's message, which it does not control", () => {
+			// The backend authors PlanLimitException's message. One "Upgrade to
+			// Pro" written there would walk past every guard on this side.
+			mocks.native = true;
+			mocks.workspaces = [workspace("owner")];
+			render(<PlanLimitBridge />);
+
+			notifyPlanLimit(info({ message: "Upgrade to Pro for $10/user/month." }));
+
+			const toast = lastToast();
+			expect(toast.message).not.toContain("$10");
+			expect(toast.message).toContain("Plan changes aren't available");
+		});
+
+		it("still refreshes usage so meters catch up", () => {
+			mocks.native = true;
+			mocks.workspaces = [workspace("owner")];
+			render(<PlanLimitBridge />);
+
+			notifyPlanLimit(info());
+
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["workspaces", "usage", "ws-1"],
+			});
+		});
 	});
 
 	it("refreshes the blocked workspace's usage", () => {

@@ -146,20 +146,46 @@ export function planSummaryCopy(input: {
 export type UpgradeCta =
 	| { kind: "upgrade"; label: string }
 	| { kind: "ask_owner"; label: string }
+	| { kind: "unavailable"; label: string }
 	| { kind: "none"; label: "" };
+
+/**
+ * Which voice this copy speaks in.
+ *
+ * "app" is the installed Android/iOS shell, which is free on both stores while
+ * the SaaS is paid on the web. It carries no purchase surface, so copy written
+ * for it names the limit and stops: no price, no plan to upgrade to, no link.
+ * It defaults to "web" everywhere, so every existing caller keeps its exact
+ * wording.
+ */
+export type CopySurface = "web" | "app";
+
+/** Said instead of an upgrade prompt where nothing can be bought. */
+export const PLAN_CHANGES_UNAVAILABLE =
+	"Plan changes aren't available in the app.";
 
 /**
  * The call to action beside a limit. Only owners can change the plan
  * (checkout is owner-only), so everyone else is pointed at one. A
  * complimentary workspace, or one already on the top plan, gets nothing.
+ *
+ * In the app nobody can buy anything, so the owner's prompt becomes a plain
+ * statement. It stays a distinct `kind` rather than being relabelled
+ * `ask_owner` because the caller renders `unavailable` as text and never as a
+ * link — that difference is the whole point.
  */
 export function upgradeCta(input: {
 	role: ViewerRole;
 	isComplimentary?: boolean;
 	upgradePlanName: PlanId | string | null | undefined;
+	surface?: CopySurface;
 }): UpgradeCta {
 	if (input.isComplimentary || !input.upgradePlanName) {
 		return { kind: "none", label: "" };
+	}
+	if (input.surface === "app") {
+		// Including for an owner: there is nowhere for them to go from here.
+		return { kind: "unavailable", label: PLAN_CHANGES_UNAVAILABLE };
 	}
 	if (input.role === "owner") {
 		return {
@@ -222,6 +248,7 @@ export interface PlanLimitToastCopy {
 export function planLimitToastCopy(
 	info: PlanLimitInfo,
 	role: ViewerRole,
+	surface: CopySurface = "web",
 ): PlanLimitToastCopy {
 	const plan = planLabel(info.plan);
 	const upgrade = info.upgradePlan ? planLabel(info.upgradePlan) : null;
@@ -252,17 +279,28 @@ export function planLimitToastCopy(
 				: "Ask a workspace owner to upgrade.",
 		);
 	} else if (role === "owner") {
+		// The owner is the only one told to go and buy something, so the app is
+		// the only place that sentence has to change. "Ask an owner" is advice
+		// to talk to a person and reads the same on either surface.
 		sentences.push(
-			upgrade
-				? `Upgrade to ${upgrade} to ${info.kind === "feature" ? "turn it on" : "add more"}.`
-				: "Contact sales about a higher limit.",
+			surface === "app"
+				? PLAN_CHANGES_UNAVAILABLE
+				: upgrade
+					? `Upgrade to ${upgrade} to ${info.kind === "feature" ? "turn it on" : "add more"}.`
+					: "Contact sales about a higher limit.",
 		);
 	} else {
 		sentences.push("Ask a workspace owner to upgrade.");
 	}
 
-	const action =
-		role === "owner" && upgrade ? "upgrade" : role ? "view_usage" : null;
+	const action: PlanLimitToastCopy["action"] =
+		surface === "app"
+			? null
+			: role === "owner" && upgrade
+				? "upgrade"
+				: role
+					? "view_usage"
+					: null;
 	return {
 		message: sentences.join(" "),
 		action,

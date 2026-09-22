@@ -11,7 +11,9 @@ import {
 	limitDefinition,
 	nextPlanWith,
 } from "@/lib/planLimits";
+import { isNativeApp } from "@/lib/platform";
 import {
+	type CopySurface,
 	meterCaption,
 	planLimitTitle,
 	planLimitToastCopy,
@@ -69,8 +71,12 @@ function toFullInfo(info: PlanLimitNoticeInfo): PlanLimitInfo {
 function defaultMessage(
 	info: PlanLimitInfo,
 	role: Workspace["my_role"],
+	surface: CopySurface,
 ): string {
-	if (info.message) return info.message;
+	// The server authors `info.message`, so in the app it is not ours to
+	// vouch for — one "Upgrade to Pro" written there would walk past every
+	// guard on this side. Same reasoning as PlanLimitBridge.
+	if (info.message && surface === "web") return info.message;
 	if (info.kind === "count" && info.limit !== null && info.used !== null) {
 		const caption = meterCaption(
 			info.limitKey,
@@ -79,7 +85,7 @@ function defaultMessage(
 		);
 		if (caption) return caption;
 	}
-	return planLimitToastCopy(info, role ?? null).message;
+	return planLimitToastCopy(info, role ?? null, surface).message;
 }
 
 export function PlanLimitNotice({
@@ -92,13 +98,18 @@ export function PlanLimitNotice({
 	className,
 }: PlanLimitNoticeProps) {
 	const full = toFullInfo(info);
+	const surface: CopySurface = isNativeApp() ? "app" : "web";
 	const role = workspace?.my_role ?? null;
 	const slug = workspace?.slug ?? full.workspaceSlug;
-	const body = message ?? defaultMessage(full, role);
+	const body = message ?? defaultMessage(full, role, surface);
 	const cta = upgradeCta({
 		role,
 		isComplimentary,
 		upgradePlanName: full.upgradePlan,
+		// In the app this resolves to "unavailable", which renders as the plain
+		// sentence below instead of the billing link above — so all five mount
+		// sites lose the upgrade button from this one place.
+		surface,
 	});
 
 	return (
@@ -128,7 +139,8 @@ export function PlanLimitNotice({
 			<div className="space-y-1">
 				<p>{body}</p>
 				{detail ? <p>{detail}</p> : null}
-				{cta.kind === "ask_owner" && !body.includes(cta.label) ? (
+				{(cta.kind === "ask_owner" || cta.kind === "unavailable") &&
+				!body.includes(cta.label) ? (
 					<p className="font-medium text-foreground">{cta.label}</p>
 				) : null}
 			</div>

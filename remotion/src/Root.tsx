@@ -2,21 +2,26 @@ import type React from "react";
 import { Composition } from "remotion";
 import "./index.css";
 import { DURATION, FPS, HERO_STAGE, STAGE } from "./brand/timing";
+import { AiAssistantStage } from "./stories/AiAssistantStory";
 import { BoardEmptyStage } from "./stories/BoardEmptyStory";
+import { ChatStage } from "./stories/ChatStory";
 import { ConsultantStage } from "./stories/ConsultantStory";
 import { DeliverableEmptyStage } from "./stories/DeliverableEmptyStory";
 import { HeroConsultantStage } from "./stories/HeroConsultantStory";
 import { HeroStage } from "./stories/HeroStory";
 import { HeroTemplateStage } from "./stories/HeroTemplateStory";
 import { McpStage } from "./stories/McpStory";
+import { MeetingsStage } from "./stories/MeetingsStory";
 import { RoadmapEmptyStage } from "./stories/RoadmapEmptyStory";
 import { TalentStage } from "./stories/TalentStory";
 import { TimelineEmptyStage } from "./stories/TimelineEmptyStory";
+import { TimeRatesStage } from "./stories/TimeRatesStory";
 
 /**
  * The explainer videos: two for `/start-selling`, one for the MCP Access
- * settings page, the 4:3 tiles in the marketplace hero band, and the four
- * project empty-state clips that stand in for a page that has no data yet.
+ * settings page, the 4:3 tiles in the marketplace hero band, the four project
+ * empty-state clips that stand in for a page that has no data yet, and the
+ * `/product` page's section clips.
  *
  * Posters are pulled straight off these compositions with
  * `remotion still <id> --frame=<POSTER_FRAME[…]>`; see brand/timing.ts for why
@@ -100,6 +105,38 @@ export const RemotionRoot: React.FC = () => {
 			<Composition
 				id="DeliverableEmptyStory"
 				component={DeliverableEmptyStage}
+				durationInFrames={DURATION}
+				fps={FPS}
+				width={STAGE.w}
+				height={STAGE.h}
+			/>
+			<Composition
+				id="AiAssistantStory"
+				component={AiAssistantStage}
+				durationInFrames={DURATION}
+				fps={FPS}
+				width={STAGE.w}
+				height={STAGE.h}
+			/>
+			<Composition
+				id="ChatStory"
+				component={ChatStage}
+				durationInFrames={DURATION}
+				fps={FPS}
+				width={STAGE.w}
+				height={STAGE.h}
+			/>
+			<Composition
+				id="MeetingsStory"
+				component={MeetingsStage}
+				durationInFrames={DURATION}
+				fps={FPS}
+				width={STAGE.w}
+				height={STAGE.h}
+			/>
+			<Composition
+				id="TimeRatesStory"
+				component={TimeRatesStage}
 				durationInFrames={DURATION}
 				fps={FPS}
 				width={STAGE.w}

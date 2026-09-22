@@ -3,6 +3,8 @@ import { Menu, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { isNativeApp } from "@/lib/platform";
+import { filterNavByPlatform } from "@/lib/platformSurfaces";
 import { toWorkspacePath } from "@/lib/workspacePaths";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
@@ -21,6 +23,9 @@ const DashboardHeader = () => {
 	// While the search is focused it stretches across the nav area, so the nav
 	// links collapse out of the way (and animate back when it closes).
 	const [searchExpanded, setSearchExpanded] = useState(false);
+	// The installed app is the SaaS half of the product, so Engagements and
+	// Marketplace drop out and only Execution remains.
+	const navItems = filterNavByPlatform(HEADER_NAV_ITEMS, isNativeApp());
 
 	return (
 		<div className="z-10 flex h-full w-full items-center gap-3 px-4 sm:gap-4 sm:px-6">
@@ -35,7 +40,7 @@ const DashboardHeader = () => {
 				</button>
 			)}
 			<Link
-				to="/home"
+				to={isNativeApp() ? "/dashboard" : "/home"}
 				className="flex shrink-0 items-center border-r border-border pr-3 sm:pr-4"
 			>
 				<BrandMark variant="logomark" className="h-7" />
@@ -49,7 +54,7 @@ const DashboardHeader = () => {
 							: "max-w-[480px] opacity-100"
 					}`}
 				>
-					{HEADER_NAV_ITEMS.map((item) => (
+					{navItems.map((item) => (
 						<Link
 							key={item.label}
 							to={toWorkspacePath(item.to, workspaceSlug)}

@@ -36,6 +36,10 @@ const Header = () => {
 		// `/get-started` likewise — the mobile deck is full-bleed and draws its
 		// own brand mark. `/pricing` too: it is a public marketing page with its
 		// own slim header, and the app chrome would be wrong above it.
+		// `/not-available` too — the installed app's "this isn't here" screen is
+		// full-bleed and, on a commerce path, must not carry a nav back into one.
+		// `/product`, `/docs` and `/contact` likewise: public pages that draw
+		// their own slim header, for the same reason `/pricing` does.
 		"/freelancer",
 	];
 

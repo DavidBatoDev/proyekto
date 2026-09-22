@@ -21,7 +21,8 @@
     "pw:install": "playwright install",
     "format": "biome format",
     "lint": "biome lint",
-    "check": "biome check"
+    "check": "biome check",
+    "sitemap": "node scripts/generate-sitemap.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/messaging": "^7.0.0",

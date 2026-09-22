@@ -19,6 +19,10 @@ the MCP Access settings page:
 | `BoardEmptyStory` | columns → a card → it moves → it lands done | `web/public/board-empty.mp4` |
 | `TimelineEmptyStory` | weeks → bars → dependencies → the date line | `web/public/timeline-empty.mp4` |
 | `DeliverableEmptyStory` | define → link → review → accepted | `web/public/deliverable-empty.mp4` |
+| `AiAssistantStory` | ask → propose → review the diff → commit | `web/public/ai-assistant.mp4` |
+| `ChatStory` | channel → mention → it reaches them → reply | `web/public/project-chat.mp4` |
+| `MeetingsStory` | the week → pick a slot → it repeats → guests | `web/public/meetings.mp4` |
+| `TimeRatesStory` | log → submit → approved → into a payout | `web/public/time-rates.mp4` |
 
 All are 30fps, 330 frames (11s), and built to loop seamlessly. The first three
 are 1920×1080. The three `Hero*` clips are 1200×900: they are the slides of the
@@ -26,14 +30,21 @@ marketplace hero carousel, filling the 30% column of a 70/30 band where a 16:9
 strip would be a letterbox slot. They are light, caption-free, and use bars
 rather than prose — at the ~340px they render into, a real sentence is a smear.
 
-The last four are the project empty states: the roadmap, board, timeline and
-deliverables pages render them beside an illustration and a CTA when the
-project has nothing to show yet (`web/src/components/project/empty/`). They are
-1920×1080 like the first three, and **light** for the same reason `McpStory` is
-— they sit inside the app shell, where a navy slab reads as a foreign object.
+The four empty states — roadmap, board, timeline and deliverables — render
+beside an illustration and a CTA when a project has nothing to show yet
+(`web/src/components/project/empty/`). They are 1920×1080 like the first three,
+and **light** for the same reason `McpStory` is — they sit inside the app shell,
+where a navy slab reads as a foreign object.
 
-The two `/start-selling` clips are navy; `McpStory` and the four empty-state
-clips are **light**. `Stage` takes a
+The last four are the `/product` page's section clips
+(`web/src/routes/product.tsx`), one per capability section. They are light too,
+because three of that page's seven sections reuse the empty-state clips above
+and a navy clip among them would read as a different product. Each shows
+behaviour a screenshot cannot: a diff being approved, a mention arriving, a
+series repeating, time becoming a payout.
+
+The two `/start-selling` clips are navy; `McpStory`, the four empty-state clips
+and the four `/product` clips are **light**. `Stage` takes a
 `palette` and provides it through context, so every primitive follows whichever
 one a composition picks — see `brand/palette.ts` for both, and for why a light
 clip leans on the embed's border instead of luminance to draw its edge.
@@ -73,10 +84,17 @@ Every flag is load-bearing:
 - `--pixel-format=yuv420p` is required for Safari/iOS playback.
 - `--muted` guarantees no silent audio track.
 
-The four empty-state clips take the same flags — substitute the composition id
-and `web/public/<name>-empty.mp4`, and pull the poster from the frame named in
+The empty-state and `/product` clips take the same flags — substitute the
+composition id and the output name, and pull the poster from the frame named in
 `POSTER_FRAME` (`roadmapEmpty`, `boardEmpty`, `timelineEmpty`,
-`deliverableEmpty`).
+`deliverableEmpty`, `aiAssistant`, `chat`, `meetings`, `timeRates`).
+
+A note on the seam test for the `/product` clips: all four score an identical
+57.17 dB between frame 0 and frame 327, and that is expected rather than
+suspicious. `spring()` is exactly 0 at frame 0 and every story fades out over
+[298, 314], so both ends of all four are the same bare `PanelGround` — the
+measured difference is the dot grid's drift, which is shared. Identical numbers
+are evidence the teardown is complete, not that the stills failed to render.
 
 ### Posters
 
@@ -111,7 +129,8 @@ a clip shows, update that entry's `steps` too — it is the video's text
 alternative and must not drift from the captions on screen.
 
 Budget: keep each MP4 under ~500KB. Current output is 240KB / 268KB / 208KB for
-the three originals, and 164KB / 165KB / 161KB / 186KB for the empty states.
+the three originals, 164KB / 165KB / 161KB / 186KB for the empty states, and
+204KB / 174KB / 152KB / 194KB for the four `/product` clips.
 
 ## Structure
 
@@ -135,6 +154,10 @@ src/
     BoardEmptyStory.tsx
     TimelineEmptyStory.tsx
     DeliverableEmptyStory.tsx
+    AiAssistantStory.tsx
+    ChatStory.tsx
+    MeetingsStory.tsx
+    TimeRatesStory.tsx
 ```
 
 ## Gotchas that already bit
