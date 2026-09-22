@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CronSecretGuard } from '../../../common/guards/cron-secret.guard';
 import { WorkspacesModule } from '../../execution/workspaces/workspaces.module';
+import { EntitlementsCoreModule } from '../entitlements/entitlements-core.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BillingReconcileService } from './billing-reconcile.service';
 import { PlatformBillingCoreModule } from './platform-billing-core.module';
@@ -27,9 +28,18 @@ import { WorkspaceBillingController } from './workspace-billing.controller';
  * Registered unconditionally. With no provider credentials configured the
  * registry has no active provider and every path early-returns, so there is no
  * flag branching in app.module.ts.
+ *
+ * EntitlementsCoreModule (Supabase only) supplies the effective plan: every
+ * provider write drops the workspace's cached plan state, and checkout refuses
+ * to sell a plan a complimentary one already covers.
  */
 @Module({
-  imports: [PlatformBillingCoreModule, WorkspacesModule, NotificationsModule],
+  imports: [
+    PlatformBillingCoreModule,
+    WorkspacesModule,
+    NotificationsModule,
+    EntitlementsCoreModule,
+  ],
   controllers: [WorkspaceBillingController, BillingWebhookController],
   providers: [
     PlatformBillingService,

@@ -1,6 +1,6 @@
 # MCP Server
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-09-22 · **Status:** current
 
 Proyekto ships a **first-party MCP (Model Context Protocol) server** so MCP hosts
 (Claude Code, Codex, the hosted Claude surfaces, the MCP Inspector) can read
@@ -15,7 +15,10 @@ surface (while unset `/mcp` returns **503** and the PAT routes deny),
 authorization server, and `MCP_CHAT_WRITE_ENABLED` is a **third**, narrower
 gate over the Phase-4 `chat:write` scope and its three chat write tools. The
 Phase-5 delivery scopes are deliberately **flagless** (owner decision,
-2026-08-25): live wherever `MCP_ENABLED` is, gated per credential.
+2026-08-25): live wherever `MCP_ENABLED` is, gated per credential. On top of all
+that, every tool and resource call runs the workspace plan's `mcp_server` gate
+([Plan gate](#plan-gate)) — built; its schema is live in dev and production
+(2026-09-22) and the gate takes effect with the plan-limits backend deploy.
 
 > **⚠️ Writes are opt-in per credential.** A token only mutates if it carries the
 > relevant `*:write` scope **and** the caller holds the live Proyekto permission.
@@ -440,14 +443,91 @@ first; drafting entries does not.
 Tool failures are normalized to a structured `{ error, message }` result
 (`isError: true`) with a stable code — Nest `HttpException`s are mapped by status:
 
-`UNAUTHENTICATED` (401) · `FORBIDDEN` (403) · `NOT_FOUND` (404) ·
-`VALIDATION_FAILED` (400/422) · `STALE_REVISION` / `CONFLICT` (409) ·
-`RATE_LIMITED` (429) · `NO_PROJECT` · `INTERNAL`.
+`UNAUTHENTICATED` (401) · `FORBIDDEN` (403) · `PLAN_LIMIT` (403 with
+`code: 'plan_limit'`) · `NOT_FOUND` (404) · `VALIDATION_FAILED` (400/422) ·
+`STALE_REVISION` / `CONFLICT` (409) · `RATE_LIMITED` (429) · `NO_PROJECT` ·
+`INTERNAL`.
+
+**`PLAN_LIMIT`** is a workspace plan refusing the call, not a permission problem,
+so `normalizeError` checks for the `plan_limit` body code before the generic 403
+mapping and never flattens it into `FORBIDDEN`. It comes from the
+[plan gate](#plan-gate) and from any service a tool calls that enforces a plan
+limit: a delivery-register write on a plan without that register, a
+`project_create` at the project limit, or a `roadmap_commit_operations` that
+would take a roadmap past its node limit. The server instructions tell the host
+to relay the message, not retry, and not work around it with other tools. See
+[Workspaces → error contract](../11-domains/workspaces/README.md#the-error-contract)
+for the payload.
 
 A commit on a concurrently-edited roadmap raises **`STALE_REVISION`** (the host
 re-previews); other write conflicts (e.g. `IDEMPOTENCY_KEY_REUSED`) surface as
 **`CONFLICT`**. Project-level reads throw **`NOT_FOUND`** (not `FORBIDDEN`) on
 no-access, so a caller can't probe which ids exist.
+
+## Plan gate
+
+> **⚠️ Built, not yet deployed.** The gate ships with the workspace plan limits, whose
+> schema is applied to dev and production (2026-09-22); it takes effect when the
+> backend revision carrying it is deployed. See
+> [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
+
+MCP access is itself a plan feature, `mcp_server` (off on Free, on from Pro up in
+the seed). Unlike the in-app feature gates it covers **reads too**, because the
+MCP surface is what is being sold. `McpPlanGate`
+([`mcp-plan-gate.ts`](../../backend/src/modules/shared/mcp/mcp-plan-gate.ts)) is
+installed by `installMcpPlanGate` in `McpServerFactory.create`, which wraps
+`registerTool` and `registerResource` so every tool and resource registered
+afterwards runs the gate before its body. No per-tool edits are needed.
+
+It checks **per call, not at token issuance**. The identity is a user who can sit
+in Free and Pro workspaces at once; an issuance check goes stale after a
+downgrade, since hosts refresh OAuth tokens silently; and a refused `initialize`
+gives the host model nothing to relay. So a Free user can connect and list tools,
+and each call answers `{ error: 'PLAN_LIMIT', message }`, which the host can
+relay.
+
+```
+tool / resource call
+   |
+   v
+1. coarse   does ANY workspace the user belongs to include mcp_server?
+   |          (a user in no workspace is judged on Free)   no -> PLAN_LIMIT
+   v
+2. precise  do the arguments name a target?
+   |          project_id | roadmap_id | workspace_id | task_id | epic_id |
+   |          feature_id | milestone_id | node_id (+ node_type)
+   |          yes -> that target's workspace must include mcp_server
+   |                 refused + caller can see the target -> PLAN_LIMIT
+   |                 refused + caller cannot see it      -> pass (tool answers NOT_FOUND)
+   |                 target does not resolve             -> pass (tool answers NOT_FOUND)
+   v
+tool body (scope check, live authz, domain service)
+```
+
+- **Coarse stage** is `EntitlementsService.userHasFeatureInAnyWorkspace`, memoized
+  per request. It caches only the user's workspace ids (Redis, 60 s) and reads
+  each workspace's plan through the per-workspace plan-state cache, so a plan
+  change applies as soon as that key is dropped and only a membership change
+  waits out the 60 s. Its refusal names no workspace, because none is singly at
+  fault.
+- **Precise stage** resolves the target to its workspace the same way the in-app
+  gates do (a roadmap child through the roadmap authz walker, a roadmap through
+  its project or its owner's default workspace). It is memoized per request per
+  target.
+- **A guessed id reveals nothing.** A precise refusal is surfaced only to a
+  caller who can see the target (`resolvePermissions`, `canViewRoadmap`, or
+  workspace membership); anyone else falls through to the tool's own
+  `NOT_FOUND` / `FORBIDDEN`.
+- **Resources** cannot return an error result, so a refusal is thrown as an
+  `McpToolError` with the same code. Template variables (`{projectId}`) target
+  like tool arguments.
+- **Ungated:** the static MCP App shell resource (it carries no data, and a host
+  must load it to render any tool result) and prompts (they never act).
+- **Fails open** like every entitlement check: a lookup error is logged as
+  `mcp_plan_gate_lookup_failed` and the call proceeds.
+- **Known gap:** untargeted list tools (`projects_list`, `search_everything`,
+  `my_tasks_list`, room-keyed chat reads) get only the coarse stage, so a user
+  with MCP in any workspace can list across all of theirs.
 
 ## Change history vs the Redis timeline
 
@@ -895,6 +975,10 @@ flip with no Secret Manager work.
   grow scopes: hosted-Claude users reconnect the connector and PAT users
   re-issue to pick up `delivery:*`, and the consent screen leaves
   `delivery:write` unchecked like every write scope.
+- **Plan gate (built 2026-09-22; takes effect with the plan-limits deploy)** — the per-call
+  `mcp_server` gate and the `PLAN_LIMIT` error code ([Plan gate](#plan-gate)).
+  No flag: it ships with the workspace plan-limit migrations, and production
+  rollout is pending.
 
 Explicitly **not** exposed yet, and blocked on real work rather than scheduling:
 direct messages, which would need their own scope **and** a service-layer

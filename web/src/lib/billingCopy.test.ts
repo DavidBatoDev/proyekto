@@ -5,6 +5,9 @@ import {
 	CHECKOUT_CANCELLED,
 	CHECKOUT_SETTLING,
 	CHECKOUT_SLOW,
+	COMPLIMENTARY_NOTE,
+	COMPLIMENTARY_PLAN_CHANGES_NOTE,
+	COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE,
 	MEMBER_ONLY_NOTE,
 	PENDING_INVITES_NOTE,
 	seatChangeCopy,
@@ -77,9 +80,10 @@ describe("seatChangeCopy — annual", () => {
 });
 
 describe("seatChangeCopy — context", () => {
-	it("says nothing about a member cap on Free", () => {
-		// The published "up to 10 members" is unenforced, so quoting it here would
-		// describe a rule that does not exist in either direction.
+	it("keeps the member cap out of money copy (usageCopy states it)", () => {
+		// The Free member cap is enforced, but it is stated only by usageCopy.ts
+		// from the live, admin-edited matrix. Quoting "10" here would be a static
+		// second copy that goes stale the day an admin changes the limit.
 		const text = seatChangeCopy({
 			...base,
 			plan: "free",
@@ -100,7 +104,7 @@ describe("seatChangeCopy — context", () => {
 		expect(text).toContain("owner is billed");
 	});
 
-	it("does not block anyone while past_due — nothing is enforced", () => {
+	it("does not block anyone while past_due — payment state never gates access", () => {
 		const text = seatChangeCopy({
 			...base,
 			status: "past_due",
@@ -111,7 +115,7 @@ describe("seatChangeCopy — context", () => {
 	});
 });
 
-describe("billing copy — no enforcement language anywhere", () => {
+describe("billing copy — money only, no limit vocabulary", () => {
 	const FORBIDDEN =
 		/\b(limit|over your|exceeded|locked|automatically downgraded)\b/i;
 
@@ -122,6 +126,9 @@ describe("billing copy — no enforcement language anywhere", () => {
 		CHECKOUT_SETTLING,
 		CHECKOUT_SLOW,
 		CHECKOUT_CANCELLED,
+		COMPLIMENTARY_NOTE,
+		COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE,
+		COMPLIMENTARY_PLAN_CHANGES_NOTE,
 		seatsCopy(6, null).headline,
 		seatsCopy(6, 5).headline,
 		seatsCopy(6, 5).note ?? "",
@@ -131,27 +138,31 @@ describe("billing copy — no enforcement language anywhere", () => {
 		for (const effect of ["next_invoice", "prorated"] as const) {
 			for (const reason of ["invite", "remove"] as const) {
 				for (const isOwner of [true, false]) {
-					everyString.push(
-						...seatChangeCopy({
-							plan,
-							seatDeltaEffect: effect,
-							status: "active",
-							reason,
-							isOwner,
-							nextInvoiceDate: "1 March 2027",
-						}),
-					);
+					for (const isComplimentary of [false, true]) {
+						everyString.push(
+							...seatChangeCopy({
+								plan,
+								seatDeltaEffect: effect,
+								status: "active",
+								reason,
+								isOwner,
+								isComplimentary,
+								nextInvoiceDate: "1 March 2027",
+							}),
+						);
+					}
 				}
 			}
 		}
 	}
 
 	/**
-	 * Mechanically enforces the "never render a state nothing enforces"
-	 * decision. Nothing in this phase blocks a create, caps a seat count, or
-	 * downgrades a workspace, so no string may imply that it does.
+	 * Limits are enforced, but they are worded in exactly one module —
+	 * usageCopy.ts, fed the live, admin-edited matrix. A limit word in money
+	 * copy would be a static second statement of a rule an admin can change,
+	 * so none may appear here.
 	 */
-	it.each(everyString)("says nothing about enforcement: %s", (line) => {
+	it.each(everyString)("uses no limit vocabulary: %s", (line) => {
 		expect(line).not.toMatch(FORBIDDEN);
 	});
 
@@ -161,6 +172,49 @@ describe("billing copy — no enforcement language anywhere", () => {
 		for (const line of everyString) {
 			expect(line).not.toMatch(/[$£€]\s?\d/);
 		}
+	});
+});
+
+describe("complimentary copy", () => {
+	it("complimentary copy promises nothing is charged and names no amount", () => {
+		expect(COMPLIMENTARY_NOTE).toContain("nothing to pay");
+		for (const plan of ["free", "pro", "business", "enterprise"] as const) {
+			for (const effect of ["next_invoice", "prorated"] as const) {
+				for (const reason of ["invite", "remove"] as const) {
+					// One line whatever the subscription row says: a granted plan
+					// moves no money, so proration, invoice dates and past-due
+					// warnings would all describe charges that never happen.
+					expect(
+						seatChangeCopy({
+							plan,
+							seatDeltaEffect: effect,
+							status: "past_due",
+							reason,
+							isOwner: false,
+							isComplimentary: true,
+							nextInvoiceDate: "1 March 2027",
+						}),
+					).toEqual([
+						"This workspace's plan is complimentary. Adding people doesn't cost anything.",
+					]);
+				}
+			}
+		}
+		for (const line of [
+			COMPLIMENTARY_NOTE,
+			COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE,
+			COMPLIMENTARY_PLAN_CHANGES_NOTE,
+		]) {
+			expect(line).not.toMatch(/[$£€\d]/);
+		}
+	});
+
+	it("tells an owner a granted plan does not cancel their own subscription", () => {
+		expect(COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE).toContain("still active");
+		expect(COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE).toContain("Manage billing");
+		expect(COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE).not.toContain(
+			"nothing to pay",
+		);
 	});
 });
 

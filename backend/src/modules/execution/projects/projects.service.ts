@@ -887,10 +887,30 @@ export class ProjectsService {
 
     const creationMode = dto.creation_mode ?? 'client';
 
+    // Consultant-mode eligibility is settled before the workspace is resolved,
+    // so someone who may not create in this mode is told that, rather than
+    // being told about the workspace's plan limit.
+    if (creationMode === 'consultant') {
+      if (!(await this.authorization.isActiveConsultant(userId))) {
+        throw new ForbiddenException(
+          'Consultant mode requires an active consultant account.',
+        );
+      }
+
+      if (dto.status && dto.status !== 'draft') {
+        throw new BadRequestException(
+          'Consultant mode only supports draft status at creation time.',
+        );
+      }
+    }
+
     // Resolved once for both creation modes. Throws if the caller named a
     // workspace they are not a member of; falls back to their default one.
-    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(
+    // Also refuses (403 plan_limit) when that workspace is at its plan's
+    // project limit, before anything is written.
+    const workspaceId = await this.workspaces.resolveWorkspaceForCreate(
       userId,
+      'projects',
       dto.workspace_id,
     );
 
@@ -922,18 +942,6 @@ export class ProjectsService {
         project: await this.getProjectOrThrow(project.id),
         roadmap,
       };
-    }
-
-    if (!(await this.authorization.isActiveConsultant(userId))) {
-      throw new ForbiddenException(
-        'Consultant mode requires an active consultant account.',
-      );
-    }
-
-    if (dto.status && dto.status !== 'draft') {
-      throw new BadRequestException(
-        'Consultant mode only supports draft status at creation time.',
-      );
     }
 
     const project = await this.projectsRepo.create(userId, {
@@ -1005,6 +1013,7 @@ export class ProjectsService {
     }
 
     let claimedFromGuestId: string | null = null;
+    let guestOwnerId: string | null = null;
 
     if (roadmap.owner_id !== userId) {
       if (!dto.guest_session_id) {
@@ -1025,12 +1034,26 @@ export class ProjectsService {
       if (guestError || !guestProfile || guestProfile.id !== roadmap.owner_id) {
         throw new ForbiddenException('Invalid guest session for roadmap.');
       }
+      guestOwnerId = guestProfile.id as string;
+    }
 
+    // The converted project lands in the CONVERTING user's workspace, not the
+    // guest's — a guest has none. Resolved from userId rather than from a
+    // request field so the web conversion route needs no change. Resolved
+    // after the guest-session check but BEFORE the claim below, so a plan
+    // refusal (403 plan_limit) leaves the guest's roadmap and AI sessions
+    // exactly as they were.
+    const workspaceId = await this.workspaces.resolveWorkspaceForCreate(
+      userId,
+      'projects',
+    );
+
+    if (guestOwnerId) {
       const { data: claimedRoadmap, error: claimError } = await this.supabase
         .from('roadmaps')
         .update({ owner_id: userId, updated_at: new Date().toISOString() })
         .eq('id', roadmap.id)
-        .eq('owner_id', guestProfile.id)
+        .eq('owner_id', guestOwnerId)
         .is('project_id', null)
         .select('id, name, description, owner_id, project_id')
         .single();
@@ -1039,7 +1062,7 @@ export class ProjectsService {
         throw new BadRequestException('Could not claim guest roadmap.');
       }
 
-      claimedFromGuestId = guestProfile.id as string;
+      claimedFromGuestId = guestOwnerId;
       roadmap = claimedRoadmap as RoadmapForProjectConversion;
 
       const { error: sessionClaimError } = await this.supabase
@@ -1066,11 +1089,6 @@ export class ProjectsService {
 
     let project: Project | null = null;
     let defaultRoadmap: { id: string; name: string } | null = null;
-
-    // The converted project lands in the CONVERTING user's workspace, not the
-    // guest's — a guest has none. Resolved from userId rather than from a
-    // request field so the web conversion route needs no change.
-    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(userId);
 
     try {
       project = await this.projectsRepo.create(userId, {

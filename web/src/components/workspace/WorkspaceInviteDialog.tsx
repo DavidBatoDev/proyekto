@@ -1,9 +1,15 @@
-import { Loader2, MailWarning, Plus, X } from "lucide-react";
+import { Loader2, MailWarning, Plus, Users, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { SeatChangeNotice } from "@/components/billing/SeatChangeNotice";
 import { AppDialog } from "@/components/common/AppDialog";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { useToast } from "@/hooks/useToast";
-import { useWorkspaceInviteMutation } from "@/hooks/useWorkspaceQueries";
+import {
+	useWorkspaceInviteMutation,
+	useWorkspaceInvitesQuery,
+} from "@/hooks/useWorkspaceQueries";
+import { parsePlanLimitError } from "@/lib/planLimitErrors";
+import { inviteCapNote } from "@/lib/usageCopy";
 import type { WorkspaceAssignableRole } from "@/services/workspaces.service";
 
 /**
@@ -13,7 +19,27 @@ import type { WorkspaceAssignableRole } from "@/services/workspaces.service";
  * went through disappear, rows that failed stay with their error attached. A
  * suppressed email is a warning, never a failure — the invitation is committed
  * and waiting in-app either way.
+ *
+ * The plan's member cap counts pending invites, so a batch can run into it
+ * part-way. After the first plan-limit refusal no later new invite is tried —
+ * each would be refused for the same reason — and those rows say so, rather
+ * than reading as a list of unrelated failures.
+ *
+ * Re-sending an invite that is already pending refreshes it in place and adds
+ * nobody, so the server never checks the cap for it. Such rows spend no spot
+ * here either: they neither count toward the room left nor stop after a
+ * refusal.
  */
+
+const RESEND_AT_CAP_NOTE =
+	"Re-sending an invitation that's already pending still works.";
+
+const RESEND_ROW_NOTE =
+	"Already invited — sending again refreshes that invitation.";
+
+function normalizeEmail(email: string): string {
+	return email.trim().toLowerCase();
+}
 
 interface InviteRow {
 	key: number;
@@ -47,6 +73,29 @@ function WorkspaceInviteDialogInner({
 }) {
 	const toast = useToast();
 	const inviteMutation = useWorkspaceInviteMutation(workspaceId);
+	// Fails open: unknown usage means no cap note and nothing disabled.
+	const entitlements = useEntitlements(workspaceId);
+	const remaining = entitlements.remaining("members");
+	// Only managers open this dialog, and the members panel has usually
+	// cached this list already.
+	const invitesQuery = useWorkspaceInvitesQuery(workspaceId);
+	const pendingEmails = new Set(
+		(invitesQuery.data ?? [])
+			.filter((invite) => invite.status === "pending")
+			.map((invite) => normalizeEmail(invite.invitee_email ?? ""))
+			.filter((email) => email.length > 0),
+	);
+	const baseCapNote =
+		remaining === null
+			? null
+			: inviteCapNote(remaining, entitlements.plan ?? "free");
+	const capNote =
+		baseCapNote &&
+		remaining !== null &&
+		remaining <= 0 &&
+		pendingEmails.size > 0
+			? `${baseCapNote} ${RESEND_AT_CAP_NOTE}`
+			: baseCapNote;
 
 	const nextKey = useRef(1);
 	const [rows, setRows] = useState<InviteRow[]>([
@@ -56,6 +105,18 @@ function WorkspaceInviteDialogInner({
 	const [submitting, setSubmitting] = useState(false);
 
 	const filledRows = rows.filter((row) => row.email.trim().length > 0);
+	// Distinct emails without a pending invite: a second row for the same new
+	// email refreshes the invite the first one created.
+	const newSeatCount = new Set(
+		filledRows
+			.map((row) => normalizeEmail(row.email))
+			.filter((email) => !pendingEmails.has(email)),
+	).size;
+	// Until the pending list loads, which rows are re-sends is unknown, so fail
+	// open like the rest of the entitlement layer: the server's refusal is
+	// handled below.
+	const overCap =
+		remaining !== null && invitesQuery.isSuccess && newSeatCount > remaining;
 
 	const updateRow = (key: number, patch: Partial<InviteRow>) => {
 		setRows((prev) =>
@@ -75,26 +136,49 @@ function WorkspaceInviteDialogInner({
 	};
 
 	const submit = async () => {
-		if (filledRows.length === 0 || submitting) return;
+		if (filledRows.length === 0 || submitting || overCap) return;
 		setSubmitting(true);
 
 		const failed: InviteRow[] = [];
 		const unsentEmails: string[] = [];
 		let sentCount = 0;
+		let hitCap = false;
+		// Set by the first plan-limit refusal; labels every later new invite.
+		let capRefusal: string | null = null;
+		// Grows as rows land, so a repeated email counts as the re-send it is.
+		const pendingNow = new Set(pendingEmails);
 
 		// Sequential on purpose: each row lands or fails on its own, and the
 		// order of any per-email errors matches the order on screen.
 		for (const row of filledRows) {
+			const email = row.email.trim();
+			const isResend = pendingNow.has(normalizeEmail(email));
+			if (capRefusal !== null && !isResend) {
+				// The workspace is full: a new invite would be refused the same way,
+				// so label it without trying. Re-sends add nobody and still go out.
+				failed.push({ ...row, error: capRefusal });
+				continue;
+			}
 			try {
 				const invite = await inviteMutation.mutateAsync({
-					email: row.email.trim(),
+					email,
 					role: row.role,
 				});
 				sentCount += 1;
+				pendingNow.add(normalizeEmail(email));
 				if (invite.email_delivery && !invite.email_delivery.sent) {
-					unsentEmails.push(row.email.trim());
+					unsentEmails.push(email);
 				}
 			} catch (err) {
+				const planLimit = parsePlanLimitError(err);
+				if (planLimit) {
+					// The upgrade prompt itself is already on screen
+					// (PlanLimitBridge); the rows only need to say why.
+					hitCap = true;
+					capRefusal = inviteCapNote(0, planLimit.plan) ?? planLimit.message;
+					failed.push({ ...row, error: capRefusal });
+					continue;
+				}
 				failed.push({ ...row, error: (err as Error).message });
 			}
 		}
@@ -124,6 +208,16 @@ function WorkspaceInviteDialogInner({
 		// Keep only the rows that failed, each carrying its error, so the fix is
 		// a retry of exactly what didn't land.
 		setRows(failed);
+		if (hitCap) {
+			// No batch error on top of the upgrade prompt: the rows explain
+			// themselves. Whatever did go out is still worth confirming.
+			if (sentCount > 0 && unsentEmails.length === 0) {
+				toast.success(
+					sentCount === 1 ? "Invitation sent" : `${sentCount} invitations sent`,
+				);
+			}
+			return;
+		}
 		toast.error(
 			sentCount > 0
 				? `Sent ${sentCount} of ${filledRows.length} invitations — the rest are listed below with what went wrong`
@@ -152,7 +246,7 @@ function WorkspaceInviteDialogInner({
 					<button
 						type="button"
 						onClick={() => void submit()}
-						disabled={filledRows.length === 0 || submitting}
+						disabled={filledRows.length === 0 || submitting || overCap}
 						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
 					>
 						{submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -185,7 +279,7 @@ function WorkspaceInviteDialogInner({
 										placeholder="name@company.com"
 										aria-label="Email address"
 										className={`min-w-0 flex-1 rounded-lg border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-50 ${
-											row.error ? "border-rose-300" : "border-input"
+											row.error ? "border-destructive/60" : "border-input"
 										}`}
 									/>
 									<RoleToggle
@@ -205,9 +299,15 @@ function WorkspaceInviteDialogInner({
 										</button>
 									)}
 								</div>
-								{row.error && (
-									<p className="mt-1 text-[11px] text-rose-600">{row.error}</p>
-								)}
+								{row.error ? (
+									<p className="mt-1 text-[11px] text-destructive">
+										{row.error}
+									</p>
+								) : pendingEmails.has(normalizeEmail(row.email)) ? (
+									<p className="mt-1 text-[11px] text-muted-foreground">
+										{RESEND_ROW_NOTE}
+									</p>
+								) : null}
 							</div>
 						))}
 					</div>
@@ -221,6 +321,24 @@ function WorkspaceInviteDialogInner({
 						Add another
 					</button>
 				</div>
+
+				{capNote ? (
+					<p
+						className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[11px] ${
+							overCap
+								? "border-warning/40 bg-warning/10 text-foreground"
+								: "border-border text-muted-foreground"
+						}`}
+					>
+						<Users
+							className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+								overCap ? "text-warning-foreground" : ""
+							}`}
+							aria-hidden="true"
+						/>
+						{capNote}
+					</p>
+				) : null}
 
 				<p className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-[11px] text-muted-foreground">
 					<MailWarning

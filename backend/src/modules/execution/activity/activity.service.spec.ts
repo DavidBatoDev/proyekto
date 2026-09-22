@@ -1,4 +1,9 @@
+/* eslint-disable @typescript-eslint/unbound-method --
+ * The entitlements double is a jest.Mocked<EntitlementsService>; passing its
+ * members to expect() is an identity check on the mock, never a call, so
+ * `this` scoping is irrelevant. */
 import { BadRequestException } from '@nestjs/common';
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 import { ActivityService } from './activity.service';
 import { decodeActivityCursor, encodeActivityCursor } from './dto/activity.dto';
 
@@ -35,15 +40,30 @@ function permissions(viewSensitive: boolean) {
   return { logs: { view: true, view_sensitive: viewSensitive } };
 }
 
-function build(opts: { rows?: any[]; sensitive?: boolean } = {}) {
+function build(
+  opts: {
+    rows?: any[];
+    sensitive?: boolean;
+    retention?: { days: number | null; cutoff: string | null };
+  } = {},
+) {
   const { db, calls, fromCalls } = buildSupabase(opts.rows ?? []);
   const authorization = {
     assertPermission: jest
       .fn()
       .mockResolvedValue(permissions(opts.sensitive ?? false)),
   };
-  const service = new ActivityService(db as never, authorization as never);
-  return { service, calls, authorization, fromCalls };
+  // Unlimited retention by default, so the pre-retention cases are unchanged.
+  const entitlements = allowAllEntitlements();
+  if (opts.retention) {
+    entitlements.getRetentionCutoff.mockResolvedValue(opts.retention);
+  }
+  const service = new ActivityService(
+    db as never,
+    authorization as never,
+    entitlements,
+  );
+  return { service, calls, authorization, entitlements, fromCalls };
 }
 
 const PROJECT = 'proj-1';
@@ -224,6 +244,102 @@ describe('ActivityService.list', () => {
       expect(opArgs(calls, 'gte')).toEqual([
         ['created_at', '2026-01-01T00:00:00.000Z'],
       ]);
+    });
+  });
+
+  describe('plan retention', () => {
+    // The Free plan's 7-day window, as getRetentionCutoff would answer it.
+    const CUTOFF = '2026-09-15T12:00:00.000Z';
+    const FREE = { days: 7, cutoff: CUTOFF };
+
+    it("resolves the window from the project's workspace", async () => {
+      const { service, entitlements } = build({ retention: FREE });
+      const scope = { workspaceId: 'ws-9', exempt: false };
+      entitlements.resolveScopeForProject.mockResolvedValue(scope);
+
+      await service.list(PROJECT, USER, {});
+
+      expect(entitlements.resolveScopeForProject).toHaveBeenCalledWith(PROJECT);
+      expect(entitlements.getRetentionCutoff).toHaveBeenCalledWith(scope);
+    });
+
+    it('adds the cutoff as the lower bound when no `from` is given', async () => {
+      const { service, calls } = build({ retention: FREE });
+      await service.list(PROJECT, USER, {});
+      expect(opArgs(calls, 'gte')).toEqual([['created_at', CUTOFF]]);
+    });
+
+    it('clamps an older `from` up to the cutoff', async () => {
+      const { service, calls } = build({ retention: FREE });
+      await service.list(PROJECT, USER, { from: '2026-01-01T00:00:00.000Z' });
+      expect(opArgs(calls, 'gte')).toEqual([['created_at', CUTOFF]]);
+    });
+
+    it('keeps a `from` that is already inside the window', async () => {
+      const { service, calls } = build({ retention: FREE });
+      await service.list(PROJECT, USER, { from: '2026-09-20T00:00:00.000Z' });
+      expect(opArgs(calls, 'gte')).toEqual([
+        ['created_at', '2026-09-20T00:00:00.000Z'],
+      ]);
+    });
+
+    it('compares timestamps, not strings (an offset `from` is still older)', async () => {
+      // Lexically "2026-09-15T13" > "2026-09-15T12", but +05:00 makes it 08:00Z.
+      const { service, calls } = build({ retention: FREE });
+      await service.list(PROJECT, USER, { from: '2026-09-15T13:00:00+05:00' });
+      expect(opArgs(calls, 'gte')).toEqual([['created_at', CUTOFF]]);
+    });
+
+    it('answers a `to` older than the cutoff with an empty page and no query', async () => {
+      const { service, calls, fromCalls } = build({ retention: FREE });
+      const out = await service.list(PROJECT, USER, {
+        to: '2026-09-01T00:00:00.000Z',
+      });
+
+      expect(fromCalls()).toBe(0);
+      expect(calls).toHaveLength(0);
+      expect(out).toEqual({
+        items: [],
+        next_cursor: null,
+        can_view_sensitive: false,
+        retention: FREE,
+      });
+    });
+
+    it('answers a cursor older than the cutoff the same way', async () => {
+      const { service, fromCalls } = build({ retention: FREE });
+      const out = await service.list(PROJECT, USER, {
+        cursor: encodeActivityCursor({ created_at: ISO, seq: 3 }),
+      });
+      expect(fromCalls()).toBe(0);
+      expect(out.items).toEqual([]);
+    });
+
+    it('keeps the load-bearing .lte next to the cutoff .gte', async () => {
+      const { service, calls } = build({ retention: FREE });
+      await service.list(PROJECT, USER, { to: '2026-09-20T00:00:00.000Z' });
+      expect(opArgs(calls, 'gte')).toEqual([['created_at', CUTOFF]]);
+      expect(opArgs(calls, 'lte')).toEqual([
+        ['created_at', '2026-09-20T00:00:00.000Z'],
+      ]);
+    });
+
+    it('adds no lower bound on an unlimited plan', async () => {
+      const { service, calls } = build({
+        retention: { days: null, cutoff: null },
+      });
+      await service.list(PROJECT, USER, {});
+      expect(opArgs(calls, 'gte')).toEqual([]);
+    });
+
+    it('reports the window in the response', async () => {
+      const limited = build({ retention: FREE });
+      const out = await limited.service.list(PROJECT, USER, {});
+      expect(out.retention).toEqual(FREE);
+
+      const unlimited = build();
+      const out2 = await unlimited.service.list(PROJECT, USER, {});
+      expect(out2.retention).toEqual({ days: null, cutoff: null });
     });
   });
 

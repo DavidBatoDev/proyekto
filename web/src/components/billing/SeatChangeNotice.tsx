@@ -43,6 +43,12 @@ export function SeatChangeNotice({
 		reason,
 		nextInvoiceDate: formatDate(summary.next_invoice?.date ?? null),
 		isOwner: workspace.my_role === "owner",
+		// A granted plan with no subscription behind it bills nobody. With a
+		// live subscription the seats still move that bill, so the normal copy
+		// stands.
+		isComplimentary:
+			summary.plan_source === "complimentary" &&
+			summary.has_live_subscription !== true,
 	});
 
 	return (

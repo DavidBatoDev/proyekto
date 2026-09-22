@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type {
   BillingEventKind,
@@ -22,6 +23,10 @@ export type WebhookOutcome = 'processed' | 'ignored' | 'duplicate';
  * BillingEventKind; everything after that — idempotent claiming, the retry
  * contract, workspace resolution, the monotonic write guard, "an unknown price
  * never downgrades", dunning — is written here once for every provider.
+ *
+ * Every write here lands on workspace_subscriptions only. A complimentary plan
+ * lives on the workspaces row, so no webhook can grant, extend or clear one;
+ * when a paid plan ends, an active comp simply takes over again.
  */
 @Injectable()
 export class BillingWebhookService {
@@ -32,6 +37,7 @@ export class BillingWebhookService {
     @Inject(PLATFORM_BILLING_REPOSITORY)
     private readonly repo: PlatformBillingRepository,
     private readonly notifications: NotificationsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async handle(
@@ -129,7 +135,8 @@ export class BillingWebhookService {
         return this.onPaymentSucceeded(provider, meaning);
       case 'dispute_opened':
         // Flag only. Locking a workspace on a dispute turns a $12 disagreement
-        // into a churned account, and nothing in this phase enforces anything.
+        // into a churned account. Plan limits follow the subscription's status,
+        // not disputes, so a dispute changes nothing a member can do.
         this.logger.warn(`${provider.id} dispute opened: ${meaning.reference}`);
         return true;
     }
@@ -252,6 +259,9 @@ export class BillingWebhookService {
       this.logger.log(
         `Discarded a stale write for workspace ${workspaceId} from event ${eventId}.`,
       );
+    } else {
+      // The plan or status may have changed what the workspace is entitled to.
+      await this.invalidatePlanState(workspaceId);
     }
     return true;
   }
@@ -287,6 +297,7 @@ export class BillingWebhookService {
       },
       { notOlderThan: record.provider_updated_at ?? new Date().toISOString() },
     );
+    await this.invalidatePlanState(record.workspace_id);
     return true;
   }
 
@@ -324,6 +335,23 @@ export class BillingWebhookService {
       { notOlderThan: new Date().toISOString() },
     );
     return true;
+  }
+
+  /**
+   * Drops the cached effective plan so limits follow the new state at once
+   * rather than within the cache's 60 seconds. Never fails the event: the
+   * write has already happened, and the cache expires on its own.
+   */
+  private async invalidatePlanState(workspaceId: string): Promise<void> {
+    try {
+      await this.entitlements.invalidateWorkspace(workspaceId);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Could not invalidate the plan state of workspace ${workspaceId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   /** Payment events carry a subscription id on some providers, a customer on others. */

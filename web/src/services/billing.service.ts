@@ -1,5 +1,6 @@
 import apiClient from "@/api/axios";
-import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { toServiceError } from "@/lib/planLimitErrors";
+import type { PlanSource } from "@/lib/planLimits";
 import type { PlanId } from "@/lib/pricing";
 
 export type BillingInterval = "month" | "year";
@@ -15,7 +16,24 @@ export type BillingStatus =
 	| "paused";
 
 export interface BillingSummary {
+	/** The subscription's plan — what is being paid for, if anything. */
 	plan: PlanId;
+	/**
+	 * The plan the workspace actually gets: the higher of an active
+	 * complimentary plan and `plan`. Optional so an older backend still renders.
+	 */
+	effective_plan?: PlanId;
+	/** Why `effective_plan` is what it is. */
+	plan_source?: PlanSource;
+	/** A plan Proyekto granted; `active` is false once `until` has passed. */
+	complimentary?: {
+		plan: Exclude<PlanId, "free">;
+		since: string | null;
+		until: string | null;
+		active: boolean;
+	} | null;
+	/** A provider subscription exists and is still billing. */
+	has_live_subscription?: boolean;
 	status: BillingStatus;
 	interval: BillingInterval | null;
 	/** Live COUNT(workspace_members) — the seat pool. */
@@ -26,7 +44,11 @@ export interface BillingSummary {
 	 * rather than picking one and hoping.
 	 */
 	billed_quantity: number | null;
-	/** Nothing enforces this. The UI must never render it. */
+	/**
+	 * The provider's seat-cap column. It is not the plan's member limit (that
+	 * lives in the plan-limit matrix and shows on the Usage page), so the
+	 * billing page never renders it.
+	 */
 	seat_limit: number | null;
 	current_period_start: string | null;
 	current_period_end: string | null;
@@ -52,6 +74,7 @@ export interface BillingSummary {
 	provider: "stripe" | "polar" | "paddle" | null;
 	has_billing_account: boolean;
 	portal_available: boolean;
+	/** Already narrowed on the server to plans above an active complimentary one. */
 	purchasable_plans: Array<"pro" | "business">;
 	/**
 	 * Derived on the server so the "monthly = next invoice, annual = prorated"
@@ -69,9 +92,7 @@ export async function getBillingSummary(
 		);
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(error, "Failed to load billing details."),
-		);
+		throw toServiceError(error, "Failed to load billing details.");
 	}
 }
 
@@ -98,7 +119,9 @@ export async function createCheckoutSession(
 		);
 		return data.data;
 	} catch (error) {
-		throw new Error(extractApiErrorMessage(error, "Could not start checkout."));
+		// A complimentary workspace answers 409 `workspace_complimentary`; its
+		// message is the readable reason, so it surfaces as-is.
+		throw toServiceError(error, "Could not start checkout.");
 	}
 }
 
@@ -113,8 +136,6 @@ export async function createPortalSession(
 		);
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(error, "Could not open the billing portal."),
-		);
+		throw toServiceError(error, "Could not open the billing portal.");
 	}
 }

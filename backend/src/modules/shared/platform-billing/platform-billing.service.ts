@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -8,6 +9,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WorkspacesService } from '../../execution/workspaces/workspaces.service';
+import {
+  PLAN_LABELS,
+  PLAN_RANK,
+  type CompPlan,
+  type PlanId,
+  type PlanSource,
+  type WorkspacePlanState,
+} from '../entitlements/entitlement-keys';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import type {
   CreateCheckoutSessionDto,
   CreatePortalSessionDto,
@@ -33,6 +43,13 @@ const OCCUPIED_STATUSES: readonly BillingStatus[] = [
   'past_due',
   'unpaid',
   'paused',
+];
+
+/** Statuses under which the subscription's plan is the paid plan (mirrors workspace_plan_state). */
+const PAID_STATUSES: readonly BillingStatus[] = [
+  'active',
+  'trialing',
+  'past_due',
 ];
 
 export interface BillingSummary {
@@ -75,6 +92,20 @@ export interface BillingSummary {
    * than in the UI so the proration rule lives in exactly one place.
    */
   seat_delta_effect: 'next_invoice' | 'prorated';
+  /**
+   * The plan the workspace actually gets: the higher of a complimentary plan
+   * and the paid one. `plan` above stays the billed plan.
+   */
+  effective_plan: PlanId;
+  plan_source: PlanSource;
+  complimentary: {
+    plan: CompPlan;
+    since: string | null;
+    until: string | null;
+    active: boolean;
+  } | null;
+  /** A provider subscription exists and money is still moving on it. */
+  has_live_subscription: boolean;
 }
 
 @Injectable()
@@ -87,6 +118,7 @@ export class PlatformBillingService {
     private readonly repo: PlatformBillingRepository,
     private readonly config: ConfigService,
     private readonly workspaces: WorkspacesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /** The provider new checkouts go through. */
@@ -122,6 +154,10 @@ export class PlatformBillingService {
     // active provider only decides what can be bought.
     const owning = this.providers.get(record.billing_provider);
     const active = this.providers.active();
+    const planState = await this.readPlanState(workspaceId);
+    const comp = planState?.complimentary ?? null;
+    const activeComp = comp?.active ? comp : null;
+    const purchasable = active ? active.listPurchasablePlans() : [];
 
     const summary: BillingSummary = {
       plan: record.plan,
@@ -143,9 +179,27 @@ export class PlatformBillingService {
       provider: record.billing_provider,
       has_billing_account: Boolean(record.provider_customer_id),
       portal_available: Boolean(owning && record.provider_customer_id),
-      purchasable_plans: active ? active.listPurchasablePlans() : [],
+      // A comp already covers everything at or below its tier, so only a
+      // higher plan is worth offering.
+      purchasable_plans: activeComp
+        ? purchasable.filter(
+            (plan) => PLAN_RANK[plan] > PLAN_RANK[activeComp.plan],
+          )
+        : purchasable,
       seat_delta_effect:
         record.billing_interval === 'year' ? 'prorated' : 'next_invoice',
+      effective_plan:
+        planState?.effective_plan ??
+        (PAID_STATUSES.includes(record.status) ? record.plan : 'free'),
+      plan_source:
+        planState?.plan_source ??
+        (PAID_STATUSES.includes(record.status) && record.plan !== 'free'
+          ? 'subscription'
+          : 'default'),
+      complimentary: comp,
+      has_live_subscription:
+        Boolean(record.provider_subscription_id) &&
+        OCCUPIED_STATUSES.includes(record.status),
     };
 
     if (!owning || !record.provider_subscription_id) return summary;
@@ -192,6 +246,7 @@ export class PlatformBillingService {
       callerId,
       'start a subscription',
     );
+    await this.assertNotCoveredByComp(workspaceId, dto.plan);
 
     const priceId = provider.resolvePriceId(
       dto.plan as PurchasablePlan,
@@ -288,6 +343,60 @@ export class PlatformBillingService {
         dto.return_path ?? `/w/${workspace.slug}/settings/billing`
       }`,
     });
+  }
+
+  /**
+   * Refuses to sell a plan an active complimentary plan already covers: the
+   * owner would pay for nothing. A plan ranked above the comp stays on sale,
+   * and once bought it wins by rank.
+   *
+   * Read fresh, past the plan-state cache, so a comp granted a moment ago
+   * counts. A lookup failure lets the checkout through: a database without
+   * the plan-limits tables has no comps to protect.
+   */
+  private async assertNotCoveredByComp(
+    workspaceId: string,
+    plan: PlanId,
+  ): Promise<void> {
+    let state: WorkspacePlanState;
+    try {
+      state = await this.entitlements.getEffectivePlan(workspaceId, {
+        fresh: true,
+      });
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      this.logger.warn(
+        `entitlements_lookup_failed op=checkout_comp_check workspace=${workspaceId} message=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+    const comp = state.complimentary;
+    if (!comp?.active || PLAN_RANK[plan] > PLAN_RANK[comp.plan]) return;
+    throw new ConflictException({
+      code: 'workspace_complimentary',
+      complimentary_plan: comp.plan,
+      message: `This workspace already has ${PLAN_LABELS[comp.plan]} on a complimentary plan, which includes everything in ${PLAN_LABELS[plan]}. Only a higher plan can be bought.`,
+    });
+  }
+
+  /** The effective plan for the summary; null when it cannot be read, so the summary still renders. */
+  private async readPlanState(
+    workspaceId: string,
+  ): Promise<WorkspacePlanState | null> {
+    try {
+      return await this.entitlements.getEffectivePlan(workspaceId, {
+        fresh: true,
+      });
+    } catch (error: unknown) {
+      this.logger.warn(
+        `entitlements_lookup_failed op=billing_summary workspace=${workspaceId} message=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   private clientUrl(): string {

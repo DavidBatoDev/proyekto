@@ -27,6 +27,7 @@ import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { FEATURES_REPOSITORY } from './features.service';
 import { TASKS_REPOSITORY } from './tasks.service';
+import { RoadmapPlanLimitsService } from './roadmap-plan-limits.service';
 
 /**
  * Ceiling on the mention fan-out a comment write will wait for.
@@ -65,6 +66,7 @@ export class EpicsService {
     private readonly activity: RoadmapActivityService,
     private readonly notificationsService: NotificationsService,
     private readonly mentionInvites: RoadmapMentionInviteService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async findByRoadmap(roadmapId: string, userId: string) {
@@ -85,6 +87,7 @@ export class EpicsService {
       userId,
       'roadmap.edit',
     );
+    await this.planLimits.assertCanAdd(ctx, 1);
     const epic = await this.repo.create(dto, userId);
     this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.EPIC_CREATED,
@@ -145,6 +148,10 @@ export class EpicsService {
    * TasksService) so the gesture logs a single activity row instead of one
    * per cloned child — the same "one row for the whole gesture" rule as
    * bulkReorder. Assignees are intentionally not copied to a fresh clone.
+   *
+   * The whole subtree is read up front so the plan's node limit is checked
+   * against the full clone (1 + features + tasks) before the first write; a
+   * rejected duplicate leaves nothing half-copied behind.
    */
   async duplicate(id: string, userId: string) {
     const existing = await this.repo.findById(id);
@@ -154,6 +161,16 @@ export class EpicsService {
       userId,
       'roadmap.edit',
     );
+
+    const sourceFeatures = await this.featuresRepo.findByEpic(id);
+    const sourceTasksByFeature = await Promise.all(
+      sourceFeatures.map((feature) => this.tasksRepo.findByFeature(feature.id)),
+    );
+    const clonedNodeCount =
+      1 +
+      sourceFeatures.length +
+      sourceTasksByFeature.reduce((sum, tasks) => sum + tasks.length, 0);
+    await this.planLimits.assertCanAdd(ctx, clonedNodeCount);
 
     const clonedEpic = await this.repo.create(
       {
@@ -172,7 +189,6 @@ export class EpicsService {
       userId,
     );
 
-    const sourceFeatures = await this.featuresRepo.findByEpic(id);
     const newFeatures: unknown[] = [];
     for (const [index, feature] of sourceFeatures.entries()) {
       const clonedFeature = await this.featuresRepo.create(
@@ -190,7 +206,7 @@ export class EpicsService {
         userId,
       );
 
-      const sourceTasks = await this.tasksRepo.findByFeature(feature.id);
+      const sourceTasks = sourceTasksByFeature[index];
       const newTasks: unknown[] = [];
       for (const [taskIndex, task] of sourceTasks.entries()) {
         const clonedTask = await this.tasksRepo.create(

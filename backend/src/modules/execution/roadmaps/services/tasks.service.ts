@@ -20,8 +20,20 @@ import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { FeatureStatusSyncService } from './derive-feature-status';
 import { TaskAssigneeNotifierService } from './task-assignee-notifier.service';
+import { RoadmapPlanLimitsService } from './roadmap-plan-limits.service';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
+
+/**
+ * What quick-create-from-timer finds of the project's default roadmap chain
+ * (first roadmap, its first epic, that epic's first feature) before writing
+ * anything. A missing link is created by materializeTimerFeature.
+ */
+interface TimerFeaturePlan {
+  roadmapId: string | null;
+  epicId: string | null;
+  featureId: string | null;
+}
 
 const TASK_TRACKED_FIELDS = [
   'title',
@@ -43,6 +55,7 @@ export class TasksService {
     private readonly effects: RoadmapWriteEffects,
     private readonly activity: RoadmapActivityService,
     private readonly featureStatusSync: FeatureStatusSyncService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async findByFeature(featureId: string, userId: string) {
@@ -68,6 +81,7 @@ export class TasksService {
       userId,
       'roadmap.create_tasks',
     );
+    await this.planLimits.assertCanAdd(ctx, 1);
     const task = await this.repo.create(dto, userId);
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
     await this.featureStatusSync.syncAfterTaskChange(dto.feature_id);
@@ -88,7 +102,23 @@ export class TasksService {
       'roadmap.create_tasks',
     );
 
-    const featureId = await this.ensureTimerFeature(dto.project_id, userId);
+    // Read the default chain first so the node limit counts the scaffold this
+    // create would add (a missing epic and feature) and nothing is written
+    // when it is rejected.
+    const plan = await this.planTimerFeature(dto.project_id);
+    await this.planLimits.assertCanAdd(
+      {
+        roadmapId: plan.roadmapId,
+        projectId: dto.project_id,
+        ownerId: null,
+      },
+      1 + (plan.epicId ? 0 : 1) + (plan.featureId ? 0 : 1),
+    );
+    const { roadmapId, featureId } = await this.materializeTimerFeature(
+      dto.project_id,
+      userId,
+      plan,
+    );
     const task = await this.repo.create(
       {
         feature_id: featureId,
@@ -103,12 +133,11 @@ export class TasksService {
     );
     await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
     await this.featureStatusSync.syncAfterTaskChange(featureId);
-    // ensureTimerFeature just resolved (or created) the roadmap chain, so this
-    // is the one place a lookup is genuinely still needed.
-    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ featureId });
+    // materializeTimerFeature resolved (or created) the whole chain, so the
+    // roadmap to notify is already known.
     this.effects.emit(
       {
-        roadmapId: roadmapId as string,
+        roadmapId,
         projectId: dto.project_id,
         ownerId: null,
         permissions: null,
@@ -231,9 +260,17 @@ export class TasksService {
     }
   }
 
+  /**
+   * Hidden past the plan's activity retention window (never purged): the
+   * cutoff comes from the roadmap's workspace plan; null means no cutoff.
+   */
   async getHistory(id: string, userId: string) {
-    await this.roadmapAuthz.assertViewPermission({ taskId: id }, userId);
-    return this.repo.getHistory(id);
+    const ctx = await this.roadmapAuthz.assertViewPermission(
+      { taskId: id },
+      userId,
+    );
+    const since = await this.planLimits.retentionCutoff(ctx);
+    return this.repo.getHistory(id, since ? { since } : undefined);
   }
 
   /**
@@ -252,6 +289,8 @@ export class TasksService {
       userId,
       'roadmap.create_tasks',
     );
+
+    await this.planLimits.assertCanAdd(ctx, 1);
 
     const insertPosition = (existing.position ?? 0) + 1;
     const siblings = await this.repo.findByFeature(existing.feature_id);
@@ -370,10 +409,11 @@ export class TasksService {
     });
   }
 
-  private async ensureTimerFeature(
-    projectId: string,
-    userId: string,
-  ): Promise<string> {
+  /**
+   * Reads (never writes) the project's default roadmap chain: its first
+   * roadmap, that roadmap's first epic, that epic's first feature.
+   */
+  private async planTimerFeature(projectId: string): Promise<TimerFeaturePlan> {
     const { data: existingRoadmap, error: roadmapErr } = await this.db
       .from('roadmaps')
       .select('id')
@@ -382,8 +422,39 @@ export class TasksService {
       .limit(1)
       .maybeSingle();
     if (roadmapErr) throw new Error(roadmapErr.message);
+    const roadmapId = (existingRoadmap?.id as string | undefined) ?? null;
+    if (!roadmapId) return { roadmapId: null, epicId: null, featureId: null };
 
-    let roadmapId = existingRoadmap?.id as string | undefined;
+    const { data: existingEpic, error: epicErr } = await this.db
+      .from('roadmap_epics')
+      .select('id')
+      .eq('roadmap_id', roadmapId)
+      .order('position', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (epicErr) throw new Error(epicErr.message);
+    const epicId = (existingEpic?.id as string | undefined) ?? null;
+    if (!epicId) return { roadmapId, epicId: null, featureId: null };
+
+    const { data: existingFeature, error: featureErr } = await this.db
+      .from('roadmap_features')
+      .select('id')
+      .eq('epic_id', epicId)
+      .order('position', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (featureErr) throw new Error(featureErr.message);
+    const featureId = (existingFeature?.id as string | undefined) ?? null;
+    return { roadmapId, epicId, featureId };
+  }
+
+  /** Creates whatever links of the planned chain are missing. */
+  private async materializeTimerFeature(
+    projectId: string,
+    userId: string,
+    plan: TimerFeaturePlan,
+  ): Promise<{ roadmapId: string; featureId: string }> {
+    let roadmapId = plan.roadmapId;
     if (!roadmapId) {
       const { data: createdRoadmap, error: createRoadmapErr } = await this.db
         .from('roadmaps')
@@ -403,16 +474,7 @@ export class TasksService {
       roadmapId = createdRoadmap.id as string;
     }
 
-    const { data: existingEpic, error: epicErr } = await this.db
-      .from('roadmap_epics')
-      .select('id')
-      .eq('roadmap_id', roadmapId)
-      .order('position', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (epicErr) throw new Error(epicErr.message);
-
-    let epicId = existingEpic?.id as string | undefined;
+    let epicId = plan.epicId;
     if (!epicId) {
       const { data: createdEpic, error: createEpicErr } = await this.db
         .from('roadmap_epics')
@@ -433,15 +495,7 @@ export class TasksService {
       epicId = createdEpic.id as string;
     }
 
-    const { data: existingFeature, error: featureErr } = await this.db
-      .from('roadmap_features')
-      .select('id')
-      .eq('epic_id', epicId)
-      .order('position', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (featureErr) throw new Error(featureErr.message);
-    if (existingFeature?.id) return existingFeature.id as string;
+    if (plan.featureId) return { roadmapId, featureId: plan.featureId };
 
     const { data: createdFeature, error: createFeatureErr } = await this.db
       .from('roadmap_features')
@@ -457,7 +511,7 @@ export class TasksService {
         createFeatureErr?.message ?? 'Failed to create default feature',
       );
     }
-    return createdFeature.id as string;
+    return { roadmapId, featureId: createdFeature.id as string };
   }
 
   /** Collects the full assignee id set of a task, tolerating both the legacy

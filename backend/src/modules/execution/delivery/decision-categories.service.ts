@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  EntitlementsService,
+  type FeatureKey,
+} from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { assertDeliveryFeature } from './delivery-plan-gate';
 import type { DecisionCategoryRow } from './delivery.types';
 import type {
   CreateDecisionCategoryDto,
@@ -38,6 +43,7 @@ export class DecisionCategoriesService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(projectId: string, userId: string) {
@@ -73,6 +79,7 @@ export class DecisionCategoriesService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
 
     const { data, error } = await this.db
       .from(TABLE)
@@ -112,6 +119,7 @@ export class DecisionCategoriesService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.loadOrThrow(projectId, id);
 
     const patch: Record<string, unknown> = {};
@@ -155,6 +163,7 @@ export class DecisionCategoriesService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.loadOrThrow(projectId, id);
 
     const { count } = await this.db
@@ -175,6 +184,14 @@ export class DecisionCategoriesService {
       );
     }
     return { id, deleted: true, orphaned: count ?? 0 };
+  }
+
+  /** The plan gate; see delivery-plan-gate.ts for why it follows the permission check. */
+  private assertPlan(
+    projectId: string,
+    keys: FeatureKey | readonly FeatureKey[],
+  ): Promise<void> {
+    return assertDeliveryFeature(this.entitlements, projectId, keys);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

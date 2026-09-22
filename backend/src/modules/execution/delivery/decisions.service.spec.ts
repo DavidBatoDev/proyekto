@@ -1,3 +1,4 @@
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DecisionsService } from './decisions.service';
 import type { DecisionRow } from './delivery.types';
@@ -97,6 +98,7 @@ function build(
     db as never,
     authorization as never,
     audit as never,
+    allowAllEntitlements(),
   );
   return { service, authorization, audit, db };
 }

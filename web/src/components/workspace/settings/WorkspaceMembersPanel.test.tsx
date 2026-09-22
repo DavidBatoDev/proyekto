@@ -3,6 +3,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	buildEntitlements,
+	normalizeWorkspaceUsage,
+	type WorkspaceEntitlements,
+} from "@/lib/entitlements";
 import type {
 	Workspace,
 	WorkspaceInvite,
@@ -15,6 +20,13 @@ const mocks = vi.hoisted(() => ({
 	cancelInviteMutate: vi.fn(),
 	toastSuccess: vi.fn(),
 	toastError: vi.fn(),
+	entitlements: null as WorkspaceEntitlements | null,
+	// null = the default fixture; set per test to vary the pending list.
+	invitesQuery: null as {
+		data: WorkspaceInvite[] | undefined;
+		isLoading: boolean;
+		isSuccess: boolean;
+	} | null,
 }));
 
 const workspace: Workspace = {
@@ -79,7 +91,8 @@ vi.mock("@/hooks/useWorkspaceQueries", () => ({
 		isLoading: false,
 	}),
 	useWorkspaceMembersQuery: () => ({ data: members, isLoading: false }),
-	useWorkspaceInvitesQuery: () => ({ data: invites, isLoading: false }),
+	useWorkspaceInvitesQuery: () =>
+		mocks.invitesQuery ?? { data: invites, isLoading: false, isSuccess: true },
 	useWorkspaceMemberMutations: () => ({
 		updateRole: { mutate: mocks.updateRoleMutate, isPending: false },
 		removeMember: { mutate: mocks.removeMemberMutate, isPending: false },
@@ -97,6 +110,36 @@ vi.mock("@/hooks/useWorkspaceQueries", () => ({
 // would couple the member list to the billing API.
 vi.mock("@/hooks/useBilling", () => ({
 	useBillingSummaryQuery: () => ({ data: undefined, isLoading: false }),
+}));
+
+// The Invite button reads the workspace's usage to disable itself at the
+// member cap. Stubbed so the panel needs no QueryClientProvider; the default
+// is "unavailable", which fails open like the real hook.
+vi.mock("@/hooks/useEntitlements", () => ({
+	useEntitlements: () =>
+		mocks.entitlements ?? buildEntitlements(null, "unavailable"),
+}));
+
+// The cap notice links owners to the billing page.
+vi.mock("@tanstack/react-router", () => ({
+	Link: ({
+		children,
+		to,
+		params,
+		className,
+	}: {
+		children: ReactNode;
+		to: string;
+		params?: Record<string, string>;
+		className?: string;
+	}) => (
+		<a
+			href={to.replace("$workspaceSlug", params?.workspaceSlug ?? "")}
+			className={className}
+		>
+			{children}
+		</a>
+	),
 }));
 
 vi.mock("@/hooks/useToast", () => ({
@@ -154,7 +197,24 @@ import { WorkspaceMembersPanel } from "./WorkspaceMembersPanel";
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	mocks.entitlements = null;
+	mocks.invitesQuery = null;
 });
+
+const usageWith = (members: number, pending: number) =>
+	buildEntitlements(
+		normalizeWorkspaceUsage(
+			{
+				workspace_id: "ws-1",
+				plan: { effective: "free", source: "default", complimentary: null },
+				usage: { members, pending_invites: pending, projects: 0, teams: 0 },
+				counts_pending_invites: true,
+				upgrade_plan: "pro",
+			},
+			"ws-1",
+		),
+		"ready",
+	);
 
 describe("WorkspaceMembersPanel", () => {
 	it("changes a member's role through the row select", () => {
@@ -194,5 +254,72 @@ describe("WorkspaceMembersPanel", () => {
 
 		expect(mocks.cancelInviteMutate).toHaveBeenCalledTimes(1);
 		expect(mocks.cancelInviteMutate.mock.calls[0][0]).toBe("invite-1");
+	});
+
+	it("says why at the member cap but still opens Invite to re-send a pending invite", () => {
+		// 8 members + 2 pending invites = Free's 10: invites hold their spots.
+		// Re-sending one adds nobody, which the server allows at the cap.
+		mocks.entitlements = usageWith(8, 2);
+		render(<WorkspaceMembersPanel />);
+
+		expect(screen.getByText("Member limit reached")).toBeTruthy();
+		expect(screen.getByText(/At Free's limit/)).toBeTruthy();
+		const upgrade = screen.getByRole("link", { name: /Upgrade to Pro/ });
+		expect(upgrade.getAttribute("href")).toBe("/w/acme/settings/billing");
+
+		const invite = screen.getByRole("button", {
+			name: "Invite people",
+		}) as HTMLButtonElement;
+		expect(invite.disabled).toBe(false);
+		fireEvent.click(invite);
+		expect(screen.getByTestId("invite-dialog")).toBeTruthy();
+	});
+
+	it("disables Invite at the member cap when there is no pending invite to re-send", () => {
+		mocks.entitlements = usageWith(10, 0);
+		mocks.invitesQuery = { data: [], isLoading: false, isSuccess: true };
+		render(<WorkspaceMembersPanel />);
+
+		const invite = screen.getByRole("button", {
+			name: "Invite people",
+		}) as HTMLButtonElement;
+		expect(invite.disabled).toBe(true);
+		fireEvent.click(invite);
+		expect(screen.queryByTestId("invite-dialog")).toBeNull();
+		expect(screen.getByText("Member limit reached")).toBeTruthy();
+	});
+
+	it("keeps Invite enabled at the cap while the pending list is loading (fails open)", () => {
+		mocks.entitlements = usageWith(10, 0);
+		mocks.invitesQuery = { data: undefined, isLoading: true, isSuccess: false };
+		render(<WorkspaceMembersPanel />);
+
+		const invite = screen.getByRole("button", {
+			name: "Invite people",
+		}) as HTMLButtonElement;
+		expect(invite.disabled).toBe(false);
+	});
+
+	it("keeps Invite enabled below the cap", () => {
+		mocks.entitlements = usageWith(8, 1);
+		render(<WorkspaceMembersPanel />);
+
+		const invite = screen.getByRole("button", {
+			name: "Invite people",
+		}) as HTMLButtonElement;
+		expect(invite.disabled).toBe(false);
+		expect(screen.queryByText("Member limit reached")).toBeNull();
+
+		fireEvent.click(invite);
+		expect(screen.getByTestId("invite-dialog")).toBeTruthy();
+	});
+
+	it("keeps Invite enabled while usage is unknown (fails open)", () => {
+		render(<WorkspaceMembersPanel />);
+
+		const invite = screen.getByRole("button", {
+			name: "Invite people",
+		}) as HTMLButtonElement;
+		expect(invite.disabled).toBe(false);
 	});
 });

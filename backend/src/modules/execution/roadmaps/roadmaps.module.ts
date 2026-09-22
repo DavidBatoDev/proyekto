@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../projects/projects.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
+import { RoadmapPlanLimitsModule } from './roadmap-plan-limits.module';
 
 // Controllers
 import { RoadmapsController } from './controllers/roadmaps.controller';
@@ -84,7 +85,13 @@ import { TaskAssigneeNotifierService } from './services/task-assignee-notifier.s
 @Module({
   // WorkspacesModule imports only SupabaseModule + NotificationsModule (and
   // already sits under ProjectsModule), so there is no cycle to break here.
-  imports: [ProjectsModule, WorkspacesModule, NotificationsModule],
+  // RoadmapPlanLimitsModule depends only on the entitlements core.
+  imports: [
+    ProjectsModule,
+    WorkspacesModule,
+    NotificationsModule,
+    RoadmapPlanLimitsModule,
+  ],
   controllers: [
     RoadmapsController,
     MilestonesController,

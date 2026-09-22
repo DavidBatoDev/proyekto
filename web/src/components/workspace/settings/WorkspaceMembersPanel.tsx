@@ -1,11 +1,16 @@
 import { format } from "date-fns";
 import { Loader2, Mail, UserPlus, Users, X } from "lucide-react";
 import { useState } from "react";
-import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
+import {
+	countLimitInfo,
+	PlanLimitNotice,
+} from "@/components/billing/PlanLimitNotice";
 import { SeatChangeNotice } from "@/components/billing/SeatChangeNotice";
+import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { workspaceMemberName } from "@/components/workspace/settings/memberName";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { useToast } from "@/hooks/useToast";
 import {
 	useCancelWorkspaceInviteMutation,
@@ -49,6 +54,10 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 	);
 	const cancelInvite = useCancelWorkspaceInviteMutation(workspace.id);
 	const { success, error: toastError } = useToast();
+	// Pending invites hold member spots, so a full workspace can't invite
+	// anyone new. Fails open while usage is loading or unavailable.
+	const entitlements = useEntitlements(workspace.id);
+	const memberCap = canManage ? countLimitInfo(entitlements, "members") : null;
 
 	const [inviteOpen, setInviteOpen] = useState(false);
 	const [pendingRemoval, setPendingRemoval] = useState<WorkspaceMember | null>(
@@ -59,6 +68,12 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 	const pendingInvites = (invitesQuery.data ?? []).filter(
 		(invite) => invite.status === "pending",
 	);
+	// Re-sending a pending invite adds nobody, so the server allows it even
+	// at the cap and the dialog lets it through. Only a full workspace with
+	// no pending invite to re-send has nothing to offer; while the list is
+	// loading or unavailable, stay open.
+	const inviteBlocked =
+		memberCap !== null && invitesQuery.isSuccess && pendingInvites.length === 0;
 
 	const handleRoleChange = (member: WorkspaceMember, role: WorkspaceRole) => {
 		if (role === member.role) return;
@@ -123,13 +138,23 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 					<button
 						type="button"
 						onClick={() => setInviteOpen(true)}
-						className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+						disabled={inviteBlocked}
+						className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<UserPlus className="h-4 w-4" />
 						Invite people
 					</button>
 				) : null}
 			</header>
+
+			{memberCap ? (
+				<PlanLimitNotice
+					info={memberCap}
+					workspace={workspace}
+					isComplimentary={entitlements.isComplimentary}
+					className="mb-6"
+				/>
+			) : null}
 
 			<section className="rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
 				{membersQuery.isLoading ? (

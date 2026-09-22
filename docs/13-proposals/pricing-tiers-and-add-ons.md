@@ -4,16 +4,27 @@
 
 > **Last updated:** 2026-09-22 · **Status:** draft
 
+> **⚠️ Partly built.** Three phases of this design now exist in the repo. **B2** (provider-neutral
+> billing) is built — see [Workspaces → Billing](../11-domains/workspaces/README.md#billing).
+> **B1 and B3** (entitlements and plan limits) are built in the repo and applied to hosted dev on
+> 2026-09-22; **production rollout is pending** — see
+> [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits), which is the
+> current-state reference for them. What they built differs from this design in places; the
+> [As built](#as-built-b1-and-b3) section below lists where. AI metering (B4), the add-ons (B5) and
+> marketplace monetization (B6, B7) are still unbuilt.
+
 > **⚠️ The billing anchor moved.** This page was written when the only candidate container was
 > a **team**. The [Workspace](../11-domains/workspaces/README.md) tier shipped on 2026-09-01 and
 > is explicitly the billing boundary: `workspace_subscriptions` already exists (plan + status +
-> nullable `seat_limit`, **nothing enforced**), and seats are `COUNT(workspace_members)`, not
+> nullable `seat_limit`; `seat_limit` is still enforced nowhere, and plan limits come from the
+> `plan_limits` table instead), and seats are `COUNT(workspace_members)`, not
 > `team_members`. Read every "team subscription" below as "workspace subscription". The tier
 > vocabulary — Free / Professional / Business / Enterprise — is unchanged and is what the shipped
 > `plan` CHECK encodes, with `pro` as the stored value for Professional.
 
-Proyekto today has **no monetization layer at all**: no plans, no subscriptions, no payment
-processor, no entitlements, no usage caps. This page designs one. It splits the product into
+When this page was written Proyekto had **no monetization layer at all**: no plans, no
+subscriptions, no payment processor, no entitlements, no usage caps. This page designs one, and
+parts of it have since been built (see the callout above). It splits the product into
 two sellable surfaces — the **Execution platform** (project management: projects, roadmaps,
 teams, time, finance, AI, inbox/meetings) and the **Marketplace platform** (posting, bidding,
 selling roadmaps, finding work) — and prices both with a 4-tier, per-seat ladder plus
@@ -26,18 +37,28 @@ file is cited so the cost of the change is visible.
 
 ### Nothing that bills a user
 
-- **A `workspace_subscriptions` table now exists** (`20260902090000`, built and applied to hosted
-  dev — not production). It is a **scaffold only**: `plan`, `status`, a nullable `seat_limit`, and
-  period columns, with no payment-processor fields, no seat-count column, and **nothing that
-  enforces `seat_limit` anywhere in the backend or DB**. Everything below about *enforcement*
-  therefore still stands; only the "no plans table" statement has changed.
-- **No** `plans` / `tiers` / `entitlements` / `usage` table.
-- **No** Stripe/Paddle/etc. SDK anywhere. The old payments backend was deleted after its
-  `transactions` table had already been dropped; the retained `wallets` table is not
-  platform billing. Every occurrence of "billing" in the repo means **contract billing period**
-  (`backend/src/modules/marketplace/contracts/billing-period.ts`), never a platform subscription.
+> **Updated 2026-09-22.** B1–B3 overtook the first four bullets below. Each keeps its original
+> claim, because the rest of the page reasons from it, followed by what is true now.
+
+- **A `workspace_subscriptions` table exists** (`20260902090000`, in both environments since the
+  workspace tier shipped). **Since B2** (`20260908120000`) it also carries the payment-provider
+  projection. It still has no seat-count column, and `seat_limit` is still enforced nowhere: the
+  member cap is the `members` plan limit.
+- **No** `plans` / `tiers` / `entitlements` / `usage` table. **Since B1/B3 (repo; schema in dev
+  and production, code deploy pending):** `plan_limit_keys` and `plan_limits` hold the limit matrix, and the SQL
+  functions `workspace_plan_state` and `workspace_usage_counts` answer the effective plan and the
+  usage. There is still no usage-counter table; AI messages are unmetered.
+- **No** Stripe/Paddle/etc. SDK anywhere. **Since B2:** the backend depends on `stripe`, used only
+  by the Stripe adapter behind the provider-neutral `BillingProvider` interface
+  (`backend/src/modules/shared/platform-billing/`). The old payments backend was deleted after its
+  `transactions` table had already been dropped; the retained `wallets` table is not platform
+  billing. Contract code still uses "billing" for the **contract billing period**
+  (`backend/src/modules/marketplace/contracts/billing-period.ts`), which is why the new module is
+  named `platform-billing`.
 - **No** product caps: no max projects, roadmaps, teams, members, or AI messages — anywhere
-  (no DB constraint, no RLS, no backend check).
+  (no DB constraint, no RLS, no backend check). **Since B3 (repo + hosted dev, production
+  pending):** members, projects, teams and roadmap nodes per roadmap are capped in the backend.
+  AI messages are still uncapped.
 - **AI chat is unmetered and unthrottled.** `roadmap-ai.controller.ts` carries only
   `SupabaseAuthGuard`. The Nest `ThrottlerModule` is configured
   (`backend/src/app.module.ts`) but **not bound as a global guard**, so `@Throttle` is inert
@@ -90,30 +111,36 @@ workspace membership, so a client on a consultant's project consumes no seat by 
 [11-domains/finance](../11-domains/finance/README.md#contract-parties)). The plan is the
 **workspace's** plan — `workspace_subscriptions` is 1:1 with `workspaces` — not a team owner's.
 
-### The published tier matrix lives in code, not here
+### The published tier matrix lives in the database, not here
 
-`web/src/lib/pricing.ts` is the single source of the published plans, prices and feature grid, and
-`/pricing` renders it. The tables that used to sit here contradicted that page on every row (they
-said Free = 3 projects / 1 team / 5 members-per-team; the page says 2 projects / 2 teams / up to 10
-members), and both were unenforced. They are deliberately **not** restated — rewriting them to match
-would only recreate the drift.
+The limits are the `plan_limits` table (18 keys × 4 plans), which a super admin edits at
+`/admin/plans` and the backend enforces. `/pricing` draws prices, copy and the grid layout from
+`web/src/lib/pricing.ts`, and every limit on it from `GET /api/plans`, falling back to
+`DEFAULT_PLAN_LIMITS` (`web/src/lib/planLimits.ts`, a test-pinned copy of the seed) on the first
+frame and during an API outage. The seed values are listed in
+[Workspaces → The limit keys](../11-domains/workspaces/README.md#the-limit-keys). The tables that
+used to sit here contradicted the published page on every row (they said Free = 3 projects /
+1 team / 5 members-per-team; the seed says 2 projects / 2 teams / 10 members). They are
+deliberately **not** restated, because rewriting them to match would only recreate the drift.
 
-Two notes that do not live in that file:
+Two notes:
 
-- Its "members per team" ancestor is dead: seats are workspace-level now, so a per-team member cap
+- The "members per team" ancestor is dead: seats are workspace-level now, so a per-team member cap
   maps to nothing the page sells.
-- Free's "up to 10 members" is a **published intention, not a rule**. Nothing enforces it, and the
-  billing UI is deliberately built never to render `seat_limit` — no "6 of 10", no progress bar, no
-  warning — because a cap shown but not enforced misleads in both directions. Enforcement is B3.
+- Free's 10 members is the enforced `members` limit (pending invites count at invite time), and
+  the workspace Usage page shows it as a meter. `seat_limit` is still never rendered: it is the
+  provider's seat-cap column, not the plan's member limit.
 
 ### Add-ons (the Shopify move)
 
 An add-on is bought by the **workspace** (that is where the subscription lives) but *applies* at
 the surface the flag already lives on — and both launch candidates are per-team surfaces:
 
-1. **Time add-on** → prices the existing `teams.time_tracking_enabled` flag. Zero new
-   enforcement code for the core gate; the settings toggle
-   (`web/src/routes/_execution/teams/$teamId/settings/time.tsx`) becomes "enable = purchase".
+1. **Time add-on** → prices the existing `teams.time_tracking_enabled` flag. The settings toggle
+   (`web/src/routes/w/$workspaceSlug/teams/$teamId/settings/time.tsx`) becomes "enable = purchase".
+   Since B3 the plan already gates it: the `time_tracking` feature (off on Free, on from Pro up)
+   must be on in the **team's** workspace to turn the flag on or to create or change time logs,
+   so the add-on would be a way to turn that one key on for a Free workspace.
 2. **Finance add-on** → today Finance is free for every verified consultant
    (`finance.controller.ts` class-level `ConsultantOnlyGuard`). Pricing it means the guard
    chain becomes `ConsultantOnlyGuard` **and** `EntitlementGuard('finance')`. Decide the
@@ -178,6 +205,25 @@ Rules, in order of importance:
    (`BILLING_ENFORCEMENT_ENABLED`, per-limit sub-flags). Note the shipped `plan` CHECK is
    `free|pro|business|enterprise` — a `legacy_unlimited` value needs its own expand migration. Prod migrations via Supabase MCP
    `apply_migration`, never `db push`.
+
+### As built: B1 and B3
+
+B1 and B3 are built in the repo; their schema is applied to dev and production (2026-09-22) and
+the code deploy is pending. The
+current-state reference is [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
+Where the build departs from the rules above:
+
+| Rule / edge case | As built |
+| --- | --- |
+| Rule 1 — guard plus service checks | Service checks only (`EntitlementsService`), each placed after the caller's permission check. Entitlement stays separate from `resolvePermissions`. The only new guard is `SuperAdminGuard`, on the admin writes |
+| Architecture diagram | No resolved `entitlements` jsonb and no `usage_counters`: limits are rows in `plan_limits` (one per plan and key, editable at `/admin/plans`), and usage is counted live by SQL functions. AI messages are unmetered (B4) |
+| Rule 2 — NULL workspace | Held: an unhomed row gets Free limits. Guest-owned rows with no workspace are exempt (E2 held) |
+| Rule 3 — per-user answer | Only the MCP coarse gate needs one, and it accepts **any** workspace the user belongs to, not only owner-role ones |
+| Rule 4 / E1 — over-limit goes read-only | Nothing is deleted **or** made read-only. Over-limit data stays editable; only growth is refused, with a grandfather rule for roadmap nodes. The delivery registers are the exception: on a plan without the feature, their writes (deletes included) are refused while reads stay open |
+| Rule 6 / E7 — ship dark, `legacy_unlimited` | No flag and no `legacy_unlimited` tier. Every workspace without a live subscription or complimentary plan is on Free the moment the rollout lands. On Free, existing delivery registers become read-only, teams that already have time tracking on can no longer start or create time logs (pause, stop and review stay open), MCP calls answer `PLAN_LIMIT`, activity older than 7 days is hidden (not deleted), and a workspace over a count limit cannot add more. Complimentary plans (`/admin/workspaces`) are the lever for grandfathering particular workspaces |
+| E3 — personal projects and teams | Held: never counted |
+| E11 — serial workspace creation | Still open: `POST /api/workspaces` has no quota, so creating another workspace resets every per-workspace limit |
+| E13 — limit races | Moot for AI until B4. The count limits have the same shape of race: two simultaneous accepts or creates at the cap can over-admit by one |
 
 ## Decisions needed (with recommendations)
 
@@ -264,9 +310,9 @@ Rules, in order of importance:
 
 | Phase | Lands | Flag | User-visible |
 | --- | --- | --- | --- |
-| **B1** | Entitlement resolution + `EntitlementGuard` over the **existing** `workspace_subscriptions`; all workspaces `legacy_unlimited` (needs a CHECK-widening expand migration) | — | no |
+| **B1** | **Built in the repo 2026-09-22 (schema in dev + prod; code deploy pending)** — entitlement resolution (`EntitlementsService`, no guard) over the existing `workspace_subscriptions`, plus complimentary plans on `workspaces`. No `legacy_unlimited` tier. See [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits) | — (no flag) | Usage page, admin editors |
 | **B2** | **Built 2026-09-22** — provider-neutral billing (Stripe adapter first): checkout + webhooks + seat proration, replacing the billing placeholder at `/w/<slug>/settings/billing`. See [Workspaces → Billing](../11-domains/workspaces/README.md#billing) | — (on wherever a provider is configured) | billing page |
-| **B3** | Free-tier limit enforcement (projects/roadmaps/teams/members) for **new** accounts | `BILLING_ENFORCEMENT_ENABLED` | yes |
+| **B3** | **Built in the repo 2026-09-22 (schema in dev + prod; code deploy pending)** — members, projects, teams and roadmap-node limits, the delivery-register, time-tracking and MCP feature gates, and activity retention, for **every** workspace | — (no flag) | yes |
 | **B4** | AI usage metering + per-user throttle binding | `AI_METERING_ENABLED` | yes (limit UI) |
 | **B5** | Time & Finance add-on purchase flows (price the existing flags) | per-add-on flags | yes |
 | **B6** | Marketplace: sell-a-roadmap (price + checkout + take-rate on templates) | `TEMPLATE_SALES_ENABLED` | yes |
@@ -275,11 +321,13 @@ Rules, in order of importance:
 ## See also
 
 - [11-domains/workspaces](../11-domains/workspaces/README.md) — the billing anchor, as shipped:
-  the tables, the seat rule, the roles, and the placeholder billing page (D2, D8).
+  the tables, the seat rule, the roles and billing (D2, D8), and the Plans & limits layer that
+  B1/B3 built.
 - [11-domains/finance](../11-domains/finance/README.md#contract-parties) — who pays and the
   external-client signing path that must stay entitlement-free (E6).
 - [11-domains/consultants](../11-domains/consultants/README.md) and
   [11-domains/talent](../11-domains/talent/README.md) — the role domains the tier ladder
   prices (vetting vs payment axes, E9/E14).
 - `web/src/lib/pricing.ts` and `web/src/routes/pricing.tsx` — the published plans, prices and
-  feature grid. The former is the file to change when a price changes.
+  feature grid. The former is the file to change when a price changes; a limit changes at
+  `/admin/plans`.

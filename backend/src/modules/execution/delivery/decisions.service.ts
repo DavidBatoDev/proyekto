@@ -9,8 +9,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 import { AuditService } from '../../shared/audit/audit.service';
+import {
+  EntitlementsService,
+  type FeatureKey,
+} from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import type { ProjectPermissions } from '../projects/permissions/project-permissions';
+import { assertDeliveryFeature } from './delivery-plan-gate';
 import { normalizeLinkTargets } from './delivery-links';
 import type { DecisionRow } from './delivery.types';
 import type {
@@ -84,6 +89,7 @@ export class DecisionsService {
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(projectId: string, userId: string, query: ListDecisionsDto = {}) {
@@ -143,6 +149,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
 
     let version = 1;
     if (dto.supersedes_decision_id) {
@@ -279,6 +286,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     const existing = await this.assertEditable(projectId, id);
 
     const patch = this.pick(dto, [
@@ -327,6 +335,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     const existing = await this.loadOrThrow(projectId, id);
 
     if (existing.status === 'superseded') {
@@ -372,6 +381,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     const existing = await this.loadOrThrow(projectId, id);
 
     const { error } = await this.db
@@ -411,6 +421,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.assertEditable(projectId, id);
 
     const [normalized] = normalizeLinkTargets([target], LINK_COLUMNS);
@@ -446,6 +457,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.assertEditable(projectId, id);
 
     // Scoped by decision_id as well as id, so a link id belonging to another
@@ -477,6 +489,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.assertEditable(projectId, id);
 
     if (dto.is_selected) await this.clearSelected(id);
@@ -510,6 +523,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.assertEditable(projectId, id);
 
     // Order matters: the partial unique index rejects a second selected row, so
@@ -544,6 +558,7 @@ export class DecisionsService {
       projectId,
       'decisions.edit',
     );
+    await this.assertPlan(projectId, 'decisions');
     await this.assertEditable(projectId, id);
 
     const { error } = await this.db
@@ -558,6 +573,14 @@ export class DecisionsService {
       );
     }
     return this.loadOrThrow(projectId, id);
+  }
+
+  /** The plan gate; see delivery-plan-gate.ts for why it follows the permission check. */
+  private assertPlan(
+    projectId: string,
+    keys: FeatureKey | readonly FeatureKey[],
+  ): Promise<void> {
+    return assertDeliveryFeature(this.entitlements, projectId, keys);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

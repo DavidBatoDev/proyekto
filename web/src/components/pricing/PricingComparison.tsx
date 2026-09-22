@@ -1,5 +1,11 @@
 import { Check, Minus } from "lucide-react";
-import { type Cell, FEATURE_GROUPS, PLANS } from "@/lib/pricing";
+import { useMemo } from "react";
+import {
+	type Cell,
+	PLANS,
+	type PlanLimitMatrix,
+	resolveFeatureGroups,
+} from "@/lib/pricing";
 
 function Value({ value, label }: { value: Cell; label: string }) {
 	if (value === true) {
@@ -34,8 +40,12 @@ function Value({ value, label }: { value: Cell; label: string }) {
  * The whole thing scrolls sideways on a narrow screen with the feature column
  * pinned — four plan columns cannot honestly fit on a phone, and stacking them
  * into four separate lists destroys the one thing this section is for.
+ *
+ * Every limit and plan-gated check is written from `limits` (the live matrix,
+ * or the seed while it loads), so an admin edit shows here without a deploy.
  */
-export function PricingComparison() {
+export function PricingComparison({ limits }: { limits: PlanLimitMatrix }) {
+	const groups = useMemo(() => resolveFeatureGroups(limits), [limits]);
 	return (
 		<div className="overflow-x-auto">
 			<table className="w-full min-w-[46rem] border-collapse text-left">
@@ -62,7 +72,7 @@ export function PricingComparison() {
 					</tr>
 				</thead>
 
-				{FEATURE_GROUPS.map((group) => (
+				{groups.map((group) => (
 					<tbody key={group.title}>
 						<tr>
 							<th

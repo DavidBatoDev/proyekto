@@ -3,6 +3,7 @@ import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { PricingCards } from "@/components/pricing/PricingCards";
 import { PricingComparison } from "@/components/pricing/PricingComparison";
+import { usePublicPlanLimits } from "@/hooks/usePlanLimits";
 
 /**
  * The public pricing page.
@@ -12,6 +13,10 @@ import { PricingComparison } from "@/components/pricing/PricingComparison";
  * read top to bottom and scroll back up in. It carries its own slim header for
  * the same reason — the marketing one drives the deck's section navigation and
  * cannot render without that context.
+ *
+ * The limits on the cards and in the grid are read once, here, from the live
+ * matrix (`GET /api/plans`). Until it answers — or if it never does — the seed
+ * renders, which matches the published page exactly.
  */
 export const Route = createFileRoute("/pricing")({
 	component: PricingPage,
@@ -29,6 +34,10 @@ const FAQ = [
 	{
 		q: "What happens to my work if I move to a smaller plan?",
 		a: "Nothing is deleted and nothing locks. You keep everything you have built and can read it as normal; the features above your new plan stop being editable rather than disappearing.",
+	},
+	{
+		q: "What happens when I reach a limit?",
+		a: "Everything you have already made stays exactly as it is, readable and editable. You just can't add more of that one thing — another project, say, or another member — until the workspace moves to a plan with a higher limit. Your workspace's Usage page shows how close you are.",
 	},
 	{
 		q: "Can I change plans later?",
@@ -50,6 +59,7 @@ const FAQ = [
 
 function PricingPage() {
 	const [yearly, setYearly] = useState(true);
+	const { limits } = usePublicPlanLimits();
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -88,10 +98,14 @@ function PricingPage() {
 					</p>
 				</section>
 
-				<PricingCards yearly={yearly} onBillingChange={setYearly} />
+				<PricingCards
+					yearly={yearly}
+					onBillingChange={setYearly}
+					limits={limits}
+				/>
 
 				<section className="pt-24">
-					<PricingComparison />
+					<PricingComparison limits={limits} />
 				</section>
 
 				<section className="pt-24">

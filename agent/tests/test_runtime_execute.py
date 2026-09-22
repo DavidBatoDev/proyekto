@@ -534,6 +534,68 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(run.commits[0].status, 'committed')
 
 
+PLAN_LIMIT_MESSAGE = (
+    'This change would bring the roadmap to 262 nodes; the Free plan allows 250 per roadmap. '
+    'Remove nodes or upgrade to Pro.'
+)
+
+
+class PlanLimitTests(unittest.TestCase):
+    """The workspace plan refuses the change: fail the batch as ``plan_limit``
+    with the backend's message, never spend a repair turn, never retry."""
+
+    def test_preview_plan_limit_fails_without_a_repair_turn(self):
+        ctx, session, run, store, nest = _fixture()
+        _add_batch(run, ALPHA, source='proposal')
+        nest.preview_results = [
+            {
+                'preview_id': 'p',
+                'revision_token': 'tok-1',
+                'validation_issues': [
+                    {'code': 'PLAN_LIMIT', 'severity': 'error', 'path': '/roadmap', 'message': PLAN_LIMIT_MESSAGE}
+                ],
+            }
+        ]
+        with patched_llm([]):
+            execute.run(ctx, session, run)
+        self.assertEqual(len(nest.preview_calls), 1)
+        self.assertEqual(FakeLLM.calls, [])
+        commit = run.commits[0]
+        self.assertEqual((commit.status, commit.error_code), ('failed', 'plan_limit'))
+        self.assertEqual(commit.error_message, PLAN_LIMIT_MESSAGE)
+        self.assertEqual(nest.commit_calls, [])
+
+    def test_commit_403_plan_limit_is_final_after_one_attempt(self):
+        ctx, session, run, store, nest = _fixture()
+        _add_batch(run, ALPHA)
+        nest.commit_errors = [
+            HTTPException(
+                status_code=403,
+                detail={
+                    'upstream': 'nestjs',
+                    'detail': {
+                        'error': {
+                            'code': 'plan_limit',
+                            'kind': 'count',
+                            'limit_key': 'roadmap_nodes_per_roadmap',
+                            'context': 'full_state',
+                            'message': PLAN_LIMIT_MESSAGE,
+                            'status': 403,
+                        }
+                    },
+                },
+            )
+        ]
+        sleep = AsyncMock()
+        with patch('app.core.runtime.phases.execute.asyncio.sleep', new=sleep):
+            execute.run(ctx, session, run)
+        self.assertEqual(len(nest.commit_calls), 1)
+        sleep.assert_not_awaited()
+        commit = run.commits[0]
+        self.assertEqual((commit.status, commit.error_code, commit.attempts), ('failed', 'plan_limit', 1))
+        self.assertEqual(commit.error_message, PLAN_LIMIT_MESSAGE)
+
+
 class HelperTests(unittest.TestCase):
     def test_skip_remaining_only_touches_pending(self):
         run = runs.new_run(roadmap_session(), trace_id='t', user_message='x')

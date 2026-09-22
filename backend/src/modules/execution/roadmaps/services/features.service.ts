@@ -27,6 +27,7 @@ import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { ACTIVITY_ACTIONS } from '../../../shared/audit/activity-actions';
 import { TASKS_REPOSITORY } from './tasks.service';
+import { RoadmapPlanLimitsService } from './roadmap-plan-limits.service';
 
 /**
  * Ceiling on the mention fan-out a comment write will wait for.
@@ -62,6 +63,7 @@ export class FeaturesService {
     private readonly activity: RoadmapActivityService,
     private readonly notificationsService: NotificationsService,
     private readonly mentionInvites: RoadmapMentionInviteService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async findByEpic(epicId: string, userId: string) {
@@ -87,7 +89,15 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
-    const feature = await this.repo.create(dto, userId);
+    await this.planLimits.assertCanAdd(ctx, 1);
+    // The roadmap is always the epic's, never the client's `roadmap_id`: that
+    // column is what node counts, authorization walks and task scopes key on,
+    // so a mismatched one would count this feature (and every task later made
+    // under it) against a different roadmap than the one showing it.
+    const feature = await this.repo.create(
+      { ...dto, roadmap_id: ctx.roadmapId },
+      userId,
+    );
     this.effects.emit(ctx, userId, {
       action: ACTIVITY_ACTIONS.FEATURE_CREATED,
       entityType: 'feature',
@@ -106,12 +116,26 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
+    // A move to an epic in ANOTHER roadmap takes the feature and all of its
+    // tasks there, so the destination's node limit is checked and the
+    // denormalized roadmap_id follows the epic (the column node counts and
+    // task scopes read). Moves within the roadmap change no total.
+    let targetCtx: RoadmapWriteContext | null = null;
     if (dto.epic_id && dto.epic_id !== existing.epic_id) {
-      await this.roadmapAuthz.assertEpicPermission(
+      const epicCtx = await this.roadmapAuthz.assertEpicPermission(
         dto.epic_id,
         userId,
         'roadmap.edit',
       );
+      if (epicCtx.roadmapId !== ctx.roadmapId) targetCtx = epicCtx;
+    }
+
+    const tasks =
+      dto.status !== undefined || targetCtx
+        ? await this.tasksRepo.findByFeature(id)
+        : [];
+    if (targetCtx) {
+      await this.planLimits.assertCanAdd(targetCtx, 1 + tasks.length);
     }
 
     // Status is only user-settable when the feature currently has zero
@@ -119,16 +143,19 @@ export class FeaturesService {
     // cascade-derived. Never trust the client's word for "has no tasks";
     // check server-side and silently drop the field rather than reject the
     // whole update.
-    let effectiveDto = dto;
-    if (dto.status !== undefined) {
-      const tasks = await this.tasksRepo.findByFeature(id);
-      if (tasks.length > 0) {
-        effectiveDto = { ...dto };
-        delete effectiveDto.status;
-      }
+    let effectiveDto: UpdateFeatureDto & { roadmap_id?: string } = dto;
+    if (dto.status !== undefined && tasks.length > 0) {
+      effectiveDto = { ...dto };
+      delete effectiveDto.status;
+    }
+    // Not a client field: the repository writes every column it is given.
+    if (targetCtx) {
+      effectiveDto = { ...effectiveDto, roadmap_id: targetCtx.roadmapId };
     }
 
     const feature = await this.repo.update(id, effectiveDto);
+    // The destination canvas changed too; activity stays on the source.
+    if (targetCtx) this.effects.touch(targetCtx, userId);
 
     const changes = this.activity.diff(
       existing,
@@ -175,6 +202,9 @@ export class FeaturesService {
    * path the drag-reorder UI uses before the clone is created at the freed
    * position. Tasks are cloned through the repository directly (not
    * TasksService) so only one activity row is logged for the whole gesture.
+   *
+   * The tasks are read first so the plan's node limit is checked against the
+   * whole clone (1 + tasks) before the siblings are shifted.
    */
   async duplicate(id: string, userId: string) {
     const existing = await this.repo.findById(id);
@@ -184,6 +214,9 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
+
+    const sourceTasks = await this.tasksRepo.findByFeature(id);
+    await this.planLimits.assertCanAdd(ctx, 1 + sourceTasks.length);
 
     const insertPosition = (existing.position ?? 0) + 1;
     const siblings = await this.repo.findByEpic(existing.epic_id);
@@ -214,7 +247,6 @@ export class FeaturesService {
       userId,
     );
 
-    const sourceTasks = await this.tasksRepo.findByFeature(id);
     const newTasks: unknown[] = [];
     for (const [taskIndex, task] of sourceTasks.entries()) {
       const clonedTask = await this.tasksRepo.create(

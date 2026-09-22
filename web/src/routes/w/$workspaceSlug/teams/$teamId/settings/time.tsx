@@ -2,10 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+	featureLimitInfo,
+	PlanLimitNotice,
+} from "@/components/billing/PlanLimitNotice";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { PayPeriodSettingsCard } from "@/components/team-time/PayPeriodSettingsCard";
 import { SettingSwitch } from "@/components/team-time/SettingSwitch";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { useToast } from "@/hooks/useToast";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { getTeam, updateTeam } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -127,6 +133,8 @@ export const Route = createFileRoute(
 
 function TeamTimeSettings() {
 	const { workspaceSlug, teamId } = Route.useParams();
+	const { workspace } = Route.useRouteContext();
+	const { workspaces } = useCurrentWorkspace();
 	const user = useUser();
 	const toast = useToast();
 	const qc = useQueryClient();
@@ -149,6 +157,18 @@ function TeamTimeSettings() {
 	// For everyone else the toggle is read-only with an explainer.
 	const canToggle = isOwner || team?.viewer_role === "admin";
 	const enabled = team?.time_tracking_enabled === true;
+
+	// Time tracking is a plan feature of the TEAM's workspace. Without it the
+	// switch can't be turned on; a team that already has it on keeps its logs
+	// readable and may still turn it off. Fails open while usage is unknown.
+	const teamWorkspaceId = team ? (team.workspace_id ?? workspace.id) : null;
+	const teamWorkspace =
+		teamWorkspaceId === workspace.id
+			? workspace
+			: (workspaces.find((item) => item.id === teamWorkspaceId) ?? null);
+	const entitlements = useEntitlements(teamWorkspaceId);
+	const timeTrackingLimit = featureLimitInfo(entitlements, "time_tracking");
+	const enableBlocked = timeTrackingLimit !== null && !enabled;
 
 	// Every switch on this page invalidates the same three caches: the detail
 	// query this page reads, the ["team", id] one the Time tabs read, and the
@@ -259,6 +279,14 @@ function TeamTimeSettings() {
 				) : (
 					<div className="pt-2">
 						<div className="space-y-4">
+							{timeTrackingLimit ? (
+								<PlanLimitNotice
+									info={timeTrackingLimit}
+									workspace={teamWorkspace}
+									isComplimentary={entitlements.isComplimentary}
+									detail={enabled ? "Existing logs stay readable." : null}
+								/>
+							) : null}
 							<div className="flex items-start justify-between gap-4">
 								<div className="space-y-1">
 									<div className="text-sm font-semibold text-foreground">
@@ -294,7 +322,9 @@ function TeamTimeSettings() {
 								</div>
 								<SettingSwitch
 									checked={enabled}
-									disabled={!canToggle || toggleMutation.isPending}
+									disabled={
+										!canToggle || toggleMutation.isPending || enableBlocked
+									}
 									onChange={(next) => toggleMutation.mutate(next)}
 									label="Enable time tracking for this team"
 								/>
@@ -340,8 +370,8 @@ function TeamTimeSettings() {
 										<button
 											type="button"
 											onClick={() => toggleMutation.mutate(true)}
-											disabled={toggleMutation.isPending}
-											className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+											disabled={toggleMutation.isPending || enableBlocked}
+											className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
 										>
 											{toggleMutation.isPending ? (
 												<Loader2 className="h-4 w-4 animate-spin" />

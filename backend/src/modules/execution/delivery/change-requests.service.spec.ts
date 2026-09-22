@@ -1,3 +1,4 @@
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 import { ChangeRequestsService } from './change-requests.service';
 import type { ChangeRequestRow } from './delivery.types';
 
@@ -105,6 +106,7 @@ function build(
     authorization as never,
     audit as never,
     notifications as never,
+    allowAllEntitlements(),
   );
 
   return { service, authorization, audit, notifications };

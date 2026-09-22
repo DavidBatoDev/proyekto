@@ -9,8 +9,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 import { AuditService } from '../../shared/audit/audit.service';
+import {
+  EntitlementsService,
+  type FeatureKey,
+} from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { getPermission } from '../projects/permissions/project-permissions';
+import { assertDeliveryFeature } from './delivery-plan-gate';
 import { normalizeLinkTargets } from './delivery-links';
 import type { RiskRow } from './delivery.types';
 import type {
@@ -55,6 +60,7 @@ export class RisksService {
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(projectId: string, userId: string, query: ListRisksQueryDto) {
@@ -174,6 +180,7 @@ export class RisksService {
 
   async create(projectId: string, userId: string, dto: CreateRiskDto) {
     await this.authorization.assertPermission(userId, projectId, 'risks.edit');
+    await this.assertPlan(projectId, 'risks');
 
     // Mirrors the table's CHECK, but as a 400 rather than a 500.
     if (dto.kind === 'risk' && !dto.likelihood) {
@@ -245,6 +252,7 @@ export class RisksService {
     dto: UpdateRiskDto,
   ) {
     await this.authorization.assertPermission(userId, projectId, 'risks.edit');
+    await this.assertPlan(projectId, 'risks');
     const existing = await this.assertVisible(projectId, id, userId);
 
     const nextKind = existing.kind;
@@ -315,6 +323,7 @@ export class RisksService {
 
   async remove(projectId: string, id: string, userId: string) {
     await this.authorization.assertPermission(userId, projectId, 'risks.edit');
+    await this.assertPlan(projectId, 'risks');
     const existing = await this.assertVisible(projectId, id, userId);
 
     const { error } = await this.db
@@ -339,6 +348,14 @@ export class RisksService {
     });
 
     return { id, deleted: true };
+  }
+
+  /** The plan gate; see delivery-plan-gate.ts for why it follows the permission check. */
+  private assertPlan(
+    projectId: string,
+    keys: FeatureKey | readonly FeatureKey[],
+  ): Promise<void> {
+    return assertDeliveryFeature(this.entitlements, projectId, keys);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

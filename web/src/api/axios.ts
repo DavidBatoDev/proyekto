@@ -6,6 +6,7 @@ import {
 	formatMissingPermission,
 	parseMissingPermissionError,
 } from "../lib/permissionErrors";
+import { notifyPlanLimit, parsePlanLimitError } from "../lib/planLimitErrors";
 import { getAccessToken } from "../lib/supabase";
 
 // Module-level toast handler. The ToastProvider wires this on mount so the
@@ -81,6 +82,15 @@ apiClient.interceptors.response.use(
 					break;
 				case 403:
 					{
+						// A plan limit is not a permission problem: raise the upgrade
+						// prompt (PlanLimitBridge shows it) and let the error propagate
+						// unchanged so the caller can still render its own notice.
+						const planLimit = parsePlanLimitError(error);
+						if (planLimit) {
+							notifyPlanLimit(planLimit);
+							break;
+						}
+
 						const url = String(error.config?.url ?? "");
 						const isExpectedTeamTimeForbidden =
 							url.includes("/api/team-time/teams/") &&

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import { BillingWebhookService } from './billing-webhook.service';
 import { BillingProviderRegistry } from './providers/billing-provider.registry';
 import {
@@ -50,6 +51,7 @@ export class BillingReconcileService {
     private readonly repo: PlatformBillingRepository,
     private readonly seatSync: SeatSyncService,
     private readonly webhooks: BillingWebhookService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async run(): Promise<ReconcileResult> {
@@ -162,6 +164,18 @@ export class BillingReconcileService {
         },
         { notOlderThan: new Date().toISOString() },
       );
+      // A repaired plan or status changes what the workspace is entitled to.
+      // Like the webhook path, this only ever touches workspace_subscriptions,
+      // so a complimentary plan on the workspace row survives any repair.
+      try {
+        await this.entitlements.invalidateWorkspace(record.workspace_id);
+      } catch (error: unknown) {
+        this.logger.warn(
+          `Could not invalidate the plan state of workspace ${record.workspace_id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 

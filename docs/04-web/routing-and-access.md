@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-09-22 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -13,13 +13,13 @@ gating done in route `beforeLoad` hooks and project components.
 | Subtree | Covers |
 | --- | --- |
 | `auth/` | `login`, `signup`, `verify`, `callback`, `forgot-password`, `auth/admin/*` |
-| `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `settings` |
+| `admin/` | Layout `admin.tsx` + `applications`, `consultants`, `match`, `approve-admin`, `plans`, `workspaces`, `settings`. `plans` is the plan-limits editor and `workspaces` the staff workspace list with complimentary plans (both built, ship with the plan-limits web deploy; see [Plan limits](#plan-limits)) |
 | `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
-| `w/$workspaceSlug/` | **The workspace segment.** `route.tsx` layout resolves the slug against the caller's own membership list (`ensureQueryData` in an async `beforeLoad`): a retired slug redirects to the current one with the rest of the path intact, an unknown or non-member slug is **not found** (never 403, so slugs do not enumerate organizations), bare `/w/<slug>` goes to `dashboard`. Children: `dashboard`, `teams/{index,$teamId/**}` (settings, time, payouts, rates), `settings/{route,index,members,billing}`. The layout component mirrors the URL's workspace into `useWorkspaceStore` (the "last visited" memory) from an effect, never from `beforeLoad`, which also runs on hover preload |
+| `w/$workspaceSlug/` | **The workspace segment.** `route.tsx` layout resolves the slug against the caller's own membership list (`ensureQueryData` in an async `beforeLoad`): a retired slug redirects to the current one with the rest of the path intact, an unknown or non-member slug is **not found** (never 403, so slugs do not enumerate organizations), bare `/w/<slug>` goes to `dashboard`. Children: `dashboard`, `teams/{index,$teamId/**}` (settings, time, payouts, rates), `settings/{route,index,members,usage,billing}`. The layout component mirrors the URL's workspace into `useWorkspaceStore` (the "last visited" memory) from an effect, never from `beforeLoad`, which also runs on hover preload |
 | `teams/` | `me/invites` (personal: invites arrive from workspaces you are not in, so it never gains a tenant segment). `teams/index`, `$teamId.tsx`, and the `$teamId/**` leaves are **permanent redirect stubs**: bare `/teams/<id>/…` forwards to `/w/<slug>/teams/<id>/…` — the team's own workspace when the caller is in it, else the last-visited one — keeping path and query. Bare paths keep arriving from persisted `link_url`s and push payloads, so the stubs are not transitional |
-| `workspace/` | Redirect stub only: `/workspace[/settings/*]` forwards to `/w/<slug>/settings/*` for the last-visited workspace; `settings/{index,members,billing}` are empty shells that keep the bare paths real routes |
+| `workspace/` | Redirect stub only: `/workspace[/settings/*]` forwards to `/w/<slug>/settings/*` for the last-visited workspace; `settings/{index,members,billing}` are empty shells that keep the bare paths real routes. `usage` is new and has no bare shell, since no persisted link predates it |
 | `project/` | `new` (create a project) + `$projectId` layout and tabs (below) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
@@ -218,11 +218,35 @@ Gating happens in three places:
   section, which has no `logs` key. `overview`, `team/*`, and `settings/*` are **not
   wrapped** and rely on backend 403s surfacing as toasts. `ProtectedRoute` handles
   authentication only. Admin gating runs in the `admin.tsx` layout via an `adminMe` query
-  (shows "Access Denied" if not an admin).
+  (shows "Access Denied" if not an admin). Inside it, `admin/plans` and `admin/workspaces`
+  render read-only for every admin and show their edit controls only when
+  `useIsSuperAdmin()` is true; the backend's `SuperAdminGuard` is the real check.
 
 > The **`projectId === "n"`** sentinel is the guest / roadmap-only path — its
 > `beforeLoad` skips the auth check so guests can build a roadmap before signing up.
 > See [Feature Domains → guests](../11-domains/guests/README.md).
+
+## Plan limits
+
+> **⚠️ Built 2026-09-22; schema live in dev and production, web not yet deployed.** See
+> [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
+
+A workspace's plan is **never a route guard**. The backend enforces every limit and refuses with
+a 403 whose body is `{ error: { code: 'plan_limit', … } }`; the web only warns early and explains
+refusals:
+
+| Route | What it does with the plan |
+| --- | --- |
+| `w/$workspaceSlug/settings/usage` | The Usage page (`WorkspaceUsagePage`): the effective plan, meters for members / projects / teams, roadmap node usage, the enforced features and the retention window, from `GET /api/workspaces/:id/usage`. Readable by every member; only an owner gets an upgrade button |
+| `admin/plans` | `PlanLimitsEditor`: the plan-limit matrix from `GET /api/admin/plan-limits`, saved with `PUT` by a `super_admin` |
+| `admin/workspaces` | `AdminWorkspacesPage`: every workspace with its plan, usage and over-limit counts, and the complimentary-plan dialog (`super_admin` only) |
+| `pricing` | Renders the live matrix from `GET /api/plans` (`usePublicPlanLimits`), falling back to the seed copy `DEFAULT_PLAN_LIMITS` on the first frame and during an outage |
+
+Early warnings come from `useEntitlements(workspaceId)`, which reads the usage payload and
+answers "allowed" while it is loading or unavailable, since the server re-checks each write. The
+members panel, the create-team modal, the teams list, `project/new` and a team's time-tracking
+settings show an inline `PlanLimitNotice`, and the invite dialog shows its own cap note. A refusal that reaches the axios interceptor raises a
+single upgrade toast (`PlanLimitBridge`) that links to the Usage page.
 
 ## Adding a route
 

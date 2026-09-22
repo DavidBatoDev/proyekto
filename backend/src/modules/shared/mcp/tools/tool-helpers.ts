@@ -75,6 +75,8 @@ export type McpErrorCode =
   | 'CONFLICT'
   | 'RATE_LIMITED'
   | 'NO_PROJECT'
+  /** The workspace's plan does not include this (MCP itself, or the feature a write needs). */
+  | 'PLAN_LIMIT'
   | 'INTERNAL';
 
 export class McpToolError extends Error {
@@ -478,20 +480,39 @@ export async function runTool(fn: () => unknown, visual?: VisualResultOptions) {
     const data = await fn();
     return visual ? okWithVisual(data, visual) : ok(data);
   } catch (err) {
-    const { code, message } = normalizeError(err);
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({ error: code, message }),
-        },
-      ],
-      isError: true as const,
-    };
+    return toErrorResult(err);
   }
 }
 
-function normalizeError(err: unknown): { code: McpErrorCode; message: string } {
+/**
+ * The structured error result for anything a tool (or the plan gate in front
+ * of every tool) throws: `{ error: CODE, message }` with isError:true.
+ */
+export function toErrorResult(err: unknown) {
+  const { code, message } = normalizeError(err);
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ error: code, message }),
+      },
+    ],
+    isError: true as const,
+  };
+}
+
+/** The `code` field of an HttpException's response body, or '' when absent. */
+function responseCode(err: HttpException): string {
+  const body = err.getResponse();
+  return body && typeof body === 'object' && 'code' in body
+    ? String((body as { code: unknown }).code)
+    : '';
+}
+
+export function normalizeError(err: unknown): {
+  code: McpErrorCode;
+  message: string;
+} {
   if (err instanceof McpToolError) {
     return { code: err.code, message: err.message };
   }
@@ -499,6 +520,12 @@ function normalizeError(err: unknown): { code: McpErrorCode; message: string } {
     const status = err.getStatus();
     const message = err.message;
     if (status === 401) return { code: 'UNAUTHENTICATED', message };
+    // A PlanLimitException is a 403 too, but not a permission problem: the
+    // host must tell the user (upgrade), not look for another way in. Checked
+    // before the generic FORBIDDEN so it is never flattened into one.
+    if (status === 403 && responseCode(err) === 'plan_limit') {
+      return { code: 'PLAN_LIMIT', message };
+    }
     if (status === 403) return { code: 'FORBIDDEN', message };
     if (status === 404) return { code: 'NOT_FOUND', message };
     if (status === 400 || status === 422)
@@ -507,11 +534,7 @@ function normalizeError(err: unknown): { code: McpErrorCode; message: string } {
       // The write lifecycle raises 409 with a structured `code` (e.g.
       // STALE_REVISION on a concurrent edit, IDEMPOTENCY_KEY_REUSED on a
       // mismatched retry). Surface that code so the host can react precisely.
-      const body = err.getResponse();
-      const raw =
-        body && typeof body === 'object' && 'code' in body
-          ? String((body as { code: unknown }).code)
-          : '';
+      const raw = responseCode(err);
       if (raw === 'STALE_REVISION') return { code: 'STALE_REVISION', message };
       // A project holds at most one roadmap; keep the code in the message so
       // the host can tell this conflict from a concurrent-edit one.

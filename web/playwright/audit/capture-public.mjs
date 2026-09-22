@@ -28,6 +28,7 @@ const PAGES = [
   { path: "/marketplace/consultant", slug: "consultant" },
   { path: "/marketplace/consultant/browse", slug: "consultant_browse" },
   { path: "/marketplace/talent", slug: "talent_landing" },
+  { path: "/pricing", slug: "pricing" },
   { path: "/project/roadmap", slug: "project_roadmap" },
 ];
 const VIEWPORTS = DESKTOP_ONLY

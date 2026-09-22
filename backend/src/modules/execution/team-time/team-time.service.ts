@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
   CreateTimeLogCommentDto,
@@ -218,6 +219,7 @@ export class TeamTimeService {
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly notifications: NotificationsService,
     private readonly workspaces: WorkspacesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   // ─── maintenance ──────────────────────────────────────────────────────
@@ -299,6 +301,30 @@ export class TeamTimeService {
     return { scanned: rows.length, healed };
   }
 
+  // ─── plan gate ───────────────────────────────────────────────────────
+
+  /**
+   * Time tracking is a plan feature of the TEAM's workspace, not the
+   * project's: the switch lives on the team, and in marketplace work the
+   * delivery team and the client's project sit in different workspaces.
+   *
+   * Gates only what creates or changes logged time (start, manual create,
+   * edit, delete, comment), always after the caller's own access check.
+   * Pause, resume, stop, review and every read stay open, so a downgraded
+   * workspace can wind down running timers and approve submitted logs
+   * without stranding payouts. A log with no team (personal workspace) has
+   * no plan to consult and passes.
+   */
+  private async assertTimeTrackingPlan(
+    teamId: string | null | undefined,
+  ): Promise<void> {
+    if (!teamId) return;
+    const scope = await this.entitlements.resolveScopeForTeam(teamId);
+    await this.entitlements.assertFeature(scope, 'time_tracking', {
+      context: 'write',
+    });
+  }
+
   // ─── log mutations ───────────────────────────────────────────────────
 
   async startLog(callerId: string, dto: StartTimeLogDto): Promise<TimeLogRow> {
@@ -327,6 +353,7 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     assertResolvedTeamTimeTrackingEnabled(rate);
+    await this.assertTimeTrackingPlan(rate.team_id);
     const resolvedRate = this.pickRateForWorkType(rate, workType);
     const startedAt = new Date().toISOString();
     const memberDisplayNameSnapshot =
@@ -601,6 +628,7 @@ export class TeamTimeService {
         `Cannot edit a log that is ${log.status}. Reviewer must move it back to pending first.`,
       );
     }
+    await this.assertTimeTrackingPlan(log.team_id);
 
     if (log.source === 'manual') {
       const startedAtForPolicy = dto.started_at ?? log.started_at;
@@ -629,6 +657,10 @@ export class TeamTimeService {
             callerId,
           );
           assertResolvedTeamTimeTrackingEnabled(rate);
+          // Rerouting hands the log to another team; that team's plan decides.
+          if (rate.team_id !== log.team_id) {
+            await this.assertTimeTrackingPlan(rate.team_id);
+          }
           patch.project_id = taskContext.project_id;
           patch.team_id = rate.team_id;
           patch.rate_snapshot = this.pickRateForWorkType(
@@ -640,6 +672,9 @@ export class TeamTimeService {
         } else {
           const rate = await this.resolveTeamRate(log.project_id, callerId);
           assertResolvedTeamTimeTrackingEnabled(rate);
+          if (rate.team_id !== log.team_id) {
+            await this.assertTimeTrackingPlan(rate.team_id);
+          }
           patch.project_id = log.project_id;
           patch.team_id = rate.team_id;
           patch.rate_snapshot = this.pickRateForWorkType(rate, 'real_work');
@@ -717,6 +752,7 @@ export class TeamTimeService {
         `Cannot delete a log that is ${log.status}.`,
       );
     }
+    await this.assertTimeTrackingPlan(log.team_id);
     const { error } = await this.supabase
       .from('task_time_logs')
       .delete()
@@ -744,6 +780,7 @@ export class TeamTimeService {
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
     assertResolvedTeamTimeTrackingEnabled(rate);
+    await this.assertTimeTrackingPlan(rate.team_id);
     await this.assertWithinRetroactiveWindow(rate.team_id, dto.started_at);
 
     const breakMins = Math.max(0, dto.break_minutes ?? 0);
@@ -866,6 +903,7 @@ export class TeamTimeService {
   ): Promise<TimeLogCommentRow> {
     const log = await this.fetchLogOrThrow(logId);
     await this.assertCanViewFetchedLog(callerId, log);
+    await this.assertTimeTrackingPlan(log.team_id);
 
     const body = dto.body.trim();
     if (!body) {

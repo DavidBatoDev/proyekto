@@ -1,5 +1,7 @@
 import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { toServiceError } from "@/lib/planLimitErrors";
+import type { PlanSource } from "@/lib/planLimits";
 
 /**
  * A workspace is the organization: the boundary that owns teams, projects, and
@@ -33,7 +35,10 @@ export interface WorkspaceSubscription {
 	workspace_id: string;
 	plan: WorkspacePlan;
 	status: WorkspaceSubscriptionStatus;
-	/** Null means unlimited. Nothing enforces it yet. */
+	/**
+	 * The payment provider's seat-cap column — not the plan's member limit,
+	 * which lives in the plan-limit matrix and is shown on the Usage page.
+	 */
 	seat_limit: number | null;
 	current_period_start: string | null;
 	current_period_end: string | null;
@@ -57,7 +62,18 @@ export interface Workspace {
 	/** The caller's own standing. Present on list and detail reads. */
 	my_role?: WorkspaceRole | null;
 	member_count?: number;
+	/** The subscription's plan. Limits follow `effective_plan`, not this. */
 	plan?: WorkspacePlan;
+	/**
+	 * The plan limits are enforced against: the higher of an active
+	 * complimentary plan and the paid one.
+	 */
+	effective_plan?: WorkspacePlan;
+	/** Why `effective_plan` is what it is. */
+	plan_source?: PlanSource;
+	/** Proyekto has granted this workspace a plan (it may have lapsed). */
+	is_discounted_free?: boolean;
+	discounted_plan?: WorkspacePlan | null;
 	/** Always the live member count, never a stored counter. */
 	seats_used?: number;
 	/** Owners and admins only — billing is not a plain member's business. */
@@ -263,10 +279,10 @@ export async function createWorkspaceInvite(
 			input,
 		);
 		return data.data;
-	} catch (err: any) {
-		throw new Error(
-			extractApiErrorMessage(err.response?.data, "Failed to send invitation"),
-		);
+	} catch (err) {
+		// Keeps a plan-limit 403's code, so the invite dialog can stop the batch
+		// at the member cap instead of reporting every row as a failure.
+		throw toServiceError(err, "Failed to send invitation");
 	}
 }
 
@@ -309,9 +325,8 @@ export async function respondWorkspaceInvite(
 			{ status },
 		);
 		return data.data;
-	} catch (err: any) {
-		throw new Error(
-			extractApiErrorMessage(err.response?.data, "Failed to respond to invite"),
-		);
+	} catch (err) {
+		// Accepting can hit the workspace's member cap; keep that code intact.
+		throw toServiceError(err, "Failed to respond to invite");
 	}
 }

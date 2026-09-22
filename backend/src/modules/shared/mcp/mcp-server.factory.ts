@@ -23,7 +23,9 @@ import { RisksService } from '../../execution/delivery/risks.service';
 import { DecisionsService } from '../../execution/delivery/decisions.service';
 import { DecisionCategoriesService } from '../../execution/delivery/decision-categories.service';
 import { AuditService } from '../audit/audit.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import { McpCapabilitiesService } from './mcp-capabilities.service';
+import { installMcpPlanGate, McpPlanGate } from './mcp-plan-gate';
 import { registerProjectTools } from './tools/projects.tools';
 import { registerWorkspaceTools } from './tools/workspace.tools';
 import { registerProjectWriteTools } from './tools/project-write.tools';
@@ -54,7 +56,7 @@ Chat writes are seen by real people. A message you post, edit, or unsend is imme
 
 The delivery registers (deliverables, change requests, risks & issues, decisions) are shared governance records. Submitting a change request notifies everyone who can decide it, deciding one notifies the requester, and reviewing a deliverable or finalizing a decision stamps a person's name — confirm with the user before any of those lifecycle calls. Drafting register entries (create/update) is safe to do without ceremony.
 
-When a tool returns an error object with a code (FORBIDDEN, NOT_FOUND, VALIDATION_FAILED, STALE_REVISION, …), surface it plainly rather than retrying blindly.`;
+When a tool returns an error object with a code (FORBIDDEN, NOT_FOUND, VALIDATION_FAILED, STALE_REVISION, …), surface it plainly rather than retrying blindly. PLAN_LIMIT means the workspace's Proyekto plan does not include this (MCP access itself, or the feature the call needs): tell the user, quoting its message; do not retry, and do not work around it with other tools.`;
 
 /**
  * Builds a fresh, per-request McpServer bound to one caller's identity + scopes.
@@ -88,6 +90,7 @@ export class McpServerFactory {
     private readonly decisionCategories: DecisionCategoriesService,
     private readonly audit: AuditService,
     private readonly capabilities: McpCapabilitiesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   create(caller: McpCaller): McpServer {
@@ -125,6 +128,20 @@ export class McpServerFactory {
     };
     const deps = { s: services, caller };
 
+    // Every tool and resource registered below runs the mcp_server plan gate
+    // first (see McpPlanGate). One gate per request, so its lookups are
+    // memoized across the calls a request makes.
+    const gate = new McpPlanGate(
+      {
+        entitlements: this.entitlements,
+        roadmapAuthz: this.roadmapAuthz,
+        projectAuthz: this.projectAuthz,
+        db: this.db,
+      },
+      caller.userId,
+    );
+    const { ungateResources } = installMcpPlanGate(server, gate);
+
     registerProjectTools(server, deps);
     registerWorkspaceTools(server, deps);
     registerRoadmapTools(server, deps);
@@ -146,6 +163,9 @@ export class McpServerFactory {
       registerChatWriteTools(server, deps);
     }
     registerResources(server, deps);
+    // The MCP App shell is static and data-free; a host must be able to load
+    // it to render any tool result, so it stays ungated.
+    ungateResources();
     registerRoadmapApp(server);
     registerPrompts(server);
 

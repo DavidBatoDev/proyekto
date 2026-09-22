@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { PlanLimitBridge } from "../components/billing/PlanLimitBridge";
 import Header from "../components/layout/Header";
 import { NotFoundRoute } from "../components/layout/NotFoundRoute";
 import { MigrationHandler } from "../components/migration";
@@ -32,6 +33,9 @@ function RootLayout() {
 	return (
 		<ToastProvider>
 			<ConfirmProvider>
+				{/* Shows the upgrade prompt for any write a plan limit blocked.
+				    Inside the toast provider and the router: it does both. */}
+				<PlanLimitBridge />
 				<Header />
 				<Outlet />
 				<FloatingActiveTimer />

@@ -23,6 +23,18 @@ import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
+import { RoadmapPlanLimitsService } from './roadmap-plan-limits.service';
+import {
+  countRoadmapNodes,
+  totalRoadmapNodes,
+} from '../utils/count-roadmap-nodes';
+
+/** The row fields the create-full node check compares. */
+type ExistingRoadmapRef = {
+  id: string;
+  project_id: string | null;
+  owner_id: string | null;
+};
 
 export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');
 
@@ -38,12 +50,14 @@ export class RoadmapPatchService {
     private readonly patchProcessor: RoadmapJsonPatchProcessor,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly realtime: RealtimePublisher,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async createFull(dto: CreateFullRoadmapDto, userId: string) {
     const roadmapId = dto.id ?? randomUUID();
     let upsertOwnerId = userId;
     let resolvedProjectId = dto.project_id;
+    let existingRef: ExistingRoadmapRef | null = null;
 
     if (dto.id) {
       const existing = await this.roadmapsRepo.findById(dto.id);
@@ -69,6 +83,12 @@ export class RoadmapPatchService {
         }
 
         upsertOwnerId = existing.owner_id;
+        const row = existing as ExistingRoadmapRef;
+        existingRef = {
+          id: row.id,
+          project_id: row.project_id ?? null,
+          owner_id: row.owner_id,
+        };
 
         const hasExplicitProjectId = Object.prototype.hasOwnProperty.call(
           dto,
@@ -93,6 +113,13 @@ export class RoadmapPatchService {
       id: roadmapId,
       project_id: resolvedProjectId,
     });
+
+    await this.assertCreateFullWithinPlan(
+      existingRef,
+      resolvedProjectId ?? null,
+      upsertOwnerId,
+      totalRoadmapNodes(normalizedState),
+    );
 
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
@@ -159,8 +186,16 @@ export class RoadmapPatchService {
     );
     this.dropSupersededAssigneeSets(normalizedCurrentState, patchedState);
 
-    const beforeCounts = this.summarizeRoadmapState(currentState);
-    const afterCounts = this.summarizeRoadmapState(patchedState);
+    const beforeCounts = countRoadmapNodes(currentState);
+    const afterCounts = countRoadmapNodes(patchedState);
+
+    // Grandfathered node limit, counted in memory: only growth past the plan's
+    // limit is refused, so an over-limit roadmap can still be edited or shrunk.
+    await this.planLimits.assertFullStateWrite(
+      existing as ExistingRoadmapRef,
+      beforeCounts.epics + beforeCounts.features + beforeCounts.tasks,
+      afterCounts.epics + afterCounts.features + afterCounts.tasks,
+    );
 
     const normalizedPatchedState = this.normalizeFullRoadmapState({
       ...patchedState,
@@ -195,27 +230,46 @@ export class RoadmapPatchService {
     return this.roadmapsRepo.findFull(roadmapId, userId);
   }
 
-  private summarizeRoadmapState(state: FullRoadmapState): {
-    epics: number;
-    features: number;
-    tasks: number;
-  } {
-    const epics = state.roadmap_epics?.length ?? 0;
-    const features = (state.roadmap_epics ?? []).reduce(
-      (count, epic) => count + (epic.roadmap_features?.length ?? 0),
-      0,
-    );
-    const tasks = (state.roadmap_epics ?? []).reduce(
-      (count, epic) =>
-        count +
-        (epic.roadmap_features ?? []).reduce(
-          (featureCount, feature) =>
-            featureCount + (feature.roadmap_tasks?.length ?? 0),
-          0,
-        ),
-      0,
-    );
-    return { epics, features, tasks };
+  /**
+   * The node limit for POST /roadmaps/full, judged in the workspace the
+   * roadmap will answer to (its project's, else its owner's). A re-save in
+   * the same workspace is grandfathered against the stored count (read only
+   * when the limit is finite and the new tree is over it); a new roadmap, or
+   * one this write re-homes into another workspace, is judged from 0.
+   */
+  private async assertCreateFullWithinPlan(
+    existing: ExistingRoadmapRef | null,
+    targetProjectId: string | null,
+    ownerId: string,
+    nextCount: number,
+  ): Promise<void> {
+    // Where the roadmap lands: the target project's workspace, else the
+    // owner's (read through the stored roadmap only while it stays
+    // standalone; one being unlinked still answers to its project today).
+    const target = await this.planLimits.scopeFor({
+      roadmapId: existing && !existing.project_id ? existing.id : null,
+      projectId: targetProjectId,
+      ownerId,
+    });
+    if (!existing) {
+      await this.planLimits.assertNodeTotal(target, {
+        previous: 0,
+        next: nextCount,
+        context: 'create',
+      });
+      return;
+    }
+    const source = await this.planLimits.scopeFor(existing);
+    const sameWorkspace =
+      source.exempt === target.exempt &&
+      source.workspaceId === target.workspaceId;
+    await this.planLimits.assertNodeTotal(target, {
+      previous: sameWorkspace
+        ? () => this.planLimits.countNodes(existing.id)
+        : 0,
+      next: nextCount,
+      context: sameWorkspace ? 'full_state' : 'link',
+    });
   }
 
   /**

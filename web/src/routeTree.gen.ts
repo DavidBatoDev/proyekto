@@ -41,7 +41,9 @@ import { Route as AuthSignupRouteImport } from './routes/auth/signup'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as AdminWorkspacesRouteImport } from './routes/admin/workspaces'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
+import { Route as AdminPlansRouteImport } from './routes/admin/plans'
 import { Route as AdminMatchRouteImport } from './routes/admin/match'
 import { Route as AdminConsultantsRouteImport } from './routes/admin/consultants'
 import { Route as AdminApproveAdminRouteImport } from './routes/admin/approve-admin'
@@ -94,6 +96,7 @@ import { Route as MarketplaceCategoryCategorySlugIndexRouteImport } from './rout
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as ExecutionBriefBriefIdIndexRouteImport } from './routes/_execution/brief/$briefId/index'
+import { Route as WWorkspaceSlugSettingsUsageRouteImport } from './routes/w/$workspaceSlug/settings/usage'
 import { Route as WWorkspaceSlugSettingsMembersRouteImport } from './routes/w/$workspaceSlug/settings/members'
 import { Route as WWorkspaceSlugSettingsBillingRouteImport } from './routes/w/$workspaceSlug/settings/billing'
 import { Route as MarketplaceServicesServiceIdEditRouteImport } from './routes/marketplace/services/$serviceId/edit'
@@ -325,9 +328,19 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminWorkspacesRoute = AdminWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPlansRoute = AdminPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminMatchRoute = AdminMatchRouteImport.update({
@@ -614,6 +627,12 @@ const ExecutionBriefBriefIdIndexRoute =
     id: '/brief/$briefId/',
     path: '/brief/$briefId/',
     getParentRoute: () => ExecutionRoute,
+  } as any)
+const WWorkspaceSlugSettingsUsageRoute =
+  WWorkspaceSlugSettingsUsageRouteImport.update({
+    id: '/usage',
+    path: '/usage',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
   } as any)
 const WWorkspaceSlugSettingsMembersRoute =
   WWorkspaceSlugSettingsMembersRouteImport.update({
@@ -1064,7 +1083,9 @@ export interface FileRoutesByFullPath {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1132,6 +1153,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1215,7 +1237,9 @@ export interface FileRoutesByTo {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1280,6 +1304,7 @@ export interface FileRoutesByTo {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1367,7 +1392,9 @@ export interface FileRoutesById {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1436,6 +1463,7 @@ export interface FileRoutesById {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/_execution/brief/$briefId/': typeof ExecutionBriefBriefIdIndexRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1525,7 +1553,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -1593,6 +1623,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/project/roadmap'
     | '/teams/$teamId/'
@@ -1676,7 +1707,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -1741,6 +1774,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/project/roadmap'
     | '/teams/$teamId'
@@ -1827,7 +1861,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -1896,6 +1932,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/_execution/brief/$briefId/'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
@@ -2211,11 +2248,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/workspaces': {
+      id: '/admin/workspaces'
+      path: '/workspaces'
+      fullPath: '/admin/workspaces'
+      preLoaderRoute: typeof AdminWorkspacesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/settings': {
       id: '/admin/settings'
       path: '/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/plans': {
+      id: '/admin/plans'
+      path: '/plans'
+      fullPath: '/admin/plans'
+      preLoaderRoute: typeof AdminPlansRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/match': {
@@ -2581,6 +2632,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/brief/$briefId'
       preLoaderRoute: typeof ExecutionBriefBriefIdIndexRouteImport
       parentRoute: typeof ExecutionRoute
+    }
+    '/w/$workspaceSlug/settings/usage': {
+      id: '/w/$workspaceSlug/settings/usage'
+      path: '/usage'
+      fullPath: '/w/$workspaceSlug/settings/usage'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsUsageRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
     }
     '/w/$workspaceSlug/settings/members': {
       id: '/w/$workspaceSlug/settings/members'
@@ -3520,7 +3578,9 @@ interface AdminRouteChildren {
   AdminApproveAdminRoute: typeof AdminApproveAdminRoute
   AdminConsultantsRoute: typeof AdminConsultantsRoute
   AdminMatchRoute: typeof AdminMatchRoute
+  AdminPlansRoute: typeof AdminPlansRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminWorkspacesRoute: typeof AdminWorkspacesRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -3529,7 +3589,9 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminApproveAdminRoute: AdminApproveAdminRoute,
   AdminConsultantsRoute: AdminConsultantsRoute,
   AdminMatchRoute: AdminMatchRoute,
+  AdminPlansRoute: AdminPlansRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  AdminWorkspacesRoute: AdminWorkspacesRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -3538,6 +3600,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface WWorkspaceSlugSettingsRouteRouteChildren {
   WWorkspaceSlugSettingsBillingRoute: typeof WWorkspaceSlugSettingsBillingRoute
   WWorkspaceSlugSettingsMembersRoute: typeof WWorkspaceSlugSettingsMembersRoute
+  WWorkspaceSlugSettingsUsageRoute: typeof WWorkspaceSlugSettingsUsageRoute
   WWorkspaceSlugSettingsIndexRoute: typeof WWorkspaceSlugSettingsIndexRoute
 }
 
@@ -3545,6 +3608,7 @@ const WWorkspaceSlugSettingsRouteRouteChildren: WWorkspaceSlugSettingsRouteRoute
   {
     WWorkspaceSlugSettingsBillingRoute: WWorkspaceSlugSettingsBillingRoute,
     WWorkspaceSlugSettingsMembersRoute: WWorkspaceSlugSettingsMembersRoute,
+    WWorkspaceSlugSettingsUsageRoute: WWorkspaceSlugSettingsUsageRoute,
     WWorkspaceSlugSettingsIndexRoute: WWorkspaceSlugSettingsIndexRoute,
   }
 

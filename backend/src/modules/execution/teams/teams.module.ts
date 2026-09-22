@@ -3,6 +3,7 @@ import { SupabaseModule } from '../../../config/supabase.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { ProjectAccessSyncModule } from '../projects/access-sync/access-sync.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
+import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-core.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
@@ -25,6 +26,7 @@ import {
     ProjectAccessSyncModule,
     NotificationsModule,
     WorkspacesModule,
+    EntitlementsCoreModule,
   ],
   controllers: [
     TeamsController,

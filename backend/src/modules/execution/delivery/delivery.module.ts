@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SupabaseModule } from '../../../config/supabase.module';
+import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-core.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 import { ChangeRequestsService } from './change-requests.service';
@@ -31,9 +32,18 @@ import { RisksService } from './risks.service';
  * NotificationsModule is imported for the change-request fan-out: a submitted
  * request has to reach whoever can decide it, or the workflow dead-ends in a
  * list nobody is watching.
+ *
+ * EntitlementsCoreModule carries the plan gate: every register write checks
+ * that the project's workspace plan includes the feature (see
+ * delivery-plan-gate.ts). Reads are never gated.
  */
 @Module({
-  imports: [SupabaseModule, AuthorizationModule, NotificationsModule],
+  imports: [
+    SupabaseModule,
+    AuthorizationModule,
+    NotificationsModule,
+    EntitlementsCoreModule,
+  ],
   controllers: [
     DeliverablesController,
     ChangeRequestsController,

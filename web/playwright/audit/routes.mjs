@@ -27,6 +27,7 @@ export const STATIC_ROUTES = [
   { path: "/marketplace/consultant", group: "public", auth: false },
   { path: "/marketplace/consultant/browse", group: "public", auth: false },
   { path: "/marketplace/talent", group: "public", auth: false },
+  { path: "/pricing", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },
@@ -85,6 +86,9 @@ export const STATIC_ROUTES = [
   { path: "/admin", group: "admin", auth: true },
   { path: "/admin/match", group: "admin", auth: true },
   { path: "/admin/approve-admin", group: "admin", auth: true },
+  { path: "/admin/consultants", group: "admin", auth: true },
+  { path: "/admin/plans", group: "admin", auth: true },
+  { path: "/admin/workspaces", group: "admin", auth: true },
   { path: "/admin/settings", group: "admin", auth: true },
 ];
 
@@ -135,6 +139,7 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/w/:workspaceSlug/dashboard", needs: ["workspaceSlug"], group: "global", auth: true },
   { tpl: "/w/:workspaceSlug/settings", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/members", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/settings/usage", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/billing", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/teams", needs: ["workspaceSlug"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },

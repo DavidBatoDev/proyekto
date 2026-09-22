@@ -5,15 +5,20 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { getPermission } from '../projects/permissions/project-permissions';
-import { ACTIVITY_ACTIONS, actionFamily } from '../../shared/audit/activity-actions';
+import {
+  ACTIVITY_ACTIONS,
+  actionFamily,
+} from '../../shared/audit/activity-actions';
 import {
   ACTIVITY_DEFAULT_LIMIT,
   ACTIVITY_MAX_LIMIT,
   decodeActivityCursor,
   encodeActivityCursor,
   type ActivityEntryDto,
+  type ActivityRetention,
   type ListProjectActivityQueryDto,
   type ListProjectActivityResult,
 } from './dto/activity.dto';
@@ -43,12 +48,18 @@ function actionsInFamily(family: string): string[] {
  * created_at is millisecond resolution and several events per request share a
  * millisecond — seq is UNIQUE, so the pair is a strict total order and paging
  * can neither skip nor duplicate a row.
+ *
+ * RETENTION: the workspace plan's activity_retention_days hides older rows by
+ * raising the lower bound, never by deleting anything; an upgrade shows them
+ * again. The window is reported back as `retention` so the page can say why
+ * the feed stops.
  */
 @Injectable()
 export class ActivityService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(
@@ -57,12 +68,13 @@ export class ActivityService {
     q: ListProjectActivityQueryDto,
   ): Promise<ListProjectActivityResult> {
     // Returns the resolved permission set, so the sensitivity check below
-    // costs zero extra queries.
-    const perms = await this.authorization.assertPermission(
-      userId,
-      projectId,
-      'logs.view',
-    );
+    // costs zero extra queries. The retention window is looked up alongside
+    // it rather than after: it cannot throw (it fails open to unlimited) and
+    // reveals nothing unless the permission check passes.
+    const [perms, retention] = await Promise.all([
+      this.authorization.assertPermission(userId, projectId, 'logs.view'),
+      this.retentionWindow(projectId),
+    ]);
     const canViewSensitive = getPermission(perms, 'logs.view_sensitive');
 
     const limit = Math.min(
@@ -79,6 +91,22 @@ export class ActivityService {
     const upper = upperBounds.length
       ? upperBounds.reduce((a, b) => (a < b ? a : b))
       : null;
+
+    // Everything asked for is older than the plan shows: answer empty without
+    // a query rather than letting the bounds cross.
+    if (upper && retention.cutoff && isBefore(upper, retention.cutoff)) {
+      return {
+        items: [],
+        next_cursor: null,
+        can_view_sensitive: canViewSensitive,
+        retention,
+      };
+    }
+    // The plan's window only ever narrows the caller's `from`, never widens it.
+    const lower =
+      retention.cutoff && (!q.from || isBefore(q.from, retention.cutoff))
+        ? retention.cutoff
+        : (q.from ?? null);
 
     let query = this.db
       .from(ACTIVITY_TABLE)
@@ -105,7 +133,7 @@ export class ActivityService {
       );
     }
 
-    if (q.from) query = query.gte('created_at', q.from);
+    if (lower) query = query.gte('created_at', lower);
 
     // THIS .lte IS LOAD-BEARING, not a duplicate of the .or below.
     // supabase-js has no row-value operator, and the OR form alone degrades to
@@ -142,6 +170,21 @@ export class ActivityService {
       items,
       next_cursor: hasMore && last ? encodeActivityCursor(last) : null,
       can_view_sensitive: canViewSensitive,
+      retention,
     };
   }
+
+  /** The project's workspace plan decides; unlimited is `{ days: null, cutoff: null }`. */
+  private async retentionWindow(projectId: string): Promise<ActivityRetention> {
+    const scope = await this.entitlements.resolveScopeForProject(projectId);
+    return this.entitlements.getRetentionCutoff(scope);
+  }
+}
+
+/**
+ * Timestamp order, not string order: `from`/`to` are any ISO-8601 the DTO
+ * accepts (a bare date, an offset), while the cutoff is a UTC toISOString.
+ */
+function isBefore(value: string, cutoff: string): boolean {
+  return new Date(value).getTime() < new Date(cutoff).getTime();
 }

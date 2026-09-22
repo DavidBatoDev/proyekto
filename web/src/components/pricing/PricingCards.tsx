@@ -1,6 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { PLANS, type Plan } from "@/lib/pricing";
+import {
+	PLANS,
+	type Plan,
+	type PlanLimitMatrix,
+	resolveHighlights,
+} from "@/lib/pricing";
 import { BillingToggle } from "./BillingToggle";
 
 const SALES_EMAIL = "sales@proyekto.tech";
@@ -8,6 +13,11 @@ const SALES_EMAIL = "sales@proyekto.tech";
 interface PricingCardsProps {
 	yearly: boolean;
 	onBillingChange: (yearly: boolean) => void;
+	/**
+	 * The plan-limit matrix the card lines are written from — live from
+	 * `usePublicPlanLimits()`, or the seed while that loads.
+	 */
+	limits: PlanLimitMatrix;
 }
 
 function Price({ plan, yearly }: { plan: Plan; yearly: boolean }) {
@@ -60,7 +70,11 @@ function Cta({ plan }: { plan: Plan }) {
 	);
 }
 
-export function PricingCards({ yearly, onBillingChange }: PricingCardsProps) {
+export function PricingCards({
+	yearly,
+	onBillingChange,
+	limits,
+}: PricingCardsProps) {
 	return (
 		<div className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
 			{PLANS.map((plan) => (
@@ -88,7 +102,7 @@ export function PricingCards({ yearly, onBillingChange }: PricingCardsProps) {
 					</div>
 
 					<ul className="mt-7 flex-1 space-y-3">
-						{plan.highlights.map((item) => (
+						{resolveHighlights(plan, limits[plan.id]).map((item) => (
 							<li key={item} className="flex gap-2.5 text-sm text-foreground">
 								<Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
 								<span>{item}</span>

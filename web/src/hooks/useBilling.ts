@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { billingKeys } from "@/queries/billing";
+import { workspaceKeys } from "@/queries/workspaces";
 import {
 	type BillingInterval,
 	type BillingSummary,
@@ -23,9 +25,20 @@ export function useBillingSummaryQuery(workspaceId?: string | null) {
 	});
 }
 
+/**
+ * Refresh billing and, with it, every workspace's usage: a checkout that has
+ * just landed changes the plan, and so the limits the Usage page reads.
+ */
 export function useInvalidateBilling() {
 	const queryClient = useQueryClient();
-	return () => queryClient.invalidateQueries({ queryKey: billingKeys.all });
+	return useCallback(
+		() =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: billingKeys.all }),
+				queryClient.invalidateQueries({ queryKey: workspaceKeys.usageAll }),
+			]),
+		[queryClient],
+	);
 }
 
 export function useCreateCheckoutSessionMutation(workspaceId?: string | null) {

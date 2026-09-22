@@ -1,4 +1,5 @@
 import { TeamsService } from './teams.service';
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 
 /**
  * Tags are descriptive labels, so what these tests pin is mostly about what the
@@ -75,7 +76,11 @@ describe('TeamsService — tags', () => {
       { createNotification: jest.fn() } as any,
       { send: jest.fn() } as any,
       { get: jest.fn() } as any,
-      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
+      {
+        resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1'),
+        resolveWorkspaceForCreate: jest.fn().mockResolvedValue('ws-1'),
+      } as any,
+      allowAllEntitlements(),
     );
 
     return { service, captured };

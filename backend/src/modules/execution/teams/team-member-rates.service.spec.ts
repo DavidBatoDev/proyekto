@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { TeamMemberRatesService } from './team-member-rates.service';
 import { TeamsService } from './teams.service';
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 
 /**
  * Rate writes used to carry two consultant gates on top of the team-role check:
@@ -97,7 +98,11 @@ describe('TeamMemberRatesService — who may set a rate', () => {
       { createNotification: jest.fn() } as any,
       { send: jest.fn() } as any,
       { get: jest.fn() } as any,
-      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
+      {
+        resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1'),
+        resolveWorkspaceForCreate: jest.fn().mockResolvedValue('ws-1'),
+      } as any,
+      allowAllEntitlements(),
     );
     const service = new TeamMemberRatesService(supabase as any, teams);
 

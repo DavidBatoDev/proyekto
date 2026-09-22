@@ -1,5 +1,5 @@
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, Building2, CreditCard, Users } from "lucide-react";
+import { ArrowLeft, Building2, CreditCard, Gauge, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
@@ -30,7 +30,7 @@ export function WorkspaceSettingsLayout({
 			label: "General",
 			to: `/w/${workspaceSlug}/settings`,
 			icon: Building2,
-			// Exact match — Members and Billing live under this prefix.
+			// Exact match — Members, Usage and Billing live under this prefix.
 			active: currentPath === "/settings" || currentPath === "/settings/",
 		},
 		{
@@ -38,6 +38,12 @@ export function WorkspaceSettingsLayout({
 			to: `/w/${workspaceSlug}/settings/members`,
 			icon: Users,
 			active: currentPath.startsWith("/settings/members"),
+		},
+		{
+			label: "Usage",
+			to: `/w/${workspaceSlug}/settings/usage`,
+			icon: Gauge,
+			active: currentPath.startsWith("/settings/usage"),
 		},
 		{
 			label: "Billing",

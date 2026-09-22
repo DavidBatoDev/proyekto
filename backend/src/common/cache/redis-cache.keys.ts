@@ -48,6 +48,15 @@ export const REDIS_CACHE_KEYS = {
     `cache:v1:ai:context:overview:user:${userId}:ws:${workspaceId ?? 'none'}`,
   aiContextOverviewIndexByUser: (userId: string) =>
     `cache:v1:index:ai:context:overview:user:${userId}`,
+  /**
+   * The plan limits matrix (plan_limit_keys + plan_limits), shared by every
+   * workspace. EntitlementsService also memoizes it in process for 15s, so an
+   * admin edit reaches other instances within that window.
+   */
+  entitlementsLimitMatrix: 'cache:v1:entitlements:limit-matrix',
+  /** workspace_plan_state for one workspace: effective plan, comp, subscription. */
+  entitlementsPlanState: (workspaceId: string) =>
+    `cache:v1:entitlements:plan-state:ws:${workspaceId}`,
 } as const;
 
 type MarketplaceQueryShape = {

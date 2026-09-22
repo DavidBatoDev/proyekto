@@ -13,10 +13,12 @@
  *     credit. Any figure shown must come from the provider through the API, or be
  *     omitted. Promising "$84" and charging $91.40 is worse than saying nothing.
  *
- *  2. No enforcement language. Nothing in this phase enforces a seat limit, a
- *     project cap, or a downgrade. Words like "limit", "exceeded" or "locked"
- *     would describe behaviour that does not exist. A test asserts their
- *     absence.
+ *  2. Money only — no limit vocabulary. Plan limits (members, projects,
+ *     teams, …) are enforced, but they are stated in exactly one place:
+ *     `usageCopy.ts`, which is handed the live, admin-edited numbers. Limit
+ *     wording here would be a static second copy that drifts from what the
+ *     backend enforces, so words like "limit", "exceeded" or "locked" stay out
+ *     of this file. A test asserts their absence.
  */
 
 import type { BillingStatus, BillingSummary } from "@/services/billing.service";
@@ -32,6 +34,11 @@ export interface SeatChangeCopyInput {
 	nextInvoiceDate?: string | null;
 	/** Whether the reader can actually change the plan. */
 	isOwner: boolean;
+	/**
+	 * Proyekto covers the plan and no paid subscription is running, so a seat
+	 * change moves no money at all.
+	 */
+	isComplimentary?: boolean;
 }
 
 /**
@@ -44,6 +51,13 @@ export interface SeatChangeCopyInput {
  */
 export function seatChangeCopy(input: SeatChangeCopyInput): string[] {
 	const lines: string[] = [];
+
+	if (input.isComplimentary) {
+		lines.push(
+			"This workspace's plan is complimentary. Adding people doesn't cost anything.",
+		);
+		return lines;
+	}
 
 	if (input.plan === "free") {
 		lines.push(
@@ -154,6 +168,24 @@ export function seatsCopy(
 /** Shown next to the pending-invitation list, where the fact actually matters. */
 export const PENDING_INVITES_NOTE =
 	"Pending invitations do not use a seat until they're accepted.";
+
+/** Beside a plan Proyekto has granted, when nothing is being paid for. */
+export const COMPLIMENTARY_NOTE =
+	"Proyekto covers this workspace's plan, so there's nothing to pay.";
+
+/**
+ * Beside a granted plan while the workspace's own subscription is still
+ * running. Granting a plan does not cancel a subscription, and the owner has
+ * to hear that from us rather than from their next invoice.
+ */
+export const COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE =
+	"Proyekto covers this workspace's plan. Your own subscription is still active and keeps billing until you cancel it in Manage billing.";
+
+/** Replaces checkout on a granted plan: changing it is a conversation with us. */
+export const COMPLIMENTARY_PLAN_CHANGES_NOTE =
+	"Plan changes for this workspace go through Proyekto.";
+
+export const SALES_EMAIL = "sales@proyekto.tech";
 
 /** Shown to a plain member, who can see nothing else about billing. */
 export const MEMBER_ONLY_NOTE =

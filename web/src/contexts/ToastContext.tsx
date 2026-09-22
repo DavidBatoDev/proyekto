@@ -9,20 +9,29 @@ import {
 	useState,
 } from "react";
 import { setPermissionToastHandler } from "@/api/axios";
+import { wasPlanLimitJustNotified } from "@/lib/planLimitErrors";
 
 type Severity = "success" | "error" | "warning" | "info";
+
+/** One button on a toast. Clicking it runs `onClick`, then dismisses the toast. */
+export interface ToastAction {
+	label: string;
+	onClick: () => void;
+}
 
 interface Toast {
 	id: number;
 	message: string;
 	severity: Severity;
 	duration: number;
+	action?: ToastAction;
 }
 
-interface ToastOptions {
+export interface ToastOptions {
 	message: string;
 	severity?: Severity;
 	duration?: number;
+	action?: ToastAction;
 }
 
 interface ToastContextValue {
@@ -83,6 +92,14 @@ function ToastItem({
 		setTimeout(() => onDismiss(toast.id), 300);
 	};
 
+	const handleAction = () => {
+		try {
+			toast.action?.onClick();
+		} finally {
+			handleClose();
+		}
+	};
+
 	return (
 		<div
 			role={
@@ -98,9 +115,20 @@ function ToastItem({
       `}
 		>
 			{style.icon}
-			<p className="flex-1 text-sm font-medium leading-snug text-popover-foreground">
-				{toast.message}
-			</p>
+			<div className="min-w-0 flex-1">
+				<p className="text-sm font-medium leading-snug text-popover-foreground">
+					{toast.message}
+				</p>
+				{toast.action ? (
+					<button
+						type="button"
+						onClick={handleAction}
+						className="mt-2 rounded-sm text-sm font-semibold text-primary transition-colors hover:text-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					>
+						{toast.action.label}
+					</button>
+				) : null}
+			</div>
 			<button
 				type="button"
 				onClick={handleClose}
@@ -121,7 +149,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	const showToast = useCallback(
-		({ message, severity = "info", duration = 5000 }: ToastOptions) => {
+		({ message, severity = "info", duration = 5000, action }: ToastOptions) => {
+			// A blocked create has just raised its upgrade prompt (a warning), and
+			// the component that made the call is about to toast its own generic
+			// "Create failed". Dropping error toasts for a moment removes that
+			// duplicate at every catch-and-toast site at once; the prompt itself is
+			// a warning, so it is never caught by this.
+			if (severity === "error" && wasPlanLimitJustNotified()) return;
 			setToasts((prev) => {
 				// De-dupe: if an identical toast is already showing, don't stack another
 				// (guards against callers that fire the same error in a render/loop).
@@ -130,7 +164,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 				) {
 					return prev;
 				}
-				const next = [...prev, { id: ++nextId, message, severity, duration }];
+				const next = [
+					...prev,
+					{ id: ++nextId, message, severity, duration, action },
+				];
 				// Cap the stack so a burst can never fill the screen — drop the oldest.
 				return next.length > MAX_TOASTS
 					? next.slice(next.length - MAX_TOASTS)

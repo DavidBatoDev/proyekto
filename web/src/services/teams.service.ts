@@ -1,5 +1,6 @@
 import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { toServiceError } from "@/lib/planLimitErrors";
 import type { ProjectRoadmapSummary } from "@/services/project.service";
 
 function maybeRewriteRateSchemaError(message: string): string {
@@ -318,12 +319,8 @@ export async function createTeam(input: CreateTeamInput): Promise<Team> {
 		const { data } = await apiClient.post<{ data: Team }>("/api/teams", input);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to create team",
-			),
-		);
+		// The team cap answers with a plan-limit 403; keep its code for the modal.
+		throw toServiceError(err, "Failed to create team");
 	}
 }
 
@@ -338,12 +335,8 @@ export async function updateTeam(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update team",
-			),
-		);
+		// Turning time tracking on is plan-gated; keep that code for the page.
+		throw toServiceError(err, "Failed to update team");
 	}
 }
 

@@ -3,6 +3,10 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ArrowRight, Loader2, Plus, User, Users } from "lucide-react";
 import { useState } from "react";
 import {
+	countLimitInfo,
+	PlanLimitNotice,
+} from "@/components/billing/PlanLimitNotice";
+import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
@@ -10,6 +14,7 @@ import { PositionBadge, RoleBadge } from "@/components/common/SemanticBadge";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { CreateTeamModal } from "@/components/team/CreateTeamModal";
 import { TeamsEmptyState } from "@/components/team/TeamsEmptyState";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { richTextToPlain } from "@/lib/richText";
 import { filterByWorkspace } from "@/lib/workspaceScope";
 import {
@@ -43,6 +48,10 @@ function TeamsIndexPage() {
 		? filterByWorkspace(allTeams, workspace.id)
 		: undefined;
 	const [createOpen, setCreateOpen] = useState(false);
+	// The team cap counts the whole workspace's teams, not just the ones this
+	// viewer is in. Fails open while usage is loading or unavailable.
+	const entitlements = useEntitlements(workspace.id);
+	const teamCap = countLimitInfo(entitlements, "teams");
 
 	return (
 		<DashboardShell>
@@ -57,7 +66,8 @@ function TeamsIndexPage() {
 							<button
 								type="button"
 								onClick={() => setCreateOpen(true)}
-								className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+								disabled={teamCap !== null}
+								className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<Plus className="h-4 w-4" />
 								Create team
@@ -65,6 +75,15 @@ function TeamsIndexPage() {
 						) : undefined
 					}
 				/>
+
+				{teamCap ? (
+					<PlanLimitNotice
+						info={teamCap}
+						workspace={workspace}
+						isComplimentary={entitlements.isComplimentary}
+						className="mt-6"
+					/>
+				) : null}
 
 				<div className="mt-6">
 					{isLoading ? (
@@ -77,7 +96,18 @@ function TeamsIndexPage() {
 							{(error as Error).message}
 						</AppSurfaceCard>
 					) : !teams || teams.length === 0 ? (
-						<TeamsEmptyState onCreate={() => setCreateOpen(true)} />
+						// A disabled fieldset disables the empty state's own button,
+						// which takes no `disabled` prop of its own.
+						<fieldset
+							disabled={teamCap !== null}
+							className={`m-0 min-w-0 border-0 p-0 ${
+								teamCap
+									? "[&_button]:cursor-not-allowed [&_button]:opacity-50"
+									: ""
+							}`}
+						>
+							<TeamsEmptyState onCreate={() => setCreateOpen(true)} />
+						</fieldset>
 					) : (
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{teams.map((team) => (

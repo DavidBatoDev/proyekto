@@ -1,6 +1,6 @@
 # The Operations Schema
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-09-22 · **Status:** current
 
 Roadmap edits crossing the agent↔backend boundary conform to a single shared
 contract: [`schemas/roadmap-ai-operations.json`](../../schemas/roadmap-ai-operations.json).
@@ -122,6 +122,40 @@ change, and paging metadata never lands on `RoadmapAiContextSearchMatchDto`.
 | **Agent (Python)** | `RoadmapOperation.model_validate` + `validate_operation_contract` (semantic checks — e.g. `mark_status.status_invalid`, `update_node.mutation_missing`, `shift_dates.delta_days_out_of_range`). The runtime tool schema's per-op `anyOf` branches are generated from the Pydantic model. |
 | **Agent tests** | [`agent/tests/test_operation_contracts.py`](../../agent/tests/test_operation_contracts.py) — contract + handle-expansion tests, run via the Node wrapper. |
 | **Backend (NestJS)** | DTO union types in [`roadmap-ai.dto.ts`](../../backend/src/modules/execution/roadmaps/dto/roadmap-ai.dto.ts) (`RoadmapAiOperationType`, `RoadmapNodeType`, `RoadmapAiOperationDto`). |
+
+## Validation issue codes
+
+A preview (`POST /roadmaps/:id/ai/preview`) returns `validation_issues[]`, each a
+`RoadmapValidationIssueDto` with a `code`, a `severity` (`error` | `warning`), a
+`path` and a `message`. The codes are a backend DTO union in
+[`roadmap-ai.dto.ts`](../../backend/src/modules/execution/roadmaps/dto/roadmap-ai.dto.ts)
+(`RoadmapValidationIssueCode`), **not** part of the shared operations manifest,
+so the parity checker does not cover them:
+
+`MISSING_REQUIRED_FIELD` · `INVALID_TYPE` · `INVALID_ENUM` · `DUPLICATE_ID` ·
+`BROKEN_RELATIONSHIP` · `DEPENDENCY_CYCLE` · `INVALID_DATE_RANGE` ·
+`HIERARCHY_VIOLATION` · `PROGRESS_MISMATCH` · `STALE_REVISION` ·
+`OUT_OF_SCOPE_MUTATION` · `INVALID_FIELD_VALUE` · `PLAN_LIMIT`.
+
+**`PLAN_LIMIT`** (severity `error`, path `/roadmap`, with a `node_ref` to the
+roadmap when it exists) means the batch would take the roadmap past its
+workspace plan's per-roadmap node limit (`roadmap_nodes_per_roadmap`: epics +
+features + tasks, milestones excluded). The rule is grandfathered: it fires only
+when the new total is over the limit **and** above the current total, so an
+over-limit roadmap can still be edited and shrunk. The preview counts in memory,
+and the commit enforces the same rule, refusing with a 403 `plan_limit` body.
+The agent's execute phase (`_plan_limit_failure` in
+[`execute.py`](../../agent/app/core/runtime/phases/execute.py)) fails the batch
+as `plan_limit` with the backend's message and skips the repair turn, because no
+repair can fix it without dropping items the user asked for; a 403 from commit
+is likewise final and never retried. The system prompt tells the model to
+explain the limit, suggest an upgrade, and never split the change or delete
+other items to make room.
+
+> **⚠️ Built, not yet deployed.** `PLAN_LIMIT` ships with the workspace plan
+> limits (schema applied to dev and production 2026-09-22); it takes effect when
+> the backend and agent revisions carrying it are deployed. See
+> [Workspaces → Plans & limits](../11-domains/workspaces/README.md#plans--limits).
 
 ## The parity checker
 

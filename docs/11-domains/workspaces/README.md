@@ -23,6 +23,17 @@ client's project has `project_access` there and no seat in that client's workspa
 > applied to dev and prod on 2026-09-05 (not verifiable from the repo — confirm with
 > `list_migrations`); the consuming code is on `feat/ai-revamp`, not yet on `main`.
 
+> **⚠️ Plan limits (2026-09-22): schema live in both environments, code not yet deployed.** The
+> plan-limit layer described under [Plans & limits](#plans--limits) is implemented in the repo.
+> Its two migrations (`20260922130000_harden_direct_table_writes.sql`, then
+> `20260922120000_workspace_plan_limits.sql`) were applied via MCP `apply_migration` to hosted
+> dev and to production (`byvbnkpiselvvulsvxgo`) on 2026-09-22, with identical function bodies.
+> Production was backfilled the same day with four complimentary plans ("fit tier": the lowest
+> tier covering what each workspace already used): Prodigitality Workspace and August Teleg's
+> Workspace → Business, Juan Carlos Gan's Workspace and the QA delivery sandbox → Pro; the other
+> 31 workspaces are Free. **Nothing is enforced in production until the backend and web
+> revisions that carry the code are deployed.**
+
 ## The shape
 
 ```text
@@ -49,7 +60,7 @@ most important fact on this page: the organizations proposal's fan-out design wa
 
 | Table | Holds |
 | --- | --- |
-| `workspaces` | `id`, `name` (1–120 chars, non-blank), `description` (≤2000), `avatar_url`, `slug` (**the URL handle**, `/w/<slug>/…`: NOT NULL, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 3–60 chars, never uuid-shaped; filled by the `workspaces_slug_guard` trigger from the name on insert, so no insert path needs to know the rule), `created_by` (→ `profiles`, **ON DELETE SET NULL**, audit only), timestamps. **No `owner_id`** |
+| `workspaces` | `id`, `name` (1–120 chars, non-blank), `description` (≤2000), `avatar_url`, `slug` (**the URL handle**, `/w/<slug>/…`: NOT NULL, unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 3–60 chars, never uuid-shaped; filled by the `workspaces_slug_guard` trigger from the name on insert, so no insert path needs to know the rule), `created_by` (→ `profiles`, **ON DELETE SET NULL**, audit only), timestamps. **No `owner_id`**. Since `20260922120000` (dev and production, 2026-09-22) it also carries the four complimentary-plan columns — see [Complimentary plans](#complimentary-plans) |
 | `workspace_slug_history` | `slug` **PK** → `workspace_id` (**CASCADE**), `replaced_at`. A renamed workspace's old handles, kept so old links redirect (GitHub model). Renaming back to an own old handle reclaims it; another workspace can never take it. RLS: members read their workspace's rows, which is how `previous_slugs` rides the membership list |
 | `workspace_reserved_slugs` | `slug` **PK**, `note`. The single source of truth for handles a workspace may not take: everything that is a route name under `/w/<slug>/` (`settings`, `teams`, `dashboard`, `members`, `billing`, `time`, `my-logs`, …), every top-level route name, and the usual `admin`/`api`/`www`/`login`… set. Publicly readable |
 | `workspace_members` | The seat pool. `workspace_id` + `user_id` + `role` (`owner` \| `admin` \| `member`) + `joined_at`, `UNIQUE (workspace_id, user_id)` |
@@ -76,7 +87,7 @@ writes always carry one" is enforced in the backend, not by a constraint.
 | --- | --- |
 | `owner` | Everything, plus: delete the workspace, grant/revoke `owner`, and any future billing-only field |
 | `admin` | Rename/describe/avatar the workspace, invite, cancel invites, manage non-owner members, read the subscription |
-| `member` | Read the workspace and its member list; create teams and projects in it |
+| `member` | Read the workspace, its member list and its [Usage](#the-usage-page) page; create teams and projects in it, within the plan's limits |
 
 Guards:
 
@@ -193,6 +204,17 @@ direct-from-browser Supabase reads stay scoped:
 | `workspace_subscriptions` | owner/admin only — billing is not a plain member's business | none |
 | `workspace_invites` | the invitee, or an owner/admin | UPDATE for the same set; **no INSERT policy** |
 
+> **⚠️ The grants did not match that intent until the plan-limits migrations (2026-09-22).**
+> `20260902090000` and `20260902090100` revoked only from `PUBLIC` and `anon`, and on hosted dev
+> Supabase's default privileges had given `authenticated` full DML, so the UPDATE/DELETE policies
+> were live over PostgREST with a user's own JWT. `20260922120000` revokes INSERT, UPDATE, DELETE
+> and TRUNCATE on `workspaces` from `authenticated`. `20260922130000` revokes the same from `anon`
+> and `authenticated` on `workspace_invites`, `workspace_members` and `workspace_subscriptions`
+> (and on `team_invites` and `project_invites`). Before it, an invitee could repoint their own
+> pending invite at any workspace with role `owner` and then accept it through the API, which
+> takes `workspace_id` and `role` from the stored row. The policies stay in place as dormant
+> documentation of who may write. Production keeps the old grants until the rollout.
+
 Three `SECURITY DEFINER` helpers back those policies — `is_workspace_member`,
 `can_manage_workspace`, `is_workspace_owner`. Policies **must** call them and never inline an
 `EXISTS` over `workspace_members`, which is what keeps them from recursing. See
@@ -222,7 +244,7 @@ All routes carry `SupabaseAuthGuard` at the controller. Base `/api/workspaces`.
 
 | Method | Path | Who |
 | --- | --- | --- |
-| GET | `/api/workspaces` | Any member — the switcher's list, with `my_role`, `member_count`, `plan` |
+| GET | `/api/workspaces` | Any member — the switcher's list, with `my_role`, `member_count`, `plan` (and, with plan limits, `effective_plan`, `plan_source`, `is_discounted_free`, `discounted_plan`) |
 | POST | `/api/workspaces` | Any authenticated user; creator becomes `owner` |
 | GET | `/api/workspaces/me/invites` | The invitee |
 | POST | `/api/workspaces/me/invites/:inviteId/respond` | The invitee only (`accepted` \| `declined`) |
@@ -243,8 +265,9 @@ All routes carry `SupabaseAuthGuard` at the controller. Base `/api/workspaces`.
 | DELETE | `/api/workspaces/:id/ai-sessions/:sessionId` | The thread's owner |
 | GET | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner |
 | POST | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner (the web persists each turn; `metadata` is capped at 64 KB) |
-| GET | `/api/workspaces/:workspaceId/billing` | Owner or admin — plan, seats used vs billed, next invoice, payment method |
-| POST | `/api/workspaces/:workspaceId/billing/checkout-session` | **Owner only** — `{ plan: pro\|business, interval: month\|year }`; relative return paths only |
+| GET | `/api/workspaces/:workspaceId/usage` | Any member — the plan, its limits, and current usage (see [Plans & limits](#the-usage-page)); 404 for an unknown workspace, 403 for a non-member |
+| GET | `/api/workspaces/:workspaceId/billing` | Owner or admin — plan, seats used vs billed, next invoice, payment method; with plan limits also `effective_plan`, `plan_source`, `complimentary`, `has_live_subscription` |
+| POST | `/api/workspaces/:workspaceId/billing/checkout-session` | **Owner only** — `{ plan: pro\|business, interval: month\|year }`; relative return paths only. A plan ranked at or below an active complimentary plan is **409** `workspace_complimentary` |
 | POST | `/api/workspaces/:workspaceId/billing/portal-session` | **Owner only** — the owning provider's customer portal |
 | POST | `/api/platform-billing/webhooks/:provider` | Public; authenticated by the provider's signature over the raw body |
 | POST | `/api/platform-billing/cron/reconcile` | Public; `CronSecretGuard` (`MEETINGS_CRON_SECRET`) |
@@ -255,7 +278,9 @@ workspace id. The eight `ai-sessions` routes live in `RoadmapsModule`
 [AI assistant](#ai-assistant) for the scope rules.
 
 `POST /api/teams` (`CreateTeamDto`) and `POST /api/projects` (`CreateProjectDto`) accept an
-optional `workspace_id`; omitting it means "the caller's default workspace". It is **deliberately
+optional `workspace_id`; omitting it means "the caller's default workspace". With plan limits,
+both go through `resolveWorkspaceForCreate`, which runs the workspace's `projects` / `teams`
+count check after the membership check (see [Plans & limits](#what-each-gate-blocks)). It is **deliberately
 absent from `UpdateTeamDto`**: moving a team between organizations would have to carry its
 projects, rates, and payouts with it, and that is not a rename. There is no move endpoint.
 
@@ -267,7 +292,7 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   **not** `profiles.settings.workspace_defaults` — that key already means the sidebar's default
   team/project and predates this tier.
 - **URLs** — organizational pages live at `/w/<slug>/dashboard`, `/w/<slug>/teams/…`, and
-  `/w/<slug>/settings{,/members,/billing}`. The `/w/$workspaceSlug` layout route resolves the slug
+  `/w/<slug>/settings{,/members,/usage,/billing}`. The `/w/$workspaceSlug` layout route resolves the slug
   against the caller's **own** membership list: a retired slug redirects to the current one with
   the rest of the path intact; an unknown or non-member slug is **not found** (never 403, so slugs
   cannot enumerate organizations). Bare `/dashboard`, `/teams/…`, and `/workspace/…` are
@@ -293,9 +318,13 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   payment method and any dunning state, and owners can start a subscription through the
   provider's hosted checkout and manage everything else in its customer portal. Without provider
   credentials the page says no plans are available for purchase. Owner-only for the write paths,
-  read-only for admins, invisible to members. **No product cap is enforced anywhere** — the page
-  deliberately never renders `seat_limit`. See [Billing](#billing) and
-  [Pricing tiers & add-ons](../../13-proposals/pricing-tiers-and-add-ons.md).
+  read-only for admins, invisible to members. The page deliberately never renders `seat_limit`
+  (the provider's seat-cap column, enforced nowhere); the plan's member limit lives in the
+  plan-limit matrix and is shown on the Usage page. A workspace on a complimentary plan gets no
+  checkout for plans at or below it, but keeps the customer portal whenever it has a billing
+  account. See [Billing](#billing) and [Plans & limits](#plans--limits).
+- **Usage** — `/w/<slug>/settings/usage` (ships with the plan-limits deploy), readable by every
+  member. See [The Usage page](#the-usage-page).
 - **Scoping** — `groupByWorkspace` (`web/src/lib/workspaceScope.ts`) splits teams and projects
   three ways: in the open workspace → the main list; unhomed, or in a workspace the viewer is not a
   member of → **"Shared with you"**; in another workspace the viewer *does* belong to → hidden
@@ -379,6 +408,8 @@ Web details: [Web → AI assistant](../../04-web/ai-assistant.md); the run machi
 | `20260902130000_drop_personal_workspace_compat.sql` | Drops the view and wrapper (**contract — hold until the new backend revision is live**) |
 | `20260908120000_workspace_billing_provider.sql` | The provider projection on `workspace_subscriptions` (`billing_provider` + `provider_*`), the widened `status` CHECK, partial UNIQUE indexes on `(billing_provider, customer id)` and `(billing_provider, subscription id)` (so two workspaces cannot share one subscription), the `billing_webhook_events` idempotency ledger keyed `(provider, event_id)` (RLS on with **zero policies** — service-role only, deliberately), and the `workspace_payment_failed` notification type. Applied to hosted dev and production 2026-09-22 |
 | `20260904090000_ai_sessions_scope_and_context_rpcs.sql` | `roadmap_ai_sessions.workspace_id` (CASCADE) + `scope` with the one-of CHECK; own-row SELECT RLS on the two AI tables; `roadmap_change_history.session_id` / `run_id`; the three `ai_context_*` read RPCs behind the assistant's overview / search / tasks. Applied to hosted dev and production 2026-09-05 |
+| `20260922120000_workspace_plan_limits.sql` | `plan_rank()`; `plan_limit_keys` + `plan_limits` with the 18-key × 4-plan seed (72 cells; re-runs never overwrite an admin edit); the four complimentary-plan columns on `workspaces` with their CHECKs and the `workspaces_discount_guard` trigger; the write revoke on `workspaces`; `platform_admin_audit_log`; the service-role read functions (`user_default_workspace_id`, `workspace_plan_state`, `workspace_usage_counts`, `workspace_largest_roadmaps`, `entitlement_subject`) and the audited admin writers (`admin_list_workspaces`, `admin_update_plan_limits`, `admin_set_workspace_comp`, `admin_clear_workspace_comp`). New tables: RLS on, **zero policies**. Applied to hosted dev and production 2026-09-22 |
+| `20260922130000_harden_direct_table_writes.sql` | Closes the PostgREST paths around the plan gates and membership. (1) Revokes INSERT, UPDATE, DELETE and TRUNCATE from `anon`/`authenticated` on `workspace_invites`, `workspace_members`, `workspace_subscriptions`, `team_invites` and `project_invites`. (2) `SECURITY INVOKER` guard triggers keyed on `current_user`: `anon`/`authenticated` may not insert `projects` or `teams`, change their `workspace_id` (or `teams.is_personal`), change `roadmaps.project_id` or `owner_id`, or set or change `profiles.is_guest` / `guest_session_id`. (3) Revokes INSERT, UPDATE and TRUNCATE on `roadmap_epics`, `roadmap_features` and `roadmap_tasks` (SELECT for realtime and DELETE unchanged), and EXECUTE on `upsert_full_roadmap`, `link_roadmap_to_project` and `get_or_create_default_project`. Safe because the backend writes all of these as the service role and web, agent and realtime never write them through PostgREST. Independent of `20260922120000`. Applied to hosted dev and production 2026-09-22 |
 
 ## Billing
 
@@ -412,11 +443,353 @@ subscription is live.
 Prices come from env per provider (`STRIPE_PRICE_PRO_MONTHLY` … `_BUSINESS_YEARLY`). The yearly
 price is the annual charge (Pro 120.00/year), not the per-month figure `/pricing` displays.
 
+## Plans & limits
+
+> **⚠️ Built, not in production.** Implemented in the repo and applied to hosted dev on
+> 2026-09-22. The production rollout (both migrations through MCP `apply_migration`, then the
+> backend and web deploys) is pending. This section describes the repo and hosted dev.
+
+A workspace's plan decides how much it may create and which features its writes may use. The
+numbers live in the database, not in code: a super admin changes a limit at `/admin/plans`
+without a deploy, and `/pricing` reads the same table through `GET /api/plans`, so the pricing
+page cannot promise more or less than enforcement allows. Enforcement runs only in the backend,
+in `EntitlementsService`
+([`backend/src/modules/shared/entitlements/`](../../../backend/src/modules/shared/entitlements/)),
+and like the rest of this tier it is **not an authorization layer**. Every check sits after the
+caller's own permission check, so a non-member still gets 403/404 and learns nothing about the
+plan, and passing a plan check grants nothing.
+
+```text
+write request
+   |
+   v
+permission check (project_access / workspace role) --fails--> 403 / 404, plan never read
+   |
+   v
+EntitlementsService
+   |  scope   entitlement_subject(project|team|roadmap) -> workspace | unhomed | exempt
+   |  plan    workspace_plan_state(workspace)              Redis 60 s
+   |  limits  plan_limit_keys + plan_limits                 memo 15 s + Redis 300 s
+   |  usage   workspace_usage_counts / ai_context_roadmap_counts   (finite limits only)
+   v
+allowed  |  403 { error: { code: 'plan_limit', ... } }  |  lookup error -> allowed (fail open)
+```
+
+### The limit keys
+
+Seed values, as `20260922120000` inserts them. The live values are whatever `/admin/plans` last
+saved. A NULL value means unlimited.
+
+| Key | Kind | Free | Pro | Business | Enterprise | Enforced |
+| --- | --- | --- | --- | --- | --- | --- |
+| `members` | count | 10 | unlimited | unlimited | unlimited | yes |
+| `projects` | count | 2 | 10 | unlimited | unlimited | yes |
+| `teams` | count | 2 | 3 | unlimited | unlimited | yes |
+| `roadmap_nodes_per_roadmap` | count | 250 | unlimited | unlimited | unlimited | yes |
+| `ai_messages_monthly` | quota | 50 per workspace | 500 per seat | 2,000 per seat | unlimited ("Negotiated") | **no** |
+| `deliverables` | feature | off | on | on | on | yes |
+| `deliverable_review` | feature | off | on | on | on | yes |
+| `change_requests` | feature | off | on | on | on | yes |
+| `risks` | feature | off | on | on | on | yes |
+| `decisions` | feature | off | on | on | on | yes |
+| `custom_register_fields` | feature | off | off | off | on | **no** |
+| `time_tracking` | feature | off | on | on | on | yes |
+| `private_teams_guests` | feature | off | off | on | on | **no** |
+| `roles_permissions` | feature | off | off | on | on ("Granular") | **no** |
+| `activity_retention_days` | days | 7 | 90 | unlimited | unlimited | yes |
+| `activity_export` | feature | off | off | off | on | **no** |
+| `mcp_server` | feature | off | on | on | on ("Higher limits") | yes |
+| `saml_scim` | feature | off | off | off | on | **no** |
+
+What each count measures: `members` is `workspace_members` rows, plus pending invites at invite
+time; `projects` includes archived projects and excludes personal projects (`personal_projects`);
+`teams` includes archived teams and excludes personal teams (`is_personal`); nodes are epics +
+features + tasks on one roadmap, milestones excluded. Counts ignore status on purpose, so
+archiving cannot be used to dodge a limit. The quoted labels are `display_label` marketing copy,
+which enforcement never reads. A key marked **no** is display-only: `/pricing` shows it, and no
+write path checks it.
+
+### Where the numbers live
+
+| Place | Owns |
+| --- | --- |
+| `plan_limit_keys` | One row per key: `kind` (`count` \| `quota` \| `days` \| `feature`), `label`, `description`, `unit`, `group_key`, `sort_order` |
+| `plan_limits` | One row per (plan, key): typed `int_value` (NULL = unlimited) or `bool_value`, `per_seat` (quotas only), `display_label` (≤ 40 chars), `updated_by`, `updated_at`. A composite FK pins each cell to its key's kind |
+| `ENTITLEMENT_KEYS` ([`entitlement-keys.ts`](../../../backend/src/modules/shared/entitlements/entitlement-keys.ts)) | What only the code can know: whether a key is enforced, what it is counted against, and the editor's floor (`members` ≥ 1) |
+
+Both tables have RLS enabled with **zero policies**, so only the service role reads them;
+`/pricing` goes through the backend, which keeps `updated_by` out of anonymous reads.
+`entitlement-keys.migration-parity.spec.ts` parses the migration and fails if a code key is not
+seeded with the same kind for all four plans. At runtime, a code key missing from the database
+reads as unlimited or enabled and logs `entitlements_drift missing_in_db=…`; a database key the
+code does not know is display-only. New keys and cells arrive only through migrations, because
+the admin writer is UPDATE-only, and re-running the seed never overwrites an admin edit.
+
+**Editing.** `/admin/plans` (`PlanLimitsEditor`) is readable by any active admin and saves only
+for a `super_admin` (`SuperAdminGuard`, listed after `AdminGuard`). `PUT /api/admin/plan-limits`
+calls `admin_update_plan_limits`, which takes an advisory transaction lock, rejects the save with
+**409** `plan_limits_stale` when someone saved after the editor loaded (`base_version` is the
+newest `updated_at`), updates only existing cells, and writes one `plan_limits.updated` audit row
+with before and after. It returns **400** for a kind mismatch, days below 1, members below 1,
+`per_seat` on anything but a quota, an unknown key, a duplicate cell or an empty change. A save
+that makes a cheaper plan more generous than the next plan up returns a warning and still saves.
+
+The web keeps a copy of the seed, `DEFAULT_PLAN_LIMITS`
+([`web/src/lib/planLimits.ts`](../../../web/src/lib/planLimits.ts)), pinned to the migration by a
+test. `/pricing` ([`web/src/lib/pricing.ts`](../../../web/src/lib/pricing.ts)) renders from
+`GET /api/plans` and uses the copy for the first frame and during an API outage.
+
+### The effective plan
+
+The rule is defined once, in the SQL function `workspace_plan_state`. TypeScript reads its
+result and never re-derives it.
+
+```text
+comp_active = is_discounted_free AND (discounted_until IS NULL OR discounted_until > now())
+paid        = subscription plan  while status IN (active, trialing, past_due)
+              free               otherwise, or with no subscription row
+effective   = the higher-ranked of (comp_active ? discounted_plan : free) and paid
+plan_source = complimentary      when comp_active and the comp outranks paid
+              subscription       when paid <> free   (a tie is subscription: they are paying)
+              default            otherwise
+```
+
+Rank is `plan_rank()`: free 0, pro 1, business 2, enterprise 3, and an unknown plan ranks as
+free. A complimentary plan therefore never downgrades a paying customer.
+
+### Complimentary plans
+
+Staff can give a workspace a plan for free (a "comp"). The state is four columns on
+`workspaces`:
+
+| Column | Holds |
+| --- | --- |
+| `is_discounted_free` | `boolean NOT NULL DEFAULT false`; a CHECK keeps it equal to `discounted_plan IS NOT NULL` |
+| `discounted_plan` | `pro` \| `business` \| `enterprise` |
+| `discounted_at` | When the comp started; kept when an existing comp is changed |
+| `discounted_until` | When it ends; NULL means no end |
+
+- **Why on `workspaces`.** Webhooks and the reconcile cron rewrite `workspace_subscriptions` and
+  never touch `workspaces`, so a comp cannot be overwritten by the payment provider.
+- **Who and why are not on the row.** Every member can read `workspaces.*`, so the actor and the
+  note go to `platform_admin_audit_log` (`actor_id`, `action`, `target_type`, `target_id`,
+  `before`, `after`, `note` ≤ 1000 chars), which no browser can read. Actions:
+  `plan_limits.updated`, `workspace_comp.granted`, `workspace_comp.updated`,
+  `workspace_comp.revoked`.
+- **Granting and revoking.** A `super_admin` does it at `/admin/workspaces`
+  (`PUT` / `DELETE /api/admin/workspaces/:id/comp`), which calls `admin_set_workspace_comp` or
+  `admin_clear_workspace_comp`. Both lock the row and write an audit row only when something
+  changed. Granting needs a note of 1–1000 chars, and `until` must be in the future. Revoking is
+  idempotent.
+- **Guarded.** The `workspaces_discount_guard` trigger rejects any `anon` or `authenticated`
+  change to the four columns. It is a second line behind the write revoke on `workspaces`.
+- **Money stays with the owner.** A comp never cancels a subscription; granting one over a live
+  subscription returns the warning `workspace_has_live_subscription`. Billing offers checkout only
+  for plans ranked above an active comp, and refuses the rest with **409**
+  `workspace_complimentary`.
+- **Lapsing.** Once `discounted_until` passes, the comp stops counting, but it stays on the row.
+  The admin list's `comped` filter still shows it so staff can tidy it up.
+
+### Which workspace decides
+
+`entitlement_subject(kind, id)` answers which workspace's plan governs a write. It is read-only
+and never provisions a workspace.
+
+| Subject | Plan comes from |
+| --- | --- |
+| Project | `projects.workspace_id` |
+| Team | `teams.workspace_id`: the team's own workspace, not a project's. In marketplace work the consultant's team and the client's project sit in different workspaces |
+| Roadmap | Linked: its project's answer. Standalone: the owner's default workspace (`user_default_workspace_id`, the same earliest-owner-membership rule as [Where new work lands](#where-new-work-lands)) |
+
+- **Unhomed** (no workspace, not exempt): Free limits. Workspace-scoped counts are skipped,
+  because there is nothing to count.
+- **Exempt:** a row owned by a guest with no workspace, and a create whose
+  `resolveWorkspaceForWrite` returned null (a guest). Guests stay outside every limit until they
+  convert. `20260922130000` stops users from setting `profiles.is_guest` (or
+  `guest_session_id`) on themselves, which would otherwise make their own rows exempt, and stops
+  them from moving projects, teams and roadmaps between workspaces over PostgREST, which would
+  otherwise let them pick the plan that governs a row.
+
+### Over the limit: block new, keep existing
+
+No limit deletes or archives anything. A count check runs only when a write would grow a count,
+so a workspace that ends up over a count limit (after a downgrade, a lapsed comp or an admin
+edit) keeps everything and can keep editing it; only new creations are refused. Feature gates
+work differently: on a plan without a feature, that feature's writes are refused and its reads
+stay open ([What each gate blocks](#what-each-gate-blocks)).
+
+- **Counts** (`members`, `projects`, `teams`): a create passes while `used + adding <= limit`.
+- **Roadmap nodes** use the grandfather rule (`violatesGrandfatheredLimit`): a write is refused
+  only when the new total is over the limit **and** above the previous total. An over-limit
+  roadmap can be edited, reordered and shrunk; it cannot grow. A per-node create counts the stored
+  total plus the nodes it adds. Moving a roadmap into another workspace (link, replace, or unlink
+  to the owner's workspace) is judged from 0 against the destination's plan; a move within one
+  workspace is never counted.
+- **Members:** a new invite spends a seat when it is sent, so it is checked with pending invites
+  counted. Refreshing an invite that is already pending is not checked. At accept time only real
+  members count, and a refused accept leaves the invite pending, to accept again after an
+  upgrade.
+- An unlimited cell never runs a count query, so paid plans pay only for cached lookups.
+
+### What each gate blocks
+
+| Key | Blocked | Stays open |
+| --- | --- | --- |
+| `members` | Sending a new invite, and accepting one, at the cap | Refreshing a pending invite; accepting when already a member; creating a workspace; `provision_default_workspace`; removing members |
+| `projects` | `createProject` and `createProjectFromRoadmap` (guest conversion), which covers MCP `project_create` | Personal-project provisioning; editing, archiving and deleting |
+| `teams` | `createTeam` | Personal-team provisioning; everything on existing teams |
+| `roadmap_nodes_per_roadmap` | Epic, feature and task create and clone; moving a feature to an epic on another roadmap (the feature and its tasks count against the destination); timer quick-create; AI commit and its preview (as a `PLAN_LIMIT` issue); undo and redo of AI changes; JSON patch; `POST /roadmaps/full`; linking, replacing and unlinking a roadmap across workspaces; template instantiate | Any write that does not grow the total |
+| `deliverables`, `deliverable_review`, `change_requests`, `risks`, `decisions` | Every write on that register, deletes included. A deliverable with reviewers, submit, review and reviewer edits need both `deliverables` and `deliverable_review`; decision categories need `decisions` | Every read (list, get, candidates), so a downgraded workspace still sees everything it recorded |
+| `time_tracking` (the team's workspace) | Turning time tracking on for a team; starting, manually creating, editing, deleting and commenting on time logs | Turning it off; pause, resume, stop and review, so running timers can wind down and payouts are not stranded; every read; logs with no team |
+| `mcp_server` | Every MCP tool and resource call, reads included | Connecting and listing tools; the static MCP App shell; prompts. See [Backend → MCP](../../03-backend/mcp.md#plan-gate) |
+| `activity_retention_days` | Nothing is blocked; older rows are hidden (below) | — |
+
+### Activity retention: hide, not purge
+
+`getRetentionCutoff` turns `activity_retention_days` into a cutoff of now minus that many days,
+and three reads apply it as a lower bound:
+
+- the project activity feed (`ActivityService`), whose list response carries
+  `retention: { days, cutoff }` so the page can say why the feed stops;
+- roadmap change history (`RoadmapAiService.listChangeHistory`);
+- task history (`TasksService.getHistory`).
+
+Nothing is deleted, so an upgrade shows the older rows again. The agent's run guard reads the
+change log through the AI context API, which is deliberately not windowed.
+
+### The error contract
+
+A refusal is `PlanLimitException`: **403**, deliberately not 429 (the agent retries 429), 402
+(MCP would flatten it to `INTERNAL`) or 409 (reserved for `STALE_REVISION`). `HttpExceptionFilter`
+nests the payload under `error`:
+
+```json
+{
+  "error": {
+    "code": "plan_limit",
+    "kind": "count",
+    "limit_key": "projects",
+    "label": "Projects",
+    "limit": 2,
+    "used": 2,
+    "plan": "free",
+    "upgrade_plan": "pro",
+    "workspace_id": "…",
+    "workspace_slug": "acme",
+    "context": "create",
+    "message": "Your Free plan includes 2 projects and this workspace has 2. Upgrade to Pro to add more.",
+    "status": 403,
+    "path": "/api/projects"
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | `count` or `feature`; `limit` and `used` are null for a feature |
+| `upgrade_plan` | The cheapest higher plan that would allow it, read from the live matrix; null means no plan does ("Contact sales") |
+| `context` | `invite` \| `accept` \| `create` \| `full_state` \| `link` \| `enable` \| `write`; the web picks its copy from it |
+| `message` | Plain copy that reads correctly for a non-member. The accept message names the workspace and asks the invitee to have an owner upgrade |
+
+Where it surfaces: the web recognises it anywhere
+([`web/src/lib/planLimitErrors.ts`](../../../web/src/lib/planLimitErrors.ts)), raises one
+upgrade toast that links to the Usage page (`PlanLimitBridge`), and the members panel, the create
+screens and a team's time-tracking settings show an inline `PlanLimitNotice`. MCP reports it as
+`PLAN_LIMIT`. The AI commit preview reports it as a `PLAN_LIMIT` validation issue
+([Operations schema](../../05-agent-ai/operations-schema.md)), and the agent treats `plan_limit`
+as final: it explains the limit and never retries or works around it.
+
+### Fail open
+
+- Any non-HTTP error during an entitlement lookup (a repository error, or a table missing because
+  the migration has not reached that database) is logged as `entitlements_lookup_failed` and the
+  write is **allowed**. A broken lookup never blocks a customer. The MCP gate follows the same
+  rule and logs `mcp_plan_gate_lookup_failed`; checkout's complimentary-plan check does too.
+- A key missing from the database (drift) reads as unlimited or enabled.
+- The display endpoints do not pretend. `GET /api/workspaces/:id/usage` answers **503**, which
+  the page explains. `GET /api/plans` answers **503** with `Cache-Control: no-store`, so the edge
+  never caches the failure, and the web falls back to `DEFAULT_PLAN_LIMITS`.
+
+### Caching windows
+
+| What | Where | Window | Refreshed by |
+| --- | --- | --- | --- |
+| Limit matrix | In-process memo, then Redis `cache:v1:entitlements:limit-matrix` | 15 s memo, 300 s Redis | An admin save clears this instance's memo and Redis, purges `/api/plans` at the edge, and repeats the invalidation 1.5 s later. Other instances pick it up when their memo expires (≤ 15 s) |
+| Workspace plan state | Redis `cache:v1:entitlements:plan-state:ws:<id>` | 60 s | Deleted on a comp grant or clear, a billing webhook write and a reconcile correction. Checkout reads it fresh |
+| MCP coarse gate: the user's workspace ids | Redis `cache:v1:entitlements:user-workspaces:user:<id>` | 60 s | Expiry, so a membership change can take up to 60 s. Each workspace's plan is read through the plan-state cache above, so a plan change applies as soon as that key is deleted |
+| Roadmap scope | In-process memo in `RoadmapPlanLimitsService` | 30 s | Expiry |
+| `GET /api/plans` | Cloudflare edge (`PUBLIC_EDGE_SHORT`) | `max-age` 60 s, `s-maxage` 300 s, `stale-while-revalidate` 60 s by default (env-overridable) | Purged on an admin save |
+| Web plan matrix (`usePublicPlanLimits`) | TanStack Query | 5 min stale time | Refetch |
+
+### The Usage page
+
+`/w/<slug>/settings/usage` (`WorkspaceUsagePage`) is a tab in workspace settings, readable by
+every member, and renders `GET /api/workspaces/:id/usage`:
+
+- **Plan:** the effective plan and why (subscription, complimentary with its end date, or
+  default). The billed plan and its status are in the payload for owners and admins only.
+- **Meters** for members (pending invites counted, and the page says so), projects and teams.
+  A meter turns to a warning from 80 %, then "at limit", then "over" for grandfathered usage.
+- **Roadmaps:** the largest roadmap, and every roadmap near, at or over the node limit. A
+  roadmap's name and project appear only when the viewer can open it; otherwise the page shows
+  its size alone.
+- **Features:** the enforced features only, each with "Included" or the cheapest plan that
+  includes it. Display-only keys are left out, because they gate nothing yet.
+- **Retention:** the activity window, worded as hidden, not deleted.
+- **Upgrade:** only an owner gets the button; everyone else is told to ask an owner. A
+  complimentary workspace, or one already on the top plan, gets no call to action.
+
+### HTTP routes
+
+| Method | Path | Who |
+| --- | --- | --- |
+| GET | `/api/plans` | Public, edge-cached. `{ plans, keys, limits, version }`; omits `enforced`, `updated_by` and drift |
+| GET | `/api/workspaces/:workspaceId/usage` | Any member |
+| GET | `/api/admin/plan-limits` | Any active admin: every cell with `updated_at` / `updated_by`, `enforced`, `version`, drift |
+| PUT | `/api/admin/plan-limits` | `super_admin`: `{ changes[1..200], note?, base_version? }` |
+| GET | `/api/admin/workspaces` | Any active admin: `?search=&filter=all\|comped\|paid\|free&page=&page_size=` (≤ 100), each row with usage, plan, comp and `over_limit` |
+| GET | `/api/admin/workspaces/:id` | Any active admin: the row, its five largest roadmaps, and its last 20 audit entries |
+| PUT | `/api/admin/workspaces/:id/comp` | `super_admin`: `{ plan, until?, note }` |
+| DELETE | `/api/admin/workspaces/:id/comp` | `super_admin`: optional note in the body or `?note=` |
+
+Every admin route carries `SupabaseAuthGuard` + `AdminGuard` and `no-store`. Their web pages are
+`/admin/plans` and `/admin/workspaces`, where the edit controls appear only for a `super_admin`.
+
+### Known limitations
+
+- **Concurrent accepts can over-admit by one.** Two invitees accepting the last seat at the same
+  moment can both pass the pre-check. A post-insert rank check removes the later joiner, but it
+  ranks by `joined_at`, which is the transaction start rather than the commit order, so in a
+  narrow window both stay.
+- **Project and team creates are count-then-insert,** so two simultaneous creates at the cap can
+  both land, one over the limit.
+- **Untargeted MCP list tools** (`projects_list`, `search_everything`, `my_tasks_list`, room-keyed
+  chat reads) get only the coarse gate: some workspace the user belongs to includes MCP.
+- **Knowledge search is not windowed.** The knowledge index ingests `project_activity_log`, so
+  the assistant's knowledge search and MCP `project_knowledge_search` can surface activity older
+  than the plan's retention window.
+- **AI messages are not metered.** `ai_messages_monthly` is published and not enforced.
+- **Display-only keys:** `roles_permissions`, `private_teams_guests`, `activity_export`,
+  `saml_scim` and `custom_register_fields` appear on `/pricing` and gate nothing.
+
 ## Code locations
 
 - **Backend:** [`backend/src/modules/execution/workspaces/`](../../../backend/src/modules/execution/workspaces/) —
   service injects `SUPABASE_ADMIN` directly, no repository (the `teams` shape).
   Onboarding wiring: [`backend/src/modules/shared/auth/auth.service.ts`](../../../backend/src/modules/shared/auth/auth.service.ts).
+- **Plan limits (backend):** [`backend/src/modules/shared/entitlements/`](../../../backend/src/modules/shared/entitlements/) —
+  `EntitlementsCoreModule` (the service feature modules import) and the HTTP leaf
+  `EntitlementsModule` (`/api/plans`, usage, the admin editors);
+  [`roadmap-plan-limits.service.ts`](../../../backend/src/modules/execution/roadmaps/services/roadmap-plan-limits.service.ts)
+  (node limit and retention for roadmap writes);
+  [`delivery-plan-gate.ts`](../../../backend/src/modules/execution/delivery/delivery-plan-gate.ts);
+  [`mcp-plan-gate.ts`](../../../backend/src/modules/shared/mcp/mcp-plan-gate.ts);
+  [`super-admin.guard.ts`](../../../backend/src/common/guards/super-admin.guard.ts).
+- **Plan limits (web):** [`web/src/lib/planLimits.ts`](../../../web/src/lib/planLimits.ts),
+  [`web/src/lib/planLimitErrors.ts`](../../../web/src/lib/planLimitErrors.ts),
+  `web/src/components/workspace/settings/WorkspaceUsagePage.tsx`,
+  `web/src/components/billing/` (`PlanLimitNotice`, `PlanLimitBridge`),
+  `web/src/components/admin/plans/`, `web/src/components/admin/workspaces/`.
 - **Web:** `web/src/components/workspace/`, `web/src/routes/workspace/`,
   [`web/src/lib/workspaceScope.ts`](../../../web/src/lib/workspaceScope.ts),
   [`web/src/stores/workspaceStore.ts`](../../../web/src/stores/workspaceStore.ts),
@@ -426,4 +799,5 @@ price is the annual charge (Pro 120.00/year), not the per-month figure `/pricing
 
 - [Teams & Time](../teams-and-time/README.md) — what a team is, and why team membership is also not project access.
 - [Data → schema overview](../../07-data-and-db/schema-overview.md) — the workspace tables in the wider schema.
-- [Proposals → pricing tiers](../../13-proposals/pricing-tiers-and-add-ons.md) — the unbuilt monetization layer this scaffold anticipates.
+- [Proposals → pricing tiers](../../13-proposals/pricing-tiers-and-add-ons.md) — the monetization design; its entitlement and limit phases (B1, B3) are the [Plans & limits](#plans--limits) layer above, and its AI metering and add-ons are still unbuilt.
+- [Backend → MCP](../../03-backend/mcp.md#plan-gate) — the `mcp_server` gate in detail.

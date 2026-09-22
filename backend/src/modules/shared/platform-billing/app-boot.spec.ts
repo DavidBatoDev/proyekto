@@ -8,6 +8,9 @@ import { SeatSyncService } from './seat-sync.service';
 import { PlatformBillingService } from './platform-billing.service';
 import { BillingWebhookService } from './billing-webhook.service';
 import { BillingReconcileService } from './billing-reconcile.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
+import { EntitlementsAdminService } from '../entitlements/services/entitlements-admin.service';
+import { WorkspaceUsageService } from '../entitlements/services/workspace-usage.service';
 
 /**
  * Compiles the REAL AppModule.
@@ -20,6 +23,10 @@ import { BillingReconcileService } from './billing-reconcile.service';
  *
  * It also pins the unconfigured contract: with no provider credentials the
  * registry has no active provider rather than a half-configured one.
+ *
+ * Entitlements repeats the same shape (EntitlementsCoreModule imported by
+ * WorkspacesModule and PlatformBillingModule, the HTTP-only EntitlementsModule
+ * importing WorkspacesModule), so the same compile proves it too.
  */
 describe('AppModule wiring — platform billing', () => {
   jest.setTimeout(60_000);
@@ -41,6 +48,22 @@ describe('AppModule wiring — platform billing', () => {
     ).toBeDefined();
     expect(
       moduleRef.get(PLATFORM_BILLING_REPOSITORY, { strict: false }),
+    ).toBeDefined();
+
+    await moduleRef.close();
+  });
+
+  it('compiles the entitlements modules with no dependency cycle', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    expect(moduleRef.get(EntitlementsService, { strict: false })).toBeDefined();
+    expect(
+      moduleRef.get(EntitlementsAdminService, { strict: false }),
+    ).toBeDefined();
+    expect(
+      moduleRef.get(WorkspaceUsageService, { strict: false }),
     ).toBeDefined();
 
     await moduleRef.close();

@@ -1,4 +1,5 @@
 import { RoadmapAiService } from './roadmap-ai.service';
+import { allowAllPlanLimits } from './__roadmap-plan-limits-test-kit-spec';
 
 describe('RoadmapAiService search scoring', () => {
   const createService = () =>
@@ -25,6 +26,7 @@ describe('RoadmapAiService search scoring', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     ) as unknown as {
       tokenizeSearchQuery: (query: string) => string[];
       normalizeSearchText: (value: string) => string;
@@ -247,6 +249,7 @@ describe('RoadmapAiService actor + assignee context', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
 
     return { service, roadmapsRepo, from, previewStore };
@@ -477,6 +480,7 @@ describe('RoadmapAiService context timing logs', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
 
     return service;
@@ -627,6 +631,7 @@ describe('RoadmapAiService context search lookup', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
 
     return { service, roadmapsRepo, previewStore };
@@ -898,6 +903,7 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
     return { service, previewStore, roadmapsRepo, patchRepo };
   };
@@ -1084,6 +1090,7 @@ describe('RoadmapAiService commit attribution', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       audit as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
     const warn = jest
       .spyOn((service as any).logger, 'warn')
@@ -1323,6 +1330,7 @@ describe('RoadmapAiService preview durability', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
 
     const preview = await service.preview(
@@ -1352,6 +1360,7 @@ describe('RoadmapAiService authz cache hardening', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     ) as unknown as {
       authzDecisionCache: Map<string, { expiresAtMs: number; allowed: true }>;
       buildAuthzDecisionCacheKey: (roadmapId: string, userId: string) => string;
@@ -1441,6 +1450,7 @@ describe('RoadmapAiService operation semantics parity', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
 
   it('validates task status enums consistently', () => {
@@ -1780,6 +1790,7 @@ describe('RoadmapAiService task assignees', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     ) as unknown as Internals;
 
   const stateWithTask = (task: Record<string, unknown>) => ({
@@ -2218,6 +2229,7 @@ describe('RoadmapAiService commit assignment side effects', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       notifier as never,
+      allowAllPlanLimits(),
     );
     const warn = jest
       .spyOn((service as any).logger, 'warn')
@@ -2413,6 +2425,7 @@ describe('RoadmapAiService context reads expose the full assignee set', () => {
       { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
       { log: jest.fn() } as never,
       { notifyNewlyAssigned: jest.fn().mockResolvedValue(undefined) } as never,
+      allowAllPlanLimits(),
     );
     return { service };
   };

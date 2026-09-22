@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { TeamsService } from './teams.service';
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 
 /**
  * The Overview tab widened `updateTeam` from owner-only to owner-or-admin so a
@@ -81,7 +82,11 @@ describe('TeamsService — updateTeam permissions', () => {
       { createNotification: jest.fn() } as any,
       { send: jest.fn() } as any,
       { get: jest.fn() } as any,
-      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
+      {
+        resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1'),
+        resolveWorkspaceForCreate: jest.fn().mockResolvedValue('ws-1'),
+      } as any,
+      allowAllEntitlements(),
     );
 
     return { service, captured };

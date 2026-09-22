@@ -1,4 +1,10 @@
+/* eslint-disable @typescript-eslint/unbound-method --
+ * The entitlements double is a jest.Mocked object; passing its members to
+ * expect() is an identity check on the mock, never a call, so `this` scoping
+ * is irrelevant.
+ */
 import { NotFoundException } from '@nestjs/common';
+import { allowAllEntitlements } from '../entitlements/__entitlements-test-kit-spec';
 import {
   buildEvent,
   buildFakeProvider,
@@ -37,13 +43,23 @@ function buildDeps(
       .mockResolvedValue({ id: 'ws-1', name: 'Acme', slug: 'acme' }),
   };
   const notifications = { createNotification: jest.fn().mockResolvedValue({}) };
+  const entitlements = allowAllEntitlements();
   const service = new BillingWebhookService(
     buildRegistry(provider) as never,
     repo as never,
     notifications as never,
+    entitlements,
   );
-  return { service, repo, provider, notifications };
+  return { service, repo, provider, notifications, entitlements };
 }
+
+/** The complimentary-plan columns. They live on workspaces, never on a subscription patch. */
+const COMP_KEYS = [
+  'is_discounted_free',
+  'discounted_plan',
+  'discounted_at',
+  'discounted_until',
+];
 
 const KEY = { provider: 'polar', event_id: 'evt_1' };
 
@@ -407,5 +423,110 @@ describe('BillingWebhookService — dunning', () => {
     await service.dispatch(provider, failed);
 
     expect(repo.updateSubscription).not.toHaveBeenCalled();
+  });
+});
+
+describe('BillingWebhookService — plan-state invalidation', () => {
+  it('drops the cached plan state after a subscription write', async () => {
+    const { service, provider, entitlements } = buildDeps();
+
+    await service.dispatch(
+      provider,
+      buildEvent({ kind: 'subscription_changed', subscriptionId: 'sub_1' }),
+    );
+
+    expect(entitlements.invalidateWorkspace).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('leaves the cache alone when the write was discarded as stale', async () => {
+    const { service, provider, repo, entitlements } = buildDeps();
+    repo.updateSubscription.mockResolvedValue(null);
+
+    await service.dispatch(
+      provider,
+      buildEvent({ kind: 'subscription_changed', subscriptionId: 'sub_1' }),
+    );
+
+    expect(entitlements.invalidateWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('drops the cached plan state when a subscription ends', async () => {
+    const { service, provider, entitlements } = buildDeps();
+
+    await service.dispatch(
+      provider,
+      buildEvent({
+        kind: 'subscription_ended',
+        subscriptionId: 'sub_1',
+        canceledAt: '2026-09-10T00:00:00.000Z',
+      }),
+    );
+
+    expect(entitlements.invalidateWorkspace).toHaveBeenCalledWith('ws-1');
+  });
+
+  it('still processes the event when invalidation fails', async () => {
+    // The write already happened and the cache expires on its own; failing
+    // the event would only make the provider retry a finished write.
+    const { service, provider, entitlements } = buildDeps();
+    entitlements.invalidateWorkspace.mockRejectedValue(new Error('redis down'));
+
+    await expect(
+      service.dispatch(
+        provider,
+        buildEvent({ kind: 'subscription_changed', subscriptionId: 'sub_1' }),
+      ),
+    ).resolves.toBe('processed');
+  });
+
+  it('does not invalidate on a payment event that writes only metadata', async () => {
+    const { service, provider, repo, entitlements } = buildDeps({
+      record: buildRecord({ metadata: { dunning_since: '2026-09-01' } }),
+    });
+
+    await service.dispatch(
+      provider,
+      buildEvent({
+        kind: 'payment_succeeded',
+        customerId: 'cus_1',
+        subscriptionId: 'sub_1',
+      }),
+    );
+
+    expect(repo.updateSubscription).toHaveBeenCalled();
+    expect(entitlements.invalidateWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe('BillingWebhookService — complimentary plans are out of reach', () => {
+  it('never writes a comp column, whatever the event', async () => {
+    // A comp lives on the workspaces row; a webhook that could touch it could
+    // clear a comp a staff member granted.
+    const events = [
+      buildEvent({ kind: 'subscription_changed', subscriptionId: 'sub_1' }),
+      buildEvent({
+        kind: 'subscription_ended',
+        subscriptionId: 'sub_1',
+        canceledAt: '2026-09-10T00:00:00.000Z',
+      }),
+      buildEvent({
+        kind: 'checkout_completed',
+        workspaceId: 'ws-1',
+        subscriptionId: 'sub_1',
+        customerId: 'cus_1',
+      }),
+    ];
+    for (const event of events) {
+      const { service, provider, repo } = buildDeps({
+        record: buildRecord({ billing_provider: 'polar' }),
+      });
+      await service.dispatch(provider, event);
+      expect(repo.updateSubscription).toHaveBeenCalled();
+      for (const [, patch] of repo.updateSubscription.mock.calls) {
+        for (const key of COMP_KEYS) {
+          expect(patch).not.toHaveProperty(key);
+        }
+      }
+    }
   });
 });
