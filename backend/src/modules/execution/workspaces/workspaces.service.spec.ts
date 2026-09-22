@@ -94,12 +94,26 @@ function buildSupabase(handlers: {
   };
 }
 
-function buildService(supabase: unknown) {
+/**
+ * A stand-in for SeatSyncService. Returned so a test can assert whether a
+ * membership change pushed a new seat quantity to Stripe — the two hooks are
+ * easy to drop in a refactor and impossible to notice missing, because the only
+ * symptom is an invoice that is quietly wrong.
+ */
+function buildSeatSync() {
+  return { syncSeatsBounded: jest.fn().mockResolvedValue(undefined) };
+}
+
+function buildService(
+  supabase: unknown,
+  seatSync: { syncSeatsBounded: jest.Mock } = buildSeatSync(),
+) {
   return new WorkspacesService(
     supabase as never,
     { createNotification: jest.fn() } as never,
     { send: jest.fn().mockResolvedValue({ sent: true }) } as never,
     { get: jest.fn() } as never,
+    seatSync as never,
   );
 }
 
@@ -486,5 +500,116 @@ describe('WorkspacesService - slug', () => {
     });
     expect(created.previous_slugs).toEqual([]);
     expect(created.slug).toBe('acme');
+  });
+});
+
+describe('WorkspacesService — seat sync hooks', () => {
+  /**
+   * Seats are COUNT(workspace_members), so exactly the paths that add or remove
+   * a membership row must push a new quantity to Stripe. These four tests exist
+   * because a dropped hook has no visible symptom: the product keeps working
+   * and only the invoice is quietly wrong.
+   *
+   * Note there is a fifth path these cannot cover — provision_default_workspace()
+   * inserts an owner row inside Postgres — which is why the reconcile cron is
+   * required rather than merely prudent.
+   */
+  function buildWithMembers(owners: string[], viewerRole: string) {
+    let membershipCall = 0;
+    const seatSync = { syncSeatsBounded: jest.fn().mockResolvedValue(undefined) };
+    const supabase = buildSupabase({
+      onTable: (table) => {
+        if (table === 'workspaces') return { maybeSingle: { data: WORKSPACE } };
+        if (table === 'workspace_members') {
+          return {
+            maybeSingle: {
+              data: { role: membershipCall++ === 0 ? viewerRole : 'member' },
+              error: null,
+            },
+            single: {
+              data: { workspace_id: 'ws-1', user_id: 'user-target', role: 'admin' },
+              error: null,
+            },
+            list: { data: owners.map((id) => ({ user_id: id })), error: null },
+          };
+        }
+        return {};
+      },
+    });
+    return { service: buildService(supabase, seatSync), seatSync };
+  }
+
+  it('syncs seats when a member is removed', async () => {
+    const { service, seatSync } = buildWithMembers([OWNER, 'other'], 'owner');
+    await service.removeMember('ws-1', 'user-target', OWNER);
+    expect(seatSync.syncSeatsBounded).toHaveBeenCalledWith(
+      'ws-1',
+      'member_removed',
+    );
+  });
+
+  it('does not sync seats on a role change — every role is one seat', async () => {
+    const { service, seatSync } = buildWithMembers([OWNER, 'other'], 'owner');
+    await service.updateMember('ws-1', 'user-target', OWNER, {
+      role: 'admin',
+    });
+    expect(seatSync.syncSeatsBounded).not.toHaveBeenCalled();
+  });
+
+  it('syncs seats when an invite is accepted', async () => {
+    const seatSync = { syncSeatsBounded: jest.fn().mockResolvedValue(undefined) };
+    const supabase = buildSupabase({
+      onTable: (table) => {
+        if (table === 'workspace_invites') {
+          return {
+            maybeSingle: {
+              data: {
+                id: 'inv-1',
+                workspace_id: 'ws-1',
+                invitee_id: OWNER,
+                status: 'pending',
+                role: 'member',
+              },
+            },
+            single: { data: { id: 'inv-1', status: 'accepted' } },
+          };
+        }
+        return {};
+      },
+    });
+    await buildService(supabase, seatSync).respondInvite('inv-1', OWNER, {
+      status: 'accepted',
+    });
+    expect(seatSync.syncSeatsBounded).toHaveBeenCalledWith(
+      'ws-1',
+      'member_joined',
+    );
+  });
+
+  it('does not sync seats when an invite is declined', async () => {
+    const seatSync = { syncSeatsBounded: jest.fn().mockResolvedValue(undefined) };
+    const supabase = buildSupabase({
+      onTable: (table) => {
+        if (table === 'workspace_invites') {
+          return {
+            maybeSingle: {
+              data: {
+                id: 'inv-1',
+                workspace_id: 'ws-1',
+                invitee_id: OWNER,
+                status: 'pending',
+                role: 'member',
+              },
+            },
+            single: { data: { id: 'inv-1', status: 'declined' } },
+          };
+        }
+        return {};
+      },
+    });
+    await buildService(supabase, seatSync).respondInvite('inv-1', OWNER, {
+      status: 'declined',
+    });
+    expect(seatSync.syncSeatsBounded).not.toHaveBeenCalled();
   });
 });

@@ -91,6 +91,14 @@ vi.mock("@/hooks/useWorkspaceQueries", () => ({
 	useCreateWorkspaceMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
+// The remove-confirm now carries SeatChangeNotice, which reads the workspace's
+// billing summary. Stubbed rather than provided so this panel's tests stay
+// about membership: a real useQuery here would need a QueryClientProvider and
+// would couple the member list to the billing API.
+vi.mock("@/hooks/useBilling", () => ({
+	useBillingSummaryQuery: () => ({ data: undefined, isLoading: false }),
+}));
+
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({
 		success: mocks.toastSuccess,

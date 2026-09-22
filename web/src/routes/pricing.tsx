@@ -20,19 +20,19 @@ export const Route = createFileRoute("/pricing")({
 const FAQ = [
 	{
 		q: "What counts as a seat?",
-		a: "Anyone in your workspace. Free holds up to 10 people; on a paid plan you add as many as you like and are billed for each. Teams, projects and roadmaps are not seats, and someone with access to a single shared roadmap is not one either.",
+		a: "Every member of your workspace, including you — so a workspace you run on your own is one seat. Teams, projects and roadmaps are not seats, and neither is someone who reaches a shared project without joining your workspace: a client or an outside consultant costs you nothing. Somebody who belongs to two workspaces is a seat in each, and each workspace pays for its own people.",
 	},
 	{
 		q: "What is an AI message?",
 		a: "One thing you say to the assistant. Its own follow-up work — reading the roadmap, drafting the change, applying it — is part of that same message, not extra ones.",
 	},
 	{
-		q: "What happens when I hit a limit on Free?",
-		a: "Nothing is deleted and nothing locks. You keep everything you have built and read it as normal; creating past the limit is what waits for an upgrade.",
+		q: "What happens to my work if I move to a smaller plan?",
+		a: "Nothing is deleted and nothing locks. You keep everything you have built and can read it as normal; the features above your new plan stop being editable rather than disappearing.",
 	},
 	{
 		q: "Can I change plans later?",
-		a: "Yes, in either direction, and a mid-cycle change is prorated. Downgrading keeps your data — the features above the new plan stop being editable rather than disappearing.",
+		a: "Yes, in either direction, and changing plan is prorated. Adding or removing people works differently: on monthly billing a seat change lands on your next invoice with nothing charged or credited today, and on yearly billing you are charged or credited for the rest of your term. Yearly credit goes toward future invoices rather than back to your card.",
 	},
 	{
 		q: "How do I pay from the mobile app?",
@@ -41,6 +41,10 @@ const FAQ = [
 	{
 		q: "Do you offer discounts?",
 		a: "Yearly billing is the discount, and it is on the switch above. Talk to us if you are a nonprofit or an early-stage startup.",
+	},
+	{
+		q: "What currency are these prices in?",
+		a: "US dollars, and they exclude any tax that applies where you are. VAT or GST is calculated at checkout and shown before you pay.",
 	},
 ];
 

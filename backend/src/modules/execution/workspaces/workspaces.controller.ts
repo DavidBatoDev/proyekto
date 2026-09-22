@@ -8,7 +8,9 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
+import { UserThrottlerGuard } from '../../../common/guards/user-throttler.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import { WorkspacesService } from './workspaces.service';
@@ -30,7 +32,12 @@ export class WorkspacesController {
     return this.workspaces.listMyWorkspaces(user.id);
   }
 
+  // Rate-limited per user, not because creating a workspace is expensive but
+  // because it is free, unbounded, and each one seeds a subscription row — so
+  // any future per-workspace quota would be trivially reset by creating another.
   @Post()
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateWorkspaceDto,

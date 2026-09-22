@@ -471,6 +471,68 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   MCP_CHAT_WRITE_ENABLED?: string;
+
+  // ── Platform billing ─────────────────────────────────────────────────
+  // Provider-neutral: the payment provider sits behind BillingProvider, and
+  // each provider is configured by its own credentials. Billing is on wherever
+  // the active provider is configured; with no credentials every billing path
+  // early-returns and nothing can reach the network — that is an unconfigured
+  // environment, not a feature gate.
+  //
+  // Named platform-billing, not billing: "billing" already means contract
+  // billing period across the marketplace modules.
+
+  // Which provider NEW checkouts go through. Existing subscriptions keep using
+  // the provider recorded on their row, so changing this never strands a
+  // paying workspace. stripe | polar | paddle, default 'stripe'; an unknown value
+  // fails boot in BillingProviderRegistry (an empty one means the default).
+  @IsOptional()
+  @IsString()
+  BILLING_PROVIDER?: string;
+
+  // ── Stripe adapter ──
+  @IsOptional()
+  @IsString()
+  STRIPE_SECRET_KEY?: string;
+
+  // The signing secret of ONE Stripe webhook endpoint. Test mode and live mode
+  // must be separate endpoints with separate secrets, or events from the other
+  // mode arrive here, fail to resolve a workspace, and retry for three days.
+  @IsOptional()
+  @IsString()
+  STRIPE_WEBHOOK_SECRET?: string;
+
+  // Price ids, not secrets — they are public in most Stripe integrations, so
+  // they travel as plain env vars and Secret Manager stays small.
+  //
+  // CAREFUL: the pricing page shows a yearly plan as a PER-MONTH figure
+  // ("$10/user/month, billed yearly"), so the yearly Price object is
+  // unit_amount 12000 with interval 'year', not 1000. Wiring the monthly
+  // amount to a yearly price undercharges by 12x. plan-catalog.spec.ts
+  // pins the interval of each of these.
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_PRO_MONTHLY?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_PRO_YEARLY?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_BUSINESS_MONTHLY?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_BUSINESS_YEARLY?: string;
+
+  // How long a request may wait for a seat-quantity push to the provider before it
+  // gives up and leaves the row for the reconcile cron. Bounded rather than
+  // detached because Cloud Run can freeze instance CPU once the response is
+  // sent, so a fire-and-forget promise would routinely never run.
+  @IsOptional()
+  @IsNumber()
+  PLATFORM_BILLING_SEAT_SYNC_BOUND_MS?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

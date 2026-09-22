@@ -1,6 +1,6 @@
 # Workspaces
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-09-22 · **Status:** current
 
 A **workspace** is the top-level organizational and billing boundary: it owns teams and
 projects, and `workspace_members` is the billable seat pool. It is deliberately **not** an
@@ -53,7 +53,7 @@ most important fact on this page: the organizations proposal's fan-out design wa
 | `workspace_slug_history` | `slug` **PK** → `workspace_id` (**CASCADE**), `replaced_at`. A renamed workspace's old handles, kept so old links redirect (GitHub model). Renaming back to an own old handle reclaims it; another workspace can never take it. RLS: members read their workspace's rows, which is how `previous_slugs` rides the membership list |
 | `workspace_reserved_slugs` | `slug` **PK**, `note`. The single source of truth for handles a workspace may not take: everything that is a route name under `/w/<slug>/` (`settings`, `teams`, `dashboard`, `members`, `billing`, `time`, `my-logs`, …), every top-level route name, and the usual `admin`/`api`/`www`/`login`… set. Publicly readable |
 | `workspace_members` | The seat pool. `workspace_id` + `user_id` + `role` (`owner` \| `admin` \| `member`) + `joined_at`, `UNIQUE (workspace_id, user_id)` |
-| `workspace_subscriptions` | `workspace_id` **PK** (1:1), `plan` (`free` \| `pro` \| `business` \| `enterprise`), `status` (`active` \| `trialing` \| `past_due` \| `canceled`), nullable `seat_limit`, period columns, `metadata` jsonb |
+| `workspace_subscriptions` | `workspace_id` **PK** (1:1), `plan` (`free` \| `pro` \| `business` \| `enterprise`), `status` (a provider-neutral vocabulary since `20260908120000`: `active` \| `trialing` \| `past_due` \| `canceled` \| `incomplete` \| `incomplete_expired` \| `unpaid` \| `paused` — each payment-provider adapter maps onto it), nullable `seat_limit`, period columns, `metadata` jsonb, and the provider projection — `billing_provider` (`stripe` \| `polar` \| `paddle`, NULL until first checkout), `provider_customer_id`, `provider_subscription_id`, `provider_subscription_item_id`, `provider_price_id`, `billing_interval`, `cancel_at_period_end`, `canceled_at`, `trial_end`, `provider_updated_at` (the webhook ordering key), `last_provider_event_id`. Still **no seat counter** |
 | `workspace_invites` | Structural mirror of `team_invites` — both `invitee_id` and `invitee_email`, `role`, `status` (`pending`/`accepted`/`declined`/`cancelled`), plus a profile-insert reconciliation trigger |
 
 Two facts the schema enforces by omission:
@@ -243,6 +243,11 @@ All routes carry `SupabaseAuthGuard` at the controller. Base `/api/workspaces`.
 | DELETE | `/api/workspaces/:id/ai-sessions/:sessionId` | The thread's owner |
 | GET | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner |
 | POST | `/api/workspaces/:id/ai-sessions/:sessionId/messages` | The thread's owner (the web persists each turn; `metadata` is capped at 64 KB) |
+| GET | `/api/workspaces/:workspaceId/billing` | Owner or admin — plan, seats used vs billed, next invoice, payment method |
+| POST | `/api/workspaces/:workspaceId/billing/checkout-session` | **Owner only** — `{ plan: pro\|business, interval: month\|year }`; relative return paths only |
+| POST | `/api/workspaces/:workspaceId/billing/portal-session` | **Owner only** — the owning provider's customer portal |
+| POST | `/api/platform-billing/webhooks/:provider` | Public; authenticated by the provider's signature over the raw body |
+| POST | `/api/platform-billing/cron/reconcile` | Public; `CronSecretGuard` (`MEETINGS_CRON_SECRET`) |
 
 `me/invites` is declared **before** the `:id` routes so Nest's matcher does not read `me` as a
 workspace id. The eight `ai-sessions` routes live in `RoadmapsModule`
@@ -282,8 +287,15 @@ projects, rates, and payouts with it, and that is not a rename. There is no move
   full-screen overlay by `?assistant=full` on `/w/<slug>/dashboard` (the route owns the search
   param, so it survives a refresh). Threads are bound to the open workspace; see
   [AI assistant](#ai-assistant).
-- **Billing is a placeholder.** It renders the plan label and seats-used and nothing else — there
-  is no payment processor, no checkout, and no enforcement anywhere in the product.
+- **Billing is built but has no payment provider configured in production.**
+  `/w/<slug>/settings/billing` shows the plan and seats in use; where a provider is configured it
+  also shows what the provider is billing (when that differs), the estimated next invoice, the
+  payment method and any dunning state, and owners can start a subscription through the
+  provider's hosted checkout and manage everything else in its customer portal. Without provider
+  credentials the page says no plans are available for purchase. Owner-only for the write paths,
+  read-only for admins, invisible to members. **No product cap is enforced anywhere** — the page
+  deliberately never renders `seat_limit`. See [Billing](#billing) and
+  [Pricing tiers & add-ons](../../13-proposals/pricing-tiers-and-add-ons.md).
 - **Scoping** — `groupByWorkspace` (`web/src/lib/workspaceScope.ts`) splits teams and projects
   three ways: in the open workspace → the main list; unhomed, or in a workspace the viewer is not a
   member of → **"Shared with you"**; in another workspace the viewer *does* belong to → hidden
@@ -365,7 +377,40 @@ Web details: [Web → AI assistant](../../04-web/ai-assistant.md); the run machi
 | `20260902090450_seed_prodigitality_workspace.sql` | One hand-reviewed organizational seed: creates "Prodigitality Workspace" from the Prodigitality Services Inc. team (14 members with team roles and join dates carried over; the team and its 17 attached projects homed there). Keyed on team name + owner email; a no-op wherever that team does not exist (hosted dev). Must run AFTER the backfill so the owner's unrelated teams and projects stay in his personal workspace |
 | `20260902090500_rename_personal_workspaces_to_personal_projects.sql` | The rename + compat view + wrapper function (expand) |
 | `20260902130000_drop_personal_workspace_compat.sql` | Drops the view and wrapper (**contract — hold until the new backend revision is live**) |
+| `20260908120000_workspace_billing_provider.sql` | The provider projection on `workspace_subscriptions` (`billing_provider` + `provider_*`), the widened `status` CHECK, partial UNIQUE indexes on `(billing_provider, customer id)` and `(billing_provider, subscription id)` (so two workspaces cannot share one subscription), the `billing_webhook_events` idempotency ledger keyed `(provider, event_id)` (RLS on with **zero policies** — service-role only, deliberately), and the `workspace_payment_failed` notification type. Applied to hosted dev and production 2026-09-22 |
 | `20260904090000_ai_sessions_scope_and_context_rpcs.sql` | `roadmap_ai_sessions.workspace_id` (CASCADE) + `scope` with the one-of CHECK; own-row SELECT RLS on the two AI tables; `roadmap_change_history.session_id` / `run_id`; the three `ai_context_*` read RPCs behind the assistant's overview / search / tasks. Applied to hosted dev and production 2026-09-05 |
+
+## Billing
+
+Per-seat subscriptions on the Linear model: every `workspace_members` row is one seat, and seats
+used is always `COUNT(workspace_members)`. The backend module is
+`backend/src/modules/shared/platform-billing/` ("platform" because *billing* already means the
+contract billing period in the marketplace modules).
+
+**Provider-neutral.** The payment provider sits behind the `BillingProvider` interface
+(`providers/billing-provider.ts`); Stripe is the only adapter today
+(`providers/stripe/stripe-billing.provider.ts`). Seat policy, webhook idempotency, the monotonic
+write guard, "an unknown price never downgrades a plan", dunning and reconciliation live in the
+neutral services and are written once. `BillingProviderRegistry.active()` is the provider new
+checkouts use (`BILLING_PROVIDER`, default `stripe`); `get(row.billing_provider)` is the provider
+that owns an existing subscription, so changing `BILLING_PROVIDER` never strands a paying workspace.
+A provider is configured by its credentials alone — there is no feature flag.
+
+| Seat change | Policy | Stripe spelling |
+| --- | --- | --- |
+| Monthly, add or remove | `next_invoice` — nothing charged or credited now | `none` |
+| Annual, add | `charge_now` — prorated remainder invoiced immediately | `always_invoice` |
+| Annual, remove | `credit_next_invoice` — credit to future invoices, never refunded | `create_prorations` |
+
+Seat sync runs, bounded to ~2 s and never throwing, after an invite is accepted and after a member
+is removed. `provision_default_workspace()` writes memberships inside Postgres where no hook can
+see them, so the hourly reconcile cron (`POST /api/platform-billing/cron/reconcile`,
+`MEETINGS_CRON_SECRET`) is required, not optional. Webhooks arrive at
+`POST /api/platform-billing/webhooks/:provider`. Deleting a workspace is refused (409) while its
+subscription is live.
+
+Prices come from env per provider (`STRIPE_PRICE_PRO_MONTHLY` … `_BUSINESS_YEARLY`). The yearly
+price is the annual charge (Pro 120.00/year), not the per-month figure `/pricing` displays.
 
 ## Code locations
 

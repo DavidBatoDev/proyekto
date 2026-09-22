@@ -1,5 +1,6 @@
 import { Loader2, MailWarning, Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { SeatChangeNotice } from "@/components/billing/SeatChangeNotice";
 import { AppDialog } from "@/components/common/AppDialog";
 import { useToast } from "@/hooks/useToast";
 import { useWorkspaceInviteMutation } from "@/hooks/useWorkspaceQueries";
@@ -229,6 +230,11 @@ function WorkspaceInviteDialogInner({
 					Anyone without a Proyekto account yet will find the invitation waiting
 					when they sign up with that address.
 				</p>
+
+				{/* A seat is consumed on ACCEPTANCE, not on invitation, so the cost of
+				    this action lands days later when other people click a link. Say so
+				    here, where the decision is actually made. */}
+				<SeatChangeNotice reason="invite" />
 			</div>
 		</AppDialog>
 	);

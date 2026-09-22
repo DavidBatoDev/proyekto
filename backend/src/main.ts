@@ -1,4 +1,5 @@
 import { NestFactory, Reflector } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import type { CorsOptionsDelegate } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ConfigService } from '@nestjs/config';
@@ -19,7 +20,18 @@ import {
 } from './common/activity/activity-context';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true registers Nest's body parsers with a `verify` callback that
+  // stashes the untouched buffer on req.rawBody. Parsing is NOT disabled and no
+  // other route changes shape — but billing webhooks cannot verify a provider
+  // signature without it, so this flag is load-bearing for payment security.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+  // Provider invoice payloads with many line items exceed body-parser's 100kb
+  // default, and a 413 makes the provider retry the same event for days.
+  // useBodyParser re-applies through the same options path, so the rawBody
+  // capture above survives this call.
+  app.useBodyParser('json', { limit: '2mb' });
   const config = app.get(ConfigService);
 
   // Security & performance middleware

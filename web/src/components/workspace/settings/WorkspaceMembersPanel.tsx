@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { Loader2, Mail, UserPlus, Users, X } from "lucide-react";
 import { useState } from "react";
 import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
+import { SeatChangeNotice } from "@/components/billing/SeatChangeNotice";
 import { workspaceMemberName } from "@/components/workspace/settings/memberName";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
@@ -243,6 +244,9 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 						<h2 className="text-sm font-semibold text-foreground">
 							Pending invitations
 						</h2>
+						<span className="text-xs text-muted-foreground">
+							· not billed until accepted
+						</span>
 					</div>
 					{invitesQuery.isLoading ? (
 						<div className="flex items-center gap-2 py-6 text-muted-foreground">
@@ -295,9 +299,16 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 				open={pendingRemoval !== null}
 				title="Remove member"
 				message={
-					pendingRemoval
-						? `${workspaceMemberName(pendingRemoval)} will lose access to this workspace. Their project access is granted per project and is not touched by this. You can invite them again at any time.`
-						: undefined
+					pendingRemoval ? (
+						<>
+							<span>
+								{workspaceMemberName(pendingRemoval)} will lose access to this
+								workspace. Their project access is granted per project and is
+								not touched by this. You can invite them again at any time.
+							</span>
+							<SeatChangeNotice workspace={workspace} reason="remove" />
+						</>
+					) : undefined
 				}
 				confirmLabel="Remove member"
 				tone="danger"

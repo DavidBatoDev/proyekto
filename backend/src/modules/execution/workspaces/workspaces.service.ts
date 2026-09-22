@@ -16,6 +16,7 @@ import {
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { SeatSyncService } from '../../shared/platform-billing/seat-sync.service';
 import { buildWorkspaceInviteEmail } from './workspace-invite-email.template';
 import { WORKSPACE_INVITES_PATH } from './workspace-invites-path';
 import {
@@ -62,10 +63,34 @@ export interface WorkspaceRow {
   subscription?: WorkspaceSubscriptionRow | null;
 }
 
+/**
+ * Proyekto's normalized subscription vocabulary, not a curated subset. The
+ * scaffold shipped with four values; billing adds incomplete,
+ * incomplete_expired, unpaid and paused, and every provider adapter maps its
+ * own statuses onto this set. Mirrored in web/src/services/workspaces.service.ts.
+ */
+export type WorkspaceSubscriptionStatus =
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'unpaid'
+  | 'paused';
+
+/**
+ * The statuses that mean money is still moving, so the workspace may not be
+ * deleted out from under a live provider subscription. `past_due` counts: the
+ * subscription still exists and the provider is still retrying it.
+ */
+export const LIVE_SUBSCRIPTION_STATUSES: readonly WorkspaceSubscriptionStatus[] =
+  ['active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused'];
+
 export interface WorkspaceSubscriptionRow {
   workspace_id: string;
   plan: WorkspacePlan;
-  status: 'active' | 'trialing' | 'past_due' | 'canceled';
+  status: WorkspaceSubscriptionStatus;
   seat_limit: number | null;
   current_period_start: string | null;
   current_period_end: string | null;
@@ -218,6 +243,10 @@ export class WorkspacesService {
     // MailModule is @Global(), so WorkspacesModule needs no import for these.
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    // From PlatformBillingCoreModule, which depends only on Supabase — so this
+    // does not make WorkspacesModule cyclic. Inert unless a billing provider is
+    // configured.
+    private readonly seatSync: SeatSyncService,
   ) {}
 
   // ─── provisioning ────────────────────────────────────────────────────────
@@ -380,18 +409,48 @@ export class WorkspacesService {
     return base;
   }
 
+  /**
+   * Seats in use, per workspace. This is the number the billing provider's
+   * subscription quantity is derived from, so it has to be exact.
+   *
+   * The single-id path (getWorkspace -> seats_used) asks PostgREST for an exact
+   * count and fetches no rows. The multi-id path still has to group in JS, but
+   * it pages explicitly: the previous implementation issued one unpaginated
+   * select and counted whatever came back, which PostgREST caps (default 1000
+   * rows), so a large workspace silently under-reported its seats -- i.e.
+   * under-billed. Never reintroduce an unpaginated select here.
+   */
   private async countMembersByWorkspace(
     workspaceIds: string[],
   ): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     if (workspaceIds.length === 0) return counts;
-    const { data, error } = await this.supabase
-      .from('workspace_members')
-      .select('workspace_id')
-      .in('workspace_id', workspaceIds);
-    if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ workspace_id: string }>) {
-      counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
+
+    if (workspaceIds.length === 1) {
+      const workspaceId = workspaceIds[0];
+      const { count, error } = await this.supabase
+        .from('workspace_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId);
+      if (error) throw new Error(error.message);
+      counts.set(workspaceId, count ?? 0);
+      return counts;
+    }
+
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await this.supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .in('workspace_id', workspaceIds)
+        .order('workspace_id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as Array<{ workspace_id: string }>;
+      for (const row of rows) {
+        counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
+      }
+      if (rows.length < pageSize) break;
     }
     return counts;
   }
@@ -490,6 +549,12 @@ export class WorkspacesService {
       throw new Error(insertOwner.error.message);
     }
 
+    // No seat sync here, deliberately: a new workspace is always free with
+    // exactly one member, so there is no provider subscription to update. It also
+    // is not the only unhooked path — provision_default_workspace() inserts an
+    // owner row from inside Postgres, where no TypeScript hook can reach it,
+    // which is why the reconcile cron is required rather than merely prudent.
+    //
     // Best-effort: a missing subscription row degrades to the free defaults
     // everywhere it is read, so it must not fail workspace creation.
     const subscription = await this.supabase
@@ -603,6 +668,7 @@ export class WorkspacesService {
   ): Promise<{ id: string }> {
     const workspace = await this.fetchWorkspaceOrThrow(workspaceId);
     await this.assertOwner(workspace, userId, 'delete the workspace');
+    await this.assertNoLiveSubscription(workspaceId);
 
     const { error } = await this.supabase
       .from('workspaces')
@@ -612,6 +678,47 @@ export class WorkspacesService {
     return { id: workspaceId };
   }
 
+  /**
+   * Deleting a workspace CASCADEs workspace_subscriptions away, which would
+   * leave a live provider subscription billing a card with no row left to trace
+   * it back to -- a silent, recurring, chargeback-generating bug.
+   *
+   * Refuse rather than cancel-inside-delete: deletion is irreversible and
+   * non-transactional here, so folding a cancel (and a possible refund) into it
+   * would leave "the cancel succeeded but the delete failed" as a real state
+   * somebody has to clean up by hand. Cancelling first is one extra deliberate
+   * step for the owner and no ambiguity for anyone.
+   */
+  private async assertNoLiveSubscription(workspaceId: string): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('workspace_subscriptions')
+      .select('status, provider_subscription_id')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return;
+
+    const row = data as {
+      status: WorkspaceSubscriptionStatus;
+      provider_subscription_id: string | null;
+    };
+    // A free workspace has no provider subscription at all, so it is never
+    // blocked -- which keeps this guard invisible to everyone who has not paid.
+    if (!row.provider_subscription_id) return;
+    if (!LIVE_SUBSCRIPTION_STATUSES.includes(row.status)) return;
+
+    throw new ConflictException({
+      message:
+        'Cancel this workspace subscription before deleting the workspace.',
+      code: 'workspace_has_active_subscription',
+    });
+  }
+
+  /**
+   * No seat sync here, deliberately: this only changes a role, and every role
+   * — owner, admin, member — is exactly one seat. There is no seat class that
+   * bills differently, so the quantity the provider holds cannot change.
+   */
   async updateMember(
     workspaceId: string,
     targetUserId: string,
@@ -689,6 +796,8 @@ export class WorkspacesService {
       .eq('workspace_id', workspaceId)
       .eq('user_id', targetUserId);
     if (error) throw new Error(error.message);
+
+    await this.seatSync.syncSeatsBounded(workspaceId, 'member_removed');
     return { workspace_id: workspaceId, user_id: targetUserId };
   }
 
@@ -990,6 +1099,15 @@ export class WorkspacesService {
         });
       if (insertErr && insertErr.code !== '23505') {
         throw new Error(insertErr.message);
+      }
+      // A seat now exists. Runs after the committed insert and cannot throw, so
+      // a provider outage costs a reconciliation rather than a failed join. On
+      // 23505 the member was already there and no seat was added.
+      if (!insertErr) {
+        await this.seatSync.syncSeatsBounded(
+          invite.workspace_id,
+          'member_joined',
+        );
       }
     }
 

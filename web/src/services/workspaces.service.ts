@@ -14,10 +14,25 @@ export type WorkspaceAssignableRole = "admin" | "member";
 
 export type WorkspacePlan = "free" | "pro" | "business" | "enterprise";
 
+/**
+ * Proyekto's normalized subscription vocabulary (every payment provider maps
+ * onto it), not a curated subset. Mirrors WorkspaceSubscriptionStatus in the
+ * backend's workspaces.service.ts.
+ */
+export type WorkspaceSubscriptionStatus =
+	| "active"
+	| "trialing"
+	| "past_due"
+	| "canceled"
+	| "incomplete"
+	| "incomplete_expired"
+	| "unpaid"
+	| "paused";
+
 export interface WorkspaceSubscription {
 	workspace_id: string;
 	plan: WorkspacePlan;
-	status: "active" | "trialing" | "past_due" | "canceled";
+	status: WorkspaceSubscriptionStatus;
 	/** Null means unlimited. Nothing enforces it yet. */
 	seat_limit: number | null;
 	current_period_start: string | null;

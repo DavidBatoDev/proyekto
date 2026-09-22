@@ -8,9 +8,28 @@
  * read its limits from here rather than from a second copy that drifts.
  *
  * Nothing enforces any of this yet — today it is only what the page renders.
+ *
+ * Payment-provider price ids are deliberately ABSENT. The (plan, interval) ->
+ * price mapping lives in the backend billing module, keyed by env var, for three
+ * reasons: a client-supplied price id would let anyone check out against an
+ * archived or internal price; prices rotate on a re-pricing while this bundle
+ * is long-cached on Cloudflare; and test vs live mode would otherwise need a
+ * build per environment. A test asserts no key in this file matches /^price_/.
+ *
+ * Nothing here may be used to compute an amount shown on the billing settings
+ * page either. These are marketing list prices — a given workspace may have a
+ * coupon, a tax line, or a pending proration credit — so every figure on that
+ * page comes from the payment provider through the API.
  */
 
 export type PlanId = "free" | "pro" | "business" | "enterprise";
+
+/** The plans a customer can buy without talking to sales. */
+export type PaidPlanId = Extract<PlanId, "pro" | "business">;
+
+export type BillingInterval = "month" | "year";
+
+export const PAID_PLAN_IDS: readonly PaidPlanId[] = ["pro", "business"];
 
 export interface Plan {
 	id: PlanId;
@@ -22,7 +41,17 @@ export interface Plan {
 	tagline: string;
 	/** The short card list. The comparison table below carries the detail. */
 	highlights: string[];
-	cta: { label: string; kind: "signup" | "sales" };
+	/**
+	 * "subscribe" is a real checkout; "signup" sends a signed-out visitor to
+	 * create an account first; "sales" is the quoted, non-self-serve path.
+	 */
+	cta: { label: string; kind: "signup" | "sales" | "subscribe" };
+	/**
+	 * Which billing intervals this plan can actually be bought on. Data rather
+	 * than prose, so the CTA can reason about "annual billing only" instead of
+	 * parsing a tagline.
+	 */
+	intervals: readonly BillingInterval[];
 	/** Drawn with the filled button and a ring, as the recommended plan. */
 	featured?: boolean;
 }
@@ -43,6 +72,7 @@ export const PLANS: readonly Plan[] = [
 			"Tasks, chat and meetings",
 		],
 		cta: { label: "Get started", kind: "signup" },
+		intervals: [],
 	},
 	{
 		id: "pro",
@@ -60,7 +90,8 @@ export const PLANS: readonly Plan[] = [
 			"Time tracking and timesheets",
 			"MCP server for Claude and other AI clients",
 		],
-		cta: { label: "Get started", kind: "signup" },
+		cta: { label: "Get started", kind: "subscribe" },
+		intervals: ["month", "year"],
 	},
 	{
 		id: "business",
@@ -76,7 +107,8 @@ export const PLANS: readonly Plan[] = [
 			"Private teams and guests",
 			"Unlimited activity history",
 		],
-		cta: { label: "Get started", kind: "signup" },
+		cta: { label: "Get started", kind: "subscribe" },
+		intervals: ["month", "year"],
 		featured: true,
 	},
 	{
@@ -95,8 +127,13 @@ export const PLANS: readonly Plan[] = [
 			"Account management",
 		],
 		cta: { label: "Contact sales", kind: "sales" },
+		intervals: ["year"],
 	},
 ] as const;
+
+export function planById(id: PlanId): Plan | undefined {
+	return PLANS.find((plan) => plan.id === id);
+}
 
 /**
  * A cell in the comparison table.

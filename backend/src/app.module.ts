@@ -38,6 +38,7 @@ import { MobileUpdatesModule } from './modules/shared/mobile-updates/mobile-upda
 import { ChatModule } from './modules/execution/chat/chat.module';
 import { TeamsModule } from './modules/execution/teams/teams.module';
 import { WorkspacesModule } from './modules/execution/workspaces/workspaces.module';
+import { PlatformBillingModule } from './modules/shared/platform-billing/platform-billing.module';
 import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
@@ -105,6 +106,7 @@ import { AppController } from './app.controller';
     ChatModule,
     TeamsModule,
     WorkspacesModule,
+    PlatformBillingModule,
     TeamTimeModule,
     MeetingsModule,
     InvoicesModule,

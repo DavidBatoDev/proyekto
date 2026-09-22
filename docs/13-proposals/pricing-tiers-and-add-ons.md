@@ -2,7 +2,7 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-09-20 · **Status:** draft
+> **Last updated:** 2026-09-22 · **Status:** draft
 
 > **⚠️ The billing anchor moved.** This page was written when the only candidate container was
 > a **team**. The [Workspace](../11-domains/workspaces/README.md) tier shipped on 2026-09-01 and
@@ -265,7 +265,7 @@ Rules, in order of importance:
 | Phase | Lands | Flag | User-visible |
 | --- | --- | --- | --- |
 | **B1** | Entitlement resolution + `EntitlementGuard` over the **existing** `workspace_subscriptions`; all workspaces `legacy_unlimited` (needs a CHECK-widening expand migration) | — | no |
-| **B2** | Stripe Billing integration, checkout + webhooks + seat proration; replaces the workspace billing placeholder at `/w/<slug>/settings/billing` | `BILLING_ENABLED` | pricing page only |
+| **B2** | **Built 2026-09-22** — provider-neutral billing (Stripe adapter first): checkout + webhooks + seat proration, replacing the billing placeholder at `/w/<slug>/settings/billing`. See [Workspaces → Billing](../11-domains/workspaces/README.md#billing) | — (on wherever a provider is configured) | billing page |
 | **B3** | Free-tier limit enforcement (projects/roadmaps/teams/members) for **new** accounts | `BILLING_ENFORCEMENT_ENABLED` | yes |
 | **B4** | AI usage metering + per-user throttle binding | `AI_METERING_ENABLED` | yes (limit UI) |
 | **B5** | Time & Finance add-on purchase flows (price the existing flags) | per-add-on flags | yes |
