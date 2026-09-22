@@ -10,7 +10,7 @@ import {
 } from "@/content/docs.manifest";
 import { isNativeApp } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { sectionStyle } from "./docsSectionStyle";
+import { SECTION_ILLUSTRATION } from "./docsSectionIllustrations";
 
 /**
  * The docs navigation.
@@ -53,7 +53,20 @@ function useCurrentSlug(): string | null {
 	});
 }
 
-/** The tinted square that carries a section's icon. One size everywhere. */
+/**
+ * The tinted chip carrying a section's illustration.
+ *
+ * One tint for every section — the theme's own primary — rather than ten hues.
+ * A rainbow reads as decoration bolted on; the product is purple, so the docs
+ * are too. `text-primary` is load-bearing: the scenes draw their accent with
+ * `fill-current`, so this is what colours the artwork.
+ *
+ * The small size is 28px rather than 24px: these are drawings, not glyphs, and
+ * four points of extra room is the difference between reading the shape and
+ * reading a smudge.
+ */
+export const SECTION_CHIP = "bg-primary/10 text-primary";
+
 export function SectionIcon({
 	section,
 	size = "sm",
@@ -61,16 +74,16 @@ export function SectionIcon({
 	section: DocSection["id"];
 	size?: "sm" | "md";
 }) {
-	const { icon: Icon, tone } = sectionStyle(section);
+	const Illustration = SECTION_ILLUSTRATION[section];
 	return (
 		<span
 			className={cn(
-				"flex shrink-0 items-center justify-center rounded-lg",
-				size === "sm" ? "h-6 w-6" : "h-10 w-10 rounded-xl",
-				tone,
+				"flex shrink-0 items-center justify-center overflow-hidden",
+				size === "sm" ? "h-7 w-7 rounded-lg" : "h-11 w-11 rounded-xl",
+				SECTION_CHIP,
 			)}
 		>
-			<Icon className={size === "sm" ? "h-3.5 w-3.5" : "h-5 w-5"} aria-hidden />
+			<Illustration className={size === "sm" ? "h-6 w-6" : "h-9 w-9"} />
 		</span>
 	);
 }

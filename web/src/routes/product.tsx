@@ -39,8 +39,6 @@ export const Route = createFileRoute("/product")({
 interface Capability {
 	id: string;
 	icon: LucideIcon;
-	/** The dark-mode-aware tint idiom from `roadmap-templates`' CATEGORY_TONES. */
-	tone: string;
 	eyebrow: string;
 	title: string;
 	body: string;
@@ -60,7 +58,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "roadmap",
 		icon: GitBranch,
-		tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
 		eyebrow: "Plan",
 		title: "A plan that is actually the plan",
 		body: "Roadmaps are a tree of epics, features and tasks — one dataset behind four views, so the canvas, the board, the timeline and the epic view can never disagree with each other.",
@@ -79,7 +76,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "ai",
 		icon: Sparkles,
-		tone: "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-300",
 		eyebrow: "Draft",
 		title: "An assistant that shows its work",
 		body: "Describe what you are building and the assistant drafts the roadmap. Ask it to restructure an epic and it will — after showing you exactly what it intends to change.",
@@ -98,7 +94,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "board",
 		icon: KanbanSquare,
-		tone: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
 		eyebrow: "Run",
 		title: "The day-to-day, without a second tool",
 		body: "A kanban board per roadmap, a timeline with milestones, and a command center that collects every task assigned to you across every project you are in.",
@@ -116,7 +111,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "governance",
 		icon: ShieldCheck,
-		tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
 		eyebrow: "Govern",
 		title: "Governance that survives the project",
 		body: "Four registers turn conversations into records with owners and outcomes — so what was agreed is still findable six months later, when it matters most.",
@@ -135,7 +129,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "chat",
 		icon: MessagesSquare,
-		tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
 		eyebrow: "Talk",
 		title: "Conversation next to the work",
 		body: "Project-scoped channels and direct messages, with an inbox that gathers your mentions and DMs from every project rather than leaving them in five places.",
@@ -153,7 +146,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "meetings",
 		icon: CalendarDays,
-		tone: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
 		eyebrow: "Schedule",
 		title: "Meetings, properly scheduled",
 		body: "A real calendar with day, week, month and year views, full recurring series, timezone handling, and a video link created for you.",
@@ -172,7 +164,6 @@ const CAPABILITIES: Capability[] = [
 	{
 		id: "time",
 		icon: Timer,
-		tone: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
 		eyebrow: "Account",
 		title: "Time, rates and what is owed",
 		body: "Log time against the work itself, send it for approval, and resolve it against per-member and per-project rate cards.",
@@ -314,18 +305,13 @@ function CapabilitySection({
 	capability: Capability;
 	flipped: boolean;
 }) {
-	const { icon: Icon, tone, clip } = capability;
+	const { icon: Icon, clip } = capability;
 	return (
 		<section className="border-t border-border py-16 first:border-t-0 lg:py-20">
 			<div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
 				<div className={cn(flipped && "lg:order-2")}>
 					<div className="flex items-center gap-3">
-						<span
-							className={cn(
-								"flex h-10 w-10 items-center justify-center rounded-xl",
-								tone,
-							)}
-						>
+						<span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
 							<Icon className="h-5 w-5" aria-hidden />
 						</span>
 						<span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

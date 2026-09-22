@@ -58,7 +58,7 @@ function DocsLayout() {
 			</header>
 
 			<div className="mx-auto flex w-full max-w-[1400px]">
-				<aside className="hidden h-[calc(100vh-4rem)] w-[248px] shrink-0 overflow-y-auto border-r border-border px-3 py-8 md:block sticky top-16">
+				<aside className="no-scrollbar sticky top-16 hidden h-[calc(100vh-4rem)] w-[300px] shrink-0 overflow-y-auto border-r border-border bg-card px-4 py-8 md:block">
 					<DocsSidebar />
 				</aside>
 				<main className="min-w-0 flex-1">

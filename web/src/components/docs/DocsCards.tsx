@@ -4,8 +4,8 @@ import { useMemo } from "react";
 import type { DocArticle } from "@/content/docs.manifest";
 import { isNativeApp } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { visibleSections } from "./DocsSidebar";
-import { sectionStyle } from "./docsSectionStyle";
+import { SECTION_CHIP, visibleSections } from "./DocsSidebar";
+import { SECTION_ILLUSTRATION } from "./docsSectionIllustrations";
 
 /**
  * The card surfaces on the docs home.
@@ -18,7 +18,7 @@ import { sectionStyle } from "./docsSectionStyle";
 
 /** One of the four cards in the top grid. */
 export function PopularCard({ article }: { article: DocArticle }) {
-	const { icon: Icon, tone } = sectionStyle(article.section);
+	const Illustration = SECTION_ILLUSTRATION[article.section];
 	return (
 		<Link
 			to="/docs/$section/$slug"
@@ -27,11 +27,11 @@ export function PopularCard({ article }: { article: DocArticle }) {
 		>
 			<span
 				className={cn(
-					"flex h-10 w-10 items-center justify-center rounded-xl",
-					tone,
+					"flex h-11 w-11 items-center justify-center rounded-xl",
+					SECTION_CHIP,
 				)}
 			>
-				<Icon className="h-5 w-5" aria-hidden />
+				<Illustration className="h-9 w-9" />
 			</span>
 			<span className="mt-4 text-sm font-semibold text-foreground">
 				{article.title}
@@ -61,7 +61,7 @@ export function DocsSectionCards() {
 	return (
 		<div className="grid gap-4 sm:grid-cols-2">
 			{groups.map(({ section, articles }) => {
-				const { icon: Icon, tone } = sectionStyle(section.id);
+				const Illustration = SECTION_ILLUSTRATION[section.id];
 				const shown = articles.slice(0, 3);
 				const rest = articles.length - shown.length;
 				return (
@@ -72,11 +72,11 @@ export function DocsSectionCards() {
 						<div className="flex items-start gap-3">
 							<span
 								className={cn(
-									"flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-									tone,
+									"flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+									SECTION_CHIP,
 								)}
 							>
-								<Icon className="h-5 w-5" aria-hidden />
+								<Illustration className="h-9 w-9" />
 							</span>
 							<div className="min-w-0">
 								<h3 className="text-sm font-semibold text-foreground">
