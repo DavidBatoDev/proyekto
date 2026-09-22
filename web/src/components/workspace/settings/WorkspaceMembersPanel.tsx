@@ -1,5 +1,13 @@
 import { format } from "date-fns";
-import { Loader2, Mail, UserPlus, Users, X } from "lucide-react";
+import {
+	AlertTriangle,
+	ChevronDown,
+	Clock3,
+	Loader2,
+	Mail,
+	UserPlus,
+	X,
+} from "lucide-react";
 import { useState } from "react";
 import {
 	countLimitInfo,
@@ -8,6 +16,14 @@ import {
 import { SeatChangeNotice } from "@/components/billing/SeatChangeNotice";
 import { AppConfirmDialog } from "@/components/common/AppConfirmDialog";
 import { workspaceMemberName } from "@/components/workspace/settings/memberName";
+import {
+	SettingsAvatar,
+	SettingsPageHeader,
+	SettingsRow,
+	SettingsRows,
+	SettingsSection,
+	settingsButton,
+} from "@/components/workspace/settings/SettingsPrimitives";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
 import { useEntitlements } from "@/hooks/useEntitlements";
@@ -20,6 +36,7 @@ import {
 } from "@/hooks/useWorkspaceQueries";
 import type {
 	Workspace,
+	WorkspaceInvite,
 	WorkspaceMember,
 	WorkspaceRole,
 } from "@/services/workspaces.service";
@@ -117,105 +134,125 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 		});
 	};
 
+	// Who sent an invite: the member list first (it has the full name
+	// fallback chain), then the profile the invite may carry; unknown when
+	// neither resolves, so the row just omits it.
+	const inviterName = (invite: WorkspaceInvite): string | null => {
+		if (!invite.invited_by) return null;
+		if (invite.invited_by === user?.id) return "you";
+		const inviter = members.find((item) => item.user_id === invite.invited_by);
+		if (inviter) return workspaceMemberName(inviter);
+		return (
+			invite.invited_by_profile?.display_name ||
+			invite.invited_by_profile?.email ||
+			null
+		);
+	};
+
+	const memberCountLine = membersQuery.isLoading
+		? null
+		: members.length > 0
+			? `${members.length} ${members.length === 1 ? "member" : "members"}.`
+			: null;
+
 	return (
 		<div className="app-fade-in">
-			<header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-				<div className="flex items-start gap-4">
-					<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
-						<Users className="h-6 w-6" />
-					</div>
-					<div>
-						<h1 className="text-3xl font-semibold tracking-tight text-foreground">
-							Members
-						</h1>
-						<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-							Everyone in this workspace. Membership here is the billable seat
-							pool.
-						</p>
-					</div>
-				</div>
-				{canManage ? (
-					<button
-						type="button"
-						onClick={() => setInviteOpen(true)}
-						disabled={inviteBlocked}
-						className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<UserPlus className="h-4 w-4" />
-						Invite people
-					</button>
-				) : null}
-			</header>
+			<SettingsPageHeader
+				title="Members"
+				description="Everyone in this workspace."
+				actions={
+					canManage ? (
+						<button
+							type="button"
+							onClick={() => setInviteOpen(true)}
+							disabled={inviteBlocked}
+							className={settingsButton.primary}
+						>
+							<UserPlus className="h-4 w-4" aria-hidden="true" />
+							Invite people
+						</button>
+					) : null
+				}
+			/>
 
 			{memberCap ? (
 				<PlanLimitNotice
 					info={memberCap}
 					workspace={workspace}
 					isComplimentary={entitlements.isComplimentary}
-					className="mb-6"
+					className="mt-8"
 				/>
 			) : null}
 
-			<section className="rounded-2xl border border-border bg-card text-card-foreground shadow-(--app-shadow-sm)">
+			<SettingsSection
+				id="workspace-members"
+				title="Current members"
+				description={
+					<>
+						{memberCountLine ? (
+							<span className="font-medium tabular-nums text-foreground">
+								{memberCountLine}{" "}
+							</span>
+						) : null}
+						Membership here is the billable seat pool.
+					</>
+				}
+			>
 				{membersQuery.isLoading ? (
-					<div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-						<Loader2 className="h-4 w-4 animate-spin" />
+					<div className="flex items-center gap-2 text-muted-foreground">
+						<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
 						<span className="text-sm">Loading members…</span>
 					</div>
 				) : members.length === 0 ? (
-					<p className="px-5 py-12 text-center text-sm text-muted-foreground">
+					<p className="text-sm text-muted-foreground">
 						The member list could not be loaded right now.
 					</p>
 				) : (
-					<div className="overflow-x-auto">
-						<table className="w-full text-left text-sm">
-							<thead>
-								<tr className="border-b border-border text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-									<th className="px-5 py-3 font-semibold">Member</th>
-									<th className="px-5 py-3 font-semibold">Email</th>
-									<th className="px-5 py-3 font-semibold">Role</th>
-									<th className="px-5 py-3 font-semibold">Joined</th>
-									{canManage ? (
-										<th className="px-5 py-3">
-											<span className="sr-only">Actions</span>
-										</th>
-									) : null}
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-border">
-								{members.map((member) => {
-									const displayName = workspaceMemberName(member);
-									const isSelf = member.user_id === user?.id;
-									return (
-										<tr key={member.id}>
-											<td className="px-5 py-3">
-												<span className="flex items-center gap-3">
-													{member.user?.avatar_url ? (
-														<img
-															src={member.user.avatar_url}
-															alt={displayName}
-															className="h-8 w-8 rounded-full border border-border object-cover"
-														/>
-													) : (
-														<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">
-															{displayName.charAt(0).toUpperCase()}
-														</span>
-													)}
-													<span className="font-medium text-foreground">
-														{displayName}
-														{isSelf ? (
-															<span className="ml-1.5 text-xs font-normal text-muted-foreground">
-																(you)
-															</span>
-														) : null}
-													</span>
+					<SettingsRows as="ul">
+						{members.map((member) => {
+							const displayName = workspaceMemberName(member);
+							const isSelf = member.user_id === user?.id;
+							return (
+								// `wrap`: the rail and the section-title column leave
+								// this row far less room than the screen width
+								// suggests, so the controls drop under the name
+								// rather than squeezing it to nothing.
+								<SettingsRow
+									key={member.id}
+									as="li"
+									wrap
+									leading={
+										<SettingsAvatar
+											name={displayName}
+											src={member.user?.avatar_url ?? null}
+										/>
+									}
+									label={
+										<span className="flex min-w-0 items-baseline gap-1.5">
+											<span className="truncate">{displayName}</span>
+											{isSelf ? (
+												<span className="shrink-0 text-xs font-normal text-muted-foreground">
+													(you)
 												</span>
-											</td>
-											<td className="px-5 py-3 text-muted-foreground">
-												{member.user?.email ?? "—"}
-											</td>
-											<td className="px-5 py-3">
-												{canManage ? (
+											) : null}
+										</span>
+									}
+									description={
+										<span className="block truncate">
+											{member.user?.email ?? "—"}
+										</span>
+									}
+								>
+									<>
+										{/* Shown only where there is room to spare for it;
+										    narrower, it stays for screen readers alone. */}
+										<span className="sr-only text-xs tabular-nums text-muted-foreground xl:not-sr-only">
+											<span className="sr-only">Joined </span>
+											{format(new Date(member.joined_at), "MMM d, yyyy")}
+										</span>
+										{canManage ? (
+											<>
+												<span className="relative inline-flex">
 													<select
 														value={member.role}
 														aria-label={`Change role for ${displayName}`}
@@ -226,98 +263,117 @@ function MembersContent({ workspace }: { workspace: Workspace }) {
 															)
 														}
 														disabled={updateRole.isPending}
-														className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+														className="h-8 w-[6.75rem] cursor-pointer appearance-none rounded-md border border-input bg-background pl-2.5 pr-8 text-sm font-medium text-foreground transition-colors hover:border-primary/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
 													>
 														<option value="member">Member</option>
 														<option value="admin">Admin</option>
 														<option value="owner">Owner</option>
 													</select>
-												) : (
-													<span className="text-foreground">
-														{ROLE_LABEL[member.role]}
-													</span>
-												)}
-											</td>
-											<td className="px-5 py-3 text-muted-foreground">
-												{format(new Date(member.joined_at), "MMM d, yyyy")}
-											</td>
-											{canManage ? (
-												<td className="px-5 py-3 text-right">
-													<button
-														type="button"
-														onClick={() => setPendingRemoval(member)}
-														disabled={removeMember.isPending}
-														className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-													>
-														Remove
-													</button>
-												</td>
-											) : null}
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
-					</div>
+													<ChevronDown
+														aria-hidden="true"
+														className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+													/>
+												</span>
+												{/* The negative margin sets the word, not its hover
+												    pad, on the content edge the other rows end on. */}
+												<button
+													type="button"
+													onClick={() => setPendingRemoval(member)}
+													disabled={removeMember.isPending}
+													className="-mr-2 h-8 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:cursor-not-allowed disabled:opacity-50"
+												>
+													Remove
+												</button>
+											</>
+										) : (
+											<span className="text-sm font-medium text-foreground">
+												{ROLE_LABEL[member.role]}
+											</span>
+										)}
+									</>
+								</SettingsRow>
+							);
+						})}
+					</SettingsRows>
 				)}
-			</section>
+			</SettingsSection>
 
 			{canManage ? (
-				<section className="mt-6 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6">
-					<div className="flex items-center gap-2">
-						<Mail className="h-4 w-4 text-muted-foreground" />
-						<h2 className="text-sm font-semibold text-foreground">
-							Pending invitations
-						</h2>
-						<span className="text-xs text-muted-foreground">
-							· not billed until accepted
-						</span>
-					</div>
+				<SettingsSection
+					id="workspace-invites"
+					title="Pending invitations"
+					description="Not billed until accepted."
+				>
 					{invitesQuery.isLoading ? (
-						<div className="flex items-center gap-2 py-6 text-muted-foreground">
-							<Loader2 className="h-4 w-4 animate-spin" />
+						<div className="flex items-center gap-2 text-muted-foreground">
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
 							<span className="text-sm">Loading invitations…</span>
 						</div>
 					) : pendingInvites.length === 0 ? (
-						<p className="mt-3 text-sm text-muted-foreground">
+						<p className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Mail className="h-4 w-4" aria-hidden="true" />
 							No pending invitations.
 						</p>
 					) : (
-						<ul className="mt-4 divide-y divide-border">
-							{pendingInvites.map((invite) => (
-								<li
-									key={invite.id}
-									className="flex items-center justify-between gap-4 py-3"
-								>
-									<div className="min-w-0">
-										<p className="truncate text-sm font-medium text-foreground">
-											{invite.invitee_email ?? "Unknown email"}
-										</p>
-										<p className="mt-0.5 text-xs text-muted-foreground">
-											{ROLE_LABEL[invite.role]} · invited{" "}
-											{format(new Date(invite.created_at), "MMM d, yyyy")}
-										</p>
-										{invite.email_delivery?.sent === false ? (
-											<p className="mt-0.5 text-xs text-warning">
-												Invite email could not be sent — they can still accept
-												it in the app.
-											</p>
-										) : null}
-									</div>
-									<button
-										type="button"
-										onClick={() => handleCancelInvite(invite.id)}
-										disabled={cancelInvite.isPending}
-										aria-label={`Cancel invitation for ${invite.invitee_email ?? "this person"}`}
-										className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+						<SettingsRows as="ul">
+							{pendingInvites.map((invite) => {
+								const invitedBy = inviterName(invite);
+								return (
+									<SettingsRow
+										key={invite.id}
+										as="li"
+										wrap
+										leading={
+											<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground">
+												<Mail className="h-4 w-4" aria-hidden="true" />
+											</span>
+										}
+										label={
+											<span className="block truncate">
+												{invite.invitee_email ?? "Unknown email"}
+											</span>
+										}
+										description={
+											<>
+												<span>
+													{ROLE_LABEL[invite.role]} · invited{" "}
+													{format(new Date(invite.created_at), "MMM d, yyyy")}
+													{invitedBy ? ` by ${invitedBy}` : null}
+												</span>
+												{invite.email_delivery?.sent === false ? (
+													<span className="mt-0.5 flex items-start gap-1.5 text-warning-foreground">
+														<AlertTriangle
+															className="mt-0.5 h-3 w-3 shrink-0"
+															aria-hidden="true"
+														/>
+														Invite email could not be sent — they can still
+														accept it in the app.
+													</span>
+												) : null}
+											</>
+										}
 									>
-										<X className="h-4 w-4" />
-									</button>
-								</li>
-							))}
-						</ul>
+										<div className="flex items-center gap-3">
+											<span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+												<Clock3 className="h-3 w-3" aria-hidden="true" />
+												Pending
+											</span>
+											<button
+												type="button"
+												onClick={() => handleCancelInvite(invite.id)}
+												disabled={cancelInvite.isPending}
+												aria-label={`Cancel invitation for ${invite.invitee_email ?? "this person"}`}
+												className="-mr-1.5 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												<X className="h-4 w-4" aria-hidden="true" />
+											</button>
+										</div>
+									</SettingsRow>
+								);
+							})}
+						</SettingsRows>
 					)}
-				</section>
+				</SettingsSection>
 			) : null}
 
 			<AppConfirmDialog

@@ -1,12 +1,37 @@
 import { Link } from "@tanstack/react-router";
-import { BadgeCheck, Check, Gauge } from "lucide-react";
+import {
+	AlertTriangle,
+	BadgeCheck,
+	Check,
+	FolderKanban,
+	History,
+	Lock,
+	type LucideIcon,
+	Map as MapIcon,
+	UserRound,
+	Users,
+} from "lucide-react";
 import { SemanticBadge } from "@/components/common/SemanticBadge";
 import {
 	MeterBar,
-	type MeterBarTone,
+	MeterCaption,
 	meterBarTone,
-	UsageMeter,
+	Reading,
+	type ReadingSize,
+	USAGE_TRACK,
+	UsageMeterDetail,
+	UsageReading,
 } from "@/components/common/UsageMeter";
+import {
+	SettingsHeadline,
+	SettingsNotice,
+	SettingsPageHeader,
+	SettingsRow,
+	SettingsRows,
+	SettingsSection,
+	SettingsSkeleton,
+	settingsButton,
+} from "@/components/workspace/settings/SettingsPrimitives";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import {
 	useEntitlements,
@@ -33,6 +58,7 @@ import {
 } from "@/lib/planLimits";
 import {
 	COMPLIMENTARY_BADGE,
+	countNoun,
 	featureAvailabilityCopy,
 	meterCaption,
 	pendingInvitesNote,
@@ -44,19 +70,14 @@ import {
 import { cn } from "@/lib/utils";
 import type { Workspace } from "@/services/workspaces.service";
 
-/** The card chrome every workspace settings page uses (see WorkspaceBillingPage). */
-const CARD =
-	"rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6";
-const KICKER =
-	"text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
+/** A row's leading icon; the row centres it on the label's line. */
+const ROW_ICON = "h-4 w-4 shrink-0 text-muted-foreground";
 
-const CAPTION_TONE: Record<MeterBarTone, string> = {
-	default: "text-muted-foreground",
-	warning: "text-warning-foreground",
-	danger: "text-destructive",
-};
-
-const COUNT_KEYS: readonly CountKey[] = ["members", "projects", "teams"];
+const COUNT_ROWS: readonly { key: CountKey; icon: LucideIcon }[] = [
+	{ key: "members", icon: UserRound },
+	{ key: "projects", icon: FolderKanban },
+	{ key: "teams", icon: Users },
+];
 
 /**
  * What this workspace's plan includes and how much of it is in use.
@@ -86,19 +107,10 @@ function UsageContent({ workspace }: { workspace: Workspace }) {
 
 	return (
 		<div className="app-fade-in">
-			<header className="mb-8 flex items-start gap-4">
-				<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
-					<Gauge className="h-6 w-6" />
-				</div>
-				<div>
-					<h1 className="text-3xl font-semibold tracking-tight text-foreground">
-						Usage
-					</h1>
-					<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-						What this workspace's plan includes, and how much of it is in use.
-					</p>
-				</div>
-			</header>
+			<SettingsPageHeader
+				title="Usage"
+				description="What this workspace's plan includes, and how much of it is in use."
+			/>
 
 			{entitlements.status === "ready" && entitlements.usage ? (
 				<UsageBody
@@ -108,21 +120,26 @@ function UsageContent({ workspace }: { workspace: Workspace }) {
 					allLimits={allLimits}
 				/>
 			) : entitlements.status === "loading" ? (
-				<UsageSkeleton />
+				<SettingsSkeleton bands={4} label="Loading usage" />
 			) : (
-				<section className={CARD}>
-					<p className="text-sm text-muted-foreground">
-						Usage is unavailable right now. Try again in a moment.
-					</p>
-					<button
-						type="button"
-						className="mt-4 inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
-						disabled={query.isFetching}
-						onClick={() => void query.refetch()}
+				<div className="py-8">
+					<SettingsNotice
+						tone="warning"
+						icon={AlertTriangle}
+						action={
+							<button
+								type="button"
+								className={settingsButton.secondary}
+								disabled={query.isFetching}
+								onClick={() => void query.refetch()}
+							>
+								Try again
+							</button>
+						}
 					>
-						Try again
-					</button>
-				</section>
+						Usage is unavailable right now. Try again in a moment.
+					</SettingsNotice>
+				</div>
 			)}
 		</div>
 	);
@@ -148,55 +165,68 @@ function UsageBody({
 	});
 
 	return (
-		<div className="space-y-6">
-			<section className={CARD}>
-				<p className={KICKER}>Current plan</p>
-				<div className="mt-2 flex flex-wrap items-center gap-3">
-					<p className="text-3xl font-semibold text-foreground">
-						{planLabel(plan)}
-					</p>
-					{isComplimentary ? (
-						<SemanticBadge icon={BadgeCheck} iconClassName="text-success">
-							{COMPLIMENTARY_BADGE}
-						</SemanticBadge>
-					) : null}
-				</div>
-				<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+		<div>
+			<SettingsSection
+				id="usage-plan"
+				title="Plan"
+				description="What this workspace is on today."
+			>
+				<SettingsHeadline
+					value={planLabel(plan)}
+					badge={
+						isComplimentary ? (
+							<SemanticBadge icon={BadgeCheck} iconClassName="text-success">
+								{COMPLIMENTARY_BADGE}
+							</SemanticBadge>
+						) : null
+					}
+				>
 					{planSummaryCopy({
 						plan,
 						isComplimentary,
 						complimentaryUntil: until ? formatDate(until) : null,
 						limits: usage.limits,
 					})}
-				</p>
+				</SettingsHeadline>
 				<UpgradeActions cta={cta} workspaceSlug={workspace.slug} />
-			</section>
+			</SettingsSection>
 
-			<section aria-labelledby="usage-limits-heading">
-				<h2
-					id="usage-limits-heading"
-					className="text-base font-semibold text-foreground"
-				>
-					Limits
-				</h2>
-				<div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-					{COUNT_KEYS.map((key) => (
-						<CountMeterCard key={key} countKey={key} usage={usage} />
+			<SettingsSection
+				id="usage-limits"
+				title="Limits"
+				description="Counted across this workspace. A limit only blocks new additions; everything you have stays."
+			>
+				<SettingsRows as="ul">
+					{COUNT_ROWS.map((row) => (
+						<CountRow
+							key={row.key}
+							countKey={row.key}
+							icon={row.icon}
+							usage={usage}
+						/>
 					))}
-					<RoadmapNodesCard usage={usage} />
-				</div>
-			</section>
+					<RoadmapNodesRow usage={usage} />
+				</SettingsRows>
+			</SettingsSection>
 
-			<FeaturesCard usage={usage} allLimits={allLimits} />
+			<FeaturesSection usage={usage} allLimits={allLimits} />
 
-			<section className={CARD}>
-				<h2 className="text-base font-semibold text-foreground">
-					Activity history
-				</h2>
-				<p className="mt-2 text-sm text-muted-foreground">
-					{retentionCopy(usage.retention_days, plan)}
-				</p>
-			</section>
+			<SettingsSection
+				id="usage-activity"
+				title="Activity history"
+				description="How much past activity this workspace shows."
+			>
+				<SettingsRows>
+					<SettingsRow
+						inline
+						label="Visible history"
+						description={retentionCopy(usage.retention_days, plan)}
+						leading={<History aria-hidden="true" className={ROW_ICON} />}
+					>
+						<RetentionValue days={usage.retention_days} />
+					</SettingsRow>
+				</SettingsRows>
+			</SettingsSection>
 		</div>
 	);
 }
@@ -211,43 +241,40 @@ function UpgradeActions({
 	if (cta.kind === "none") return null;
 	if (cta.kind === "ask_owner") {
 		return (
-			<div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-5 text-sm">
-				<p className="text-muted-foreground">{cta.label}</p>
-				<Link
-					to="/pricing"
-					className="font-medium text-primary hover:underline"
-				>
+			<div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+				<p className="text-sm text-muted-foreground">{cta.label}</p>
+				<Link to="/pricing" className={settingsButton.link}>
 					Compare plans
 				</Link>
 			</div>
 		);
 	}
 	return (
-		<div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-5">
+		<div className="mt-5 flex flex-wrap items-center gap-2">
 			<Link
 				to="/w/$workspaceSlug/settings/billing"
 				params={{ workspaceSlug }}
-				className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-dark"
+				className={settingsButton.primary}
 			>
 				{cta.label}
 			</Link>
-			<Link
-				to="/pricing"
-				className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-			>
+			<Link to="/pricing" className={settingsButton.secondary}>
 				Compare plans
 			</Link>
 		</div>
 	);
 }
 
-function CountMeterCard({
+function CountRow({
 	countKey,
+	icon: Icon,
 	usage,
 }: {
 	countKey: CountKey;
+	icon: LucideIcon;
 	usage: WorkspaceUsage;
 }) {
+	const label = limitDefinition(countKey)?.label ?? countKey;
 	const used = usedFor(usage, countKey);
 	const limit = cellValue(usage.limits, countKey);
 	const caption = meterCaption(
@@ -262,145 +289,258 @@ function CountMeterCard({
 			? pendingInvitesNote(usage.usage.pending_invites)
 			: null;
 	const text = [caption, pending].filter(Boolean).join(" ");
+	// With no ceiling there is no bar, so the caption reads as the row's
+	// description rather than floating under an empty gap.
+	const finite = limit !== null;
 
 	return (
-		<div className={CARD}>
-			<UsageMeter
-				label={limitDefinition(countKey)?.label ?? countKey}
-				used={used}
-				limit={limit}
-				caption={text || undefined}
-			/>
-		</div>
+		<SettingsRow
+			as="li"
+			inline
+			label={label}
+			leading={<Icon aria-hidden="true" className={ROW_ICON} />}
+			description={!finite && text ? text : undefined}
+			below={
+				finite ? (
+					<UsageMeterDetail
+						label={label}
+						used={used}
+						limit={limit}
+						caption={text || undefined}
+					/>
+				) : undefined
+			}
+		>
+			<UsageReading used={used} limit={limit} size="lg" />
+		</SettingsRow>
 	);
 }
 
-function RoadmapNodesCard({ usage }: { usage: WorkspaceUsage }) {
+/** "240 of 250" against a limit, "240 nodes" with none. */
+function nodesReading(nodes: number, limit: number | null): string {
+	return limit === null
+		? `${formatCount(nodes)} ${nodes === 1 ? "node" : "nodes"}`
+		: `${formatCount(nodes)} of ${formatCount(limit)}`;
+}
+
+/** The same reading, drawn with a strong figure and a quiet qualifier. */
+function NodesReading({
+	nodes,
+	limit,
+	size,
+}: {
+	nodes: number;
+	limit: number | null;
+	size: ReadingSize;
+}) {
+	return (
+		<Reading
+			size={size}
+			figure={formatCount(nodes)}
+			qualifier={
+				limit === null
+					? nodes === 1
+						? "node"
+						: "nodes"
+					: `of ${formatCount(limit)}`
+			}
+		/>
+	);
+}
+
+/**
+ * The per-roadmap limit, read off the workspace's largest roadmap. Roadmaps
+ * that are also close to it hang under that one as compact sub-rows.
+ *
+ * Every caption line (what is counted, which roadmap is largest and, with no
+ * ceiling, the plan's line) sits in the row's description as one tight stack,
+ * the rhythm the other rows' captions keep. Only the bar and the caption
+ * that reads it hang below, and only against a finite limit, as on the count
+ * rows.
+ */
+function RoadmapNodesRow({ usage }: { usage: WorkspaceUsage }) {
 	const limit = cellValue(usage.limits, "roadmap_nodes_per_roadmap");
 	const { largest, near_limit: nearLimit } = usage.roadmaps;
 	const others = nearLimit.filter(
 		(roadmap) => roadmap.roadmap_id !== largest?.roadmap_id,
 	);
+	const meter = largest ? computeMeter(largest.nodes, limit) : null;
+	const tone = meter ? meterBarTone(meter.tone) : "default";
+	const caption = meter
+		? meterCaption("roadmap_nodes_per_roadmap", meter, usage.plan.effective)
+		: null;
+	const bar = largest && meter && limit !== null;
 
 	return (
-		<div className={CARD}>
-			<p className="text-sm font-medium text-foreground">
-				Roadmap nodes per roadmap
-			</p>
-			<p className="mt-0.5 text-xs text-muted-foreground">
-				Epics, features and tasks, counted on each roadmap separately.
-			</p>
-
+		<SettingsRow
+			as="li"
+			inline
+			label="Roadmap nodes per roadmap"
+			description={
+				<>
+					<span className="block">
+						Epics, features and tasks, counted on each roadmap separately.
+					</span>
+					{largest ? (
+						<LargestRoadmapLine roadmap={largest} />
+					) : (
+						<span className="mt-0.5 block">
+							No roadmaps in this workspace yet.
+						</span>
+					)}
+					{largest && !bar && caption ? (
+						<MeterCaption tone={tone} className="mt-0.5">
+							{caption}
+						</MeterCaption>
+					) : null}
+				</>
+			}
+			leading={<MapIcon aria-hidden="true" className={ROW_ICON} />}
+			below={
+				bar || others.length > 0 ? (
+					<div>
+						{bar ? (
+							<>
+								<MeterBar
+									className={USAGE_TRACK}
+									percent={meter.percent}
+									tone={tone}
+									label={`${largest.name ?? "A roadmap you can't open"}: ${nodesReading(largest.nodes, limit)} nodes`}
+								/>
+								{caption ? (
+									<MeterCaption tone={tone} className="mt-2">
+										{caption}
+									</MeterCaption>
+								) : null}
+							</>
+						) : null}
+						{others.length > 0 ? (
+							<div className={bar ? "mt-5" : undefined}>
+								<p className="text-xs font-medium text-muted-foreground">
+									Also near the limit
+								</p>
+								<ul className="mt-2.5 space-y-3 border-l border-border pl-4">
+									{others.map((roadmap) => (
+										<NearLimitRoadmap
+											key={roadmap.roadmap_id}
+											roadmap={roadmap}
+											limit={limit}
+										/>
+									))}
+								</ul>
+							</div>
+						) : null}
+					</div>
+				) : undefined
+			}
+		>
 			{largest ? (
-				<>
-					<p className={cn(KICKER, "mt-4")}>Largest roadmap</p>
-					<ul className="mt-2">
-						<RoadmapMeterRow
-							roadmap={largest}
-							limit={limit}
-							caption={meterCaption(
-								"roadmap_nodes_per_roadmap",
-								computeMeter(largest.nodes, limit),
-								usage.plan.effective,
-							)}
-						/>
-					</ul>
-				</>
-			) : (
-				<p className="mt-4 text-sm text-muted-foreground">
-					No roadmaps in this workspace yet.
-				</p>
-			)}
-
-			{others.length > 0 ? (
-				<>
-					<p className={cn(KICKER, "mt-5")}>Also near the limit</p>
-					<ul className="mt-2 space-y-3">
-						{others.map((roadmap) => (
-							<RoadmapMeterRow
-								key={roadmap.roadmap_id}
-								roadmap={roadmap}
-								limit={limit}
-							/>
-						))}
-					</ul>
-				</>
+				<NodesReading nodes={largest.nodes} limit={limit} size="lg" />
 			) : null}
-		</div>
+		</SettingsRow>
 	);
 }
 
 /**
- * One roadmap against the per-roadmap limit. The name is null unless the
- * viewer can open that roadmap — workspace membership is not project access —
- * so an unnamed row says so and never links anywhere.
+ * A roadmap's name. It is null unless the viewer can open that roadmap —
+ * workspace membership is not project access — so an unnamed roadmap says so
+ * and never links anywhere, and a named one links only when it has a project
+ * to open it in.
  */
-function RoadmapMeterRow({
+function RoadmapName({ roadmap }: { roadmap: RoadmapNodeUsage }) {
+	if (roadmap.name && roadmap.project_id) {
+		return (
+			<Link
+				to="/project/$projectId/roadmap/$roadmapId"
+				params={{
+					projectId: roadmap.project_id,
+					roadmapId: roadmap.roadmap_id,
+				}}
+				className="text-xs font-medium text-foreground hover:text-primary hover:underline"
+			>
+				{roadmap.name}
+			</Link>
+		);
+	}
+	if (roadmap.name) {
+		return (
+			<span className="text-xs font-medium text-foreground">
+				{roadmap.name}
+			</span>
+		);
+	}
+	return (
+		<span className="text-xs text-muted-foreground">
+			A roadmap you can't open
+		</span>
+	);
+}
+
+/**
+ * "Largest roadmap · <name> · <project>", a line of the row's description.
+ * It inherits the description's size and line height, so it stacks as
+ * tightly as the line above it.
+ */
+function LargestRoadmapLine({ roadmap }: { roadmap: RoadmapNodeUsage }) {
+	return (
+		<span className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+			<span>Largest roadmap</span>
+			<span aria-hidden="true">·</span>
+			<RoadmapName roadmap={roadmap} />
+			{roadmap.project_title ? (
+				<>
+					<span aria-hidden="true">·</span>
+					<span>{roadmap.project_title}</span>
+				</>
+			) : null}
+		</span>
+	);
+}
+
+function NearLimitRoadmap({
 	roadmap,
 	limit,
-	caption,
 }: {
 	roadmap: RoadmapNodeUsage;
 	limit: number | null;
-	caption?: string | null;
 }) {
 	const meter = computeMeter(roadmap.nodes, limit);
-	const tone = meterBarTone(meter.tone);
-	const name = roadmap.name ?? "A roadmap you can't open";
-	const reading =
-		limit === null
-			? `${formatCount(roadmap.nodes)} ${roadmap.nodes === 1 ? "node" : "nodes"}`
-			: `${formatCount(roadmap.nodes)} of ${formatCount(limit)}`;
+	const reading = nodesReading(roadmap.nodes, limit);
 
 	return (
 		<li>
-			<div className="flex items-baseline justify-between gap-3 text-sm">
-				<span className="min-w-0 truncate">
-					{roadmap.name && roadmap.project_id ? (
-						<Link
-							to="/project/$projectId/roadmap/$roadmapId"
-							params={{
-								projectId: roadmap.project_id,
-								roadmapId: roadmap.roadmap_id,
-							}}
-							className="font-medium text-foreground hover:text-primary hover:underline"
-						>
-							{roadmap.name}
-						</Link>
-					) : (
-						<span
-							className={
-								roadmap.name
-									? "font-medium text-foreground"
-									: "text-muted-foreground"
-							}
-						>
-							{name}
-						</span>
-					)}
+			<div className="flex items-baseline justify-between gap-3">
+				<span className="min-w-0 truncate text-xs">
+					<RoadmapName roadmap={roadmap} />
 					{roadmap.project_title ? (
-						<span className="ml-2 text-xs text-muted-foreground">
+						<span className="ml-1.5 text-muted-foreground">
 							{roadmap.project_title}
 						</span>
 					) : null}
 				</span>
-				<span className="shrink-0 font-semibold tabular-nums text-foreground">
-					{reading}
-				</span>
+				<NodesReading nodes={roadmap.nodes} limit={limit} size="sm" />
 			</div>
 			{limit !== null ? (
 				<MeterBar
-					className="mt-1.5"
+					className={cn("mt-1.5 h-1", USAGE_TRACK)}
 					percent={meter.percent}
-					tone={tone}
-					label={`${name}: ${reading} nodes`}
+					tone={meterBarTone(meter.tone)}
+					label={`${roadmap.name ?? "A roadmap you can't open"}: ${reading} nodes`}
 				/>
-			) : null}
-			{caption ? (
-				<p className={cn("mt-1.5 text-xs", CAPTION_TONE[tone])}>{caption}</p>
 			) : null}
 		</li>
 	);
+}
+
+function RetentionValue({ days }: { days: number | null }) {
+	// Spelled out with no ∞ beside it, as every unlimited reading is.
+	if (days === null) return <Reading size="lg" figure="Unlimited" />;
+	// "90 days": the figure strong, the unit quiet, the wording still
+	// countNoun's own.
+	const [figure, ...unit] = countNoun("activity_retention_days", days).split(
+		" ",
+	);
+	return <Reading size="lg" figure={figure} qualifier={unit.join(" ")} />;
 }
 
 interface FeatureLine {
@@ -452,7 +592,7 @@ function enforcedFeatures(
 	}));
 }
 
-function FeaturesCard({
+function FeaturesSection({
 	usage,
 	allLimits,
 }: {
@@ -462,59 +602,58 @@ function FeaturesCard({
 	const features = enforcedFeatures(usage, allLimits);
 	if (features.length === 0) return null;
 	return (
-		<section className={CARD}>
-			<h2 className="text-base font-semibold text-foreground">Features</h2>
-			<ul className="mt-2 divide-y divide-border">
-				{features.map((feature) => (
-					<li
-						key={feature.key}
-						className="flex items-center justify-between gap-4 py-3 text-sm"
-					>
-						<span className="min-w-0 text-foreground">{feature.label}</span>
-						<span
-							className={cn(
-								"inline-flex shrink-0 items-center gap-1.5",
-								feature.enabled
-									? "font-medium text-foreground"
-									: "text-muted-foreground",
-							)}
-						>
+		<SettingsSection
+			id="usage-features"
+			title="Features"
+			description="What this plan turns on, and which plan brings the rest."
+		>
+			<ul className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+				{features.map((feature) => {
+					const availability = featureAvailabilityCopy(
+						feature.enabled,
+						feature.availableOn,
+					);
+					return (
+						<li key={feature.key} className="flex min-w-0 items-start gap-3">
 							{feature.enabled ? (
-								<Check aria-hidden="true" className="h-4 w-4 text-success" />
-							) : null}
-							{featureAvailabilityCopy(feature.enabled, feature.availableOn)}
-						</span>
-					</li>
-				))}
+								<Check
+									aria-hidden="true"
+									className="mt-0.5 h-4 w-4 shrink-0 text-success"
+								/>
+							) : (
+								<Lock
+									aria-hidden="true"
+									className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+								/>
+							)}
+							<div className="min-w-0">
+								<p
+									className={cn(
+										"text-sm leading-5",
+										feature.enabled
+											? "text-foreground"
+											: "text-muted-foreground",
+									)}
+								>
+									{feature.label}
+								</p>
+								{/* The check already says "included" to the eye; only a
+								    missing feature needs a visible line saying where it is. */}
+								<p
+									className={
+										feature.enabled
+											? "sr-only"
+											: "mt-0.5 text-xs text-muted-foreground"
+									}
+								>
+									{availability}
+								</p>
+							</div>
+						</li>
+					);
+				})}
 			</ul>
-		</section>
-	);
-}
-
-function UsageSkeleton() {
-	return (
-		<div className="space-y-6" aria-busy="true">
-			<p role="status" className="sr-only">
-				Loading usage
-			</p>
-			<div className={cn(CARD, "animate-pulse")}>
-				<div className="h-3 w-24 rounded bg-muted" />
-				<div className="mt-3 h-8 w-32 rounded bg-muted" />
-				<div className="mt-3 h-3 w-2/3 rounded bg-muted" />
-			</div>
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-				{[0, 1, 2, 3].map((index) => (
-					<div key={index} className={cn(CARD, "animate-pulse")}>
-						<div className="flex justify-between">
-							<div className="h-3 w-20 rounded bg-muted" />
-							<div className="h-3 w-12 rounded bg-muted" />
-						</div>
-						<div className="mt-3 h-1.5 w-full rounded-full bg-muted" />
-						<div className="mt-3 h-3 w-1/2 rounded bg-muted" />
-					</div>
-				))}
-			</div>
-		</div>
+		</SettingsSection>
 	);
 }
 

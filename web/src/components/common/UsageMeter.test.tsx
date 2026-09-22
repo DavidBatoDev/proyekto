@@ -3,9 +3,22 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ProgressMeter } from "@/components/project/delivery/DeliveryPrimitives";
-import { MeterBar, meterBarTone, UsageMeter } from "./UsageMeter";
+import {
+	MeterBar,
+	meterBarTone,
+	UsageMeter,
+	UsageMeterDetail,
+	UsageReading,
+} from "./UsageMeter";
 
 afterEach(cleanup);
+
+/** The whole reading ("2 of 10"), whose figure and qualifier are separate spans. */
+function reading(text: string) {
+	return (_content: string, element: Element | null) =>
+		element?.hasAttribute("data-reading") === true &&
+		element.textContent === text;
+}
 
 function fill(bar: HTMLElement): HTMLElement {
 	return bar.firstElementChild as HTMLElement;
@@ -64,7 +77,7 @@ describe("UsageMeter", () => {
 	it("shows used of limit over a bar", () => {
 		render(<UsageMeter label="Projects" used={2} limit={10} />);
 		expect(screen.getByText("Projects")).toBeTruthy();
-		expect(screen.getByText("2 of 10")).toBeTruthy();
+		expect(screen.getByText(reading("2 of 10"))).toBeTruthy();
 		const bar = screen.getByRole("progressbar");
 		expect(bar.getAttribute("aria-valuenow")).toBe("20");
 		expect(fill(bar).className).toContain("bg-primary");
@@ -79,7 +92,7 @@ describe("UsageMeter", () => {
 				caption="At Free's limit. New teams are blocked; everything you have stays."
 			/>,
 		);
-		expect(screen.getByText("2 of 2")).toBeTruthy();
+		expect(screen.getByText(reading("2 of 2"))).toBeTruthy();
 		expect(fill(screen.getByRole("progressbar")).className).toContain(
 			"bg-destructive",
 		);
@@ -104,6 +117,39 @@ describe("UsageMeter", () => {
 		render(<UsageMeter label="Projects" used={1234} limit={null} />);
 		expect(screen.getByText("1,234")).toBeTruthy();
 		expect(screen.getByText("Unlimited")).toBeTruthy();
+		expect(screen.queryByRole("progressbar")).toBeNull();
+	});
+});
+
+describe("UsageReading and UsageMeterDetail", () => {
+	it("reads a finite count as one phrase with a strong figure", () => {
+		render(<UsageReading used={14} limit={10} size="lg" />);
+		const value = screen.getByText(reading("14 of 10"));
+		expect(screen.getByText("14").className).toContain("text-base");
+		expect(screen.getByText("14").className).toContain("font-semibold");
+		expect(screen.getByText("of 10").className).toContain(
+			"text-muted-foreground",
+		);
+		expect(value.contains(screen.getByText("of 10"))).toBe(true);
+	});
+
+	it("draws nothing under an unlimited count with no caption", () => {
+		const { container } = render(
+			<UsageMeterDetail label="Teams" used={3} limit={null} />,
+		);
+		expect(container.firstChild).toBeNull();
+	});
+
+	it("keeps an unlimited count's caption without a bar", () => {
+		render(
+			<UsageMeterDetail
+				label="Teams"
+				used={3}
+				limit={null}
+				caption="Unlimited teams on Pro."
+			/>,
+		);
+		expect(screen.getByText("Unlimited teams on Pro.")).toBeTruthy();
 		expect(screen.queryByRole("progressbar")).toBeNull();
 	});
 });

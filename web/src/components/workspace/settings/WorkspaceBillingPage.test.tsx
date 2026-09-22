@@ -227,6 +227,69 @@ describe("WorkspaceBillingPage", () => {
 		expect(screen.getByRole("link", { name: /See usage/ })).toBeTruthy();
 	});
 
+	it("names each checkout button by plan and interval", () => {
+		state.summary = baseSummary;
+		render(<WorkspaceBillingPage />);
+
+		for (const name of [
+			"Pro · monthly",
+			"Pro · billed yearly",
+			"Business · monthly",
+			"Business · billed yearly",
+		]) {
+			expect(screen.getByRole("button", { name })).toBeTruthy();
+		}
+	});
+
+	it("shows both seat counts when the provider bills a different number", () => {
+		state.summary = { ...baseSummary, plan: "pro", billed_quantity: 4 };
+		render(<WorkspaceBillingPage />);
+
+		expect(screen.getByText("Seats in use")).toBeTruthy();
+		expect(screen.getByText("Seats billed")).toBeTruthy();
+		expect(
+			screen.getByText(
+				"Your next invoice catches up with this difference automatically.",
+			),
+		).toBeTruthy();
+	});
+
+	it("keeps card digits and the invoice link for the owner", () => {
+		const paying: BillingSummary = {
+			...baseSummary,
+			plan: "pro",
+			portal_available: true,
+			has_billing_account: true,
+			payment_method: {
+				brand: "visa",
+				last4: "4242",
+				exp_month: 4,
+				exp_year: 2028,
+			},
+			latest_invoice: {
+				hosted_url: "https://invoice.example.test/i/1",
+				status: "paid",
+			},
+		};
+		state.summary = paying;
+		render(<WorkspaceBillingPage />);
+
+		expect(screen.getByText("4242")).toBeTruthy();
+		expect(screen.getByText("Expires 04/2028")).toBeTruthy();
+		expect(
+			screen.getByRole("link", { name: /View invoice/ }).getAttribute("href"),
+		).toBe("https://invoice.example.test/i/1");
+
+		cleanup();
+		state.role = "admin";
+		render(<WorkspaceBillingPage />);
+
+		expect(screen.getByText("A payment method is on file.")).toBeTruthy();
+		expect(screen.queryByText("4242")).toBeNull();
+		expect(screen.queryByRole("link", { name: /View invoice/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /Manage billing/ })).toBeNull();
+	});
+
 	it("falls back to the subscription plan when an older backend sends no effective plan", () => {
 		const {
 			effective_plan: _effective,

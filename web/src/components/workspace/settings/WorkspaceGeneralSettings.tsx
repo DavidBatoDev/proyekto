@@ -1,14 +1,25 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Building2, Loader2 } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { workspaceMemberName } from "@/components/workspace/settings/memberName";
+import {
+	SettingsAvatar,
+	SettingsNotice,
+	SettingsPageHeader,
+	SettingsRow,
+	SettingsRows,
+	SettingsSection,
+	settingsButton,
+	settingsInput,
+} from "@/components/workspace/settings/SettingsPrimitives";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import { useToast } from "@/hooks/useToast";
 import {
 	useUpdateWorkspaceMutation,
 	useWorkspaceMembersQuery,
 } from "@/hooks/useWorkspaceQueries";
+import { cn } from "@/lib/utils";
 import {
 	isValidWorkspaceSlug,
 	normalizeWorkspaceSlug,
@@ -16,6 +27,9 @@ import {
 import { workspaceKeys } from "@/queries/workspaces";
 import type { Workspace, WorkspaceMember } from "@/services/workspaces.service";
 import { useUser } from "@/stores/authStore";
+
+const fieldLabel = "block text-sm font-medium text-foreground";
+const fieldHint = "mt-2 text-xs leading-relaxed text-muted-foreground";
 
 export function WorkspaceGeneralSettings() {
 	return (
@@ -47,6 +61,7 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 	const [slug, setSlug] = useState(workspace.slug);
 	const slugChanged = canEditSlug && slug !== workspace.slug;
 	const slugValid = isValidWorkspaceSlug(slug);
+	const slugInvalid = slugChanged && !slugValid;
 	const origin = typeof window === "undefined" ? "" : window.location.origin;
 
 	const owners = (membersQuery.data ?? []).filter(
@@ -101,28 +116,20 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 
 	return (
 		<div className="app-fade-in">
-			<header className="mb-8 flex items-start gap-4">
-				<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
-					<Building2 className="h-6 w-6" />
-				</div>
-				<div>
-					<h1 className="text-3xl font-semibold tracking-tight text-foreground">
-						General
-					</h1>
-					<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-						The name and description every member of this workspace sees.
-					</p>
-				</div>
-			</header>
+			<SettingsPageHeader
+				title="General"
+				description="The name and description every member of this workspace sees."
+			/>
 
-			<section className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6">
+			<SettingsSection
+				id="workspace-details"
+				title="Workspace details"
+				description="What this workspace is called, where it lives, and what it is for."
+			>
 				{canEdit ? (
-					<form onSubmit={onSubmit} className="space-y-5">
+					<form onSubmit={onSubmit} className="w-full max-w-xl space-y-7">
 						<div>
-							<label
-								htmlFor="workspace-name"
-								className="block text-sm font-medium text-foreground"
-							>
+							<label htmlFor="workspace-name" className={fieldLabel}>
 								Workspace name
 							</label>
 							<input
@@ -130,21 +137,25 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 								type="text"
 								value={name}
 								onChange={(event) => setName(event.target.value)}
-								className="mt-1.5 w-full max-w-md rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+								className={cn(settingsInput, "mt-2")}
 							/>
 						</div>
 
 						<div>
-							<label
-								htmlFor="workspace-slug"
-								className="block text-sm font-medium text-foreground"
-							>
+							<label htmlFor="workspace-slug" className={fieldLabel}>
 								URL handle
 							</label>
 							{canEditSlug ? (
 								<>
-									<div className="mt-1.5 flex w-full max-w-md items-stretch overflow-hidden rounded-xl border border-border bg-background focus-within:border-primary">
-										<span className="flex select-none items-center border-r border-border bg-muted px-3 text-sm text-muted-foreground">
+									<div
+										className={cn(
+											"mt-2 flex w-full items-stretch overflow-hidden rounded-lg border bg-background transition-colors focus-within:ring-2",
+											slugInvalid
+												? "border-destructive focus-within:ring-destructive/20"
+												: "border-input focus-within:border-primary focus-within:ring-primary/20",
+										)}
+									>
+										<span className="flex select-none items-center border-r border-input bg-muted/40 px-3 font-mono text-sm text-muted-foreground">
 											/w/
 										</span>
 										<input
@@ -156,12 +167,20 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 											}
 											spellCheck={false}
 											autoComplete="off"
-											aria-invalid={slugChanged && !slugValid}
-											className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+											aria-invalid={slugInvalid}
+											aria-describedby="workspace-slug-hint"
+											className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
 										/>
 									</div>
-									<p className="mt-1.5 text-xs text-muted-foreground">
-										{slugChanged && !slugValid
+									<p
+										id="workspace-slug-hint"
+										className={cn(
+											fieldHint,
+											"break-all",
+											slugInvalid ? "text-destructive" : undefined,
+										)}
+									>
+										{slugInvalid
 											? "Use 3 to 60 lowercase letters, numbers, and single hyphens."
 											: slugChanged
 												? "Old links keep working: they redirect to the new handle."
@@ -170,10 +189,10 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 								</>
 							) : (
 								<>
-									<p className="mt-1.5 text-sm text-muted-foreground">
+									<p className="mt-2 break-all text-sm text-foreground">
 										{origin}/w/{workspace.slug}/dashboard
 									</p>
-									<p className="mt-1 text-xs text-muted-foreground">
+									<p className={cn(fieldHint, "mt-1")}>
 										Only the workspace owner can change the URL handle.
 									</p>
 								</>
@@ -181,10 +200,7 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 						</div>
 
 						<div>
-							<label
-								htmlFor="workspace-description"
-								className="block text-sm font-medium text-foreground"
-							>
+							<label htmlFor="workspace-description" className={fieldLabel}>
 								Description{" "}
 								<span className="font-normal text-muted-foreground">
 									(optional)
@@ -196,11 +212,11 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 								onChange={(event) => setDescription(event.target.value)}
 								rows={3}
 								placeholder="What this workspace is for"
-								className="mt-1.5 w-full max-w-xl rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+								className={cn(settingsInput, "mt-2 resize-y leading-relaxed")}
 							/>
 						</div>
 
-						<div className="flex items-center gap-3">
+						<div className="flex items-center justify-end">
 							<button
 								type="submit"
 								disabled={
@@ -209,7 +225,7 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 									(slugChanged && !slugValid) ||
 									updateWorkspace.isPending
 								}
-								className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+								className={settingsButton.primary}
 							>
 								{updateWorkspace.isPending ? (
 									<Loader2 className="h-4 w-4 animate-spin" />
@@ -219,56 +235,56 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 						</div>
 					</form>
 				) : (
-					<div className="space-y-5">
-						<div>
-							<p className="text-sm font-medium text-foreground">
-								Workspace name
-							</p>
-							<p className="mt-1 text-sm text-muted-foreground">
-								{workspace.name}
-							</p>
-						</div>
-						<div>
-							<p className="text-sm font-medium text-foreground">URL handle</p>
-							<p className="mt-1 text-sm text-muted-foreground">
-								{origin}/w/{workspace.slug}/dashboard
-							</p>
-						</div>
-						<div>
-							<p className="text-sm font-medium text-foreground">Description</p>
-							<p className="mt-1 text-sm text-muted-foreground">
-								{workspace.description || "No description yet."}
-							</p>
-						</div>
-						<p className="border-t border-border pt-4 text-xs text-muted-foreground">
+					<>
+						<SettingsRows>
+							<SettingsRow label="Workspace name">
+								<span className="max-w-[22rem] break-words text-foreground sm:text-right">
+									{workspace.name}
+								</span>
+							</SettingsRow>
+							<SettingsRow label="URL handle">
+								<span className="max-w-[22rem] break-all text-muted-foreground sm:text-right">
+									{origin}/w/{workspace.slug}/dashboard
+								</span>
+							</SettingsRow>
+							<SettingsRow
+								label="Description"
+								below={
+									<p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+										{workspace.description || "No description yet."}
+									</p>
+								}
+							/>
+						</SettingsRows>
+						<SettingsNotice icon={Lock} className="mt-8">
 							Only workspace owners and admins can change these details.
-						</p>
-					</div>
+						</SettingsNotice>
+					</>
 				)}
-			</section>
+			</SettingsSection>
 
-			<section className="mt-6 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6">
-				<h2 className="text-sm font-semibold text-foreground">Owners</h2>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Owners manage members, billing, and this workspace itself.
-				</p>
+			<SettingsSection
+				id="workspace-owners"
+				title="Owners"
+				description="Owners manage members, billing, and this workspace itself."
+			>
 				{membersQuery.isLoading ? (
-					<div className="flex items-center gap-2 py-6 text-muted-foreground">
+					<div className="flex items-center gap-2 text-muted-foreground">
 						<Loader2 className="h-4 w-4 animate-spin" />
 						<span className="text-sm">Loading owners…</span>
 					</div>
 				) : owners.length === 0 ? (
-					<p className="py-6 text-sm text-muted-foreground">
+					<p className="text-sm text-muted-foreground">
 						The owners of this workspace could not be loaded right now.
 					</p>
 				) : (
-					<ul className="mt-4 space-y-3">
+					<SettingsRows as="ul">
 						{owners.map((owner) => (
 							<OwnerRow key={owner.id} owner={owner} />
 						))}
-					</ul>
+					</SettingsRows>
 				)}
-			</section>
+			</SettingsSection>
 		</div>
 	);
 }
@@ -276,28 +292,18 @@ function GeneralSettingsContent({ workspace }: { workspace: Workspace }) {
 function OwnerRow({ owner }: { owner: WorkspaceMember }) {
 	const displayName = workspaceMemberName(owner);
 	return (
-		<li className="flex items-center gap-3">
-			{owner.user?.avatar_url ? (
-				<img
-					src={owner.user.avatar_url}
-					alt={displayName}
-					className="h-9 w-9 rounded-full border border-border object-cover"
-				/>
-			) : (
-				<span className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted text-sm font-semibold text-foreground">
-					{displayName.charAt(0).toUpperCase()}
-				</span>
-			)}
-			<span className="min-w-0">
-				<span className="block truncate text-sm font-medium text-foreground">
-					{displayName}
-				</span>
-				{owner.user?.email ? (
-					<span className="block truncate text-xs text-muted-foreground">
-						{owner.user.email}
-					</span>
-				) : null}
-			</span>
-		</li>
+		<SettingsRow
+			as="li"
+			align="center"
+			leading={
+				<SettingsAvatar name={displayName} src={owner.user?.avatar_url} />
+			}
+			label={<span className="block truncate">{displayName}</span>}
+			description={
+				owner.user?.email ? (
+					<span className="block truncate">{owner.user.email}</span>
+				) : undefined
+			}
+		/>
 	);
 }

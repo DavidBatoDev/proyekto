@@ -196,13 +196,25 @@ function proComped(): WorkspaceUsage {
 	});
 }
 
-/** The card wrapping the meter whose label is `label`. */
-function meterCard(label: string): HTMLElement {
-	const card = screen
-		.getByText(label, { selector: "span" })
-		.closest("div.rounded-2xl");
-	if (!card) throw new Error(`No meter card for ${label}`);
-	return card as HTMLElement;
+/**
+ * Matches a whole reading ("2 of 10", "7 days"). The figure and its
+ * qualifier are drawn in separate spans, so the phrase is the reading
+ * element's full text rather than any one text node.
+ */
+function reading(text: string) {
+	return (_content: string, element: Element | null) =>
+		element?.hasAttribute("data-reading") === true &&
+		element.textContent === text;
+}
+
+/** The Limits row whose label is `label`. */
+function limitRow(label: string): HTMLElement {
+	const limits = screen
+		.getByRole("heading", { name: "Limits" })
+		.closest("section") as HTMLElement;
+	const row = within(limits).getByText(label).closest("li");
+	if (!row) throw new Error(`No limit row for ${label}`);
+	return row as HTMLElement;
 }
 
 beforeEach(() => {
@@ -217,8 +229,8 @@ afterEach(cleanup);
 describe("WorkspaceUsagePage", () => {
 	it("reads a project count at the limit as blocked, with a danger bar", () => {
 		render(<WorkspaceUsagePage />);
-		const projects = meterCard("Projects");
-		expect(within(projects).getByText("2 of 2")).toBeTruthy();
+		const projects = limitRow("Projects");
+		expect(within(projects).getByText(reading("2 of 2"))).toBeTruthy();
 		expect(within(projects).getByText(/At Free's limit\./)).toBeTruthy();
 		const fill = within(projects)
 			.getByRole("progressbar")
@@ -228,8 +240,8 @@ describe("WorkspaceUsagePage", () => {
 
 	it("counts pending invites toward members and says so", () => {
 		render(<WorkspaceUsagePage />);
-		const members = meterCard("Members");
-		expect(within(members).getByText("5 of 10")).toBeTruthy();
+		const members = limitRow("Members");
+		expect(within(members).getByText(reading("5 of 10"))).toBeTruthy();
 		expect(
 			within(members).getByText(/Includes 2 pending invites\./),
 		).toBeTruthy();
@@ -238,7 +250,7 @@ describe("WorkspaceUsagePage", () => {
 	it("shows Unlimited without a bar when the plan has no cap", () => {
 		state.usage = proComped();
 		render(<WorkspaceUsagePage />);
-		const members = meterCard("Members");
+		const members = limitRow("Members");
 		expect(within(members).getByText("Unlimited")).toBeTruthy();
 		expect(within(members).queryByRole("progressbar")).toBeNull();
 	});
@@ -317,7 +329,7 @@ describe("WorkspaceUsagePage", () => {
 		expect(largest.getAttribute("href")).toBe("/project/proj-1/roadmap/rm-1");
 		// Once only, although the payload lists it under near_limit as well.
 		expect(screen.getAllByText("Launch plan")).toHaveLength(1);
-		expect(screen.getByText("240 of 250")).toBeTruthy();
+		expect(screen.getByText(reading("240 of 250"))).toBeTruthy();
 		expect(screen.getByText("Also near the limit")).toBeTruthy();
 
 		// A roadmap the viewer cannot open is named as such and never linked.
@@ -325,7 +337,7 @@ describe("WorkspaceUsagePage", () => {
 		expect(hidden.closest("a")).toBeNull();
 		// An unlinked roadmap has no project to link into.
 		expect(screen.getByText("Personal backlog").closest("a")).toBeNull();
-		expect(screen.getByText("205 of 250")).toBeTruthy();
+		expect(screen.getByText(reading("205 of 250"))).toBeTruthy();
 	});
 
 	it("says there are no roadmaps when the workspace has none", () => {
@@ -342,6 +354,22 @@ describe("WorkspaceUsagePage", () => {
 		expect(screen.getByText(/Older activity is kept/)).toBeTruthy();
 	});
 
+	it("reads the visible activity history as a value", () => {
+		render(<WorkspaceUsagePage />);
+		const history = screen
+			.getByText("Visible history")
+			.closest("section") as HTMLElement;
+		expect(within(history).getByText(reading("7 days"))).toBeTruthy();
+	});
+
+	it("lays the page out without card chrome", () => {
+		const { container } = render(<WorkspaceUsagePage />);
+		expect(container.querySelector(".rounded-2xl")).toBeNull();
+		expect(container.querySelector(".bg-card")).toBeNull();
+		expect(container.querySelector("[class*='shadow']")).toBeNull();
+		expect(container.querySelector("[class*='bg-primary-dark']")).toBeNull();
+	});
+
 	it("shows a skeleton while usage loads", () => {
 		state.usage = null;
 		state.status = "loading";
@@ -350,7 +378,7 @@ describe("WorkspaceUsagePage", () => {
 		expect(screen.queryByText("Current plan")).toBeNull();
 	});
 
-	it("shows an error card with a retry when usage cannot load", () => {
+	it("shows an error notice with a retry when usage cannot load", () => {
 		state.usage = null;
 		state.status = "unavailable";
 		render(<WorkspaceUsagePage />);

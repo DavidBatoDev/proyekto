@@ -1,5 +1,5 @@
-import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { SettingsSkeleton } from "@/components/workspace/settings/SettingsPrimitives";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import type { Workspace } from "@/services/workspaces.service";
 
@@ -15,6 +15,10 @@ interface WorkspaceSettingsGateProps {
  * never because "nothing is selected". An account with no workspace at all
  * cannot reach these pages; it lands on the bare /dashboard stub, which offers
  * to create one.
+ *
+ * While it loads, the placeholder takes the shape of the page that is coming
+ * (a header over ruled bands) rather than a boxed spinner, so nothing jumps
+ * when the page arrives.
  */
 export function WorkspaceSettingsGate({
 	children,
@@ -23,8 +27,15 @@ export function WorkspaceSettingsGate({
 
 	if (isLoading || !workspace) {
 		return (
-			<div className="flex items-center justify-center py-24">
-				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+			<div>
+				<div
+					aria-hidden="true"
+					className="animate-pulse border-b border-border pb-6"
+				>
+					<div className="h-7 w-48 rounded bg-muted" />
+					<div className="mt-3 h-3.5 w-72 max-w-full rounded bg-muted" />
+				</div>
+				<SettingsSkeleton />
 			</div>
 		);
 	}

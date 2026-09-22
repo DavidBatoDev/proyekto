@@ -2,13 +2,30 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	BadgeCheck,
+	CircleCheck,
 	CreditCard,
 	ExternalLink,
 	Gauge,
+	Info,
 	Loader2,
+	Lock,
+	Mail,
+	ReceiptText,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SemanticBadge } from "@/components/common/SemanticBadge";
+import {
+	SettingsHeadline,
+	SettingsNotice,
+	SettingsPageHeader,
+	SettingsRow,
+	SettingsRows,
+	SettingsSection,
+	SettingsSkeleton,
+	SettingsStat,
+	SettingsStats,
+	settingsButton,
+} from "@/components/workspace/settings/SettingsPrimitives";
 import { WorkspaceSettingsGate } from "@/components/workspace/settings/WorkspaceSettingsGate";
 import {
 	useBillingSummaryQuery,
@@ -74,6 +91,11 @@ export function WorkspaceBillingPage() {
 	);
 }
 
+/** Muted leading icon for a settings row; the row centres it on the label's line. */
+const rowIcon = "h-4 w-4 shrink-0 text-muted-foreground";
+
+const MANAGE_DESCRIPTION = "Changes to the plan and payment method.";
+
 function BillingContent({ workspace }: { workspace: Workspace }) {
 	const isOwner = workspace.my_role === "owner";
 	const canManage = isOwner || workspace.my_role === "admin";
@@ -85,29 +107,18 @@ function BillingContent({ workspace }: { workspace: Workspace }) {
 
 	return (
 		<div className="app-fade-in">
-			<header className="mb-8 flex items-start gap-4">
-				<div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 text-primary sm:flex">
-					<CreditCard className="h-6 w-6" />
-				</div>
-				<div>
-					<h1 className="text-3xl font-semibold tracking-tight text-foreground">
-						Billing
-					</h1>
-					<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-						The plan and seats for this workspace.
-					</p>
-				</div>
-			</header>
+			<SettingsPageHeader
+				title="Billing"
+				description="The plan and seats for this workspace."
+				actions={<UsageLink workspace={workspace} />}
+			/>
 
 			{!canManage ? (
-				<section className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-(--app-shadow-sm)">
-					<p className="text-sm text-muted-foreground">{MEMBER_ONLY_NOTE}</p>
-					<UsageLink workspace={workspace} />
-				</section>
-			) : summaryQuery.isLoading ? (
-				<div className="flex items-center justify-center py-16">
-					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				<div className="py-8">
+					<SettingsNotice icon={Lock}>{MEMBER_ONLY_NOTE}</SettingsNotice>
 				</div>
+			) : summaryQuery.isLoading ? (
+				<SettingsSkeleton bands={3} />
 			) : summaryQuery.data ? (
 				<ManagerView
 					workspace={workspace}
@@ -115,11 +126,11 @@ function BillingContent({ workspace }: { workspace: Workspace }) {
 					isOwner={isOwner}
 				/>
 			) : (
-				<section className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-(--app-shadow-sm)">
-					<p className="text-sm text-muted-foreground">
+				<div className="py-8">
+					<SettingsNotice tone="warning" icon={AlertTriangle}>
 						Billing details are unavailable right now. Try again in a moment.
-					</p>
-				</section>
+					</SettingsNotice>
+				</div>
 			)}
 		</div>
 	);
@@ -149,132 +160,195 @@ function ManagerView({
 		isComplimentary && summary.complimentary?.until
 			? formatDate(summary.complimentary.until)
 			: null;
+	// Only ever a link to the provider's hosted page; anything that is not
+	// plain https is not rendered as an href.
+	const invoiceUrl =
+		isOwner &&
+		summary.latest_invoice?.hosted_url &&
+		/^https:\/\//i.test(summary.latest_invoice.hosted_url)
+			? summary.latest_invoice.hosted_url
+			: null;
+	const showPayment = Boolean(
+		summary.payment_method || summary.billing_email || invoiceUrl,
+	);
 
 	return (
-		<div className="space-y-6">
+		<div>
 			<CheckoutReturnBanner />
 
 			{status ? (
-				<section
-					className={`flex gap-3 rounded-2xl border p-4 ${
-						status.tone === "warning"
-							? "border-destructive/40 bg-destructive/5 text-destructive"
-							: "border-border bg-muted/40 text-muted-foreground"
-					}`}
+				<SettingsNotice
+					className="mt-6"
+					tone={status.tone === "warning" ? "danger" : "info"}
+					icon={status.tone === "warning" ? AlertTriangle : Info}
 				>
-					<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-					<p className="text-sm">{status.message}</p>
-				</section>
+					{status.message}
+				</SettingsNotice>
 			) : null}
 
-			<section className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6">
-				<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-					Current plan
-				</p>
-				<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-					<p className="text-3xl font-semibold text-foreground">
-						{planLabel(effectivePlan)}
-						{/* The interval belongs to the paid subscription, which is not
-						    what a granted plan is. */}
-						{summary.interval && !isComplimentary ? (
-							<span className="ml-2 text-base font-normal text-muted-foreground">
-								billed {summary.interval === "year" ? "yearly" : "monthly"}
-							</span>
-						) : null}
-					</p>
+			<SettingsSection
+				id="billing-plan"
+				title="Plan"
+				description="What this workspace is on today."
+			>
+				<SettingsHeadline
+					value={planLabel(effectivePlan)}
+					// The interval belongs to the paid subscription, which is not
+					// what a granted plan is.
+					aside={
+						summary.interval && !isComplimentary
+							? `billed ${summary.interval === "year" ? "yearly" : "monthly"}`
+							: undefined
+					}
+					badge={
+						isComplimentary ? (
+							<SemanticBadge icon={BadgeCheck} iconClassName="text-success">
+								{COMPLIMENTARY_BADGE}
+							</SemanticBadge>
+						) : null
+					}
+				>
 					{isComplimentary ? (
-						<SemanticBadge icon={BadgeCheck} iconClassName="text-success">
-							{COMPLIMENTARY_BADGE}
-						</SemanticBadge>
+						<>
+							{summary.has_live_subscription
+								? COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE
+								: COMPLIMENTARY_NOTE}
+							{complimentaryUntil ? ` Until ${complimentaryUntil}.` : null}
+						</>
 					) : null}
-				</div>
-				{isComplimentary ? (
-					<p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-						{summary.has_live_subscription
-							? COMPLIMENTARY_WITH_SUBSCRIPTION_NOTE
-							: COMPLIMENTARY_NOTE}
-						{complimentaryUntil ? ` Until ${complimentaryUntil}.` : null}
-					</p>
-				) : null}
-				<UsageLink workspace={workspace} />
+				</SettingsHeadline>
+			</SettingsSection>
 
-				<div className="mt-6 flex flex-wrap gap-x-8 gap-y-4 border-t border-border pt-5">
-					<div>
-						<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-							Seats
-						</p>
-						{/* seat_limit is deliberately never rendered: it is the payment
-						    provider's seat-cap column, not the plan's member limit.
-						    Member caps live in the plan-limit matrix and are shown, with
-						    the other limits, on the Usage page. */}
-						<p className="mt-1 text-xl font-semibold text-foreground">
-							{seats.headline}
-						</p>
-						{seats.note ? (
-							<p className="text-xs text-muted-foreground">{seats.note}</p>
-						) : null}
-					</div>
-
-					<div>
-						<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-							Invited
-						</p>
-						<p className="mt-1 text-xl font-semibold text-foreground">
-							{pendingInvites}
-						</p>
-						<p className="text-xs text-muted-foreground">
-							{PENDING_INVITES_NOTE}
-						</p>
-					</div>
-
+			<SettingsSection
+				id="billing-seats"
+				title="Seats and invoices"
+				description="Seat counts, and the next invoice when there is one."
+			>
+				{/* seat_limit is deliberately never rendered: it is the payment
+				    provider's seat-cap column, not the plan's member limit.
+				    Member caps live in the plan-limit matrix and are shown, with
+				    the other limits, on the Usage page. */}
+				{/* Two columns: some counts carry sentences as hints, which a
+				    third column would squeeze into ribbons. */}
+				<SettingsStats className="sm:grid-cols-2">
+					<SettingsStat label="Seats in use" value={summary.seats_used} />
+					{/* Two numbers when the DB and the provider disagree, which they
+					    legitimately do between a membership change and the next
+					    sync. */}
+					{summary.billed_quantity !== null ? (
+						<SettingsStat
+							label="Seats billed"
+							value={summary.billed_quantity}
+							hint={seats.note ?? undefined}
+						/>
+					) : null}
 					{summary.next_invoice ? (
-						<div>
-							<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-								Next invoice
-							</p>
-							<p className="mt-1 text-xl font-semibold text-foreground">
-								{formatMoney(
-									summary.next_invoice.amount_due_cents,
-									summary.next_invoice.currency,
-								)}
-							</p>
-							<p className="text-xs text-muted-foreground">
-								{summary.next_invoice.date
+						<SettingsStat
+							label="Next invoice"
+							value={formatMoney(
+								summary.next_invoice.amount_due_cents,
+								summary.next_invoice.currency,
+							)}
+							hint={
+								summary.next_invoice.date
 									? `Estimated, on ${formatDate(summary.next_invoice.date)}`
-									: "Estimated"}
-							</p>
-						</div>
+									: "Estimated"
+							}
+						/>
 					) : null}
-				</div>
+					{/* Invites sit with the seat counts because they are the seats
+					    still to come, and are read the same way. */}
+					<SettingsStat label="Invited" value={pendingInvites} />
+				</SettingsStats>
+				{/* One caption under the whole row rather than a hint on the
+				    invite count alone, which left "Seats in use" a lone figure
+				    beside a paragraph. */}
+				<p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+					{PENDING_INVITES_NOTE}
+				</p>
+			</SettingsSection>
 
-				{summary.payment_method || summary.billing_email ? (
-					<div className="mt-5 border-t border-border pt-5 text-sm text-muted-foreground">
+			{showPayment ? (
+				<SettingsSection
+					id="billing-payment"
+					title="Payment"
+					description="How this workspace pays and where receipts go."
+				>
+					<SettingsRows>
 						{/* Card digits are an owner's business. An admin sees only that a
 						    card exists, because an owner can promote anyone to admin in one
 						    request. */}
-						{summary.payment_method ? (
-							isOwner ? (
-								<p>
-									{summary.payment_method.brand ?? "Card"} ending{" "}
-									{summary.payment_method.last4 ?? "----"}
-								</p>
+						<SettingsRow
+							label="Payment method"
+							leading={<CreditCard aria-hidden="true" className={rowIcon} />}
+						>
+							{summary.payment_method ? (
+								isOwner ? (
+									<div className="sm:text-right">
+										<p className="text-foreground">
+											{capitalize(summary.payment_method.brand ?? "Card")}{" "}
+											ending{" "}
+											<span className="tabular-nums">
+												{summary.payment_method.last4 ?? "----"}
+											</span>
+										</p>
+										{cardExpiry(summary.payment_method) ? (
+											<p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+												Expires {cardExpiry(summary.payment_method)}
+											</p>
+										) : null}
+									</div>
+								) : (
+									<span className="text-muted-foreground">
+										A payment method is on file.
+									</span>
+								)
 							) : (
-								<p>A payment method is on file.</p>
-							)
-						) : (
-							<p>No payment method on file.</p>
-						)}
+								<span className="text-muted-foreground">
+									No payment method on file.
+								</span>
+							)}
+						</SettingsRow>
 						{summary.billing_email ? (
-							<p className="mt-1">Receipts go to {summary.billing_email}.</p>
+							<SettingsRow
+								label="Receipts"
+								leading={<Mail aria-hidden="true" className={rowIcon} />}
+							>
+								<span className="break-all text-foreground">
+									{summary.billing_email}
+								</span>
+							</SettingsRow>
 						) : null}
-					</div>
-				) : null}
-			</section>
+						{invoiceUrl ? (
+							<SettingsRow
+								label="Latest invoice"
+								leading={<ReceiptText aria-hidden="true" className={rowIcon} />}
+							>
+								<a
+									href={invoiceUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className={settingsButton.link}
+								>
+									View invoice
+									<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+								</a>
+							</SettingsRow>
+						) : null}
+					</SettingsRows>
+				</SettingsSection>
+			) : null}
 
 			{isOwner ? (
 				<OwnerActions workspace={workspace} summary={summary} />
 			) : (
-				<p className="text-sm text-muted-foreground">{ADMIN_READ_ONLY_NOTE}</p>
+				<SettingsSection
+					id="billing-manage"
+					title="Manage"
+					description={MANAGE_DESCRIPTION}
+				>
+					<SettingsNotice icon={Lock}>{ADMIN_READ_ONLY_NOTE}</SettingsNotice>
+				</SettingsSection>
 			)}
 		</div>
 	);
@@ -317,83 +391,132 @@ function OwnerActions({
 		}
 	}
 
-	return (
-		<section className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-(--app-shadow-sm) sm:p-6">
-			{showSalesNote ? (
-				<p className="text-sm text-muted-foreground">
-					{COMPLIMENTARY_PLAN_CHANGES_NOTE} Contact{" "}
-					<a
-						href={`mailto:${SALES_EMAIL}`}
-						className="font-medium text-primary hover:underline"
-					>
-						{SALES_EMAIL}
-					</a>
-					.
-				</p>
-			) : null}
-			{summary.portal_available ? (
-				<>
-					<p
-						className={`text-sm text-muted-foreground${showSalesNote ? " mt-3" : ""}`}
-					>
-						{mode === "portal"
-							? "Change plan, update your payment method, or download invoices."
-							: summary.has_live_subscription
-								? "Update your payment method, cancel your subscription, or download invoices."
-								: "Update your saved payment method or download past invoices."}
-					</p>
-					<button
-						type="button"
-						className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-						disabled={portal.isPending}
-						onClick={() => go(portal.mutateAsync({}))}
-					>
-						{portal.isPending ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<ExternalLink className="h-4 w-4" />
-						)}
-						Manage billing
-					</button>
-				</>
-			) : mode === "checkout" ? (
-				<>
+	const errorLine = error ? (
+		<p role="alert" className="mt-4 text-sm text-destructive">
+			{error}
+		</p>
+	) : null;
+
+	// "checkout" is only ever reached without a portal (see ownerBillingMode).
+	if (mode === "checkout") {
+		return (
+			<SettingsSection
+				id="billing-manage"
+				title="Choose a plan"
+				description="Start a subscription for this workspace. You'll be billed for each member."
+			>
+				{purchasable.length > 0 ? (
+					<SettingsRows as="ul">
+						{purchasable.map((plan) => (
+							<SettingsRow
+								as="li"
+								key={plan.id}
+								label={plan.name}
+								description={plan.tagline}
+							>
+								{plan.intervals.map((interval) => {
+									const pending =
+										checkout.isPending &&
+										checkout.variables?.plan === plan.id &&
+										checkout.variables?.interval === interval;
+									return (
+										<button
+											key={`${plan.id}-${interval}`}
+											type="button"
+											// The row already names the plan; the button's name
+											// still carries it so it reads alone.
+											aria-label={`${plan.name} · ${
+												interval === "year" ? "billed yearly" : "monthly"
+											}`}
+											className={settingsButton.secondary}
+											disabled={checkout.isPending}
+											onClick={() =>
+												go(
+													checkout.mutateAsync({
+														plan: plan.id as "pro" | "business",
+														interval,
+													}),
+												)
+											}
+										>
+											{pending ? (
+												<Loader2
+													aria-hidden="true"
+													className="h-4 w-4 animate-spin"
+												/>
+											) : null}
+											{interval === "year" ? "Yearly" : "Monthly"}
+										</button>
+									);
+								})}
+							</SettingsRow>
+						))}
+					</SettingsRows>
+				) : (
 					<p className="text-sm text-muted-foreground">
-						Start a subscription for this workspace. You'll be billed for each
-						member.
+						No plans are available for purchase on this environment.
 					</p>
-					<div className="mt-4 flex flex-wrap gap-2">
-						{purchasable.map((plan) =>
-							plan.intervals.map((interval) => (
-								<button
-									key={`${plan.id}-${interval}`}
-									type="button"
-									className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
-									disabled={checkout.isPending}
-									onClick={() =>
-										go(
-											checkout.mutateAsync({
-												plan: plan.id as "pro" | "business",
-												interval,
-											}),
-										)
-									}
+				)}
+				{errorLine}
+			</SettingsSection>
+		);
+	}
+
+	return (
+		<SettingsSection
+			id="billing-manage"
+			title="Manage"
+			description={MANAGE_DESCRIPTION}
+		>
+			<SettingsRows>
+				{showSalesNote ? (
+					<SettingsRow
+						label="Plan changes"
+						leading={<Mail aria-hidden="true" className={rowIcon} />}
+						description={
+							<>
+								{COMPLIMENTARY_PLAN_CHANGES_NOTE} Contact{" "}
+								<a
+									href={`mailto:${SALES_EMAIL}`}
+									className="font-medium text-primary hover:underline"
 								>
-									{plan.name} ·{" "}
-									{interval === "year" ? "billed yearly" : "monthly"}
-								</button>
-							)),
-						)}
-					</div>
-					{purchasable.length === 0 ? (
-						<p className="mt-3 text-xs text-muted-foreground">
-							No plans are available for purchase on this environment.
-						</p>
-					) : null}
-				</>
-			) : null}
-			{error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-		</section>
+									{SALES_EMAIL}
+								</a>
+								.
+							</>
+						}
+					/>
+				) : null}
+				{summary.portal_available ? (
+					<SettingsRow
+						label="Billing portal"
+						leading={<CreditCard aria-hidden="true" className={rowIcon} />}
+						description={
+							mode === "portal"
+								? "Change plan, update your payment method, or download invoices."
+								: summary.has_live_subscription
+									? "Update your payment method, cancel your subscription, or download invoices."
+									: "Update your saved payment method or download past invoices."
+						}
+					>
+						<button
+							type="button"
+							className={settingsButton.primary}
+							disabled={portal.isPending}
+							onClick={() => go(portal.mutateAsync({}))}
+						>
+							{portal.isPending ? (
+								<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+							) : (
+								<ExternalLink aria-hidden="true" className="h-4 w-4" />
+							)}
+							Manage billing
+						</button>
+					</SettingsRow>
+				) : null}
+			</SettingsRows>
+			{errorLine}
+		</SettingsSection>
 	);
 }
 
@@ -403,9 +526,9 @@ function UsageLink({ workspace }: { workspace: Workspace }) {
 		<Link
 			to="/w/$workspaceSlug/settings/usage"
 			params={{ workspaceSlug: workspace.slug }}
-			className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+			className={settingsButton.secondary}
 		>
-			<Gauge className="h-4 w-4" aria-hidden="true" />
+			<Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
 			See usage
 		</Link>
 	);
@@ -446,17 +569,22 @@ function CheckoutReturnBanner() {
 
 	if (search.checkout === "cancelled") {
 		return (
-			<p className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+			<SettingsNotice className="mt-6" tone="info" icon={Info} role="status">
 				{CHECKOUT_CANCELLED}
-			</p>
+			</SettingsNotice>
 		);
 	}
 	if (search.checkout !== "success") return null;
 
 	return (
-		<p className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+		<SettingsNotice
+			className="mt-6"
+			tone="success"
+			icon={CircleCheck}
+			role="status"
+		>
 			{slow ? CHECKOUT_SLOW : CHECKOUT_SETTLING}
-		</p>
+		</SettingsNotice>
 	);
 }
 
@@ -468,6 +596,17 @@ function formatDate(iso: string): string {
 		month: "long",
 		year: "numeric",
 	});
+}
+
+/** "visa" from the provider reads as "Visa" on the page. */
+function capitalize(value: string): string {
+	return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+/** MM/YYYY, or null when the provider did not report both parts. */
+function cardExpiry(method: NonNullable<BillingSummary["payment_method"]>) {
+	if (method.exp_month === null || method.exp_year === null) return null;
+	return `${String(method.exp_month).padStart(2, "0")}/${method.exp_year}`;
 }
 
 /**

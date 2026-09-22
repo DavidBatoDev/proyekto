@@ -243,6 +243,14 @@ describe("WorkspaceMembersPanel", () => {
 		expect(mocks.removeMemberMutate.mock.calls[0][0]).toBe("user-bob");
 	});
 
+	it("counts the members and names who sent each pending invite", () => {
+		render(<WorkspaceMembersPanel />);
+
+		expect(screen.getByText(/^2 members\./)).toBeTruthy();
+		// The fixture invite was sent by the signed-in user.
+		expect(screen.getByText(/invited Mar 1, 2026 by you/)).toBeTruthy();
+	});
+
 	it("cancels a pending invitation", () => {
 		render(<WorkspaceMembersPanel />);
 

@@ -1,4 +1,5 @@
 import { Info } from "lucide-react";
+import { SettingsNotice } from "@/components/workspace/settings/SettingsPrimitives";
 import { useBillingSummaryQuery } from "@/hooks/useBilling";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { type SeatChangeReason, seatChangeCopy } from "@/lib/billingCopy";
@@ -52,14 +53,13 @@ export function SeatChangeNotice({
 	});
 
 	return (
-		<div className="mt-4 flex gap-3 rounded-xl border border-border bg-muted/40 p-3 text-left">
-			<Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-			<div className="space-y-1 text-xs text-muted-foreground">
+		<SettingsNotice tone="info" icon={Info} className="mt-4 text-left text-xs">
+			<div className="space-y-1">
 				{lines.map((line) => (
 					<p key={line}>{line}</p>
 				))}
 			</div>
-		</div>
+		</SettingsNotice>
 	);
 }
 

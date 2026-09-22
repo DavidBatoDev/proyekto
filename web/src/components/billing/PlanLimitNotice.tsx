@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowUpRight } from "lucide-react";
+import { SettingsNotice } from "@/components/workspace/settings/SettingsPrimitives";
 import { computeMeter, type WorkspaceEntitlements } from "@/lib/entitlements";
 import type { PlanLimitInfo } from "@/lib/planLimitErrors";
 import {
@@ -49,6 +50,7 @@ interface PlanLimitNoticeProps {
 	detail?: string | null;
 	/** A granted plan changes through Proyekto, so it gets no upgrade link. */
 	isComplimentary?: boolean;
+	/** "inline" sets the notice in the smaller type of a dialog or form. */
 	variant?: "card" | "inline";
 	className?: string;
 }
@@ -100,41 +102,37 @@ export function PlanLimitNotice({
 	});
 
 	return (
-		<div
+		<SettingsNotice
 			role="status"
+			tone="warning"
+			icon={AlertTriangle}
+			title={planLimitTitle(full)}
 			className={cn(
-				"flex gap-3 border border-warning/40 bg-warning/10 text-left",
-				variant === "card" ? "rounded-2xl p-4" : "rounded-xl p-3",
+				"text-left",
+				variant === "inline" ? "text-xs" : undefined,
 				className,
 			)}
-		>
-			<AlertTriangle
-				className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground"
-				aria-hidden="true"
-			/>
-			<div
-				className={cn(
-					"min-w-0 flex-1 space-y-1",
-					variant === "card" ? "text-sm" : "text-xs",
-				)}
-			>
-				<p className="font-semibold text-foreground">{planLimitTitle(full)}</p>
-				<p className="text-muted-foreground">{body}</p>
-				{detail ? <p className="text-muted-foreground">{detail}</p> : null}
-				{cta.kind === "upgrade" && slug ? (
+			action={
+				cta.kind === "upgrade" && slug ? (
 					<Link
 						to="/w/$workspaceSlug/settings/billing"
 						params={{ workspaceSlug: slug }}
-						className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+						className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
 					>
 						{cta.label}
 						<ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
 					</Link>
-				) : cta.kind === "ask_owner" && !body.includes(cta.label) ? (
+				) : undefined
+			}
+		>
+			<div className="space-y-1">
+				<p>{body}</p>
+				{detail ? <p>{detail}</p> : null}
+				{cta.kind === "ask_owner" && !body.includes(cta.label) ? (
 					<p className="font-medium text-foreground">{cta.label}</p>
 				) : null}
 			</div>
-		</div>
+		</SettingsNotice>
 	);
 }
 
