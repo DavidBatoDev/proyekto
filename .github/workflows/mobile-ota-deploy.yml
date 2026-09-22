@@ -85,6 +85,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          # `changelog` is @MaxLength(2000) on RegisterBundleDto, and a longer
+          # commit body makes the register call 400. That surfaces as
+          # `curl: (22)` from a step named "presign -> PUT -> register", so it
+          # reads like an auth failure — and by then the zip is already on R2,
+          # leaving an orphaned object with no row and clients stuck on the
+          # previous bundle. Trimming here is what stops a long commit message
+          # costing a release.
+          CHANGELOG_TRIMMED=$(printf '%s' "$CHANGELOG" | head -c 2000)
+
           publish_one () {
             local PLATFORM="$1"
 
@@ -111,7 +120,7 @@ jobs:
                     --arg p "$PLATFORM" --arg ch "$CHANNEL" --arg v "$BUNDLE_VERSION" \
                     --argjson nbm "$NATIVE_BUILD_MIN" --arg key "$KEY" --arg url "$DOWNLOAD_URL" \
                     --arg cs "$CHECKSUM" --argjson sz "$SIZE" \
-                    --arg cb "ci:${{ github.run_id }}" --arg cl "$CHANGELOG" \
+                    --arg cb "ci:${{ github.run_id }}" --arg cl "$CHANGELOG_TRIMMED" \
                     '{platform:$p,channel:$ch,version:$v,native_build_min:$nbm,r2_key:$key,url:$url,checksum:$cs,size_bytes:$sz,created_by:$cb,changelog:$cl}')" \
               >/dev/null
             echo "Published $PLATFORM bundle $BUNDLE_VERSION (native_build_min=$NATIVE_BUILD_MIN)"
