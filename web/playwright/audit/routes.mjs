@@ -34,6 +34,8 @@ export const STATIC_ROUTES = [
   { path: "/product", group: "public", auth: false },
   { path: "/docs", group: "public", auth: false },
   { path: "/contact", group: "public", auth: false },
+  { path: "/privacy", group: "public", auth: false },
+  { path: "/terms", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },

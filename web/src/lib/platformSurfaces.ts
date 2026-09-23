@@ -98,6 +98,10 @@ const SURFACE_RULES: ReadonlyArray<
 	["/not-available", "app"],
 	["/oauth", "app"],
 	["/onboarding", "app"],
+	// Reachable in the installed app on purpose: the stores want a privacy
+	// policy in-app, and signup links to both from every platform.
+	["/privacy", "app"],
+	["/terms", "app"],
 	["/product", "silent"],
 	["/profile", "app"],
 	["/project", "app"],

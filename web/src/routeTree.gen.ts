@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as StartSellingRouteImport } from './routes/start-selling'
 import { Route as ProductRouteImport } from './routes/product'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
@@ -184,6 +186,11 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
   path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StartSellingRoute = StartSellingRouteImport.update({
   id: '/start-selling',
   path: '/start-selling',
@@ -192,6 +199,11 @@ const StartSellingRoute = StartSellingRouteImport.update({
 const ProductRoute = ProductRouteImport.update({
   id: '/product',
   path: '/product',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -1105,8 +1117,10 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
@@ -1264,8 +1278,10 @@ export interface FileRoutesByTo {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
@@ -1425,8 +1441,10 @@ export interface FileRoutesById {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
@@ -1592,8 +1610,10 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
     | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
@@ -1751,8 +1771,10 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
     | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
@@ -1911,8 +1933,10 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
     | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
@@ -2078,8 +2102,10 @@ export interface RootRouteChildren {
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProductRoute: typeof ProductRoute
   StartSellingRoute: typeof StartSellingRoute
+  TermsRoute: typeof TermsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
   WWorkspaceSlugRouteRoute: typeof WWorkspaceSlugRouteRouteWithChildren
@@ -2112,6 +2138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/start-selling': {
       id: '/start-selling'
       path: '/start-selling'
@@ -2124,6 +2157,13 @@ declare module '@tanstack/react-router' {
       path: '/product'
       fullPath: '/product'
       preLoaderRoute: typeof ProductRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -3832,8 +3872,10 @@ const rootRouteChildren: RootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
+  PrivacyRoute: PrivacyRoute,
   ProductRoute: ProductRoute,
   StartSellingRoute: StartSellingRoute,
+  TermsRoute: TermsRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,
   WWorkspaceSlugRouteRoute: WWorkspaceSlugRouteRouteWithChildren,

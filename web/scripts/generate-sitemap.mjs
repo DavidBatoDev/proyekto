@@ -31,7 +31,16 @@ if (articles.length === 0) {
 }
 
 // Public, indexable pages only. Anything behind a login is deliberately absent.
-const staticRoutes = ["/", "/product", "/pricing", "/docs", "/contact", "/start-selling"];
+const staticRoutes = [
+  "/",
+  "/product",
+  "/pricing",
+  "/docs",
+  "/contact",
+  "/start-selling",
+  "/privacy",
+  "/terms",
+];
 
 const urls = [...staticRoutes, ...articles.sort()];
 

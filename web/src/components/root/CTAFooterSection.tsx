@@ -207,6 +207,22 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 										Contact
 									</Link>
 								</li>
+								<li>
+									<Link
+										to="/privacy"
+										className="text-left transition-colors hover:text-slate-900"
+									>
+										Privacy
+									</Link>
+								</li>
+								<li>
+									<Link
+										to="/terms"
+										className="text-left transition-colors hover:text-slate-900"
+									>
+										Terms
+									</Link>
+								</li>
 							</ul>
 						</motion.div>
 					</div>
