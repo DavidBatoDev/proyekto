@@ -12,6 +12,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SUPABASE_ADMIN, SUPABASE_CLIENT } from '../../config/supabase.module';
+import { RevokedUsersService } from '../auth/revoked-users.service';
 import {
   AuthenticatedRequest,
   AuthenticatedUser,
@@ -28,6 +29,7 @@ export class SupabaseAuthGuard implements CanActivate {
     @Inject(SUPABASE_ADMIN) private readonly supabaseAdmin: SupabaseClient,
     private readonly reflector: Reflector,
     private readonly config: ConfigService,
+    private readonly revokedUsers: RevokedUsersService,
   ) {
     this.jwtSecret = this.config.get<string>('SUPABASE_JWT_SECRET');
   }
@@ -48,8 +50,7 @@ export class SupabaseAuthGuard implements CanActivate {
       if (typeof payload === 'string' || !payload.sub) return null;
       return {
         id: String(payload.sub),
-        email:
-          typeof payload.email === 'string' ? payload.email : undefined,
+        email: typeof payload.email === 'string' ? payload.email : undefined,
       };
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
@@ -58,6 +59,16 @@ export class SupabaseAuthGuard implements CanActivate {
       // Bad signature / malformed: fall back to network verification so a
       // misconfigured secret never locks users out.
       return null;
+    }
+  }
+
+  /**
+   * Rejects a token belonging to a deleted account. See RevokedUsersService for
+   * why this cannot be a database lookup and what the residual window is.
+   */
+  private async assertNotRevoked(userId: string): Promise<void> {
+    if (await this.revokedUsers.isRevoked(userId)) {
+      throw new UnauthorizedException('Account deleted');
     }
   }
 
@@ -79,6 +90,11 @@ export class SupabaseAuthGuard implements CanActivate {
       // Fast path: verify the token locally with the project JWT secret.
       const localUser = this.verifyTokenLocally(token);
       if (localUser) {
+        // A valid signature is not the same as a live account. Deleting a user
+        // cannot invalidate an access token that is already issued, so this is
+        // the only thing standing between a deleted account and a working API
+        // session for the rest of the token's hour.
+        await this.assertNotRevoked(localUser.id);
         request.user = localUser;
         return true;
       }
@@ -101,6 +117,11 @@ export class SupabaseAuthGuard implements CanActivate {
             'check the secret value. Falling back to network verification.',
         );
       }
+
+      // GoTrue accepting the token says nothing about the profile either: the
+      // auth row survives deletion (it is the parent of the retained profile),
+      // it is only banned and scrubbed.
+      await this.assertNotRevoked(data.user.id);
 
       request.user = {
         id: data.user.id,

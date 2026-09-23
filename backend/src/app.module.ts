@@ -6,6 +6,7 @@ import { Redis } from '@upstash/redis';
 import { SupabaseModule } from './config/supabase.module';
 import { R2Module } from './config/r2.module';
 import { MailModule } from './common/mail/mail.module';
+import { RevokedUsersModule } from './common/auth/revoked-users.module';
 import { ThrottlerStorageRedisService } from './config/throttler-storage.service';
 import { RedisModule } from './config/redis.module';
 import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
@@ -57,6 +58,7 @@ import { DeliveryModule } from './modules/execution/delivery/delivery.module';
 import { KnowledgeModule } from './modules/shared/knowledge/knowledge.module';
 import { McpModule } from './modules/shared/mcp/mcp.module';
 import { QaFixturesModule } from './modules/shared/qa-fixtures/qa-fixtures.module';
+import { AccountModule } from './modules/shared/account/account.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -81,7 +83,9 @@ import { AppController } from './app.controller';
     SupabaseModule,
     R2Module,
     MailModule,
+    RevokedUsersModule,
     AuthModule,
+    AccountModule,
     UsersModule,
     ProfileModule,
     ProfileImportModule,

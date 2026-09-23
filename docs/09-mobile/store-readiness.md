@@ -1,11 +1,11 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-09-23 · **Status:** audit — findings only, nothing here is built
+> **Last updated:** 2026-09-23 · **Status:** partly built — items 1 and 2 are done, the rest are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
-2026-09-23. The commerce/marketplace gate is **done** (see
-[Routing & Access → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries));
-everything below is still open.
+2026-09-23. Three things are now **done**: the commerce/marketplace gate (see
+[Routing & Access → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries)),
+the legal pages (item 1), and in-app account deletion (item 2). Items 3-6 are open.
 
 ## The business model, and why it is allowed
 
@@ -36,12 +36,35 @@ Before submission, confirm the operating entity name, the governing-law clause (
 Philippines), and that the subprocessor list is complete. The privacy page's "no analytics or
 tracking SDKs" claim is true today — adding one means changing that page in the same commit.
 
-### 2. In-app account deletion — **blocker, Google Play**
-Play requires an app that lets people create an account to offer account deletion *in the
-app* and at a publicly reachable web URL. Grepping `web/src` and `backend/src` finds no
-delete-account path — the only "delete account" matches are unrelated (a workspace selection
-sync and a marketplace service editor). This is net-new work across web, backend and the
-Play Data Safety form.
+### 2. ~~In-app account deletion~~ — **DONE 2026-09-23**
+Play requires both an in-app path and a publicly reachable web URL. Both exist now:
+
+- **In app:** `/settings/delete-account`, reachable from a danger band on the settings
+  overview and from a row in the settings rail on every settings page. Classified `app` by
+  inheriting the `/settings` rule in `web/src/lib/platformSurfaces.ts`.
+- **Public URL for the Data safety form:**
+  `https://proyekto.tech/docs/account-and-apps/deleting-your-account` — unauthenticated,
+  names the app, and explains the whole flow.
+
+The deletion is one `delete_account()` transaction
+(`supabase/migrations/20260923090200_delete_account.sql`). It does **not** delete the
+`profiles` row: that row is the parent of ~166 foreign keys, 14 of them `RESTRICT` (which
+would abort) and many `CASCADE` on shared containers (which would destroy other people's
+projects). Instead the row is tombstoned — every PII column scrubbed, `display_name` set to
+"Deleted user", email rotated to an unroutable `.invalid` address, the `auth.users` row
+scrubbed and banned, and every `auth.identities` row deleted so Google sign-in cannot
+resurrect it.
+
+**Still needs a human before submission:**
+- The **Data safety form** deletion questions, using the URL above.
+- The retention period in `/privacy` is currently **ten years** for contracts, invoices and
+  payout records, chosen to match Philippine tax retention. Confirm it with whoever owns the
+  legal pages — Play requires the disclosure to be accurate, not merely present.
+
+**Residual, accepted:** a deleted user's access token stays cryptographically valid until it
+expires (`jwt_expiry = 3600`), because `SupabaseAuthGuard` verifies JWTs locally with no
+database round-trip. A Redis deny-list (`RevokedUsersService`) closes this to ≤60s per
+instance; the structural fix is lowering `jwt_expiry`, which is a project-config change.
 
 ### 3. iOS has never been built — **the long pole for the App Store**
 `web/ios/` is scaffolded (`App.xcworkspace`, Podfile, Capacitor plugins) but §6 of

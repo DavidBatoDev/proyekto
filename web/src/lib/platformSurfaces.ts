@@ -91,6 +91,11 @@ const SURFACE_RULES: ReadonlyArray<
 	// includes and link out for numbers, so it carries no price.
 	["/docs", "app"],
 	["/get-started", "app"],
+	// Where the delete-account flow lands once the account is gone. It must be
+	// reachable in the installed app for the same reason the flow itself is:
+	// Google Play requires deletion to work in the app, so the screen it ends on
+	// has to exist there too.
+	["/goodbye", "app"],
 	["/inbox", "app"],
 	["/invites", "app"],
 	["/meetings", "app"],
@@ -107,6 +112,10 @@ const SURFACE_RULES: ReadonlyArray<
 	["/project", "app"],
 	["/roadmap-templates", "app"],
 	["/roadmap", "app"],
+	// Includes /settings/delete-account on purpose: Google Play requires an app
+	// that lets people create an account to let them delete it in the app, and
+	// names account settings as where it expects to find it. The two commerce
+	// children are listed at the top of this table and keep their own rule.
 	["/settings", "app"],
 	["/task-board", "app"],
 	["/teams", "app"],

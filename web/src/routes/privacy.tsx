@@ -205,8 +205,9 @@ const SECTIONS: LegalSection[] = [
 					window set by your workspace's plan; nothing else is removed with it.
 				</p>
 				<p>
-					Backups persist for a short period after deletion for disaster
-					recovery, and then roll off.
+					Deleting your account is immediate: it happens when you confirm it,
+					not on a schedule. Backups persist for a short period afterwards for
+					disaster recovery, and then roll off.
 				</p>
 			</>
 		),
@@ -221,25 +222,58 @@ const SECTIONS: LegalSection[] = [
 					turn push notifications off from your device settings at any time.
 				</p>
 				<p>
-					<strong>To delete your account and its data</strong>, email{" "}
-					<a href="mailto:support@proyekto.tech">support@proyekto.tech</a> from
-					the address on the account, or use the{" "}
-					<Link to="/contact">contact form</Link>. We will confirm and then
-					delete your account and the content you own. We aim to do this within
-					30 days.
+					<strong>
+						To delete your account, go to Settings → Delete account.
+					</strong>{" "}
+					It is there in the apps as well as on the web. Deletion takes effect
+					immediately, there is no waiting period, and there is no way to
+					restore an account afterwards. Before you confirm, the screen lists
+					exactly what will be deleted, what will be handed to someone else, and
+					what will stay.
 				</p>
 				<p>
-					One thing worth knowing before you ask: work in a shared project is
-					not only yours. Deleting your account removes your account and the
-					content you own, but does not delete a workspace other people are
-					still using, or erase a decision record your team relies on. If you
-					want a whole workspace removed, say so and we will handle it with its
-					owner.
+					<strong>What deletion removes.</strong> Your profile, your email
+					address, your sign-in — password or Google link — your notification
+					preferences, your push devices, any API tokens you created, and any
+					identity document you uploaded. Any workspace or team you are the only
+					member of, and everything in it. Any project nobody else has access
+					to.
+				</p>
+				<p>
+					<strong>What it hands over.</strong> A workspace or team you are the
+					only owner of, but other people are still using, does not disappear
+					underneath them. You decide, one by one: hand it to one of its
+					members, or delete it with everything in it. A project you own that
+					other people work on is handed to one of those people.
+				</p>
+				<p>
+					<strong>What it keeps, and why.</strong> What you wrote in shared
+					spaces stays with the people you wrote it for: chat messages,
+					comments, decisions, change requests, deliverables, project activity,
+					and files you added to someone else's project or conversation. Your
+					name on them becomes "Deleted user", and nothing links them back to
+					you — not your email, not your profile. A team's record of how a
+					decision was made should not develop holes because one person left.
+				</p>
+				<p>
+					Separately, we are required to keep records of business we have
+					transacted. Contracts, invoices and payout records that name you are
+					retained for <strong>ten years</strong> from the end of the tax year
+					they belong to, because Philippine tax and accounting rules require
+					it, and then deleted. They are not used for anything else.
+				</p>
+				<p>
+					When we delete your data we also delete it from the services listed
+					above that hold it on our behalf, and ask them to do the same where it
+					is not ours to remove directly.
 				</p>
 				<p>
 					You can also ask for a copy of your data, or ask us to correct it.
 					Depending on where you live you may have further rights over it; ask
-					and we will honour them.
+					and we will honour them. If you cannot reach the deletion screen for
+					any reason, email{" "}
+					<a href="mailto:support@proyekto.tech">support@proyekto.tech</a> from
+					the address on the account and we will do it for you.
 				</p>
 			</>
 		),

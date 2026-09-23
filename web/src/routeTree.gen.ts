@@ -20,6 +20,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as NotAvailableRouteImport } from './routes/not-available'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -37,6 +38,7 @@ import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
+import { Route as SettingsDeleteAccountRouteImport } from './routes/settings/delete-account'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
@@ -231,6 +233,11 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GoodbyeRoute = GoodbyeRouteImport.update({
+  id: '/goodbye',
+  path: '/goodbye',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GetStartedRoute = GetStartedRouteImport.update({
   id: '/get-started',
   path: '/get-started',
@@ -313,6 +320,11 @@ const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
 const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
   id: '/mcp-tokens',
   path: '/mcp-tokens',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsDeleteAccountRoute = SettingsDeleteAccountRouteImport.update({
+  id: '/delete-account',
+  path: '/delete-account',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
@@ -1112,6 +1124,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
   '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
@@ -1151,6 +1164,7 @@ export interface FileRoutesByFullPath {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
@@ -1273,6 +1287,7 @@ export interface FileRoutesByTo {
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
   '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
@@ -1312,6 +1327,7 @@ export interface FileRoutesByTo {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
@@ -1436,6 +1452,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
   '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
@@ -1475,6 +1492,7 @@ export interface FileRoutesById {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
@@ -1605,6 +1623,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
     | '/not-available'
     | '/notifications'
@@ -1644,6 +1663,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
@@ -1766,6 +1786,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
     | '/not-available'
     | '/notifications'
@@ -1805,6 +1826,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin'
@@ -1928,6 +1950,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
     | '/not-available'
     | '/notifications'
@@ -1967,6 +1990,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
@@ -2097,6 +2121,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ContactRoute: typeof ContactRoute
   GetStartedRoute: typeof GetStartedRoute
+  GoodbyeRoute: typeof GoodbyeRoute
   HomeRoute: typeof HomeRoute
   NotAvailableRoute: typeof NotAvailableRoute
   NotificationsRoute: typeof NotificationsRoute
@@ -2199,6 +2224,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/goodbye': {
+      id: '/goodbye'
+      path: '/goodbye'
+      fullPath: '/goodbye'
+      preLoaderRoute: typeof GoodbyeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/get-started': {
@@ -2318,6 +2350,13 @@ declare module '@tanstack/react-router' {
       path: '/mcp-tokens'
       fullPath: '/settings/mcp-tokens'
       preLoaderRoute: typeof SettingsMcpTokensRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/delete-account': {
+      id: '/settings/delete-account'
+      path: '/delete-account'
+      fullPath: '/settings/delete-account'
+      preLoaderRoute: typeof SettingsDeleteAccountRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
     '/settings/appearance': {
@@ -3430,6 +3469,7 @@ const RoadmapTemplatesRouteRouteWithChildren =
 
 interface SettingsRouteRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsDeleteAccountRoute: typeof SettingsDeleteAccountRoute
   SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -3437,6 +3477,7 @@ interface SettingsRouteRouteChildren {
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsDeleteAccountRoute: SettingsDeleteAccountRoute,
   SettingsMcpTokensRoute: SettingsMcpTokensRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
@@ -3867,6 +3908,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ContactRoute: ContactRoute,
   GetStartedRoute: GetStartedRoute,
+  GoodbyeRoute: GoodbyeRoute,
   HomeRoute: HomeRoute,
   NotAvailableRoute: NotAvailableRoute,
   NotificationsRoute: NotificationsRoute,

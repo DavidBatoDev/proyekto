@@ -31,6 +31,7 @@ export const STATIC_ROUTES = [
   // Where the installed app sends the pages it does not carry (commerce and
   // the marketplace). Public and chrome-less, like /get-started.
   { path: "/not-available", group: "public", auth: false },
+  { path: "/goodbye", group: "public", auth: false },
   { path: "/product", group: "public", auth: false },
   { path: "/docs", group: "public", auth: false },
   { path: "/contact", group: "public", auth: false },
@@ -70,6 +71,7 @@ export const STATIC_ROUTES = [
   { path: "/settings/appearance", group: "settings", auth: true },
   { path: "/settings/notifications", group: "settings", auth: true },
   { path: "/settings/mcp-tokens", group: "settings", auth: true },
+  { path: "/settings/delete-account", group: "settings", auth: true },
   { path: "/project/roadmap", group: "roadmap", auth: false },
 
   // ── teams (list + self) ─────────────────────────────────────────────────

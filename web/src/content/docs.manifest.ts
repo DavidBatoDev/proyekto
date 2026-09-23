@@ -205,7 +205,27 @@ export const DOC_ARTICLES: DocArticle[] = [
 			"Signing in, your profile, appearance, and the settings that follow you across every workspace.",
 		updated: UPDATED,
 		keywords: ["login", "sign in", "google", "password", "profile"],
-		related: ["notifications", "members-and-seats"],
+		related: ["deleting-your-account", "notifications", "members-and-seats"],
+	},
+	{
+		slug: "deleting-your-account",
+		section: "account-and-apps",
+		// 15 sits between your-account (10) and notifications (20), so no
+		// sibling has to be renumbered.
+		order: 15,
+		title: "Deleting your account",
+		description:
+			"What happens when you delete a Proyekto account: what goes, what is handed to your teammates, and what stays behind as a deleted user.",
+		updated: UPDATED,
+		keywords: [
+			"delete account",
+			"close account",
+			"remove account",
+			"erasure",
+			"gdpr",
+			"leave",
+		],
+		related: ["your-account", "workspaces", "members-and-seats"],
 	},
 	{
 		slug: "notifications",

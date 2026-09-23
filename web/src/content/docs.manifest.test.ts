@@ -116,10 +116,10 @@ describe("docs manifest", () => {
 		);
 	});
 
-	it("carries the 47 articles the site was planned around", () => {
+	it("carries the 48 articles the site was planned around", () => {
 		// A tripwire, not a rule: if this changes, the sidebar and the home page
 		// should be looked at rather than the number just bumped.
-		expect(DOC_ARTICLES).toHaveLength(47);
+		expect(DOC_ARTICLES).toHaveLength(48);
 		expect(DOC_SECTIONS).toHaveLength(10);
 	});
 });

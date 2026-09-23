@@ -1,12 +1,23 @@
 # R2 Architecture
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-09-23 · **Status:** current, with one section flagged below
 
 All file storage is on **Cloudflare R2** — two buckets, a public CDN domain, and a
 deliberate upload path. Reads are simple (public assets serve over
 `cdn.proyekto.tech`); writes go **browser → Cloudflare Worker → R2 native binding**,
 because R2's S3 API endpoint failed TLS handshakes from every network tried. A
 backend proxy exists as a fully-built but dormant fallback.
+
+> **Partly out of date (2026-09-23).** The "S3 endpoint is broken from Cloud Run"
+> claim below predates the fix in `backend/src/config/r2.module.ts:39-45`:
+> `requestChecksumCalculation: 'WHEN_REQUIRED'` was added specifically to stop the
+> `write EPROTO … handshake_failure` this page describes, and server-side code now
+> uses the S3 client in production (`invoices.service.ts` `putPrivateObject` for
+> invoice PDFs, plus the payout and contract presigned reads, and
+> `AccountStorageService` for deletion sweeps). The *browser* path is still the
+> Worker, and that has not changed. Someone should confirm by observation whether
+> `POST /api/uploads/file` now works end to end and rewrite this section rather than
+> trusting either version.
 
 > **TL;DR** — uploads: browser → the realtime Worker → `env.MEDIA/PRIVATE.put()`.
 > The backend proxy (`POST /api/uploads/file`) is deployed but dormant; switching
@@ -51,11 +62,31 @@ issue and client-network filtering. That's why it's the default.
 
 The `uploads` module (and the Worker) route by bucket:
 
-- **Public** (`avatars`, `banners`, `project_banners`, `portfolio_projects`,
-  `roadmap_previews`, `task_attachments`) → `proyekto-media`, resolvable at
+- **Public** (`avatars`, `banners`, `project_banners`, `contract_signatures`,
+  `portfolio_projects`, `roadmap_previews`, `task_attachments`, `chat_attachments`,
+  `brief_attachments`) → `proyekto-media`, resolvable at
   `${R2_PUBLIC_BASE_URL}/${bucket}/…` (`https://cdn.proyekto.tech`).
 - **Private** (`identity_documents`, `payout_proofs`) → `proyekto-private`, returned
   as a bare key and read back only through a presigned GET.
+
+`BUCKET_CONFIG` in `backend/src/modules/shared/uploads/uploads.controller.ts` is the
+source of truth for that list — it is **11** prefixes, and this page previously named
+only 8.
+
+### Key shape, and what that means for deletion
+
+Every object is keyed `<prefix>/<uploaderUserId>/<timestamp>.<ext>` on both upload paths
+(`realtime/src/index.ts`, `uploads.controller.ts`). That makes a user's own files a prefix
+sweep rather than a reconciliation of a dozen `*_url` columns — but the key records **who
+uploaded**, not who owns the surface, so it is not a licence to sweep everything.
+
+Account deletion (`AccountStorageService`) sweeps only `avatars/`, `banners/`,
+`portfolio_projects/` and `identity_documents/`, where uploader and owner are the same
+person and every referencing row goes with the account. `task_attachments/`,
+`chat_attachments/`, `brief_attachments/`, `project_banners/`, `roadmap_previews/`,
+`payout_proofs/` and `contract_signatures/` are **retained**: they sit in other people's
+threads, tasks and briefs, or are evidence attached to financial records. Sweeping them
+would leave live rows pointing at 404s.
 
 See [Backend → modules (uploads)](../03-backend/modules.md) and
 [Data → identity model](../07-data-and-db/identity-vetting-model.md).

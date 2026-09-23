@@ -101,8 +101,10 @@ const SECTIONS: LegalSection[] = [
 					You give us the permission we need to actually run the service — to
 					store your content, transmit it, back it up, and show it to the people
 					you have granted access. That permission exists for operating Proyekto
-					and nothing else, and it ends when you delete the content or your
-					account.
+					and nothing else. It ends when you delete the content, or when you
+					delete your account — with one exception: content you posted into a
+					shared space stays with the people you shared it with, attributed to
+					"Deleted user", so their records stay intact.
 				</p>
 				<p>
 					You are responsible for the content you put in, including having the
@@ -224,8 +226,17 @@ const SECTIONS: LegalSection[] = [
 		body: (
 			<>
 				<p>
-					You can stop using Proyekto and delete your account at any time — see{" "}
-					<Link to="/privacy">the Privacy Policy</Link> for how.
+					You can stop using Proyekto and delete your account at any time, from{" "}
+					<strong>Settings → Delete account</strong> — in the apps as well as on
+					the web. Deletion is immediate and permanent. The{" "}
+					<Link to="/privacy">Privacy Policy</Link> sets out exactly what is
+					deleted, what is handed to other people, and what stays.
+				</p>
+				<p>
+					If you are the only owner of a workspace or team other people are
+					still using, deleting your account asks you to hand it to one of its
+					members or to delete it. Whoever you choose inherits it, including any
+					plan attached to it.
 				</p>
 				<p>
 					We may suspend or close an account that breaks these terms, or that

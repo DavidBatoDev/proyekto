@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, KeyRound, Palette, User, UserCog } from "lucide-react";
+import { Bell, KeyRound, Palette, Trash2, User, UserCog } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { featureFlags } from "@/config/featureFlags";
@@ -100,7 +100,7 @@ export function AccountSettingsLayout({
 						</nav>
 
 						{/* Leaves settings entirely, so it must not read as a tab. */}
-						<div className="mt-5 border-t border-border pt-5">
+						<div className="mt-5 space-y-1 border-t border-border pt-5">
 							<Link
 								to="/profile/$profileId"
 								params={{ profileId: user?.id || "" }}
@@ -108,6 +108,18 @@ export function AccountSettingsLayout({
 							>
 								<User className="h-4 w-4" />
 								<span>View public profile</span>
+							</Link>
+							{/*
+							 * Quiet, but present on every settings page: a store
+							 * reviewer opens Settings and has to be able to find
+							 * account deletion without hunting for it.
+							 */}
+							<Link
+								to="/settings/delete-account"
+								className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+							>
+								<Trash2 className="h-4 w-4" />
+								<span>Delete account</span>
 							</Link>
 						</div>
 					</div>
