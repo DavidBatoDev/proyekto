@@ -26,12 +26,15 @@ neither:
 
 ## Open items
 
-### 1. `/terms` and `/privacy` are links to nothing — **blocker, both stores**
-`web/src/components/auth/signup/SignupStepProfile.tsx` links to `/terms` (line 225) and
-`/privacy` (line 236), but neither is a route: they are absent from `routeTree.gen.ts`, so
-the SPA fallback serves `index.html` and `NotFoundRoute` renders. Both stores require a
-reachable privacy-policy **URL** on the listing, and Apple also wants one in the app. Needs
-real pages (or real external URLs) before submission.
+### 1. ~~`/terms` and `/privacy` are links to nothing~~ — **DONE 2026-09-23 (`fc1d63a9`)**
+Both are real routes now, classified `app` so they render inside the installed app (Apple
+wants a privacy policy in-app; signup links to both from every platform). They are scoped to
+the SaaS and say plainly that the marketplace is not launched.
+
+**Still needs a human:** these are drafts written from the code, not reviewed by a lawyer.
+Before submission, confirm the operating entity name, the governing-law clause (currently the
+Philippines), and that the subprocessor list is complete. The privacy page's "no analytics or
+tracking SDKs" claim is true today — adding one means changing that page in the same commit.
 
 ### 2. In-app account deletion — **blocker, Google Play**
 Play requires an app that lets people create an account to offer account deletion *in the
