@@ -26,6 +26,8 @@ export function contractFixture(
     client_tin: null,
     client_email: 'client@example.com',
     client_user_id: 'client-1',
+    client_kind: 'individual',
+    document_title: 'Service Agreement',
     currency: 'USD',
     billing_mode: 'retainer',
     fixed_fee: null,

@@ -76,6 +76,10 @@ export const PERIOD_SOURCES = ['team_config', 'contract'] as const;
 export const PROVIDER_KINDS = ['individual', 'agency'] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
+/** The client side's counterpart: a person, or a company. */
+export const CLIENT_KINDS = ['individual', 'company'] as const;
+export type ClientKind = (typeof CLIENT_KINDS)[number];
+
 /**
  * When the invoice for a period is raised. 'advance' is the prepaid retainer:
  * bill November 30 for December. Retainer-only — an hourly contract cannot be
@@ -160,6 +164,7 @@ export class ContractTermsDto {
   @IsOptional() @IsString() @MaxLength(80) provider_tin?: string;
   @IsOptional() @IsString() @MaxLength(320) provider_email?: string;
 
+  @IsOptional() @IsIn(CLIENT_KINDS) client_kind?: ClientKind;
   @IsOptional() @IsString() @MaxLength(200) client_name?: string;
   @IsOptional() @IsString() @MaxLength(200) client_contact_name?: string;
   @IsOptional() @IsString() @MaxLength(500) client_address?: string;
@@ -302,6 +307,26 @@ export class CreateContractDto extends ContractTermsDto {
   @IsOptional()
   @IsUUID()
   counterparty_user_id?: string;
+
+  /**
+   * The team the CREATOR signs on behalf of — the agency a consultant bills
+   * as on a client contract, the team a talent joins on a talent contract.
+   * Must be a team the creator owns. Omitted: their only team, else none.
+   */
+  @IsOptional()
+  @IsUUID()
+  team_id?: string;
+}
+
+/**
+ * Which of the caller's own teams their seat signs on behalf of; `null` signs
+ * as themselves. Only the seat's own user may set it, and only before that
+ * seat has signed.
+ */
+export class SetSeatTeamDto {
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  team_id!: string | null;
 }
 
 export class UpdateContractDto extends ContractTermsDto {}

@@ -27,6 +27,7 @@ import {
   toIsoDate,
 } from './billing-period';
 import {
+  agreementTitle,
   ContractClause,
   ContractService,
   defaultContractClauses,
@@ -36,6 +37,7 @@ import {
   AmendContractDto,
   BillingMode,
   BillingTiming,
+  ClientKind,
   CompensationMode,
   ContractRelationshipKind,
   ContractScopeMode,
@@ -62,6 +64,19 @@ export interface ContractPosition {
   signature_offset_x: number;
   signature_offset_y: number;
   signed_at: string | null;
+  /** The team this seat signs on behalf of (identity, not party-ship). */
+  team_id: string | null;
+  team_name_snapshot: string | null;
+}
+
+/** A team's billing identity, as copied onto a contract's party block. */
+interface TeamIdentity {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  billing_address: string | null;
+  tax_id: string | null;
+  billing_email: string | null;
 }
 
 export interface ContractRow {
@@ -94,6 +109,9 @@ export interface ContractRow {
   client_tin: string | null;
   client_email: string | null;
   client_user_id: string | null;
+  client_kind: ClientKind;
+  /** Chosen by kind at creation and never recomputed — see migration 20260923090000. */
+  document_title: string;
 
   currency: string;
   billing_mode: BillingMode;
@@ -456,6 +474,7 @@ export class ContractsService {
     const {
       project_id: projectId = null,
       counterparty_user_id,
+      team_id: requestedTeamId,
       ...rawTerms
     } = dto;
     const terms = this.normalizeTerms(rawTerms);
@@ -468,13 +487,19 @@ export class ContractsService {
       relationshipKind,
       counterparty_user_id,
     );
-    const seeded = await this.seedContractParties(
+    const consultantTeam = await this.resolveCreatorTeam(
       callerId,
+      projectId,
+      requestedTeamId,
+      terms.provider_kind,
+    );
+    const seeded = await this.seedContractParties(
       projectId,
       relationshipKind,
       terms,
       consultant,
       counterparty,
+      consultantTeam,
     );
 
     const insert: Record<string, unknown> = {
@@ -486,9 +511,10 @@ export class ContractsService {
       version: 1,
       status: 'draft',
       created_by: callerId,
+      document_title: agreementTitle(relationshipKind),
       clauses:
         (terms.clauses as unknown as ContractClause[]) ??
-        defaultContractClauses(),
+        defaultContractClauses(relationshipKind),
       // Services start empty — the consultant defines them on the Contract tab.
       services: (terms.services as unknown as ContractService[]) ?? [],
       ...seeded,
@@ -514,6 +540,7 @@ export class ContractsService {
       relationshipKind,
       consultant,
       counterparty,
+      consultantTeam,
     );
     return this.withSchedule(row);
   }
@@ -1375,6 +1402,7 @@ export class ContractsService {
     copy('provider_address');
     copy('provider_tin');
     copy('provider_email');
+    copy('client_kind');
     copy('client_name');
     copy('client_contact_name');
     copy('client_address');
@@ -1668,20 +1696,21 @@ export class ContractsService {
     return this.resolveProfile(counterpartyId);
   }
 
+  /**
+   * The creator's own party block and the counterparty's, on the columns each
+   * SEAT maps to: the hirer seat always fills `client_*`, the provider seat
+   * `provider_*` — on a talent contract the consultant is the hirer, so their
+   * identity lands in `client_*`. Positions stay authoritative for who is who.
+   */
   private async seedContractParties(
-    callerId: string,
     projectId: string | null,
     relationshipKind: ContractRelationshipKind,
     terms: Partial<CreateContractDto>,
     consultant: ProfileIdentity,
     counterparty: ProfileIdentity,
+    consultantTeam: TeamIdentity | null,
   ): Promise<Record<string, unknown>> {
     const seeded = this.scalarPatch(terms as UpdateContractDto);
-    const consultantBlock = await this.resolveProviderBlock(
-      callerId,
-      projectId,
-      terms.provider_kind ?? 'agency',
-    );
     if (projectId) {
       const { data: project } = await this.supabase
         .from('projects')
@@ -1692,39 +1721,191 @@ export class ContractsService {
         (project as { title: string | null } | null)?.title ?? null;
     }
 
-    if (relationshipKind === 'client_services') {
-      for (const [key, value] of Object.entries(consultantBlock)) {
-        if (seeded[key] === undefined) seeded[key] = value;
+    const consultantSeat: 'hirer' | 'provider' =
+      relationshipKind === 'client_services' ? 'provider' : 'hirer';
+    const counterpartySeat = consultantSeat === 'provider' ? 'hirer' : 'provider';
+    const blocks = {
+      ...this.identityPatch(counterpartySeat, counterparty, null),
+      ...this.identityPatch(consultantSeat, consultant, consultantTeam),
+    };
+    for (const [key, value] of Object.entries(blocks)) {
+      if (seeded[key] === undefined) seeded[key] = value;
+    }
+    seeded.client_user_id =
+      relationshipKind === 'client_services' ? counterparty.id : null;
+    return seeded;
+  }
+
+  /**
+   * One seat's party block, from a team's billing identity or the person's
+   * profile. The team branch falls back FIELD BY FIELD to the person: a team
+   * that has filled in only its legal name should still get a usable email.
+   * `profiles` carries no business address or TIN, so those stay null for a
+   * person — correct, and the UI says so.
+   */
+  private identityPatch(
+    seat: 'hirer' | 'provider',
+    person: ProfileIdentity,
+    team: TeamIdentity | null,
+  ): Record<string, unknown> {
+    const personName = this.profileLabel(person);
+    const name = team ? team.legal_name || team.name || personName : personName;
+    const email = team ? team.billing_email || person.email : person.email;
+    if (seat === 'provider') {
+      return {
+        provider_kind: team ? 'agency' : 'individual',
+        provider_name: name,
+        provider_address: team?.billing_address ?? null,
+        provider_tin: team?.tax_id ?? null,
+        provider_email: email,
+      };
+    }
+    return {
+      client_kind: team ? 'company' : 'individual',
+      client_name: name,
+      // A company is signed for by a person; name them as its contact.
+      client_contact_name: team ? personName : null,
+      client_address: team?.billing_address ?? null,
+      client_tin: team?.tax_id ?? null,
+      client_email: email,
+    };
+  }
+
+  /**
+   * The team a seat's user may sign on behalf of: one they OWN. This is the
+   * security boundary — `team_id` arrives from the client, and without it
+   * anyone could read out an arbitrary team's legal name, billing address and
+   * tax id by guessing a UUID.
+   */
+  private async ownedTeamIdentity(
+    userId: string,
+    teamId: string,
+  ): Promise<TeamIdentity> {
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('id, name, owner_id, legal_name, billing_address, tax_id, billing_email')
+      .eq('id', teamId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    const team = data as (TeamIdentity & { owner_id: string }) | null;
+    if (!team || team.owner_id !== userId) {
+      throw new BadRequestException(
+        'You can only sign on behalf of a team you own.',
+      );
+    }
+    return team;
+  }
+
+  /** Teams a user owns, lightest shape — for pickers and defaults. */
+  async listOwnedTeams(
+    userId: string,
+  ): Promise<Array<{ id: string; name: string; legal_name: string | null }>> {
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('id, name, legal_name')
+      .eq('owner_id', userId)
+      .order('name');
+    if (error) throw new BadRequestException(error.message);
+    return (data ?? []) as Array<{
+      id: string;
+      name: string;
+      legal_name: string | null;
+    }>;
+  }
+
+  /**
+   * Which team the creator signs as, when they do not say: none if they asked
+   * to sign personally; else their only team; else the project's primary team
+   * when they own it. Several teams and no primary means "choose" — the editor
+   * asks rather than this guessing.
+   */
+  private async resolveCreatorTeam(
+    callerId: string,
+    projectId: string | null,
+    requested: string | undefined,
+    providerKind: ProviderKind | undefined,
+  ): Promise<TeamIdentity | null> {
+    if (requested) return this.ownedTeamIdentity(callerId, requested);
+    if (providerKind === 'individual') return null;
+    const owned = await this.listOwnedTeams(callerId);
+    if (owned.length === 1) return this.ownedTeamIdentity(callerId, owned[0].id);
+    if (projectId && owned.length > 1) {
+      const { data: project } = await this.supabase
+        .from('projects')
+        .select('primary_team_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      const primary = (project as { primary_team_id: string | null } | null)
+        ?.primary_team_id;
+      if (primary && owned.some((team) => team.id === primary)) {
+        return this.ownedTeamIdentity(callerId, primary);
       }
-      if (seeded.client_name === undefined) {
-        seeded.client_name = this.profileLabel(counterparty);
-      }
-      if (seeded.client_email === undefined)
-        seeded.client_email = counterparty.email;
-      if (seeded.client_user_id === undefined)
-        seeded.client_user_id = counterparty.id;
-      return seeded;
+    }
+    return null;
+  }
+
+  /**
+   * The seat's user chooses whom they sign on behalf of — one of their own
+   * teams, or themselves (`null`) — and that side's party block is re-copied
+   * from it. Only before that seat has signed; the other seat's block is never
+   * touched, which is what makes this safe to offer the counterparty too.
+   */
+  async setSeatTeam(
+    callerId: string,
+    contractId: string,
+    position: 'hirer' | 'provider',
+    teamId: string | null,
+  ): Promise<ContractWithSchedule> {
+    const contract = await this.getContractRow(contractId);
+    const positions = await this.getPositions(contractId);
+    const seat = positions.find((entry) => entry.position === position);
+    if (!seat || seat.user_id !== callerId) {
+      throw new NotFoundException('Contract not found');
+    }
+    if (seat.signed_at) {
+      throw new BadRequestException(
+        'Remove your signature before changing who you sign on behalf of.',
+      );
+    }
+    if (!EDITABLE_STATUSES.includes(contract.status)) {
+      throw new BadRequestException('This contract is no longer editable.');
+    }
+    if (seat.capacity === 'consultant') {
+      await this.assertConsultantContractControl(callerId, contract);
     }
 
-    // For talent services the Consultant is the hirer. The existing physical
-    // blocks remain compatibility storage, while positions remain authoritative.
-    if (seeded.client_name === undefined) {
-      seeded.client_name =
-        consultantBlock.provider_name ?? this.profileLabel(consultant);
-    }
-    if (seeded.client_email === undefined) {
-      seeded.client_email = consultantBlock.provider_email ?? consultant.email;
-    }
-    if (seeded.provider_name === undefined) {
-      seeded.provider_name = this.profileLabel(counterparty);
-    }
-    if (seeded.provider_email === undefined)
-      seeded.provider_email = counterparty.email;
-    if (seeded.provider_kind === undefined) {
-      seeded.provider_kind = terms.provider_kind ?? 'individual';
-    }
-    seeded.client_user_id = null;
-    return seeded;
+    const team = teamId ? await this.ownedTeamIdentity(callerId, teamId) : null;
+    const { error: seatError } = await this.supabase
+      .from('contract_positions')
+      .update({ team_id: team?.id ?? null, team_name_snapshot: team?.name ?? null })
+      .eq('contract_id', contractId)
+      .eq('position', position);
+    if (seatError) throw new BadRequestException(seatError.message);
+
+    const patch = this.identityPatch(
+      position,
+      await this.resolveProfile(callerId),
+      team,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update(patch)
+      .eq('id', contractId)
+      .select('*')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return this.withSchedule(data as ContractRow);
+  }
+
+  /** The caller's own teams, for the "sign on behalf of" picker. */
+  async myTeamsForContract(
+    callerId: string,
+    contractId: string,
+  ): Promise<Array<{ id: string; name: string; legal_name: string | null }>> {
+    const contract = await this.getContractRow(contractId);
+    await this.assertContractRead(callerId, contract);
+    return this.listOwnedTeams(callerId);
   }
 
   private async insertContractPositions(
@@ -1732,7 +1913,12 @@ export class ContractsService {
     relationshipKind: ContractRelationshipKind,
     consultant: ProfileIdentity,
     counterparty: ProfileIdentity,
+    consultantTeam: TeamIdentity | null = null,
   ): Promise<void> {
+    const consultantTeamColumns = {
+      team_id: consultantTeam?.id ?? null,
+      team_name_snapshot: consultantTeam?.name ?? null,
+    };
     const label = (profile: ProfileIdentity) =>
       this.profileLabel(profile) ?? profile.email ?? profile.id;
     const rows =
@@ -1753,6 +1939,7 @@ export class ContractsService {
               capacity: 'consultant',
               display_name_snapshot: label(consultant),
               email_snapshot: consultant.email,
+              ...consultantTeamColumns,
             },
           ]
         : [
@@ -1763,6 +1950,7 @@ export class ContractsService {
               capacity: 'consultant',
               display_name_snapshot: label(consultant),
               email_snapshot: consultant.email,
+              ...consultantTeamColumns,
             },
             {
               contract_id: contractId,
@@ -1793,6 +1981,8 @@ export class ContractsService {
           capacity: position.capacity,
           display_name_snapshot: position.display_name_snapshot,
           email_snapshot: position.email_snapshot,
+          team_id: position.team_id,
+          team_name_snapshot: position.team_name_snapshot,
         })),
       );
       if (error) throw new BadRequestException(error.message);
@@ -1848,9 +2038,7 @@ export class ContractsService {
     }
 
     const team = teamId
-      ? projectId
-        ? await this.getAttachedTeamIdentity(projectId, teamId)
-        : null
+      ? await this.ownedTeamIdentity(callerId, teamId)
       : await this.getPrimaryTeam(projectId);
     return {
       provider_kind: 'agency',
@@ -1862,45 +2050,14 @@ export class ContractsService {
   }
 
   /**
-   * A specific team's billing identity, but only if it is attached to this
-   * project.
+   * "Refill from my profile / team": re-copy the CALLER'S OWN seat's party
+   * block. Destructive by design — see `ReseedProviderDto` — so it is a
+   * deliberate call, not a side effect of editing terms.
    *
-   * The membership check is the security boundary: `team_id` arrives from the
-   * client, and without it a project admin could read any team's legal name,
-   * billing address and tax id by guessing a UUID.
-   */
-  private async getAttachedTeamIdentity(
-    projectId: string,
-    teamId: string,
-  ): Promise<PrimaryTeamRow | null> {
-    const { data: attachment, error: attachmentError } = await this.supabase
-      .from('project_teams')
-      .select('team_id')
-      .eq('project_id', projectId)
-      .eq('team_id', teamId)
-      .maybeSingle();
-    if (attachmentError) throw new BadRequestException(attachmentError.message);
-    if (!attachment) {
-      throw new BadRequestException(
-        'That team is not attached to this project.',
-      );
-    }
-
-    const { data, error } = await this.supabase
-      .from('teams')
-      .select(
-        'name, legal_name, billing_address, tax_id, billing_email, pay_period_config',
-      )
-      .eq('id', teamId)
-      .maybeSingle();
-    if (error) throw new BadRequestException(error.message);
-    return (data as PrimaryTeamRow | null) ?? null;
-  }
-
-  /**
-   * Overwrite the provider block from the chosen identity. Destructive by
-   * design — see `ReseedProviderDto` — so it is a deliberate call, not a side
-   * effect of editing terms.
+   * It used to always rewrite `provider_*`, which on a talent contract is the
+   * TALENT's block: a consultant refilling "from team settings" overwrote the
+   * talent's name, address and TIN with their own agency's. The seat is now
+   * resolved from the caller, so each party only ever rewrites itself.
    */
   async reseedProvider(
     callerId: string,
@@ -1909,15 +2066,35 @@ export class ContractsService {
     teamId?: string,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
+    const positions = await this.getPositions(contractId);
+    const seat = positions.find((entry) => entry.user_id === callerId);
+    if (seat) {
+      if (kind === 'individual') {
+        return this.setSeatTeam(callerId, contractId, seat.position, null);
+      }
+      const chosen =
+        teamId ??
+        seat.team_id ??
+        (await this.resolveCreatorTeam(callerId, existing.project_id, undefined, 'agency'))
+          ?.id;
+      if (!chosen) {
+        throw new BadRequestException(
+          'Choose which of your teams you sign on behalf of.',
+        );
+      }
+      return this.setSeatTeam(callerId, contractId, seat.position, chosen);
+    }
+
+    // Position-less legacy contract: the consultant still owns the provider
+    // block, and only that block.
     await this.assertConsultantContractControl(callerId, existing);
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         'This contract is no longer editable. Remove the signatures to change it.',
       );
     }
-
     const patch = await this.resolveProviderBlock(
-      existing.created_by ?? callerId,
+      callerId,
       existing.project_id,
       kind,
       teamId,
@@ -1988,7 +2165,7 @@ export class ContractsService {
             contract_id: contract.id,
             project_title:
               row?.title ?? contract.project_title_snapshot ?? null,
-            message: 'The service agreement is now fully signed.',
+            message: `The ${(contract.document_title || 'Service Agreement').toLowerCase()} is now fully signed.`,
           },
           link_url: `/engagements/finance/${contract.id}?section=signatures`,
         });

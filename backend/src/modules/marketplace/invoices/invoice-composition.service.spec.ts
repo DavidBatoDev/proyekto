@@ -71,6 +71,8 @@ const BASE_CONTRACT: ContractRow = {
   contract_number: 'BS2026-001',
   status: 'signed',
   provider_kind: 'agency',
+  client_kind: 'individual',
+  document_title: 'Service Agreement',
   provider_name: 'Prodigitality',
   provider_address: null,
   provider_tin: null,

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -20,6 +21,7 @@ import {
   CreateContractDto,
   ResolveContractCounterpartyDto,
   ReseedProviderDto,
+  SetSeatTeamDto,
   SignContractDto,
   UnsignContractDto,
   UpdateContractDto,
@@ -151,5 +153,26 @@ export class ContractsController {
       dto.provider_kind,
       dto.team_id,
     );
+  }
+
+  /** Which of the caller's own teams their seat signs on behalf of. */
+  @Patch(':id/positions/:position/team')
+  setSeatTeam(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('position', new ParseEnumPipe({ hirer: 'hirer', provider: 'provider' }))
+    position: 'hirer' | 'provider',
+    @Body() dto: SetSeatTeamDto,
+  ) {
+    return this.contracts.setSeatTeam(user.id, id, position, dto.team_id);
+  }
+
+  /** Teams the caller owns — never the counterparty's. */
+  @Get(':id/my-teams')
+  myTeams(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.contracts.myTeamsForContract(user.id, id);
   }
 }

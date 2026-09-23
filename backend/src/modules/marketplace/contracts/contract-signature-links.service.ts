@@ -559,24 +559,27 @@ export class ContractSignatureLinksService {
     to: string,
     summary: SignatureLinkSummary,
   ): Promise<SendMailResult> {
-    const provider = contract.provider_name?.trim() || 'Your service provider';
+    // The sender is whoever issued the paper — the consultant's block, which is
+    // `client_*` on a talent contract (the consultant is the hirer there).
+    const provider = issuerName(contract);
+    const agreement = agreementNoun(contract);
     const contact = contract.client_contact_name?.trim();
     const expires = new Date(summary.expires_at).toDateString();
-    const footerNote = `You received this email because ${provider} sent you a service agreement to sign on Proyekto.`;
+    const footerNote = `You received this email because ${provider} sent you a ${agreement} to sign on Proyekto.`;
 
     const result = await this.mailer.send({
       to,
       sender: 'billing',
-      onBehalfOf: contract.provider_name,
-      replyTo: contract.provider_email ?? undefined,
-      subject: `${provider} sent you a service agreement to sign`,
+      onBehalfOf: provider,
+      replyTo: issuerEmail(contract) ?? undefined,
+      subject: `${provider} sent you a ${agreement} to sign`,
       html: renderEmailLayout({
-        preheader: `${provider} sent you a service agreement to review and sign.`,
-        title: 'A service agreement to sign',
+        preheader: `${provider} sent you a ${agreement} to review and sign.`,
+        title: `A ${agreement} to sign`,
         greeting: contact ? `Hi ${contact},` : null,
         bodyHtml: [
           renderParagraph(
-            `<strong>${escapeHtml(provider)}</strong> has sent you a service agreement to review and sign.`,
+            `<strong>${escapeHtml(provider)}</strong> has sent you a ${agreement} to review and sign.`,
           ),
           renderParagraph(
             `This link works once and expires on ${escapeHtml(expires)}.`,
@@ -588,7 +591,7 @@ export class ContractSignatureLinksService {
       text: renderTextEmail([
         contact ? `Hi ${contact},` : null,
         '',
-        `${provider} has sent you a service agreement to review and sign.`,
+        `${provider} has sent you a ${agreement} to review and sign.`,
         '',
         `Open and sign the agreement: ${summary.url}`,
         '',
@@ -616,15 +619,18 @@ export class ContractSignatureLinksService {
     contract: ContractRow,
     to: string,
   ): Promise<SendMailResult> {
-    const provider = contract.provider_name?.trim() || 'Your service provider';
+    // The sender is whoever issued the paper — the consultant's block, which is
+    // `client_*` on a talent contract (the consultant is the hirer there).
+    const provider = issuerName(contract);
+    const agreement = agreementNoun(contract);
     const contact = contract.client_contact_name?.trim();
-    const footerNote = `You received this email because ${provider} sent you a service agreement to sign on Proyekto.`;
+    const footerNote = `You received this email because ${provider} sent you a ${agreement} to sign on Proyekto.`;
 
     const result = await this.mailer.send({
       to,
       sender: 'billing',
-      onBehalfOf: contract.provider_name,
-      replyTo: contract.provider_email ?? undefined,
+      onBehalfOf: provider,
+      replyTo: issuerEmail(contract) ?? undefined,
       subject: `The signing link from ${provider} has been withdrawn`,
       html: renderEmailLayout({
         preheader: `The signing link ${provider} sent you no longer works.`,
@@ -632,7 +638,7 @@ export class ContractSignatureLinksService {
         greeting: contact ? `Hi ${contact},` : null,
         bodyHtml: [
           renderParagraph(
-            `The link <strong>${escapeHtml(provider)}</strong> sent you to sign the service agreement has been withdrawn and no longer works.`,
+            `The link <strong>${escapeHtml(provider)}</strong> sent you to sign the ${agreement} has been withdrawn and no longer works.`,
           ),
           renderParagraph(
             `If you were expecting to sign, contact ${escapeHtml(provider)} for a new link.`,
@@ -643,7 +649,7 @@ export class ContractSignatureLinksService {
       text: renderTextEmail([
         contact ? `Hi ${contact},` : null,
         '',
-        `The link ${provider} sent you to sign the service agreement has been withdrawn and no longer works.`,
+        `The link ${provider} sent you to sign the ${agreement} has been withdrawn and no longer works.`,
         '',
         `If you were expecting to sign, contact ${provider} for a new link.`,
         '',
@@ -657,4 +663,23 @@ export class ContractSignatureLinksService {
     }
     return result;
   }
+}
+
+function issuerName(contract: ContractRow): string {
+  const name =
+    contract.relationship_kind === 'talent_services'
+      ? contract.client_name
+      : contract.provider_name;
+  return name?.trim() || 'Your service provider';
+}
+
+function issuerEmail(contract: ContractRow): string | null {
+  return contract.relationship_kind === 'talent_services'
+    ? contract.client_email
+    : contract.provider_email;
+}
+
+/** "service agreement" / "consulting agreement" — the paper's own title. */
+function agreementNoun(contract: ContractRow): string {
+  return (contract.document_title || 'Service Agreement').toLowerCase();
 }

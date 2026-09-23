@@ -125,6 +125,8 @@ describe('ContractsService transactional signing', () => {
         signature_offset_x: 0,
         signature_offset_y: 0,
         signed_at: null,
+        team_id: null,
+        team_name_snapshot: null,
       },
       {
         contract_id: 'contract-1',
@@ -139,6 +141,8 @@ describe('ContractsService transactional signing', () => {
         signature_offset_x: 0,
         signature_offset_y: 0,
         signed_at: null,
+        team_id: null,
+        team_name_snapshot: null,
       },
     ];
     const { service, rpc } = harness({ positions });
@@ -172,6 +176,8 @@ describe('ContractsService transactional signing', () => {
         signature_offset_x: 0,
         signature_offset_y: 0,
         signed_at: '2026-08-16T00:00:00.000Z',
+        team_id: null,
+        team_name_snapshot: null,
       },
       {
         contract_id: 'contract-1',
@@ -186,6 +192,8 @@ describe('ContractsService transactional signing', () => {
         signature_offset_x: 0,
         signature_offset_y: 0,
         signed_at: '2026-08-16T00:00:00.000Z',
+        team_id: null,
+        team_name_snapshot: null,
       },
     ];
     const { service, positions: positionsQuery } = harness({
