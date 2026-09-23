@@ -1,6 +1,9 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { Menu } from "lucide-react";
+import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
-import { DocsSidebar, DocsTabStrip } from "@/components/docs/DocsSidebar";
+import { SiteDrawer } from "@/components/common/SiteDrawer";
+import { DocsSidebar } from "@/components/docs/DocsSidebar";
 import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
 
 /**
@@ -21,11 +24,24 @@ export const Route = createFileRoute("/docs")({
 });
 
 function DocsLayout() {
+	const [navOpen, setNavOpen] = useState(false);
+
 	return (
 		<div className="min-h-screen bg-background">
 			<header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl">
 				<div className="mx-auto flex h-16 w-full max-w-[1400px] items-center justify-between px-5 sm:px-8">
-					<div className="flex items-center gap-3">
+					<div className="flex items-center gap-2 sm:gap-3">
+						{/* The rail is `md:block`, so below that this is the only way
+						    into the other 46 articles. */}
+						<button
+							type="button"
+							aria-expanded={navOpen}
+							aria-label="Open documentation menu"
+							onClick={() => setNavOpen(true)}
+							className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+						>
+							<Menu className="h-5 w-5" aria-hidden />
+						</button>
 						<Link to="/" aria-label="Proyekto home">
 							<BrandMark variant="lockup" className="h-8" />
 						</Link>
@@ -54,8 +70,15 @@ function DocsLayout() {
 						</Link>
 					</div>
 				</div>
-				<DocsTabStrip />
 			</header>
+
+			<SiteDrawer
+				isOpen={navOpen}
+				onClose={() => setNavOpen(false)}
+				title="Docs"
+			>
+				<DocsSidebar />
+			</SiteDrawer>
 
 			<div className="mx-auto flex w-full max-w-[1400px]">
 				<aside className="no-scrollbar sticky top-16 hidden h-[calc(100vh-4rem)] w-[300px] shrink-0 overflow-y-auto border-r border-border bg-card px-4 py-8 md:block">

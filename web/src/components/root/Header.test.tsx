@@ -11,6 +11,8 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 	useLocation: () => ({ pathname: "/roadmap-templates" }),
 	useNavigate: () => vi.fn(),
+	// The mobile drawer watches the path so it closes on navigation.
+	useRouterState: () => "/roadmap-templates",
 }));
 
 vi.mock("framer-motion", () => ({
@@ -87,17 +89,27 @@ describe("Header", () => {
 	});
 
 	it("reaches those pages on a phone, where the nav is hidden", () => {
-		// The nav is `hidden sm:flex` and this header has no drawer, so without
-		// the disclosure the marketing pages would be unreachable from a phone
-		// browser.
+		// The nav is `hidden sm:flex`, so the drawer is the only way to the
+		// marketing pages from a phone browser.
 		render(<Header />);
 
-		const toggle = screen.getByRole("button", { name: "More pages" });
+		const toggle = screen.getByRole("button", { name: "Open menu" });
 		expect(toggle.getAttribute("aria-expanded")).toBe("false");
 		fireEvent.click(toggle);
 		expect(toggle.getAttribute("aria-expanded")).toBe("true");
-		expect(
-			screen.getAllByRole("link", { name: "Docs" }).length,
-		).toBeGreaterThan(0);
+
+		// The drawer carries the account actions too, which the old dropdown
+		// did not — so every header destination is reachable one-handed.
+		const drawer = screen.getByRole("dialog", { name: "Menu" });
+		const labels = Array.from(drawer.querySelectorAll("a")).map(
+			(a) => a.textContent,
+		);
+		expect(labels).toEqual([
+			"Product",
+			"Docs",
+			"Pricing",
+			"Login",
+			"Get Started",
+		]);
 	});
 });

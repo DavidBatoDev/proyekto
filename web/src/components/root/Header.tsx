@@ -1,8 +1,9 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ChevronDown } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { SiteDrawer } from "@/components/common/SiteDrawer";
 import { usePresentationContext } from "@/contexts/PresentationContext";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
@@ -96,37 +97,53 @@ export const Header = () => {
 								))}
 							</nav>
 
-							{/* Below sm the links above are hidden and this header has no
-							    drawer, so without this the marketing pages would be
-							    unreachable from a phone browser. */}
-							<div className="relative sm:hidden">
-								<button
-									type="button"
-									aria-expanded={menuOpen}
-									aria-label="More pages"
-									onClick={() => setMenuOpen((open) => !open)}
-									className={`inline-flex h-10 items-center justify-center rounded-xl border border-border px-2.5 transition-colors hover:bg-muted ${HEADER_THEME.text}`}
-								>
-									<ChevronDown
-										className={`h-4 w-4 transition-transform ${menuOpen ? "rotate-180" : ""}`}
-										aria-hidden
-									/>
-								</button>
-								{menuOpen ? (
-									<div className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
-										{MARKETING_LINKS.map((item) => (
-											<Link
-												key={item.to}
-												to={item.to}
-												onClick={() => setMenuOpen(false)}
-												className="block px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-											>
-												{item.label}
-											</Link>
-										))}
-									</div>
-								) : null}
-							</div>
+							{/* Below sm the nav above is hidden, so this is the only way to
+							    the marketing pages from a phone. A drawer rather than the
+							    dropdown that was here before: three links in a 44px-tall
+							    popover is a tap target problem, and the drawer has room for
+							    the account actions too. */}
+							<button
+								type="button"
+								aria-expanded={menuOpen}
+								aria-label="Open menu"
+								onClick={() => setMenuOpen(true)}
+								className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border transition-colors hover:bg-muted sm:hidden ${HEADER_THEME.text}`}
+							>
+								<Menu className="h-5 w-5" aria-hidden />
+							</button>
+
+							<SiteDrawer
+								isOpen={menuOpen}
+								onClose={() => setMenuOpen(false)}
+								title="Menu"
+							>
+								<nav aria-label="Marketing" className="space-y-1">
+									{MARKETING_LINKS.map((item) => (
+										<Link
+											key={item.to}
+											to={item.to}
+											className="block rounded-xl px-3 py-3 text-[15px] font-medium text-foreground transition-colors hover:bg-muted"
+										>
+											{item.label}
+										</Link>
+									))}
+								</nav>
+								<div className="mt-4 space-y-2 border-t border-border pt-4">
+									<Link
+										to="/auth/login"
+										className="flex h-11 items-center justify-center rounded-xl border border-border text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+									>
+										Login
+									</Link>
+									<Link
+										to="/auth/signup"
+										search={{ redirect: undefined }}
+										className="flex h-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+									>
+										Get Started
+									</Link>
+								</div>
+							</SiteDrawer>
 
 							<motion.div
 								whileTap={{ scale: 0.97 }}

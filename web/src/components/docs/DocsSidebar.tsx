@@ -4,7 +4,6 @@ import {
 	DOC_ARTICLES,
 	type DocArticle,
 	type DocSection,
-	docHref,
 	sectionArticles,
 	sectionsInOrder,
 } from "@/content/docs.manifest";
@@ -137,48 +136,6 @@ export function DocsSidebar() {
 					</ul>
 				</div>
 			))}
-		</nav>
-	);
-}
-
-/**
- * The phone version: one scrolling row of every article.
- *
- * A collapsed accordion on a phone hides the thing you came for behind two
- * taps; a strip keeps every destination one tap away. Docs ship inside the
- * installed app, so this is the primary nav for a real share of readers.
- */
-export function DocsTabStrip() {
-	const native = isNativeApp();
-	const groups = useMemo(() => visibleSections(native), [native]);
-	const current = useCurrentSlug();
-	const flat = groups.flatMap((g) => g.articles);
-
-	return (
-		<nav
-			aria-label="Documentation"
-			className="flex gap-1.5 overflow-x-auto px-4 pb-3 md:hidden"
-		>
-			{flat.map((article) => {
-				const isCurrent = `${article.section}/${article.slug}` === current;
-				return (
-					<Link
-						key={docHref(article)}
-						to="/docs/$section/$slug"
-						params={{ section: article.section, slug: article.slug }}
-						data-active={isCurrent}
-						aria-current={isCurrent ? "page" : undefined}
-						className={cn(
-							"flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors",
-							isCurrent
-								? "border-primary/30 bg-primary/10 font-medium text-primary"
-								: "border-border text-muted-foreground hover:bg-muted",
-						)}
-					>
-						{article.title}
-					</Link>
-				);
-			})}
 		</nav>
 	);
 }
