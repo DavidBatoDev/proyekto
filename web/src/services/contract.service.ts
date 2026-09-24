@@ -37,6 +37,19 @@ export interface ContractPosition {
 	display_name_snapshot: string;
 	email_snapshot: string | null;
 	signed_at: string | null;
+	/** The team this seat signs on behalf of — identity, not party-ship. */
+	team_id: string | null;
+	team_name_snapshot: string | null;
+}
+
+/** The client side's counterpart to `provider_kind`. */
+export type ClientKind = "individual" | "company";
+
+/** A team the signed-in user owns, for the "sign on behalf of" picker. */
+export interface OwnedTeam {
+	id: string;
+	name: string;
+	legal_name: string | null;
 }
 
 /**
@@ -104,6 +117,9 @@ export interface Contract {
 	client_tin: string | null;
 	client_email: string | null;
 	client_user_id: string | null;
+	client_kind: ClientKind;
+	/** Chosen by kind when the contract was created, and never recomputed. */
+	document_title: string;
 
 	currency: string;
 	billing_mode: BillingMode;
@@ -201,6 +217,7 @@ export interface ContractTermsPayload {
 	client_tin?: string;
 	client_email?: string;
 	client_user_id?: string | null;
+	client_kind?: ClientKind;
 
 	currency?: string;
 	billing_mode?: BillingMode;
@@ -547,8 +564,41 @@ export const contractService = {
 	},
 
 	/**
-	 * Overwrite the provider block from the chosen identity. Destructive — the
-	 * caller confirms first when any provider field was hand-edited.
+	 * Choose whom the caller's own seat signs on behalf of — one of their teams,
+	 * or themselves (`null`). Re-copies that side's party block from it.
+	 */
+	async setSeatTeam(
+		contractId: string,
+		position: "hirer" | "provider",
+		teamId: string | null,
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.patch<{ data: Contract }>(
+				`/api/contracts/${contractId}/positions/${position}/team`,
+				{ team_id: teamId },
+			);
+			return normalizeContract(data.data);
+		} catch (err) {
+			fail(err, "Failed to change who you sign on behalf of");
+		}
+	},
+
+	/** Teams the signed-in user owns — never the counterparty's. */
+	async myTeams(contractId: string): Promise<OwnedTeam[]> {
+		try {
+			const { data } = await apiClient.get<{ data: OwnedTeam[] }>(
+				`/api/contracts/${contractId}/my-teams`,
+			);
+			return data.data ?? [];
+		} catch (err) {
+			fail(err, "Failed to load your teams");
+		}
+	},
+
+	/**
+	 * Re-copy the caller's OWN seat's party block (from their profile, or from
+	 * one of their teams). Destructive — the caller confirms first when any of
+	 * those fields was hand-edited.
 	 */
 	async reseedProvider(
 		contractId: string,

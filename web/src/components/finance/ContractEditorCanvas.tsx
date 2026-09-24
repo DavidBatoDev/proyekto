@@ -6,6 +6,7 @@ import {
 	contractClauseOutline,
 	type PreviewParties,
 	type PreviewTerms,
+	partyHeadings,
 	splitContractClauseBody,
 } from "@/components/project/ContractDocumentPreview";
 import type {
@@ -454,6 +455,7 @@ export function ContractEditorCanvas({
 										initials={pageInitials.filter(
 											(mark) => mark.page_index === index,
 										)}
+										headings={partyHeadings(parties.relationship_kind)}
 									/>
 									<span className="absolute right-16 bottom-8 text-[10px] tabular-nums text-slate-400">
 										{index + 1} / {pages.length}
@@ -498,7 +500,13 @@ export function ContractEditorCanvas({
  * rather than an empty placeholder box, so an unsigned draft still reads as a
  * clean document.
  */
-function PageInitials({ initials }: { initials: ContractPageInitial[] }) {
+function PageInitials({
+	initials,
+	headings,
+}: {
+	initials: ContractPageInitial[];
+	headings: { hirer: string; provider: string };
+}) {
 	if (initials.length === 0) return null;
 	const seat = (position: "hirer" | "provider") =>
 		initials.find((mark) => mark.position === position);
@@ -508,8 +516,8 @@ function PageInitials({ initials }: { initials: ContractPageInitial[] }) {
 	return (
 		<div className="absolute bottom-6 left-16 flex items-end gap-6">
 			{[
-				{ label: "Provider", mark: provider },
-				{ label: "Client", mark: hirer },
+				{ label: headings.provider, mark: provider },
+				{ label: headings.hirer, mark: hirer },
 			]
 				.filter((entry) => entry.mark)
 				.map((entry) => (

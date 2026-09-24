@@ -244,6 +244,19 @@ function EngagementsPage() {
 			!awaitingMe.includes(agreement),
 	);
 
+	// Signed client work the consultant hasn't put on a project yet — the step
+	// after signing, surfaced where the rest of the to-do list lives.
+	const needsProject = (engagementsQuery.data ?? []).filter(
+		(engagement) =>
+			engagement.kind === "client_services" &&
+			engagement.viewer_capacity === "consultant" &&
+			engagement.status === "active" &&
+			engagement.scope_mode === "flexible" &&
+			!engagement.project_links.some(
+				(link) => link.status === "active" && link.project_id,
+			),
+	);
+
 	const openAgreement = (contractId: string, section?: "signatures") =>
 		void navigate({
 			to: "/engagements/finance/$contractId",
@@ -318,14 +331,16 @@ function EngagementsPage() {
 					</div>
 
 					<div className="mt-6">
-						{(pipeline.length > 0 || awaitingMe.length > 0) && (
+						{(pipeline.length > 0 ||
+							awaitingMe.length > 0 ||
+							needsProject.length > 0) && (
 							<section className="mb-8">
 								<h2 className="text-base font-semibold text-foreground">
 									Needs your attention
 								</h2>
 								<p className="mb-4 mt-1 text-sm text-muted-foreground">
-									Contracts not yet signed by both parties — each becomes an
-									engagement once it is.
+									Contracts waiting on a signature, and signed work with no
+									project yet.
 								</p>
 								<AppSurfaceCard className="divide-y divide-border overflow-hidden border-warning/40">
 									{awaitingMe.map((agreement) => (
@@ -341,6 +356,37 @@ function EngagementsPage() {
 											contract={contract}
 											onOpen={openContract}
 										/>
+									))}
+									{needsProject.map((engagement) => (
+										<button
+											key={engagement.id}
+											type="button"
+											onClick={() =>
+												void navigate({
+													to: "/engagements/$engagementId",
+													params: { engagementId: engagement.id },
+												})
+											}
+											className="group flex w-full items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-muted/40 md:px-5"
+										>
+											<span className="min-w-0">
+												<span className="block truncate font-semibold text-foreground">
+													Set up the project for{" "}
+													{engagement.counterparty?.display_name_snapshot ??
+														"this client"}
+												</span>
+												<span className="mt-1 block truncate text-xs text-muted-foreground">
+													Signed
+													{engagement.viewer_team
+														? ` · bills as ${engagement.viewer_team.name}`
+														: ""}{" "}
+													· create or link the project it runs in
+												</span>
+											</span>
+											<span className="shrink-0 text-xs font-semibold text-primary">
+												Set up →
+											</span>
+										</button>
 									))}
 								</AppSurfaceCard>
 							</section>

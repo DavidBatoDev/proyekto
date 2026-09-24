@@ -28,6 +28,8 @@ const publicClient = axios.create({
  * `Contract` — no project_id, no created_by, no internal notes.
  */
 export interface ContractDocumentView {
+	/** The paper's own title — "Service Agreement", "Consulting Agreement". */
+	document_title?: string | null;
 	id: string;
 	contract_number: string | null;
 	status: ContractStatus;

@@ -11,6 +11,8 @@ export interface EngagementParty {
 	capacity: string;
 	display_name_snapshot: string | null;
 	email_snapshot: string | null;
+	/** The team that seat signed on behalf of. */
+	team_name_snapshot?: string | null;
 }
 
 export interface EngagementProjectLink {
@@ -65,6 +67,8 @@ export interface Engagement {
 	status_reason: string | null;
 	viewer_position: EngagementPosition;
 	viewer_capacity: string;
+	/** The team the viewer's own seat signed on behalf of. */
+	viewer_team?: { id: string; name: string } | null;
 	counterparty: EngagementParty | null;
 	project_links: EngagementProjectLink[];
 	current_settings: EngagementTimeSettings | null;
@@ -88,6 +92,37 @@ export interface EngagementAgreement {
 	currency: string;
 	signed_at: string | null;
 	client_hourly_rate?: number | null;
+	my_team_name?: string | null;
+	counterparty_team_name?: string | null;
+	document_title?: string | null;
+}
+
+/** What the "set up the project" step needs, from GET /engagements/:id/project. */
+export interface EngagementProjectDefaults {
+	title: string;
+	currency: string | null;
+	team: { id: string; name: string } | null;
+	owned_teams: Array<{ id: string; name: string }>;
+	linked_project_ids: string[];
+	candidates: Array<{ id: string; title: string; team_attached: boolean }>;
+}
+
+export type SetUpEngagementProjectInput =
+	| {
+			mode: "create";
+			title: string;
+			currency?: string;
+			workspace_id?: string;
+			team_id?: string;
+	  }
+	| { mode: "link"; project_id: string; team_id?: string };
+
+export interface EngagementProjectResult {
+	project_id: string;
+	project_title: string;
+	team_id: string;
+	finance_book_id: string | null;
+	team_book_exists: boolean;
 }
 
 export interface EngagementFilters {
@@ -115,4 +150,25 @@ export const engagementService = {
 		get<Engagement[]>("/api/engagements", filters),
 	byId: (id: string) => get<Engagement>(`/api/engagements/${id}`),
 	agreements: () => get<EngagementAgreement[]>("/api/engagements/agreements"),
+	projectDefaults: (id: string) =>
+		get<EngagementProjectDefaults>(`/api/engagements/${id}/project`),
+	async setUpProject(
+		id: string,
+		input: SetUpEngagementProjectInput,
+	): Promise<EngagementProjectResult> {
+		try {
+			const { data } = await apiClient.post<{ data: EngagementProjectResult }>(
+				`/api/engagements/${id}/project`,
+				input,
+			);
+			return data.data;
+		} catch (error) {
+			throw new Error(
+				extractApiErrorMessage(
+					(error as { response?: { data?: unknown } }).response?.data,
+					"Failed to set up the project",
+				),
+			);
+		}
+	},
 };

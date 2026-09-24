@@ -78,6 +78,7 @@ export interface PublicContractView {
   contract_number: string | null;
   status: ContractRow['status'];
   relationship_kind: ContractRow['relationship_kind'];
+  document_title: string;
   scope_mode: ContractRow['scope_mode'];
   provider_kind: ContractRow['provider_kind'];
   provider_name: string | null;
@@ -472,6 +473,7 @@ export class ContractSignatureLinksService {
       contract_number: contract.contract_number,
       status: contract.status,
       relationship_kind: contract.relationship_kind,
+      document_title: contract.document_title,
       scope_mode: contract.scope_mode,
       provider_kind: contract.provider_kind,
       provider_name: contract.provider_name,

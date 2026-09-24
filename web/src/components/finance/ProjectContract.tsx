@@ -15,12 +15,8 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-	useMutation,
-	useQueries,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	ArrowLeft,
 	FileSignature,
@@ -33,7 +29,7 @@ import {
 	Send,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DateField } from "@/components/common/DateField";
 import { Dropdown } from "@/components/common/Dropdown";
@@ -78,16 +74,15 @@ import {
 } from "@/lib/finance-status";
 import {
 	type BillingTiming,
+	type ClientKind,
 	type Contract,
 	type ContractClause,
 	type ContractEditScope,
 	type ContractService,
 	contractService,
-	type ProviderKind,
 	type SignaturePlacement,
 } from "@/services/contract.service";
 import { projectService } from "@/services/project.service";
-import { getTeam, listProjectTeams } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({
@@ -361,7 +356,7 @@ export function ProjectContract({
 						<h1 className="truncate text-sm font-semibold text-foreground">
 							{contract.contract_number
 								? `Contract ${contract.contract_number}`
-								: `Service agreement · Version ${contract.version}`}
+								: `${contract.document_title || "Service Agreement"} · Version ${contract.version}`}
 						</h1>
 						<p className="truncate text-[11px] text-muted-foreground">
 							{project?.title ??
@@ -691,6 +686,8 @@ function partiesPreview(contract: Contract | null): PreviewParties {
 		client_address: contract?.client_address ?? "",
 		client_email: contract?.client_email ?? null,
 		client_tin: contract?.client_tin ?? null,
+		document_title: contract?.document_title ?? null,
+		relationship_kind: contract?.relationship_kind ?? null,
 	};
 }
 
@@ -727,6 +724,33 @@ function ContractStatusChip({ status }: { status: Contract["status"] }) {
 
 /* ── Parties ──────────────────────────────────────────────────────────────── */
 
+type PartyBlock = "provider" | "client";
+
+/** The columns a seat's party details live in. Positional for every kind. */
+function blockFor(position: "hirer" | "provider"): PartyBlock {
+	return position === "provider" ? "provider" : "client";
+}
+
+/**
+ * The legal names each seat goes by in the paper itself. The Consulting
+ * Agreement calls the hirer "the Company" and the talent "the Consultant",
+ * which is not Proyekto's use of "consultant" — so the form follows the paper.
+ */
+function seatLabels(contract: Contract) {
+	return contract.relationship_kind === "talent_services"
+		? { hirer: "Company", provider: "Consultant (talent)" }
+		: { hirer: "Client", provider: "Service provider" };
+}
+
+/**
+ * The two parties, drawn by SEAT rather than by column name.
+ *
+ * The consultant's own seat picks whom it signs on behalf of — themselves, or
+ * one of the teams they own — and that side refills from it. The other seat's
+ * details are typed here; on a client contract the client can then sign on
+ * behalf of one of their own teams, which only they can see (the consultant is
+ * never shown a client's teams).
+ */
 function PartiesSection({
 	contract,
 	editable,
@@ -739,15 +763,22 @@ function PartiesSection({
 	const qc = useQueryClient();
 	const toast = useToast();
 	const confirm = useConfirm();
+	const user = useUser();
+	const isTalent = contract.relationship_kind === "talent_services";
+	const labels = seatLabels(contract);
+
+	const mySeat = contract.positions.find((p) => p.user_id === user?.id);
+	const otherSeat = contract.positions.find(
+		(p) => p.position !== mySeat?.position,
+	);
+	const myBlock: PartyBlock = mySeat ? blockFor(mySeat.position) : "provider";
+	const otherBlock: PartyBlock = myBlock === "provider" ? "client" : "provider";
+
 	const [draft, setDraft] = useState({
-		// provider_kind rides the autosave draft so flipping the toggle records
-		// the choice without touching the typed-in details. It used to fire a
-		// destructive reseed on click, which is exactly what ReseedProviderDto's
-		// own docstring says must not happen.
-		provider_kind: contract.provider_kind,
 		provider_name: contract.provider_name ?? "",
 		provider_address: contract.provider_address ?? "",
 		provider_tin: contract.provider_tin ?? "",
+		client_kind: contract.client_kind ?? "individual",
 		client_name: contract.client_name ?? "",
 		client_contact_name: contract.client_contact_name ?? "",
 		client_address: contract.client_address ?? "",
@@ -755,79 +786,44 @@ function PartiesSection({
 		client_email: contract.client_email ?? "",
 	});
 
-	// Only teams attached to this project are legitimate providers — and the
-	// backend enforces the same rule, so offering anything else would just 400.
-	const attachedTeamsQuery = useQuery({
-		queryKey: ["project", contract.project_id, "teams"],
-		queryFn: () =>
-			contract.project_id
-				? listProjectTeams(contract.project_id)
-				: Promise.resolve([]),
-		enabled: Boolean(contract.project_id),
-	});
-	const attachedTeams = useMemo(
-		() => attachedTeamsQuery.data ?? [],
-		[attachedTeamsQuery.data],
-	);
-	// project_teams carries only ids, so resolve the names the picker shows.
-	const teamDetailQueries = useQueries({
-		queries: attachedTeams.map((t) => ({
-			queryKey: ["teams", "detail", t.team_id],
-			queryFn: () => getTeam(t.team_id),
-			staleTime: 5 * 60_000,
-		})),
-	});
-	const teamNameById = useMemo(() => {
-		const map: Record<string, string> = {};
-		teamDetailQueries.forEach((q, i) => {
-			const id = attachedTeams[i]?.team_id;
-			if (id) map[id] = q.data?.name ?? "Team";
-		});
-		return map;
-	}, [teamDetailQueries, attachedTeams]);
-	const primaryTeamId = useMemo(
-		() =>
-			(attachedTeams.find((t) => t.is_primary) ?? attachedTeams[0])?.team_id ??
-			"",
-		[attachedTeams],
-	);
-	const [refillTeamId, setRefillTeamId] = useState("");
-	const effectiveRefillTeamId = refillTeamId || primaryTeamId;
-
-	// Feed the live document preview as the consultant edits.
 	useEffect(() => {
 		onDraftChange?.({
 			provider_name: draft.provider_name,
 			provider_address: draft.provider_address,
 			provider_email: contract.provider_email,
 			provider_tin: draft.provider_tin,
-			provider_kind: draft.provider_kind,
+			provider_kind: contract.provider_kind,
 			client_name: draft.client_name,
 			client_contact_name: draft.client_contact_name,
 			client_address: draft.client_address,
 			client_email: draft.client_email,
 			client_tin: draft.client_tin,
+			document_title: contract.document_title,
+			relationship_kind: contract.relationship_kind,
 		});
 	}, [
-		draft.provider_name,
-		draft.provider_address,
-		draft.provider_tin,
-		draft.provider_kind,
-		draft.client_name,
-		draft.client_contact_name,
-		draft.client_address,
-		draft.client_email,
-		draft.client_tin,
+		draft,
 		contract.provider_email,
+		contract.provider_kind,
+		contract.document_title,
+		contract.relationship_kind,
 		onDraftChange,
 	]);
 
 	const locked = !editable || !isEditableStatus(contract.status);
+	const mySeatLocked = locked || Boolean(mySeat?.signed_at);
 
 	const saveStatus = useAutosave(
 		draft,
 		async (value) => {
-			await contractService.update(contract.id, value);
+			// `client_kind` is the client's own choice on a client contract; on a
+			// talent contract the client block is the consultant's side, whose
+			// kind follows the team they sign for and is set by that endpoint.
+			const { client_kind, ...rest } = value;
+			await contractService.update(
+				contract.id,
+				isTalent ? rest : { ...rest, client_kind },
+			);
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
@@ -836,26 +832,46 @@ function PartiesSection({
 		{ enabled: !locked, onError: (err) => toast.error(err.message) },
 	);
 
-	/**
-	 * Refilling is destructive, so it goes through its own endpoint and its own
-	 * confirm — never through the autosave draft above, which would race with it.
-	 */
-	const reseedMutation = useMutation({
-		mutationFn: (input: { kind: ProviderKind; teamId?: string }) =>
-			contractService.reseedProvider(contract.id, input.kind, input.teamId),
-		onSuccess: (updated) => {
-			setDraft((d) => ({
-				...d,
-				provider_name: updated.provider_name ?? "",
-				provider_address: updated.provider_address ?? "",
-				provider_tin: updated.provider_tin ?? "",
-			}));
+	const myTeamsQuery = useQuery({
+		queryKey: ["contract", contract.id, "my-teams"],
+		queryFn: () => contractService.myTeams(contract.id),
+		enabled: editable && Boolean(mySeat),
+		staleTime: 60_000,
+	});
+	const myTeams = myTeamsQuery.data ?? [];
+
+	const seatTeamMutation = useMutation({
+		mutationFn: (teamId: string | null) =>
+			contractService.setSeatTeam(
+				contract.id,
+				mySeat?.position ?? "provider",
+				teamId,
+			),
+		onSuccess: (updated, teamId) => {
+			setDraft((d) =>
+				myBlock === "provider"
+					? {
+							...d,
+							provider_name: updated.provider_name ?? "",
+							provider_address: updated.provider_address ?? "",
+							provider_tin: updated.provider_tin ?? "",
+						}
+					: {
+							...d,
+							client_kind: updated.client_kind,
+							client_name: updated.client_name ?? "",
+							client_contact_name: updated.client_contact_name ?? "",
+							client_address: updated.client_address ?? "",
+							client_tin: updated.client_tin ?? "",
+							client_email: updated.client_email ?? "",
+						},
+			);
+			qc.setQueryData(["contract", contract.id], updated);
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
-			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
 			toast.success(
-				updated.provider_kind === "agency"
+				teamId
 					? "Filled in from your team's billing identity."
 					: "Filled in from your profile.",
 			);
@@ -863,37 +879,40 @@ function PartiesSection({
 		onError: (err) => toast.error((err as Error).message),
 	});
 
-	const hasProviderDetails = Boolean(
-		draft.provider_name.trim() ||
-			draft.provider_address.trim() ||
-			draft.provider_tin.trim(),
-	);
-
-	const refill = async () => {
-		const kind = draft.provider_kind;
-		const source =
-			kind === "agency"
-				? (teamNameById[effectiveRefillTeamId] ?? "that team")
+	const myFields =
+		myBlock === "provider"
+			? [draft.provider_name, draft.provider_address, draft.provider_tin]
+			: [draft.client_name, draft.client_address, draft.client_tin];
+	const chooseSeatTeam = async (teamId: string | null) => {
+		if (myFields.some((value) => value.trim())) {
+			const source = teamId
+				? (myTeams.find((team) => team.id === teamId)?.name ?? "that team")
 				: "your profile";
-		if (hasProviderDetails) {
 			const ok = await confirm({
-				title: "Replace the service-provider details?",
-				message: `Name, address and TIN will be overwritten with ${
-					kind === "agency"
-						? `the billing identity saved on ${source}`
-						: "your personal profile"
-				}. Anything you typed here is lost.`,
+				title: `Sign on behalf of ${teamId ? source : "yourself"}?`,
+				message: `Your name, address and TIN on this ${
+					contract.document_title || "agreement"
+				} will be replaced with ${
+					teamId ? `the billing identity saved on ${source}` : "your profile"
+				}. Anything you typed there is lost.`,
 				confirmLabel: "Replace details",
 				tone: "danger",
 			});
 			if (!ok) return;
 		}
-		reseedMutation.mutate({
-			kind,
-			teamId:
-				kind === "agency" ? effectiveRefillTeamId || undefined : undefined,
-		});
+		seatTeamMutation.mutate(teamId);
 	};
+
+	const setBlockField = (block: PartyBlock, field: string, value: string) =>
+		setDraft((d) => ({ ...d, [`${block}_${field}`]: value }));
+	const blockValue = (block: PartyBlock, field: string): string =>
+		(draft as Record<string, string>)[`${block}_${field}`] ?? "";
+
+	const mySeatTeamId = mySeat?.team_id ?? "";
+	const myHeading = mySeat
+		? `${labels[mySeat.position]} — you`
+		: labels.provider;
+	const otherHeading = otherSeat ? labels[otherSeat.position] : labels.hirer;
 
 	return (
 		<section className="px-1 py-1 [&_.text-sm]:text-xs [&_.text-xs]:text-[11px] [&_input:not([type=checkbox])]:text-xs [&_button]:text-[11px]">
@@ -901,125 +920,136 @@ function PartiesSection({
 			<div className="mt-3 grid grid-cols-1 gap-4">
 				<div className="space-y-2.5">
 					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Service provider
+						{myHeading}
 					</p>
 
-					<ProviderKindToggle
-						value={draft.provider_kind}
-						disabled={locked}
-						onChange={(kind) =>
-							setDraft((d) => ({ ...d, provider_kind: kind }))
-						}
-					/>
-
-					{draft.provider_kind === "agency" && attachedTeams.length > 1 && (
+					{mySeat && editable ? (
 						<div className="space-y-1">
 							<span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-								Bill as
+								{isTalent ? "Team the talent joins" : "Sign on behalf of"}
 							</span>
 							<Dropdown
-								value={effectiveRefillTeamId}
-								onChange={setRefillTeamId}
-								disabled={locked || reseedMutation.isPending}
-								options={attachedTeams.map((t) => ({
-									value: t.team_id,
-									label: `${teamNameById[t.team_id] ?? "Team"}${
-										t.is_primary ? " · primary" : ""
-									}`,
-								}))}
+								value={mySeatTeamId}
+								onChange={(value) => void chooseSeatTeam(value || null)}
+								disabled={mySeatLocked || seatTeamMutation.isPending}
+								options={[
+									{
+										value: "",
+										label: isTalent
+											? "No team — hire personally"
+											: "Myself — individual contractor",
+									},
+									...myTeams.map((team) => ({
+										value: team.id,
+										label: team.name,
+									})),
+								]}
 							/>
+							<p className="text-[11px] text-muted-foreground">
+								{isTalent
+									? mySeatTeamId
+										? `${otherSeat?.display_name_snapshot ?? "The talent"} joins ${
+												mySeat.team_name_snapshot ?? "this team"
+											} as a member once both of you sign.`
+										: "Pick a team to add the talent to it when both of you sign."
+									: mySeatTeamId
+										? "Name, address and TIN come from that team's billing settings."
+										: myTeams.length === 0
+											? "Create a team to bill as an agency; its billing settings fill this in."
+											: "Your profile has no business address or tax ID — type them here."}
+							</p>
 						</div>
-					)}
-
-					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-						<button
-							type="button"
-							onClick={() => void refill()}
-							disabled={
-								locked ||
-								reseedMutation.isPending ||
-								(draft.provider_kind === "agency" && !effectiveRefillTeamId)
-							}
-							className="text-[11px] font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-50"
-						>
-							{reseedMutation.isPending
-								? "Refilling…"
-								: draft.provider_kind === "agency"
-									? "Refill from team settings"
-									: "Refill from my profile"}
-						</button>
-						{draft.provider_kind === "individual" && (
-							<span className="text-[11px] text-muted-foreground">
-								Your profile has no business address or tax ID — type them here.
-							</span>
-						)}
-						{draft.provider_kind === "agency" && attachedTeams.length === 0 && (
-							<span className="text-[11px] text-muted-foreground">
-								No team attached — attach one on the Team page to bill as an
-								agency.
-							</span>
-						)}
-					</div>
-					{draft.provider_kind === "agency" && attachedTeams.length > 1 && (
+					) : mySeat?.team_name_snapshot ? (
 						<p className="text-[11px] text-muted-foreground">
-							This only picks whose details to copy. It does not change the
-							project's primary team.
+							Signs on behalf of {mySeat.team_name_snapshot}
 						</p>
-					)}
+					) : null}
 
 					<TextField
 						label="Name"
-						value={draft.provider_name}
-						onChange={(v) => setDraft((d) => ({ ...d, provider_name: v }))}
-						disabled={locked}
+						value={blockValue(myBlock, "name")}
+						onChange={(v) => setBlockField(myBlock, "name", v)}
+						disabled={mySeatLocked}
 					/>
 					<TextField
 						label="Address"
-						value={draft.provider_address}
-						onChange={(v) => setDraft((d) => ({ ...d, provider_address: v }))}
-						disabled={locked}
+						value={blockValue(myBlock, "address")}
+						onChange={(v) => setBlockField(myBlock, "address", v)}
+						disabled={mySeatLocked}
 					/>
 					<TextField
 						label="TIN"
-						value={draft.provider_tin}
-						onChange={(v) => setDraft((d) => ({ ...d, provider_tin: v }))}
-						disabled={locked}
+						value={blockValue(myBlock, "tin")}
+						onChange={(v) => setBlockField(myBlock, "tin", v)}
+						disabled={mySeatLocked}
 					/>
 				</div>
+
 				<div className="space-y-2.5">
 					<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-						Client
+						{otherHeading}
 					</p>
+
+					{otherBlock === "client" && (
+						<>
+							<ClientKindToggle
+								value={draft.client_kind}
+								disabled={locked}
+								onChange={(kind) =>
+									setDraft((d) => ({ ...d, client_kind: kind }))
+								}
+							/>
+							{otherSeat?.team_name_snapshot ? (
+								<p className="text-[11px] font-medium text-foreground">
+									Signing on behalf of {otherSeat.team_name_snapshot}
+								</p>
+							) : draft.client_kind === "company" ? (
+								<p className="text-[11px] text-muted-foreground">
+									The client can link one of their own teams when they sign —
+									its billing details then replace these.
+								</p>
+							) : null}
+						</>
+					)}
+
 					<TextField
-						label="Name"
-						value={draft.client_name}
-						onChange={(v) => setDraft((d) => ({ ...d, client_name: v }))}
-						disabled={locked}
-					/>
-					<TextField
-						label="Contact person"
-						value={draft.client_contact_name}
-						onChange={(v) =>
-							setDraft((d) => ({ ...d, client_contact_name: v }))
+						label={
+							otherBlock === "client" && draft.client_kind === "company"
+								? "Company name"
+								: "Name"
 						}
+						value={blockValue(otherBlock, "name")}
+						onChange={(v) => setBlockField(otherBlock, "name", v)}
 						disabled={locked}
 					/>
-					<TextField
-						label="Email"
-						value={draft.client_email}
-						onChange={(v) => setDraft((d) => ({ ...d, client_email: v }))}
-						disabled={locked}
-					/>
+					{otherBlock === "client" && (
+						<>
+							<TextField
+								label="Contact person"
+								value={draft.client_contact_name}
+								onChange={(v) =>
+									setDraft((d) => ({ ...d, client_contact_name: v }))
+								}
+								disabled={locked}
+							/>
+							<TextField
+								label="Email"
+								value={draft.client_email}
+								onChange={(v) => setDraft((d) => ({ ...d, client_email: v }))}
+								disabled={locked}
+							/>
+						</>
+					)}
 					<TextField
 						label="Address"
-						value={draft.client_address}
-						onChange={(v) => setDraft((d) => ({ ...d, client_address: v }))}
+						value={blockValue(otherBlock, "address")}
+						onChange={(v) => setBlockField(otherBlock, "address", v)}
 						disabled={locked}
 					/>
 					<TextField
 						label="TIN"
-						value={draft.client_tin}
-						onChange={(v) => setDraft((d) => ({ ...d, client_tin: v }))}
+						value={blockValue(otherBlock, "tin")}
+						onChange={(v) => setBlockField(otherBlock, "tin", v)}
 						disabled={locked}
 					/>
 				</div>
@@ -1578,26 +1608,19 @@ const CONTRACT_SCOPE_OPTIONS: ReadonlyArray<ScopeOption<ContractEditScope>> = [
 	},
 ];
 
-/**
- * Individual-vs-agency, at the contract level rather than the team level.
- *
- * Some consultants work under an agency, some as themselves, and the same
- * person may want one engagement kept off the agency's books for tax reasons.
- * Tying this to "does the project have a team attached" would get that wrong,
- * so it is a per-contract choice.
- */
-function ProviderKindToggle({
+/** A person, or a company — the client side's counterpart to provider_kind. */
+function ClientKindToggle({
 	value,
 	disabled,
 	onChange,
 }: {
-	value: ProviderKind;
+	value: ClientKind;
 	disabled?: boolean;
-	onChange: (kind: ProviderKind) => void;
+	onChange: (kind: ClientKind) => void;
 }) {
-	const options: Array<{ kind: ProviderKind; label: string }> = [
-		{ kind: "individual", label: "Individual contractor" },
-		{ kind: "agency", label: "Agency or company" },
+	const options: Array<{ kind: ClientKind; label: string }> = [
+		{ kind: "individual", label: "Individual" },
+		{ kind: "company", label: "Company" },
 	];
 	return (
 		<div className="inline-flex rounded-md border border-border p-0.5 text-[11px] font-medium">
@@ -2387,6 +2410,11 @@ function SignatureSection({
 					isUnsigning={isUnsigning}
 					isRescaling={isRescaling}
 				/>
+				{canSignAsClient &&
+					contract.relationship_kind === "client_services" &&
+					!contract.signed_by_client_at && (
+						<SignOnBehalfOf contract={contract} />
+					)}
 				<SignatureBlock
 					heading={`For the ${counterpartyLabel}`}
 					signedName={contract.signed_by_client_name}
@@ -2410,6 +2438,28 @@ function SignatureSection({
 				/>
 			</div>
 
+			{isConsultant &&
+				contract.status === "signed" &&
+				contract.relationship_kind === "client_services" &&
+				contract.engagement_id && (
+					<div className="mt-3 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5">
+						<p className="text-xs font-semibold text-foreground">
+							Signed by both parties — set up the project
+						</p>
+						<p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+							Create the project under the team this contract bills as, or link
+							one you already run. Its finance opens with it.
+						</p>
+						<Link
+							to="/engagements/$engagementId"
+							params={{ engagementId: contract.engagement_id }}
+							className="app-cta mt-2 inline-flex items-center rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-white"
+						>
+							Set up the project
+						</Link>
+					</div>
+				)}
+
 			{linkOpen && (
 				<ClientSigningLinkModal
 					contract={contract}
@@ -2417,6 +2467,66 @@ function SignatureSection({
 				/>
 			)}
 		</section>
+	);
+}
+
+/**
+ * The client's own choice, just before they sign: as themselves, or on behalf
+ * of one of THEIR teams. Only the client sees their teams (the list comes from
+ * /my-teams under their session); choosing one re-copies the client block from
+ * that team's billing settings, which the consultant then sees on the paper.
+ */
+function SignOnBehalfOf({ contract }: { contract: Contract }) {
+	const qc = useQueryClient();
+	const toast = useToast();
+	const user = useUser();
+	const seat = contract.positions.find((p) => p.user_id === user?.id);
+	const teamsQuery = useQuery({
+		queryKey: ["contract", contract.id, "my-teams"],
+		queryFn: () => contractService.myTeams(contract.id),
+		enabled: Boolean(seat),
+		staleTime: 60_000,
+	});
+	const mutation = useMutation({
+		mutationFn: (teamId: string | null) =>
+			contractService.setSeatTeam(
+				contract.id,
+				seat?.position ?? "hirer",
+				teamId,
+			),
+		onSuccess: (updated, teamId) => {
+			qc.setQueryData(["contract", contract.id], updated);
+			void qc.invalidateQueries({ queryKey: ["contract", contract.id] });
+			toast.success(
+				teamId
+					? "You'll sign on behalf of your team — its details are on the agreement."
+					: "You'll sign as yourself.",
+			);
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
+	const teams = teamsQuery.data ?? [];
+	if (!seat || teams.length === 0) return null;
+
+	return (
+		<div className="space-y-1 rounded-md border border-border px-2.5 py-2">
+			<span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+				Sign on behalf of
+			</span>
+			<Dropdown
+				value={seat.team_id ?? ""}
+				onChange={(value) => mutation.mutate(value || null)}
+				disabled={mutation.isPending}
+				options={[
+					{ value: "", label: "Myself" },
+					...teams.map((team) => ({ value: team.id, label: team.name })),
+				]}
+			/>
+			<p className="text-[11px] leading-4 text-muted-foreground">
+				Choosing a team fills in its name, address and TIN from its billing
+				settings.
+			</p>
+		</div>
 	);
 }
 

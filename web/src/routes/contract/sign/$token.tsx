@@ -130,7 +130,7 @@ function PublicSignPage() {
 							</span>
 							<div className="min-w-0">
 								<h1 className="truncate text-sm font-semibold text-foreground">
-									Service agreement
+									{contract?.document_title || "Service Agreement"}
 								</h1>
 								<p className="truncate text-[11px] text-muted-foreground">
 									Review before signing
@@ -186,6 +186,8 @@ function PublicSignPage() {
 								client_address: contract.client_address ?? "",
 								client_email: contract.client_email,
 								client_tin: contract.client_tin,
+								document_title: contract.document_title,
+								relationship_kind: contract.relationship_kind,
 							}}
 							terms={{
 								currency: contract.currency,

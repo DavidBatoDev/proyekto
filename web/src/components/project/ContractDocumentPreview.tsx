@@ -36,6 +36,9 @@ import type {
  */
 export interface ContractDocumentView {
 	contract_number: string | null;
+	/** The paper's own title; older payloads may not carry it. */
+	document_title?: string | null;
+	relationship_kind?: "client_services" | "talent_services";
 	service_start_date: string | null;
 	service_end_date: string | null;
 	clauses: ContractClause[];
@@ -78,6 +81,23 @@ export interface PreviewParties extends ContractVariableValues {
 	client_name: string;
 	client_contact_name: string;
 	client_address: string;
+	/** The paper's own title, stored on the contract. */
+	document_title?: string | null;
+	/** Decides what each party is called in the paper. */
+	relationship_kind?: "client_services" | "talent_services" | null;
+}
+
+/**
+ * What the paper calls each seat. The Consulting Agreement names the hirer
+ * "the Company" and the talent "the Consultant" — its own legal terms.
+ */
+export function partyHeadings(kind: PreviewParties["relationship_kind"]): {
+	hirer: string;
+	provider: string;
+} {
+	return kind === "talent_services"
+		? { hirer: "Company", provider: "Consultant" }
+		: { hirer: "Client", provider: "Service Provider" };
 }
 
 /** The subset of commercial terms the document shows, fed live from the editor. */
@@ -543,7 +563,10 @@ export function ContractDocumentPreview({
 			</div>
 
 			{expanded && (
-				<ExpandedPreview onClose={() => setExpanded(false)}>
+				<ExpandedPreview
+					title={parties.document_title || "Service Agreement"}
+					onClose={() => setExpanded(false)}
+				>
 					<ContractPaperDocument
 						contract={contract}
 						parties={parties}
@@ -563,9 +586,11 @@ export function ContractDocumentPreview({
  * beneath the app header regardless of its z-index).
  */
 function ExpandedPreview({
+	title,
 	onClose,
 	children,
 }: {
+	title: string;
 	onClose: () => void;
 	children: React.ReactNode;
 }) {
@@ -596,7 +621,7 @@ function ExpandedPreview({
 			<div className="relative w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
 				<div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
 					<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-						Service Agreement — preview
+						{title} — preview
 					</p>
 					<button
 						type="button"
@@ -740,7 +765,7 @@ export function ContractPaperDocument({
 						<h1
 							className={`text-center font-semibold tracking-tight text-[#111827] ${large ? "text-[22px]" : "text-base"}`}
 						>
-							Service Agreement
+							{parties.document_title || "Service Agreement"}
 						</h1>
 						<div
 							className={`mx-auto mt-2 h-[2px] bg-[#2563eb] ${large ? "w-16" : "w-10"}`}
@@ -760,13 +785,13 @@ export function ContractPaperDocument({
 				>
 					<div className="mt-5 grid grid-cols-2 gap-4">
 						<PartyBlock
-							heading="Service Provider"
+							heading={partyHeadings(parties.relationship_kind).provider}
 							name={provider}
 							address={parties.provider_address}
 							large={large}
 						/>
 						<PartyBlock
-							heading="Client"
+							heading={partyHeadings(parties.relationship_kind).hirer}
 							name={client}
 							contact={parties.client_contact_name}
 							address={parties.client_address}

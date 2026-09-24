@@ -59,6 +59,7 @@ export function AgreementRow({
 						 */}
 						<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
 							As {agreement.my_capacity}
+							{teamOf(agreement) ? ` · ${teamOf(agreement)}` : ""}
 						</span>
 					</span>
 					<span className="mt-1 block truncate text-xs text-muted-foreground">
@@ -87,6 +88,20 @@ export function AgreementRow({
 				<ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
 			</span>
 		</button>
+	);
+}
+
+/**
+ * The team this seat is tied to: the one the viewer signs on behalf of, or —
+ * for a talent, who signs as themselves — the team they are engaged into.
+ */
+function teamOf(agreement: EngagementAgreement): string | null {
+	return (
+		agreement.my_team_name ??
+		(agreement.relationship_kind === "talent_services" &&
+		agreement.my_position === "provider"
+			? (agreement.counterparty_team_name ?? null)
+			: null)
 	);
 }
 

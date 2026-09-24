@@ -120,6 +120,13 @@ function EngagementRow({
 	onOpen: (engagementId: string) => void;
 	agreement?: EngagementAgreement;
 }) {
+	// On a talent engagement, the team the talent works for: the hirer seat's.
+	const teamName =
+		engagement.kind === "talent_services"
+			? engagement.viewer_position === "hirer"
+				? (engagement.viewer_team?.name ?? null)
+				: (engagement.counterparty?.team_name_snapshot ?? null)
+			: null;
 	const counterparty =
 		engagement.counterparty?.display_name_snapshot ??
 		engagement.counterparty?.email_snapshot ??
@@ -163,6 +170,7 @@ function EngagementRow({
 						{engagement.counterparty?.capacity ? (
 							<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
 								{engagement.counterparty.capacity}
+								{teamName ? ` · ${teamName}` : ""}
 							</span>
 						) : null}
 					</span>

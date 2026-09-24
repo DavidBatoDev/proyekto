@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowLeft,
 	CalendarClock,
@@ -15,6 +15,7 @@ import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { EngagementProjectCard } from "@/components/engagements/EngagementProjectCard";
 import {
 	describeRate,
 	describeRelationship,
@@ -244,6 +245,8 @@ function EngagementDetailPage() {
 					</Panel>
 				</div>
 
+				<EngagementProjectCard engagement={engagement} />
+
 				<AppSurfaceCard className="p-5">
 					<h2 className="mb-1.5 text-sm font-semibold text-foreground">
 						What happens next
@@ -273,7 +276,9 @@ function ExecutionNotice({ engagement }: { engagement: Engagement }) {
 			This engagement records what was agreed and what it is worth. It grants no
 			access to any project workspace
 			{engagement.kind === "talent_services"
-				? " and does not place this person on your team"
+				? engagement.viewer_capacity === "consultant" && engagement.viewer_team
+					? ` — signing added them to ${engagement.viewer_team.name} as a member, which is a team membership, not a project grant`
+					: " and does not place this person on your team"
 				: ""}
 			— project access is granted separately, through the project's people.
 		</p>
@@ -354,11 +359,21 @@ function ProjectLinkRow({ link }: { link: EngagementProjectLink }) {
 	const ended = link.status === "ended";
 	return (
 		<li className="flex items-center justify-between gap-3 text-sm">
-			<span
-				className={`min-w-0 truncate ${ended ? `text-muted-foreground line-through` : `text-foreground`}`}
-			>
-				{link.project_title_snapshot}
-			</span>
+			{link.project_id && !ended ? (
+				<Link
+					to="/project/$projectId/overview"
+					params={{ projectId: link.project_id }}
+					className="min-w-0 truncate font-medium text-primary hover:underline"
+				>
+					{link.project_title_snapshot}
+				</Link>
+			) : (
+				<span
+					className={`min-w-0 truncate ${ended ? `text-muted-foreground line-through` : `text-foreground`}`}
+				>
+					{link.project_title_snapshot}
+				</span>
+			)}
 			<span className="shrink-0 text-xs text-muted-foreground">
 				{link.basis === "contract_scope" ? "Contract scope" : "Placed"}
 			</span>
