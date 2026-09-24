@@ -1,6 +1,6 @@
 # Engagement Action Surface
 
-> **Last updated:** 2026-08-28 · **Status:** draft
+> **Last updated:** 2026-09-24 · **Status:** draft
 
 > **⚠️ This page specifies intent, not shipped behaviour.** The read surface described in
 > [Integration surface](./integration.md) is live. The action rail, seat-neutral agreement
@@ -48,7 +48,7 @@ rather than inventing a stand-in.
 | **No contract yet** | Nothing — a client never authors. Waits for a link. | **Draft a contract** (`/engagements`, "New contract") — *live* | Nothing — waits for a link. Marketplace go-live is a separate track. |
 | **Draft** | Invisible by design. `draft` means "not visible to the other party". | **Complete terms, name the counterparty, send** (`/engagements/finance/$contractId`) — *live* | Invisible. |
 | **Sent, awaiting signature** | **Sign** — via the token link at `/contract/sign/$token`, no account needed — *live* | **Withdraw or amend** while waiting — *live* | **Sign** — same token path — *live* |
-| **Signed, engagement active** | **Read the agreement and its invoices.** Cannot see talent identity, cost, or margin. | **Assign a worker to project work** — *build-order step 2, unbuilt* | **Read own terms**, then log attributed time — *step 3, unbuilt* |
+| **Signed, engagement active** | **Read the agreement and its invoices.** Cannot see talent identity, cost, or margin. | **Set up the project** (client engagement, flexible) — *live 2026-09-24*; then **assign a worker to project work** — *build-order step 2, unbuilt* | **Read own terms**, then log attributed time — *step 3, unbuilt* |
 | **Active, work under way** | **Receive and pay invoices** — *live (manual issue)* | **Review submitted time; invoice the client** — approval is *step 4, unbuilt*; invoicing is *live* | **Submit time for the period** — *step 4, unbuilt* |
 | **Ended / cancelled** | Read-only history; invoices survive. | Read-only history; amend is not available on a terminal engagement. | Read-only history; unpaid obligations are preserved. |
 
@@ -70,7 +70,8 @@ contents are chosen by the viewer's seat, never by capability.
 | --- | --- | --- | --- | --- |
 | Open the agreement | Any party | Party membership | — | *live read, wrongly gated — see below* |
 | Assign a worker | The hirer seat | Party membership + hirer position | `engagement_assignments` | unbuilt (step 2) |
-| Place on a project | The hirer seat, `flexible` scope only | Same | `engagement_project_links` (`operational_assignment`) | unbuilt (step 2) |
+| Set up the project | The consultant seat on an active `client_services` engagement, `flexible` scope | Party membership + consultant capacity (404 otherwise) | project (consultant mode, under the seat's team), `project_teams`, `engagement_project_links` (`operational_assignment`), project finance book | **live** — `POST /api/engagements/:id/project` (`create` \| `link`); card on `$engagementId.tsx`, prompt after the last signature, and a "Needs your attention" row |
+| Place on a project | The hirer seat, `flexible` scope only | Same | `engagement_project_links` (`operational_assignment`) | unbuilt for talent engagements (step 2) |
 | Raise an invoice | Consultant provider on a `client_services` engagement | Existing finance authorization | `invoices` (with `engagement_id`) | invoicing live; the link is not written |
 | View time under this engagement | Hirer and provider, redacted per seat | Party membership | — | unbuilt (step 3) |
 | End the engagement | The hirer seat | Party membership + hirer | `engagements.status` | unbuilt |

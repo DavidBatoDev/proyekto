@@ -1,6 +1,6 @@
 # Authorization Axes
 
-> **Last updated:** 2026-08-28 · **Status:** current
+> **Last updated:** 2026-09-24 · **Status:** current
 
 Proyekto answers six *different* authorization questions with six *different* pieces of
 state. They are independent by design. This page names all six in one place, states which
@@ -66,6 +66,14 @@ receives 404 rather than 403, so ids cannot be probed. See
 > the organization work in
 > [organizations-and-services](../13-proposals/organizations-and-services.md); until it
 > lands, a team's agreement is held by an individual account.
+>
+> What a seat *can* carry since 2026-09-23 is the team its user **signs on behalf of**
+> (`contract_positions.team_id` / `team_name_snapshot`, copied to `engagement_parties` at
+> activation). That is identity on the paper — the agency a consultant bills as, the
+> company a client contracts as, the team a talent is engaged into — not party-ship: the
+> seat is still the person. Only the seat's own user may set it, only to a team they own
+> (`teams.owner_id`), only before that seat signs. A signed talent contract whose hirer
+> seat names a team adds the talent to that team as a `member` in the same transaction.
 
 ### 4. Marketplace capability — what you are allowed to become
 

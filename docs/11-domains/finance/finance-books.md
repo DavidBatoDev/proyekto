@@ -1,6 +1,6 @@
 # Finance Books
 
-> **Last updated:** 2026-08-28 · **Status:** current
+> **Last updated:** 2026-09-24 · **Status:** current
 
 Finance used to be one page gated to verified consultants (`ConsultantOnlyGuard` on
 `/api/finance/*`). **Books** replace that wall with a created surface any execution user can
@@ -72,6 +72,13 @@ Invariants that must survive any change:
 - **Access misses throw NotFound, never Forbidden**, so book ids cannot be probed.
 - **A book grants no execution access.** Books never write `project_access`. A member with
   every capability still cannot open the project.
+- **What makes a project eligible for a book** (`contractedTeamProjects`): it is attached to
+  the team, and it is covered by signed client authority — either a `signed`/`active`
+  `client_services` contract whose `project_id` is the project, or (since 2026-09-24) an
+  active `operational_assignment` link from an active `client_services` engagement. The
+  second is how a *flexible* client contract reaches a book: "Set up the project" after
+  signing creates or links the project and opens its book, at the currency of the contract
+  that activated the engagement.
 
 ## HTTP surface
 
