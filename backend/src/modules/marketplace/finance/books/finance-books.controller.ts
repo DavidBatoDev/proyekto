@@ -45,6 +45,12 @@ export class FinanceBooksController {
     return this.books.listEngagedProjects(user.id);
   }
 
+  /** Cross-team money summary; needs no personal book. Before `:bookId`. */
+  @Get('me/summary')
+  mySummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.books.getMySummary(user.id);
+  }
+
   @Get('personal/dashboard')
   personalDashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.books.getPersonalDashboard(user.id);

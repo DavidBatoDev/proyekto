@@ -5,6 +5,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
   "accountant": {
     "export": true,
     "manage_book": false,
+    "manage_expenses": true,
     "manage_members": false,
     "manage_money": false,
     "view": true,
@@ -15,6 +16,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
   "manager": {
     "export": true,
     "manage_book": false,
+    "manage_expenses": true,
     "manage_members": false,
     "manage_money": true,
     "view": true,
@@ -25,6 +27,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
   "owner": {
     "export": true,
     "manage_book": true,
+    "manage_expenses": true,
     "manage_members": true,
     "manage_money": true,
     "view": true,
@@ -35,6 +38,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
   "viewer": {
     "export": false,
     "manage_book": false,
+    "manage_expenses": false,
     "manage_members": false,
     "manage_money": false,
     "view": true,
@@ -45,6 +49,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
   "viewer_client": {
     "export": false,
     "manage_book": false,
+    "manage_expenses": false,
     "manage_members": false,
     "manage_money": false,
     "view": true,

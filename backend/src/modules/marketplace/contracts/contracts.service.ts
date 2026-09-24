@@ -2167,7 +2167,7 @@ export class ContractsService {
               row?.title ?? contract.project_title_snapshot ?? null,
             message: `The ${(contract.document_title || 'Service Agreement').toLowerCase()} is now fully signed.`,
           },
-          link_url: `/engagements/finance/${contract.id}?section=signatures`,
+          link_url: `/engagements/contracts/${contract.id}?section=signatures`,
         });
       } catch {
         // A notification failure must not undo a signature.

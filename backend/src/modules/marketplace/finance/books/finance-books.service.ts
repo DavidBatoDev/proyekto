@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
+import { FinanceExpensesService } from '../expenses/finance-expenses.service';
+import { BILLED_STATUSES, collectedByInvoice } from '../receivables';
 import {
   FinanceBookAccessService,
   type FinanceBookRow,
@@ -16,6 +18,17 @@ import type {
   FinanceBookPermissions,
   FinanceBookRole,
 } from './finance-book-permissions';
+import {
+  buildMyFinanceTotals,
+  decideTeamScope,
+  type HoursBreakdown,
+  type MyFinanceSummary,
+  type MyFinanceTeam,
+  type MyTeamRole,
+  moneyOutFromExpenseSummary,
+  summarizeMoneyIn,
+  summarizePaidToMe,
+} from './my-finance-summary';
 
 export interface EngagedProject {
   project_id: string;
@@ -120,6 +133,7 @@ export class FinanceBooksService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly access: FinanceBookAccessService,
+    private readonly expenses: FinanceExpensesService,
   ) {}
 
   /** Every book the caller can open: their F1, plus F2/F3 via ownership or membership. */
@@ -880,6 +894,275 @@ export class FinanceBooksService {
       });
     }
     return out;
+  }
+
+  /**
+   * The caller's money across every team they own or belong to. Needs no
+   * personal book. Team owners and F2 owner/manager/accountant members see
+   * the team's money in (billed invoices on linked projects) and money out
+   * (payouts + expenses); everyone else sees only what the team paid them.
+   * Hours are always the caller's own logs.
+   */
+  async getMySummary(callerId: string): Promise<MyFinanceSummary> {
+    const [ownedRes, memberRes] = await Promise.all([
+      this.supabase
+        .from('teams')
+        .select('id, name, owner_id')
+        .eq('owner_id', callerId),
+      this.supabase
+        .from('team_members')
+        .select('team_id, role')
+        .eq('user_id', callerId),
+    ]);
+    if (ownedRes.error) throw new Error(ownedRes.error.message);
+    if (memberRes.error) throw new Error(memberRes.error.message);
+
+    interface TeamRow {
+      id: string;
+      name: string;
+      owner_id: string;
+    }
+    const teamsById = new Map<string, TeamRow>();
+    for (const team of (ownedRes.data ?? []) as TeamRow[]) {
+      teamsById.set(team.id, team);
+    }
+    const memberRoleByTeam = new Map<string, string>();
+    for (const row of (memberRes.data ?? []) as Array<{
+      team_id: string;
+      role: string;
+    }>) {
+      memberRoleByTeam.set(row.team_id, row.role);
+    }
+    const missing = [...memberRoleByTeam.keys()].filter(
+      (id) => !teamsById.has(id),
+    );
+    if (missing.length > 0) {
+      const { data, error } = await this.supabase
+        .from('teams')
+        .select('id, name, owner_id')
+        .in('id', missing);
+      if (error) throw new Error(error.message);
+      for (const team of (data ?? []) as TeamRow[]) {
+        teamsById.set(team.id, team);
+      }
+    }
+    const teamIds = [...teamsById.keys()];
+
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    const monthStartIso = monthStart.toISOString();
+
+    const [booksRes, logsRes, paidToMeRes] = await Promise.all([
+      teamIds.length > 0
+        ? this.supabase
+            .from('finance_books')
+            .select('id, owner_team_id')
+            .eq('kind', 'team')
+            .in('owner_team_id', teamIds)
+        : Promise.resolve({ data: [], error: null }),
+      this.supabase
+        .from('task_time_logs')
+        .select('team_id, duration_seconds, status, started_at')
+        .eq('member_user_id', callerId)
+        .not('ended_at', 'is', null),
+      teamIds.length > 0
+        ? this.supabase
+            .from('payouts')
+            .select('team_id, currency, total_amount')
+            .eq('member_user_id', callerId)
+            .eq('status', 'recorded')
+            .in('team_id', teamIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (booksRes.error) throw new Error(booksRes.error.message);
+    if (logsRes.error) throw new Error(logsRes.error.message);
+    if (paidToMeRes.error) throw new Error(paidToMeRes.error.message);
+
+    const bookIdByTeam = new Map<string, string>();
+    for (const book of (booksRes.data ?? []) as Array<{
+      id: string;
+      owner_team_id: string;
+    }>) {
+      bookIdByTeam.set(book.owner_team_id, book.id);
+    }
+    const financeRoleByBook = new Map<string, FinanceBookRole>();
+    if (bookIdByTeam.size > 0) {
+      const { data, error } = await this.supabase
+        .from('finance_book_members')
+        .select('book_id, finance_role')
+        .eq('user_id', callerId)
+        .in('book_id', [...bookIdByTeam.values()]);
+      if (error) throw new Error(error.message);
+      for (const row of (data ?? []) as Array<{
+        book_id: string;
+        finance_role: FinanceBookRole;
+      }>) {
+        financeRoleByBook.set(row.book_id, row.finance_role);
+      }
+    }
+
+    // Hours: the caller's own logs. Rejected time is excluded.
+    const overall = {
+      total_seconds: 0,
+      month_seconds: 0,
+      pending_seconds: 0,
+      approved_seconds: 0,
+      paid_seconds: 0,
+    };
+    const hoursByTeam = new Map<string, HoursBreakdown>();
+    for (const log of (logsRes.data ?? []) as Array<{
+      team_id: string | null;
+      duration_seconds: number | null;
+      status: string;
+      started_at: string;
+    }>) {
+      if (log.status === 'rejected') continue;
+      const seconds = log.duration_seconds ?? 0;
+      const inMonth = log.started_at >= monthStartIso;
+      overall.total_seconds += seconds;
+      if (inMonth) overall.month_seconds += seconds;
+      if (log.status === 'pending') overall.pending_seconds += seconds;
+      if (log.status === 'approved') overall.approved_seconds += seconds;
+      if (log.status === 'paid') overall.paid_seconds += seconds;
+      if (!log.team_id) continue;
+      const team = hoursByTeam.get(log.team_id) ?? {
+        total_seconds: 0,
+        month_seconds: 0,
+        pending_seconds: 0,
+      };
+      team.total_seconds += seconds;
+      if (inMonth) team.month_seconds += seconds;
+      if (log.status === 'pending') team.pending_seconds += seconds;
+      hoursByTeam.set(log.team_id, team);
+    }
+
+    const paidToMeByTeam = new Map<
+      string,
+      Array<{ currency: string; total_amount: number | string }>
+    >();
+    for (const payout of (paidToMeRes.data ?? []) as Array<{
+      team_id: string;
+      currency: string;
+      total_amount: number | string;
+    }>) {
+      const list = paidToMeByTeam.get(payout.team_id) ?? [];
+      list.push(payout);
+      paidToMeByTeam.set(payout.team_id, list);
+    }
+
+    // Scope per team, then the team-scope money in one pass per source.
+    const scoped = [...teamsById.values()].map((team) => {
+      const isOwner = team.owner_id === callerId;
+      const bookId = bookIdByTeam.get(team.id);
+      let financeRole: FinanceBookRole | null = null;
+      if (bookId) {
+        financeRole = isOwner
+          ? 'owner'
+          : (financeRoleByBook.get(bookId) ?? null);
+      }
+      let teamRole: MyTeamRole = 'member';
+      if (isOwner) teamRole = 'owner';
+      else if (memberRoleByTeam.get(team.id) === 'admin') teamRole = 'admin';
+      return {
+        team,
+        isOwner,
+        teamRole,
+        financeRole,
+        scope: decideTeamScope({ isTeamOwner: isOwner, financeRole }),
+      };
+    });
+    const teamScopeIds = scoped
+      .filter((entry) => entry.scope === 'team')
+      .map((entry) => entry.team.id);
+
+    interface InvoiceRow {
+      id: string;
+      project_id: string;
+      currency: string | null;
+      total: number | string;
+      status: string;
+    }
+    const projectIdsByTeam = new Map<string, string[]>();
+    let invoices: InvoiceRow[] = [];
+    let collected = new Map<string, number>();
+    if (teamScopeIds.length > 0) {
+      const { data: links, error: linksError } = await this.supabase
+        .from('project_teams')
+        .select('team_id, project_id')
+        .in('team_id', teamScopeIds);
+      if (linksError) throw new Error(linksError.message);
+      for (const link of (links ?? []) as Array<{
+        team_id: string;
+        project_id: string;
+      }>) {
+        const list = projectIdsByTeam.get(link.team_id) ?? [];
+        list.push(link.project_id);
+        projectIdsByTeam.set(link.team_id, list);
+      }
+      const projectIds = [...new Set([...projectIdsByTeam.values()].flat())];
+      if (projectIds.length > 0) {
+        const { data, error } = await this.supabase
+          .from('invoices')
+          .select('id, project_id, currency, total, status')
+          .in('project_id', projectIds)
+          .in('status', BILLED_STATUSES);
+        if (error) throw new Error(error.message);
+        invoices = (data ?? []) as InvoiceRow[];
+        collected = await collectedByInvoice(this.supabase, invoices);
+      }
+    }
+    const moneyOutByTeam = await this.expenses.summarizeTeams(teamScopeIds);
+
+    const teams: MyFinanceTeam[] = scoped
+      .map((entry) => {
+        const isTeamScope = entry.scope === 'team';
+        const teamProjects = new Set(projectIdsByTeam.get(entry.team.id));
+        return {
+          team_id: entry.team.id,
+          team_name: entry.team.name,
+          is_owner: entry.isOwner,
+          team_role: entry.teamRole,
+          finance_role: entry.financeRole,
+          scope: entry.scope,
+          hours: hoursByTeam.get(entry.team.id) ?? {
+            total_seconds: 0,
+            month_seconds: 0,
+            pending_seconds: 0,
+          },
+          money_in: isTeamScope
+            ? summarizeMoneyIn(
+                invoices.filter((inv) => teamProjects.has(inv.project_id)),
+                collected,
+              )
+            : [],
+          money_out: isTeamScope
+            ? moneyOutFromExpenseSummary(
+                moneyOutByTeam.get(entry.team.id) ?? [],
+              )
+            : [],
+          paid_to_me: summarizePaidToMe(
+            paidToMeByTeam.get(entry.team.id) ?? [],
+          ),
+        };
+      })
+      .sort((a, b) => a.team_name.localeCompare(b.team_name));
+
+    // Totals count each invoice once even when its project is linked to two
+    // of the caller's teams.
+    const teamScopeProjects = new Set(
+      teamScopeIds.flatMap((id) => projectIdsByTeam.get(id) ?? []),
+    );
+    const dedupedMoneyIn = summarizeMoneyIn(
+      invoices.filter((inv) => teamScopeProjects.has(inv.project_id)),
+      collected,
+    );
+
+    return {
+      hours: overall,
+      teams,
+      totals: buildMyFinanceTotals(teams, dedupedMoneyIn),
+    };
   }
 
   /** The F1 dashboard: hours worked, payouts in, engaged projects. */

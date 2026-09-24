@@ -8,6 +8,8 @@ import { FinanceBooksService } from './books/finance-books.service';
 import { FinanceInvitesController } from './books/finance-invites.controller';
 import { FinanceInvitesService } from './books/finance-invites.service';
 import { ConsultantFinanceAccessService } from './consultant-finance-access.service';
+import { FinanceExpensesController } from './expenses/finance-expenses.controller';
+import { FinanceExpensesService } from './expenses/finance-expenses.service';
 import { FinanceExportController } from './exports/finance-export.controller';
 import { FinanceExportService } from './exports/finance-export.service';
 import { FinanceController } from './finance.controller';
@@ -25,6 +27,7 @@ import { TeamFinanceService } from './team-finance.service';
     FinanceBookMembersController,
     FinanceInvitesController,
     FinanceExportController,
+    FinanceExpensesController,
   ],
   providers: [
     ConsultantFinanceAccessService,
@@ -36,6 +39,7 @@ import { TeamFinanceService } from './team-finance.service';
     FinanceBookMembersService,
     FinanceInvitesService,
     FinanceExportService,
+    FinanceExpensesService,
   ],
   exports: [
     FinanceBooksService,

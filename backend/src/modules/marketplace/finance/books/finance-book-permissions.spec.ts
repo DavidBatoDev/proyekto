@@ -1,4 +1,5 @@
 import {
+  canReadExpenses,
   FINANCE_BOOK_CAPABILITY_PATHS,
   type FinanceBookRole,
   resolveBookPermissions,
@@ -54,5 +55,29 @@ describe('resolveBookPermissions', () => {
         expect(typeof resolved[path]).toBe('boolean');
       }
     }
+  });
+
+  it('never grants manage_expenses to viewer_client, even by override', () => {
+    const resolved = resolveBookPermissions('viewer_client', {
+      manage_expenses: true,
+    });
+    expect(resolved.manage_expenses).toBe(false);
+    expect(canReadExpenses(resolved)).toBe(false);
+  });
+
+  it('reads expenses with manage_expenses or view_costs', () => {
+    expect(canReadExpenses(resolveBookPermissions('owner'))).toBe(true);
+    expect(canReadExpenses(resolveBookPermissions('manager'))).toBe(true);
+    // Accountant: manage_expenses by default even though view_costs is off.
+    expect(canReadExpenses(resolveBookPermissions('accountant'))).toBe(true);
+    expect(canReadExpenses(resolveBookPermissions('viewer'))).toBe(false);
+    expect(
+      canReadExpenses(resolveBookPermissions('viewer', { view_costs: true })),
+    ).toBe(true);
+    expect(
+      canReadExpenses(
+        resolveBookPermissions('accountant', { manage_expenses: false }),
+      ),
+    ).toBe(false);
   });
 });

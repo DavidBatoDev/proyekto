@@ -140,7 +140,41 @@ export class FinanceInvitesService {
       .eq('book_id', bookId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []) as FinanceInviteRow[];
+    return this.expireLapsed((data ?? []) as FinanceInviteRow[]);
+  }
+
+  /**
+   * The owner's list must not show a lapsed invite as pending. `effectiveStatus`
+   * only runs when the invitee opens the link, so an invite nobody opened would
+   * otherwise read "Pending" forever. Past-due pending rows are persisted as
+   * `expired` in one write and returned with that status.
+   */
+  private async expireLapsed(
+    invites: FinanceInviteRow[],
+  ): Promise<FinanceInviteRow[]> {
+    const now = Date.now();
+    const lapsedIds = invites
+      .filter(
+        (invite) =>
+          invite.status === 'pending' &&
+          new Date(invite.expires_at).getTime() < now,
+      )
+      .map((invite) => invite.id);
+    if (lapsedIds.length === 0) return invites;
+
+    const { error } = await this.supabase
+      .from('finance_invites')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .in('id', lapsedIds)
+      .eq('status', 'pending');
+    if (error) {
+      // Reads still report the truth even if the write-back fails.
+      this.logger.warn(`Failed to expire lapsed invites: ${error.message}`);
+    }
+    const lapsed = new Set(lapsedIds);
+    return invites.map((invite) =>
+      lapsed.has(invite.id) ? { ...invite, status: 'expired' } : invite,
+    );
   }
 
   async cancel(

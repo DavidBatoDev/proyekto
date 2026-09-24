@@ -152,3 +152,30 @@ describe('FinanceInvitesService accept flow', () => {
     );
   });
 });
+
+describe('FinanceInvitesService listForBook', () => {
+  it('reports lapsed pending invites as expired and leaves the rest alone', async () => {
+    const pastIso = new Date(Date.now() - 86_400_000).toISOString();
+    const lapsed = { ...pendingInvite, id: 'old', expires_at: pastIso };
+    const live = { ...pendingInvite, id: 'new', expires_at: futureIso };
+    const accepted = {
+      ...pendingInvite,
+      id: 'done',
+      status: 'accepted',
+      expires_at: pastIso,
+    };
+    const service = makeService(
+      stubSupabase({
+        finance_invites: [{ data: [lapsed, live, accepted] }, { data: null }],
+      }),
+    );
+
+    const result = await service.listForBook('owner', 'f2');
+
+    expect(result.map((invite) => [invite.id, invite.status])).toEqual([
+      ['old', 'expired'],
+      ['new', 'pending'],
+      ['done', 'accepted'],
+    ]);
+  });
+});

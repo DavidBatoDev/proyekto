@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { FinanceExpensesService } from '../expenses/finance-expenses.service';
 import type {
   FinanceBookAccessService,
   FinanceBookRow,
@@ -68,6 +69,7 @@ function book(partial: Partial<FinanceBookRow>): FinanceBookRow {
 }
 
 const noAccess = {} as unknown as FinanceBookAccessService;
+const noExpenses = {} as unknown as FinanceExpensesService;
 
 describe('FinanceBooksService.getHub', () => {
   it('team owner sees the F2 with its child project books', async () => {
@@ -95,6 +97,7 @@ describe('FinanceBooksService.getHub', () => {
         contracts: [{ data: [{ project_id: 'p1', status: 'signed' }] }],
       }),
       noAccess,
+      noExpenses,
     );
 
     const hub = await service.getHub('u1');
@@ -129,6 +132,7 @@ describe('FinanceBooksService.getHub', () => {
         finance_book_members: [{ data: [] }],
       }),
       noAccess,
+      noExpenses,
     );
 
     const hub = await service.getHub('u1');
@@ -162,6 +166,7 @@ describe('FinanceBooksService.getHub', () => {
         contracts: [{ data: [] }],
       }),
       noAccess,
+      noExpenses,
     );
 
     const hub = await service.getHub('u1');
@@ -212,6 +217,7 @@ describe('FinanceBooksService.getBookOverview', () => {
         finance_books: [{ data: [] }, { data: [] }],
       }),
       accessStub('owner'),
+      noExpenses,
     );
 
     const overview = await service.getBookOverview('u1', 'b2');
@@ -255,6 +261,7 @@ describe('FinanceBooksService.getBookOverview', () => {
         payouts: [{ data: [] }],
       }),
       accessStub('accountant'),
+      noExpenses,
     );
 
     const overview = await service.getBookOverview('u1', 'b2');

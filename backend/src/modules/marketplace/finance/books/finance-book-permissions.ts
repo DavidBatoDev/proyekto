@@ -35,6 +35,11 @@ export interface FinanceBookPermissions {
   manage_members: boolean;
   /** Create/archive child books, rename, change settings. */
   manage_book: boolean;
+  /**
+   * Record, edit, and void team expenses. Reading expenses needs
+   * `manage_expenses || view_costs` (see `canReadExpenses`).
+   */
+  manage_expenses: boolean;
 }
 
 export const FINANCE_BOOK_CAPABILITY_PATHS = [
@@ -46,6 +51,7 @@ export const FINANCE_BOOK_CAPABILITY_PATHS = [
   'manage_money',
   'manage_members',
   'manage_book',
+  'manage_expenses',
 ] as const satisfies ReadonlyArray<keyof FinanceBookPermissions>;
 
 const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
@@ -58,6 +64,7 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_money: true,
     manage_members: true,
     manage_book: true,
+    manage_expenses: true,
   },
   // The HR tier: money and time administration, inherited from F2 onto F3s.
   manager: {
@@ -69,6 +76,7 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_money: true,
     manage_members: false,
     manage_book: false,
+    manage_expenses: true,
   },
   // View + export of time logs and payouts only — never creates or edits.
   accountant: {
@@ -80,6 +88,7 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_money: false,
     manage_members: false,
     manage_book: false,
+    manage_expenses: true,
   },
   // The client seat: their contracts and invoices, nothing that could carry
   // an internal cost figure.
@@ -92,6 +101,7 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_money: false,
     manage_members: false,
     manage_book: false,
+    manage_expenses: false,
   },
   viewer: {
     view: true,
@@ -102,13 +112,14 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_money: false,
     manage_members: false,
     manage_book: false,
+    manage_expenses: false,
   },
 };
 
 /**
  * Overrides may grant or deny any capability except `view` (a member who
  * cannot view is not a member — remove the row instead) and may never grant
- * `view_costs` to `viewer_client` (the client-never-sees-cost invariant, the
+ * `view_costs` or `manage_expenses` to `viewer_client` (the client-never-sees-cost invariant, the
  * book-side twin of `assertNoInternalRates`).
  */
 export function resolveBookPermissions(
@@ -123,6 +134,16 @@ export function resolveBookPermissions(
       if (typeof value === 'boolean') resolved[path] = value;
     }
   }
-  if (role === 'viewer_client') resolved.view_costs = false;
+  if (role === 'viewer_client') {
+    resolved.view_costs = false;
+    // Expenses carry payout (member cost) figures, so the client seat can
+    // never hold the capability that reads them either.
+    resolved.manage_expenses = false;
+  }
   return resolved;
+}
+
+/** Expenses are readable by whoever may manage them or may see cost figures. */
+export function canReadExpenses(permissions: FinanceBookPermissions): boolean {
+  return permissions.manage_expenses || permissions.view_costs;
 }

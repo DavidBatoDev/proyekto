@@ -432,7 +432,7 @@ export class InvoiceSchedulerService {
             service_end_date: row.service_end_date,
             message: `This contract's service period ends on ${row.service_end_date}. Renew or extend it if the work continues.`,
           },
-          link_url: `/engagements/finance/${row.id}`,
+          link_url: `/engagements/contracts/${row.id}`,
         });
       } catch {
         // Advisory only.
